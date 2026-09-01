@@ -624,7 +624,7 @@ async fn lock_range_move_tenant_in_tx(
                 (format!("forum-reply-range-move:{tenant_id}"), 24_i32),
                 (tenant_id.to_string(), 0_i32),
             ] {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT pg_advisory_xact_lock(hashtextextended($1, $2))",
                     vec![scope.into(), seed.into()],
@@ -634,7 +634,7 @@ async fn lock_range_move_tenant_in_tx(
             Ok(())
         }
         DatabaseBackend::Sqlite => {
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
                 r#"
                 INSERT INTO forum_reply_range_move_locks (tenant_id, touched_at)
@@ -666,7 +666,7 @@ async fn lock_counter_scopes_in_tx(
             category_ids.sort();
             category_ids.dedup();
             for category_id in category_ids {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT forum_counter_lock($1)",
                     vec![format!("forum:category:{tenant_id}:{category_id}").into()],
@@ -676,7 +676,7 @@ async fn lock_counter_scopes_in_tx(
             let mut topic_ids = vec![source_topic_id, target_topic_id];
             topic_ids.sort();
             for topic_id in topic_ids {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT forum_counter_lock($1)",
                     vec![format!("forum:topic:{tenant_id}:{topic_id}").into()],
@@ -718,7 +718,7 @@ async fn lock_topic_rows_in_tx(
                 )));
             }
         };
-        if txn.query_one(statement).await?.is_none() {
+        if txn.query_one_raw(statement).await?.is_none() {
             return Err(ForumError::TopicNotFound(topic_id));
         }
     }
@@ -767,7 +767,7 @@ async fn lock_topic_reply_create_scopes_in_tx(
             ids.sort();
             ids.dedup();
             for topic_id in ids {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT pg_advisory_xact_lock(hashtextextended($1, 5))",
                     vec![format!("{tenant_id}:{topic_id}:reply-create").into()],
@@ -1288,7 +1288,7 @@ async fn insert_operation_in_tx(
             )));
         }
     };
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         backend,
         sql,
         vec![
@@ -1355,7 +1355,7 @@ async fn insert_reply_audit_in_tx(
         }
     };
     for item in audit {
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
@@ -1396,7 +1396,7 @@ async fn load_operation_in_tx(
         }
     };
     Ok(txn
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![tenant_id.into(), operation_id.into()],
@@ -1496,7 +1496,7 @@ async fn count_audit_items_in_tx(
         }
     };
     let row = txn
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![tenant_id.into(), operation_id.into()],

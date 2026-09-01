@@ -164,7 +164,7 @@ async fn rollback_rejects_repaired_cursor_when_rollback_activation_anchor_hash_i
             .await?
             .ok_or_else(|| std::io::Error::other("rollback activation anchor is missing"))?;
     let changed = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE page_rollback_operations SET request_hash = $1 WHERE id = $2",
             vec![
@@ -592,7 +592,7 @@ async fn enable_pages_module(db: &DatabaseConnection, tenant_id: Uuid) -> TestRe
         )",
     )
     .await?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at) \
          VALUES ($1, $2, 'pages', TRUE, '{}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",

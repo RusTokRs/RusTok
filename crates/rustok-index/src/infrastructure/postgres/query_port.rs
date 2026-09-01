@@ -281,7 +281,7 @@ async fn verify_persisted_schemas(
 ) -> Result<(), IndexQueryExecutionError> {
     for required in required_schemas {
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 SELECT_SCHEMA_READINESS_SQL,
                 vec![
@@ -337,7 +337,7 @@ async fn execute_page_rows(
     compiled: &CompiledPostgresQuery,
 ) -> Result<Vec<CompiledPostgresRow>, IndexQueryExecutionError> {
     transaction
-        .query_all(compiled_statement(compiled))
+        .query_all_raw(compiled_statement(compiled))
         .await
         .map_err(|error| IndexQueryExecutionError::storage("execute page statement", error))?
         .into_iter()
@@ -439,7 +439,7 @@ async fn execute_exact_count(
     count: &CompiledPostgresCount,
 ) -> Result<CompiledPostgresRow, IndexQueryExecutionError> {
     let row = transaction
-        .query_one(count_statement(count))
+        .query_one_raw(count_statement(count))
         .await
         .map_err(|error| IndexQueryExecutionError::storage("execute exact-count statement", error))?
         .ok_or(IndexQueryExecutionError::MissingExactCountRow)?;

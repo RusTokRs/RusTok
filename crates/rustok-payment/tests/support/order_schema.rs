@@ -27,7 +27,7 @@ pub async fn ensure_order_schema(db: &DatabaseConnection) {
                 .default("en"),
         )
         .to_owned();
-    db.execute(builder.build(&tenants_table))
+    db.execute_raw(builder.build(&tenants_table))
         .await
         .expect("tenants table should be created for locale resolution");
 

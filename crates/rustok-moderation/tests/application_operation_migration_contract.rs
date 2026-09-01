@@ -143,7 +143,7 @@ async fn assert_upgrade_contract(
     assert_eq!(application_operation_count(db).await?, 1);
 
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             db.get_database_backend(),
             format!(
                 r#"
@@ -195,7 +195,7 @@ WHERE a.decision_id = '{}'
     }
 
     let identity = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             db.get_database_backend(),
             format!(
                 "SELECT tenant_id, case_id, subject_id, subject_revision FROM moderation_application_operations WHERE decision_id = '{}'",
@@ -236,7 +236,7 @@ WHERE a.decision_id = '{}'
 }
 
 async fn assert_application_schema(db: &DatabaseConnection) -> TestResult<()> {
-    db.query_all(Statement::from_string(
+    db.query_all_raw(Statement::from_string(
         db.get_database_backend(),
         "SELECT decision_id, tenant_id, case_id, decision_hash, subject_module, subject_kind, subject_id, subject_revision, status, attempt_count, next_attempt_at, lease_token, lease_owner, lease_expires_at, last_error_code, last_error_message, applied_revision, applied_at, created_at, updated_at FROM moderation_application_operations WHERE 1 = 0".to_string(),
     ))
@@ -264,7 +264,7 @@ async fn application_index_names(db: &DatabaseConnection) -> TestResult<BTreeSet
             )))
         }
     };
-    let rows = db.query_all(statement).await?;
+    let rows = db.query_all_raw(statement).await?;
     let mut names = BTreeSet::new();
     for row in rows {
         names.insert(row.try_get::<String>("", "name")?);
@@ -414,7 +414,7 @@ async fn migration_count(db: &DatabaseConnection) -> TestResult<i64> {
 
 async fn scalar_i64(db: &DatabaseConnection, sql: &str) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             db.get_database_backend(),
             sql.to_string(),
         ))

@@ -56,7 +56,7 @@ async fn execute(
     sql: &str,
     values: Vec<sea_orm::Value>,
 ) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         sql,
         values,
@@ -70,7 +70,7 @@ async fn row(
     sql: &str,
     values: Vec<sea_orm::Value>,
 ) -> TestResult<QueryResult> {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         sql,
         values,
@@ -590,7 +590,7 @@ async fn reply_branch_fork_is_atomic_idempotent_and_preserves_provenance() -> Te
         Err(ForumError::TopicForkOperationConflict(id)) if id == operation_id
     ));
     assert!(
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE forum_topic_fork_operations SET reason = ? WHERE tenant_id = ? AND operation_id = ?",
             vec!["tamper".into(), tenant_id.into(), operation_id.into()],
@@ -599,7 +599,7 @@ async fn reply_branch_fork_is_atomic_idempotent_and_preserves_provenance() -> Te
         .is_err()
     );
     assert!(
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "DELETE FROM forum_topic_fork_reply_items WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],
@@ -608,7 +608,7 @@ async fn reply_branch_fork_is_atomic_idempotent_and_preserves_provenance() -> Te
         .is_err()
     );
     assert!(
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE forum_topic_fork_revision_items SET locale = ? WHERE tenant_id = ? AND operation_id = ?",
             vec!["ru".into(), tenant_id.into(), operation_id.into()],

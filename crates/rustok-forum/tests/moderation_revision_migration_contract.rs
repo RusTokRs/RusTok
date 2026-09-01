@@ -419,7 +419,7 @@ async fn reply_revision(
 
 async fn scalar_i64(db: &DatabaseConnection, sql: &str) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             db.get_database_backend(),
             sql.to_string(),
         ))

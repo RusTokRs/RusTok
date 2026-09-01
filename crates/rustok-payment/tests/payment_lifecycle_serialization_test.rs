@@ -71,7 +71,7 @@ async fn lifecycle_guards_cancel_child_payment_and_reject_stale_or_rebound_updat
         .expect("collection should be authorized");
     let payment_id = authorized.payments[0].id;
 
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "UPDATE payment_collections
          SET status = 'cancelled',
@@ -97,7 +97,7 @@ async fn lifecycle_guards_cancel_child_payment_and_reject_stale_or_rebound_updat
     assert!(cancelled_payment.cancelled_at.is_some());
 
     let stale_capture = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE payment_collections
              SET status = 'captured',
@@ -129,7 +129,7 @@ async fn lifecycle_guards_cancel_child_payment_and_reject_stale_or_rebound_updat
         .expect("first order attachment should succeed");
 
     let rebound = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE payment_collections SET order_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             vec![Uuid::new_v4().into(), attachable.id.into()],

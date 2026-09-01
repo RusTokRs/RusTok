@@ -55,7 +55,7 @@ async fn checkout_lock_rejects_stale_begin_and_completed_cart_is_terminal() {
     assert_eq!(checking_out.status, "checking_out");
 
     let stale_begin = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE carts SET status = 'checking_out', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             vec![cart.id.into()],
@@ -87,7 +87,7 @@ async fn checkout_lock_rejects_stale_begin_and_completed_cart_is_terminal() {
     assert!(completed.completed_at.is_some());
 
     let reopen = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE carts SET status = 'active', completed_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             vec![cart.id.into()],

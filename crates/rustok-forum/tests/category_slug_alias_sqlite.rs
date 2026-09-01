@@ -92,7 +92,7 @@ fn update_input(name: Option<&str>, slug: Option<&str>) -> UpdateCategoryInput {
 
 async fn alias_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "SELECT COUNT(*) AS alias_count FROM taxonomy_term_aliases WHERE tenant_id = ?",
             [tenant_id.into()],

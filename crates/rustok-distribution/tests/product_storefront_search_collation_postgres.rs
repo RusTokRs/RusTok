@@ -211,7 +211,7 @@ ORDER BY translation.product_id ASC
 "#
     };
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             vec![TENANT_ID.into(), pattern.into()],
@@ -224,7 +224,7 @@ ORDER BY translation.product_id ASC
 
 async fn current_lc_collate(db: &DatabaseConnection) -> TestResult<String> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT current_setting('lc_collate') AS lc_collate",
             Vec::<Value>::new(),
@@ -279,13 +279,13 @@ async fn seed_titles(db: &DatabaseConnection) -> TestResult<()> {
         .await?;
     for (offset, (product_id, title, handle)) in products.into_iter().enumerate() {
         let translation_id = Uuid::from_u128(0x7300_u128 + offset as u128 + 1);
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "INSERT INTO products (id, tenant_id) VALUES ($1, $2)",
             vec![product_id.into(), TENANT_ID.into()],
         ))
         .await?;
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "INSERT INTO product_translations (id, product_id, tenant_id, locale, title, handle) VALUES ($1, $2, $3, 'en', $4, $5)",
             vec![

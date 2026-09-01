@@ -101,7 +101,7 @@ impl PostgresIndexDriftRepairStore {
         }
 
         let inserted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "INSERT INTO index_consistency_finding_repair_commands (tenant_id, command_id, finding_id, payload_digest, target_kind, actor_kind, actor_subject, reason, state) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'prepared') ON CONFLICT (tenant_id, command_id) DO NOTHING",
                 vec![
@@ -176,7 +176,7 @@ impl PostgresIndexDriftRepairStore {
             }
         };
         let updated = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "UPDATE index_consistency_finding_repair_commands SET state = 'completed', outcome = $4, outcome_code = $5, owner_name = $6, before_digest = $7, after_digest = $8, owner_receipt_digest = $9, completed_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND command_id = $2 AND finding_id = $3 AND state = 'prepared' AND payload_digest = $10",
                 vec![
@@ -351,7 +351,7 @@ async fn load_and_validate_open_finding(
     command: &IndexDriftRepairCommand,
 ) -> Result<FindingLoadOutcome, IndexDriftRepairFailure> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT finding_key, check_name, state, scope_kind, module_name, entity_name, CAST(schema_version AS BIGINT) AS schema_version_value, entity_id, locale_key, expected_digest, actual_digest, details->>'contract' AS details_contract FROM index_consistency_findings WHERE tenant_id = $1 AND finding_id = $2 FOR UPDATE",
             vec![command.tenant_id().into(), command.finding_id().into()],
@@ -484,7 +484,7 @@ async fn active_finding_command_exists(
     command: &IndexDriftRepairCommand,
 ) -> Result<bool, IndexDriftRepairFailure> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT command_id FROM index_consistency_finding_repair_commands WHERE tenant_id = $1 AND finding_id = $2 AND state = 'prepared' LIMIT 1",
             vec![command.tenant_id().into(), command.finding_id().into()],
@@ -500,7 +500,7 @@ async fn exact_finding_is_open(
     finding_id: Uuid,
 ) -> Result<bool, IndexDriftRepairFailure> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT finding_id FROM index_consistency_findings WHERE tenant_id = $1 AND finding_id = $2 AND state = 'open' LIMIT 1 FOR SHARE",
             vec![tenant_id.into(), finding_id.into()],
@@ -517,7 +517,7 @@ async fn lock_command_id(
 ) -> Result<(), IndexDriftRepairFailure> {
     let key = format!("index-drift-repair-command\u{1f}{tenant_id}\u{1f}{command_id}");
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![key.into()],
@@ -563,7 +563,7 @@ async fn query_command(
     values: Vec<sea_orm::Value>,
 ) -> Result<Option<StoredRepairCommand>, IndexDriftRepairFailure> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             values,

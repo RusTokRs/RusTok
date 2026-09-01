@@ -20,7 +20,7 @@ impl MigrationTrait for Migration {
                     "AI agent stage lease migration does not support database backend {other:?}"
                 )));
             }
-        };
+};
         for statement in statements {
             connection.execute_unprepared(statement).await?;
         }

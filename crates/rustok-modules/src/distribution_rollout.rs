@@ -1597,7 +1597,7 @@ async fn insert_rollout(
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_rollouts
@@ -1672,7 +1672,7 @@ async fn insert_rollout_assignments(
             })
             .map(|candidate| candidate.candidate_artifact_digest.clone());
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_static_distribution_rollout_assignments
@@ -1725,7 +1725,7 @@ async fn update_rollout_assignment(
         .as_ref()
         .map(|failure| failure.detail.clone());
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_rollout_assignments
@@ -1890,7 +1890,7 @@ async fn update_rollout_status(
         _ => ("NULL".to_string(), "NULL".to_string()),
     };
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_rollouts
@@ -1926,7 +1926,7 @@ async fn supersede_rollout(
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_rollouts
@@ -1951,7 +1951,7 @@ async fn load_phase_counts(
 ) -> Result<PhaseCounts, ModuleStaticDistributionRolloutError> {
     let backend = connection.get_database_backend();
     let rows = connection
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT phase, COUNT(*) AS count
@@ -1994,7 +1994,7 @@ async fn load_rollout_state<C: ConnectionTrait>(
         ""
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT revision, desired_rollout_id, observed_rollout_id
@@ -2027,7 +2027,7 @@ async fn advance_rollout_state(
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_rollout_state
@@ -2073,7 +2073,7 @@ async fn load_rollout<C: ConnectionTrait>(
         ""
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT rollout_id, predecessor_rollout_id, distribution_release_id, transition_kind,
@@ -2092,7 +2092,7 @@ async fn load_rollout<C: ConnectionTrait>(
         .map_err(store_error)?
         .ok_or(ModuleStaticDistributionRolloutError::RolloutNotFound)?;
     let assignment_rows = connection
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT node_id, role, candidate_artifact_digest, predecessor_artifact_digest,
@@ -2195,7 +2195,7 @@ async fn load_rollout_assignment<C: ConnectionTrait>(
         ""
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT node_id, role, candidate_artifact_digest, predecessor_artifact_digest,
@@ -2239,7 +2239,7 @@ async fn load_next_assignment_for_node(
         ""
     };
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT node_id, role, candidate_artifact_digest, predecessor_artifact_digest,
@@ -2290,7 +2290,7 @@ async fn claim_rollout_assignment(
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_rollout_assignments
@@ -2338,7 +2338,7 @@ async fn heartbeat_rollout_assignment(
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_rollout_assignments
@@ -2438,7 +2438,7 @@ async fn reserve_operation(
 ) -> Result<Option<OperationRecord>, ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_rollout_operations
@@ -2487,7 +2487,7 @@ async fn load_operation<C: ConnectionTrait>(
 ) -> Result<Option<OperationRecord>, ModuleStaticDistributionRolloutError> {
     let backend = connection.get_database_backend();
     let Some(row) = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT operation_kind, request_digest, principal_id, trace_id, correlation_id, rollout_id,
@@ -2602,7 +2602,7 @@ async fn complete_operation(
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_rollout_operations
@@ -2718,10 +2718,10 @@ fn valid_text(value: &str, maximum_bytes: usize) -> bool {
 
 fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> sea_orm::Value {
     match (backend, value) {
-        (DbBackend::Postgres, value) => sea_orm::Value::Uuid(value.map(Box::new)),
+        (DbBackend::Postgres, value) => sea_orm::Value::Uuid(value),
         (_, Some(value)) => value.to_string().into(),
         (_, None) => sea_orm::Value::String(None),
-    }
+}
 }
 
 fn optional_uuid_from_row(

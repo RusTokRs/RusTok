@@ -50,7 +50,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         vec![user_id.into(), tenant_id.into()],
@@ -140,7 +140,7 @@ async fn scalar_i64(
     values: Vec<sea_orm::Value>,
 ) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             sql,
             values,
@@ -169,7 +169,7 @@ async fn reply_topic_and_position(
     reply_id: Uuid,
 ) -> TestResult<(Uuid, i64, Option<Uuid>)> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT topic_id, position, parent_reply_id FROM forum_replies WHERE tenant_id = ? AND id = ?",
             vec![tenant_id.into(), reply_id.into()],
@@ -224,7 +224,7 @@ async fn selected_reply_split_is_atomic_idempotent_and_append_only() -> TestResu
     )
     .await?;
 
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id, marked_by_user_id, marked_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
         vec![
@@ -235,7 +235,7 @@ async fn selected_reply_split_is_atomic_idempotent_and_append_only() -> TestResu
         ],
     ))
     .await?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO forum_topic_channel_access (tenant_id, topic_id, channel_slug) VALUES (?, ?, ?)",
         vec![tenant_id.into(), source_topic_id.into(), "support".into()],
@@ -243,7 +243,7 @@ async fn selected_reply_split_is_atomic_idempotent_and_append_only() -> TestResu
     .await?;
 
     let category_before = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT topic_count, reply_count FROM forum_categories WHERE tenant_id = ? AND id = ?",
             vec![tenant_id.into(), category_id.into()],
@@ -311,7 +311,7 @@ async fn selected_reply_split_is_atomic_idempotent_and_append_only() -> TestResu
     );
 
     let solution_topic: Uuid = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT topic_id FROM forum_solutions WHERE tenant_id = ? AND reply_id = ?",
             vec![tenant_id.into(), selected_child_id.into()],
@@ -344,7 +344,7 @@ async fn selected_reply_split_is_atomic_idempotent_and_append_only() -> TestResu
     );
 
     let category_after = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT topic_count, reply_count FROM forum_categories WHERE tenant_id = ? AND id = ?",
             vec![tenant_id.into(), category_id.into()],
@@ -392,7 +392,7 @@ async fn selected_reply_split_is_atomic_idempotent_and_append_only() -> TestResu
             .is_err()
     );
     assert!(
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE forum_topic_split_operations SET reason = ? WHERE tenant_id = ? AND operation_id = ?",
             vec!["tamper".into(), tenant_id.into(), operation_id.into()],
@@ -401,7 +401,7 @@ async fn selected_reply_split_is_atomic_idempotent_and_append_only() -> TestResu
         .is_err()
     );
     assert!(
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "DELETE FROM forum_topic_split_reply_items WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],

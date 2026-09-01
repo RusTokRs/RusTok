@@ -92,7 +92,7 @@ async fn exercise_stale_reply_effect_race(
 
     let edit_db = database.peer().await?;
     let edit = edit_db.begin().await?;
-    edit.execute(Statement::from_sql_and_values(
+    edit.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE forum_reply_bodies SET body = $1 WHERE tenant_id = $2 AND id = $3",
         vec![
@@ -169,7 +169,7 @@ async fn wait_for_processing_receipt(
 ) -> TestResult<()> {
     for _ in 0..100 {
         let row = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "SELECT status FROM owner_operation_receipts WHERE tenant_id = $1 AND owner_slug = 'forum' AND idempotency_key = $2 AND operation = $3",
                 vec![
@@ -399,7 +399,7 @@ async fn assert_unchanged_public_reply(
     accepted_solution: bool,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 r#"
@@ -491,7 +491,7 @@ where
     C: ConnectionTrait,
 {
     let row = db
-        .query_one(Statement::from_string(DatabaseBackend::Postgres, sql))
+        .query_one_raw(Statement::from_string(DatabaseBackend::Postgres, sql))
         .await?
         .ok_or_else(|| test_error("scalar PostgreSQL query returned no row"))?;
     Ok(row.try_get("", "value")?)

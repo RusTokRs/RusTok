@@ -576,7 +576,7 @@ async fn run_topic_move_proof(db: &DatabaseConnection) -> TestResult<ScenarioEvi
 async fn create_forum_fixture(db: &DatabaseConnection) -> TestResult<ForumFixture> {
     let tenant_id = Uuid::new_v4();
     let admin_id = Uuid::new_v4();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO users (id, tenant_id) VALUES ($1, $2)",
         vec![admin_id.into(), tenant_id.into()],
@@ -693,7 +693,7 @@ async fn load_move_owner_fact(
     operation_id: Uuid,
 ) -> TestResult<MoveOwnerFact> {
     let receipt = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT operation_id, topic_id, source_category_id, target_category_id,
@@ -706,7 +706,7 @@ async fn load_move_owner_fact(
         .await?
         .ok_or_else(|| test_error("D16 topic move receipt was not found"))?;
     let journal = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT event_id, aggregate_type, aggregate_id, event_type,
@@ -891,7 +891,7 @@ async fn load_owner_revisions_after(
     tenant_id: Uuid,
     after_revision: i64,
 ) -> TestResult<Vec<OwnerRevisionRow>> {
-    db.query_all(Statement::from_sql_and_values(
+    db.query_all_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         SELECT revision, event_id, target_type, target_id
@@ -921,7 +921,7 @@ async fn load_root_envelope(
     event_id: Uuid,
 ) -> TestResult<EventEnvelope> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT payload FROM sys_events WHERE event_type = $1 ORDER BY created_at ASC",
             vec![ROOT_EVENT_TYPE.to_string().into()],
@@ -950,7 +950,7 @@ async fn load_typed_envelope(
     root_event_id: Uuid,
 ) -> TestResult<ContractEventEnvelope> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT payload FROM sys_events WHERE event_type = $1 ORDER BY created_at ASC",
             vec![TYPED_EVENT_TYPE.to_string().into()],
@@ -978,7 +978,7 @@ async fn load_root_event_ids(
     tenant_id: Uuid,
 ) -> TestResult<BTreeSet<Uuid>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT payload FROM sys_events WHERE event_type = $1 ORDER BY created_at ASC",
             vec![ROOT_EVENT_TYPE.to_string().into()],
@@ -1000,7 +1000,7 @@ async fn load_typed_event_ids(
     tenant_id: Uuid,
 ) -> TestResult<BTreeSet<Uuid>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT payload FROM sys_events WHERE event_type = $1 ORDER BY created_at ASC",
             vec![TYPED_EVENT_TYPE.to_string().into()],
@@ -1019,7 +1019,7 @@ async fn load_typed_event_ids(
 
 async fn load_inbox_row(db: &DatabaseConnection, event_id: Uuid) -> TestResult<InboxRow> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT ingest_sequence, event_id, scope_key, status
@@ -1042,7 +1042,7 @@ async fn load_forum_documents(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> TestResult<Vec<SearchDocumentRow>> {
-    db.query_all(Statement::from_sql_and_values(
+    db.query_all_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         SELECT document_id, entity_type, locale, status, title, body, facets, payload
@@ -1293,7 +1293,7 @@ async fn max_ingest_sequence(db: &DatabaseConnection) -> TestResult<i64> {
 
 async fn scalar_i64(db: &DatabaseConnection, statement: Statement) -> TestResult<i64> {
     let row: QueryResult = db
-        .query_one(statement)
+        .query_one_raw(statement)
         .await?
         .ok_or_else(|| test_error("D16 scalar query returned no row"))?;
     Ok(row.try_get("", "value")?)

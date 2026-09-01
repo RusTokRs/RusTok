@@ -301,7 +301,8 @@ where
             .update_column(Alias::new("updated_at"))
             .to_owned(),
         );
-    db.execute(db.get_database_backend().build(&insert)).await?;
+    db.execute_raw(db.get_database_backend().build(&insert))
+        .await?;
 
     resolve_translation(db, tenant_id, app_id, locale.as_str())
         .await?

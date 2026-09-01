@@ -164,7 +164,7 @@ async fn setup(include_outbox: bool) -> DatabaseConnection {
 }
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO tenants (id) VALUES (?)",
         [tenant_id.into()],
@@ -174,7 +174,7 @@ async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         [user_id.into(), tenant_id.into()],
@@ -199,7 +199,7 @@ async fn event_count(db: &DatabaseConnection) -> i64 {
 }
 
 async fn table_count(db: &DatabaseConnection, table: &str) -> i64 {
-    db.query_one(Statement::from_string(
+    db.query_one_raw(Statement::from_string(
         DbBackend::Sqlite,
         format!("SELECT COUNT(*) AS count FROM {table}"),
     ))
@@ -211,7 +211,7 @@ async fn table_count(db: &DatabaseConnection, table: &str) -> i64 {
 }
 
 async fn event_payloads(db: &DatabaseConnection) -> Vec<Value> {
-    db.query_all(Statement::from_string(
+    db.query_all_raw(Statement::from_string(
         DbBackend::Sqlite,
         "SELECT payload FROM sys_events ORDER BY created_at, id".to_string(),
     ))

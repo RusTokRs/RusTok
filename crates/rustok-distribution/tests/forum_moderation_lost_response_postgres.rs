@@ -477,7 +477,7 @@ async fn assert_completed_receipt(
     decision_id: Uuid,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT status, response_json IS NOT NULL AS has_response, completed_at IS NOT NULL AS has_completed_at FROM owner_operation_receipts WHERE tenant_id = $1 AND owner_slug = 'forum' AND idempotency_key = $2 AND operation = $3",
             vec![
@@ -509,7 +509,7 @@ async fn scalar_i64(
     values: Vec<sea_orm::Value>,
 ) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             sql,
             values,
@@ -525,7 +525,7 @@ async fn scalar_string(
     values: Vec<sea_orm::Value>,
 ) -> TestResult<String> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             sql,
             values,

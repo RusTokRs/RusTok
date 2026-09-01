@@ -261,7 +261,7 @@ async fn setup_db(tenant_id: Uuid, admin_id: Uuid) -> TestResult<DatabaseConnect
         "CREATE TABLE users (id TEXT NOT NULL PRIMARY KEY, tenant_id TEXT NOT NULL)",
     )
     .await?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?1, ?2)",
         vec![admin_id.into(), tenant_id.into()],

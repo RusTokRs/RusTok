@@ -526,7 +526,7 @@ async fn complete_checkout_rejects_channel_hidden_inventory_on_deny_policy() {
         .unwrap();
 
     // Patch cart to carry the channel context
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "UPDATE carts SET channel_id = ?, channel_slug = ? WHERE id = ?",
         vec![
@@ -710,7 +710,7 @@ async fn complete_checkout_allows_backorder_variant_when_channel_inventory_hidde
         .unwrap();
 
     // Patch cart to carry the channel context
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "UPDATE carts SET channel_id = ?, channel_slug = ? WHERE id = ?",
         vec![
@@ -861,7 +861,7 @@ async fn complete_checkout_accepts_variant_when_stock_location_visible_for_cart_
         .unwrap();
 
     // Patch cart to carry the channel context
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "UPDATE carts SET channel_id = ?, channel_slug = ? WHERE id = ?",
         vec![

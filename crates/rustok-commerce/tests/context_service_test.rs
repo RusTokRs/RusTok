@@ -187,7 +187,7 @@ async fn resolve_context_falls_back_to_default_locale_when_requested_locale_disa
 }
 
 async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO tenants (id, name, slug, domain, settings, default_locale, is_active, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -219,7 +219,7 @@ async fn insert_tenant_locale(
     native_name: &str,
     is_default: bool,
 ) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO tenant_locales (id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale, policy_revision, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -239,7 +239,7 @@ async fn insert_tenant_locale(
 }
 
 async fn disable_tenant_locale(db: &DatabaseConnection, tenant_id: Uuid, locale: &str) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "UPDATE tenant_locales SET is_enabled = 0 WHERE tenant_id = ? AND locale = ?",
         vec![tenant_id.into(), locale.into()],

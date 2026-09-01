@@ -242,7 +242,7 @@ async fn order_inventory_is_reserved_released_and_consumed_across_lifecycle() {
     assert_eq!(inventory_quantities(&db, variant_id).await, (5, 2));
 
     let immutable_update = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE order_line_items SET quantity = 1 WHERE order_id = ?",
             vec![second.id.into()],

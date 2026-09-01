@@ -52,7 +52,7 @@ impl PostgresTestDb {
             .await?;
         db.execute_unprepared("CREATE TABLE tenants (id UUID NOT NULL PRIMARY KEY)")
             .await?;
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "INSERT INTO tenants (id) VALUES ($1)",
             vec![TENANT.into()],

@@ -674,7 +674,7 @@ async fn load_blog_document(
     post_id: Uuid,
 ) -> Result<Option<SearchDocumentSnapshot>, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT status, is_public, title, slug, locale, payload
@@ -706,7 +706,7 @@ async fn count_blog_documents(
     tenant_id: Uuid,
 ) -> Result<i64, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT COUNT(*)::bigint AS count

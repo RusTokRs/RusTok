@@ -272,7 +272,7 @@ impl PostgresIndexReconciliationRetryStore {
                     )
                 })?;
                 self.db
-                    .execute(Statement::from_sql_and_values(
+                    .execute_raw(Statement::from_sql_and_values(
                         backend,
                         schedule_retry_sql(backend),
                         vec![
@@ -308,7 +308,7 @@ async fn terminalize_failure(
     lease: &IndexReconciliationRetryLease,
     details: JsonValue,
 ) -> Result<u64, IndexReconciliationRetryError> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         backend,
         terminal_failure_sql(backend),
         vec![

@@ -57,7 +57,7 @@ impl MigrationTrait for Migration {
         ensure_complete_taxonomy_ownership(&txn).await?;
         ensure_complete_taxonomy_locale_ownership(&txn).await?;
         ensure_complete_product_seo_ownership(&txn).await?;
-        txn.execute(Statement::from_string(
+        txn.execute_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             "DROP TABLE IF EXISTS catalog_category_translations".to_owned(),
         ))

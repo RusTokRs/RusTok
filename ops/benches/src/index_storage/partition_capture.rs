@@ -164,7 +164,7 @@ async fn read_database_identity(
     db: &sea_orm::DatabaseConnection,
 ) -> Result<CaptureDatabaseIdentity> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             concat!(
                 "SELECT version() AS version,",

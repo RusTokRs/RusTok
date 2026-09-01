@@ -206,7 +206,7 @@ mod tests {
     use sea_orm_migration::sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 
     async fn generation(db: &sea_orm_migration::sea_orm::DatabaseConnection) -> i64 {
-        db.query_one(Statement::from_string(
+        db.query_one_raw(Statement::from_string(
             DbBackend::Sqlite,
             "SELECT generation FROM channel_resolution_invalidation_state WHERE scope = 'resolution'"
                 .to_string(),

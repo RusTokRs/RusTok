@@ -102,7 +102,7 @@ async fn collect_pg_stat_statements(
         "#,
         vec![(top_n as i64).into()],
     );
-    match db.query_all(statement).await {
+    match db.query_all_raw(statement).await {
         Ok(rows) => PgStatStatementsReport {
             available: true,
             error: None,
@@ -192,7 +192,7 @@ async fn explain_lines(
     values: Vec<Value>,
 ) -> CliCoreResult<Vec<String>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(backend, sql, values))
+        .query_all_raw(Statement::from_sql_and_values(backend, sql, values))
         .await
         .map_err(command_failed)?;
     Ok(match backend {

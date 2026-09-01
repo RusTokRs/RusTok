@@ -133,7 +133,10 @@ impl ModerationService {
             )
             .col_expr(
                 moderation_application_operation::Column::AttemptCount,
-                Expr::col(moderation_application_operation::Column::AttemptCount).add(1),
+                sea_orm::sea_query::ExprTrait::add(
+                    Expr::col(moderation_application_operation::Column::AttemptCount),
+                    1,
+                ),
             )
             .col_expr(
                 moderation_application_operation::Column::LeaseToken,

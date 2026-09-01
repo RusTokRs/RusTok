@@ -67,7 +67,7 @@ async fn test_service() -> (
 
 async fn seed_tenant(database: &DatabaseConnection, tenant_id: Uuid) {
     database
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO tenants (id) VALUES (?)",
             [tenant_id.into()],

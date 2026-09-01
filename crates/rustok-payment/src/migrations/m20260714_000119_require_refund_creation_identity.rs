@@ -13,7 +13,7 @@ impl MigrationTrait for Migration {
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => install_postgres(manager).await?,
             DatabaseBackend::Sqlite => install_sqlite(manager).await?,
-            DatabaseBackend::MySql => install_mysql(manager).await?,
+            _ => install_mysql(manager).await?,
         }
         Ok(())
     }
@@ -22,7 +22,7 @@ impl MigrationTrait for Migration {
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => uninstall_postgres(manager).await?,
             DatabaseBackend::Sqlite => uninstall_sqlite(manager).await?,
-            DatabaseBackend::MySql => uninstall_mysql(manager).await?,
+            _ => uninstall_mysql(manager).await?,
         }
         Ok(())
     }

@@ -138,7 +138,7 @@ async fn fetch_query_suggestions(
         ],
     );
 
-    db.query_all(stmt)
+    db.query_all_raw(stmt)
         .await
         .map_err(Error::Database)?
         .into_iter()
@@ -232,7 +232,7 @@ async fn fetch_document_suggestions(
         values,
     );
 
-    db.query_all(stmt)
+    db.query_all_raw(stmt)
         .await
         .map_err(Error::Database)?
         .into_iter()

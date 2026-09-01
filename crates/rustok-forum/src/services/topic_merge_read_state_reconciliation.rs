@@ -342,7 +342,7 @@ async fn lock_reconciliation_tenant_in_tx(
 ) -> ForumResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "SELECT pg_advisory_xact_lock(hashtextextended($1, 25))",
                 vec![format!("forum-topic-merge-read-state-reconciliation:{tenant_id}").into()],
@@ -350,7 +350,7 @@ async fn lock_reconciliation_tenant_in_tx(
             .await?;
         }
         DatabaseBackend::Sqlite => {
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
                 r#"
                 INSERT INTO forum_topic_merge_read_state_reconciliation_locks (

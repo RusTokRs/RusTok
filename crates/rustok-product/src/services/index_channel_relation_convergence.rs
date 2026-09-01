@@ -266,7 +266,7 @@ impl ProductSalesChannelIndexRelationConvergenceStore {
         ProductSalesChannelIndexRelationConvergenceError,
     > {
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 INSERT INTO product_sales_channel_index_relation_convergence_state (tenant_id)
@@ -279,7 +279,7 @@ impl ProductSalesChannelIndexRelationConvergenceStore {
             .map_err(|_| ProductSalesChannelIndexRelationConvergenceError::Unavailable)?;
 
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 SELECT
@@ -356,7 +356,7 @@ impl ProductSalesChannelIndexRelationConvergenceStore {
             _ => None,
         };
         let result = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 UPDATE product_sales_channel_index_relation_convergence_state
@@ -460,7 +460,7 @@ async fn load_next_visibility_request(
     visibility_cursor: i64,
 ) -> Result<Option<VisibilityRequest>, ProductSalesChannelIndexRelationConvergenceError> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT sequence_no, product_id, product_source_version
@@ -504,7 +504,7 @@ async fn complete_visibility_in_transaction(
     sequence_no: i64,
 ) -> Result<(), ProductSalesChannelIndexRelationConvergenceError> {
     let result = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             UPDATE product_sales_channel_index_relation_convergence_state
@@ -545,7 +545,7 @@ async fn complete_sweep_page_in_transaction(
             (Some(generation), None::<i64>, None::<Uuid>)
         };
     let result = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             UPDATE product_sales_channel_index_relation_convergence_state
@@ -585,7 +585,7 @@ async fn retry_in_transaction(
     error_marker: String,
 ) -> Result<(), ProductSalesChannelIndexRelationConvergenceError> {
     let result = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             UPDATE product_sales_channel_index_relation_convergence_state

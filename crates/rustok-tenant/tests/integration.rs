@@ -83,7 +83,7 @@ async fn create_sqlite_test_tables(db: &DatabaseConnection) {
             dispatched_at TEXT NULL
         )",
     ] {
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             sql.to_string(),
         ))

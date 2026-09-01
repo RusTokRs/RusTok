@@ -275,7 +275,7 @@ async fn assert_shared_scan_locks_block_artifact_update(
         .execute_unprepared("SET LOCAL lock_timeout = '100ms'")
         .await?;
     let update_error = updater
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE page_static_landing_artifacts SET document_html = $1 WHERE id = $2",
             vec![
@@ -419,7 +419,7 @@ async fn enable_pages_module(db: &DatabaseConnection, tenant_id: Uuid) -> TestRe
         )",
     )
     .await?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at) \
          VALUES ($1, $2, 'pages', TRUE, '{}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",

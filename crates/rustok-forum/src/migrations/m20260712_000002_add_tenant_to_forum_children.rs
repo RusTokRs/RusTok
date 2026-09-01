@@ -361,7 +361,7 @@ async fn ensure_no_null_tenants(
 ) -> Result<(), DbErr> {
     let row = manager
         .get_connection()
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!("SELECT COUNT(*) AS invalid_count FROM {table} WHERE tenant_id IS NULL"),
         ))

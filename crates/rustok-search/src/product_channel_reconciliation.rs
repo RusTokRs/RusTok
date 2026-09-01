@@ -59,7 +59,7 @@ impl ProductChannelProjectionReconciler {
         );
         let tenant_ids = self
             .db
-            .query_all(statement)
+            .query_all_raw(statement)
             .await
             .map_err(Error::Database)?
             .into_iter()

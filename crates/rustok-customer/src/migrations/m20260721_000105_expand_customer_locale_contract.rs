@@ -25,6 +25,11 @@ impl MigrationTrait for Migration {
                     .await?;
             }
             DatabaseBackend::Sqlite => rebuild_sqlite_customers(manager).await?,
+            _ => {
+                return Err(DbErr::Migration(
+                    "customer locale migration does not support this database backend".to_string(),
+                ));
+            }
         }
         Ok(())
     }

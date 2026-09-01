@@ -89,6 +89,12 @@ impl MigrationTrait for Migration {
             DatabaseBackend::Postgres => install_postgres(manager).await?,
             DatabaseBackend::Sqlite => install_sqlite(manager).await?,
             DatabaseBackend::MySql => install_mysql(manager).await?,
+            _ => {
+                return Err(DbErr::Migration(
+                    "order checkout identities migration does not support this database backend"
+                        .to_string(),
+                ));
+            }
         }
         Ok(())
     }
@@ -131,6 +137,12 @@ impl MigrationTrait for Migration {
                     .get_connection()
                     .execute_unprepared("DROP TABLE IF EXISTS order_checkout_identities;")
                     .await?;
+            }
+            _ => {
+                return Err(DbErr::Migration(
+                    "order checkout identities migration does not support this database backend"
+                        .to_string(),
+                ));
             }
         }
         Ok(())

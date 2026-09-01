@@ -114,6 +114,8 @@ struct OciJobIsolationAttestation {
     general_platform_secret_access: bool,
     network_mode: String,
     resource_limits: bool,
+    pid_limit: u32,
+    file_limit: u32,
     ephemeral_job: bool,
 }
 
@@ -988,6 +990,8 @@ impl OciJobIsolationAttestation {
             && !self.general_platform_secret_access
             && self.network_mode == "none"
             && self.resource_limits
+            && self.pid_limit > 0
+            && self.file_limit > 0
             && self.ephemeral_job
     }
 }
@@ -1278,23 +1282,15 @@ mod tests {
         };
         let event_capability = CapabilityName::new("platform.events").expect("event capability");
         assert!(
-            validate_source_scenario(
-                &root,
-                &binding,
-                std::slice::from_ref(&event_capability)
-            )
-            .await
-            .is_ok()
+            validate_source_scenario(&root, &binding, std::slice::from_ref(&event_capability))
+                .await
+                .is_ok()
         );
 
         binding.digest = format!("sha256:{}", "a".repeat(64));
         assert!(matches!(
-            validate_source_scenario(
-                &root,
-                &binding,
-                std::slice::from_ref(&event_capability)
-            )
-            .await,
+            validate_source_scenario(&root, &binding, std::slice::from_ref(&event_capability))
+                .await,
             Err(ScenarioContractError::Invalid)
         ));
 
@@ -1323,6 +1319,8 @@ mod tests {
             "general_platform_secret_access": false,
             "network_mode": "none",
             "resource_limits": true,
+            "pid_limit": 64,
+            "file_limit": 4096,
             "ephemeral_job": true
         });
         let attestation: OciJobIsolationAttestation =
@@ -1334,6 +1332,26 @@ mod tests {
             OciJobRuntime::Gvisor,
             &digest,
             &format!("sha256:{}", "c".repeat(64)),
+        ));
+
+        let mut with_zero_pid_limit = value.clone();
+        with_zero_pid_limit["pid_limit"] = serde_json::Value::from(0);
+        let attestation_with_zero_pid_limit: OciJobIsolationAttestation =
+            serde_json::from_value(with_zero_pid_limit).expect("syntactically valid attestation");
+        assert!(!attestation_with_zero_pid_limit.matches(
+            OciJobRuntime::Gvisor,
+            &digest,
+            &launcher_digest,
+        ));
+
+        let mut with_zero_file_limit = value.clone();
+        with_zero_file_limit["file_limit"] = serde_json::Value::from(0);
+        let attestation_with_zero_file_limit: OciJobIsolationAttestation =
+            serde_json::from_value(with_zero_file_limit).expect("syntactically valid attestation");
+        assert!(!attestation_with_zero_file_limit.matches(
+            OciJobRuntime::Gvisor,
+            &digest,
+            &launcher_digest,
         ));
 
         let mut with_tenant_database_access = value.clone();

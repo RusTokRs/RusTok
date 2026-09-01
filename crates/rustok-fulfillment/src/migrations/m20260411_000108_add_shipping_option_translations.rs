@@ -65,7 +65,7 @@ impl MigrationTrait for Migration {
         let backend = manager.get_connection().get_database_backend();
         let rows = manager
             .get_connection()
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend,
                 "SELECT id, name FROM shipping_options".to_string(),
             ))
@@ -76,7 +76,7 @@ impl MigrationTrait for Migration {
             let name: String = row.try_get("", "name")?;
             manager
                 .get_connection()
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     "INSERT INTO shipping_option_translations (id, shipping_option_id, locale, name)
                      VALUES (?, ?, ?, ?)"
@@ -121,7 +121,7 @@ impl MigrationTrait for Migration {
         let backend = manager.get_connection().get_database_backend();
         manager
             .get_connection()
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 backend,
                 "UPDATE shipping_options
                  SET name = COALESCE((

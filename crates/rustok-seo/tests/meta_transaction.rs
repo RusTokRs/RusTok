@@ -558,7 +558,7 @@ async fn create_tables(db: &DatabaseConnection) {
             updated_at TEXT NOT NULL
         )",
     ] {
-        db.execute(Statement::from_string(DbBackend::Sqlite, sql.to_string()))
+        db.execute_raw(Statement::from_string(DbBackend::Sqlite, sql.to_string()))
             .await
             .expect("failed to create SEO metadata transaction test table");
     }

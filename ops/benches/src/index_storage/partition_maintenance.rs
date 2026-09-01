@@ -551,7 +551,7 @@ async fn apply_churn_side(
         entities = entities
     );
     let entity_result = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             entity_sql,
             vec![batch.into()],
@@ -583,7 +583,7 @@ async fn apply_churn_side(
         links = links
     );
     let link_result = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             link_sql,
             vec![batch.into()],
@@ -835,7 +835,7 @@ async fn side_stats(
     .into_iter()
     .collect::<BTreeSet<_>>();
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             concat!(
                 "SELECT relname, n_live_tup::bigint AS n_live_tup, n_dead_tup::bigint AS n_dead_tup, ",
@@ -994,7 +994,7 @@ async fn logical_relation(
         relation_sql,
     );
     let row = db
-        .query_one(Statement::from_string(DbBackend::Postgres, sql))
+        .query_one_raw(Statement::from_string(DbBackend::Postgres, sql))
         .await?
         .with_context(|| {
             format!("maintenance logical digest query returned no row for {relation_sql}")
@@ -1167,7 +1167,7 @@ async fn ensure_session_setting(
     expected: &str,
 ) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT current_setting($1) AS value",
             vec![setting.into()],
@@ -1184,7 +1184,7 @@ async fn ensure_session_setting(
 
 async fn ensure_unpartitioned_source(db: &DatabaseConnection, relation: &str) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             concat!(
                 "SELECT c.relkind::text AS relkind, c.relispartition, ",
@@ -1220,7 +1220,7 @@ async fn validate_shadow_relation_catalog(
     plan: &RelationPlan,
 ) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             concat!(
                 "SELECT c.relkind::text AS relkind, obj_description(c.oid, 'pg_class') AS comment ",
@@ -1245,7 +1245,7 @@ async fn validate_shadow_relation_catalog(
     );
 
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             concat!(
                 "SELECT child.relname, child.relispartition, ",
@@ -1283,7 +1283,7 @@ async fn validate_shadow_relation_catalog(
 
 async fn ensure_schema_absent(db: &DatabaseConnection, schema: &str) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT to_regnamespace($1)::text AS schema",
             vec![schema.into()],
@@ -1299,7 +1299,7 @@ async fn ensure_schema_absent(db: &DatabaseConnection, schema: &str) -> Result<(
 }
 
 async fn acquire_maintenance_lock(db: &DatabaseConnection, evidence_id: &str) -> Result<()> {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "SELECT pg_advisory_lock(hashtextextended($1, 0))",
         vec![format!("rustok-index-partition-maintenance:{evidence_id}").into()],
@@ -1311,7 +1311,7 @@ async fn acquire_maintenance_lock(db: &DatabaseConnection, evidence_id: &str) ->
 
 async fn release_maintenance_lock(db: &DatabaseConnection, evidence_id: &str) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked",
             vec![format!("rustok-index-partition-maintenance:{evidence_id}").into()],

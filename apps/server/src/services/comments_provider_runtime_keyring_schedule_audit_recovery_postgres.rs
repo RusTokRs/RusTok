@@ -190,7 +190,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditRecoveryStore {
             );
         }
         self.database
-            .query_one(inspect_dead_letter_statement(request_id))
+            .query_one_raw(inspect_dead_letter_statement(request_id))
             .await
             .map_err(|_| CommentsTcpDelegationScheduleAuditRecoveryError::Unavailable)?
             .map(|row| decode_inspection(&row))
@@ -259,7 +259,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditRecoveryStore {
     > {
         let row = self
             .database
-            .query_one(reconcile_requeue_statement(audit_id))
+            .query_one_raw(reconcile_requeue_statement(audit_id))
             .await
             .map_err(|_| CommentsTcpDelegationScheduleAuditRecoveryError::Unavailable)?
             .ok_or(CommentsTcpDelegationScheduleAuditRecoveryError::Unavailable)?;
@@ -391,7 +391,7 @@ async fn requeue_in_transaction(
     request: &CommentsTcpDelegationScheduleAuditRecoveryRequest,
 ) -> std::result::Result<Option<(Uuid, i64)>, RequeueTransactionError> {
     let row = transaction
-        .query_one(read_recovery_row_for_update_statement(request.request_id))
+        .query_one_raw(read_recovery_row_for_update_statement(request.request_id))
         .await
         .map_err(|_| {
             RequeueTransactionError::Recovery(
@@ -419,7 +419,7 @@ async fn requeue_in_transaction(
             ))?;
     let audit_id = Uuid::new_v4();
     let updated = transaction
-        .execute(requeue_source_statement(request, recovery_epoch))
+        .execute_raw(requeue_source_statement(request, recovery_epoch))
         .await
         .map_err(|_| {
             RequeueTransactionError::Recovery(
@@ -431,7 +431,7 @@ async fn requeue_in_transaction(
         return Err(RequeueTransactionError::StaleInspection);
     }
     transaction
-        .execute(insert_recovery_audit_statement(
+        .execute_raw(insert_recovery_audit_statement(
             audit_id,
             request,
             recovery_epoch,

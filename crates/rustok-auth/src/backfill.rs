@@ -41,7 +41,7 @@ impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
         );
 
         self.db
-            .query_all(statement)
+            .query_all_raw(statement)
             .await
             .map_err(|error| AuthLifecycleMutationError::Internal(error.to_string()))?
             .into_iter()

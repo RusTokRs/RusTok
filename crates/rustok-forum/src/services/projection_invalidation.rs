@@ -214,7 +214,7 @@ async fn allocate_projection_revision_in_tx(
     tenant_id: Uuid,
 ) -> ForumResult<i64> {
     let row = txn
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             INSERT INTO forum_projection_revision_counters (
@@ -251,7 +251,7 @@ async fn record_projection_revision_in_tx(
     target_type: &'static str,
     target_id: Option<Uuid>,
 ) -> ForumResult<()> {
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         INSERT INTO forum_projection_revision_ledger (

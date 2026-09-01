@@ -105,11 +105,11 @@ fn apply_tenant_scoped_storefront_channel_filter(
     tenant_id: Uuid,
     channel_slug: Option<&str>,
 ) -> Select<forum_topic::Entity> {
-    let unrestricted = Expr::col((forum_topic::Entity, forum_topic::Column::Id))
+    let unrestricted = forum_topic::Column::Id
         .not_in_subquery(tenant_topic_channel_access_subquery(tenant_id));
     let condition = match normalize_public_channel_slug(channel_slug) {
         Some(channel_slug) => Condition::any().add(unrestricted).add(
-            Expr::col((forum_topic::Entity, forum_topic::Column::Id)).in_subquery(
+            forum_topic::Column::Id.in_subquery(
                 matching_tenant_topic_channel_access_subquery(tenant_id, &channel_slug),
             ),
         ),
@@ -123,13 +123,7 @@ fn tenant_topic_channel_access_subquery(tenant_id: Uuid) -> SelectStatement {
     Query::select()
         .column(forum_topic_channel_access::Column::TopicId)
         .from(forum_topic_channel_access::Entity)
-        .and_where(
-            Expr::col((
-                forum_topic_channel_access::Entity,
-                forum_topic_channel_access::Column::TenantId,
-            ))
-            .eq(tenant_id),
-        )
+        .and_where(forum_topic_channel_access::Column::TenantId.eq(tenant_id))
         .to_owned()
 }
 
@@ -140,19 +134,7 @@ fn matching_tenant_topic_channel_access_subquery(
     Query::select()
         .column(forum_topic_channel_access::Column::TopicId)
         .from(forum_topic_channel_access::Entity)
-        .and_where(
-            Expr::col((
-                forum_topic_channel_access::Entity,
-                forum_topic_channel_access::Column::TenantId,
-            ))
-            .eq(tenant_id),
-        )
-        .and_where(
-            Expr::col((
-                forum_topic_channel_access::Entity,
-                forum_topic_channel_access::Column::ChannelSlug,
-            ))
-            .eq(channel_slug),
-        )
+        .and_where(forum_topic_channel_access::Column::TenantId.eq(tenant_id))
+        .and_where(forum_topic_channel_access::Column::ChannelSlug.eq(channel_slug))
         .to_owned()
 }

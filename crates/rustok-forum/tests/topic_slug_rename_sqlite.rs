@@ -49,7 +49,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         vec![user_id.into(), tenant_id.into()],
@@ -150,7 +150,7 @@ async fn rename_records_one_alias_and_old_route_becomes_gone_after_delete() -> T
     assert_eq!(replay.alias_id, None);
 
     let alias_count = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT COUNT(*) AS alias_count FROM forum_topic_route_aliases \
              WHERE tenant_id = ? AND topic_id = ?",
@@ -162,7 +162,7 @@ async fn rename_records_one_alias_and_old_route_becomes_gone_after_delete() -> T
     assert_eq!(alias_count, 1);
 
     let alias = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT disposition, target_topic_id, target_locale, reason \
              FROM forum_topic_route_aliases WHERE tenant_id = ? AND alias_id = ?",

@@ -658,7 +658,7 @@ mod tests {
             .await
             .expect("database");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "CREATE TABLE module_operations (\
                     id TEXT PRIMARY KEY NOT NULL, \
@@ -681,7 +681,7 @@ mod tests {
             .await
             .expect("module operations table");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "CREATE TABLE module_operation_override_states (\
                     operation_id TEXT PRIMARY KEY NOT NULL, \
@@ -698,7 +698,7 @@ mod tests {
     async fn journal_and_state_database() -> DatabaseConnection {
         let database = journal_only_database().await;
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "CREATE TABLE tenant_modules (\
                     id TEXT PRIMARY KEY NOT NULL, \
@@ -715,7 +715,7 @@ mod tests {
             .await
             .expect("tenant module state table");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "CREATE TABLE module_static_tenant_lifecycle (\
                     tenant_id TEXT NOT NULL, \
@@ -780,7 +780,7 @@ mod tests {
 
         assert_eq!(first.operation_id, replay.operation_id);
         let row = database
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM module_operations WHERE tenant_id = ?1 AND idempotency_key = ?2",
                 vec![tenant_id.into(), idempotency_key.into()],
@@ -831,7 +831,7 @@ mod tests {
         ));
 
         let row = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT status, error_message FROM module_operations LIMIT 1".to_string(),
             ))

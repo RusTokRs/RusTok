@@ -127,8 +127,11 @@ Still outside the owner boundary:
   request transition, while an exact terminal redelivery remains idempotent.
   Platform-build, external-prebuilt, and Alloy-authored staging use the same
   request CAS and return the resulting owner revision for the next command.
-  Manual validation-stage reports and requeues use the same CAS. Remote claim
-  and expired-lease requeue advance the request revision inside their owner
+  Manual validation-stage reports and requeues use the same CAS and one
+  platform-scoped `ModuleCommandContext`; an immutable receipt rejects an
+  idempotency reuse with changed actor, trace, correlation, stage, status,
+  reason, or requeue evidence. Remote claim and expired-lease requeue advance
+  the request revision inside their owner
   transactions; the claim returns that revision and a terminal runner result
   must present it before its stage transition can commit. Lease heartbeat only
   extends the already-issued operational lease and does not change stage

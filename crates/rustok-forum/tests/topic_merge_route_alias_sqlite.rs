@@ -49,7 +49,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         vec![user_id.into(), tenant_id.into()],
@@ -160,7 +160,7 @@ async fn merge_persists_one_redirect_alias_and_replay_does_not_duplicate_it() ->
     assert_eq!(replay, first);
 
     let alias = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT alias_id, locale, slug, disposition, target_topic_id, target_locale, reason \
              FROM forum_topic_route_aliases \
@@ -184,7 +184,7 @@ async fn merge_persists_one_redirect_alias_and_replay_does_not_duplicate_it() ->
     assert_eq!(alias.try_get::<String>("", "reason")?, reason);
 
     let count = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT COUNT(*) AS alias_count FROM forum_topic_route_aliases \
              WHERE tenant_id = ? AND topic_id = ?",

@@ -166,7 +166,7 @@ async fn lock_active_source_in_tx(
     };
     let found = match txn.get_database_backend() {
         DbBackend::Sqlite => {
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 format!(
                     "UPDATE {table} SET updated_at = updated_at \
@@ -178,13 +178,13 @@ async fn lock_active_source_in_tx(
             .rows_affected()
                 == 1
         }
-        backend @ (DbBackend::Postgres | DbBackend::MySql) => {
+        backend => {
             let placeholders = if backend == DbBackend::Postgres {
                 ("$1", "$2")
             } else {
                 ("?", "?")
             };
-            txn.query_one(Statement::from_sql_and_values(
+            txn.query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT {id_column} FROM {table} \
@@ -197,7 +197,7 @@ async fn lock_active_source_in_tx(
             .await?
             .is_some()
         }
-    };
+};
     if !found {
         return Err(deleted_error);
     }

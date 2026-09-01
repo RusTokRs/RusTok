@@ -181,7 +181,7 @@ async fn ensure_content_schema(db: &DatabaseConnection) {
         return;
     }
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE TABLE IF NOT EXISTS content_orchestration_operations (
             id TEXT PRIMARY KEY,
@@ -198,7 +198,7 @@ async fn ensure_content_schema(db: &DatabaseConnection) {
     .await
     .expect("failed to create content_orchestration_operations table");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_content_orchestration_ops_idempotency
             ON content_orchestration_operations(tenant_id, operation, idempotency_key)"
@@ -207,7 +207,7 @@ async fn ensure_content_schema(db: &DatabaseConnection) {
     .await
     .expect("failed to create idx_content_orchestration_ops_idempotency");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE TABLE IF NOT EXISTS content_orchestration_audit_logs (
             id TEXT PRIMARY KEY,
@@ -225,7 +225,7 @@ async fn ensure_content_schema(db: &DatabaseConnection) {
     .await
     .expect("failed to create content_orchestration_audit_logs table");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE TABLE IF NOT EXISTS content_canonical_urls (
             id TEXT PRIMARY KEY,
@@ -242,7 +242,7 @@ async fn ensure_content_schema(db: &DatabaseConnection) {
     .await
     .expect("failed to create content_canonical_urls table");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_content_canonical_urls_target_locale
             ON content_canonical_urls(tenant_id, target_kind, target_id, locale)"
@@ -251,7 +251,7 @@ async fn ensure_content_schema(db: &DatabaseConnection) {
     .await
     .expect("failed to create idx_content_canonical_urls_target_locale");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_content_canonical_urls_unique_url
             ON content_canonical_urls(tenant_id, locale, canonical_url)"
@@ -260,7 +260,7 @@ async fn ensure_content_schema(db: &DatabaseConnection) {
     .await
     .expect("failed to create idx_content_canonical_urls_unique_url");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE TABLE IF NOT EXISTS content_url_aliases (
             id TEXT PRIMARY KEY,
@@ -278,7 +278,7 @@ async fn ensure_content_schema(db: &DatabaseConnection) {
     .await
     .expect("failed to create content_url_aliases table");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE INDEX IF NOT EXISTS idx_content_url_aliases_target_locale
             ON content_url_aliases(tenant_id, target_kind, target_id, locale)"
@@ -287,7 +287,7 @@ async fn ensure_content_schema(db: &DatabaseConnection) {
     .await
     .expect("failed to create idx_content_url_aliases_target_locale");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_content_url_aliases_unique_url
             ON content_url_aliases(tenant_id, locale, alias_url)"

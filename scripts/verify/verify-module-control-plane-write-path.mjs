@@ -577,7 +577,7 @@ try {
   if (
     !alloyOwnerSource.includes('registry_publish_request_review_operations') ||
     !alloyOwnerSource.includes('valid_platform_registry_command_context') ||
-    !alloyOwnerSource.includes('lock_publish_request_review') ||
+    !alloyOwnerSource.includes('lock_publish_request') ||
     !alloyOwnerSource.includes('PublishRequestReviewIdempotencyConflict') ||
     !registryPublicationMigration.includes('CREATE TABLE registry_publish_request_review_operations') ||
     !registryPublicationMigration.includes("operation_kind IN ('reject', 'request_changes', 'hold', 'resume')") ||
@@ -596,6 +596,21 @@ try {
   ) {
     fail(
       'registry publish-request reject, request-changes, hold, and resume commands must use a platform-scoped ModuleCommandContext and one immutable exact-replay receipt ledger',
+    );
+  }
+  if (
+    !alloyOwnerSource.includes('pub struct ModuleValidationStageReportCommand') ||
+    !alloyOwnerSource.includes('ValidationStageReportIdempotencyConflict') ||
+    !alloyOwnerSource.includes('validation_stage_report_replay') ||
+    !alloyOwnerSource.includes('record_validation_stage_report_receipt') ||
+    !alloyOwnerSource.includes('valid_platform_registry_command_context(&self.context, &self.actor_principal)') ||
+    !registryPublicationMigration.includes('CREATE TABLE registry_validation_stage_report_operations') ||
+    !/report_validation_stage\([\s\S]*?request\.requeue,\s*command_context,/s.test(
+      registryHttpController,
+    )
+  ) {
+    fail(
+      'manual registry validation-stage reports must use a platform-scoped ModuleCommandContext and an immutable exact-replay receipt before they mutate the publish-request aggregate',
     );
   }
   if (

@@ -23,7 +23,7 @@ impl MigrationTrait for Migration {
                     "AI approval batch migration does not support database backend {backend:?}"
                 )));
             }
-        };
+};
         for statement in statements {
             connection.execute_unprepared(statement).await?;
         }
@@ -61,7 +61,7 @@ mod tests {
 
         Migration.up(&SchemaManager::new(&database)).await.unwrap();
         let row = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT approval_batch_id FROM ai_approval_requests".to_string(),
             ))
@@ -73,7 +73,7 @@ mod tests {
             "run-1:approval-1"
         );
         let column = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT \"notnull\" FROM pragma_table_info('ai_approval_requests') WHERE name = 'approval_batch_id'"
                     .to_string(),

@@ -118,7 +118,7 @@ fn feature_request(group_id: Uuid, phase: &str) -> SetGroupFeatureRequest {
 
 async fn group_version(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> i64 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT version FROM groups WHERE tenant_id = '{tenant_id}' AND id = '{group_id}'"
@@ -133,7 +133,7 @@ async fn group_version(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid)
 
 async fn member_count(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> i64 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT member_count FROM groups WHERE tenant_id = '{tenant_id}' AND id = '{group_id}'"
@@ -153,7 +153,7 @@ async fn membership_snapshot(
     user_id: Uuid,
 ) -> (String, i64) {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT status, revision FROM group_memberships WHERE tenant_id = '{tenant_id}' AND group_id = '{group_id}' AND user_id = '{user_id}'"

@@ -271,7 +271,7 @@ impl SeaOrmModuleCompositionService {
             .map(|index| placeholder(backend, index))
             .collect::<Vec<_>>();
         let result = connection
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE platform_state SET revision = {}, manifest_json = {}, manifest_hash = {}, \
@@ -314,7 +314,7 @@ impl SeaOrmModuleCompositionService {
     ) -> Result<ModuleCompositionSnapshot, ModuleCompositionError> {
         let backend = connection.get_database_backend();
         let row = connection
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT revision, manifest_hash, CAST(manifest_json AS TEXT) AS manifest_json \
@@ -361,7 +361,7 @@ impl SeaOrmModuleCompositionService {
             .map(|index| placeholder(backend, index))
             .collect::<Vec<_>>();
         connection
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO platform_state (\
@@ -511,7 +511,7 @@ mod tests {
             .await
             .expect("database");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "CREATE TABLE platform_state (\
                     id TEXT PRIMARY KEY,\
@@ -678,7 +678,7 @@ mod tests {
         .await;
 
         let row = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT tenant_id, scope_key FROM owner_operation_receipts".to_string(),
             ))

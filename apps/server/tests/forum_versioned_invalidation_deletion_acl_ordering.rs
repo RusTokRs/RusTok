@@ -615,7 +615,7 @@ async fn run_deletion_acl_ordering_proof(db: &DatabaseConnection) -> TestResult<
 async fn create_forum_fixture(db: &DatabaseConnection) -> TestResult<ForumFixture> {
     let tenant_id = Uuid::new_v4();
     let admin_id = Uuid::new_v4();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO users (id, tenant_id) VALUES ($1, $2)",
         vec![admin_id.into(), tenant_id.into()],
@@ -798,7 +798,7 @@ async fn insert_legacy_root(
     scope_key: &str,
 ) -> TestResult<()> {
     envelope.validate_registered_schema()?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         INSERT INTO search_projection_inbox (
@@ -825,7 +825,7 @@ async fn load_owner_revisions_after(
     tenant_id: Uuid,
     after_revision: i64,
 ) -> TestResult<Vec<OwnerRevisionRow>> {
-    db.query_all(Statement::from_sql_and_values(
+    db.query_all_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         SELECT revision, event_id, target_type, target_id
@@ -877,7 +877,7 @@ async fn load_inbox_order_after(
     db: &DatabaseConnection,
     after_sequence: i64,
 ) -> TestResult<Vec<InboxOrderRow>> {
-    db.query_all(Statement::from_sql_and_values(
+    db.query_all_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         SELECT ingest_sequence, event_id, scope_key, event_type
@@ -989,7 +989,7 @@ where
     F: Fn(&EventEnvelope) -> bool,
 {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT payload FROM sys_events WHERE event_type = $1 ORDER BY created_at ASC",
             vec![event_type.to_string().into()],
@@ -1130,7 +1130,7 @@ async fn insert_stale_search_documents(
             "topic_id": topic_id.unwrap_or(document_id),
             "owner_state": "intentionally_stale"
         });
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             INSERT INTO search_documents (
@@ -1181,7 +1181,7 @@ async fn count_stale_markers(db: &DatabaseConnection, tenant_id: Uuid) -> TestRe
 
 async fn scalar_i64(db: &DatabaseConnection, statement: Statement) -> TestResult<i64> {
     let row = db
-        .query_one(statement)
+        .query_one_raw(statement)
         .await?
         .ok_or_else(|| test_error("scalar query returned no row"))?;
     Ok(row.try_get("", "value")?)

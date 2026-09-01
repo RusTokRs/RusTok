@@ -931,7 +931,7 @@ async fn insert_schema_group_translation<C>(
 where
     C: ConnectionTrait,
 {
-    conn.execute(Statement::from_sql_and_values(
+    conn.execute_raw(Statement::from_sql_and_values(
         conn.get_database_backend(),
         r#"
         INSERT INTO product_attribute_schema_group_translations (
@@ -957,7 +957,7 @@ async fn insert_category_group_translation<C>(
 where
     C: ConnectionTrait,
 {
-    conn.execute(Statement::from_sql_and_values(
+    conn.execute_raw(Statement::from_sql_and_values(
         conn.get_database_backend(),
         r#"
         INSERT INTO category_attribute_group_translations (
@@ -1222,7 +1222,7 @@ where
             ProductAttributeValuePatchValue::Multiselect(option_ids) if option_ids.is_empty()
         )
     {
-        conn.execute(Statement::from_sql_and_values(
+        conn.execute_raw(Statement::from_sql_and_values(
             conn.get_database_backend(),
             "DELETE FROM product_attribute_values WHERE tenant_id = $1 AND product_id = $2 AND attribute_id = $3",
             vec![tenant_id.into(), product_id.into(), patch.attribute_id.into()],
@@ -1296,14 +1296,14 @@ where
     .expect("INSERT RETURNING id must return a row")
     .id;
 
-    conn.execute(Statement::from_sql_and_values(
+    conn.execute_raw(Statement::from_sql_and_values(
         conn.get_database_backend(),
         "DELETE FROM product_attribute_value_options WHERE value_id = $1",
         vec![value_id.into()],
     ))
     .await?;
     for option_id in option_ids {
-        conn.execute(Statement::from_sql_and_values(
+        conn.execute_raw(Statement::from_sql_and_values(
             conn.get_database_backend(),
             "INSERT INTO product_attribute_value_options (tenant_id, value_id, option_id) VALUES ($1, $2, $3)",
             vec![tenant_id.into(), value_id.into(), option_id.into()],
@@ -1312,7 +1312,7 @@ where
     }
 
     if let Some(value) = localized_text {
-        conn.execute(Statement::from_sql_and_values(
+        conn.execute_raw(Statement::from_sql_and_values(
             conn.get_database_backend(),
             r#"
             INSERT INTO product_attribute_value_translations (id, value_id, locale, value_text)

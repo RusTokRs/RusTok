@@ -506,7 +506,7 @@ async fn remove_retry_limit_probe(db: &DatabaseConnection) -> Result<(), sea_orm
 
 async fn load_retry_attempt_count(db: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT last_value::bigint AS count FROM blog_projection_retry_attempts".to_string(),
         ))
@@ -523,7 +523,7 @@ async fn insert_post(
     comment_count: i32,
     version: i32,
 ) -> Result<(), sea_orm::DbErr> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         INSERT INTO blog_posts (
@@ -549,7 +549,7 @@ async fn load_post_state(
     post_id: Uuid,
 ) -> Result<(i32, i32), sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT comment_count, version
@@ -568,7 +568,7 @@ async fn load_post_state(
 
 async fn count_delivery(db: &DatabaseConnection, event_id: Uuid) -> Result<i64, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT COUNT(*)::bigint AS count FROM blog_comment_projection_deliveries WHERE event_id = $1",
             vec![event_id.into()],
@@ -580,7 +580,7 @@ async fn count_delivery(db: &DatabaseConnection, event_id: Uuid) -> Result<i64, 
 
 async fn count_all_deliveries(db: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT COUNT(*)::bigint AS count FROM blog_comment_projection_deliveries".to_string(),
         ))
@@ -591,7 +591,7 @@ async fn count_all_deliveries(db: &DatabaseConnection) -> Result<i64, sea_orm::D
 
 async fn count_outbox_events(db: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT COUNT(*)::bigint AS count FROM sys_events".to_string(),
         ))

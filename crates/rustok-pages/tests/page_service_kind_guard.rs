@@ -18,7 +18,7 @@ async fn setup() -> (PageService, Uuid, SecurityContext) {
         .up(&schema)
         .await
         .expect("outbox migrations");
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE TABLE tenant_modules (\
             id TEXT PRIMARY KEY NOT NULL, \

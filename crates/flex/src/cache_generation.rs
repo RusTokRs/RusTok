@@ -43,7 +43,7 @@ pub async fn create_field_definition_cache_generation_table(
              VALUES ({FIELD_DEFINITION_CACHE_GENERATION_ID}, 0) \
              ON CONFLICT (id) DO NOTHING"
         ),
-        DbBackend::MySql => format!(
+        _ => format!(
             "INSERT IGNORE INTO {FIELD_DEFINITION_CACHE_GENERATION_TABLE} (id, generation) \
              VALUES ({FIELD_DEFINITION_CACHE_GENERATION_ID}, 0)"
         ),
@@ -110,7 +110,7 @@ pub async fn create_field_definition_cache_generation_trigger(
                     .await?;
             }
         }
-        DbBackend::MySql => {
+        _ => {
             for operation in ["insert", "update", "delete"] {
                 let mysql_trigger = format!("{trigger_name}_{operation}");
                 connection
@@ -150,7 +150,7 @@ pub async fn drop_field_definition_cache_generation_trigger(
                 ))
                 .await?;
         }
-        DbBackend::Sqlite | DbBackend::MySql => {
+        _ => {
             for operation in ["insert", "update", "delete"] {
                 connection
                     .execute_unprepared(&format!(
@@ -217,7 +217,7 @@ mod tests {
 
     async fn read_generation(db: &DatabaseConnection) -> u64 {
         let row = db
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 format!(
                     "SELECT generation FROM {FIELD_DEFINITION_CACHE_GENERATION_TABLE} WHERE id = 1"

@@ -515,7 +515,7 @@ fn projected_string<'a>(
 
 async fn schema_status(db: &DatabaseConnection, reference: &SchemaRef) -> TestResult<String> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT status

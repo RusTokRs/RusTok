@@ -18,7 +18,7 @@ async fn setup_db(include_builds: bool) -> DatabaseConnection {
         .await
         .expect("db connect");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         r#"
         CREATE TABLE platform_state (
@@ -41,7 +41,7 @@ async fn setup_db(include_builds: bool) -> DatabaseConnection {
         .expect("create owner operation receipt table");
 
     if include_builds {
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             r#"
             CREATE TABLE builds (

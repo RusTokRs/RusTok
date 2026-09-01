@@ -209,7 +209,7 @@ impl PostgresIndexDriftFindingWriter {
 
         let finding_id = Uuid::new_v4();
         let inserted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 insert_finding_sql(backend),
                 insert_values(request, finding_id, &expected_scope, backend),
@@ -352,7 +352,7 @@ async fn refresh_existing_finding(
     };
 
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             sql,
             update_values(request, existing.finding_id, backend),
@@ -379,7 +379,7 @@ async fn lock_finding_key(
         request.finding_key(),
     );
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![lock_key.into()],
@@ -395,7 +395,7 @@ async fn load_existing_finding(
     backend: DbBackend,
 ) -> Result<Option<StoredFinding>, IndexDriftFindingWriteError> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             select_existing_finding_sql(backend),
             vec![
@@ -777,7 +777,7 @@ mod tests {
         ));
         assert_eq!(refreshed.finding_id(), finding_id);
 
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE index_consistency_findings SET state = 'resolved', closed_at = CURRENT_TIMESTAMP WHERE tenant_id = ?1 AND finding_id = ?2",
             vec![tenant_id.to_string().into(), finding_id.to_string().into()],
@@ -794,7 +794,7 @@ mod tests {
         ));
         assert_eq!(reopened.finding_id(), finding_id);
 
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE index_consistency_findings SET state = 'ignored', closed_at = CURRENT_TIMESTAMP WHERE tenant_id = ?1 AND finding_id = ?2",
             vec![tenant_id.to_string().into(), finding_id.to_string().into()],
@@ -812,7 +812,7 @@ mod tests {
         assert_eq!(suppressed.finding_id(), finding_id);
 
         let row = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT state, actual_digest, details FROM index_consistency_findings WHERE tenant_id = ?1 AND finding_id = ?2",
                 vec![tenant_id.to_string().into(), finding_id.to_string().into()],
@@ -835,7 +835,7 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let request = request(tenant_id, scope(), 'b');
         let created = writer.record_digest_mismatch(&request).await.unwrap();
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE index_consistency_findings SET check_name = 'other_check' WHERE tenant_id = ?1 AND finding_id = ?2",
             vec![tenant_id.to_string().into(), created.finding_id().to_string().into()],

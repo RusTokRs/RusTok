@@ -378,7 +378,7 @@ mod tests {
 
     async fn table_exists(connection: &sea_orm::DatabaseConnection, table: &str) -> bool {
         connection
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
                 vec![table.into()],

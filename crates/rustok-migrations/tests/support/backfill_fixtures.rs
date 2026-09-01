@@ -49,7 +49,7 @@ pub async fn assert_results(
 ) -> Result<(), Box<dyn Error>> {
     for fixture in fixtures {
         let rows = db
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Postgres,
                 fixture.assertion_sql.clone(),
             ))

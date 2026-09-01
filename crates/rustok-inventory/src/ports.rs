@@ -657,7 +657,7 @@ where
             .one(conn)
             .await
             .map_err(|error| storage_unavailable_with_context(context, owner_operation, error)),
-        DbBackend::Postgres | DbBackend::MySql => query()
+        _ => query()
             .lock_exclusive()
             .one(conn)
             .await
@@ -680,7 +680,7 @@ where
             .one(conn)
             .await
             .map_err(|error| storage_unavailable_with_context(context, owner_operation, error)),
-        DbBackend::Postgres | DbBackend::MySql => query()
+        _ => query()
             .lock_exclusive()
             .one(conn)
             .await

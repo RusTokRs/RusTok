@@ -199,14 +199,14 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
 }
 
 async fn execute(db: &DatabaseConnection, sql: String) -> TestResult<()> {
-    db.execute(Statement::from_string(DatabaseBackend::Sqlite, sql))
+    db.execute_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))
         .await?;
     Ok(())
 }
 
 async fn assert_rejected(db: &DatabaseConnection, sql: String, relation: &str) -> TestResult<()> {
     let result = db
-        .execute(Statement::from_string(DatabaseBackend::Sqlite, sql))
+        .execute_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))
         .await;
     assert!(result.is_err(), "{relation} must be rejected by SQLite");
     Ok(())

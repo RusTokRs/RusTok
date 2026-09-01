@@ -105,7 +105,7 @@ async fn concurrent_localized_route_claim_commits_exactly_one_owner() -> TestRes
         .await?;
     let lock_txn: DatabaseTransaction = lock_db.begin().await?;
     let locked = lock_txn
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT id FROM taxonomy_term_translations \
              WHERE tenant_id = $1 AND term_id IN ($2, $3) FOR UPDATE",
@@ -219,7 +219,7 @@ async fn wait_for_both_workers_to_block(control: &DatabaseConnection) -> TestRes
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let row = control
-                .query_one(Statement::from_string(
+                .query_one_raw(Statement::from_string(
                     DbBackend::Postgres,
                     format!(
                         "SELECT COUNT(*)::bigint AS count \
@@ -277,7 +277,7 @@ async fn load_route_owner(
     tenant_id: Uuid,
     route_key: &str,
 ) -> Result<Option<Uuid>, sea_orm::DbErr> {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "SELECT term_id FROM taxonomy_term_route_keys \
          WHERE tenant_id = $1 AND kind = 'tag' AND scope_type = 'module' \
@@ -295,7 +295,7 @@ async fn count_route_owners(
     route_key: &str,
 ) -> Result<i64, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT COUNT(*)::bigint AS count FROM taxonomy_term_route_keys \
              WHERE tenant_id = $1 AND kind = 'tag' AND scope_type = 'module' \
@@ -313,7 +313,7 @@ async fn load_translation_slug(
     term_id: Uuid,
 ) -> Result<String, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT slug FROM taxonomy_term_translations \
              WHERE tenant_id = $1 AND term_id = $2 AND locale = 'en'",
@@ -342,7 +342,7 @@ async fn connect(database_url: &str, application_name: &str) -> TestResult<Datab
         .min_connections(1)
         .sqlx_logging(false);
     let db = Database::connect(options).await?;
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "SELECT set_config('application_name', $1, false)",
         vec![application_name.into()],

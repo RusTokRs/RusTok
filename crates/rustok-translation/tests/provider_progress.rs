@@ -154,7 +154,7 @@ async fn database_fixture() -> (DatabaseConnection, Uuid) {
     }
     let tenant_id = Uuid::new_v4();
     database
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO tenants (id) VALUES (?)",
             [tenant_id.into()],
@@ -278,7 +278,7 @@ async fn provider_progress_reports_unknown_current_and_behind_without_comparing_
 
     let foreign_tenant = Uuid::new_v4();
     database
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO tenants (id) VALUES (?)",
             [foreign_tenant.into()],

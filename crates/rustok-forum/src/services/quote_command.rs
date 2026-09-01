@@ -204,7 +204,7 @@ async fn ensure_not_deleted(
     let backend = db.get_database_backend();
     let placeholders = match backend {
         DbBackend::Postgres => ("$1", "$2"),
-        DbBackend::MySql | DbBackend::Sqlite => ("?", "?"),
+        _ => ("?", "?"),
     };
     let statement = Statement::from_sql_and_values(
         backend,
@@ -216,7 +216,7 @@ async fn ensure_not_deleted(
         ),
         [tenant_id.into(), source_id.into()],
     );
-    if db.query_one(statement).await?.is_none() {
+    if db.query_one_raw(statement).await?.is_none() {
         return Err(deleted_error);
     }
     Ok(())

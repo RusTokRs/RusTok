@@ -967,7 +967,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             }
         };
         self.db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 sql,
                 vec![tenant_id.into(), i64::from(limit).into()],
@@ -1296,7 +1296,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             _ => "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = ?1",
         };
         self.db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 sql,
                 vec![tenant_id.into()],
@@ -1337,7 +1337,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             }
         };
         self.db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 sql,
                 vec![tenant_id.into(), module_slug.into()],

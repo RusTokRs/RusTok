@@ -10,7 +10,7 @@ impl MigrationTrait for Migration {
         match manager.get_database_backend() {
             DbBackend::Postgres => postgres_up(manager).await,
             DbBackend::Sqlite => sqlite_up(manager).await,
-            DbBackend::MySql => Err(DbErr::Migration(
+            _ => Err(DbErr::Migration(
                 "Index reconciliation recovery supports PostgreSQL and SQLite only".to_string(),
             )),
         }
@@ -20,7 +20,7 @@ impl MigrationTrait for Migration {
         match manager.get_database_backend() {
             DbBackend::Postgres => postgres_down(manager).await,
             DbBackend::Sqlite => sqlite_down(manager).await,
-            DbBackend::MySql => Ok(()),
+            _ => Ok(()),
         }
     }
 }

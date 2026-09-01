@@ -1,7 +1,7 @@
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, Select, Set, TransactionTrait,
-    sea_query::{Expr, Query, SelectStatement},
+    sea_query::{Query, SelectStatement},
 };
 use std::collections::HashMap;
 use tracing::instrument;
@@ -1402,11 +1402,11 @@ fn apply_public_post_channel_filter(
     tenant_id: Uuid,
     channel_slug: Option<&str>,
 ) -> Select<blog_post::Entity> {
-    let unrestricted = Expr::col((blog_post::Entity, blog_post::Column::Id))
+    let unrestricted = blog_post::Column::Id
         .not_in_subquery(all_blog_post_channel_visibility_subquery(tenant_id));
     let condition = match normalize_public_channel_slug(channel_slug) {
         Some(channel_slug) => Condition::any().add(unrestricted).add(
-            Expr::col((blog_post::Entity, blog_post::Column::Id)).in_subquery(
+            blog_post::Column::Id.in_subquery(
                 matching_blog_post_channel_visibility_subquery(tenant_id, &channel_slug),
             ),
         ),
@@ -1420,13 +1420,7 @@ fn all_blog_post_channel_visibility_subquery(tenant_id: Uuid) -> SelectStatement
     Query::select()
         .column(blog_post_channel_visibility::Column::PostId)
         .from(blog_post_channel_visibility::Entity)
-        .and_where(
-            Expr::col((
-                blog_post_channel_visibility::Entity,
-                blog_post_channel_visibility::Column::TenantId,
-            ))
-            .eq(tenant_id),
-        )
+        .and_where(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
         .to_owned()
 }
 
@@ -1437,20 +1431,8 @@ fn matching_blog_post_channel_visibility_subquery(
     Query::select()
         .column(blog_post_channel_visibility::Column::PostId)
         .from(blog_post_channel_visibility::Entity)
-        .and_where(
-            Expr::col((
-                blog_post_channel_visibility::Entity,
-                blog_post_channel_visibility::Column::TenantId,
-            ))
-            .eq(tenant_id),
-        )
-        .and_where(
-            Expr::col((
-                blog_post_channel_visibility::Entity,
-                blog_post_channel_visibility::Column::ChannelSlug,
-            ))
-            .eq(channel_slug),
-        )
+        .and_where(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
+        .and_where(blog_post_channel_visibility::Column::ChannelSlug.eq(channel_slug))
         .to_owned()
 }
 

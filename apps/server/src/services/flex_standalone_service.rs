@@ -827,7 +827,7 @@ mod tests {
         let schema = sea_orm::Schema::new(builder);
         let mut stmt = schema.create_table_from_entity(flex_entry_localized_values::Entity);
         stmt.if_not_exists();
-        db.execute(builder.build(&stmt))
+        db.execute_raw(builder.build(&stmt))
             .await
             .expect("create flex_entry_localized_values table for standalone flex tests");
         let service = FlexStandaloneSeaOrmService::new(db.clone());
@@ -914,7 +914,7 @@ mod tests {
         let schema = sea_orm::Schema::new(builder);
         let mut stmt = schema.create_table_from_entity(flex_entry_localized_values::Entity);
         stmt.if_not_exists();
-        db.execute(builder.build(&stmt))
+        db.execute_raw(builder.build(&stmt))
             .await
             .expect("create flex_entry_localized_values table for standalone flex tests");
         let service = FlexStandaloneSeaOrmService::new(db.clone());

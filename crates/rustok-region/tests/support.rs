@@ -12,18 +12,18 @@ pub async fn ensure_region_schema(db: &DatabaseConnection) {
     let schema = Schema::new(builder);
     let mut statement = schema.create_table_from_entity(region::Entity);
     statement.if_not_exists();
-    db.execute(builder.build(&statement))
+    db.execute_raw(builder.build(&statement))
         .await
         .expect("failed to create region test table");
     let mut translations_statement = schema.create_table_from_entity(region_translation::Entity);
     translations_statement.if_not_exists();
-    db.execute(builder.build(&translations_statement))
+    db.execute_raw(builder.build(&translations_statement))
         .await
         .expect("failed to create region translation test table");
     let mut country_policy_statement =
         schema.create_table_from_entity(region_country_tax_policy::Entity);
     country_policy_statement.if_not_exists();
-    db.execute(builder.build(&country_policy_statement))
+    db.execute_raw(builder.build(&country_policy_statement))
         .await
         .expect("failed to create region country tax policy test table");
 }

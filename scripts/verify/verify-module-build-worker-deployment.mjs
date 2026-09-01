@@ -16,12 +16,15 @@ for (const marker of [
   `image: registry.example/rustok/module-build-worker@${digest}`, 'runtimeClassName: runsc',
   `RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST\n              value: sha256:${'b'.repeat(64)}`,
   'replicas: 2', 'maxUnavailable: 0', 'automountServiceAccountToken: false', 'hostNetwork: false',
-  'hostPID: false', 'hostIPC: false', 'readOnlyRootFilesystem: true', 'drop: ["ALL"]',
+  'hostPID: false', 'hostIPC: false', 'enableServiceLinks: false', 'readOnlyRootFilesystem: true',
+  'allowPrivilegeEscalation: false', 'privileged: false', 'drop: ["ALL"]',
   'fsGroup: 10001', 'fsGroupChangePolicy: OnRootMismatch',
   'RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION', 'RUSTOK_MODULE_BUILD_PROBE_ENDPOINT',
   'RUSTOK_MODULE_BUILD_SOURCE_ROOT', 'persistentVolumeClaim: { claimName: module-build-source, readOnly: true }',
   'startupProbe:', 'readinessProbe:', 'livenessProbe:', 'rustok-module-build-worker-probe',
-  'kind: PodDisruptionBudget', 'kind: NetworkPolicy', 'egress: []',
+  'cpu: 500m', 'memory: 256Mi', 'ephemeral-storage: 1Gi', 'cpu: "2"', 'memory: 512Mi',
+  'ephemeral-storage: 2Gi', 'emptyDir: { sizeLimit: 1Gi }',
+  'kind: PodDisruptionBudget', 'minAvailable: 1', 'kind: NetworkPolicy', 'egress: []',
 ]) assert.ok(manifest.includes(marker), `missing ${marker}`);
 assert.throws(() => parseArguments(['--namespace', 'rustok', '--image', 'worker', '--digest', 'latest', '--job-image-digest', digest, '--runtime', 'gvisor', '--tls-secret', 'tls', '--attestation-config-map', 'attestation', '--config-map', 'config', '--source-pvc', 'source']), /lowercase SHA-256 digest/);
 assert.throws(() => parseArguments(['--namespace', 'rustok', '--image', 'worker', '--digest', digest, '--job-image-digest', 'latest', '--runtime', 'gvisor', '--tls-secret', 'tls', '--attestation-config-map', 'attestation', '--config-map', 'config', '--source-pvc', 'source']), /job-image-digest must be a lowercase SHA-256 digest/);

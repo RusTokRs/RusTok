@@ -116,7 +116,7 @@ pub(crate) async fn load(
     };
     let backend = transaction.get_database_backend();
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT settings, schema_digest FROM module_artifact_settings_instances \
@@ -166,7 +166,7 @@ async fn resolve_active_installation<C: ConnectionTrait>(
 
     let backend = connection.get_database_backend();
     let rows = connection
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT installation.scope_kind, installation.data_owner_id, \
@@ -241,7 +241,7 @@ async fn persist_settings_instance<C: ConnectionTrait>(
 ) -> Result<(), ArtifactSettingsStoreError> {
     let backend = connection.get_database_backend();
     let existing = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT schema_digest FROM module_artifact_settings_instances \
@@ -266,7 +266,7 @@ async fn persist_settings_instance<C: ConnectionTrait>(
             return Err(ArtifactSettingsStoreError::SchemaMismatch);
         }
         connection
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_settings_instances \
@@ -291,7 +291,7 @@ async fn persist_settings_instance<C: ConnectionTrait>(
     }
 
     connection
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_settings_instances \
@@ -329,7 +329,7 @@ async fn ensure_not_tombstoned<C: ConnectionTrait>(
 ) -> Result<(), ArtifactSettingsStoreError> {
     let backend = connection.get_database_backend();
     let tombstone = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT 1 FROM module_artifact_settings_tombstones WHERE tenant_id = {} AND data_owner_id = {} AND settings_instance_id = {}",
@@ -379,7 +379,7 @@ fn now_expression(backend: DbBackend) -> &'static str {
 
 fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::Uuid(Some(Box::new(value))),
+        DbBackend::Postgres => SqlValue::Uuid(Some(value)),
         _ => value.to_string().into(),
     }
 }
@@ -427,7 +427,7 @@ mod tests {
             "CREATE TABLE module_artifact_settings_tombstones (tenant_id TEXT NOT NULL, data_owner_id TEXT NOT NULL, settings_instance_id TEXT NOT NULL, PRIMARY KEY (tenant_id, data_owner_id, settings_instance_id))",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -474,7 +474,7 @@ mod tests {
         };
         descriptor.validate().expect("descriptor");
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO module_artifact_installations (installation_id, scope_kind, tenant_id, slug, data_owner_id, settings_instance_id, descriptor) VALUES (?1, 'platform', NULL, 'sample_module', ?2, ?3, ?4)".to_string(),
                 vec![
@@ -489,7 +489,7 @@ mod tests {
             .await
             .expect("installation");
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO module_artifact_admissions (installation_id, status) VALUES (?1, 'active')".to_string(),
                 vec![installation_id.to_string().into()],
@@ -528,7 +528,7 @@ mod tests {
         ));
 
         let row = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT data_owner_id, settings_instance_id, schema_digest, revision FROM module_artifact_settings_instances".to_string(),
             ))
@@ -560,7 +560,7 @@ mod tests {
             .validate()
             .expect("stateless descriptor");
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO module_artifact_installations (installation_id, scope_kind, tenant_id, slug, data_owner_id, settings_instance_id, descriptor) VALUES (?1, 'platform', NULL, 'stateless_module', ?2, ?3, ?4)".to_string(),
                 vec![
@@ -575,7 +575,7 @@ mod tests {
             .await
             .expect("stateless installation");
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO module_artifact_admissions (installation_id, status) VALUES (?1, 'active')".to_string(),
                 vec![stateless_installation_id.to_string().into()],

@@ -515,7 +515,7 @@ where
 {
     let name = format!("{schema}.{relation}");
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT to_regclass($1)::oid::bigint AS oid",
             vec![name.clone().into()],
@@ -592,7 +592,7 @@ async fn logical_relation(
         relation_sql,
     );
     let row = db
-        .query_one(Statement::from_string(DbBackend::Postgres, sql))
+        .query_one_raw(Statement::from_string(DbBackend::Postgres, sql))
         .await?
         .with_context(|| {
             format!("cutover logical digest query returned no row for {relation_sql}")
@@ -614,7 +614,7 @@ async fn relation_catalog(
     relation: &str,
 ) -> Result<RelationCatalogEvidence> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             concat!(
                 "SELECT c.oid::bigint AS oid, c.relname, c.relkind::text AS relkind, ",
@@ -627,7 +627,7 @@ async fn relation_catalog(
         .with_context(|| format!("relation catalog entry was not found: {relation}"))?;
     let oid: i64 = row.try_get("", "oid")?;
     let children = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             concat!(
                 "SELECT child.oid::bigint AS oid, child.relname, pg_get_expr(child.relpartbound, child.oid) AS bound ",
@@ -877,7 +877,7 @@ async fn ensure_session_setting(
     expected: &str,
 ) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT current_setting($1) AS value",
             vec![setting.into()],
@@ -894,7 +894,7 @@ async fn ensure_session_setting(
 
 async fn ensure_schema_absent(db: &DatabaseConnection, schema: &str) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT to_regnamespace($1)::text AS schema",
             vec![schema.into()],
@@ -910,7 +910,7 @@ async fn ensure_schema_absent(db: &DatabaseConnection, schema: &str) -> Result<(
 }
 
 async fn acquire_cutover_lock(db: &DatabaseConnection, evidence_id: &str) -> Result<()> {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "SELECT pg_advisory_lock(hashtextextended($1, 0))",
         vec![format!("rustok-index-partition-cutover:{evidence_id}").into()],
@@ -922,7 +922,7 @@ async fn acquire_cutover_lock(db: &DatabaseConnection, evidence_id: &str) -> Res
 
 async fn release_cutover_lock(db: &DatabaseConnection, evidence_id: &str) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked",
             vec![format!("rustok-index-partition-cutover:{evidence_id}").into()],

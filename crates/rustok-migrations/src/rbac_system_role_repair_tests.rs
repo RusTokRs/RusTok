@@ -31,7 +31,7 @@ impl MigratorTrait for RbacSystemRoleTestMigrator {
 }
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO tenants (id, name, slug, settings, default_locale, is_active) VALUES (?1, ?2, ?3, ?4, ?5, TRUE)",
         vec![
@@ -47,7 +47,7 @@ async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid, email: &str) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id, email, password_hash) VALUES (?1, ?2, ?3, ?4)",
         vec![
@@ -67,7 +67,7 @@ async fn insert_non_system_role(
     role_id: Uuid,
     slug: &str,
 ) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO roles (id, tenant_id, name, slug, is_system) VALUES (?1, ?2, ?3, ?4, FALSE)",
         vec![role_id.into(), tenant_id.into(), slug.into(), slug.into()],
@@ -77,7 +77,7 @@ async fn insert_non_system_role(
 }
 
 async fn role_id(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) -> Uuid {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "SELECT id FROM roles WHERE tenant_id = ?1 AND slug = ?2",
         vec![tenant_id.into(), slug.into()],
@@ -95,7 +95,7 @@ async fn insert_stale_role_permission(
     role_id: Uuid,
 ) -> Uuid {
     let permission_id = Uuid::new_v4();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO permissions (id, tenant_id, resource, action) VALUES (?1, ?2, ?3, ?4)",
         vec![
@@ -107,7 +107,7 @@ async fn insert_stale_role_permission(
     ))
     .await
     .expect("insert stale permission");
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?1, ?2, ?3)",
         vec![Uuid::new_v4().into(), role_id.into(), permission_id.into()],
@@ -122,7 +122,7 @@ async fn role_permission_exists(
     role_id: Uuid,
     permission_id: Uuid,
 ) -> bool {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "SELECT id FROM role_permissions WHERE role_id = ?1 AND permission_id = ?2",
         vec![role_id.into(), permission_id.into()],
@@ -133,7 +133,7 @@ async fn role_permission_exists(
 }
 
 async fn role_count(db: &DatabaseConnection, tenant_id: Uuid) -> i64 {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "SELECT COUNT(*) AS total FROM roles WHERE tenant_id = ?1",
         vec![tenant_id.into()],

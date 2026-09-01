@@ -31,6 +31,7 @@ pub struct ModuleOperationRecoveryPlan {
     pub retryable: bool,
     pub recommended_action: ModuleOperationRecoveryAction,
     pub correlation_id: Option<String>,
+    pub trace_id: Option<String>,
     pub requested_by: Option<String>,
     pub error_message: Option<String>,
 }
@@ -79,6 +80,7 @@ impl ModuleOperationRecoveryPlan {
             retryable,
             recommended_action,
             correlation_id: operation.correlation_id,
+            trace_id: operation.trace_id,
             requested_by: operation.requested_by,
             error_message: operation.error_message,
         }
@@ -307,7 +309,7 @@ pub(crate) async fn operation_override_state<C: ConnectionTrait>(
              FROM module_operation_override_states WHERE operation_id = ?1 LIMIT 1"
         }
     };
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         backend,
         sql,
         vec![operation_id.into()],
@@ -346,7 +348,7 @@ pub(crate) async fn record_operation_override_state<C: ConnectionTrait>(
              VALUES (?1, ?2, ?3)"
         }
     };
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         backend,
         sql,
         vec![
@@ -372,7 +374,7 @@ pub(crate) async fn read_tenant_override_enabled<C: ConnectionTrait>(
         }
         _ => "SELECT enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1",
     };
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         backend,
         sql,
         vec![tenant_id.into(), module_slug.into()],
@@ -397,7 +399,7 @@ pub(crate) async fn apply_tenant_override_enabled<C: ConnectionTrait>(
             }
             _ => "DELETE FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2",
         };
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![tenant_id.into(), module_slug.into()],

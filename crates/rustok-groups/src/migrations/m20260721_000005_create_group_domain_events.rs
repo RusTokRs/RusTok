@@ -13,7 +13,8 @@ impl MigrationTrait for Migration {
             DbBackend::MySql => Err(DbErr::Migration(
                 "Groups targeted invitation events support PostgreSQL and SQLite only".to_string(),
             )),
-        }
+            _ => unreachable!("unsupported SeaORM database backend"),
+}
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -21,7 +22,8 @@ impl MigrationTrait for Migration {
             DbBackend::Postgres => postgres_down(manager).await,
             DbBackend::Sqlite => sqlite_down(manager).await,
             DbBackend::MySql => Ok(()),
-        }
+            _ => unreachable!("unsupported SeaORM database backend"),
+}
     }
 }
 

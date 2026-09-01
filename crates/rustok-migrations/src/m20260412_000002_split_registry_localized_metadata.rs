@@ -162,7 +162,7 @@ async fn backfill_publish_request_translations(
 ) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             backend,
             "SELECT id, module_name, description FROM registry_publish_requests".to_string(),
         ))
@@ -191,7 +191,7 @@ async fn backfill_publish_request_translations(
 async fn backfill_release_translations(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             backend,
             "SELECT id, module_name, description FROM registry_module_releases".to_string(),
         ))
@@ -282,7 +282,7 @@ async fn restore_legacy_registry_metadata_columns(
 async fn restore_publish_request_metadata(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             backend,
             "SELECT id, default_locale FROM registry_publish_requests".to_string(),
         ))
@@ -317,7 +317,7 @@ async fn restore_publish_request_metadata(db: &SchemaManagerConnection<'_>) -> R
 async fn restore_release_metadata(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             backend,
             "SELECT id, default_locale FROM registry_module_releases".to_string(),
         ))
@@ -383,7 +383,7 @@ async fn execute_statement(
 ) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let sql = placeholder_sql(backend, template, values.len());
-    db.execute(Statement::from_sql_and_values(backend, sql, values))
+    db.execute_raw(Statement::from_sql_and_values(backend, sql, values))
         .await?;
     Ok(())
 }
@@ -395,6 +395,7 @@ fn placeholder_sql(backend: DbBackend, template: &str, value_count: usize) -> St
             DbBackend::Postgres => format!("${}", index + 1),
             DbBackend::MySql => "?".to_string(),
             DbBackend::Sqlite => format!("?{}", index + 1),
+            _ => unreachable!("unsupported SeaORM database backend"),
         };
         sql = sql.replace(&format!("{{v{}}}", index + 1), &placeholder);
     }
@@ -408,7 +409,7 @@ async fn drop_columns(
 ) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     for column in columns {
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             backend,
             format!("ALTER TABLE {table} DROP COLUMN {column}"),
         ))
@@ -430,7 +431,7 @@ async fn load_translation_row(
     );
     let sql = placeholder_sql(backend, &sql, 3);
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![

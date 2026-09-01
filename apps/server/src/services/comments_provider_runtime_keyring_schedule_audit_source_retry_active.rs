@@ -15,7 +15,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy {
         validate_claim(claim)?;
         let row = self
             .database
-            .query_one(record_active_failure_statement(
+            .query_one_raw(record_active_failure_statement(
                 claim,
                 failure.into(),
                 self.max_attempts,

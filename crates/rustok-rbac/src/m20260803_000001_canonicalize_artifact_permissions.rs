@@ -299,7 +299,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), DbErr> {
         backend => Err(DbErr::Migration(format!(
             "artifact permission canonicalization does not support {backend:?}"
         ))),
-    }
+}
 }
 
 async fn execute_all<C>(
@@ -312,7 +312,7 @@ where
 {
     for statement in statements {
         connection
-            .execute(Statement::from_string(backend, (*statement).to_string()))
+            .execute_raw(Statement::from_string(backend, (*statement).to_string()))
             .await?;
     }
     Ok(())
@@ -328,7 +328,7 @@ where
     C: ConnectionTrait + ?Sized,
 {
     let row = connection
-        .query_one(Statement::from_string(backend, sql.to_string()))
+        .query_one_raw(Statement::from_string(backend, sql.to_string()))
         .await?
         .ok_or_else(|| DbErr::Migration("artifact permission validation returned no row".into()))?;
     let count: i64 = row.try_get("", "count")?;
@@ -355,7 +355,7 @@ where
         _ => unreachable!(),
     };
     let rows = connection
-        .query_all(Statement::from_string(backend, select.to_string()))
+        .query_all_raw(Statement::from_string(backend, select.to_string()))
         .await?;
     let mut normalized: HashMap<(Uuid, String), TranslationValue> = HashMap::new();
     for row in rows {
@@ -410,7 +410,7 @@ where
                 _ => unreachable!(),
             };
         connection
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 sql,
                 vec![

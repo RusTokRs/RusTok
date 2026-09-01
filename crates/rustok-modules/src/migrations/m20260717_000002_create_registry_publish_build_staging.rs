@@ -76,11 +76,11 @@ impl MigrationTrait for Migration {
                     "registry publish build staging does not support database backend {backend:?}"
                 )));
             }
-        };
+};
         for statement in statements {
             manager
                 .get_connection()
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     manager.get_database_backend(),
                     (*statement).to_string(),
                 ))
@@ -111,7 +111,7 @@ mod tests {
             .await
             .expect("database");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "CREATE TABLE registry_publish_requests (id TEXT PRIMARY KEY)".to_string(),
             ))
@@ -123,7 +123,7 @@ mod tests {
             .expect("staging migration");
 
         let columns = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "PRAGMA table_info(registry_publish_build_staging)".to_string(),
             ))

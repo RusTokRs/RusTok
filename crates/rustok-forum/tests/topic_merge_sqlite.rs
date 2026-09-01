@@ -61,7 +61,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         vec![user_id.into(), tenant_id.into()],
@@ -303,7 +303,7 @@ async fn topic_merge_is_atomic_idempotent_and_append_only() -> TestResult<()> {
         Err(ForumError::TopicMergeOperationConflict(id)) if id == operation_id
     ));
     assert!(db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE forum_topic_merge_operations SET reason = 'tampered' WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],
@@ -311,7 +311,7 @@ async fn topic_merge_is_atomic_idempotent_and_append_only() -> TestResult<()> {
         .await
         .is_err());
     assert!(db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "DELETE FROM forum_topic_merge_operations WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],
@@ -642,7 +642,7 @@ async fn topic_solution_database_guard_requires_active_topic_and_approved_reply(
         "pending"
     );
     assert!(db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id, marked_by_user_id, marked_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
             vec![
@@ -680,14 +680,14 @@ async fn topic_solution_database_guard_requires_active_topic_and_approved_reply(
         reply_status(&db, tenant_id, approved_reply_id).await?,
         "approved"
     );
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "UPDATE forum_topics SET status = 'archived', is_locked = TRUE WHERE tenant_id = ? AND id = ?",
         vec![tenant_id.into(), archived_topic_id.into()],
     ))
     .await?;
     assert!(db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id, marked_by_user_id, marked_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
             vec![
@@ -708,7 +708,7 @@ async fn solution_snapshot(
     topic_id: Uuid,
 ) -> TestResult<Option<SolutionSnapshot>> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT reply_id, marked_by_user_id, marked_at FROM forum_solutions WHERE tenant_id = ? AND topic_id = ?",
             vec![tenant_id.into(), topic_id.into()],
@@ -730,7 +730,7 @@ async fn user_solution_count(
     user_id: Uuid,
 ) -> TestResult<i32> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT solution_count FROM forum_user_stats WHERE tenant_id = ? AND user_id = ?",
             vec![tenant_id.into(), user_id.into()],
@@ -746,7 +746,7 @@ async fn reply_status(
     reply_id: Uuid,
 ) -> TestResult<String> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT status FROM forum_replies WHERE tenant_id = ? AND id = ?",
             vec![tenant_id.into(), reply_id.into()],
@@ -765,7 +765,7 @@ async fn assert_topic_state(
     expected_reply_count: i32,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT status, is_locked, reply_count FROM forum_topics WHERE tenant_id = ? AND id = ?",
             vec![tenant_id.into(), topic_id.into()],
@@ -786,7 +786,7 @@ async fn assert_category_counters(
     expected_replies: i32,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT topic_count, reply_count FROM forum_categories WHERE tenant_id = ? AND id = ?",
             vec![tenant_id.into(), category_id.into()],
@@ -807,7 +807,7 @@ async fn assert_reply_location(
     expected_parent_reply_id: Option<Uuid>,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT topic_id, position, parent_reply_id FROM forum_replies WHERE tenant_id = ? AND id = ?",
             vec![tenant_id.into(), reply_id.into()],
@@ -853,7 +853,7 @@ async fn assert_semantic_event(
     merged: &rustok_forum::ForumTopicMergeResult,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT event_id, aggregate_type, aggregate_id, event_type, schema_version, actor_id, payload FROM forum_domain_events WHERE tenant_id = ? AND event_id = ?",
             vec![tenant_id.into(), merged.event_id.into()],
@@ -905,7 +905,7 @@ async fn projection_root_ids(
     tenant_id: Uuid,
 ) -> TestResult<BTreeSet<Uuid>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT payload FROM sys_events WHERE event_type = 'index.reindex_requested'",
             Vec::new(),
@@ -927,7 +927,7 @@ async fn projection_targets(
     event_ids: &BTreeSet<Uuid>,
 ) -> TestResult<BTreeSet<(String, Option<Uuid>)>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT payload FROM sys_events WHERE event_type = 'index.reindex_requested'",
             Vec::new(),
@@ -953,6 +953,6 @@ async fn projection_targets(
 }
 
 async fn scalar_i64(db: &DatabaseConnection, statement: Statement) -> TestResult<i64> {
-    let row: QueryResult = db.query_one(statement).await?.ok_or("scalar row missing")?;
+    let row: QueryResult = db.query_one_raw(statement).await?.ok_or("scalar row missing")?;
     Ok(row.try_get("", "value")?)
 }

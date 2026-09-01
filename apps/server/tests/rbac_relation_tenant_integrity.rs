@@ -11,7 +11,7 @@ async fn execute(
     sql: &str,
     values: Vec<sea_orm::Value>,
 ) -> Result<(), sea_orm::DbErr> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         sql,
         values,
@@ -21,7 +21,7 @@ async fn execute(
 }
 
 async fn count(db: &sea_orm::DatabaseConnection, sql: &str) -> i64 {
-    db.query_one(Statement::from_string(DbBackend::Sqlite, sql.to_string()))
+    db.query_one_raw(Statement::from_string(DbBackend::Sqlite, sql.to_string()))
         .await
         .expect("query count")
         .expect("count row")

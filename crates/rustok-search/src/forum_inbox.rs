@@ -103,10 +103,10 @@ impl ForumProjectionInbox {
                     "Forum projection inbox does not support database backend {other:?}"
                 )));
             }
-        };
+};
         let envelope_json = serde_json::to_value(envelope)?;
         self.db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 sql,
                 vec![
@@ -141,7 +141,7 @@ impl ForumProjectionInbox {
                 return Ok(None);
             }
             let row = transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DbBackend::Postgres,
                     r#"
                     SELECT event_id, scope_key, revision_at, ingest_sequence, envelope_json,
@@ -228,7 +228,7 @@ impl ForumProjectionInbox {
             }
 
             transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DbBackend::Postgres,
                     r#"
                     UPDATE search_projection_inbox
@@ -286,7 +286,7 @@ impl ForumProjectionInboxClaim {
 
     pub(crate) async fn complete(self) -> Result<()> {
         self.transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 INSERT INTO search_projection_watermarks (
@@ -332,7 +332,7 @@ impl ForumProjectionInboxClaim {
 
         let next_attempt_at = Utc::now() + Duration::seconds(retry_delay_seconds(self.attempt));
         self.transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 UPDATE search_projection_inbox
@@ -358,7 +358,7 @@ async fn try_acquire_tenant_lock(
 ) -> Result<bool> {
     let lock_key = format!("search:{FORUM_SOURCE_MODULE}:{tenant_id}:{FULL_SCOPE_KEY}");
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired",
             vec![lock_key.into()],
@@ -400,7 +400,7 @@ async fn load_watermark(
     scope_key: &str,
 ) -> Result<Option<i64>> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT ingest_sequence
@@ -424,7 +424,7 @@ async fn mark_terminal(
     last_error: Option<&str>,
 ) -> Result<()> {
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             UPDATE search_projection_inbox

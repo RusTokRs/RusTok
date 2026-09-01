@@ -598,7 +598,7 @@ async fn load_command_identity(
     command_id: Uuid,
 ) -> Result<Option<StoredCommandIdentity>, IndexDriftRepairRecoveryFailure> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "SELECT finding_id, payload_digest, state FROM {COMMAND_TABLE} WHERE tenant_id = $1 AND command_id = $2 FOR UPDATE"
@@ -617,7 +617,7 @@ async fn load_command_identity_repair(
     command_id: Uuid,
 ) -> Result<Option<StoredCommandIdentity>, IndexDriftRepairFailure> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "SELECT finding_id, payload_digest, state FROM {COMMAND_TABLE} WHERE tenant_id = $1 AND command_id = $2 FOR UPDATE"
@@ -636,7 +636,7 @@ async fn load_latest_decision(
     command_id: Uuid,
 ) -> Result<Option<LatestDecision>, IndexDriftRepairRecoveryFailure> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "SELECT revision, new_state FROM {DECISION_TABLE} WHERE tenant_id = $1 AND command_id = $2 ORDER BY revision DESC LIMIT 1 FOR UPDATE"
@@ -655,7 +655,7 @@ async fn load_latest_decision_repair(
     command_id: Uuid,
 ) -> Result<Option<LatestDecision>, IndexDriftRepairFailure> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "SELECT revision, new_state FROM {DECISION_TABLE} WHERE tenant_id = $1 AND command_id = $2 ORDER BY revision DESC LIMIT 1 FOR UPDATE"
@@ -675,7 +675,7 @@ async fn load_decision_by_id(
     decision_id: Uuid,
 ) -> Result<Option<StoredDecision>, IndexDriftRepairRecoveryFailure> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "SELECT command_id, decision_id, finding_id, payload_digest, revision, action, previous_state, new_state, actor_kind, actor_subject, reason FROM {DECISION_TABLE} WHERE tenant_id = $1 AND command_id = $2 AND decision_id = $3 FOR UPDATE"
@@ -695,7 +695,7 @@ async fn insert_decision(
     let revision = i64::try_from(decision.revision)
         .map_err(|_| permanent_recovery_failure(STORED_CONTRACT_INVALID))?;
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "INSERT INTO {DECISION_TABLE} (tenant_id, command_id, decision_id, finding_id, payload_digest, revision, action, previous_state, new_state, actor_kind, actor_subject, reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
@@ -730,7 +730,7 @@ async fn insert_decision_repair(
     let revision = i64::try_from(decision.revision)
         .map_err(|_| permanent_repair_failure(STORED_CONTRACT_INVALID))?;
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "INSERT INTO {DECISION_TABLE} (tenant_id, command_id, decision_id, finding_id, payload_digest, revision, action, previous_state, new_state, actor_kind, actor_subject, reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
@@ -764,7 +764,7 @@ async fn exact_finding_is_open_recovery(
     finding_id: Uuid,
 ) -> Result<bool, IndexDriftRepairRecoveryFailure> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT finding_id FROM index_consistency_findings WHERE tenant_id = $1 AND finding_id = $2 AND state = 'open' LIMIT 1 FOR SHARE",
             vec![tenant_id.into(), finding_id.into()],
@@ -803,7 +803,7 @@ async fn lock_command_recovery(
 ) -> Result<(), IndexDriftRepairRecoveryFailure> {
     let key = command_lock_key(tenant_id, command_id);
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![key.into()],
@@ -820,7 +820,7 @@ async fn lock_command_repair(
 ) -> Result<(), IndexDriftRepairFailure> {
     let key = command_lock_key(tenant_id, command_id);
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![key.into()],

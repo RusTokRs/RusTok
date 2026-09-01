@@ -11,6 +11,12 @@ impl MigrationTrait for Migration {
             DatabaseBackend::Postgres => install_postgres(manager).await?,
             DatabaseBackend::Sqlite => install_sqlite(manager).await?,
             DatabaseBackend::MySql => install_mysql(manager).await?,
+            _ => {
+                return Err(DbErr::Migration(
+                    "checkout operation identity migration does not support this database backend"
+                        .to_string(),
+                ));
+            }
         }
         Ok(())
     }
@@ -54,6 +60,12 @@ impl MigrationTrait for Migration {
                         "#,
                     )
                     .await?;
+            }
+            _ => {
+                return Err(DbErr::Migration(
+                    "checkout operation identity migration does not support this database backend"
+                        .to_string(),
+                ));
             }
         }
         Ok(())

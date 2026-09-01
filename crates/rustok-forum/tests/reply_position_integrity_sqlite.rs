@@ -35,7 +35,7 @@ async fn sqlite_enforces_unique_positive_reply_positions() -> TestResult<()> {
     }
 
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT CAST(position AS INTEGER) AS value
@@ -189,7 +189,7 @@ async fn assert_rejected(db: &DatabaseConnection, sql: String, label: &str) -> T
 
 async fn scalar_text(db: &DatabaseConnection, sql: String) -> TestResult<String> {
     let row = db
-        .query_one(Statement::from_string(DatabaseBackend::Sqlite, sql))
+        .query_one_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))
         .await?
         .ok_or_else(|| test_error("scalar query returned no row"))?;
     Ok(row.try_get("", "value")?)

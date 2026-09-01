@@ -82,7 +82,7 @@ async fn initialize(database: DatabaseConnection) -> DatabaseConnection {
 
 pub(crate) async fn insert_tenant(database: &DatabaseConnection, tenant_id: Uuid) {
     database
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO tenants (id) VALUES (?)".to_string(),
             vec![tenant_id.into()],

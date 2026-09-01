@@ -24,7 +24,7 @@ async fn normalize_registry_governance_event_payloads(
 ) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             backend,
             "SELECT id, details FROM registry_governance_events".to_string(),
         ))
@@ -218,7 +218,7 @@ async fn execute_statement(
 ) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let sql = placeholder_sql(backend, template, values.len());
-    db.execute(Statement::from_sql_and_values(backend, sql, values))
+    db.execute_raw(Statement::from_sql_and_values(backend, sql, values))
         .await?;
     Ok(())
 }

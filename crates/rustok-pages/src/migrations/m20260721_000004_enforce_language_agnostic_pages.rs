@@ -307,7 +307,7 @@ async fn ensure_sqlite_zero(
 ) -> Result<(), DbErr> {
     let row = manager
         .get_connection()
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             sql.to_owned(),
         ))

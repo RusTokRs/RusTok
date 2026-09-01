@@ -30,7 +30,7 @@ impl MigrationTrait for Migration {
         let backend = connection.get_database_backend();
 
         if let Some(row) = connection
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 backend,
                 tenant_mismatch_query().to_string(),
             ))
@@ -48,7 +48,7 @@ impl MigrationTrait for Migration {
         }
 
         let rows = connection
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend,
                 route_source_query().to_string(),
             ))

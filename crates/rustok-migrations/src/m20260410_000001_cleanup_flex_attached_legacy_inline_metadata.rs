@@ -73,7 +73,7 @@ where
     C: ConnectionTrait,
 {
     let rows = connection
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             connection.get_database_backend(),
             "SELECT id, default_locale FROM tenants".to_string(),
         ))
@@ -158,7 +158,7 @@ where
                 );
 
             connection
-                .execute(connection.get_database_backend().build(&insert))
+                .execute_raw(connection.get_database_backend().build(&insert))
                 .await?;
         }
 
@@ -236,7 +236,7 @@ where
             spec.definition_table
         ),
     );
-    let rows = connection.query_all(statement).await?;
+    let rows = connection.query_all_raw(statement).await?;
 
     let mut keys_by_tenant: HashMap<Uuid, HashSet<String>> = HashMap::new();
     for row in rows {
@@ -256,7 +256,7 @@ where
     C: ConnectionTrait,
 {
     connection
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             connection.get_database_backend(),
             format!("SELECT id, tenant_id, metadata FROM {donor_table}"),
         ))
@@ -284,7 +284,7 @@ where
         .and_where(Expr::col(Alias::new("locale")).eq(locale.to_string()));
 
     let rows = connection
-        .query_all(connection.get_database_backend().build(&select))
+        .query_all_raw(connection.get_database_backend().build(&select))
         .await?;
 
     let mut values = Map::new();
@@ -313,7 +313,7 @@ where
         .and_where(Expr::col(Alias::new("id")).eq(entity_id));
 
     connection
-        .execute(connection.get_database_backend().build(&update))
+        .execute_raw(connection.get_database_backend().build(&update))
         .await?;
 
     Ok(())

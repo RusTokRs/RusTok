@@ -89,7 +89,7 @@ mod tests {
         migration.up(&manager).await.unwrap();
 
         let row = db
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS row_count, MAX(generation) AS generation FROM rbac_invalidation_state WHERE scope = 'permissions'".to_string(),
             ))

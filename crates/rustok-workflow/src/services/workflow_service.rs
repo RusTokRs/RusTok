@@ -1,5 +1,4 @@
 use chrono::Utc;
-#[allow(unused_imports)]
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, Order, QueryFilter, QueryOrder,
@@ -315,13 +314,14 @@ impl WorkflowService {
         workflow_id: Uuid,
         auto_disable_threshold: u32,
     ) -> WorkflowResult<()> {
-        use sea_orm::sea_query::Expr;
-
         // Increment failure_count
         workflow::Entity::update_many()
             .col_expr(
                 workflow::Column::FailureCount,
-                Expr::col(workflow::Column::FailureCount).add(1),
+                sea_orm::sea_query::ExprTrait::add(
+                    sea_orm::sea_query::Expr::col(workflow::Column::FailureCount),
+                    1,
+                ),
             )
             .col_expr(
                 workflow::Column::UpdatedAt,

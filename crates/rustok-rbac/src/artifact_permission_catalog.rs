@@ -47,7 +47,7 @@ impl ArtifactPermissionRegistrationPort for RbacArtifactPermissionCatalog {
         for permission in &request.permissions {
             let artifact_permission_id = rustok_core::generate_id();
             transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     definition_insert_sql(backend)?,
                     vec![
@@ -63,7 +63,7 @@ impl ArtifactPermissionRegistrationPort for RbacArtifactPermissionCatalog {
                 .map_err(storage_error)?;
 
             let definition = transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     definition_select_sql(backend)?,
                     vec![
@@ -105,7 +105,7 @@ impl ArtifactPermissionRegistrationPort for RbacArtifactPermissionCatalog {
                         )
                     })?;
                 transaction
-                    .execute(Statement::from_sql_and_values(
+                    .execute_raw(Statement::from_sql_and_values(
                         backend,
                         translation_upsert_sql(backend)?,
                         vec![
@@ -131,7 +131,7 @@ async fn ensure_installation_identity(
     request: &ArtifactPermissionRegistrationRequest,
 ) -> Result<(), PortError> {
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             installation_insert_sql(backend)?,
             vec![
@@ -144,7 +144,7 @@ async fn ensure_installation_identity(
         .await
         .map_err(storage_error)?;
     let installation = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             installation_select_sql(backend)?,
             vec![request.installation_id.into()],
@@ -253,7 +253,7 @@ fn installation_insert_sql(backend: DbBackend) -> Result<&'static str, PortError
             "rbac.artifact_permission_backend_unsupported",
             format!("artifact permission catalog does not support {backend:?}"),
         )),
-    }
+}
 }
 
 fn installation_select_sql(backend: DbBackend) -> Result<&'static str, PortError> {
@@ -268,7 +268,7 @@ fn installation_select_sql(backend: DbBackend) -> Result<&'static str, PortError
             "rbac.artifact_permission_backend_unsupported",
             format!("artifact permission catalog does not support {backend:?}"),
         )),
-    }
+}
 }
 
 fn definition_insert_sql(backend: DbBackend) -> Result<&'static str, PortError> {
@@ -283,7 +283,7 @@ fn definition_insert_sql(backend: DbBackend) -> Result<&'static str, PortError> 
             "rbac.artifact_permission_backend_unsupported",
             format!("artifact permission catalog does not support {backend:?}"),
         )),
-    }
+}
 }
 
 fn definition_select_sql(backend: DbBackend) -> Result<&'static str, PortError> {
@@ -298,7 +298,7 @@ fn definition_select_sql(backend: DbBackend) -> Result<&'static str, PortError> 
             "rbac.artifact_permission_backend_unsupported",
             format!("artifact permission catalog does not support {backend:?}"),
         )),
-    }
+}
 }
 
 fn translation_upsert_sql(backend: DbBackend) -> Result<&'static str, PortError> {
@@ -313,7 +313,7 @@ fn translation_upsert_sql(backend: DbBackend) -> Result<&'static str, PortError>
             "rbac.artifact_permission_backend_unsupported",
             format!("artifact permission catalog does not support {backend:?}"),
         )),
-    }
+}
 }
 
 #[cfg(test)]
@@ -396,7 +396,7 @@ mod tests {
             ("rbac_artifact_permission_translations", 1_i64),
         ] {
             let row = database
-                .query_one(Statement::from_string(
+                .query_one_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     format!("SELECT COUNT(*) AS count FROM {table}"),
                 ))
@@ -407,7 +407,7 @@ mod tests {
             assert_eq!(count, expected);
         }
         let locale: String = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT locale FROM rbac_artifact_permission_translations LIMIT 1".to_string(),
             ))
@@ -469,7 +469,7 @@ mod tests {
             ("rbac_artifact_permission_definitions", 1_i64),
         ] {
             let row = database
-                .query_one(Statement::from_string(
+                .query_one_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     format!("SELECT COUNT(*) AS count FROM {table}"),
                 ))

@@ -88,6 +88,15 @@ impl MigrationTrait for Migration {
                 allow_rejected_retry BOOLEAN NOT NULL, request_status TEXT NOT NULL, queued BOOLEAN NOT NULL,\
                 validation_job_id TEXT NULL, committed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,\
                 UNIQUE (request_id, idempotency_key)\
+            );\
+            CREATE TABLE registry_validation_stage_report_operations (\
+                operation_id UUID PRIMARY KEY, request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
+                idempotency_key UUID NOT NULL, expected_revision BIGINT NOT NULL, actor_id UUID NOT NULL,\
+                trace_id TEXT NOT NULL, correlation_id UUID NOT NULL, actor_principal JSONB NOT NULL,\
+                stage_key TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'passed', 'failed', 'blocked')),\
+                reason_code TEXT NULL, requeue BOOLEAN NOT NULL, stage_id TEXT NOT NULL,\
+                resulting_request_revision BIGINT NOT NULL, committed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,\
+                UNIQUE (request_id, idempotency_key)\
             )"
             }
             DbBackend::Sqlite => {
@@ -171,6 +180,15 @@ impl MigrationTrait for Migration {
                 request_status TEXT NOT NULL, queued INTEGER NOT NULL CHECK (queued IN (0, 1)),\
                 validation_job_id TEXT NULL, committed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
                 UNIQUE (request_id, idempotency_key)\
+            );\
+            CREATE TABLE registry_validation_stage_report_operations (\
+                operation_id TEXT PRIMARY KEY NOT NULL, request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
+                idempotency_key TEXT NOT NULL, expected_revision INTEGER NOT NULL, actor_id TEXT NOT NULL,\
+                trace_id TEXT NOT NULL, correlation_id TEXT NOT NULL, actor_principal JSON NOT NULL,\
+                stage_key TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'passed', 'failed', 'blocked')),\
+                reason_code TEXT NULL, requeue INTEGER NOT NULL CHECK (requeue IN (0, 1)), stage_id TEXT NOT NULL,\
+                resulting_request_revision INTEGER NOT NULL, committed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
+                UNIQUE (request_id, idempotency_key)\
             )"
             }
             backend => {
@@ -186,7 +204,7 @@ impl MigrationTrait for Migration {
         {
             manager
                 .get_connection()
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     manager.get_database_backend(),
                     statement.to_string(),
                 ))
@@ -196,7 +214,14 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.get_connection().execute_unprepared("DROP TABLE registry_validation_job_enqueue_operations").await?;
+        manager
+            .get_connection()
+            .execute_unprepared("DROP TABLE registry_validation_stage_report_operations")
+            .await?;
+        manager
+            .get_connection()
+            .execute_unprepared("DROP TABLE registry_validation_job_enqueue_operations")
+            .await?;
         manager
             .get_connection()
             .execute_unprepared("DROP TABLE registry_publish_artifact_operations")

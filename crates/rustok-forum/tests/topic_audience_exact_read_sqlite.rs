@@ -108,7 +108,7 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus) {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         sea_orm::DatabaseBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?1, ?2)",
         vec![user_id.into(), tenant_id.into()],

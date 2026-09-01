@@ -109,7 +109,7 @@ impl UserStatsService {
                 )));
             }
         };
-        if txn.execute(statement).await?.rows_affected() != 1 {
+        if txn.execute_raw(statement).await?.rows_affected() != 1 {
             return Err(ForumError::Validation(
                 "Forum solution author statistic is inconsistent".to_string(),
             ));
@@ -250,7 +250,7 @@ impl UserStatsService {
                 vec![tenant_id.into(), topic_id.into()],
             ),
         };
-        txn.execute(stmt).await?;
+        txn.execute_raw(stmt).await?;
 
         Self::adjust_solution_count_in_tx(txn, tenant_id, solution_author_id, -1).await?;
         Ok(())

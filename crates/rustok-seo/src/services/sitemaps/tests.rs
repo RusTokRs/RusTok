@@ -78,7 +78,7 @@ async fn test_db() -> DatabaseConnection {
 }
 
 async fn seed_tenant_modules_table(db: &DatabaseConnection) {
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE TABLE tenant_modules (
             id TEXT PRIMARY KEY,

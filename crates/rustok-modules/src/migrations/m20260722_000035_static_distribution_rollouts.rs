@@ -138,11 +138,11 @@ impl MigrationTrait for Migration {
                     "static distribution rollout migration does not support database backend {backend:?}"
                 )));
             }
-        };
+};
         for statement in statements {
             manager
                 .get_connection()
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     manager.get_database_backend(),
                     (*statement).to_string(),
                 ))
@@ -233,7 +233,7 @@ mod tests {
     }
 
     async fn column_names(db: &sea_orm::DatabaseConnection, table: &str) -> HashSet<String> {
-        db.query_all(Statement::from_string(
+        db.query_all_raw(Statement::from_string(
             DbBackend::Sqlite,
             format!("PRAGMA table_info({table})"),
         ))
@@ -246,7 +246,7 @@ mod tests {
 
     async fn primary_key_columns(db: &sea_orm::DatabaseConnection, table: &str) -> Vec<String> {
         let mut columns = db
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 format!("PRAGMA table_info({table})"),
             ))

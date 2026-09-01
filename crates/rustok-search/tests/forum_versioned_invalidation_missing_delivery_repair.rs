@@ -516,7 +516,7 @@ async fn insert_completed_delivery(
 ) -> TestResult<()> {
     let envelope = root_envelope(tenant_id, event_id);
     envelope.validate_registered_schema()?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         INSERT INTO search_projection_inbox (
@@ -595,7 +595,7 @@ async fn load_checkpoint(
     tenant_id: Uuid,
 ) -> Result<Option<CheckpointSnapshot>, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT owner_revision, event_id, outcome
@@ -619,7 +619,7 @@ async fn load_checkpoint_audit(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> Result<Vec<CheckpointAuditRow>, sea_orm::DbErr> {
-    db.query_all(Statement::from_sql_and_values(
+    db.query_all_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         SELECT sequence, owner_revision, event_id, outcome,
@@ -650,7 +650,7 @@ async fn count_forum_document(
     document_id: Uuid,
 ) -> Result<i64, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT COUNT(*)::BIGINT AS value

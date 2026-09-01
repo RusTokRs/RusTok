@@ -610,7 +610,7 @@ mod retained_restart_ambiguity_evidence {
     }
 
     async fn query_one(db: &DatabaseConnection, sql: String) -> Result<QueryResult> {
-        db.query_one(Statement::from_string(DatabaseBackend::Postgres, sql))
+        db.query_one_raw(Statement::from_string(DatabaseBackend::Postgres, sql))
             .await?
             .context("expected PostgreSQL evidence row")
     }

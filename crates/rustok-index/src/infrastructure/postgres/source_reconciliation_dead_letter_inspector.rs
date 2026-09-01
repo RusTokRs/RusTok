@@ -87,7 +87,7 @@ impl PostgresIndexReconciliationDeadLetterInspector {
         ensure_supported_backend(backend)?;
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_failed_job_sql(backend),
                 vec![uuid_value(tenant_id, backend), uuid_value(job_id, backend)],
@@ -235,7 +235,7 @@ mod tests {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("test database");
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE index_jobs (tenant_id TEXT NOT NULL, job_id TEXT NOT NULL, kind TEXT NOT NULL, state TEXT NOT NULL, attempt_count INTEGER NOT NULL, last_error_code TEXT NULL, last_error_details JSON NOT NULL)"
                 .to_owned(),
@@ -251,7 +251,7 @@ mod tests {
         job_id: Uuid,
         details: JsonValue,
     ) {
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO index_jobs (tenant_id, job_id, kind, state, attempt_count, last_error_code, last_error_details) VALUES (?1, ?2, 'reconcile', 'failed', 3, ?3, ?4)",
             vec![

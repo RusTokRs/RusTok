@@ -64,7 +64,7 @@ fn admin() -> SecurityContext {
 
 async fn create_blog_category(db: &DatabaseConnection, tenant_id: Uuid) -> Uuid {
     let category_id = Uuid::new_v4();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO blog_categories (id, tenant_id) VALUES (?, ?)",
         [category_id.into(), tenant_id.into()],

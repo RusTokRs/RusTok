@@ -367,7 +367,7 @@ async fn load_local_status(
     tenant_id: Uuid,
 ) -> rustok_core::Result<LocalForumProjectionStatus> {
     let checkpoint = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT owner_revision, event_id, outcome
@@ -398,7 +398,7 @@ async fn load_local_status(
     };
 
     let inbox = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT COUNT(*)::BIGINT AS non_terminal_inbox_count

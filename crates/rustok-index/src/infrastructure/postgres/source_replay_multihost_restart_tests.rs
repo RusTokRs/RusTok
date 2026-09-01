@@ -117,7 +117,7 @@ impl Fixture {
             .expect("schema fingerprint")
             .to_string();
         let schema_json = serde_json::to_value(&schema).expect("schema json");
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO index_schemas (tenant_id, module_name, entity_name, schema_version, schema_fingerprint, schema_json, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active')",
             vec![
@@ -216,7 +216,7 @@ fn schema() -> IndexSchema {
 }
 
 async fn scalar_i64(db: &DatabaseConnection, sql: &str) -> i64 {
-    db.query_one(Statement::from_string(DbBackend::Sqlite, sql.to_owned()))
+    db.query_one_raw(Statement::from_string(DbBackend::Sqlite, sql.to_owned()))
         .await
         .expect("scalar query should execute")
         .expect("scalar query should return one row")
@@ -225,7 +225,7 @@ async fn scalar_i64(db: &DatabaseConnection, sql: &str) -> i64 {
 }
 
 async fn scalar_string(db: &DatabaseConnection, sql: &str) -> String {
-    db.query_one(Statement::from_string(DbBackend::Sqlite, sql.to_owned()))
+    db.query_one_raw(Statement::from_string(DbBackend::Sqlite, sql.to_owned()))
         .await
         .expect("scalar query should execute")
         .expect("scalar query should return one row")
@@ -261,7 +261,7 @@ async fn expired_host_is_reclaimed_by_second_runner_and_stale_host_cannot_publis
 
     let expired = fixture
         .db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE index_jobs SET lease_expires_at = datetime('now', '-1 second') WHERE tenant_id = ?1 AND kind = 'rebuild' AND state = 'running' AND lease_owner = ?2 AND attempt_count = 1",
             vec![TENANT.to_owned().into(), "host-a".to_owned().into()],

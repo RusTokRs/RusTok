@@ -9,7 +9,7 @@ use rustok_translation_targets::{
     TranslationTargetChangesRequest, TranslationTargetRegistry,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbBackend, EntityTrait,
     QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::OnConflict,
 };
 use uuid::Uuid;
@@ -175,7 +175,8 @@ impl TranslationInventoryService {
                     .await?
             }
             DbBackend::Sqlite => current_checkpoint_query.one(&transaction).await?,
-        }
+            _ => unreachable!("unsupported SeaORM database backend"),
+}
         .ok_or(TranslationError::CheckpointConflict)?;
         let expected_revision = checkpoint.as_ref().map_or(0, |row| row.revision);
         let expected_cursor = checkpoint.as_ref().and_then(|row| row.cursor.as_deref());
@@ -426,7 +427,8 @@ impl TranslationInventoryService {
                     .await?
             }
             DbBackend::Sqlite => current_checkpoint_query.one(&transaction).await?,
-        }
+            _ => unreachable!("unsupported SeaORM database backend"),
+}
         .ok_or(TranslationError::CheckpointConflict)?;
         if current_checkpoint.revision != expected_checkpoint.revision
             || current_checkpoint.cursor != expected_checkpoint.cursor

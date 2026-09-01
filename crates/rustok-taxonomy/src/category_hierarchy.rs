@@ -118,7 +118,7 @@ async fn serialize_hierarchy_writer(
     tenant_id: Uuid,
 ) -> TaxonomyResult<()> {
     if txn.get_database_backend() == DatabaseBackend::Postgres {
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![tenant_id.to_string().into()],

@@ -125,7 +125,7 @@ impl ProductSalesChannelRelationConvergenceAdapter {
     async fn discover_due_tenant(&self) -> Result<Option<(Uuid, u64)>, ModuleWorkError> {
         let row = self
             .db
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Postgres,
                 DUE_TENANT_SQL.to_owned(),
             ))

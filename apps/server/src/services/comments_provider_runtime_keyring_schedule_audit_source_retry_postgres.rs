@@ -171,7 +171,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy {
         validate_claim(claim)?;
         let row = self
             .database
-            .query_one(record_failure_statement(
+            .query_one_raw(record_failure_statement(
                 claim,
                 failure.into(),
                 self.max_attempts,
@@ -195,7 +195,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy {
         CommentsTcpDelegationScheduleAuditSourceRetryPolicyError,
     > {
         self.database
-            .query_one(dead_letter_expired_exhausted_statement(self.max_attempts))
+            .query_one_raw(dead_letter_expired_exhausted_statement(self.max_attempts))
             .await
             .map_err(|_| CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::Unavailable)?
             .map(|row| decode_dead_letter(&row))
@@ -218,7 +218,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy {
             );
         }
         self.database
-            .query_one(inspect_dead_letter_statement(request_id))
+            .query_one_raw(inspect_dead_letter_statement(request_id))
             .await
             .map_err(|_| CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::Unavailable)?
             .map(|row| decode_dead_letter(&row))

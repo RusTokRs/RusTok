@@ -338,7 +338,7 @@ async fn finalize_ranked_search(
         base_values.clone(),
     );
     let total = db
-        .query_one(total_statement)
+        .query_one_raw(total_statement)
         .await
         .map_err(Error::Database)?
         .and_then(|row| row.try_get::<i64>("", "total").ok())
@@ -372,7 +372,7 @@ async fn finalize_ranked_search(
         paged_values,
     );
     let items = db
-        .query_all(items_statement)
+        .query_all_raw(items_statement)
         .await
         .map_err(Error::Database)?
         .into_iter()
@@ -407,7 +407,7 @@ async fn finalize_ranked_search(
         base_values.clone(),
     );
     let mut facets = build_facets(
-        db.query_all(facets_statement)
+        db.query_all_raw(facets_statement)
             .await
             .map_err(Error::Database)?,
     )?;
@@ -444,7 +444,7 @@ async fn finalize_ranked_search(
         attribute_facet_values,
     );
     facets.extend(build_dynamic_facets(
-        db.query_all(attribute_facets_statement)
+        db.query_all_raw(attribute_facets_statement)
             .await
             .map_err(Error::Database)?,
     )?);

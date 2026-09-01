@@ -50,7 +50,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         vec![user_id.into(), tenant_id.into()],
@@ -152,7 +152,7 @@ async fn remove_composed_aliases_for_historical_fixture(db: &DatabaseConnection)
 
 async fn alias_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     Ok(db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT COUNT(*) AS alias_count FROM forum_topic_route_aliases WHERE tenant_id = ?",
             vec![tenant_id.into()],

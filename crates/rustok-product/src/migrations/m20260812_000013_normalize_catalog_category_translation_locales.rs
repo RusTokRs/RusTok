@@ -69,7 +69,7 @@ ORDER BY category_id, locale, id
                 continue;
             }
             connection
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     connection.get_database_backend(),
                     "UPDATE catalog_category_translations SET locale = $1 WHERE id = $2",
                     vec![normalized_locale.into(), id.into()],

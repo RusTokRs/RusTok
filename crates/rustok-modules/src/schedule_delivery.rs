@@ -173,7 +173,7 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         let schedule_digest = schedule_digest_for_binding(&descriptor, &request.binding_id)?;
         let delivery_id = self.infrastructure.new_id();
         let inserted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_schedule_deliveries \
@@ -210,7 +210,7 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
         }
 
         let existing = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT delivery_id, schedule_digest FROM module_artifact_schedule_deliveries \
@@ -268,7 +268,7 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
             ""
         };
         let candidate = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT delivery_id, installation_id, binding_id, schedule_digest, scheduled_for \
@@ -321,7 +321,7 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
             return Ok(None);
         }
         let claimed = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_schedule_deliveries \
@@ -349,7 +349,7 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
             return Ok(None);
         }
         let attempt = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT attempt FROM module_artifact_schedule_deliveries \
@@ -775,7 +775,7 @@ async fn load_admitted_descriptor<C: ConnectionTrait>(
         DbBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
         _ => "COALESCE(lifecycle.enabled, 1) = 1",
     };
-    let row = connection.query_one(Statement::from_sql_and_values(backend, format!(
+    let row = connection.query_one_raw(Statement::from_sql_and_values(backend, format!(
         "SELECT CAST(installation.descriptor AS TEXT) AS descriptor \
          FROM module_artifact_installations installation \
          JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id \
@@ -805,7 +805,7 @@ async fn expire_claims<C: ConnectionTrait>(
     tenant_id: Uuid,
     max_attempts: u32,
 ) -> Result<(), ArtifactScheduleDeliveryError> {
-    connection.execute(Statement::from_sql_and_values(backend, format!(
+    connection.execute_raw(Statement::from_sql_and_values(backend, format!(
         "UPDATE module_artifact_schedule_deliveries \
          SET status = CASE WHEN attempt >= {} THEN 'dead_letter' ELSE 'pending' END, \
              available_at = {}, claimed_by = NULL, claimed_until = NULL, last_error_code = 'lease_expired', \
@@ -822,7 +822,7 @@ async fn cancel_unavailable<C: ConnectionTrait>(
     tenant_id: Uuid,
     delivery_id: Uuid,
 ) -> Result<(), ArtifactScheduleDeliveryError> {
-    connection.execute(Statement::from_sql_and_values(backend, format!(
+    connection.execute_raw(Statement::from_sql_and_values(backend, format!(
         "UPDATE module_artifact_schedule_deliveries \
          SET status = 'cancelled', claimed_by = NULL, claimed_until = NULL, last_error_code = 'schedule_unavailable', cancelled_at = {} \
          WHERE delivery_id = {} AND tenant_id = {} AND status = 'pending'",
@@ -861,7 +861,7 @@ async fn complete_terminal<C: ConnectionTrait>(
         None => ("last_error_code = NULL, ".to_string(), Vec::new()),
     };
     let offset = values.len();
-    let result = connection.execute(Statement::from_sql_and_values(backend, format!(
+    let result = connection.execute_raw(Statement::from_sql_and_values(backend, format!(
         "UPDATE module_artifact_schedule_deliveries \
          SET status = '{status}', claimed_by = NULL, claimed_until = NULL, {error_assignment}{timestamp_column} = {} \
          WHERE delivery_id = {} AND tenant_id = {} AND status = 'running' AND claimed_by = {} AND attempt = {}",
@@ -886,7 +886,7 @@ async fn complete_retryable<C: ConnectionTrait>(
         delivery_id,
         attempt,
     } = claim;
-    let result = connection.execute(Statement::from_sql_and_values(backend, format!(
+    let result = connection.execute_raw(Statement::from_sql_and_values(backend, format!(
         "UPDATE module_artifact_schedule_deliveries \
          SET status = 'pending', claimed_by = NULL, claimed_until = NULL, last_error_code = {}, available_at = {} \
          WHERE delivery_id = {} AND tenant_id = {} AND status = 'running' AND claimed_by = {} AND attempt = {}",
@@ -928,7 +928,7 @@ fn datetime_from_row(
 
 fn datetime_value(value: DateTime<Utc>, backend: DbBackend) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(Box::new(value))),
+        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value)),
         _ => value.to_rfc3339().into(),
     }
 }

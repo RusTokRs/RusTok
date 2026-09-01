@@ -30,10 +30,8 @@ impl MigrationTrait for Migration {
                     )
                     .await?;
             }
-            DatabaseBackend::MySql => {
-                // MySQL needs a generated active-key column to emulate a partial
-                // unique index. The owner service must still use external_id and
-                // row locking there; do not add a misleading nullable unique key.
+            _ => {
+                // Other backends do not support partial indexes directly.
             }
         }
 
@@ -41,7 +39,10 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if !matches!(manager.get_database_backend(), DatabaseBackend::MySql) {
+        if matches!(
+            manager.get_database_backend(),
+            DatabaseBackend::Postgres | DatabaseBackend::Sqlite
+        ) {
             manager
                 .drop_index(
                     Index::drop()

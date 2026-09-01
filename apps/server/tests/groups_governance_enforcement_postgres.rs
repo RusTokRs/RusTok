@@ -102,7 +102,7 @@ VALUES
 
 async fn membership_revision(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> i64 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT revision FROM group_memberships WHERE tenant_id = '{tenant_id}' AND user_id = '{user_id}'"
@@ -117,7 +117,7 @@ async fn membership_revision(db: &DatabaseConnection, tenant_id: Uuid, user_id: 
 
 async fn membership_role(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> String {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT role FROM group_memberships WHERE tenant_id = '{tenant_id}' AND user_id = '{user_id}'"
@@ -132,7 +132,7 @@ async fn membership_role(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid
 
 async fn enforcement_count(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> i64 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT COUNT(*)::BIGINT AS count FROM group_membership_enforcements WHERE tenant_id = '{tenant_id}' AND user_id = '{user_id}' AND revoked_at IS NULL"
@@ -147,7 +147,7 @@ async fn enforcement_count(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uu
 
 async fn group_owner(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> Uuid {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT owner_user_id FROM groups WHERE tenant_id = '{tenant_id}' AND id = '{group_id}'"
@@ -171,7 +171,7 @@ async fn install_moderation_owned_owner_suspension(
         .await
         .expect("owner recovery fixture transaction should begin");
     let row = transaction
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT id FROM group_memberships WHERE tenant_id = '{tenant_id}' AND group_id = '{group_id}' AND user_id = '{owner_id}'"

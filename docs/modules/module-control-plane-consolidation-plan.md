@@ -479,7 +479,10 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   advances the aggregate, while an exact replay returns the locked revision.
   The platform evidence producer chains the source, build-evidence, and
   admission revisions. Manual validation-stage reports/requeues use the same
-  CAS. Remote claim and expired-lease requeue advance the aggregate, and the
+  CAS and one platform-scoped `ModuleCommandContext`; their durable receipt
+  rejects any idempotency reuse with changed actor, trace, correlation, stage,
+  status, reason, or requeue evidence. Remote claim and expired-lease requeue
+  advance the aggregate, and the
   claim carries the resulting revision which a terminal result must present.
   Heartbeat only renews an existing operational lease. All current
   request-state and validation-stage transitions now use the compare-and-swap

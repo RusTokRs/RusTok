@@ -164,7 +164,7 @@ impl ArtifactScheduleMaterializer {
             _ => "COALESCE(lifecycle.enabled, 1) = 1",
         };
         let rows = transaction
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT installation.installation_id, installation.slug, installation.scope_kind, \
@@ -241,7 +241,7 @@ impl ArtifactScheduleMaterializer {
             .map_err(storage_error)?;
         let backend = transaction.get_database_backend();
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT schedule_digest, materialized_through \
@@ -289,7 +289,7 @@ impl ArtifactScheduleMaterializer {
             .map_err(storage_error)?;
         let backend = transaction.get_database_backend();
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_schedule_cursors \
@@ -336,7 +336,7 @@ impl ArtifactScheduleMaterializer {
             .map_err(storage_error)?;
         let backend = transaction.get_database_backend();
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT 1 AS active_delivery FROM module_artifact_schedule_deliveries \
@@ -511,7 +511,7 @@ fn datetime_from_row(
 
 fn datetime_value(value: DateTime<Utc>, backend: DbBackend) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(Box::new(value))),
+        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value)),
         _ => value.to_rfc3339().into(),
     }
 }

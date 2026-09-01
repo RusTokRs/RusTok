@@ -177,7 +177,7 @@ impl ProductWriteTransaction {
         // outbox publication, graph projection and refresh-ledger capture.
         let result = self
             .transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "UPDATE products SET index_revision = index_revision WHERE tenant_id = $1 AND id = $2",
                 vec![tenant_id.into(), product_id.into()],
@@ -248,20 +248,32 @@ impl ConnectionTrait for ProductWriteTransaction {
         self.transaction.get_database_backend()
     }
 
-    async fn execute(&self, statement: Statement) -> Result<ExecResult, DbErr> {
-        self.transaction.execute(statement).await
+    async fn execute<S: sea_orm::StatementBuilder>(&self, stmt: &S) -> Result<ExecResult, DbErr> {
+        self.transaction.execute(stmt).await
+    }
+
+    async fn execute_raw(&self, stmt: Statement) -> Result<ExecResult, DbErr> {
+        self.transaction.execute_raw(stmt).await
     }
 
     async fn execute_unprepared(&self, sql: &str) -> Result<ExecResult, DbErr> {
         self.transaction.execute_unprepared(sql).await
     }
 
-    async fn query_one(&self, statement: Statement) -> Result<Option<QueryResult>, DbErr> {
-        self.transaction.query_one(statement).await
+    async fn query_one<S: sea_orm::StatementBuilder>(&self, stmt: &S) -> Result<Option<QueryResult>, DbErr> {
+        self.transaction.query_one(stmt).await
     }
 
-    async fn query_all(&self, statement: Statement) -> Result<Vec<QueryResult>, DbErr> {
-        self.transaction.query_all(statement).await
+    async fn query_one_raw(&self, stmt: Statement) -> Result<Option<QueryResult>, DbErr> {
+        self.transaction.query_one_raw(stmt).await
+    }
+
+    async fn query_all<S: sea_orm::StatementBuilder>(&self, stmt: &S) -> Result<Vec<QueryResult>, DbErr> {
+        self.transaction.query_all(stmt).await
+    }
+
+    async fn query_all_raw(&self, stmt: Statement) -> Result<Vec<QueryResult>, DbErr> {
+        self.transaction.query_all_raw(stmt).await
     }
 
     fn support_returning(&self) -> bool {

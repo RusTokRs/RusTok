@@ -158,7 +158,7 @@ impl NotificationInboxGroupSummaryService {
             }
         };
 
-        let query_rows = self.db.query_all(statement).await?;
+        let query_rows = self.db.query_all_raw(statement).await?;
         let mut rows = query_rows
             .iter()
             .map(|row| StoredGroupSummary::from_query_result(row, ""))

@@ -32,7 +32,7 @@ pub async fn ensure_order_schema(db: &DatabaseConnection) {
                 .default("en"),
         )
         .to_owned();
-    db.execute(builder.build(&tenants_table))
+    db.execute_raw(builder.build(&tenants_table))
         .await
         .expect("tenants table should be created for locale resolution");
 
@@ -139,7 +139,7 @@ pub async fn ensure_order_schema(db: &DatabaseConnection) {
                 .default(sea_orm::sea_query::Expr::current_timestamp()),
         )
         .to_owned();
-    db.execute(builder.build(&attached_table))
+    db.execute_raw(builder.build(&attached_table))
         .await
         .expect("flex attached localized values table should be created");
 }
@@ -150,7 +150,7 @@ async fn create_entity_table(
     mut statement: sea_orm::sea_query::TableCreateStatement,
 ) {
     statement.if_not_exists();
-    db.execute(builder.build(&statement))
+    db.execute_raw(builder.build(&statement))
         .await
         .expect("failed to create order test table");
 }

@@ -246,7 +246,7 @@ async fn expired_lease_reclaims_without_second_case_revision_and_fences_stale_wo
 
     let storage = database.connection("application_reclaim_storage").await?;
     storage
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE moderation_application_operations SET lease_expires_at = NOW() - INTERVAL '1 second' WHERE tenant_id = $1 AND decision_id = $2",
             vec![tenant_id.into(), decision.id.into()],
@@ -508,7 +508,7 @@ async fn set_next_attempt_offset(
     decision_id: Uuid,
     seconds: i64,
 ) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "UPDATE moderation_application_operations SET next_attempt_at = NOW() + ($3::bigint * INTERVAL '1 second'), updated_at = NOW() WHERE tenant_id = $1 AND decision_id = $2",
         vec![tenant_id.into(), decision_id.into(), seconds.into()],
@@ -525,7 +525,7 @@ async fn count_events(
     event_type: &str,
 ) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT COUNT(*)::bigint AS value FROM moderation_events WHERE tenant_id = $1 AND aggregate_kind = $2 AND aggregate_id = $3 AND event_type = $4",
             vec![

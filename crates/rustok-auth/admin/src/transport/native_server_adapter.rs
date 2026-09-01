@@ -215,7 +215,7 @@ COALESCE((
 
         let total_count = app_ctx
             .db
-            .query_one(count_statement)
+            .query_one_raw(count_statement)
             .await
             .map_err(|err| server_error(err.to_string()))?
             .map(|row| row.try_get("", "total_count"))
@@ -253,7 +253,7 @@ COALESCE((
 
         let edges = app_ctx
             .db
-            .query_all(page_statement)
+            .query_all_raw(page_statement)
             .await
             .map_err(|err| server_error(err.to_string()))?
             .into_iter()
@@ -432,7 +432,7 @@ pub async fn user_details_native(id: String) -> Result<GraphqlUserResponse, Serv
 
         let user = match app_ctx
             .db
-            .query_one(statement)
+            .query_one_raw(statement)
             .await
             .map_err(|err| server_error(err.to_string()))?
         {

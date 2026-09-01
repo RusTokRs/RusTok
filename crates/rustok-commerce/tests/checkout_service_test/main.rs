@@ -108,7 +108,7 @@ pub(crate) async fn seed_channel_binding(
     channel_id: Uuid,
     channel_slug: &str,
 ) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, status, settings, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -126,7 +126,7 @@ pub(crate) async fn seed_channel_binding(
     .await
     .expect("channel should be inserted");
 
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO channel_module_bindings (id, channel_id, module_slug, is_enabled, settings, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -147,7 +147,7 @@ pub(crate) async fn set_stock_location_channel_visibility(
     tenant_id: Uuid,
     allowed_channel_slugs: &[&str],
 ) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "UPDATE stock_locations SET metadata = ? WHERE tenant_id = ?",
         vec![
@@ -166,7 +166,7 @@ pub(crate) async fn set_stock_location_channel_visibility(
 }
 
 pub(crate) async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO tenants (id, name, slug, domain, settings, default_locale, is_active, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -186,7 +186,7 @@ pub(crate) async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid
         ("en", "English", "English", true),
         ("de", "German", "Deutsch", false),
     ] {
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO tenant_locales (id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",

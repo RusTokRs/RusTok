@@ -111,7 +111,7 @@ SELECT
 
 async fn explain_json(db: &sea_orm::DatabaseConnection, sql: &str) -> TestResult<Value> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!("EXPLAIN (COSTS OFF, FORMAT JSON) {sql}"),
         ))
@@ -126,7 +126,7 @@ async fn assert_index_definition(
     required_fragments: &[&str],
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() AND indexname = $1",
             vec![index_name.into()],

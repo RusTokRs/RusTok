@@ -71,7 +71,7 @@ async fn postgres_forum_tenant_schema_baseline_is_green() -> TestResult<()> {
 async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
     let constraint_rows = context
         .db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             "SELECT conname
              FROM pg_constraint
@@ -105,7 +105,7 @@ async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
 
     let index_rows = context
         .db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             "SELECT indexname
              FROM pg_indexes
@@ -132,7 +132,7 @@ async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
 
     let table_rows = context
         .db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             "SELECT tablename
              FROM pg_tables
@@ -158,7 +158,7 @@ async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
 
     let trigger_rows = context
         .db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             "SELECT trigger_name
              FROM information_schema.triggers
@@ -184,7 +184,7 @@ async fn verify_schema(context: &PostgresForumTestDb) -> TestResult<()> {
 
     let locale_rows = context
         .db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             "SELECT table_name, character_maximum_length
              FROM information_schema.columns

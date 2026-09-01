@@ -151,7 +151,7 @@ async fn readiness_rejects_inactive_or_contract_drifted_rows() {
         registration.register(tenant(), schema).await.unwrap();
     }
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         format!(
             "UPDATE index_schemas SET status = 'retired' WHERE tenant_id = '{TENANT}' AND module_name = 'rustok-product' AND entity_name = 'product' AND schema_version = 2"
@@ -159,7 +159,7 @@ async fn readiness_rejects_inactive_or_contract_drifted_rows() {
     ))
     .await
     .unwrap();
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         format!(
             "UPDATE index_schemas SET schema_fingerprint = '{}' WHERE tenant_id = '{TENANT}' AND module_name = 'rustok-channel' AND entity_name = 'sales_channel' AND schema_version = 1",
@@ -198,7 +198,7 @@ async fn readiness_rejects_schema_json_drift_even_with_the_expected_fingerprint(
         registration.register(tenant(), schema).await.unwrap();
     }
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         format!(
             "UPDATE index_schemas SET schema_json = json_set(schema_json, '$.locale_mode', 'required') WHERE tenant_id = '{TENANT}' AND module_name = 'rustok-product' AND entity_name = 'product' AND schema_version = 2"

@@ -232,7 +232,7 @@ impl SeaOrmArtifactEventSubscriptionProjector {
             _ => "COALESCE(lifecycle.enabled, 1) = 1",
         };
         let rows = transaction
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT installation.installation_id, installation.slug, installation.scope_kind, \
@@ -657,7 +657,7 @@ impl SeaOrmArtifactEventDeliveryQueue {
 
         let delivery_id = self.infrastructure.new_id();
         let inserted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_event_deliveries \
@@ -700,7 +700,7 @@ impl SeaOrmArtifactEventDeliveryQueue {
         }
 
         let existing = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT delivery_id, source_digest FROM module_artifact_event_deliveries \
@@ -758,7 +758,7 @@ impl SeaOrmArtifactEventDeliveryQueue {
             ""
         };
         let candidate = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT delivery_id FROM module_artifact_event_deliveries \
@@ -779,7 +779,7 @@ impl SeaOrmArtifactEventDeliveryQueue {
             uuid_from_row(&candidate, "delivery_id", backend).map_err(storage_error)?;
         let lease_until = lease_expression(backend, 2);
         let claimed = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_event_deliveries \
@@ -806,7 +806,7 @@ impl SeaOrmArtifactEventDeliveryQueue {
             return Ok(None);
         }
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT delivery.delivery_id, delivery.tenant_id, delivery.installation_id, \
@@ -930,7 +930,7 @@ async fn load_admitted_descriptor<C: ConnectionTrait>(
         _ => "COALESCE(lifecycle.enabled, 1) = 1",
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT CAST(installation.descriptor AS TEXT) AS descriptor \
@@ -977,7 +977,7 @@ async fn expire_claims<C: ConnectionTrait>(
     max_attempts: u32,
 ) -> Result<(), ArtifactEventDeliveryError> {
     connection
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_artifact_event_deliveries \
@@ -1080,7 +1080,7 @@ async fn complete_retryable<C: ConnectionTrait>(
     } = claim;
     let delay = retry_expression(backend, 2);
     let result = connection
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_artifact_event_deliveries \
@@ -1132,7 +1132,7 @@ async fn update_completion<C: ConnectionTrait>(
     };
     let offset = values.len();
     let result = connection
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_artifact_event_deliveries SET {assignment}{} \

@@ -511,7 +511,7 @@ async fn request_cancel_in_transaction(
     let backend = transaction.get_database_backend();
     ensure_supported_backend(backend)?;
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             select_cancel_job_sql(backend),
             vec![uuid_value(tenant_id, backend), uuid_value(job_id, backend)],
@@ -525,7 +525,7 @@ async fn request_cancel_in_transaction(
     match state.as_str() {
         "pending" => {
             let updated = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     cancel_pending_job_sql(backend),
                     vec![uuid_value(tenant_id, backend), uuid_value(job_id, backend)],
@@ -539,7 +539,7 @@ async fn request_cancel_in_transaction(
         }
         "running" => {
             let updated = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     request_running_cancel_sql(backend),
                     vec![uuid_value(tenant_id, backend), uuid_value(job_id, backend)],
@@ -571,7 +571,7 @@ async fn cancel_if_requested(
     let backend = db.get_database_backend();
     ensure_supported_backend(backend)?;
     let updated = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             cancel_active_job_sql(backend),
             lease_values(lease, backend),
@@ -600,7 +600,7 @@ async fn finish_success(
             .into(),
     );
     let updated = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             finish_success_sql(backend),
             values,
@@ -621,7 +621,7 @@ async fn finish_failure(
     values.push(REPLAY_PAGE_FAILURE_CODE.to_owned().into());
     values.push(SqlValue::Json(Some(Box::new(details))));
     let updated = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             finish_failure_sql(backend),
             values,
@@ -638,7 +638,7 @@ async fn yield_for_resume(
     let backend = db.get_database_backend();
     ensure_supported_backend(backend)?;
     let updated = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             yield_job_sql(backend),
             lease_values(lease, backend),
@@ -701,7 +701,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexReplayRunErro
         backend => Err(IndexReplayRunError::Job(IndexReplayJobError::Storage(
             format!("Index replay runner does not support {backend:?}"),
         ))),
-    }
+}
 }
 
 fn placeholder_prefix(backend: DbBackend) -> &'static str {

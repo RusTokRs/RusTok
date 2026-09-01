@@ -78,7 +78,7 @@ impl ConsumerPoisonReceiptInspector {
         ensure_supported_backend(backend)?;
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 summary_sql(backend),
                 vec![SqlValue::from(consumer_group.to_owned())],
@@ -118,37 +118,41 @@ fn decode_summary(
     }
     if summary.expired_publishing > summary.publishing {
         return Err(invalid_summary(
-            "expired publishing count exceeds publishing receipts",
+            "expired publishing receipts exceed total publishing count",
         ));
     }
     Ok(summary)
 }
 
 fn decode_count(row: &QueryResult, column: &str) -> Result<u64, ConsumerPoisonReceiptError> {
-    let value: i64 = row.try_get("", column).map_err(storage_error)?;
-    u64::try_from(value).map_err(|_| invalid_summary("aggregate count is negative"))
+    let raw: i64 = row.try_get("", column).map_err(storage_error)?;
+    u64::try_from(raw).map_err(|_| invalid_summary("aggregate count is negative"))
 }
 
-fn validate_consumer_group(value: &str) -> Result<(), ConsumerPoisonReceiptError> {
-    if value.is_empty() {
+fn invalid_summary(reason: &'static str) -> ConsumerPoisonReceiptError {
+    ConsumerPoisonReceiptError::Storage(format!("invalid consumer poison receipt summary: {reason}"))
+}
+
+fn validate_consumer_group(consumer_group: &str) -> Result<(), ConsumerPoisonReceiptError> {
+    if consumer_group.is_empty() {
         return Err(ConsumerPoisonReceiptError::InvalidIdentity {
             field: "consumer_group",
             reason: "must not be empty",
         });
     }
-    if value.trim() != value {
+    if consumer_group.trim() != consumer_group {
         return Err(ConsumerPoisonReceiptError::InvalidIdentity {
             field: "consumer_group",
             reason: "must not have surrounding whitespace",
         });
     }
-    if value.len() > MAX_CONSUMER_GROUP_BYTES {
+    if consumer_group.len() > MAX_CONSUMER_GROUP_BYTES {
         return Err(ConsumerPoisonReceiptError::InvalidIdentity {
             field: "consumer_group",
             reason: "exceeds the durable receipt limit",
         });
     }
-    if value.chars().any(char::is_control) {
+    if consumer_group.chars().any(char::is_control) {
         return Err(ConsumerPoisonReceiptError::InvalidIdentity {
             field: "consumer_group",
             reason: "must not contain control characters",
@@ -164,28 +168,45 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), ConsumerPoisonRece
         backend => Err(ConsumerPoisonReceiptError::Storage(format!(
             "consumer poison inspection does not support {backend:?}"
         ))),
+}
+}
+
+fn summary_sql(backend: DbBackend) -> &'static str {
+    match backend {
+        DbBackend::Sqlite => {
+            "SELECT \
+                COUNT(1) AS total, \
+                COALESCE(SUM(CASE WHEN state = 'reserved' THEN 1 ELSE 0 END), 0) AS reserved_count, \
+                COALESCE(SUM(CASE WHEN state = 'publishing' THEN 1 ELSE 0 END), 0) AS publishing_count, \
+                COALESCE(SUM(CASE WHEN state = 'publishing' AND lease_expires_at IS NOT NULL AND lease_expires_at <= CURRENT_TIMESTAMP THEN 1 ELSE 0 END), 0) AS expired_publishing_count, \
+                COALESCE(SUM(CASE WHEN state = 'published' THEN 1 ELSE 0 END), 0) AS published_count, \
+                COALESCE(SUM(CASE WHEN state = 'acknowledged' THEN 1 ELSE 0 END), 0) AS acknowledged_count \
+             FROM iggy_consumer_poison_receipts \
+             WHERE consumer_group = ?1;"
+        }
+        DbBackend::Postgres => {
+            "SELECT \
+                COUNT(1)::bigint AS total, \
+                COALESCE(SUM(CASE WHEN state = 'reserved' THEN 1 ELSE 0 END), 0)::bigint AS reserved_count, \
+                COALESCE(SUM(CASE WHEN state = 'publishing' THEN 1 ELSE 0 END), 0)::bigint AS publishing_count, \
+                COALESCE(SUM(CASE WHEN state = 'publishing' AND lease_expires_at IS NOT NULL AND lease_expires_at <= NOW() THEN 1 ELSE 0 END), 0)::bigint AS expired_publishing_count, \
+                COALESCE(SUM(CASE WHEN state = 'published' THEN 1 ELSE 0 END), 0)::bigint AS published_count, \
+                COALESCE(SUM(CASE WHEN state = 'acknowledged' THEN 1 ELSE 0 END), 0)::bigint AS acknowledged_count \
+             FROM iggy_consumer_poison_receipts \
+             WHERE consumer_group = $1;"
+        }
+        _ => {
+            "SELECT \
+                CAST(COUNT(1) AS SIGNED) AS total, \
+                COALESCE(SUM(CASE WHEN state = 'reserved' THEN 1 ELSE 0 END), 0) AS reserved_count, \
+                COALESCE(SUM(CASE WHEN state = 'publishing' THEN 1 ELSE 0 END), 0) AS publishing_count, \
+                COALESCE(SUM(CASE WHEN state = 'publishing' AND lease_expires_at IS NOT NULL AND lease_expires_at <= CURRENT_TIMESTAMP THEN 1 ELSE 0 END), 0) AS expired_publishing_count, \
+                COALESCE(SUM(CASE WHEN state = 'published' THEN 1 ELSE 0 END), 0) AS published_count, \
+                COALESCE(SUM(CASE WHEN state = 'acknowledged' THEN 1 ELSE 0 END), 0) AS acknowledged_count \
+             FROM iggy_consumer_poison_receipts \
+             WHERE consumer_group = ?;"
+        }
     }
-}
-
-fn summary_sql(backend: DbBackend) -> String {
-    let prefix = match backend {
-        DbBackend::Postgres => "$",
-        DbBackend::Sqlite => "?",
-        _ => unreachable!("unsupported database backend was validated"),
-    };
-    format!(
-        "SELECT COUNT(*) AS total, \
-         COALESCE(SUM(CASE WHEN state = 'reserved' THEN 1 ELSE 0 END), 0) AS reserved_count, \
-         COALESCE(SUM(CASE WHEN state = 'publishing' THEN 1 ELSE 0 END), 0) AS publishing_count, \
-         COALESCE(SUM(CASE WHEN state = 'publishing' AND lease_expires_at <= CURRENT_TIMESTAMP THEN 1 ELSE 0 END), 0) AS expired_publishing_count, \
-         COALESCE(SUM(CASE WHEN state = 'published' THEN 1 ELSE 0 END), 0) AS published_count, \
-         COALESCE(SUM(CASE WHEN state = 'acknowledged' THEN 1 ELSE 0 END), 0) AS acknowledged_count \
-         FROM iggy_consumer_poison_receipts WHERE consumer_group = {prefix}1"
-    )
-}
-
-fn invalid_summary(reason: &str) -> ConsumerPoisonReceiptError {
-    ConsumerPoisonReceiptError::InvalidStoredState(reason.to_string())
 }
 
 fn storage_error(error: impl std::fmt::Display) -> ConsumerPoisonReceiptError {
@@ -194,17 +215,30 @@ fn storage_error(error: impl std::fmt::Display) -> ConsumerPoisonReceiptError {
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::{Database, DbBackend, Statement};
-
     use super::*;
+    use sea_orm::{ConnectionTrait, Database};
 
     async fn sqlite_inspector() -> ConsumerPoisonReceiptInspector {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         db.execute_unprepared(
-            "CREATE TABLE iggy_consumer_poison_receipts (\
-                consumer_group TEXT NOT NULL,\
-                state TEXT NOT NULL,\
-                lease_expires_at TEXT\
+            "CREATE TABLE iggy_consumer_poison_receipts ( \
+                id INTEGER PRIMARY KEY AUTOINCREMENT, \
+                delivery_id BLOB, \
+                consumer_group TEXT NOT NULL, \
+                source_stream TEXT, \
+                source_topic TEXT, \
+                source_partition INTEGER, \
+                source_offset INTEGER, \
+                payload BLOB, \
+                stable_error_code TEXT, \
+                state TEXT NOT NULL, \
+                publisher_id BLOB, \
+                delivery_attempt_count INTEGER DEFAULT 1, \
+                lease_expires_at TEXT, \
+                published_at TEXT, \
+                acknowledged_at TEXT, \
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP, \
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP \
             );",
         )
         .await
@@ -217,7 +251,7 @@ mod tests {
         let inspector = sqlite_inspector().await;
         inspector
             .db
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "INSERT INTO iggy_consumer_poison_receipts (consumer_group, state, lease_expires_at) VALUES \
                  ('group-a', 'reserved', NULL), \
@@ -247,7 +281,7 @@ mod tests {
         let inspector = sqlite_inspector().await;
         inspector
             .db
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "INSERT INTO iggy_consumer_poison_receipts (consumer_group, state, lease_expires_at) VALUES ('group-a', 'corrupt', NULL)"
                     .to_string(),

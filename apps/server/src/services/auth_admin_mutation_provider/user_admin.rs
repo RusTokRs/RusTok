@@ -199,7 +199,8 @@ where
             }
             user
         }
-    };
+        _ => unreachable!("unsupported SeaORM database backend"),
+};
 
     user.ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))
 }

@@ -88,7 +88,7 @@ impl ForumExportSourceInventoryService {
         let fetch_limit = request.limit.saturating_add(1);
         let rows = self
             .db
-            .query_all(inventory_statement(
+            .query_all_raw(inventory_statement(
                 self.db.get_database_backend(),
                 request.kind,
                 request.tenant_id,

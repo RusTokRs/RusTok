@@ -66,7 +66,7 @@ fn tenant(value: &str) -> Uuid {
 }
 
 async fn schema_count(db: &DatabaseConnection) -> i64 {
-    db.query_one(Statement::from_string(
+    db.query_one_raw(Statement::from_string(
         DbBackend::Sqlite,
         "SELECT COUNT(*) AS value FROM index_schemas".to_owned(),
     ))
@@ -78,7 +78,7 @@ async fn schema_count(db: &DatabaseConnection) -> i64 {
 }
 
 async fn schema_status(db: &DatabaseConnection, tenant_id: &str, version: u32) -> String {
-    db.query_one(Statement::from_string(
+    db.query_one_raw(Statement::from_string(
         DbBackend::Sqlite,
         format!(
             "SELECT status FROM index_schemas WHERE tenant_id = '{tenant_id}' AND module_name = 'social-graph' AND entity_name = 'relation' AND schema_version = {version}"
@@ -138,7 +138,7 @@ async fn retired_schema_cannot_be_reactivated_by_registration() {
     let (db, store) = fixture().await;
     let contract = schema(1);
     store.register(tenant(TENANT_A), &contract).await.unwrap();
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         format!("UPDATE index_schemas SET status = 'retired' WHERE tenant_id = '{TENANT_A}'"),
     ))

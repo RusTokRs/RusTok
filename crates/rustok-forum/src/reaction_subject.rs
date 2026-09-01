@@ -267,7 +267,7 @@ impl ForumReactionSubjectProvider {
         id: Uuid,
     ) -> ReactionProviderResult<bool> {
         self.db
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 self.db.get_database_backend(),
                 format!(
                     "SELECT 1 AS active FROM {table} WHERE tenant_id = '{tenant_id}' AND id = '{id}' AND deleted_at IS NULL"

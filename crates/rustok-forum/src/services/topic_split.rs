@@ -635,7 +635,7 @@ async fn lock_topic_split_tenant_in_tx(
                 (format!("forum-topic-split:{tenant_id}"), 21_i32),
                 (tenant_id.to_string(), 0_i32),
             ] {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT pg_advisory_xact_lock(hashtextextended($1, $2))",
                     vec![scope.into(), seed.into()],
@@ -645,7 +645,7 @@ async fn lock_topic_split_tenant_in_tx(
             Ok(())
         }
         DatabaseBackend::Sqlite => {
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
                 r#"
                 INSERT INTO forum_topic_split_locks (tenant_id, touched_at)
@@ -679,7 +679,7 @@ async fn lock_split_counter_scopes_in_tx(
                 format!("forum:topic:{tenant_id}:{}", topic_ids[0]),
                 format!("forum:topic:{tenant_id}:{}", topic_ids[1]),
             ] {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT forum_counter_lock($1)",
                     vec![scope.into()],
@@ -717,7 +717,7 @@ async fn lock_source_topic_in_tx(
             )));
         }
     };
-    if txn.query_one(statement).await?.is_none() {
+    if txn.query_one_raw(statement).await?.is_none() {
         return Err(ForumError::TopicNotFound(source_topic_id));
     }
     Ok(())
@@ -781,7 +781,7 @@ async fn lock_topic_reply_create_scopes_in_tx(
             ids.sort();
             ids.dedup();
             for topic_id in ids {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT pg_advisory_xact_lock(hashtextextended($1, 5))",
                     vec![format!("{tenant_id}:{topic_id}:reply-create").into()],
@@ -1079,7 +1079,7 @@ async fn clone_topic_access_in_tx(
             "INSERT INTO {table} ({insert_columns}) SELECT tenant_id, {}, {selected_columns} FROM {table} WHERE tenant_id = {} AND topic_id = {}",
             placeholders.0, placeholders.1, placeholders.2
         );
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
@@ -1218,7 +1218,7 @@ async fn insert_split_operation_in_tx(
             )));
         }
     };
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         backend,
         sql,
         vec![
@@ -1265,7 +1265,7 @@ async fn insert_split_reply_audit_in_tx(
         }
     };
     for item in audit {
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
@@ -1303,7 +1303,7 @@ async fn load_split_operation_in_tx(
         }
     };
     Ok(txn
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![tenant_id.into(), operation_id.into()],
@@ -1384,7 +1384,7 @@ async fn split_reply_audit_count_in_tx(
         }
     };
     let row = txn
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![tenant_id.into(), operation_id.into()],

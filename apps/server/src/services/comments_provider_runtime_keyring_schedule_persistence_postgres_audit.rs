@@ -329,7 +329,7 @@ async fn bootstrap_empty_on_postgres(
         persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable
     })?;
     let execution = transaction
-        .execute(insert_state_statement(&candidate))
+        .execute_raw(insert_state_statement(&candidate))
         .await;
     let rows_affected = match execution {
         Ok(result) => result.rows_affected(),
@@ -364,7 +364,7 @@ async fn compare_and_store_with_audit_on_postgres(
         persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable
     })?;
     let state_execution = transaction
-        .execute(update_state_statement(&expected, &candidate))
+        .execute_raw(update_state_statement(&expected, &candidate))
         .await;
     let state_rows = match state_execution {
         Ok(result) => result.rows_affected(),
@@ -380,7 +380,9 @@ async fn compare_and_store_with_audit_on_postgres(
         return Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict);
     }
 
-    let audit_execution = transaction.execute(insert_audit_statement(&audit)).await;
+    let audit_execution = transaction
+        .execute_raw(insert_audit_statement(&audit))
+        .await;
     let audit_rows = match audit_execution {
         Ok(result) => result.rows_affected(),
         Err(_) => {
@@ -444,7 +446,7 @@ async fn read_current_record(
     database: &DatabaseConnection,
 ) -> std::result::Result<Option<StoredScheduleRecord>, sea_orm::DbErr> {
     let row = database
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "SELECT schema_version, source, generation, schedule_digest_hex \
@@ -484,7 +486,7 @@ async fn read_audit_record(
     request_id: Uuid,
 ) -> std::result::Result<Option<StoredAuditRecord>, sea_orm::DbErr> {
     let row = database
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "SELECT audit_schema_version, request_id, state_key, event_type, \

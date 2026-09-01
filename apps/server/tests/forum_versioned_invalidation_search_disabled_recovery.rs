@@ -460,7 +460,7 @@ async fn run_search_disabled_recovery_proof(
 async fn create_forum_fixture(db: &DatabaseConnection) -> TestResult<ForumFixture> {
     let tenant_id = Uuid::new_v4();
     let admin_id = Uuid::new_v4();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO users (id, tenant_id) VALUES ($1, $2)",
         vec![admin_id.into(), tenant_id.into()],
@@ -645,7 +645,7 @@ async fn load_owner_snapshot(
     fixture: ForumFixture,
 ) -> TestResult<ForumOwnerSnapshot> {
     let category_row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT translation.name, translation.slug,
@@ -664,7 +664,7 @@ async fn load_owner_snapshot(
         .ok_or_else(|| test_error("Forum category disappeared from owner storage"))?;
 
     let topics = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT topic.id, topic.category_id, topic.status,
@@ -708,7 +708,7 @@ async fn load_owner_revisions(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> TestResult<Vec<OwnerRevisionRow>> {
-    db.query_all(Statement::from_sql_and_values(
+    db.query_all_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         SELECT revision, event_id, target_type, target_id
@@ -737,7 +737,7 @@ async fn load_root_event_ids(
     tenant_id: Uuid,
 ) -> TestResult<BTreeSet<Uuid>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT payload FROM sys_events WHERE event_type = $1 ORDER BY created_at ASC",
             vec![ROOT_EVENT_TYPE.to_string().into()],
@@ -759,7 +759,7 @@ async fn load_typed_causation_ids(
     tenant_id: Uuid,
 ) -> TestResult<BTreeSet<Uuid>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT payload FROM sys_events WHERE event_type = $1 ORDER BY created_at ASC",
             vec![TYPED_EVENT_TYPE.to_string().into()],
@@ -811,7 +811,7 @@ async fn assert_search_storage_present(db: &DatabaseConnection) -> TestResult<()
 
 async fn table_exists(db: &DatabaseConnection, table: &str) -> TestResult<bool> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT to_regclass($1::text)::TEXT AS value",
             vec![table.to_string().into()],
@@ -855,7 +855,7 @@ async fn load_forum_documents(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> TestResult<Vec<SearchDocumentRow>> {
-    db.query_all(Statement::from_sql_and_values(
+    db.query_all_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         SELECT document_id, entity_type, status, title, body
@@ -928,7 +928,7 @@ async fn load_checkpoint(
     tenant_id: Uuid,
 ) -> TestResult<Option<CheckpointSnapshot>> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT owner_revision, event_id, outcome
@@ -955,7 +955,7 @@ async fn load_checkpoint_audit(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> TestResult<Vec<CheckpointAuditRow>> {
-    db.query_all(Statement::from_sql_and_values(
+    db.query_all_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         SELECT sequence, owner_revision, event_id, outcome, observed_forum_documents
@@ -982,7 +982,7 @@ async fn load_checkpoint_audit(
 
 async fn scalar_i64(db: &DatabaseConnection, statement: Statement) -> TestResult<i64> {
     let row = db
-        .query_one(statement)
+        .query_one_raw(statement)
         .await?
         .ok_or_else(|| test_error("scalar query returned no row"))?;
     Ok(row.try_get("", "value")?)

@@ -257,7 +257,7 @@ async fn load_cursor(
     stream_kind: &str,
 ) -> Result<i64, ProductIndexRefreshRelayError> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT last_sequence_no
@@ -286,7 +286,7 @@ async fn lock_cursor(
     stream_kind: &str,
 ) -> Result<i64, ProductIndexRefreshRelayError> {
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             INSERT INTO product_index_refresh_relay_cursors (
@@ -303,7 +303,7 @@ async fn lock_cursor(
         .map_err(|_| ProductIndexRefreshRelayError::Unavailable)?;
 
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT last_sequence_no
@@ -336,7 +336,7 @@ async fn advance_cursor(
         return Err(ProductIndexRefreshRelayError::Unavailable);
     }
     let result = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             UPDATE product_index_refresh_relay_cursors

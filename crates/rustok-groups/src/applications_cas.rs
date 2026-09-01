@@ -479,7 +479,8 @@ async fn find_candidate_application_for_update(
     let model = match transaction.get_database_backend() {
         DbBackend::Sqlite => query().one(transaction).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
-    };
+        _ => unreachable!("unsupported SeaORM database backend"),
+};
     Ok(model)
 }
 

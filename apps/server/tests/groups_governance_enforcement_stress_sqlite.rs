@@ -104,7 +104,7 @@ fn write_context(tenant_id: Uuid, owner_id: Uuid, operation: &str) -> PortContex
 
 async fn group_version(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> i64 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT version FROM groups WHERE tenant_id = '{tenant_id}' AND id = '{group_id}'"
@@ -119,7 +119,7 @@ async fn group_version(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid)
 
 async fn group_member_count(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> i64 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT member_count FROM groups WHERE tenant_id = '{tenant_id}' AND id = '{group_id}'"
@@ -139,7 +139,7 @@ async fn membership_revision(
     user_id: Uuid,
 ) -> i64 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT revision FROM group_memberships WHERE tenant_id = '{tenant_id}' AND group_id = '{group_id}' AND user_id = '{user_id}'"
@@ -159,7 +159,7 @@ async fn membership_role(
     user_id: Uuid,
 ) -> String {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT role FROM group_memberships WHERE tenant_id = '{tenant_id}' AND group_id = '{group_id}' AND user_id = '{user_id}'"
@@ -179,7 +179,7 @@ async fn active_enforcement_count(
     user_id: Uuid,
 ) -> i64 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT COUNT(*) AS count FROM group_membership_enforcements WHERE tenant_id = '{tenant_id}' AND group_id = '{group_id}' AND user_id = '{user_id}' AND revoked_at IS NULL"

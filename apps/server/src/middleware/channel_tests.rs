@@ -23,7 +23,7 @@ use uuid::Uuid;
 
 async fn setup_channel_db() -> DatabaseConnection {
     let db = setup_test_db().await;
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         db.get_database_backend(),
         r#"
         CREATE TABLE tenants (
@@ -41,7 +41,7 @@ async fn setup_channel_db() -> DatabaseConnection {
     ))
     .await
     .expect("tenants table should exist for channel foreign keys");
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         db.get_database_backend(),
         r#"
         CREATE TABLE o_auth_apps (
@@ -71,7 +71,7 @@ async fn setup_channel_db() -> DatabaseConnection {
 }
 
 async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO tenants (id, name, slug, settings, default_locale, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         [
@@ -451,7 +451,7 @@ async fn select_channel_skips_inactive_explicit_slug_and_uses_host_fallback() {
     let service = ChannelService::new(db.clone());
 
     let inactive_channel_id = create_channel(&service, tenant_id, "inactive").await;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         db.get_database_backend(),
         "UPDATE channels SET is_active = ? WHERE id = ?",
         [false.into(), inactive_channel_id.into()],

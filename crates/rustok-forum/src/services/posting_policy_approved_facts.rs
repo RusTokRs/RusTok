@@ -73,7 +73,7 @@ impl ForumPostingPolicyOwnerFactPort for ForumApprovedPostsFactPort {
         )?;
         let row = self
             .db
-            .query_one(statement)
+            .query_one_raw(statement)
             .await
             .map_err(|_| {
                 PortError::unavailable(
@@ -271,7 +271,7 @@ mod tests {
                 deleted_at TEXT\
             )",
         ] {
-            db.execute(Statement::from_string(
+            db.execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 statement.to_string(),
             ))
@@ -290,7 +290,7 @@ mod tests {
         deleted: bool,
     ) {
         let deleted_at = if deleted { "CURRENT_TIMESTAMP" } else { "NULL" };
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             format!(
                 "INSERT INTO forum_topics (id, tenant_id, author_id, status, deleted_at) \
@@ -316,7 +316,7 @@ mod tests {
         deleted: bool,
     ) {
         let deleted_at = if deleted { "CURRENT_TIMESTAMP" } else { "NULL" };
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             format!(
                 "INSERT INTO forum_replies \

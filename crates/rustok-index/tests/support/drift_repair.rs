@@ -85,7 +85,7 @@ impl TestDatabase {
         let db = scoped_connection(&database_url, &schema_name).await?;
         db.execute_unprepared("CREATE TABLE tenants (id UUID NOT NULL PRIMARY KEY)")
             .await?;
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "INSERT INTO tenants (id) VALUES ($1)",
             vec![tenant_id.into()],
@@ -701,7 +701,7 @@ pub async fn recovery_service(
 pub async fn payload_digest(database: &TestDatabase, command_id: Uuid) -> TestResult<String> {
     let db = database.connection().await?;
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT payload_digest FROM index_consistency_finding_repair_commands WHERE tenant_id = $1 AND command_id = $2",
             vec![database.tenant_id.into(), command_id.into()],
@@ -714,7 +714,7 @@ pub async fn payload_digest(database: &TestDatabase, command_id: Uuid) -> TestRe
 pub async fn repair_command_state(database: &TestDatabase, command_id: Uuid) -> TestResult<String> {
     let db = database.connection().await?;
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT state FROM index_consistency_finding_repair_commands WHERE tenant_id = $1 AND command_id = $2",
             vec![database.tenant_id.into(), command_id.into()],
@@ -752,7 +752,7 @@ pub async fn inbox_state(
 ) -> TestResult<Option<String>> {
     let db = database.connection().await?;
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT state FROM index_inbox WHERE tenant_id = $1 AND source_name = $2 AND delivery_id = $3",
             vec![
@@ -774,7 +774,7 @@ pub async fn entity_state(
 ) -> TestResult<Option<(u64, bool)>> {
     let db = database.connection().await?;
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT CAST(source_version AS TEXT) AS source_version_text, is_deleted FROM index_entities WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4 AND entity_id = $5 AND locale_key = ''",
             vec![
@@ -837,7 +837,7 @@ pub async fn replace_materialized_link_target(
 ) -> TestResult<()> {
     let db = database.connection().await?;
     let updated = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE index_links SET target_module = $9, target_entity = $10, target_schema_version = $11, target_entity_id = $12, target_locale_key = '' WHERE tenant_id = $1 AND source_module = $2 AND source_entity = $3 AND source_schema_version = $4 AND source_entity_id = $5 AND source_locale_key = '' AND source_version = $6 AND link_name = $7 AND ordinal = $8",
             vec![
@@ -865,7 +865,7 @@ pub async fn replace_materialized_link_target(
 pub async fn table_exists(database: &TestDatabase, table: &str) -> TestResult<bool> {
     let db = database.connection().await?;
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT to_regclass($1) IS NOT NULL AS value",
             vec![table.to_owned().into()],
@@ -882,7 +882,7 @@ async fn count_value(
 ) -> TestResult<i64> {
     let db = database.connection().await?;
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             values,

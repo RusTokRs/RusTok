@@ -49,7 +49,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         vec![user_id.into(), tenant_id.into()],
@@ -120,7 +120,7 @@ async fn insert_alias(
     target_topic_id: Option<Uuid>,
 ) -> TestResult<()> {
     let short_id = ForumTopicRouteService::short_identity(topic_id);
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO forum_topic_route_aliases (\
             tenant_id, alias_id, topic_id, locale, short_id, slug, disposition, \

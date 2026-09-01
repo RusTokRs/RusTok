@@ -217,7 +217,7 @@ async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
 async fn ensure_sqlite_legacy_relations_valid(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let row = manager
         .get_connection()
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             r#"
 SELECT COUNT(*) AS invalid_count

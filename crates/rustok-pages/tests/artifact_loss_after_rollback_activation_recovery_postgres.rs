@@ -240,7 +240,7 @@ async fn rollback_activated_recovery_rejects_noncanonical_rollback_anchor_hash_o
         .ok_or_else(|| std::io::Error::other("rollback anchor receipt is missing"))?;
     let tampered_hash = different_sha256(&rollback.request_hash);
     let changed = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE page_rollback_operations SET request_hash = $1 WHERE id = $2",
             vec![tampered_hash.into(), rollback.id.into()],
@@ -343,7 +343,7 @@ async fn rollback_activated_recovery_rejects_unexplained_version_drift_on_postgr
 
     let drifted_version = fixture.rollback_version + 1;
     let changed = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE pages SET version = $1 WHERE id = $2 AND tenant_id = $3",
             vec![
@@ -724,7 +724,7 @@ async fn enable_pages_module(db: &DatabaseConnection, tenant_id: Uuid) -> TestRe
         )",
     )
     .await?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at) \
          VALUES ($1, $2, 'pages', TRUE, '{}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",

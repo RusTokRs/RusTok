@@ -41,26 +41,18 @@ impl TestDatabase {
 
         let backend = DbBackend::Sqlite;
         let schema = Schema::new(backend);
-        db.execute(
-            backend.build(
-                &schema
-                    .create_table_from_entity(checkout_operation::Entity)
-                    .if_not_exists()
-                    .to_owned(),
-            ),
-        )
-        .await
-        .unwrap();
-        db.execute(
-            backend.build(
-                &schema
-                    .create_table_from_entity(checkout_marketplace_economics_checkpoint::Entity)
-                    .if_not_exists()
-                    .to_owned(),
-            ),
-        )
-        .await
-        .unwrap();
+        let mut checkout_operations_table =
+            schema.create_table_from_entity(checkout_operation::Entity);
+        checkout_operations_table.if_not_exists();
+        db.execute_raw(backend.build(&checkout_operations_table))
+            .await
+            .unwrap();
+        let mut checkpoints_table =
+            schema.create_table_from_entity(checkout_marketplace_economics_checkpoint::Entity);
+        checkpoints_table.if_not_exists();
+        db.execute_raw(backend.build(&checkpoints_table))
+            .await
+            .unwrap();
 
         Self { db, path }
     }

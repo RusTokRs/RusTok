@@ -232,7 +232,7 @@ async fn seed_channel_binding(
     channel_slug: &str,
     is_enabled: bool,
 ) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, status, settings, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -250,7 +250,7 @@ async fn seed_channel_binding(
     .await
     .expect("channel should be inserted");
 
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO channel_module_bindings (id, channel_id, module_slug, is_enabled, settings, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -299,7 +299,7 @@ async fn seed_active_price_list_with_window(
     ends_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Uuid {
     let price_list_id = Uuid::new_v4();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO price_lists (id, tenant_id, type, status, channel_id, channel_slug, rule_kind, adjustment_percent, starts_at, ends_at, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -323,7 +323,7 @@ async fn seed_active_price_list_with_window(
     .await
     .expect("active price list should be inserted");
 
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO price_list_translations (id, price_list_id, locale, name, description)
          VALUES (?, ?, ?, ?, ?)",
@@ -346,7 +346,7 @@ async fn set_stock_location_channel_visibility(
     tenant_id: Uuid,
     allowed_channel_slugs: &[&str],
 ) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "UPDATE stock_locations SET metadata = ? WHERE tenant_id = ?",
         vec![
@@ -1468,7 +1468,7 @@ fn storefront_discovery_query(tenant_id: Uuid, cart_id: Uuid) -> String {
 }
 
 async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO tenants (id, name, slug, domain, settings, default_locale, is_active, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -1489,7 +1489,7 @@ async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {
         ("en", "English", "English", true),
         ("de", "German", "Deutsch", false),
     ] {
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO tenant_locales (id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
@@ -1509,7 +1509,7 @@ async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {
     }
 
     for module_slug in ["commerce", "product"] {
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",

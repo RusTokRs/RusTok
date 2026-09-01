@@ -113,7 +113,7 @@ async fn connect(database_url: &str) -> TestResult<DatabaseConnection> {
 
 async fn ensure_category_hierarchy_schema(db: &DatabaseConnection) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT to_regclass('taxonomy_category_hierarchy') IS NOT NULL AS present".to_string(),
         ))

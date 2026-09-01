@@ -1084,7 +1084,7 @@ mod tests {
             "ai_structured_results",
         ] {
             let count = database
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DbBackend::Sqlite,
                     "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = ?"
                         .to_string(),
@@ -1112,7 +1112,7 @@ mod tests {
 
     async fn table_columns(database: &sea_orm::DatabaseConnection, table: &str) -> Vec<String> {
         database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 format!("PRAGMA table_info({table})"),
             ))

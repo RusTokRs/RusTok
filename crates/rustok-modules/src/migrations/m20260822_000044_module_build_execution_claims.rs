@@ -36,11 +36,11 @@ impl MigrationTrait for Migration {
                     "module build execution claim migration does not support database backend {backend:?}"
                 )));
             }
-        };
+};
 
         for statement in statements {
             connection
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     manager.get_database_backend(),
                     (*statement).to_string(),
                 ))
@@ -53,7 +53,7 @@ impl MigrationTrait for Migration {
         let connection = manager.get_connection();
         let backend = manager.get_database_backend();
         if connection
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 backend,
                 "SELECT 1 FROM module_build_requests WHERE status = 'running' LIMIT 1".to_string(),
             ))
@@ -91,7 +91,7 @@ impl MigrationTrait for Migration {
 
         for statement in statements {
             connection
-                .execute(Statement::from_string(backend, (*statement).to_string()))
+                .execute_raw(Statement::from_string(backend, (*statement).to_string()))
                 .await?;
         }
         Ok(())
@@ -115,7 +115,7 @@ mod tests {
             .await
             .expect("historical build-request schema");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "INSERT INTO module_build_requests (request_id, tenant_id, project_id, idempotency_key, request_hash, request, attempt, status, created_at) VALUES ('request', 'tenant', 'project', 'idempotency', 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '{}', 1, 'queued', CURRENT_TIMESTAMP)".to_string(),
             ))
@@ -129,7 +129,7 @@ mod tests {
 
         assert!(
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     "UPDATE module_build_requests SET status = 'running' WHERE request_id = 'request'"
                         .to_string(),

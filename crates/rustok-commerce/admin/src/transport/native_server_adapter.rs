@@ -752,7 +752,7 @@ mod tests {
     async fn seed_tenant_context(db: &sea_orm::DatabaseConnection, tenant: &TenantContext) {
         use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO tenants (id, name, slug, domain, settings, default_locale, is_active)
              VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -769,7 +769,7 @@ mod tests {
         .await
         .expect("insert tenant");
 
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO tenant_locales (id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale)
              VALUES (?, ?, ?, ?, ?, 1, 1, NULL)",

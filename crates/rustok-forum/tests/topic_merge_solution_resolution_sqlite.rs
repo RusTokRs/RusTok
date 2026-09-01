@@ -59,7 +59,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         vec![user_id.into(), tenant_id.into()],
@@ -368,7 +368,7 @@ async fn manager_can_select_source_solution_and_replay_exact_audit() -> TestResu
 
     let update_result = fixture
         .db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE forum_topic_merge_solution_resolutions SET selected_solution_reply_id = ? WHERE tenant_id = ? AND operation_id = ?",
             vec![
@@ -381,7 +381,7 @@ async fn manager_can_select_source_solution_and_replay_exact_audit() -> TestResu
     assert!(update_result.is_err());
     let delete_result = fixture
         .db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "DELETE FROM forum_topic_merge_solution_resolutions WHERE tenant_id = ? AND operation_id = ?",
             vec![fixture.tenant_id.into(), operation_id.into()],
@@ -477,7 +477,7 @@ async fn solution_snapshot(
     topic_id: Uuid,
 ) -> TestResult<Option<SolutionSnapshot>> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT reply_id, marked_by_user_id, marked_at FROM forum_solutions WHERE tenant_id = ? AND topic_id = ?",
             vec![tenant_id.into(), topic_id.into()],
@@ -499,7 +499,7 @@ async fn user_solution_count(
     user_id: Uuid,
 ) -> TestResult<i32> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT solution_count FROM forum_user_stats WHERE tenant_id = ? AND user_id = ?",
             vec![tenant_id.into(), user_id.into()],
@@ -515,7 +515,7 @@ async fn reply_topic_id(
     reply_id: Uuid,
 ) -> TestResult<Uuid> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT topic_id FROM forum_replies WHERE tenant_id = ? AND id = ?",
             vec![tenant_id.into(), reply_id.into()],
@@ -537,7 +537,7 @@ async fn assert_merge_event_and_resolution_audit(
     rejected_solution_author_id: Option<Uuid>,
 ) -> TestResult<()> {
     let event = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT schema_version, actor_id, payload FROM forum_domain_events WHERE tenant_id = ? AND event_id = ?",
             vec![tenant_id.into(), merge.operation_id.into()],
@@ -567,7 +567,7 @@ async fn assert_merge_event_and_resolution_audit(
     assert!(payload.get("solution_resolution").is_none());
 
     let audit = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT source_solution_reply_id, target_solution_reply_id, selected_solution_reply_id, rejected_solution_reply_id, rejected_solution_author_id, resolved_at FROM forum_topic_merge_solution_resolutions WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), merge.operation_id.into()],
@@ -635,6 +635,6 @@ async fn resolution_audit_count(db: &DatabaseConnection, tenant_id: Uuid) -> Tes
 }
 
 async fn scalar_i64(db: &DatabaseConnection, statement: Statement) -> TestResult<i64> {
-    let row: QueryResult = db.query_one(statement).await?.ok_or("scalar row missing")?;
+    let row: QueryResult = db.query_one_raw(statement).await?.ok_or("scalar row missing")?;
     Ok(row.try_get("", "value")?)
 }

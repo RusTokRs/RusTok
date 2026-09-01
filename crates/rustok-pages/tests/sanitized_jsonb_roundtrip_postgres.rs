@@ -56,7 +56,7 @@ async fn sanitized_project_hash_survives_postgres_jsonb_roundtrip() -> TestResul
     });
 
     let before = sanitize_static_landing_project(&source)?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO pages_sanitized_jsonb_roundtrip (payload) VALUES ($1)",
         vec![before.project_data().clone().into()],
@@ -64,7 +64,7 @@ async fn sanitized_project_hash_survives_postgres_jsonb_roundtrip() -> TestResul
     .await?;
 
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT payload FROM pages_sanitized_jsonb_roundtrip".to_string(),
         ))

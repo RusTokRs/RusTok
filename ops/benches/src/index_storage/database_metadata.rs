@@ -33,7 +33,7 @@ pub struct DatabaseMetadata {
 
 pub(crate) async fn read_database_metadata(db: &DatabaseConnection) -> Result<DatabaseMetadata> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             DATABASE_METADATA_SQL.to_owned(),
         ))

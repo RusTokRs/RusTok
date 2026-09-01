@@ -550,7 +550,7 @@ async fn insert_legacy_root(
     scope_key: &str,
 ) -> TestResult<()> {
     envelope.validate_registered_schema()?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         INSERT INTO search_projection_inbox (
@@ -630,7 +630,7 @@ fn ensure_identity_conflict(error: &ForumSearchContractIngressError) -> TestResu
 
 async fn load_snapshot(db: &DatabaseConnection, event_id: Uuid) -> TestResult<InboxSnapshot> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT event_id, tenant_id, source_module, scope_key, event_type,
@@ -655,7 +655,7 @@ async fn load_snapshot(db: &DatabaseConnection, event_id: Uuid) -> TestResult<In
 
 async fn count_event_rows(db: &DatabaseConnection, event_id: Uuid) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT COUNT(*)::BIGINT AS value FROM search_projection_inbox WHERE event_id = $1",
             vec![event_id.into()],

@@ -96,7 +96,7 @@ impl MigrationTrait for Migration {
         for statement in statements {
             manager
                 .get_connection()
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     manager.get_database_backend(),
                     (*statement).to_string(),
                 ))
@@ -114,7 +114,7 @@ impl MigrationTrait for Migration {
         ] {
             manager
                 .get_connection()
-                .execute(Statement::from_string(backend, statement.to_string()))
+                .execute_raw(Statement::from_string(backend, statement.to_string()))
                 .await?;
         }
         Ok(())
@@ -137,7 +137,7 @@ mod tests {
             "CREATE TABLE registry_module_releases (id TEXT PRIMARY KEY)",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -151,7 +151,7 @@ mod tests {
             .await
             .expect("external prebuilt staging migration");
         let fields = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "PRAGMA table_info(registry_publish_external_staging)".to_string(),
             ))

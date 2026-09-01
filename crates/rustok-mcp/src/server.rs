@@ -4,7 +4,10 @@ use std::sync::Arc;
 use anyhow::Result;
 use rmcp::{
     ServerHandler, ServiceExt,
-    model::{CallToolRequestParams, CallToolResult, Implementation, ListToolsResult, ServerInfo},
+    model::{
+        CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, ListToolsResult,
+        ServerInfo,
+    },
     service::{RequestContext, RoleServer},
     transport::stdio,
 };
@@ -338,6 +341,12 @@ impl RusToKMcpServer {
         })
     }
 
+    fn success_response(content: String) -> CallToolResponse {
+        CallToolResponse::Complete(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(content),
+        ]))
+    }
+
     fn access_context_ref(&self) -> Option<&McpAccessContext> {
         self.access_context.as_deref()
     }
@@ -390,7 +399,7 @@ impl ServerHandler for RusToKMcpServer {
         &self,
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, rmcp::ErrorData> {
+    ) -> Result<CallToolResponse, rmcp::ErrorData> {
         tracing::info!(tool = %request.name, "MCP tool call");
 
         if !self.tool_enabled_by_legacy_config(request.name.as_ref()) {
@@ -403,9 +412,7 @@ impl ServerHandler for RusToKMcpServer {
                 "tool_disabled",
                 "Tool is disabled by configuration",
             ))?;
-            return Ok(CallToolResult::success(vec![
-                rmcp::model::ContentBlock::text(content),
-            ]));
+            return Ok(Self::success_response(content));
         }
 
         if request.name.as_ref() != TOOL_MCP_HEALTH {
@@ -429,9 +436,7 @@ impl ServerHandler for RusToKMcpServer {
                             .clone()
                             .unwrap_or_else(|| "MCP access policy denied this tool".to_string()),
                     ))?;
-                    return Ok(CallToolResult::success(vec![
-                        rmcp::model::ContentBlock::text(content),
-                    ]));
+                    return Ok(Self::success_response(content));
                 }
             }
         }
@@ -442,9 +447,7 @@ impl ServerHandler for RusToKMcpServer {
             TOOL_LIST_MODULES => {
                 let result = self.list_modules_internal().await;
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![
-                    rmcp::model::ContentBlock::text(content),
-                ]))
+                Ok(Self::success_response(content))
             }
             TOOL_QUERY_MODULES => {
                 let args = request
@@ -456,9 +459,7 @@ impl ServerHandler for RusToKMcpServer {
                     })?;
                 let result = self.list_modules_filtered_internal(req).await;
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![
-                    rmcp::model::ContentBlock::text(content),
-                ]))
+                Ok(Self::success_response(content))
             }
             TOOL_MODULE_EXISTS => {
                 let args = request
@@ -470,9 +471,7 @@ impl ServerHandler for RusToKMcpServer {
                     })?;
                 let result = self.module_exists_internal(&req.slug).await;
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![
-                    rmcp::model::ContentBlock::text(content),
-                ]))
+                Ok(Self::success_response(content))
             }
             TOOL_MODULE_DETAILS => {
                 let args = request
@@ -484,45 +483,33 @@ impl ServerHandler for RusToKMcpServer {
                     })?;
                 let result = self.module_details_internal(&req.slug).await;
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![
-                    rmcp::model::ContentBlock::text(content),
-                ]))
+                Ok(Self::success_response(content))
             }
             TOOL_CONTENT_MODULE => {
                 let result = self.module_details_by_slug_internal(MODULE_CONTENT);
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![
-                    rmcp::model::ContentBlock::text(content),
-                ]))
+                Ok(Self::success_response(content))
             }
             TOOL_BLOG_MODULE => {
                 let result = self.module_details_by_slug_internal(MODULE_BLOG);
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![
-                    rmcp::model::ContentBlock::text(content),
-                ]))
+                Ok(Self::success_response(content))
             }
             TOOL_FORUM_MODULE => {
                 let result = self.module_details_by_slug_internal(MODULE_FORUM);
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![
-                    rmcp::model::ContentBlock::text(content),
-                ]))
+                Ok(Self::success_response(content))
             }
             TOOL_PAGES_MODULE => {
                 let result = self.module_details_by_slug_internal(MODULE_PAGES);
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![
-                    rmcp::model::ContentBlock::text(content),
-                ]))
+                Ok(Self::success_response(content))
             }
             TOOL_MCP_HEALTH => {
                 let tool_count = self.available_tool_names().len();
                 let result = self.health_response(tool_count);
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![
-                    rmcp::model::ContentBlock::text(content),
-                ]))
+                Ok(Self::success_response(content))
             }
             TOOL_MCP_WHOAMI => {
                 let result = self
@@ -531,9 +518,7 @@ impl ServerHandler for RusToKMcpServer {
                     .map(|access_context| access_context.whoami())
                     .unwrap_or_else(McpWhoAmIResponse::anonymous);
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![
-                    rmcp::model::ContentBlock::text(content),
-                ]))
+                Ok(Self::success_response(content))
             }
 
             // ── Alloy tools ──────────────────────────────────────────────────────────
@@ -545,9 +530,7 @@ impl ServerHandler for RusToKMcpServer {
                             "not_configured",
                             "Alloy scaffold tools are not configured in this MCP server",
                         ))?;
-                        return Ok(CallToolResult::success(vec![
-                            rmcp::model::ContentBlock::text(content),
-                        ]));
+                        return Ok(Self::success_response(content));
                     }
                 };
 
@@ -568,9 +551,7 @@ impl ServerHandler for RusToKMcpServer {
                             Ok(v) => McpToolResponse::success(v),
                             Err(e) => McpToolResponse::error("alloy_error", e),
                         })?;
-                        Ok(CallToolResult::success(vec![
-                            rmcp::model::ContentBlock::text(content),
-                        ]))
+                        Ok(Self::success_response(content))
                     }
                     TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD => {
                         let args = require_args(request.arguments)?;
@@ -588,9 +569,7 @@ impl ServerHandler for RusToKMcpServer {
                             Ok(v) => McpToolResponse::success(v),
                             Err(e) => McpToolResponse::error("alloy_error", e),
                         })?;
-                        Ok(CallToolResult::success(vec![
-                            rmcp::model::ContentBlock::text(content),
-                        ]))
+                        Ok(Self::success_response(content))
                     }
                     TOOL_ALLOY_APPLY_MODULE_SCAFFOLD => {
                         let args = require_args(request.arguments)?;
@@ -608,23 +587,17 @@ impl ServerHandler for RusToKMcpServer {
                             Ok(v) => McpToolResponse::success(v),
                             Err(e) => McpToolResponse::error("alloy_error", e),
                         })?;
-                        Ok(CallToolResult::success(vec![
-                            rmcp::model::ContentBlock::text(content),
-                        ]))
+                        Ok(Self::success_response(content))
                     }
                     TOOL_ALLOY_LIST_ENTITY_TYPES => {
                         let result = alloy_list_entity_types();
                         let content = Self::serialize_response(McpToolResponse::success(result))?;
-                        Ok(CallToolResult::success(vec![
-                            rmcp::model::ContentBlock::text(content),
-                        ]))
+                        Ok(Self::success_response(content))
                     }
                     TOOL_ALLOY_SCRIPT_HELPERS => {
                         let result = alloy_script_helpers();
                         let content = Self::serialize_response(McpToolResponse::success(result))?;
-                        Ok(CallToolResult::success(vec![
-                            rmcp::model::ContentBlock::text(content),
-                        ]))
+                        Ok(Self::success_response(content))
                     }
                     _ => unreachable!("ALL_ALLOY_TOOLS exhausted"),
                 }
@@ -770,6 +743,9 @@ impl ServerHandler for RusToKMcpServer {
             tools,
             next_cursor: None,
             meta: None,
+            cache_scope: None,
+            result_type: None,
+            ttl_ms: None,
         })
     }
 

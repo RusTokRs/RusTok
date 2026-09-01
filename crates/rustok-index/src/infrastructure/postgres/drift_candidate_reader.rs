@@ -230,7 +230,7 @@ async fn resolve_fence(
     }
 
     let snapshot = transaction
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT txid_current_snapshot()::text AS snapshot_token".to_owned(),
         ))
@@ -315,7 +315,7 @@ async fn load_stale_rows(
         ),
     };
     let rows = transaction
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             values,
@@ -373,7 +373,7 @@ async fn load_orphan_rows(
         ),
     };
     let rows = transaction
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             values,

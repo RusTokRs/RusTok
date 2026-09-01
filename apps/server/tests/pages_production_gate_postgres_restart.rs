@@ -423,7 +423,7 @@ async fn assert_old_and_new_values(
 }
 
 async fn insert_page(db: &DatabaseConnection, tenant_id: Uuid, page_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
 INSERT INTO pages (
@@ -450,7 +450,7 @@ async fn persist_publish_receipt_and_event(
 ) -> TestResult<Uuid> {
     let txn = db.begin().await?;
     let updated = txn
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE pages SET status = 'published', published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, version = 2 WHERE tenant_id = $1 AND id = $2 AND version = 1",
             vec![tenant_id.into(), page_id.into()],
@@ -468,7 +468,7 @@ async fn persist_publish_receipt_and_event(
             },
         )
         .await?;
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
 INSERT INTO page_publish_operations (
@@ -505,7 +505,7 @@ async fn persist_rollback_receipt_and_event(
 ) -> TestResult<Uuid> {
     let txn = db.begin().await?;
     let updated = txn
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE pages SET updated_at = CURRENT_TIMESTAMP, version = 3 WHERE tenant_id = $1 AND id = $2 AND version = 2 AND status = 'published'",
             vec![tenant_id.into(), page_id.into()],
@@ -523,7 +523,7 @@ async fn persist_rollback_receipt_and_event(
             },
         )
         .await?;
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
 INSERT INTO page_rollback_operations (
@@ -624,7 +624,7 @@ async fn read_receipt_version(
         _ => return Err(std::io::Error::other("unsupported receipt table").into()),
     };
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             vec![operation_id.into()],
@@ -640,7 +640,7 @@ async fn read_page_version(
     page_id: Uuid,
 ) -> TestResult<i32> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT version FROM pages WHERE tenant_id = $1 AND id = $2",
             vec![tenant_id.into(), page_id.into()],

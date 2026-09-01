@@ -386,7 +386,7 @@ async fn insert_bootstrap_preparation(
         .map_err(|error| ModuleStaticDistributionReleaseError::Store(error.to_string()))?;
     let backend = transaction.get_database_backend();
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_builds
@@ -468,7 +468,7 @@ async fn insert_bootstrap_item(
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = transaction.get_database_backend();
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_items
@@ -536,7 +536,7 @@ async fn load_bootstrap_import_operation<C: ConnectionTrait>(
 > {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT operation_kind, request_digest, actor_id, trace_id, correlation_id
@@ -605,7 +605,7 @@ async fn reserve_bootstrap_import_operation(
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_release_idempotency_keys
@@ -642,7 +642,7 @@ fn revision_value(value: u64) -> Result<sea_orm::Value, ModuleStaticDistribution
 
 fn datetime_value(value: DateTime<Utc>, backend: DbBackend) -> sea_orm::Value {
     match backend {
-        DbBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(Box::new(value))),
+        DbBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(value)),
         _ => value.to_rfc3339().into(),
     }
 }

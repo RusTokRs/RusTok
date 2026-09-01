@@ -232,10 +232,10 @@ async fn compare_and_store_on_postgres(
     let execution = match expected.as_ref() {
         Some(expected) => {
             transaction
-                .execute(update_statement(expected, &candidate))
+                .execute_raw(update_statement(expected, &candidate))
                 .await
         }
-        None => transaction.execute(insert_statement(&candidate)).await,
+        None => transaction.execute_raw(insert_statement(&candidate)).await,
     };
 
     let rows_affected = match execution {
@@ -285,7 +285,7 @@ async fn read_current_record(
     database: &DatabaseConnection,
 ) -> std::result::Result<Option<StoredScheduleRecord>, sea_orm::DbErr> {
     let row = database
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "SELECT schema_version, source, generation, schedule_digest_hex \

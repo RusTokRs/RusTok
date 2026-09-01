@@ -146,7 +146,7 @@ pub(crate) async fn upsert_translation<C: ConnectionTrait>(
             .to_owned(),
         );
     connection
-        .execute(connection.get_database_backend().build(&insert))
+        .execute_raw(connection.get_database_backend().build(&insert))
         .await?;
 
     seller_translation::Entity::find()

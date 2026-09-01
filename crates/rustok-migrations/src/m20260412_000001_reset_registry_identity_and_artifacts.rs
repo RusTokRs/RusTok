@@ -322,7 +322,7 @@ async fn backfill_legacy_registry_identity_columns(
 async fn backfill_registry_module_owners(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             backend,
             "SELECT slug, owner_actor, bound_by FROM registry_module_owners".to_string(),
         ))
@@ -348,7 +348,7 @@ async fn backfill_registry_module_owners(db: &SchemaManagerConnection<'_>) -> Re
 async fn backfill_registry_publish_requests(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             backend,
             "SELECT id, slug, version, requested_by, publisher_identity, approved_by, rejected_by, changes_requested_by, held_by, artifact_path, artifact_url FROM registry_publish_requests".to_string(),
         ))
@@ -400,7 +400,7 @@ async fn backfill_registry_publish_requests(db: &SchemaManagerConnection<'_>) ->
 async fn backfill_registry_module_releases(db: &SchemaManagerConnection<'_>) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             backend,
             "SELECT id, request_id, slug, version, publisher, yanked_by, artifact_path, artifact_url FROM registry_module_releases".to_string(),
         ))
@@ -445,7 +445,7 @@ async fn backfill_registry_governance_events(
 ) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             backend,
             "SELECT id, actor, publisher FROM registry_governance_events".to_string(),
         ))
@@ -650,7 +650,7 @@ async fn select_rows(
     db: &SchemaManagerConnection<'_>,
     sql: &str,
 ) -> Result<Vec<sea_orm::QueryResult>, DbErr> {
-    db.query_all(Statement::from_string(
+    db.query_all_raw(Statement::from_string(
         db.get_database_backend(),
         sql.to_string(),
     ))
@@ -664,7 +664,7 @@ async fn execute_update(
 ) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let sql = placeholder_sql(backend, template);
-    db.execute(Statement::from_sql_and_values(backend, sql, values))
+    db.execute_raw(Statement::from_sql_and_values(backend, sql, values))
         .await?;
     Ok(())
 }
@@ -693,7 +693,7 @@ async fn drop_columns(
 ) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     for column in columns {
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             backend,
             format!("ALTER TABLE {table} DROP COLUMN {column}"),
         ))

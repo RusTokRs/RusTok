@@ -125,7 +125,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
         let claim_token = Uuid::new_v4();
         let transaction = self.database.begin().await.map_err(unavailable)?;
         let row = transaction
-            .query_one(claim_next_statement(claim_token, self.claim_ttl_seconds))
+            .query_one_raw(claim_next_statement(claim_token, self.claim_ttl_seconds))
             .await
             .map_err(unavailable)?;
         let Some(row) = row else {
@@ -152,7 +152,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
         validate_claim(claim)?;
         let transaction = self.database.begin().await.map_err(unavailable)?;
         let row = transaction
-            .query_one(read_for_publish_statement(claim.request_id))
+            .query_one_raw(read_for_publish_statement(claim.request_id))
             .await
             .map_err(unavailable)?;
         let Some(row) = row else {
@@ -193,7 +193,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
         };
 
         let updated = transaction
-            .execute(mark_published_statement(claim))
+            .execute_raw(mark_published_statement(claim))
             .await
             .map_err(unavailable)?
             .rows_affected();
@@ -229,7 +229,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
     > {
         let row = self
             .database
-            .query_one(read_claim_statement(claim_token))
+            .query_one_raw(read_claim_statement(claim_token))
             .await
             .map_err(unavailable)?
             .ok_or(CommentsTcpDelegationScheduleAuditHandoffError::Unavailable)?;
@@ -256,7 +256,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
     ) -> std::result::Result<Uuid, CommentsTcpDelegationScheduleAuditHandoffError> {
         let row = self
             .database
-            .query_one(read_publication_statement(request_id))
+            .query_one_raw(read_publication_statement(request_id))
             .await
             .map_err(unavailable)?
             .ok_or(CommentsTcpDelegationScheduleAuditHandoffError::Unavailable)?;

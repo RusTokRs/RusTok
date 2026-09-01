@@ -82,7 +82,7 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
                     .await
                     .map_err(classify_job_lease_failure)?;
                 let row = transaction
-                    .query_one(Statement::from_sql_and_values(
+                    .query_one_raw(Statement::from_sql_and_values(
                         backend,
                         select_checkpoint_sql(backend),
                         checkpoint_key_values(key, backend),
@@ -169,7 +169,7 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
                 values.push(checkpoint.last_delivery_id().map(str::to_owned).into());
 
                 transaction
-                    .execute(Statement::from_sql_and_values(
+                    .execute_raw(Statement::from_sql_and_values(
                         backend,
                         upsert_checkpoint_sql(backend),
                         values,
@@ -271,7 +271,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexReplayFailure
                 "checkpoint_backend_unsupported",
             ))
         }
-    }
+}
 }
 
 fn checkpoint_storage_failure(

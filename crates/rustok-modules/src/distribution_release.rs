@@ -619,7 +619,7 @@ async fn ensure_no_static_transition_in_progress(
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = transaction.get_database_backend();
     let row = transaction
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             backend,
             "SELECT rollout.status
              FROM module_static_distribution_rollout_state AS state
@@ -843,7 +843,7 @@ async fn lock_build_for_admission(
         ""
     };
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT status FROM module_static_distribution_builds
@@ -893,7 +893,7 @@ pub(crate) async fn insert_release(
         .map_err(|error| ModuleStaticDistributionReleaseError::Store(error.to_string()))?;
     let backend = transaction.get_database_backend();
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_releases
@@ -967,7 +967,7 @@ pub(crate) async fn insert_admission(
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = transaction.get_database_backend();
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_release_admissions
@@ -1015,7 +1015,7 @@ async fn supersede_release(
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_releases
@@ -1060,7 +1060,7 @@ pub(crate) async fn commit_admitted_release(
     }
     let backend = transaction.get_database_backend();
     let activated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_releases
@@ -1119,7 +1119,7 @@ pub(crate) async fn commit_recovery_release(
     supersede_release(transaction, from_release_id).await?;
     let backend = transaction.get_database_backend();
     let activated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_releases
@@ -1166,7 +1166,7 @@ pub(crate) async fn load_release_state<C: ConnectionTrait>(
         ""
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT revision, active_release_id
@@ -1211,7 +1211,7 @@ pub(crate) async fn advance_release_state_optional(
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_release_state
@@ -1250,7 +1250,7 @@ async fn validate_release_idempotency_key<C: ConnectionTrait>(
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT operation_kind, request_digest, actor_id, trace_id, correlation_id
@@ -1286,7 +1286,7 @@ async fn reserve_release_idempotency_key(
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_release_idempotency_keys
@@ -1315,7 +1315,7 @@ async fn reserve_release_idempotency_key(
         return Ok(());
     }
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT operation_kind, request_digest, actor_id, trace_id, correlation_id
@@ -1364,7 +1364,7 @@ async fn reserve_admission_operation(
     let backend = transaction.get_database_backend();
     reserve_release_idempotency_key(transaction, "admit", context, request_digest).await?;
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_admission_operations
@@ -1387,7 +1387,7 @@ async fn reserve_admission_operation(
         return Ok(None);
     }
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT request_digest, actor_id, distribution_release_id,
@@ -1417,7 +1417,7 @@ async fn load_admission_operation<C: ConnectionTrait>(
 {
     let backend = connection.get_database_backend();
     let Some(row) = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT request_digest, actor_id, distribution_release_id,
@@ -1449,7 +1449,7 @@ async fn complete_admission_operation(
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_admission_operations
@@ -1502,7 +1502,7 @@ async fn revoke_release(
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_releases
@@ -1539,7 +1539,7 @@ async fn reserve_revocation_operation(
     let backend = transaction.get_database_backend();
     reserve_release_idempotency_key(transaction, "revoke", context, request_digest).await?;
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_revocation_operations
@@ -1581,7 +1581,7 @@ async fn query_revocation_operation<C: ConnectionTrait>(
 {
     let backend = connection.get_database_backend();
     let Some(row) = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT request_digest, actor_id, distribution_release_id,
@@ -1627,7 +1627,7 @@ async fn complete_revocation_operation(
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_revocation_operations
@@ -1667,7 +1667,7 @@ pub(crate) async fn load_release_record<C: ConnectionTrait>(
         ""
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT release.distribution_release_id, release.distribution_build_id,
@@ -1777,15 +1777,15 @@ pub(crate) async fn load_release_record<C: ConnectionTrait>(
 
 fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> sea_orm::Value {
     match (backend, value) {
-        (DbBackend::Postgres, value) => sea_orm::Value::Uuid(value.map(Box::new)),
+        (DbBackend::Postgres, value) => sea_orm::Value::Uuid(value),
         (_, Some(value)) => value.to_string().into(),
         (_, None) => sea_orm::Value::String(None),
-    }
+}
 }
 
 fn datetime_value(value: chrono::DateTime<chrono::Utc>, backend: DbBackend) -> sea_orm::Value {
     match backend {
-        DbBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(Box::new(value))),
+        DbBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(value)),
         _ => value.to_rfc3339().into(),
     }
 }
@@ -1970,7 +1970,7 @@ mod tests {
             .await
             .expect("outbox migration");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "CREATE TABLE registry_module_releases (
                     id TEXT PRIMARY KEY,
@@ -2021,7 +2021,7 @@ mod tests {
         ));
 
         let receipt = database
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT operation_kind, actor_id, trace_id, correlation_id
                  FROM module_static_distribution_release_idempotency_keys

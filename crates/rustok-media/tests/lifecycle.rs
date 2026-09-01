@@ -86,7 +86,7 @@ async fn test_runtime() -> (
 
 async fn seed_tenant(database: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
     database
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO tenants (id) VALUES (?)",
             [tenant_id.into()],

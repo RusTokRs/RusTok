@@ -355,7 +355,7 @@ async fn lock_group(
     match transaction.get_database_backend() {
         DatabaseBackend::Sqlite => {
             transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
                     "UPDATE groups SET version = version WHERE tenant_id = ? AND id = ?",
                     vec![tenant_id.into(), group_id.into()],
@@ -375,6 +375,7 @@ async fn lock_group(
             .one(transaction)
             .await?
             .ok_or(GroupsError::NotFound),
+        _ => unreachable!("unsupported SeaORM database backend"),
     }
 }
 

@@ -28,6 +28,12 @@ impl MigrationTrait for Migration {
             DatabaseBackend::Postgres => install_postgres_monotonic_guard(manager).await?,
             DatabaseBackend::Sqlite => install_sqlite_monotonic_guard(manager).await?,
             DatabaseBackend::MySql => install_mysql_monotonic_guard(manager).await?,
+            _ => {
+                return Err(DbErr::Migration(
+                    "order checkout identity result migration does not support this database backend"
+                        .to_string(),
+                ));
+            }
         }
         Ok(())
     }
@@ -37,6 +43,12 @@ impl MigrationTrait for Migration {
             DatabaseBackend::Postgres => restore_postgres_immutable_guard(manager).await?,
             DatabaseBackend::Sqlite => restore_sqlite_immutable_guard(manager).await?,
             DatabaseBackend::MySql => restore_mysql_immutable_guard(manager).await?,
+            _ => {
+                return Err(DbErr::Migration(
+                    "order checkout identity result migration does not support this database backend"
+                        .to_string(),
+                ));
+            }
         }
 
         manager

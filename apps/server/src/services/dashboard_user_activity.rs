@@ -70,7 +70,7 @@ pub async fn load_user_stats_snapshot(
         }
     };
 
-    let Some(row) = db.query_one(statement).await? else {
+    let Some(row) = db.query_one_raw(statement).await? else {
         return Ok(DashboardUserStatsSnapshot::default());
     };
 

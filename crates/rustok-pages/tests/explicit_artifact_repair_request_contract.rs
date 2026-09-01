@@ -71,12 +71,12 @@ async fn setup_graphql_db(tenant_id: Uuid) -> TestResult<DatabaseConnection> {
         .min_connections(1)
         .sqlx_logging(false);
     let db = Database::connect(options).await?;
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE TABLE tenant_modules (tenant_id TEXT NOT NULL, module_slug TEXT NOT NULL, enabled INTEGER NOT NULL)".to_string(),
     ))
     .await?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO tenant_modules (tenant_id, module_slug, enabled) VALUES (?, ?, ?)",
         vec![tenant_id.into(), "pages".into(), true.into()],

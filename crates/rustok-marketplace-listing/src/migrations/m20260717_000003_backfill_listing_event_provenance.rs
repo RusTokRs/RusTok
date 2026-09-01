@@ -43,10 +43,10 @@ impl MigrationTrait for Migration {
                     "marketplace listing event provenance migration does not support {other:?}"
                 )));
             }
-        }
+}
 
         let rows = connection
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend,
                 "SELECT id, tenant_id, approval_status, status, approval_note, suspension_reason FROM marketplace_listings WHERE approval_note IS NOT NULL OR suspension_reason IS NOT NULL ORDER BY tenant_id, id".to_string(),
             ))
@@ -150,6 +150,6 @@ async fn insert_legacy_snapshot<C: ConnectionTrait>(
         ),
         _ => unreachable!(),
     };
-    connection.execute(statement).await?;
+    connection.execute_raw(statement).await?;
     Ok(())
 }

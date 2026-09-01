@@ -231,7 +231,7 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
 async fn reserved_command_id(database: &TestDatabase, finding_id: Uuid) -> TestResult<Uuid> {
     let db = database.connection().await?;
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT command_id FROM index_consistency_finding_repair_commands WHERE tenant_id = $1 AND finding_id = $2",
             vec![database.tenant_id.into(), finding_id.into()],
@@ -244,7 +244,7 @@ async fn reserved_command_id(database: &TestDatabase, finding_id: Uuid) -> TestR
 async fn force_complete_repair(database: &TestDatabase, command_id: Uuid) -> TestResult<u64> {
     let db = database.connection().await?;
     let updated = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE index_consistency_finding_repair_commands SET state = 'completed', outcome = 'repaired', owner_name = 'repair_evidence_owner', before_digest = $3, after_digest = $4, owner_receipt_digest = $5, completed_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND command_id = $2 AND state = 'prepared'",
             vec![
@@ -261,7 +261,7 @@ async fn force_complete_repair(database: &TestDatabase, command_id: Uuid) -> Tes
 
 async fn mutate_completed_command(database: &TestDatabase, command_id: Uuid) -> TestResult<()> {
     let db = database.connection().await?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "UPDATE index_consistency_finding_repair_commands SET reason = reason || '-changed' WHERE tenant_id = $1 AND command_id = $2",
         vec![database.tenant_id.into(), command_id.into()],

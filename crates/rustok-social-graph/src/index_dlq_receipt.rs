@@ -167,7 +167,7 @@ impl SocialGraphIndexDlqReceiptStore {
         ensure_supported_backend(backend)?;
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_receipt_sql(backend, false),
                 receipt_key_values(identity, backend),
@@ -246,7 +246,7 @@ impl SocialGraphIndexDlqReceiptStore {
             i64::from(projection_attempt_count).into(),
         ]);
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 insert_receipt_sql(backend),
                 insert_values,
@@ -255,7 +255,7 @@ impl SocialGraphIndexDlqReceiptStore {
             .map_err(storage_error)?;
 
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_receipt_sql(backend, true),
                 receipt_key_values(identity, backend),
@@ -293,7 +293,7 @@ impl SocialGraphIndexDlqReceiptStore {
         ];
         claim_values.extend(receipt_key_values(identity, backend));
         let claimed = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 claim_receipt_sql(backend),
                 claim_values,
@@ -305,7 +305,7 @@ impl SocialGraphIndexDlqReceiptStore {
         }
 
         let current = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_receipt_sql(backend, true),
                 receipt_key_values(identity, backend),
@@ -340,7 +340,7 @@ impl SocialGraphIndexDlqReceiptStore {
         let mut values = vec![uuid_value(publisher_id, backend)];
         values.extend(receipt_key_values(identity, backend));
         self.db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 release_claim_sql(backend),
                 values,
@@ -361,7 +361,7 @@ impl SocialGraphIndexDlqReceiptStore {
         values.extend(receipt_key_values(identity, backend));
         let updated = self
             .db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 mark_published_sql(backend),
                 values,
@@ -388,7 +388,7 @@ impl SocialGraphIndexDlqReceiptStore {
         ensure_supported_backend(backend)?;
         let updated = self
             .db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 mark_acknowledged_sql(backend),
                 receipt_key_values(identity, backend),
@@ -505,7 +505,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), SocialGraphIndexDl
         backend => Err(SocialGraphIndexDlqReceiptError::Storage(format!(
             "Social Graph Index DLQ receipts do not support {backend:?}"
         ))),
-    }
+}
 }
 
 fn storage_error(error: impl std::fmt::Display) -> SocialGraphIndexDlqReceiptError {

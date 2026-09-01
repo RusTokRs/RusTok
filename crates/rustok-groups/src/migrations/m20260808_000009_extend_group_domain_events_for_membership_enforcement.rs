@@ -32,7 +32,7 @@ async fn ensure_no_membership_events(manager: &SchemaManager<'_>) -> Result<(), 
     let backend = manager.get_database_backend();
     let row = manager
         .get_connection()
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             backend,
             "SELECT COUNT(*) AS event_count FROM group_domain_events WHERE aggregate_type = 'membership'"
                 .to_string(),

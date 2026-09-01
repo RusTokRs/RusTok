@@ -227,7 +227,7 @@ where
         "DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = 'forum' AND entity_type IN ('forum_category', 'forum_topic', 'forum_reply')",
         vec![tenant_id.into()],
     );
-    conn.execute(statement).await.map_err(Error::Database)?;
+    conn.execute_raw(statement).await.map_err(Error::Database)?;
     Ok(())
 }
 
@@ -249,7 +249,7 @@ where
             entity_id.into(),
         ],
     );
-    conn.execute(statement).await.map_err(Error::Database)?;
+    conn.execute_raw(statement).await.map_err(Error::Database)?;
     Ok(())
 }
 
@@ -294,7 +294,7 @@ where
             document.updated_at.into(),
         ],
     );
-    conn.execute(statement).await.map_err(Error::Database)?;
+    conn.execute_raw(statement).await.map_err(Error::Database)?;
     Ok(())
 }
 

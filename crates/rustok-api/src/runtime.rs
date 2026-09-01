@@ -28,7 +28,7 @@ pub async fn is_tenant_module_enabled(
         }
     };
 
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         backend,
         query,
         vec![tenant_id.into(), module_slug.into()],
@@ -58,13 +58,13 @@ pub async fn tenant_module_settings(
         sea_orm::DbBackend::Postgres => {
             "SELECT settings::text AS settings_json FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 AND enabled = true LIMIT 1"
         }
-        sea_orm::DbBackend::MySql => {
+        _ => {
             "SELECT CAST(settings AS CHAR) AS settings_json FROM tenant_modules WHERE tenant_id = ? AND module_slug = ? AND enabled = true LIMIT 1"
         }
     };
 
     let Some(row) = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             query,
             vec![tenant_id.into(), module_slug.into()],

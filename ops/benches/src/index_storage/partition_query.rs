@@ -438,7 +438,7 @@ async fn ensure_session_setting(
     expected: &str,
 ) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT current_setting($1) AS value",
             vec![setting.into()],
@@ -455,7 +455,7 @@ async fn ensure_session_setting(
 
 async fn ensure_unpartitioned_source(db: &DatabaseConnection, relation: &str) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             concat!(
                 "SELECT c.relkind::text AS relkind, c.relispartition, ",
@@ -491,7 +491,7 @@ async fn validate_shadow_relation_catalog(
     plan: &RelationPlan,
 ) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             concat!(
                 "SELECT c.relkind::text AS relkind, obj_description(c.oid, 'pg_class') AS comment ",
@@ -516,7 +516,7 @@ async fn validate_shadow_relation_catalog(
     );
 
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             concat!(
                 "SELECT child.relname, child.relispartition, ",
@@ -555,7 +555,7 @@ async fn validate_shadow_relation_catalog(
 }
 
 async fn acquire_query_lock(db: &DatabaseConnection, evidence_id: &str) -> Result<()> {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "SELECT pg_advisory_lock(hashtextextended($1, 0))",
         vec![format!("rustok-index-partition-query:{evidence_id}").into()],
@@ -567,7 +567,7 @@ async fn acquire_query_lock(db: &DatabaseConnection, evidence_id: &str) -> Resul
 
 async fn release_query_lock(db: &DatabaseConnection, evidence_id: &str) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked",
             vec![format!("rustok-index-partition-query:{evidence_id}").into()],
@@ -585,7 +585,7 @@ async fn load_entity_anchors<C: ConnectionTrait>(
 ) -> Result<Vec<EntityAnchor>> {
     let limit = i64::try_from(requested.max(1)).context("query run count exceeds i64")?;
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             concat!(
                 "SELECT tenant_id::text AS tenant_id, module_name, entity_name, schema_version, ",
@@ -616,7 +616,7 @@ async fn load_link_anchors<C: ConnectionTrait>(
 ) -> Result<Vec<LinkAnchor>> {
     let limit = i64::try_from(requested.max(1)).context("query run count exceeds i64")?;
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             concat!(
                 "SELECT tenant_id::text AS tenant_id, source_module, source_entity, ",
@@ -969,7 +969,7 @@ async fn result_digest<C: ConnectionTrait>(
 ) -> Result<(i64, String)> {
     let wrapped = format!("SELECT row_to_json(result)::text AS result_json FROM ({sql}) AS result");
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             wrapped,
             values.to_vec(),
@@ -1001,7 +1001,7 @@ async fn explain_sample<C: ConnectionTrait>(
         QuerySide::Shadow => &case.shadow_sql,
     };
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!("EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON) {sql}"),
             case.values.clone(),

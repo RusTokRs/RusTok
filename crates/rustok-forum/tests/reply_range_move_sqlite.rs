@@ -55,7 +55,7 @@ async fn execute(
     sql: &str,
     values: Vec<sea_orm::Value>,
 ) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         sql,
         values,
@@ -69,7 +69,7 @@ async fn row(
     sql: &str,
     values: Vec<sea_orm::Value>,
 ) -> TestResult<QueryResult> {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         sql,
         values,
@@ -509,7 +509,7 @@ async fn reply_range_move_is_atomic_idempotent_and_preserves_identity() -> TestR
         Err(ForumError::TopicReplyRangeMoveOperationConflict(id)) if id == operation_id
     ));
     assert!(
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE forum_reply_range_move_operations SET reason = ? WHERE tenant_id = ? AND operation_id = ?",
             vec!["tamper".into(), tenant_id.into(), operation_id.into()],
@@ -518,7 +518,7 @@ async fn reply_range_move_is_atomic_idempotent_and_preserves_identity() -> TestR
         .is_err()
     );
     assert!(
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "DELETE FROM forum_reply_range_move_items WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],

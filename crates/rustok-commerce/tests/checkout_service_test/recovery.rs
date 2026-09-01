@@ -217,7 +217,7 @@ async fn complete_checkout_recovers_stuck_checking_out_cart_when_paid_artifacts_
         .await
         .unwrap();
 
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "UPDATE carts SET status = ?, completed_at = NULL WHERE id = ? AND tenant_id = ?",
         vec!["checking_out".into(), cart.id.into(), tenant_id.into()],

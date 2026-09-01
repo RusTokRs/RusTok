@@ -171,7 +171,7 @@ fn extension_json(error: &async_graphql::ServerError, key: &str) -> Option<serde
 
 async fn group_snapshot(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> (String, i64) {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT owner_user_id, version FROM groups WHERE tenant_id = '{tenant_id}' AND id = '{group_id}'"
@@ -195,7 +195,7 @@ async fn membership_role(
     user_id: Uuid,
 ) -> String {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT role FROM group_memberships WHERE tenant_id = '{tenant_id}' AND group_id = '{group_id}' AND user_id = '{user_id}'"

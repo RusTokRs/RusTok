@@ -26,7 +26,7 @@ impl ProductCatalogSchemaService {
         let schema_id = current_product_operation_id().unwrap_or_else(generate_id);
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             txn.get_database_backend(),
             r#"
             INSERT INTO product_attribute_schemas (id, tenant_id, code, metadata)
@@ -42,7 +42,7 @@ impl ProductCatalogSchemaService {
         .await?;
 
         for translation in &input.translations {
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 txn.get_database_backend(),
                 r#"
                 INSERT INTO product_attribute_schema_translations (
@@ -111,7 +111,7 @@ impl ProductCatalogSchemaService {
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         ensure_schema(&txn, tenant_id, input.schema_id).await?;
         let group_id = current_product_operation_id().unwrap_or_else(generate_id);
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             txn.get_database_backend(),
             r#"
             INSERT INTO product_attribute_schema_groups (
@@ -168,7 +168,7 @@ impl ProductCatalogSchemaService {
             None => None,
         };
 
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             txn.get_database_backend(),
             r#"
             INSERT INTO product_attribute_schema_attributes (

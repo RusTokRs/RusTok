@@ -21,7 +21,7 @@ pub async fn reserve_permission_invalidation_generation(
 ) -> Result<u64, RbacInvalidationGenerationError> {
     let backend = db.get_database_backend();
     let update = db
-        .execute(Statement::from_string(
+        .execute_raw(Statement::from_string(
             backend,
             format!(
                 "UPDATE rbac_invalidation_state \
@@ -48,7 +48,7 @@ where
 {
     let backend = db.get_database_backend();
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             backend,
             format!(
                 "SELECT generation FROM rbac_invalidation_state \

@@ -215,7 +215,7 @@ async fn decision_effect_and_pending_application_commit_together(
 
     let observer = database.connection("moderation_effect_observer").await?;
     let effect_row = observer
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT schema_version, effect_kind, effect_payload FROM moderation_decision_effects WHERE tenant_id = $1 AND decision_id = $2",
             vec![tenant_id.into(), decision.id.into()],
@@ -230,7 +230,7 @@ async fn decision_effect_and_pending_application_commit_together(
     );
 
     let operation = observer
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT case_id, decision_hash, subject_revision, status, attempt_count FROM moderation_application_operations WHERE tenant_id = $1 AND decision_id = $2",
             vec![tenant_id.into(), decision.id.into()],
@@ -307,7 +307,7 @@ async fn concurrent_assignment_uses_revision_cas(database: &TestDatabase) -> Tes
 
     let observer = database.connection("moderation_cas_observer").await?;
     let row = observer
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT revision, assigned_moderator_id FROM moderation_cases WHERE tenant_id = $1 AND id = $2",
             vec![tenant_id.into(), case.id.into()],
@@ -380,7 +380,7 @@ async fn scalar_i64(
     values: Vec<sea_orm::Value>,
 ) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             values,

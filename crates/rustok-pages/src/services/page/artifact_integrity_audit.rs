@@ -108,7 +108,8 @@ impl PageService {
         let page = match txn.get_database_backend() {
             DbBackend::Sqlite => page_query().one(&txn).await?,
             DbBackend::Postgres | DbBackend::MySql => page_query().lock_shared().one(&txn).await?,
-        };
+            _ => unreachable!("unsupported SeaORM database backend"),
+};
         if page.is_none() {
             return Err(PagesError::PageNotFound(page_id));
         }
@@ -132,7 +133,8 @@ impl PageService {
                     .all(&txn)
                     .await?
             }
-        };
+            _ => unreachable!("unsupported SeaORM database backend"),
+};
         let truncated = artifact_ids.len() > max_records as usize;
         if truncated {
             artifact_ids.pop();
@@ -155,7 +157,8 @@ impl PageService {
                 DbBackend::Postgres | DbBackend::MySql => {
                     record_query().lock_shared().one(&txn).await?
                 }
-            }
+                _ => unreachable!("unsupported SeaORM database backend"),
+}
             .ok_or_else(|| {
                 PagesError::artifact_integrity(
                     "Immutable artifact audit selected a record that is no longer readable",

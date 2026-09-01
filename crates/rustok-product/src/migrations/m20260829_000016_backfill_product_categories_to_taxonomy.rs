@@ -396,7 +396,7 @@ async fn ensure_product_binding(
         )));
     }
 
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
             INSERT INTO product_catalog_category_taxonomy_bindings (

@@ -447,7 +447,7 @@ impl ProductPostgresIndexSource {
             ),
         };
         self.db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 sql,
                 values,
@@ -479,7 +479,7 @@ impl ProductPostgresIndexSource {
             tuples.join(", ")
         );
         self.db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 sql,
                 values,

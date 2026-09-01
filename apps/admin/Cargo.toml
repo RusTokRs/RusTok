@@ -152,7 +152,6 @@ leptos-zustand = { workspace = true }
 leptos-shadcn-pagination = { workspace = true }
 leptos-use = { workspace = true }
 leptos_i18n.workspace = true
-leptos_query = { workspace = true }
 leptos-chartistry = { workspace = true }
 serde_urlencoded = { workspace = true }
 chrono = { workspace = true }
@@ -253,7 +252,6 @@ normal = [
   "leptos-shadcn-pagination",
   "leptos-use",
   "leptos_i18n",
-  "leptos_query",
   "leptos-chartistry",
   "gloo-storage",
   "serde_urlencoded",
@@ -313,7 +311,6 @@ ignored = [
   "leptos-struct-table",
   "leptos-zod",
   "leptos-zustand",
-  "leptos_query",
   "rustok-blog-admin",
   "rustok-channel-admin",
   "rustok-comments",

@@ -122,7 +122,7 @@ impl SeaOrmModulePolicyRevisionConsumer {
         if outcome == ModulePolicyRevisionApplyOutcome::Applied {
             let backend = transaction.get_database_backend();
             let updated = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "UPDATE module_policy_revision_cursors SET current_revision = {}, updated_at = {} \
@@ -186,7 +186,7 @@ async fn ensure_cursor_row<C: ConnectionTrait>(
     consumer_key: &str,
 ) -> Result<(), ModulePolicyRevisionConsumerError> {
     connection
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_policy_revision_cursors \
@@ -221,7 +221,7 @@ async fn load_cursor_revision<C: ConnectionTrait>(
         ""
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT current_revision FROM module_policy_revision_cursors \
@@ -252,7 +252,7 @@ async fn load_tenant_overrides<C: ConnectionTrait>(
         _ => "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = ?1",
     };
     connection
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![uuid_value(tenant_id, backend)],

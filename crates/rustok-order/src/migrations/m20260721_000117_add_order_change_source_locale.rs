@@ -74,6 +74,12 @@ END;
                     )
                     .await?;
             }
+            _ => {
+                return Err(DbErr::Migration(
+                    "order change source locale migration does not support this database backend"
+                        .to_string(),
+                ));
+            }
         }
 
         Ok(())

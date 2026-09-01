@@ -2,8 +2,7 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use chrono::Utc;
 use rig::{
-    OneOrMany,
-    agent::{AgentRun, AgentRunStep, InvalidToolCallHookAction, ModelTurn, ModelTurnOutcome},
+    agent::{AgentRun, AgentRunStep, InvalidToolCallAction, ModelTurn, ModelTurnOutcome},
     completion::Usage,
     message::UserContent,
 };
@@ -136,7 +135,7 @@ impl RigAgentDriver {
                                 invalid.tool_name
                             );
                             let outcome = run
-                                .resolve_invalid_tool_call(InvalidToolCallHookAction::skip(
+                                .resolve_invalid_tool_call(InvalidToolCallAction::skip(
                                     reason.clone(),
                                 ))
                                 .map_err(|error| AiError::Runtime(error.to_string()))?;
@@ -156,7 +155,8 @@ impl RigAgentDriver {
                                 tool_name: invalid.tool_name,
                                 input_payload: invalid
                                     .args
-                                    .and_then(|value| serde_json::from_str(&value).ok())
+                                    .as_deref()
+                                    .and_then(|value| serde_json::from_str(value).ok())
                                     .unwrap_or(serde_json::Value::Null),
                                 output_payload: Some(serde_json::json!({"reason": reason})),
                                 status: "skipped".to_string(),
@@ -188,7 +188,7 @@ impl RigAgentDriver {
                         })
                         .map(|call| PendingApproval {
                             tool_name: call.tool_call.function.name.clone(),
-                            tool_call_id: call.tool_call.id.clone(),
+                            tool_call_id: call.tool_call.id.to_string(),
                             input_payload: call.tool_call.function.arguments.clone(),
                             reason: format!(
                                 "Tool `{}` requires operator approval before execution",
@@ -217,16 +217,16 @@ impl RigAgentDriver {
                                 role: ChatMessageRole::Tool,
                                 content: Some(reason.clone()),
                                 name: Some(name.clone()),
-                                tool_call_id: Some(call.tool_call.id.clone()),
+                                tool_call_id: Some(call.tool_call.id.to_string()),
                                 tool_calls: Vec::new(),
                                 metadata: serde_json::json!({
-                                    "engine": "rig_0_39",
+                                    "engine": "rig_0_42",
                                     "skipped": true,
                                     "reason": "tool_execution_policy"
                                 }),
                             });
                             traces.push(ToolTrace {
-                                tool_name: name,
+                                tool_name: name.clone(),
                                 input_payload: arguments,
                                 output_payload: Some(serde_json::json!({"reason": reason})),
                                 status: "skipped".to_string(),
@@ -236,8 +236,9 @@ impl RigAgentDriver {
                                 created_at: Utc::now(),
                             });
                             results.push(UserContent::tool_result(
-                                call.tool_call.id,
-                                OneOrMany::one(reason.into()),
+                                call.tool_call.id.clone(),
+                                name,
+                                vec![reason.into()],
                             ));
                             continue;
                         }
@@ -247,16 +248,16 @@ impl RigAgentDriver {
                                     role: ChatMessageRole::Tool,
                                     content: Some(result.content.clone()),
                                     name: Some(name.clone()),
-                                    tool_call_id: Some(call.tool_call.id.clone()),
+                                    tool_call_id: Some(call.tool_call.id.to_string()),
                                     tool_calls: Vec::new(),
                                     metadata: serde_json::json!({
                                         "raw_payload": result.raw_payload,
-                                        "engine": "rig_0_39"
+                                        "engine": "rig_0_42"
                                     }),
                                 };
                                 appended_messages.push(tool_message);
                                 traces.push(ToolTrace {
-                                    tool_name: name,
+                                    tool_name: name.clone(),
                                     input_payload: arguments,
                                     output_payload: Some(result.raw_payload),
                                     status: "completed".to_string(),
@@ -266,8 +267,9 @@ impl RigAgentDriver {
                                     created_at: Utc::now(),
                                 });
                                 results.push(UserContent::tool_result(
-                                    call.tool_call.id,
-                                    OneOrMany::one(result.content.into()),
+                                    call.tool_call.id.clone(),
+                                    name,
+                                    vec![result.content.into()],
                                 ));
                             }
                             Err(error) => {

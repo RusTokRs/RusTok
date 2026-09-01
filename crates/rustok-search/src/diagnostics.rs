@@ -146,7 +146,7 @@ impl SearchDiagnosticsService {
         );
 
         let row = db
-            .query_one(stmt)
+            .query_one_raw(stmt)
             .await
             .map_err(Error::Database)?
             .ok_or_else(|| Error::NotFound("search diagnostics row".to_string()))?;
@@ -260,7 +260,7 @@ impl SearchDiagnosticsService {
             vec![tenant_id.into(), (limit.clamp(1, 100) as i64).into()],
         );
 
-        let rows = db.query_all(stmt).await.map_err(Error::Database)?;
+        let rows = db.query_all_raw(stmt).await.map_err(Error::Database)?;
         rows.into_iter()
             .map(|row| {
                 Ok(LaggingSearchDocument {
@@ -427,7 +427,7 @@ impl SearchDiagnosticsService {
             vec![tenant_id.into(), (limit.clamp(1, 100) as i64).into()],
         );
 
-        let rows = db.query_all(stmt).await.map_err(Error::Database)?;
+        let rows = db.query_all_raw(stmt).await.map_err(Error::Database)?;
         rows.into_iter()
             .map(|row| {
                 Ok(SearchConsistencyIssue {

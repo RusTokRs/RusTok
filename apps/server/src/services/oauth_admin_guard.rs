@@ -157,7 +157,8 @@ where
             }
             app
         }
-    };
+        _ => unreachable!("unsupported SeaORM database backend"),
+};
 
     app.ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))
 }

@@ -659,7 +659,7 @@ async fn assert_orphan_not_repaired(
 
 async fn force_complete_repair(database: &TestDatabase, command_id: Uuid) -> TestResult<()> {
     let db = database.connection().await?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "UPDATE index_consistency_finding_repair_commands SET state = 'completed', outcome = 'repaired', owner_name = 'repair_evidence_owner', before_digest = $3, after_digest = $4, owner_receipt_digest = $5, completed_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND command_id = $2 AND state = 'prepared'",
         vec![

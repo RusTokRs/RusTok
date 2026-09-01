@@ -160,7 +160,7 @@ impl PostgresMutationStore {
         };
 
         let inserted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 insert_inbox_sql(backend),
                 vec![
@@ -257,7 +257,7 @@ impl PostgresMutationStore {
     ) -> Result<MutationApplyOutcome, MutationStorageError> {
         let key = delivery.mutation().key();
         let existing = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_inbox_sql(backend),
                 vec![
@@ -343,7 +343,7 @@ impl PostgresMutationStore {
             locale_key,
         );
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
                 vec![lock_key.into()],
@@ -365,7 +365,7 @@ impl PostgresMutationStore {
             .as_ref()
             .map_or_else(String::new, |locale| locale.as_str().to_owned());
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_entity_version_sql(backend),
                 vec![
@@ -394,7 +394,7 @@ impl PostgresMutationStore {
             .as_ref()
             .map_or_else(String::new, |locale| locale.as_str().to_owned());
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 delete_links_sql(backend),
                 vec![
@@ -427,7 +427,7 @@ impl PostgresMutationStore {
             .map_or_else(String::new, |locale| locale.as_str().to_owned());
         let payload = SqlValue::Json(payload.map(Box::new));
         let result = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 upsert_entity_sql(backend),
                 vec![
@@ -466,7 +466,7 @@ impl PostgresMutationStore {
                     .as_ref()
                     .map_or_else(String::new, |locale| locale.as_str().to_owned());
                 transaction
-                    .execute(Statement::from_sql_and_values(
+                    .execute_raw(Statement::from_sql_and_values(
                         backend,
                         insert_link_sql(backend),
                         vec![
@@ -508,7 +508,7 @@ impl PostgresMutationStore {
     ) -> Result<(), MutationStorageError> {
         let key = delivery.mutation().key();
         let completed = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 complete_inbox_sql(backend),
                 vec![
@@ -566,7 +566,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), MutationStorageErr
         backend => Err(MutationStorageError::Storage(format!(
             "Index mutation storage does not support {backend:?}"
         ))),
-    }
+}
 }
 
 fn storage_error(error: impl std::fmt::Display) -> MutationStorageError {

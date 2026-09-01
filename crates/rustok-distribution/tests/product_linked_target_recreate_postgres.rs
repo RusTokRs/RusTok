@@ -540,7 +540,7 @@ fn nested_strings(
 
 async fn delete_variant(db: &DatabaseConnection) -> TestResult<()> {
     let result = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "DELETE FROM product_variants WHERE tenant_id = $1 AND id = $2",
             vec![TENANT_ID.into(), VARIANT_ID.into()],
@@ -551,7 +551,7 @@ async fn delete_variant(db: &DatabaseConnection) -> TestResult<()> {
 }
 
 async fn recreate_variant(db: &DatabaseConnection) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO product_variants (id, product_id, tenant_id, sku) VALUES ($1, $2, $3, $4)",
         vec![
@@ -567,7 +567,7 @@ async fn recreate_variant(db: &DatabaseConnection) -> TestResult<()> {
 
 async fn delete_channel(db: &DatabaseConnection) -> TestResult<()> {
     let result = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "DELETE FROM channels WHERE tenant_id = $1 AND id = $2",
             vec![TENANT_ID.into(), CHANNEL_ID.into()],
@@ -578,7 +578,7 @@ async fn delete_channel(db: &DatabaseConnection) -> TestResult<()> {
 }
 
 async fn recreate_channel(db: &DatabaseConnection) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO channels (id, tenant_id, slug, name) VALUES ($1, $2, 'alpha', $3)",
         vec![
@@ -652,7 +652,7 @@ async fn optional_revision(
     entity_id: Uuid,
 ) -> TestResult<Option<u64>> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             vec![TENANT_ID.into(), entity_id.into()],
@@ -667,7 +667,7 @@ async fn optional_revision(
 
 async fn channel_generation(db: &DatabaseConnection) -> TestResult<u64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT generation FROM channel_index_identity_generations WHERE tenant_id = $1",
             vec![TENANT_ID.into()],
@@ -707,7 +707,7 @@ async fn latest_freshness_generation(db: &DatabaseConnection) -> TestResult<u64>
 
 async fn product_epoch(db: &DatabaseConnection, sql: &str, column: &str) -> TestResult<u64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             vec![TENANT_ID.into(), PRODUCT_ID.into()],
@@ -746,7 +746,7 @@ async fn materialized_target_version(
     entity_id: Uuid,
 ) -> TestResult<u64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT CAST(source_version AS TEXT) AS source_version_text

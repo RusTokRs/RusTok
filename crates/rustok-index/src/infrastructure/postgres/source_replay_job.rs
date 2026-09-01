@@ -244,7 +244,7 @@ impl PostgresIndexReplayJobStore {
         ensure_supported_backend(backend)?;
         let updated = self
             .db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 heartbeat_sql(backend),
                 vec![
@@ -299,7 +299,7 @@ impl PostgresIndexReplayJobStore {
         ensure_supported_backend(backend)?;
         let updated = self
             .db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 finish_job_sql(backend),
                 vec![
@@ -331,7 +331,7 @@ impl PostgresIndexReplayJobStore {
         verify_schema_registration(transaction, request, backend).await?;
 
         let rows = transaction
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 select_replay_jobs_sql(backend),
                 replay_scope_values(request, backend),
@@ -390,7 +390,7 @@ impl PostgresIndexReplayJobStore {
                 IndexReplayJobError::InvalidStoredJob("attempt count overflow".to_owned())
             })?;
             let claimed = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     claim_job_sql(backend),
                     vec![
@@ -413,7 +413,7 @@ impl PostgresIndexReplayJobStore {
             attempt_count = 1;
             let job_request = replay_job_request(request);
             transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     insert_job_sql(backend),
                     vec![
@@ -583,7 +583,7 @@ pub(super) async fn assert_active_replay_job_lease(
 ) -> Result<(), IndexReplayJobError> {
     ensure_supported_backend(backend)?;
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             active_lease_sql(backend),
             vec![
@@ -611,7 +611,7 @@ async fn require_complete_checkpoint(
     backend: DbBackend,
 ) -> Result<(), IndexReplayJobError> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             complete_checkpoint_sql(backend),
             vec![
@@ -647,7 +647,7 @@ async fn finish_job(
     backend: DbBackend,
 ) -> Result<(), IndexReplayJobError> {
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             finish_job_sql(backend),
             vec![
@@ -687,7 +687,7 @@ async fn lock_replay_scope(
         locale,
     );
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![lock_key.into()],
@@ -703,7 +703,7 @@ async fn verify_schema_registration(
     backend: DbBackend,
 ) -> Result<(), IndexReplayJobError> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             select_schema_sql(backend),
             schema_scope_values(request, backend),

@@ -41,7 +41,7 @@ impl ArtifactPermissionEventPublisher for SqliteArtifactPermissionEventPublisher
             granted,
         } = event;
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 transaction.get_database_backend(),
                 "INSERT INTO rbac_artifact_permission_events (operation_id, tenant_id, actor_id, artifact_permission_id, role_id, installation_id, permission_key, granted, event_type, schema_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 vec![
@@ -92,14 +92,14 @@ async fn insert_role_and_actor(
     role_id: Uuid,
     actor_id: Uuid,
 ) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO roles (id, tenant_id) VALUES (?1, ?2)",
         vec![role_id.to_string().into(), tenant_id.to_string().into()],
     ))
     .await
     .expect("insert role");
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO users (id, tenant_id) VALUES (?1, ?2)",
         vec![actor_id.to_string().into(), tenant_id.to_string().into()],
@@ -115,7 +115,7 @@ async fn insert_definition(
     permission_key: &str,
 ) -> Uuid {
     let artifact_permission_id = Uuid::new_v4();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO rbac_artifact_permission_installations (installation_id, scope_key, module_slug, release_digest) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (installation_id) DO NOTHING",
         vec![
@@ -127,7 +127,7 @@ async fn insert_definition(
     ))
     .await
     .expect("insert artifact permission installation identity");
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO rbac_artifact_permission_definitions (id, scope_key, installation_id, module_slug, release_digest, permission_key) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         vec![
@@ -154,7 +154,7 @@ async fn insert_corrupt_parallel_definition(
         .await
         .expect("disable foreign keys for corruption fixture");
     let artifact_permission_id = Uuid::new_v4();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO rbac_artifact_permission_definitions (id, scope_key, installation_id, module_slug, release_digest, permission_key) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         vec![
@@ -198,7 +198,7 @@ fn command(
 }
 
 async fn table_count(db: &DatabaseConnection, table: &str) -> i64 {
-    db.query_one(Statement::from_string(
+    db.query_one_raw(Statement::from_string(
         db.get_database_backend(),
         format!("SELECT COUNT(*) AS count FROM {table}"),
     ))
@@ -210,7 +210,7 @@ async fn table_count(db: &DatabaseConnection, table: &str) -> i64 {
 }
 
 async fn event_grants(db: &DatabaseConnection) -> Vec<bool> {
-    db.query_all(Statement::from_string(
+    db.query_all_raw(Statement::from_string(
         db.get_database_backend(),
         "SELECT granted FROM rbac_artifact_permission_events ORDER BY rowid".to_string(),
     ))
@@ -273,7 +273,7 @@ async fn only_state_changes_publish_artifact_permission_events() {
     );
     assert_eq!(event_grants(&db).await, vec![true]);
     let persisted_scope: String = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             db.get_database_backend(),
             "SELECT permission_scope_key FROM rbac_artifact_role_permissions LIMIT 1".to_string(),
         ))
@@ -285,7 +285,7 @@ async fn only_state_changes_publish_artifact_permission_events() {
     assert_eq!(persisted_scope, format!("tenant:{tenant_id}"));
 
     let event_permission_id: Uuid = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             db.get_database_backend(),
             "SELECT artifact_permission_id FROM rbac_artifact_permission_events LIMIT 1"
                 .to_string(),
@@ -392,7 +392,7 @@ async fn explicit_scope_mutation_does_not_shadow_platform_or_tenant_definition()
         .await
         .expect("revoke explicit platform scope");
     let remaining_id_text: String = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             db.get_database_backend(),
             "SELECT artifact_permission_id FROM rbac_artifact_role_permissions LIMIT 1".to_string(),
         ))

@@ -1077,7 +1077,7 @@ async fn lock_next_build_candidate(
         ""
     };
     let row = transaction
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             backend,
             format!(
                 "SELECT distribution_build_id, status, active_claim_id, attempt_count
@@ -1113,7 +1113,7 @@ async fn expire_active_attempt(
 ) -> Result<(), ModuleStaticDistributionError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_attempts
@@ -1164,7 +1164,7 @@ async fn claim_build(
         values.push(uuid_value(active_claim_id, backend));
     }
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_builds
@@ -1188,7 +1188,7 @@ async fn claim_build(
         return Err(ModuleStaticDistributionError::ClaimConflict);
     }
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_attempts
@@ -1223,7 +1223,7 @@ async fn heartbeat_claim(
 ) -> Result<(), ModuleStaticDistributionError> {
     let backend = transaction.get_database_backend();
     let updated_build = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_builds
@@ -1250,7 +1250,7 @@ async fn heartbeat_claim(
         );
     }
     let updated_attempt = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_attempts
@@ -1284,7 +1284,7 @@ async fn classify_claim_failure(
 ) -> Result<ModuleStaticDistributionError, ModuleStaticDistributionError> {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT runner_id, status FROM module_static_distribution_attempts WHERE claim_id = {}",
@@ -1317,7 +1317,7 @@ async fn lock_attempt(
         ""
     };
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT distribution_build_id, runner_id, status, completion_digest
@@ -1349,7 +1349,7 @@ async fn lock_claimed_build(
         ""
     };
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT active_claim_id, claimed_by, composition_revision, composition_digest
@@ -1402,7 +1402,7 @@ async fn complete_claim(
         command.runner_id.clone().into(),
     ]);
     let updated_attempt = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_attempts
@@ -1449,7 +1449,7 @@ async fn complete_claim(
         command.runner_id.clone().into(),
     ]);
     let updated_build = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_builds
@@ -1524,7 +1524,7 @@ pub(crate) async fn insert_build(
     } = build;
     let backend = transaction.get_database_backend();
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_builds
@@ -1559,7 +1559,7 @@ pub(crate) async fn insert_build(
         .map_err(store_error)?;
     for (ordinal, item) in items.iter().enumerate() {
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_static_distribution_items
@@ -1623,7 +1623,7 @@ pub(crate) async fn load_distribution_state<C: ConnectionTrait>(
         ""
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT revision, current_build_id FROM module_static_distribution_state
@@ -1653,7 +1653,7 @@ pub(crate) async fn advance_distribution_state(
 ) -> Result<(), ModuleStaticDistributionError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_state
@@ -1676,7 +1676,7 @@ pub(crate) async fn advance_distribution_state(
         .map_err(store_error)?;
     if updated.rows_affected() != 1 {
         let current = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT revision FROM module_static_distribution_state WHERE state_id = {}",
@@ -1705,7 +1705,7 @@ async fn load_composition_digest<C: ConnectionTrait>(
 ) -> Result<String, ModuleStaticDistributionError> {
     let backend = connection.get_database_backend();
     connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT composition_digest FROM module_static_distribution_builds
@@ -1729,7 +1729,7 @@ async fn reserve_operation(
 ) -> Result<Option<ModuleStaticDistributionBuildReceipt>, ModuleStaticDistributionError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_operations
@@ -1756,7 +1756,7 @@ async fn reserve_operation(
         return Ok(None);
     }
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT request_digest, actor_id, trace_id, correlation_id, distribution_build_id,
@@ -1793,7 +1793,7 @@ async fn complete_operation(
 ) -> Result<(), ModuleStaticDistributionError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_distribution_operations
@@ -1850,7 +1850,7 @@ pub(crate) async fn load_build<C: ConnectionTrait>(
 ) -> Result<ModuleStaticDistributionBuild, ModuleStaticDistributionError> {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT distribution_build_id, predecessor_build_id, composition_revision,
@@ -1871,7 +1871,7 @@ pub(crate) async fn load_build<C: ConnectionTrait>(
         .map_err(store_error)?
         .ok_or(ModuleStaticDistributionError::BuildNotFound)?;
     let item_rows = connection
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT promotion_id, promotion_revision, release_id, module_slug,
@@ -2133,10 +2133,10 @@ fn validate_completion_command(
 
 fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> sea_orm::Value {
     match (backend, value) {
-        (DbBackend::Postgres, value) => sea_orm::Value::Uuid(value.map(Box::new)),
+        (DbBackend::Postgres, value) => sea_orm::Value::Uuid(value),
         (_, Some(value)) => value.to_string().into(),
         (_, None) => sea_orm::Value::String(None),
-    }
+}
 }
 
 fn optional_uuid_from_row(

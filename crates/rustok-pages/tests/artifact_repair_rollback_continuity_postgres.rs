@@ -293,7 +293,7 @@ async fn surviving_manifest_identity_mismatch_is_not_healed_by_repair_on_postgre
 
     let tampered_hash = "f".repeat(64);
     let changed = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE page_publish_operation_artifacts SET artifact_hash = $1 WHERE operation_id = $2",
             vec![
@@ -666,7 +666,7 @@ async fn enable_pages_module(db: &DatabaseConnection, tenant_id: Uuid) -> TestRe
         )",
     )
     .await?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at) \
          VALUES ($1, $2, 'pages', TRUE, '{}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",

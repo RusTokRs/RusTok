@@ -16,7 +16,7 @@ use rustok_product::{
 };
 use rustok_region::{RegionListRequest, RegionReadPort};
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use super::{

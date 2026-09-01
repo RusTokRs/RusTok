@@ -34,7 +34,7 @@ async fn ensure_oauth_apps_table(db: &DatabaseConnection) {
     let schema = Schema::new(builder);
     let mut statement = schema.create_table_from_entity(oauth_apps::Entity);
     statement.if_not_exists();
-    db.execute(builder.build(&statement))
+    db.execute_raw(builder.build(&statement))
         .await
         .expect("create oauth_apps table for auth extractor tests");
 }
@@ -434,7 +434,7 @@ async fn access_token_resolver_returns_internal_server_error_on_rbac_storage_fai
     )
     .expect("encode access token");
     RbacService::invalidate_user_rbac_caches(&tenant.id, &user.id).await;
-    db.execute(sea_orm::Statement::from_string(
+    db.execute_raw(sea_orm::Statement::from_string(
         sea_orm::DatabaseBackend::Sqlite,
         "DROP TABLE user_roles".to_string(),
     ))

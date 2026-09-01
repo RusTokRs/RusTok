@@ -412,7 +412,7 @@ async fn create_entity_table(
     mut statement: sea_orm::sea_query::TableCreateStatement,
 ) {
     statement.if_not_exists();
-    db.execute(builder.build(&statement))
+    db.execute_raw(builder.build(&statement))
         .await
         .expect("failed to create commerce test table");
 }
@@ -444,7 +444,7 @@ async fn ensure_tenant_tables(db: &DatabaseConnection) {
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )",
     ] {
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             sql.to_string(),
         ))
@@ -483,7 +483,7 @@ async fn ensure_field_definition_tables(db: &DatabaseConnection) {
                  ON {prefix}_field_definitions (tenant_id, is_active)"
             ),
         ] {
-            db.execute(Statement::from_string(DatabaseBackend::Sqlite, sql))
+            db.execute_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))
                 .await
                 .expect("failed to create field definitions test table");
         }
@@ -506,7 +506,7 @@ async fn ensure_field_definition_tables(db: &DatabaseConnection) {
          ON flex_attached_localized_values (tenant_id, entity_type, entity_id)"
             .to_string(),
     ] {
-        db.execute(Statement::from_string(DatabaseBackend::Sqlite, sql))
+        db.execute_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))
             .await
             .expect("failed to create attached localized values test table");
     }

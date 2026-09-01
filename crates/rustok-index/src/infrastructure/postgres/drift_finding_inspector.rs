@@ -109,7 +109,7 @@ impl PostgresIndexDriftFindingInspector {
         ensure_supported_backend(backend)?;
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_open_finding_sql(backend),
                 vec![
@@ -404,7 +404,7 @@ mod tests {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("test database");
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE index_consistency_findings (tenant_id TEXT NOT NULL, finding_id TEXT NOT NULL, finding_key TEXT NOT NULL, check_name TEXT NOT NULL, severity TEXT NOT NULL, state TEXT NOT NULL, scope_kind TEXT NOT NULL, module_name TEXT NULL, entity_name TEXT NULL, schema_version INTEGER NULL, entity_id TEXT NULL, locale_key TEXT NULL, expected_digest TEXT NULL, actual_digest TEXT NULL, details JSON NOT NULL)"
                 .to_owned(),
@@ -421,7 +421,7 @@ mod tests {
         state: &str,
         actual_digest: &str,
     ) {
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO index_consistency_findings (tenant_id, finding_id, finding_key, check_name, severity, state, scope_kind, module_name, entity_name, schema_version, entity_id, locale_key, expected_digest, actual_digest, details) VALUES (?1, ?2, ?3, ?4, 'error', ?5, 'entity', 'rustok-product', 'product', 2, ?6, 'en-US', ?7, ?8, ?9)",
             vec![
@@ -533,7 +533,7 @@ mod tests {
         let db = database().await;
         let tenant_id = Uuid::new_v4();
         let finding_id = Uuid::new_v4();
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO index_consistency_findings (tenant_id, finding_id, finding_key, check_name, severity, state, scope_kind, module_name, entity_name, schema_version, entity_id, locale_key, expected_digest, actual_digest, details) VALUES (?1, ?2, ?3, 'scope_mismatch', 'warning', 'open', 'schema', 'rustok-product', 'product', 1, ?4, NULL, NULL, NULL, ?5)",
             vec![

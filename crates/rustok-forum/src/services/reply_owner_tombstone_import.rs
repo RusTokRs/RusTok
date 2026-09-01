@@ -248,7 +248,7 @@ async fn persist_import_reply_tombstone_in_tx(
             )));
         }
     };
-    if txn.execute(statement).await?.rows_affected() != 1 {
+    if txn.execute_raw(statement).await?.rows_affected() != 1 {
         return Err(ForumError::Validation(
             "Forum import reply tombstone update did not claim exactly one reply".to_string(),
         ));
@@ -290,7 +290,7 @@ async fn persist_import_reply_tombstone_in_tx(
             )));
         }
     };
-    if txn.execute(statement).await?.rows_affected() != 1 {
+    if txn.execute_raw(statement).await?.rows_affected() != 1 {
         return Err(ForumError::Validation(
             "Forum import reply delete revision retimestamp did not affect exactly one row"
                 .to_string(),
@@ -326,7 +326,7 @@ async fn count_import_delete_revisions_in_tx(
             )));
         }
     };
-    let row = txn.query_one(statement).await?.ok_or_else(|| {
+    let row = txn.query_one_raw(statement).await?.ok_or_else(|| {
         ForumError::Validation("Forum import reply revision count returned no row".to_string())
     })?;
     Ok(row.try_get("", "revision_count")?)

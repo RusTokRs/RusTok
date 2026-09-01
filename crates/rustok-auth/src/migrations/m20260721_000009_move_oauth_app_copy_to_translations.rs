@@ -102,7 +102,7 @@ impl MigrationTrait for Migration {
         let db = manager.get_connection();
         let backend = db.get_database_backend();
         let apps = db
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend,
                 "SELECT id, tenant_id, name, description FROM oauth_apps".to_string(),
             ))
@@ -168,7 +168,7 @@ impl MigrationTrait for Migration {
         let db = manager.get_connection();
         let backend = db.get_database_backend();
         let apps = db
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend,
                 "SELECT id, tenant_id FROM oauth_apps".to_string(),
             ))
@@ -228,7 +228,7 @@ async fn execute_statement(
 ) -> Result<(), DbErr> {
     let backend = db.get_database_backend();
     let sql = placeholder_sql(backend, template, values.len());
-    db.execute(Statement::from_sql_and_values(backend, sql, values))
+    db.execute_raw(Statement::from_sql_and_values(backend, sql, values))
         .await?;
     Ok(())
 }
@@ -240,7 +240,7 @@ async fn query_one(
 ) -> Result<Option<sea_orm::QueryResult>, DbErr> {
     let backend = db.get_database_backend();
     let sql = placeholder_sql(backend, template, values.len());
-    db.query_one(Statement::from_sql_and_values(backend, sql, values))
+    db.query_one_raw(Statement::from_sql_and_values(backend, sql, values))
         .await
 }
 
@@ -251,7 +251,8 @@ fn placeholder_sql(backend: DbBackend, template: &str, value_count: usize) -> St
             DbBackend::Postgres => format!("${}", index + 1),
             DbBackend::MySql => "?".to_string(),
             DbBackend::Sqlite => format!("?{}", index + 1),
-        };
+            _ => unreachable!("unsupported SeaORM database backend"),
+};
         sql = sql.replace(&format!("{{v{}}}", index + 1), &placeholder);
     }
     sql

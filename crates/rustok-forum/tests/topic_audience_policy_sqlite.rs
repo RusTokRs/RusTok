@@ -277,7 +277,7 @@ async fn topic_audience_layer_narrows_inherited_category_layers_and_remains_boun
     ));
 
     let direct_overflow = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO forum_topic_audience_channels (tenant_id, topic_id, channel_slug) VALUES (?, ?, ?)",
             [
@@ -293,7 +293,7 @@ async fn topic_audience_layer_narrows_inherited_category_layers_and_remains_boun
     );
 
     let direct_relation_update = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "UPDATE forum_topic_audience_channels SET channel_slug = ? WHERE tenant_id = ? AND topic_id = ? AND channel_slug = ?",
             [
@@ -310,7 +310,7 @@ async fn topic_audience_layer_narrows_inherited_category_layers_and_remains_boun
     );
 
     let direct_policy_update = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "UPDATE forum_topic_audience_policies SET minimum_trust_level = ? WHERE tenant_id = ? AND topic_id = ?",
             [
@@ -326,7 +326,7 @@ async fn topic_audience_layer_narrows_inherited_category_layers_and_remains_boun
     );
 
     let cross_tenant_policy = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO forum_topic_audience_policies (tenant_id, topic_id, minimum_trust_level, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
             [
@@ -341,7 +341,7 @@ async fn topic_audience_layer_narrows_inherited_category_layers_and_remains_boun
         "database must reject a cross-tenant topic policy relation"
     );
 
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO forum_topic_audience_policies (tenant_id, topic_id, minimum_trust_level, updated_at) VALUES (?, ?, NULL, CURRENT_TIMESTAMP)",
         [tenant_id.into(), empty_topic.into()],

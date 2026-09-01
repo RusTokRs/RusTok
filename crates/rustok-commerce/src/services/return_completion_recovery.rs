@@ -415,7 +415,10 @@ impl ReturnCompletionOrchestrationService {
         let result = return_completion_command::Entity::update_many()
             .col_expr(
                 return_completion_command::Column::RetryCount,
-                Expr::col(return_completion_command::Column::RetryCount).add(1),
+                sea_orm::sea_query::ExprTrait::add(
+                    Expr::col(return_completion_command::Column::RetryCount),
+                    1,
+                ),
             )
             .col_expr(
                 return_completion_command::Column::LastRetryActorId,

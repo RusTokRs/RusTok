@@ -377,7 +377,7 @@ async fn expire_publishing_lease(
     db: &DatabaseConnection,
     delivery_id: Uuid,
 ) -> Result<(), sea_orm::DbErr> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "UPDATE iggy_consumer_poison_receipts SET lease_expires_at = CURRENT_TIMESTAMP - INTERVAL '1 second' WHERE delivery_id = $1 AND state = 'publishing'",
         vec![delivery_id.into()],
@@ -388,7 +388,7 @@ async fn expire_publishing_lease(
 
 async fn count_receipts(db: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT COUNT(*)::bigint AS count FROM iggy_consumer_poison_receipts".to_string(),
         ))

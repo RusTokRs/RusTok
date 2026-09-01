@@ -156,7 +156,7 @@ async fn sqlite_rejects_cross_tenant_menu_item_translation() {
     let item_id = menu.items[0].id;
 
     let result = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO menu_item_translations (id, menu_item_id, locale, title, tenant_id, menu_id) VALUES (?, ?, ?, ?, ?, ?)",
             [

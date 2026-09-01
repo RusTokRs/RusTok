@@ -39,26 +39,15 @@ impl TestDatabase {
 
         let backend = DbBackend::Sqlite;
         let schema = Schema::new(backend);
-        db.execute(
-            backend.build(
-                &schema
-                    .create_table_from_entity(order::Entity)
-                    .if_not_exists()
-                    .to_owned(),
-            ),
-        )
-        .await
-        .unwrap();
-        db.execute(
-            backend.build(
-                &schema
-                    .create_table_from_entity(order_checkout_identity::Entity)
-                    .if_not_exists()
-                    .to_owned(),
-            ),
-        )
-        .await
-        .unwrap();
+        let mut orders_table = schema.create_table_from_entity(order::Entity);
+        orders_table.if_not_exists();
+        db.execute_raw(backend.build(&orders_table)).await.unwrap();
+        let mut checkout_identities_table =
+            schema.create_table_from_entity(order_checkout_identity::Entity);
+        checkout_identities_table.if_not_exists();
+        db.execute_raw(backend.build(&checkout_identities_table))
+            .await
+            .unwrap();
         db.execute_unprepared(
             "CREATE UNIQUE INDEX ux_test_order_checkout_identity_order ON order_checkout_identities (tenant_id, order_id);",
         )

@@ -120,7 +120,7 @@ impl ForumSearchContractIngress {
     ) -> Result<(), ForumSearchContractIngressError> {
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 SELECT tenant_id, source_module, scope_key, event_type, envelope_json

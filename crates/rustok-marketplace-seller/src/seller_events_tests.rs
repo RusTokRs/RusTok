@@ -234,7 +234,7 @@ async fn event_insert_failure_rolls_back_state_and_pending_receipt() {
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let seller_id = insert_seller_with_state(&db, tenant_id, "draft", "submitted").await;
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DatabaseBackend::Sqlite,
         "DROP TABLE marketplace_seller_events".to_string(),
     ))

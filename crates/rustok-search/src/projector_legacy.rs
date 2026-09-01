@@ -29,7 +29,7 @@ impl SearchProjector {
 
         let total = self
             .db
-            .query_one(stmt)
+            .query_one_raw(stmt)
             .await
             .map_err(Error::Database)?
             .and_then(|row| row.try_get::<i64>("", "total").ok())
@@ -323,7 +323,7 @@ impl SearchProjector {
         C: ConnectionTrait,
     {
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
-        conn.execute(stmt).await.map_err(Error::Database)?;
+        conn.execute_raw(stmt).await.map_err(Error::Database)?;
         Ok(())
     }
 
@@ -495,7 +495,7 @@ impl SearchProjector {
         );
 
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
-        conn.execute(stmt).await.map_err(Error::Database)?;
+        conn.execute_raw(stmt).await.map_err(Error::Database)?;
         Ok(())
     }
 
@@ -636,7 +636,7 @@ impl SearchProjector {
         );
 
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
-        conn.execute(stmt).await.map_err(Error::Database)?;
+        conn.execute_raw(stmt).await.map_err(Error::Database)?;
         Ok(())
     }
 }

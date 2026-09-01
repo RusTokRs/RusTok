@@ -107,7 +107,7 @@ async fn required_target_policy_is_revisioned_idempotent_and_tenant_scoped() {
     assert!(other_tenant.required_target_locales.is_empty());
 
     let persisted_count: i64 = database
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT COUNT(*) AS count FROM translation_policies WHERE tenant_id = ?",
             [tenant_a.into()],
@@ -228,7 +228,7 @@ async fn fixture(
     }
     for tenant_id in tenant_ids {
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO tenants (id) VALUES (?)",
                 [(*tenant_id).into()],

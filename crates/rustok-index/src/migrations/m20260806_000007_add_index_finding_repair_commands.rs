@@ -197,7 +197,7 @@ impl MigrationTrait for Migration {
 fn ensure_supported_backend(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     match manager.get_connection().get_database_backend() {
         DbBackend::Postgres | DbBackend::Sqlite => Ok(()),
-        DbBackend::MySql => Err(DbErr::Custom(
+        _ => Err(DbErr::Custom(
             "rustok-index targeted repair receipts support PostgreSQL and SQLite".to_owned(),
         )),
     }
@@ -237,7 +237,7 @@ async fn install_completion_guard(manager: &SchemaManager<'_>) -> Result<(), DbE
                 .await?;
             Ok(())
         }
-        DbBackend::MySql => unreachable!("unsupported backend was rejected"),
+        _ => unreachable!("unsupported backend was rejected"),
     }
 }
 
@@ -263,7 +263,7 @@ async fn remove_completion_guard(manager: &SchemaManager<'_>) -> Result<(), DbEr
                 .await?;
             Ok(())
         }
-        DbBackend::MySql => unreachable!("unsupported backend was rejected"),
+        _ => unreachable!("unsupported backend was rejected"),
     }
 }
 

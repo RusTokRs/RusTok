@@ -1705,7 +1705,7 @@ mod tests {
         let user_id = security
             .user_id
             .expect("test admin security should carry a user id");
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
             [user_id.to_string().into(), tenant_id.to_string().into()],

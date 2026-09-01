@@ -101,7 +101,7 @@ async fn postgres_concurrent_ensure_tenant_replays_unique_winner() -> TestResult
     let outcome = async {
         let blocker_transaction = test_db.blocker.begin().await?;
         blocker_transaction
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Postgres,
                 format!("SELECT pg_advisory_xact_lock({INSERT_BARRIER_LOCK})"),
             ))
@@ -215,7 +215,7 @@ async fn wait_for_lock_waiters(
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let row = control
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Postgres,
                 format!(
                     "SELECT COUNT(*)::BIGINT AS waiter_count \

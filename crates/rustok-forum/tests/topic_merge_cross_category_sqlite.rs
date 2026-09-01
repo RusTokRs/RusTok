@@ -54,7 +54,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         vec![user_id.into(), tenant_id.into()],
@@ -341,7 +341,7 @@ async fn cross_category_topic_merge_rolls_back_on_source_counter_drift() -> Test
     .await?;
     db.execute_unprepared("DROP TRIGGER IF EXISTS forum_categories_public_reply_count_update")
         .await?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "UPDATE forum_categories SET reply_count = 0 WHERE tenant_id = ? AND id = ?",
         vec![tenant_id.into(), source_category_id.into()],
@@ -409,7 +409,7 @@ async fn assert_topic_state(
     expected_reply_count: i32,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT category_id, status, is_locked, reply_count FROM forum_topics WHERE tenant_id = ? AND id = ?",
             vec![tenant_id.into(), topic_id.into()],
@@ -434,7 +434,7 @@ async fn assert_category_counters(
     expected_replies: i32,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT topic_count, reply_count FROM forum_categories WHERE tenant_id = ? AND id = ?",
             vec![tenant_id.into(), category_id.into()],
@@ -455,7 +455,7 @@ async fn assert_reply_location(
     expected_parent_reply_id: Option<Uuid>,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT topic_id, position, parent_reply_id FROM forum_replies WHERE tenant_id = ? AND id = ?",
             vec![tenant_id.into(), reply_id.into()],
@@ -477,7 +477,7 @@ async fn assert_merge_event(
     merged: &ForumTopicMergeResult,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT aggregate_type, aggregate_id, event_type, schema_version, actor_id, payload FROM forum_domain_events WHERE tenant_id = ? AND event_id = ?",
             vec![tenant_id.into(), merged.event_id.into()],
@@ -557,7 +557,7 @@ async fn projection_root_ids(
     tenant_id: Uuid,
 ) -> TestResult<BTreeSet<Uuid>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT payload FROM sys_events WHERE event_type = 'index.reindex_requested'",
             Vec::new(),
@@ -579,7 +579,7 @@ async fn projection_targets(
     event_ids: &BTreeSet<Uuid>,
 ) -> TestResult<BTreeSet<(String, Option<Uuid>)>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT payload FROM sys_events WHERE event_type = 'index.reindex_requested'",
             Vec::new(),
@@ -605,6 +605,6 @@ async fn projection_targets(
 }
 
 async fn scalar_i64(db: &DatabaseConnection, statement: Statement) -> TestResult<i64> {
-    let row: QueryResult = db.query_one(statement).await?.ok_or("scalar row missing")?;
+    let row: QueryResult = db.query_one_raw(statement).await?.ok_or("scalar row missing")?;
     Ok(row.try_get("", "value")?)
 }

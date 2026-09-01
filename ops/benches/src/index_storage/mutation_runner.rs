@@ -157,7 +157,7 @@ async fn validate_mutation_in_transaction(
     workload: &MutationWorkload,
 ) -> Result<MutationValidation> {
     let row = transaction
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             workload.sql.clone(),
         ))
@@ -218,7 +218,7 @@ async fn explain_mutation(
     sql: &str,
 ) -> Result<MutationExplainEvidence> {
     let row = transaction
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             format!("EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON) {sql}"),
         ))

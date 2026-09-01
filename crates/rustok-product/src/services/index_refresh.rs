@@ -90,7 +90,7 @@ impl ProductIndexLocaleRefreshSource {
 
         let rows = self
             .db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 SELECT
@@ -235,7 +235,7 @@ impl ProductIndexVariantRefreshSource {
 
         let rows = self
             .db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 SELECT
@@ -333,7 +333,7 @@ pub(crate) async fn record_product_locale_refreshes_in_tx(
     )?;
 
     let rows = txn
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             WITH live_locales AS (
@@ -395,7 +395,7 @@ pub(crate) async fn record_product_locale_refreshes_in_tx(
             ));
         }
 
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             INSERT INTO product_index_locale_refresh_ledger (
@@ -445,7 +445,7 @@ pub(crate) async fn record_product_variant_refreshes_in_tx(
         "ProductVariant Index refresh",
     )?;
 
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         WITH live_variants AS (

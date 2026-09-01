@@ -177,7 +177,7 @@ END;
                     )
                     .await?;
             }
-            DatabaseBackend::MySql => {
+            _ => {
                 manager
                     .get_connection()
                     .execute_unprepared(

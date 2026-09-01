@@ -99,7 +99,7 @@ VALUES
 
 async fn membership_revision(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> i64 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT revision FROM group_memberships WHERE tenant_id = '{tenant_id}' AND user_id = '{user_id}'"
@@ -114,7 +114,7 @@ async fn membership_revision(db: &DatabaseConnection, tenant_id: Uuid, user_id: 
 
 async fn group_member_count(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> i64 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT member_count FROM groups WHERE tenant_id = '{tenant_id}' AND id = '{group_id}'"
@@ -133,7 +133,7 @@ async fn enforcement_projection(
     user_id: Uuid,
 ) -> (i64, bool, bool, String) {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT revision, effective_until IS NOT NULL AS has_effective_until, revoked_at IS NOT NULL AS is_revoked, source_kind FROM group_membership_enforcements WHERE tenant_id = '{tenant_id}' AND user_id = '{user_id}'"

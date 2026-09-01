@@ -237,7 +237,7 @@ async fn setup() -> DatabaseConnection {
 }
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO tenants (id) VALUES (?)",
         [tenant_id.into()],
@@ -247,7 +247,7 @@ async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         [user_id.into(), tenant_id.into()],
@@ -260,7 +260,7 @@ async fn age_completed_receipts(db: &DatabaseConnection, tenant_id: Uuid) {
     let aged = DateTime::<Utc>::from_timestamp(AGED_COMPLETION, 0)
         .expect("aged completion should be valid")
         .fixed_offset();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "UPDATE social_graph_command_receipts SET completed_at = ?, updated_at = ? WHERE tenant_id = ? AND status = 'completed'",
         [aged.into(), aged.into(), tenant_id.into()],
@@ -270,7 +270,7 @@ async fn age_completed_receipts(db: &DatabaseConnection, tenant_id: Uuid) {
 }
 
 async fn insert_processing_receipt(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         r#"
         INSERT INTO social_graph_command_receipts (
@@ -292,7 +292,7 @@ async fn insert_corrupt_completed_receipt(db: &DatabaseConnection, tenant_id: Uu
     let aged = DateTime::<Utc>::from_timestamp(AGED_COMPLETION, 0)
         .expect("aged completion should be valid")
         .fixed_offset();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         r#"
         INSERT INTO social_graph_command_receipts (
@@ -314,7 +314,7 @@ async fn insert_corrupt_completed_receipt(db: &DatabaseConnection, tenant_id: Uu
 }
 
 async fn receipt_count(db: &DatabaseConnection, tenant_id: Uuid, status: &str) -> i64 {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "SELECT COUNT(*) AS count FROM social_graph_command_receipts WHERE tenant_id = ? AND status = ?",
         [tenant_id.into(), status.into()],

@@ -58,7 +58,7 @@ async fn static_lifecycle_revision(
     tenant_id: Uuid,
     module_slug: &str,
 ) -> u64 {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "SELECT revision FROM module_static_tenant_lifecycle WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1",
         vec![tenant_id.into(), module_slug.into()],
@@ -330,7 +330,7 @@ async fn setup_db() -> DatabaseConnection {
         .await
         .expect("create sys_events");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         r#"
         CREATE TABLE tenants (
@@ -348,7 +348,7 @@ async fn setup_db() -> DatabaseConnection {
     .await
     .expect("create tenants");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         r#"
         CREATE TABLE platform_state (
@@ -373,7 +373,7 @@ async fn setup_db() -> DatabaseConnection {
         .await
         .expect("seed isolated test composition");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         r#"
         CREATE TABLE module_policy_revision_cursors (
@@ -388,7 +388,7 @@ async fn setup_db() -> DatabaseConnection {
     .await
     .expect("create module_policy_revision_cursors");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         r#"
         CREATE TABLE tenant_modules (
@@ -407,7 +407,7 @@ async fn setup_db() -> DatabaseConnection {
     .await
     .expect("create tenant_modules");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         r#"
         CREATE TABLE module_operations (
@@ -432,7 +432,7 @@ async fn setup_db() -> DatabaseConnection {
     .await
     .expect("create module_operations");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         r#"
         CREATE TABLE module_static_tenant_lifecycle (
@@ -450,7 +450,7 @@ async fn setup_db() -> DatabaseConnection {
     .await
     .expect("create module_static_tenant_lifecycle");
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         r#"
         CREATE TABLE module_operation_override_states (
@@ -470,7 +470,7 @@ async fn setup_db() -> DatabaseConnection {
 
 async fn seed_tenant(db: &DatabaseConnection, tenant_id: uuid::Uuid) {
     let slug = format!("tenant-{}", tenant_id.simple());
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO tenants (id, name, slug, settings, is_active, created_at, updated_at) VALUES (?, ?, ?, '{}', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         vec![tenant_id.into(), "Tenant".into(), slug.into()],
@@ -671,7 +671,7 @@ async fn successful_toggle_writes_committed_module_operation() {
     assert_eq!(parsed.get_version_num(), 4);
 
     let policy_event = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT payload FROM sys_events WHERE event_type = ?1".to_string(),
             vec!["module.effective_policy_revision_changed".into()],

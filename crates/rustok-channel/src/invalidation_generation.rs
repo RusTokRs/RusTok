@@ -11,7 +11,7 @@ where
     C: ConnectionTrait,
 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             db.get_database_backend(),
             READ_CHANNEL_RESOLUTION_GENERATION_SQL.to_string(),
         ))

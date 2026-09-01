@@ -12,7 +12,7 @@ async fn repair_evidence_environment_reports_postgres_version() -> TestResult<()
     };
     let db = database.connection().await?;
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT current_setting('server_version') AS server_version, current_setting('server_version_num') AS server_version_num".to_owned(),
         ))

@@ -72,7 +72,7 @@ async fn page_builder_owner_visibility_preserves_category_floor_tenant_and_topic
         (private_child_category, tenant_id, Some(private_category), 2),
         (foreign_private_category, foreign_tenant_id, None, 0),
     ] {
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             backend,
             "INSERT INTO forum_categories (id, tenant_id, parent_id, position, moderated, topic_count, reply_count) VALUES (?, ?, ?, ?, 0, 0, 0)",
             [cat_id.into(), t_id.into(), parent.into(), pos.into()],
@@ -85,7 +85,7 @@ async fn page_builder_owner_visibility_preserves_category_floor_tenant_and_topic
         (private_category, tenant_id),
         (foreign_private_category, foreign_tenant_id),
     ] {
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             backend,
             "INSERT INTO forum_category_policies (category_id, tenant_id, allows_topics, visibility_override, updated_at) VALUES (?, ?, 1, 'authenticated', CURRENT_TIMESTAMP)",
             [cat_id.into(), t_id.into()],
@@ -107,7 +107,7 @@ async fn page_builder_owner_visibility_preserves_category_floor_tenant_and_topic
         (closed_public_topic, tenant_id, public_category, "closed"),
         (foreign_topic, foreign_tenant_id, foreign_private_category, "open"),
     ] {
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             backend,
             "INSERT INTO forum_topics (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count) VALUES (?, ?, ?, ?, '{}', 0, 0, 0)",
             [top_id.into(), t_id.into(), cat_id.into(), st.into()],

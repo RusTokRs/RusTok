@@ -245,7 +245,7 @@ async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
 async fn ensure_no_existing_cycles(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let row = manager
         .get_connection()
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             r#"
 WITH RECURSIVE category_paths(

@@ -67,7 +67,7 @@ function walkFiles(relativeRoot, predicate) {
   return files;
 }
 
-const parserFixture = `sea-orm = { version = "1.1", default-features = false, features = [
+const parserFixture = `sea-orm = { version = "2.0.2", default-features = false, features = [
   "sqlx-postgres",
   "sqlx-sqlite",
 ] }`;

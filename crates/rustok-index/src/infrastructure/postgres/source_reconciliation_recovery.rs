@@ -158,7 +158,7 @@ async fn requeue_in_transaction(
         .ok_or(IndexReconciliationRecoveryError::CounterOverflow)?;
     let cursor = initial_cursor();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             update_failed_job_sql(backend),
             vec![
@@ -178,7 +178,7 @@ async fn requeue_in_transaction(
 
     let audit_id = Uuid::new_v4();
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             insert_audit_sql(backend),
             vec![
@@ -208,7 +208,7 @@ async fn select_recovery_scope(
     for_update: bool,
 ) -> Result<Option<RecoveryScope>, IndexReconciliationRecoveryError> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             select_job_sql(backend, for_update),
             vec![
@@ -297,7 +297,7 @@ async fn lock_reconciliation_scope(
         tenant_id, scope.module_name, scope.entity_name, scope.schema_version,
     );
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![lock_key.into()],
@@ -500,7 +500,7 @@ mod tests {
         job_id: Uuid,
         attempt_count: u32,
     ) {
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO index_jobs (tenant_id, job_id, kind, state, scope_kind, module_name, entity_name, schema_version, cursor, attempt_count, last_error_code, last_error_details, completed_at) VALUES (?1, ?2, 'reconcile', 'failed', 'schema', 'catalog', 'product', 1, '{}', ?3, 'index.reconciliation_page_failed', '{}', CURRENT_TIMESTAMP)",
             vec![
@@ -545,7 +545,7 @@ mod tests {
         assert_eq!(retry_epoch, 1);
 
         let job = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT state, cursor, attempt_count, cancel_requested, last_error_code, last_error_details, completed_at, retry_epoch FROM index_jobs WHERE tenant_id = ?1 AND job_id = ?2",
                 vec![tenant_id.to_string().into(), job_id.to_string().into()],
@@ -576,7 +576,7 @@ mod tests {
         assert_eq!(cursor, initial_cursor());
 
         let audit = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT actor_id, action, reason, prior_attempt_count, retry_epoch FROM index_reconciliation_recovery_audits WHERE tenant_id = ?1 AND audit_id = ?2",
                 vec![tenant_id.to_string().into(), audit_id.to_string().into()],
@@ -631,7 +631,7 @@ mod tests {
             IndexReconciliationRequeueOutcome::NotFailed
         );
         let count = db
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count_value FROM index_reconciliation_recovery_audits"
                     .to_owned(),

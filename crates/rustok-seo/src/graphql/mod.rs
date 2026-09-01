@@ -496,7 +496,7 @@ mod tests {
     }
 
     async fn seed_tenant_modules_table(db: &DatabaseConnection) {
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE tenant_modules (
                 id TEXT PRIMARY KEY,
@@ -514,7 +514,7 @@ mod tests {
     }
 
     async fn seed_seo_redirects_table(db: &DatabaseConnection) {
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE seo_redirects (
                 id TEXT PRIMARY KEY,
@@ -535,7 +535,7 @@ mod tests {
     }
 
     async fn seed_content_routing_tables(db: &DatabaseConnection) {
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE content_canonical_urls (
                 id TEXT PRIMARY KEY,
@@ -551,7 +551,7 @@ mod tests {
         ))
         .await
         .expect("create content_canonical_urls table");
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE content_url_aliases (
                 id TEXT PRIMARY KEY,
@@ -571,7 +571,7 @@ mod tests {
     }
 
     async fn seed_meta_tables(db: &DatabaseConnection) {
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE meta (
                 id TEXT PRIMARY KEY,
@@ -587,7 +587,7 @@ mod tests {
         ))
         .await
         .expect("create meta table");
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE meta_translations (
                 id TEXT PRIMARY KEY,

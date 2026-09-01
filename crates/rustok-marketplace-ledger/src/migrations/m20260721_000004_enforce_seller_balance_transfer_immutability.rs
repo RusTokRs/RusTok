@@ -10,7 +10,7 @@ impl MigrationTrait for Migration {
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => install_postgres_guards(manager).await,
             DatabaseBackend::Sqlite => install_sqlite_guards(manager).await,
-            DatabaseBackend::MySql => install_mysql_guards(manager).await,
+            _ => install_mysql_guards(manager).await,
         }
     }
 
@@ -29,7 +29,7 @@ impl MigrationTrait for Migration {
                     )
                     .await?;
             }
-            DatabaseBackend::Sqlite | DatabaseBackend::MySql => {
+            _ => {
                 for trigger in trigger_names() {
                     manager
                         .get_connection()

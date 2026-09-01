@@ -99,7 +99,7 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
     );
 
     let stale_progress = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE fulfillment_items
              SET delivered_quantity = 1, updated_at = CURRENT_TIMESTAMP

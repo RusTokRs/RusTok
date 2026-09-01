@@ -52,7 +52,7 @@ impl Fixture {
         let schema = schema();
         let fingerprint = schema.fingerprint().unwrap().to_string();
         let schema_json = serde_json::to_value(&schema).unwrap();
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO index_schemas (tenant_id, module_name, entity_name, schema_version, schema_fingerprint, schema_json, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             vec![
@@ -131,7 +131,7 @@ fn schema() -> IndexSchema {
 }
 
 async fn expire(db: &DatabaseConnection, lease: &IndexReplayJobLease) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "UPDATE index_jobs SET lease_expires_at = datetime('now', '-1 second') WHERE tenant_id = ?1 AND job_id = ?2",
         vec![TENANT.to_owned().into(), lease.job_id().to_string().into()],
@@ -257,7 +257,7 @@ async fn failed_terminal_replay_job_blocks_scope_without_raw_details() {
 
     let count: i64 = fixture
         .db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT COUNT(*) AS job_count FROM index_jobs WHERE tenant_id = ?1 AND kind = 'rebuild'",
             vec![TENANT.to_owned().into()],
@@ -326,7 +326,7 @@ async fn replay_job_schema_source_and_stored_request_fail_closed() {
     expire(&active.db, &lease).await;
     active
         .db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE index_jobs SET request = ?1 WHERE tenant_id = ?2 AND job_id = ?3",
             vec![

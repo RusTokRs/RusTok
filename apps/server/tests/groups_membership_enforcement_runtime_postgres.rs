@@ -133,7 +133,7 @@ fn platform_context(tenant_id: Uuid, actor_id: Uuid, idempotency_key: &str) -> P
 
 async fn group_snapshot(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> (i64, i64) {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT version, member_count FROM groups WHERE tenant_id = '{tenant_id}' AND id = '{group_id}'"
@@ -157,7 +157,7 @@ async fn membership_snapshot(
     user_id: Uuid,
 ) -> (String, String, i64) {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT role, status, revision FROM group_memberships WHERE tenant_id = '{tenant_id}' AND group_id = '{group_id}' AND user_id = '{user_id}'"
@@ -178,7 +178,7 @@ async fn membership_snapshot(
 
 async fn scalar_count(db: &DatabaseConnection, sql: String) -> i64 {
     let row = db
-        .query_one(Statement::from_string(DatabaseBackend::Postgres, sql))
+        .query_one_raw(Statement::from_string(DatabaseBackend::Postgres, sql))
         .await
         .expect("PostgreSQL count query should succeed")
         .expect("count row should exist");
@@ -730,7 +730,7 @@ async fn run_atomicity(db: &DatabaseConnection) {
     );
 
     let enforcement = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT source_kind, actor_kind, actor_id, revision, CASE WHEN revoked_at IS NULL THEN 0::BIGINT ELSE 1::BIGINT END AS revoked FROM group_membership_enforcements WHERE tenant_id = '{tenant_id}' AND group_id = '{}' AND user_id = '{}'",

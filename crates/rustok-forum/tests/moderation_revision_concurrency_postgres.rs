@@ -61,7 +61,7 @@ async fn topic_translation_edit_fences_permanent_lock(
 
     let edit_db = database.peer().await?;
     let edit = edit_db.begin().await?;
-    edit.execute(Statement::from_sql_and_values(
+    edit.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE forum_topic_translations SET title = $1 WHERE tenant_id = $2 AND id = $3",
         vec![
@@ -124,7 +124,7 @@ async fn reply_body_edit_fences_hide_application(database: &PostgresForumTestDb)
 
     let edit_db = database.peer().await?;
     let edit = edit_db.begin().await?;
-    edit.execute(Statement::from_sql_and_values(
+    edit.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE forum_reply_bodies SET body = $1 WHERE tenant_id = $2 AND id = $3",
         vec![
@@ -204,7 +204,7 @@ async fn wait_for_processing_receipt(
 ) -> TestResult<()> {
     for _ in 0..100 {
         let row = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "SELECT status FROM owner_operation_receipts WHERE tenant_id = $1 AND owner_slug = 'forum' AND idempotency_key = $2 AND operation = $3",
                 vec![
@@ -524,7 +524,7 @@ where
     C: ConnectionTrait,
 {
     let row = db
-        .query_one(Statement::from_string(DatabaseBackend::Postgres, sql))
+        .query_one_raw(Statement::from_string(DatabaseBackend::Postgres, sql))
         .await?
         .ok_or_else(|| test_error("scalar PostgreSQL query returned no row"))?;
     Ok(row.try_get("", "value")?)
@@ -532,7 +532,7 @@ where
 
 async fn scalar_bool(db: &DatabaseConnection, sql: String) -> TestResult<bool> {
     let row = db
-        .query_one(Statement::from_string(DatabaseBackend::Postgres, sql))
+        .query_one_raw(Statement::from_string(DatabaseBackend::Postgres, sql))
         .await?
         .ok_or_else(|| test_error("boolean PostgreSQL query returned no row"))?;
     Ok(row.try_get("", "value")?)
@@ -540,7 +540,7 @@ async fn scalar_bool(db: &DatabaseConnection, sql: String) -> TestResult<bool> {
 
 async fn scalar_string(db: &DatabaseConnection, sql: String) -> TestResult<String> {
     let row = db
-        .query_one(Statement::from_string(DatabaseBackend::Postgres, sql))
+        .query_one_raw(Statement::from_string(DatabaseBackend::Postgres, sql))
         .await?
         .ok_or_else(|| test_error("string PostgreSQL query returned no row"))?;
     Ok(row.try_get("", "value")?)

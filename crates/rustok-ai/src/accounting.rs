@@ -1448,10 +1448,12 @@ impl StructuredAccounting {
             })
             .collect::<Result<Vec<_>, PortError>>()?
             .into_iter()
-            .max()
+            .max_by(std::cmp::Ord::cmp)
             .unwrap_or_default();
-        let attempts_upper_bound =
-            max_attempts.min(u16::try_from(policies.len()).map_err(|_| accounting_limit())?);
+        let attempts_upper_bound = std::cmp::min(
+            max_attempts,
+            u16::try_from(policies.len()).map_err(|_| accounting_limit())?,
+        );
         let cost_minor_units_upper_bound = maximum_attempt_cost
             .checked_mul(u64::from(attempts_upper_bound))
             .ok_or_else(accounting_limit)?;

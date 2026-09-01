@@ -55,7 +55,7 @@ impl SearchProjector {
         );
         let total = self
             .db
-            .query_one(statement)
+            .query_one_raw(statement)
             .await
             .map_err(Error::Database)?
             .and_then(|row| row.try_get::<i64>("", "total").ok())
@@ -72,7 +72,7 @@ impl SearchProjector {
         );
         let legacy_total = self
             .db
-            .query_one(legacy_statement)
+            .query_one_raw(legacy_statement)
             .await
             .map_err(Error::Database)?
             .and_then(|row| row.try_get::<i64>("", "total").ok())

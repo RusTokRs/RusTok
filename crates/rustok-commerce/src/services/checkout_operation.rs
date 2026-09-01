@@ -306,7 +306,10 @@ impl CheckoutOperationJournal {
             )
             .col_expr(
                 checkout_operation::Column::AttemptCount,
-                Expr::col(checkout_operation::Column::AttemptCount).add(1),
+                sea_orm::sea_query::ExprTrait::add(
+                    Expr::col(checkout_operation::Column::AttemptCount),
+                    1,
+                ),
             )
             .col_expr(
                 checkout_operation::Column::LastErrorCode,
@@ -475,7 +478,10 @@ impl CheckoutOperationJournal {
             )
             .col_expr(
                 checkout_operation::Column::AttemptCount,
-                Expr::col(checkout_operation::Column::AttemptCount).add(1),
+                sea_orm::sea_query::ExprTrait::add(
+                    Expr::col(checkout_operation::Column::AttemptCount),
+                    1,
+                ),
             )
             .col_expr(
                 checkout_operation::Column::UpdatedAt,

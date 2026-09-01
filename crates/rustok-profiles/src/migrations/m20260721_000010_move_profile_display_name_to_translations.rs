@@ -13,7 +13,7 @@ impl MigrationTrait for Migration {
         let db = manager.get_connection();
         let backend = db.get_database_backend();
         let profiles = db
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend,
                 "SELECT user_id, display_name FROM profiles".to_string(),
             ))
@@ -24,7 +24,7 @@ impl MigrationTrait for Migration {
             let display_name: String = profile.try_get("", "display_name")?;
 
             let matching_copy = db
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     "SELECT 1 AS present FROM profile_translations \
                      WHERE profile_user_id = ? AND display_name = ? LIMIT 1"
@@ -37,7 +37,7 @@ impl MigrationTrait for Migration {
             }
 
             let existing_und = db
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     "SELECT display_name FROM profile_translations \
                      WHERE profile_user_id = ? AND locale = ? LIMIT 1"
@@ -52,7 +52,7 @@ impl MigrationTrait for Migration {
                 )));
             }
 
-            db.execute(Statement::from_sql_and_values(
+            db.execute_raw(Statement::from_sql_and_values(
                 backend,
                 "INSERT INTO profile_translations \
                  (id, profile_user_id, locale, display_name, bio, created_at, updated_at) \
@@ -91,7 +91,7 @@ impl MigrationTrait for Migration {
         let db = manager.get_connection();
         let backend = db.get_database_backend();
         let profiles = db
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend,
                 "SELECT user_id, preferred_locale FROM profiles".to_string(),
             ))
@@ -104,7 +104,7 @@ impl MigrationTrait for Migration {
                 .as_deref()
                 .unwrap_or(LEGACY_UNDETERMINED_LOCALE);
             let translation = db
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     "SELECT display_name FROM profile_translations \
                      WHERE profile_user_id = ? \
@@ -120,7 +120,7 @@ impl MigrationTrait for Migration {
                     ))
                 })?;
             let display_name: String = translation.try_get("", "display_name")?;
-            db.execute(Statement::from_sql_and_values(
+            db.execute_raw(Statement::from_sql_and_values(
                 backend,
                 "UPDATE profiles SET display_name = ? WHERE user_id = ?".to_string(),
                 vec![display_name.into(), user_id.into()],

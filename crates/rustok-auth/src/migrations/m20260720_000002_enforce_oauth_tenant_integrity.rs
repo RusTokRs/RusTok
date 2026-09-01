@@ -150,7 +150,7 @@ async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
 async fn reject_existing_mismatches(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let mismatch = manager
         .get_connection()
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             r#"
 SELECT 1

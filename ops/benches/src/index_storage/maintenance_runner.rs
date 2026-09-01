@@ -173,7 +173,7 @@ async fn snapshot(
 
 async fn table_stats(db: &DatabaseConnection, schema: &str) -> Result<Vec<TableMaintenanceStats>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT relname, n_live_tup::bigint AS n_live_tup, n_dead_tup::bigint AS n_dead_tup, n_tup_ins::bigint AS n_tup_ins, n_tup_upd::bigint AS n_tup_upd, n_tup_del::bigint AS n_tup_del, n_tup_hot_upd::bigint AS n_tup_hot_upd, vacuum_count::bigint AS vacuum_count, autovacuum_count::bigint AS autovacuum_count, analyze_count::bigint AS analyze_count, autoanalyze_count::bigint AS autoanalyze_count FROM pg_stat_user_tables WHERE schemaname = $1 ORDER BY relname",
             vec![schema.into()],
@@ -201,7 +201,7 @@ async fn table_stats(db: &DatabaseConnection, schema: &str) -> Result<Vec<TableM
 
 async fn schema_size_bytes(db: &DatabaseConnection, schema: &str) -> Result<i64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT COALESCE(sum(pg_total_relation_size(class.oid)), 0)::bigint AS bytes FROM pg_class AS class JOIN pg_namespace AS namespace ON namespace.oid = class.relnamespace WHERE namespace.nspname = $1 AND class.relkind IN ('r', 'm')",
             vec![schema.into()],
@@ -221,7 +221,7 @@ async fn prototype_cardinality(
         }
     };
     let row = db
-        .query_one(Statement::from_string(DbBackend::Postgres, sql.to_owned()))
+        .query_one_raw(Statement::from_string(DbBackend::Postgres, sql.to_owned()))
         .await?
         .context("maintenance cardinality query returned no row")?;
     Ok(Cardinality {

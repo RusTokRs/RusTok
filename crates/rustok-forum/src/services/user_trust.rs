@@ -435,7 +435,7 @@ pub(crate) async fn lock_user_trust_in_tx(
 ) -> ForumResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "SELECT pg_advisory_xact_lock(hashtextextended($1, 26))",
                 [format!("{tenant_id}:{user_id}:trust").into()],
@@ -443,7 +443,7 @@ pub(crate) async fn lock_user_trust_in_tx(
             .await?;
         }
         DatabaseBackend::Sqlite => {
-            txn.execute(Statement::from_string(
+            txn.execute_raw(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "SELECT 1".to_string(),
             ))

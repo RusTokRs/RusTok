@@ -270,7 +270,7 @@ impl ForumProjectionReconciler {
     async fn due_tenants(&self, limit: usize) -> Result<Vec<Uuid>> {
         let rows = self
             .db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 WITH oldest AS (

@@ -28,6 +28,11 @@ impl MigrationTrait for Migration {
                 // SQLite does not enforce declared VARCHAR lengths; existing values already
                 // use TEXT affinity and require no table rewrite.
             }
+            _ => {
+                return Err(DbErr::Migration(
+                    "search locale migration does not support this database backend".to_string(),
+                ));
+            }
         }
         Ok(())
     }

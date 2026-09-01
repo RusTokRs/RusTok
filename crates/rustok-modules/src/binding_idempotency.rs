@@ -90,7 +90,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
             .await
             .map_err(storage_error)?;
         let existing = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_operation_sql(backend),
                 request_values(request, backend),
@@ -116,7 +116,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
 
             let operation_id = self.infrastructure.new_id();
             let recovered = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     recover_operation_sql(backend),
                     vec![
@@ -141,7 +141,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
 
         let operation_id = self.infrastructure.new_id();
         let inserted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 insert_operation_sql(backend),
                 vec![
@@ -184,7 +184,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
             .await
             .map_err(storage_error)?;
         let completed = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 complete_operation_sql(backend),
                 vec![
@@ -225,7 +225,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
             .await
             .map_err(storage_error)?;
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 abandon_operation_sql(backend),
                 vec![
@@ -278,7 +278,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), ArtifactBindingIde
         backend => Err(ArtifactBindingIdempotencyError::Storage(format!(
             "artifact binding idempotency does not support {backend:?}"
         ))),
-    }
+}
 }
 
 fn request_values(

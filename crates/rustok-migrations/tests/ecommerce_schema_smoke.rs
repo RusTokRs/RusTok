@@ -39,7 +39,7 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 async fn load_sqlite_tables(db: &DatabaseConnection) -> BTreeSet<String> {
-    db.query_all(Statement::from_string(
+    db.query_all_raw(Statement::from_string(
         DatabaseBackend::Sqlite,
         "SELECT name FROM sqlite_master WHERE type = 'table'".to_string(),
     ))
@@ -526,7 +526,7 @@ async fn catalog_service_supports_multilingual_catalog_data_on_migrated_schema()
 }
 
 async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO tenants (id, name, slug, domain, settings, default_locale, is_active, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -550,7 +550,7 @@ async fn seed_tenant_locale(
     locale: &str,
     is_default: bool,
 ) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO tenant_locales (id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",

@@ -50,7 +50,7 @@ impl MigrationTrait for Migration {
                     )
                     .await?;
             }
-            DatabaseBackend::MySql => {}
+            _ => {}
         }
         Ok(())
     }
@@ -77,7 +77,7 @@ impl MigrationTrait for Migration {
                     )
                     .await?;
             }
-            DatabaseBackend::MySql => {}
+            _ => {}
         }
         Ok(())
     }

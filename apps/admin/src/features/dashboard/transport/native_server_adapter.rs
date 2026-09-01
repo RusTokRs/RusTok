@@ -213,7 +213,7 @@ pub(crate) async fn load_period_count_snapshot(
         }
     };
 
-    let Some(row) = db.query_one(statement).await? else {
+    let Some(row) = db.query_one_raw(statement).await? else {
         return Ok(PeriodCountSnapshot::default());
     };
 
@@ -295,7 +295,7 @@ pub(crate) async fn load_order_stats_snapshot(
         ),
     };
 
-    let Some(row) = db.query_one(statement).await? else {
+    let Some(row) = db.query_one_raw(statement).await? else {
         return Ok(OrderStatsSnapshot::default());
     };
 
@@ -341,7 +341,7 @@ pub(crate) async fn load_recent_activity(
         ),
     };
 
-    let rows = db.query_all(statement).await?;
+    let rows = db.query_all_raw(statement).await?;
     rows.into_iter()
         .map(|row| {
             let id: uuid::Uuid = row.try_get("", "id")?;

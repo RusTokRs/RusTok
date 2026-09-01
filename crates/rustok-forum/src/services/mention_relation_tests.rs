@@ -439,7 +439,7 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
     );
 
     let immutable_error = db
-        .execute(sea_orm::Statement::from_sql_and_values(
+        .execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DbBackend::Sqlite,
             "UPDATE forum_user_mentions
              SET handle_snapshot = 'mallory'

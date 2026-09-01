@@ -186,7 +186,7 @@ impl ConsumerPoisonReceiptStore {
         ensure_supported_backend(backend)?;
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_receipt_by_source_sql(backend, false),
                 source_key_values(identity),
@@ -259,7 +259,7 @@ impl ConsumerPoisonReceiptStore {
         // Check it before insert so a UUID collision is a terminal identity conflict,
         // not a retryable storage failure hidden behind ON CONFLICT DO NOTHING.
         if let Some(row) = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_receipt_by_delivery_id_sql(backend, true),
                 vec![uuid_value(identity.delivery_id, backend)],
@@ -271,7 +271,7 @@ impl ConsumerPoisonReceiptStore {
         }
 
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 insert_receipt_sql(backend),
                 vec![
@@ -290,7 +290,7 @@ impl ConsumerPoisonReceiptStore {
             .map_err(storage_error)?;
 
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_receipt_by_source_sql(backend, true),
                 source_key_values(identity),
@@ -301,7 +301,7 @@ impl ConsumerPoisonReceiptStore {
             Some(row) => row,
             None => {
                 if let Some(row) = transaction
-                    .query_one(Statement::from_sql_and_values(
+                    .query_one_raw(Statement::from_sql_and_values(
                         backend,
                         select_receipt_by_delivery_id_sql(backend, true),
                         vec![uuid_value(identity.delivery_id, backend)],
@@ -339,7 +339,7 @@ impl ConsumerPoisonReceiptStore {
         ];
         values.extend(source_key_values(identity));
         let claimed = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 claim_receipt_sql(backend),
                 values,
@@ -351,7 +351,7 @@ impl ConsumerPoisonReceiptStore {
         }
 
         let current = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_receipt_by_source_sql(backend, true),
                 source_key_values(identity),
@@ -385,7 +385,7 @@ impl ConsumerPoisonReceiptStore {
         let mut values = vec![uuid_value(publisher_id, backend)];
         values.extend(source_key_values(identity));
         self.db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 release_claim_sql(backend),
                 values,
@@ -406,7 +406,7 @@ impl ConsumerPoisonReceiptStore {
         values.extend(source_key_values(identity));
         let updated = self
             .db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 mark_published_sql(backend),
                 values,
@@ -432,7 +432,7 @@ impl ConsumerPoisonReceiptStore {
         ensure_supported_backend(backend)?;
         let updated = self
             .db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 mark_acknowledged_sql(backend),
                 source_key_values(identity),
@@ -546,7 +546,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), ConsumerPoisonRece
         backend => Err(ConsumerPoisonReceiptError::Storage(format!(
             "consumer poison receipts do not support {backend:?}"
         ))),
-    }
+}
 }
 
 fn storage_error(error: impl std::fmt::Display) -> ConsumerPoisonReceiptError {

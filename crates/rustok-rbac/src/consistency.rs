@@ -27,7 +27,7 @@ pub async fn load_consistency_stats(
     db: &DatabaseConnection,
 ) -> Result<RbacConsistencyStats, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             db.get_database_backend(),
             "SELECT \
                 (SELECT COUNT(*) FROM users u LEFT JOIN user_roles ur ON ur.user_id = u.id WHERE ur.id IS NULL) AS users_without_roles_total, \
@@ -76,7 +76,7 @@ async fn load_system_role_permission_drift(
     db: &DatabaseConnection,
 ) -> Result<SystemRolePermissionDrift, sea_orm::DbErr> {
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             db.get_database_backend(),
             "SELECT r.id AS role_id, r.slug AS role_slug, p.resource AS permission_resource, p.action AS permission_action \
              FROM roles r \

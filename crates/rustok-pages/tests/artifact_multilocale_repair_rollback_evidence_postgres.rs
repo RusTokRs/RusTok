@@ -176,7 +176,7 @@ async fn rollback_rejects_repaired_cursor_with_noncanonical_activation_request_h
     .ok_or_else(|| std::io::Error::other("English activation receipt is missing"))?;
     let tampered_hash = different_sha256(&activation.request_hash);
     let changed = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE page_artifact_binding_replacement_operations SET request_hash = $1 WHERE id = $2",
             vec![tampered_hash.into(), activation.id.into()],
@@ -225,7 +225,7 @@ async fn rollback_rejects_individually_valid_but_noncontiguous_activation_prefix
         activation.expected_current_artifact_id,
     )?;
     let changed = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE page_artifact_binding_replacement_operations SET expected_version = $1, result_version = $2, request_hash = $3 WHERE id = $4",
             vec![
@@ -700,7 +700,7 @@ async fn enable_pages_module(db: &DatabaseConnection, tenant_id: Uuid) -> TestRe
         )",
     )
     .await?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at) \
          VALUES ($1, $2, 'pages', TRUE, '{}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",

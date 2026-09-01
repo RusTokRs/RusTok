@@ -142,7 +142,7 @@ pub async fn apply_installer_owner_schema(
     };
     if manager.has_table("seaql_migrations").await?
         && db
-            .query_one(sea_orm_migration::sea_orm::Statement::from_sql_and_values(
+            .query_one_raw(sea_orm_migration::sea_orm::Statement::from_sql_and_values(
                 db.get_database_backend(),
                 format!("SELECT 1 FROM seaql_migrations WHERE version = {version_placeholder}"),
                 [owner_migration.into()],

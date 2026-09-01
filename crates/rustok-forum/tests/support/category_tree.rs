@@ -14,7 +14,7 @@ pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestR
 
     let service = CategoryService::new(db.clone());
     let admin_user_id = Uuid::new_v4();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         [admin_user_id.into(), tenant_a.into()],
@@ -180,7 +180,7 @@ pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestR
 
     let unbound_tenant = Uuid::new_v4();
     let unbound_category_id = Uuid::new_v4();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO forum_categories \
             (id, tenant_id, position, moderated, topic_count, reply_count) \
@@ -267,7 +267,7 @@ async fn seed_deep_tree(
 async fn seed_oversized_tree(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<()> {
     for position in 0..=MAX_FORUM_CATEGORY_TREE_NODES {
         let category_id = Uuid::new_v4();
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             db.get_database_backend(),
             "INSERT INTO forum_categories \
                 (id, tenant_id, position, moderated, topic_count, reply_count) \

@@ -170,7 +170,7 @@ where
         let promotion_id = self.infrastructure.new_id();
         let backend = transaction.get_database_backend();
         let inserted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_static_promotions
@@ -287,7 +287,7 @@ where
         let review_id = self.infrastructure.new_id();
         let backend = transaction.get_database_backend();
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_static_promotion_reviews
@@ -331,7 +331,7 @@ where
             .await
             .map_err(store_error)?;
         let updated = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_static_promotions
@@ -453,7 +453,7 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
         ""
     };
     let release = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT request_id, slug, version, crate_name, entry_type, status,
@@ -499,7 +499,7 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
     }
     let component_digest = format!("sha256:{checksum}");
     let stage = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT tenant_id, build_request_id, source_digest, component_digest,
@@ -531,7 +531,7 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
         .await
         .map_err(store_error)?;
     let build = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT request, result, status FROM module_build_requests
@@ -593,7 +593,7 @@ async fn reserve_operation(
 ) -> Result<Option<ModuleStaticPromotionReceipt>, ModuleStaticPromotionError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_static_promotion_operations
@@ -622,7 +622,7 @@ async fn reserve_operation(
         return Ok(None);
     }
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT operation_kind, request_digest, actor_id, trace_id, correlation_id, promotion_id,
@@ -665,7 +665,7 @@ async fn complete_operation(
 ) -> Result<(), ModuleStaticPromotionError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_static_promotion_operations
@@ -741,7 +741,7 @@ async fn lock_promotion<C: ConnectionTrait>(
         ""
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT promotion_id, release_id, publish_request_id, module_slug,
@@ -764,7 +764,7 @@ pub(crate) async fn load_promotion<C: ConnectionTrait>(
 ) -> Result<ModuleStaticPromotion, ModuleStaticPromotionError> {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT promotion_id, release_id, publish_request_id, module_slug,
@@ -790,7 +790,7 @@ pub(crate) async fn validate_promotion_review<C: ConnectionTrait>(
     }
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT promotion.approved_by,

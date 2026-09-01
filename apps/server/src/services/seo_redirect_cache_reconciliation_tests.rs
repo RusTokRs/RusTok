@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
+use rustok_seo::entities::seo_event_delivery;
+use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, Set};
 use uuid::Uuid;
 
 use super::*;
@@ -25,7 +26,7 @@ impl RecordingInvalidator {
     fn tenant_ids(&self) -> Vec<Uuid> {
         self.tenant_invalidations
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .expect("recording invalidator lock")
             .clone()
     }
 }
@@ -35,7 +36,7 @@ impl SeoRedirectCacheInvalidator for RecordingInvalidator {
         Box::pin(async move {
             self.tenant_invalidations
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .expect("recording invalidator lock")
                 .push(tenant_id);
         })
     }
@@ -48,9 +49,7 @@ impl SeoRedirectCacheInvalidator for RecordingInvalidator {
 }
 
 async fn seo_delivery_db() -> DatabaseConnection {
-    let db = Database::connect("sqlite::memory:")
-        .await
-        .expect("SQLite SEO delivery fixture should connect");
+    let db = rustok_test_utils::db::setup_test_db().await;
     db.execute_unprepared(
         "CREATE TABLE seo_event_deliveries (\
            id TEXT PRIMARY KEY NOT NULL, \
@@ -73,17 +72,23 @@ async fn seo_delivery_db() -> DatabaseConnection {
 }
 
 async fn insert_redirect_change(db: &DatabaseConnection, tenant_id: Uuid, sequence: i64) {
-    let timestamp = (chrono::Utc::now() + chrono::TimeDelta::milliseconds(sequence)).to_rfc3339();
+    let now = chrono::Utc::now() + chrono::TimeDelta::milliseconds(sequence);
     let delivery_id = Uuid::new_v4();
-    db.execute_unprepared(&format!(
-        "INSERT INTO seo_event_deliveries (\
-           id, tenant_id, event_type, idempotency_key, source_kind, source_id, status, \
-           outbox_event_id, last_error, created_at, updated_at, dispatched_at\
-         ) VALUES (\
-           '{delivery_id}', '{tenant_id}', 'seo.redirect.changed', 'redirect:{delivery_id}', \
-           'redirect', NULL, 'pending', NULL, NULL, '{timestamp}', '{timestamp}', NULL\
-         )"
-    ))
+    seo_event_delivery::ActiveModel {
+        id: Set(delivery_id),
+        tenant_id: Set(tenant_id),
+        event_type: Set("seo.redirect.changed".to_string()),
+        idempotency_key: Set(format!("redirect:{delivery_id}")),
+        source_kind: Set(Some("redirect".to_string())),
+        source_id: Set(None),
+        status: Set("pending".to_string()),
+        outbox_event_id: Set(None),
+        last_error: Set(None),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+        dispatched_at: Set(None),
+    }
+    .insert(db)
     .await
     .expect("SEO redirect delivery should insert");
 }

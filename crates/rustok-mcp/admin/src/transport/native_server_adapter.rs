@@ -495,7 +495,7 @@ async fn list_audit_events(
 
     let backend = db.get_database_backend();
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT id, client_id, actor_id, actor_type, action, outcome, tool_name, reason, correlation_id, created_at FROM mcp_audit_logs WHERE tenant_id = {} ORDER BY created_at DESC LIMIT {}",
@@ -519,7 +519,7 @@ async fn list_clients(
 
     let backend = db.get_database_backend();
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT id, slug, display_name, description, actor_type, is_active, last_used_at, created_at FROM mcp_clients WHERE tenant_id = {} ORDER BY created_at DESC LIMIT {}",
@@ -544,7 +544,7 @@ async fn get_client_details(
 
     let backend = db.get_database_backend();
     let client = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT id, slug, display_name, description, actor_type, is_active, last_used_at, created_at FROM mcp_clients WHERE id = {} AND tenant_id = {} LIMIT 1",
@@ -560,7 +560,7 @@ async fn get_client_details(
     };
 
     let policy = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT allowed_tools, denied_tools, granted_permissions, granted_scopes, updated_at FROM mcp_policies WHERE client_id = {} AND tenant_id = {} LIMIT 1",
@@ -575,7 +575,7 @@ async fn get_client_details(
         .transpose()?;
 
     let tokens = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT id, token_name, token_preview, last_used_at, expires_at, revoked_at, created_at FROM mcp_tokens WHERE client_id = {} AND tenant_id = {} ORDER BY created_at DESC",
@@ -606,7 +606,7 @@ async fn list_scaffold_drafts(
 
     let backend = db.get_database_backend();
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT id, client_id, slug, crate_name, status, request_payload, preview_payload, workspace_root, applied_at, created_at, updated_at FROM mcp_scaffold_drafts WHERE tenant_id = {} ORDER BY created_at DESC LIMIT {}",

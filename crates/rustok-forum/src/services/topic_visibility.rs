@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, Select,
-    sea_query::{Expr, Query, SelectStatement},
+    sea_query::{Query, SelectStatement},
 };
 use uuid::Uuid;
 
@@ -180,11 +180,11 @@ pub(crate) fn apply_storefront_visibility(
     scope: &ForumTopicVisibilityScope,
     hidden_category_ids: &[Uuid],
 ) -> Select<forum_topic::Entity> {
-    let unrestricted = Expr::col((forum_topic::Entity, forum_topic::Column::Id))
+    let unrestricted = forum_topic::Column::Id
         .not_in_subquery(all_topic_channel_access_subquery(tenant_id));
     let channel_condition = match scope.channel_slug() {
         Some(channel_slug) => Condition::any().add(unrestricted).add(
-            Expr::col((forum_topic::Entity, forum_topic::Column::Id)).in_subquery(
+            forum_topic::Column::Id.in_subquery(
                 matching_topic_channel_access_subquery(tenant_id, channel_slug),
             ),
         ),
@@ -205,13 +205,7 @@ fn all_topic_channel_access_subquery(tenant_id: Uuid) -> SelectStatement {
     Query::select()
         .column(forum_topic_channel_access::Column::TopicId)
         .from(forum_topic_channel_access::Entity)
-        .and_where(
-            Expr::col((
-                forum_topic_channel_access::Entity,
-                forum_topic_channel_access::Column::TenantId,
-            ))
-            .eq(tenant_id),
-        )
+        .and_where(forum_topic_channel_access::Column::TenantId.eq(tenant_id))
         .to_owned()
 }
 
@@ -219,20 +213,8 @@ fn matching_topic_channel_access_subquery(tenant_id: Uuid, channel_slug: &str) -
     Query::select()
         .column(forum_topic_channel_access::Column::TopicId)
         .from(forum_topic_channel_access::Entity)
-        .and_where(
-            Expr::col((
-                forum_topic_channel_access::Entity,
-                forum_topic_channel_access::Column::TenantId,
-            ))
-            .eq(tenant_id),
-        )
-        .and_where(
-            Expr::col((
-                forum_topic_channel_access::Entity,
-                forum_topic_channel_access::Column::ChannelSlug,
-            ))
-            .eq(channel_slug),
-        )
+        .and_where(forum_topic_channel_access::Column::TenantId.eq(tenant_id))
+        .and_where(forum_topic_channel_access::Column::ChannelSlug.eq(channel_slug))
         .to_owned()
 }
 

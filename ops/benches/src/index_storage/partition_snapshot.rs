@@ -468,7 +468,7 @@ fn ensure_outputs_available(baseline_path: &Path, shadow_path: &Path) -> Result<
 
 async fn ensure_unpartitioned_source(db: &DatabaseConnection, relation: &str) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             concat!(
                 "SELECT c.relkind::text AS relkind, c.relispartition, ",
@@ -492,7 +492,7 @@ async fn ensure_unpartitioned_source(db: &DatabaseConnection, relation: &str) ->
 async fn ensure_shadow_absent(db: &DatabaseConnection, plan: &RelationPlan) -> Result<()> {
     for relation in std::iter::once(&plan.parent).chain(plan.partitions.iter()) {
         let row = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT to_regclass($1)::text AS relation",
                 vec![relation.clone().into()],
@@ -509,7 +509,7 @@ async fn ensure_shadow_absent(db: &DatabaseConnection, plan: &RelationPlan) -> R
 }
 
 async fn acquire_capture_lock(db: &DatabaseConnection, evidence_id: &str) -> Result<()> {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "SELECT pg_advisory_lock(hashtextextended($1, 0))",
         vec![format!("rustok-index-partition-snapshot:{evidence_id}").into()],
@@ -521,7 +521,7 @@ async fn acquire_capture_lock(db: &DatabaseConnection, evidence_id: &str) -> Res
 
 async fn release_capture_lock(db: &DatabaseConnection, evidence_id: &str) -> Result<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked",
             vec![format!("rustok-index-partition-snapshot:{evidence_id}").into()],
@@ -565,7 +565,7 @@ fn render_shadow_bootstrap(manifest: &PreparedManifest) -> String {
 
 async fn distinct_tenants<C: ConnectionTrait>(db: &C) -> Result<i64> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             concat!(
                 "SELECT count(DISTINCT tenant_id)::bigint AS distinct_tenants FROM (",
@@ -594,7 +594,7 @@ async fn logical_relation<C: ConnectionTrait>(
         quote_identifier(relation),
     );
     let row = db
-        .query_one(Statement::from_string(DbBackend::Postgres, sql))
+        .query_one_raw(Statement::from_string(DbBackend::Postgres, sql))
         .await?
         .with_context(|| format!("relation digest query returned no row for {relation}"))?;
     let rows: i64 = row.try_get("", "rows")?;
@@ -647,7 +647,7 @@ async fn shadow_relation_evidence(
 
 async fn relation_size<C: ConnectionTrait>(db: &C, relation: &str) -> Result<i64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_total_relation_size($1::regclass)::bigint AS bytes",
             vec![relation.into()],
@@ -731,7 +731,7 @@ async fn orphan_link_count(db: &DatabaseConnection, manifest: &PreparedManifest)
         entities = entities
     );
     let row = db
-        .query_one(Statement::from_string(DbBackend::Postgres, sql))
+        .query_one_raw(Statement::from_string(DbBackend::Postgres, sql))
         .await?
         .context("orphan-link query returned no row")?;
     Ok(row.try_get("", "orphan_links")?)
@@ -743,7 +743,7 @@ async fn shadow_foreign_key_validated(
 ) -> Result<bool> {
     let name = format!("fk_pe_{}_link_source", &manifest.evidence_id[..16]);
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             concat!(
                 "SELECT convalidated FROM pg_constraint ",

@@ -535,7 +535,7 @@ mod tests {
             .await
             .expect("sqlite in-memory db");
 
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             r#"
             CREATE TABLE flex_attached_localized_values (
@@ -593,7 +593,7 @@ mod tests {
             .await
             .expect("sqlite in-memory db");
 
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             r#"
             CREATE TABLE flex_attached_localized_values (

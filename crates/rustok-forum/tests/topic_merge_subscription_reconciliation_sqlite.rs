@@ -54,7 +54,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         vec![user_id.into(), tenant_id.into()],
@@ -130,7 +130,7 @@ async fn insert_subscription(
     digest_mode: &str,
     revision: i64,
 ) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         r#"
         INSERT INTO forum_topic_subscriptions (
@@ -460,7 +460,7 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
     ));
 
     assert!(db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE forum_topic_merge_subscription_reconciliations SET reason = 'tampered' WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],
@@ -468,7 +468,7 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
         .await
         .is_err());
     assert!(db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "DELETE FROM forum_topic_merge_subscription_reconciliations WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],
@@ -509,7 +509,7 @@ async fn assert_archived_subscription_database_guards(
     new_user_id: Uuid,
 ) -> TestResult<()> {
     let update = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             r#"
             UPDATE forum_topic_subscriptions
@@ -526,7 +526,7 @@ async fn assert_archived_subscription_database_guards(
     assert!(update.is_err());
 
     let insert = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             r#"
             INSERT INTO forum_topic_subscriptions (
@@ -557,7 +557,7 @@ async fn assert_subscription(
     expected_revision: i64,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             r#"
             SELECT level, notify_mentions, notify_replies, notify_new_topics,
@@ -624,7 +624,7 @@ async fn assert_reconciliation_event(
     reconciled: &rustok_forum::ForumTopicMergeSubscriptionReconciliationResult,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             r#"
             SELECT aggregate_type, aggregate_id, event_type, schema_version,
@@ -685,6 +685,6 @@ async fn assert_reconciliation_event(
 }
 
 async fn scalar_i64(db: &DatabaseConnection, statement: Statement) -> TestResult<i64> {
-    let row: QueryResult = db.query_one(statement).await?.ok_or("scalar row missing")?;
+    let row: QueryResult = db.query_one_raw(statement).await?.ok_or("scalar row missing")?;
     Ok(row.try_get("", "value")?)
 }

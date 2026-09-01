@@ -276,7 +276,7 @@ async fn legacy_rejected_application_reconciles_to_escalated(
         seed_decided_case(&service, tenant_id, actor_id, 41, "legacy-rejected").await?;
     let storage = database.connection("legacy_rejected_storage").await?;
     storage
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE moderation_application_operations SET status = 'rejected', last_error_code = 'legacy_rejected', last_error_message = 'legacy terminal row', updated_at = NOW() WHERE tenant_id = $1 AND decision_id = $2",
             vec![tenant_id.into(), decision.id.into()],
@@ -325,7 +325,7 @@ async fn legacy_applied_application_reconciles_to_closed(
         seed_decided_case(&service, tenant_id, actor_id, 51, "legacy-applied").await?;
     let storage = database.connection("legacy_applied_storage").await?;
     storage
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE moderation_application_operations SET status = 'applied', applied_revision = subject_revision, applied_at = NOW(), updated_at = NOW() WHERE tenant_id = $1 AND decision_id = $2",
             vec![tenant_id.into(), decision.id.into()],
@@ -350,7 +350,7 @@ async fn legacy_applied_application_reconciles_to_closed(
     assert_eq!(reconciled.case_status, ModerationCaseStatus::Closed);
 
     let row = storage
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT closed_at IS NOT NULL AS has_closed_at, active_deduplication_key IS NULL AS released_active_key FROM moderation_cases WHERE tenant_id = $1 AND id = $2",
             vec![tenant_id.into(), case.id.into()],

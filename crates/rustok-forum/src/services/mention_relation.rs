@@ -571,7 +571,7 @@ async fn lock_source_in_tx(
             };
             let found = match txn.get_database_backend() {
                 DbBackend::Sqlite => query().one(txn).await?,
-                DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
+                _ => query().lock_exclusive().one(txn).await?,
             };
             if found.is_none() {
                 return Err(ForumError::TopicNotFound(target.id()));
@@ -584,7 +584,7 @@ async fn lock_source_in_tx(
             };
             let found = match txn.get_database_backend() {
                 DbBackend::Sqlite => query().one(txn).await?,
-                DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
+                _ => query().lock_exclusive().one(txn).await?,
             };
             if found.is_none() {
                 return Err(ForumError::ReplyNotFound(target.id()));

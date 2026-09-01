@@ -434,7 +434,7 @@ pub async fn load_tenant_locale_policy(
         ),
     };
 
-    let Some(row) = db.query_one(statement).await.map_err(db_err)? else {
+    let Some(row) = db.query_one_raw(statement).await.map_err(db_err)? else {
         return Ok((Some("en".to_string()), vec!["en".to_string()]));
     };
 

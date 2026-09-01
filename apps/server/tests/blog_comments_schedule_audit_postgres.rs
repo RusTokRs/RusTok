@@ -417,7 +417,7 @@ fn assert_last_conflict_audit(
 
 async fn read_state(database: &DatabaseConnection) -> TestResult<StateRow> {
     let row = database
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "SELECT schema_version, source, generation, schedule_digest_hex \
@@ -441,7 +441,7 @@ async fn read_audit(
     request_id: Uuid,
 ) -> TestResult<Option<AuditRow>> {
     let row = database
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "SELECT request_id, actor_id, principal_kind, operation, source, \
@@ -471,7 +471,7 @@ async fn read_audit(
 
 async fn count_outbox(database: &DatabaseConnection) -> TestResult<i64> {
     let row = database
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             format!(
                 "SELECT COUNT(*)::BIGINT AS row_count \
@@ -485,7 +485,7 @@ async fn count_outbox(database: &DatabaseConnection) -> TestResult<i64> {
 
 async fn read_only_outbox_request(database: &DatabaseConnection) -> TestResult<Option<Uuid>> {
     let row = database
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             format!(
                 "SELECT request_id \
@@ -506,7 +506,7 @@ async fn seed_generation_conflict(
 ) -> TestResult<()> {
     let occurred_at_unix_ms = i64::try_from(unix_ms()?)?;
     let result = database
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "INSERT INTO {COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_OUTBOX_TABLE} \

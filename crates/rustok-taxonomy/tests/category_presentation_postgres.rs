@@ -36,7 +36,7 @@ async fn postgres_category_presentation_guard_and_cas_fail_closed() -> TestResul
     let tag_id = create_term(&db, tenant_id, TaxonomyTermKind::Tag, "Presentation Tag").await?;
 
     let tag_insert = db
-        .execute(Statement::from_string(
+        .execute_raw(Statement::from_string(
             DbBackend::Postgres,
             format!(
                 "INSERT INTO taxonomy_category_presentations (tenant_id, term_id, icon_key, revision) VALUES ('{tenant_id}'::uuid, '{tag_id}'::uuid, 'tag', 1)"
@@ -50,7 +50,7 @@ async fn postgres_category_presentation_guard_and_cas_fail_closed() -> TestResul
     );
 
     let zero_revision = db
-        .execute(Statement::from_string(
+        .execute_raw(Statement::from_string(
             DbBackend::Postgres,
             format!(
                 "INSERT INTO taxonomy_category_presentations (tenant_id, term_id, icon_key, revision) VALUES ('{tenant_id}'::uuid, '{category_id}'::uuid, 'message-square', 0)"
@@ -65,7 +65,7 @@ async fn postgres_category_presentation_guard_and_cas_fail_closed() -> TestResul
         "non-positive revision rejection must come from the storage guard: {zero_revision}"
     );
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Postgres,
         format!(
             "INSERT INTO taxonomy_category_presentations (tenant_id, term_id, icon_key, color, revision) VALUES ('{tenant_id}'::uuid, '{category_id}'::uuid, 'message-square', '#112233', 1)"
@@ -74,7 +74,7 @@ async fn postgres_category_presentation_guard_and_cas_fail_closed() -> TestResul
     .await?;
 
     let skipped_revision = db
-        .execute(Statement::from_string(
+        .execute_raw(Statement::from_string(
             DbBackend::Postgres,
             format!(
                 "UPDATE taxonomy_category_presentations SET color = '#445566', revision = 3 WHERE tenant_id = '{tenant_id}'::uuid AND term_id = '{category_id}'::uuid"
@@ -163,7 +163,7 @@ async fn connect(database_url: &str) -> TestResult<DatabaseConnection> {
 
 async fn ensure_category_presentation_schema(db: &DatabaseConnection) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT to_regclass('taxonomy_category_presentations') IS NOT NULL AS present"
                 .to_string(),

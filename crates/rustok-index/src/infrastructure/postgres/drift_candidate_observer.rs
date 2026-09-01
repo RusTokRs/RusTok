@@ -34,7 +34,7 @@ impl PostgresIndexDriftCandidateMaterializedObserver {
         let key = candidate.key();
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT CAST(source_version AS TEXT) AS source_version_text, is_deleted FROM index_entities WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4 AND entity_id = $5 AND locale_key = $6 LIMIT 1",
                 vec![
@@ -71,7 +71,7 @@ impl PostgresIndexDriftCandidateMaterializedObserver {
         let target = candidate.target();
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT EXISTS (SELECT 1 FROM index_entities s JOIN index_links l ON l.tenant_id = s.tenant_id AND l.source_module = s.module_name AND l.source_entity = s.entity_name AND l.source_schema_version = s.schema_version AND l.source_entity_id = s.entity_id AND l.source_locale_key = s.locale_key AND l.source_version = s.source_version LEFT JOIN index_entities t ON t.tenant_id = l.tenant_id AND t.module_name = l.target_module AND t.entity_name = l.target_entity AND t.schema_version = l.target_schema_version AND t.entity_id = l.target_entity_id AND t.locale_key = l.target_locale_key WHERE s.tenant_id = $1 AND s.module_name = $2 AND s.entity_name = $3 AND s.schema_version = $4 AND s.entity_id = $5 AND s.locale_key = $6 AND s.is_deleted = FALSE AND CAST(s.source_version AS TEXT) = $7 AND l.link_name = $8 AND l.ordinal = $9 AND l.target_module = $10 AND l.target_entity = $11 AND l.target_schema_version = $12 AND l.target_entity_id = $13 AND l.target_locale_key = $14 AND (t.tenant_id IS NULL OR (t.is_deleted = TRUE AND t.source_version > 0))) AS candidate_matches",
                 vec![

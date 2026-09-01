@@ -85,7 +85,7 @@ where
         ),
     };
 
-    let Some(row) = db.query_one(statement).await? else {
+    let Some(row) = db.query_one_raw(statement).await? else {
         return Ok(OrderStatsSnapshot::default());
     };
 

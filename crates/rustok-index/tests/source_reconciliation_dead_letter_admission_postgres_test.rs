@@ -87,7 +87,7 @@ impl TestDatabase {
         let db = scoped_connection(&database_url, &schema_name).await?;
         db.execute_unprepared("CREATE TABLE tenants (id UUID NOT NULL PRIMARY KEY)")
             .await?;
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "INSERT INTO tenants (id) VALUES ($1)",
             vec![tenant_id.into()],
@@ -296,7 +296,7 @@ async fn persist_schema(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<
     let schema = schema();
     let fingerprint = schema.fingerprint()?.to_string();
     let schema_json = serde_json::to_value(&schema)?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO index_schemas (tenant_id, module_name, entity_name, schema_version, schema_fingerprint, schema_json, status) VALUES ($1, $2, $3, $4, $5, $6, 'active')",
         vec![
@@ -317,7 +317,7 @@ async fn read_failed_job(
     tenant_id: Uuid,
 ) -> TestResult<FailedJobEvidence> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT job_id, state, attempt_count::bigint AS attempt_count_value, (cursor->>'completed_passes')::bigint AS completed_passes, (cursor->>'pages_processed')::bigint AS pages_processed, last_error_code, last_error_details, (lease_owner IS NULL AND lease_expires_at IS NULL) AS lease_released, (completed_at IS NOT NULL) AS completed FROM index_jobs WHERE tenant_id = $1 AND kind = 'reconcile' AND state = 'failed' ORDER BY created_at DESC LIMIT 1",
             vec![tenant_id.into()],
@@ -343,7 +343,7 @@ async fn replace_private_failure_details(
     job_id: Uuid,
 ) -> TestResult<()> {
     let updated = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE index_jobs SET last_error_details = $3 WHERE tenant_id = $1 AND job_id = $2 AND kind = 'reconcile' AND state = 'failed'",
             vec![
@@ -369,7 +369,7 @@ async fn count(db: &DatabaseConnection, table: &str) -> TestResult<i64> {
         _ => panic!("unsupported fixture table"),
     };
     let row: QueryResult = db
-        .query_one(Statement::from_string(DbBackend::Postgres, sql.to_owned()))
+        .query_one_raw(Statement::from_string(DbBackend::Postgres, sql.to_owned()))
         .await?
         .ok_or_else(|| std::io::Error::other("count query returned no row"))?;
     Ok(row.try_get("", "value")?)

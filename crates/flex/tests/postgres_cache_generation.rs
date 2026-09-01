@@ -33,7 +33,7 @@ async fn connect_postgres(url: &str) -> DatabaseConnection {
 
 async fn read_generation(db: &DatabaseConnection) -> u64 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             db.get_database_backend(),
             format!(
                 "SELECT generation FROM {FIELD_DEFINITION_CACHE_GENERATION_TABLE} WHERE id = 1"
@@ -197,7 +197,7 @@ async fn postgres_flex_generation_is_transactional_concurrent_and_replay_safe() 
         .expect("generation table should drop for recovery evidence");
     assert!(
         replica
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 replica.get_database_backend(),
                 format!(
                     "SELECT generation FROM {FIELD_DEFINITION_CACHE_GENERATION_TABLE} WHERE id = 1"

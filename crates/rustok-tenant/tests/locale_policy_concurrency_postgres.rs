@@ -116,7 +116,7 @@ async fn postgres_concurrent_locale_policy_requests_replay_one_durable_receipt()
 
         let blocker_transaction = test_db.blocker.begin().await?;
         blocker_transaction
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Postgres,
                 format!(
                     "SELECT id FROM tenants WHERE id = '{}' FOR UPDATE",
@@ -312,7 +312,7 @@ async fn wait_for_lock_waiters(
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let row = control
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Postgres,
                 format!(
                     "SELECT COUNT(*)::BIGINT AS waiter_count \

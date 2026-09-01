@@ -20,7 +20,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
         let claim_token = Uuid::new_v4();
         let transaction = self.database.begin().await.map_err(unavailable)?;
         let row = transaction
-            .query_one(claim_next_retry_ready_statement(
+            .query_one_raw(claim_next_retry_ready_statement(
                 claim_token,
                 self.claim_ttl_seconds,
                 max_attempts,

@@ -613,7 +613,7 @@ async fn check_search_index_lag(
     let backend = ctx.db().get_database_backend();
     let stmt = Statement::from_string(backend, search_index_lag_query(backend).to_string());
 
-    let (status, reason) = match ctx.db().query_one(stmt).await {
+    let (status, reason) = match ctx.db().query_one_raw(stmt).await {
         Ok(Some(row)) => {
             let lag_seconds = row
                 .try_get::<i64>("", "max_lag_seconds")

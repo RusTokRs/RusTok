@@ -66,7 +66,7 @@ impl AuthCommandProvider {
     async fn cleanup_sessions(&self) -> CliCoreResult<CommandOutcome> {
         let db = db_clone(self.runtime.require_host().map_err(command_failed)?);
         let result = db
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 db.get_database_backend(),
                 "DELETE FROM sessions WHERE expires_at < CURRENT_TIMESTAMP".to_string(),
             ))
@@ -119,9 +119,10 @@ async fn create_development_app(
         DbBackend::Sqlite => {
             "INSERT INTO oauth_apps (id, tenant_id, slug, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"
         }
-    };
+        _ => unreachable!("unsupported SeaORM database backend"),
+};
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             app_sql,
             vec![
@@ -157,9 +158,10 @@ async fn create_development_app(
         DbBackend::Sqlite => {
             "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
         }
-    };
+        _ => unreachable!("unsupported SeaORM database backend"),
+};
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             translation_sql,
             vec![
@@ -310,7 +312,7 @@ mod tests {
         .expect("development app");
 
         let row = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT a.slug, t.locale, t.name FROM oauth_apps a JOIN oauth_app_translations t ON t.tenant_id = a.tenant_id AND t.app_id = a.id WHERE a.tenant_id = ?1 AND a.client_id = ?2",
                 vec![tenant_id.into(), created.client_id.into()],

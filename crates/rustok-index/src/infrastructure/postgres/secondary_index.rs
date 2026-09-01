@@ -147,7 +147,7 @@ impl SecondaryIndexSpec {
             (backend, _) => Err(SecondaryIndexError::UnsupportedBackend(format!(
                 "{backend:?}"
             ))),
-        }
+}
     }
 
     fn reindex_statement(&self, backend: DbBackend) -> Result<String, SecondaryIndexError> {
@@ -158,7 +158,7 @@ impl SecondaryIndexSpec {
             backend => Err(SecondaryIndexError::UnsupportedBackend(format!(
                 "{backend:?}"
             ))),
-        }
+}
     }
 
     fn drop_statement(&self, backend: DbBackend) -> Result<String, SecondaryIndexError> {
@@ -169,7 +169,7 @@ impl SecondaryIndexSpec {
             backend => Err(SecondaryIndexError::UnsupportedBackend(format!(
                 "{backend:?}"
             ))),
-        }
+}
     }
 
     fn comment_statement(&self) -> String {
@@ -452,7 +452,7 @@ impl PostgresSecondaryIndexManager {
         ensure_supported_backend(backend)?;
         let updated = self
             .db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 heartbeat_sql(backend),
                 vec![
@@ -502,7 +502,7 @@ impl PostgresSecondaryIndexManager {
             .await?;
 
         let rows = transaction
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 select_active_jobs_sql(backend),
                 schema_scope_values(request.spec(), backend),
@@ -537,7 +537,7 @@ impl PostgresSecondaryIndexManager {
                 SecondaryIndexError::InvalidStoredJob("attempt count overflow".to_owned())
             })?;
             let claimed = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     claim_job_sql(backend),
                     vec![
@@ -559,7 +559,7 @@ impl PostgresSecondaryIndexManager {
             job_id = Uuid::new_v4();
             attempt_count = 1;
             transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     insert_job_sql(backend),
                     vec![
@@ -600,7 +600,7 @@ impl PostgresSecondaryIndexManager {
             return Ok(());
         }
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
                 vec![format!("secondary-index\u{1f}{}", spec.index_name).into()],
@@ -618,7 +618,7 @@ impl PostgresSecondaryIndexManager {
         backend: DbBackend,
     ) -> Result<(), SecondaryIndexError> {
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select_schema_sql(backend),
                 schema_scope_values(spec, backend),
@@ -651,7 +651,7 @@ impl PostgresSecondaryIndexManager {
             "replacement_definition_hash": request.spec.definition_hash.as_str(),
         });
         let updated = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 supersede_job_sql(backend),
                 vec![
@@ -781,7 +781,7 @@ impl PostgresSecondaryIndexManager {
     ) -> Result<Option<ExistingIndex>, SecondaryIndexError> {
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 inspect_index_sql(backend),
                 vec![spec.index_name.clone().into()],
@@ -803,7 +803,7 @@ impl PostgresSecondaryIndexManager {
             (backend, Some(_)) => Err(SecondaryIndexError::UnsupportedBackend(format!(
                 "{backend:?}"
             ))),
-        }
+}
     }
 
     async fn assert_current(
@@ -813,7 +813,7 @@ impl PostgresSecondaryIndexManager {
     ) -> Result<(), SecondaryIndexError> {
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 assert_current_sql(backend),
                 vec![
@@ -842,7 +842,7 @@ impl PostgresSecondaryIndexManager {
         ensure_supported_backend(backend)?;
         let updated = self
             .db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 finish_job_sql(backend),
                 vec![
@@ -1013,7 +1013,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), SecondaryIndexErro
         backend => Err(SecondaryIndexError::UnsupportedBackend(format!(
             "{backend:?}"
         ))),
-    }
+}
 }
 
 fn storage_error(error: impl std::fmt::Display) -> SecondaryIndexError {
@@ -1188,5 +1188,5 @@ fn inspect_index_sql(backend: DbBackend) -> String {
         DbBackend::Postgres => "SELECT index_data.indisready AS is_ready, index_data.indisvalid AS is_valid, obj_description(index_class.oid, 'pg_class') AS index_comment FROM pg_class AS index_class JOIN pg_index AS index_data ON index_data.indexrelid = index_class.oid JOIN pg_class AS table_class ON table_class.oid = index_data.indrelid JOIN pg_namespace AS namespace ON namespace.oid = table_class.relnamespace WHERE table_class.relname = 'index_entities' AND index_class.relname = $1 LIMIT 1".to_owned(),
         DbBackend::Sqlite if cfg!(test) => "SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?1 LIMIT 1".to_owned(),
         backend => unreachable!("unsupported backend {backend:?} was validated"),
-    }
+}
 }

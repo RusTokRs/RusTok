@@ -9,7 +9,7 @@ use rustok_index::{
     register_postgres_index_source_factory,
 };
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
+    ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect,
 };
 use serde::{Deserialize, Serialize};

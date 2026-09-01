@@ -154,7 +154,7 @@ impl ProductSalesChannelIndexRelationStore {
         ensure_postgres(&self.db)?;
 
         self.db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 SELECT sequence_no, tenant_id, product_id, relation_epoch, channel_ids
@@ -225,7 +225,7 @@ impl ProductSalesChannelIndexRelationStore {
         };
 
         self.db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 sql,
                 values,
@@ -262,7 +262,7 @@ impl ProductSalesChannelIndexRelationStore {
         );
 
         self.db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 sql,
                 values,
@@ -305,7 +305,7 @@ impl ProductSalesChannelIndexRelationStore {
         let relation_epoch_i64 = i64::try_from(relation_epoch)
             .map_err(|_| ProductSalesChannelIndexRelationError::EpochExhausted)?;
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 INSERT INTO product_sales_channel_index_relation_snapshots (
@@ -342,7 +342,7 @@ async fn require_live_product(
     product_id: Uuid,
 ) -> Result<(), ProductSalesChannelIndexRelationError> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT 1 AS present
@@ -368,7 +368,7 @@ async fn lock_relation(
 ) -> Result<(), ProductSalesChannelIndexRelationError> {
     let lock_key = relation_lock_key(tenant_id, product_id);
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![lock_key.into()],
@@ -384,7 +384,7 @@ async fn load_latest(
     product_id: Uuid,
 ) -> Result<Option<ProductSalesChannelIndexRelationRecord>, ProductSalesChannelIndexRelationError> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT sequence_no, tenant_id, product_id, relation_epoch, channel_ids

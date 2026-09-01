@@ -245,7 +245,7 @@ async fn insert_or_resolve_schema(
     backend: DbBackend,
 ) -> Result<PersistedSchemaRegistrationOutcome, SchemaRegistrationError> {
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             insert_schema_sql(backend),
             schema_values(tenant_id, schema, fingerprint, schema_json, backend),
@@ -318,7 +318,7 @@ async fn lock_schema_identity(
         schema.reference.entity.as_str(),
     );
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![lock_key.into()],
@@ -335,7 +335,7 @@ async fn load_exact_schema(
     backend: DbBackend,
 ) -> Result<Option<StoredSchema>, SchemaRegistrationError> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             select_exact_schema_sql(backend),
             schema_scope_values(tenant_id, schema, backend),
@@ -353,7 +353,7 @@ async fn load_latest_version(
     backend: DbBackend,
 ) -> Result<Option<SchemaVersion>, SchemaRegistrationError> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             select_latest_version_sql(backend),
             schema_identity_values(tenant_id, schema, backend),
@@ -384,7 +384,7 @@ async fn retire_lower_active_schemas(
     backend: DbBackend,
 ) -> Result<u64, SchemaRegistrationError> {
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             retire_lower_active_schemas_sql(backend),
             schema_scope_values(tenant_id, schema, backend),

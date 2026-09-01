@@ -30,7 +30,7 @@ pub(crate) async fn lock_topic_solution_scopes_in_tx(
                 )));
             }
         };
-        if txn.query_one(statement).await?.is_none() {
+        if txn.query_one_raw(statement).await?.is_none() {
             return Err(ForumError::TopicNotFound(*topic_id));
         }
     }
@@ -38,7 +38,7 @@ pub(crate) async fn lock_topic_solution_scopes_in_tx(
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
             for topic_id in ids {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT pg_advisory_xact_lock(hashtextextended($1, 31))",
                     vec![format!("{tenant_id}:{topic_id}").into()],
@@ -48,7 +48,7 @@ pub(crate) async fn lock_topic_solution_scopes_in_tx(
         }
         DatabaseBackend::Sqlite => {
             for topic_id in ids {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
                     r#"
                     INSERT INTO forum_topic_solution_locks (tenant_id, topic_id, touched_at)

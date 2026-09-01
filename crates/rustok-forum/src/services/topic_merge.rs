@@ -579,13 +579,13 @@ async fn lock_topic_merge_tenant_in_tx(
 ) -> ForumResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "SELECT pg_advisory_xact_lock(hashtextextended($1, 21))",
                 vec![format!("forum-topic-merge:{tenant_id}").into()],
             ))
             .await?;
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
                 vec![tenant_id.to_string().into()],
@@ -593,7 +593,7 @@ async fn lock_topic_merge_tenant_in_tx(
             .await?;
         }
         DatabaseBackend::Sqlite => {
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
                 r#"
                 INSERT INTO forum_topic_merge_locks (tenant_id, touched_at)
@@ -636,7 +636,7 @@ async fn lock_merge_counter_scopes_in_tx(
                 format!("forum:topic:{tenant_id}:{}", topic_ids[1]),
             ]);
             for scope in scopes {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT forum_counter_lock($1)",
                     vec![scope.into()],
@@ -680,7 +680,7 @@ async fn lock_topics_in_tx(
                 )));
             }
         };
-        if txn.query_one(statement).await?.is_none() {
+        if txn.query_one_raw(statement).await?.is_none() {
             return Err(ForumError::TopicNotFound(topic_id));
         }
     }
@@ -698,7 +698,7 @@ async fn lock_topic_solution_scopes_in_tx(
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
             for topic_id in ids {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT pg_advisory_xact_lock(hashtextextended($1, 31))",
                     vec![format!("{tenant_id}:{topic_id}").into()],
@@ -708,7 +708,7 @@ async fn lock_topic_solution_scopes_in_tx(
         }
         DatabaseBackend::Sqlite => {
             for topic_id in ids {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
                     r#"
                     INSERT INTO forum_topic_solution_locks (tenant_id, topic_id, touched_at)
@@ -997,7 +997,7 @@ async fn move_replies_in_tx(
             )));
         }
     };
-    let result = txn.execute(statement).await?;
+    let result = txn.execute_raw(statement).await?;
     if result.rows_affected() != expected_rows {
         return Err(ForumError::Validation(
             "Forum topic merge reply set changed concurrently".to_string(),

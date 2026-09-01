@@ -247,7 +247,7 @@ mod tests {
         tenant_id: Uuid,
         user_id: Uuid,
     ) -> TestResult<()> {
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
             vec![user_id.into(), tenant_id.into()],

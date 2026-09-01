@@ -19,7 +19,7 @@ async fn install(manager: &SchemaManager<'_>, allow_replay: bool) -> Result<(), 
     match manager.get_database_backend() {
         DatabaseBackend::Postgres => install_postgres(manager, allow_replay).await?,
         DatabaseBackend::Sqlite => install_sqlite(manager, allow_replay).await?,
-        DatabaseBackend::MySql => install_mysql(manager, allow_replay).await?,
+        _ => install_mysql(manager, allow_replay).await?,
     }
     Ok(())
 }

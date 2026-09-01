@@ -14,7 +14,8 @@ impl MigrationTrait for Migration {
                 "Groups membership policy revision history supports PostgreSQL and SQLite only"
                     .to_string(),
             )),
-        }
+            _ => unreachable!("unsupported SeaORM database backend"),
+}
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -22,7 +23,8 @@ impl MigrationTrait for Migration {
             DbBackend::Postgres => postgres_down(manager).await,
             DbBackend::Sqlite => sqlite_down(manager).await,
             DbBackend::MySql => Ok(()),
-        }
+            _ => unreachable!("unsupported SeaORM database backend"),
+}
     }
 }
 

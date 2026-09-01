@@ -4,7 +4,7 @@ use chrono::Utc;
 use sea_orm::{
     ActiveValue::Set,
     Condition, QueryFilter, Select,
-    sea_query::{Expr, Query, SelectStatement},
+    sea_query::{Expr, ExprTrait, Query, SelectStatement},
 };
 use uuid::Uuid;
 

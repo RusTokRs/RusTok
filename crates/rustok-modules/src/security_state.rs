@@ -367,7 +367,7 @@ async fn persist_state(
     let checksum = command.release.digest.trim_start_matches("sha256:");
     let result = if command.expected_revision == 0 {
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_security_states
@@ -402,7 +402,7 @@ async fn persist_state(
             .map_err(store_error)?
     } else {
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_security_states
@@ -460,7 +460,7 @@ async fn load_snapshot<C: ConnectionTrait>(
         ""
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT revision, status, policy_revision, reason_code, reason_detail
@@ -499,7 +499,7 @@ async fn load_registry_status<C: ConnectionTrait>(
 ) -> Result<ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityError> {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT status FROM registry_module_releases
@@ -560,7 +560,7 @@ async fn reserve_operation(
 ) -> Result<Option<ModuleArtifactSecurityReceipt>, ModuleArtifactSecurityError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_security_operations
@@ -598,7 +598,7 @@ async fn load_operation<C: ConnectionTrait>(
 ) -> Result<Option<ModuleArtifactSecurityReceipt>, ModuleArtifactSecurityError> {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT operation_kind, request_digest, principal_id, trace_id, correlation_id,
@@ -656,7 +656,7 @@ async fn complete_operation(
     let receipt_json = serde_json::to_string(receipt)
         .map_err(|error| ModuleArtifactSecurityError::Store(error.to_string()))?;
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_artifact_security_operations
@@ -771,7 +771,7 @@ mod tests {
             .await
             .expect("outbox migration");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "CREATE TABLE registry_module_releases (
                     id TEXT PRIMARY KEY,
@@ -815,7 +815,7 @@ mod tests {
         assert_eq!(replay.snapshot, initial.snapshot);
 
         let receipt = database
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT principal_id, trace_id, correlation_id
                  FROM module_artifact_security_operations WHERE idempotency_key = ?1",
@@ -844,7 +844,7 @@ mod tests {
         );
 
         let event = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT payload FROM sys_events WHERE event_type = 'module.artifact.security_state_changed'"
                     .to_string(),

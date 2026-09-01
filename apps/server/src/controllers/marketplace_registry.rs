@@ -859,7 +859,8 @@ async fn validate_publish_request_step(
     path = "/v2/catalog/publish/{request_id}/stages",
     tag = "marketplace",
     params(
-        ("request_id" = String, Path, description = "Registry publish request identifier")
+        ("request_id" = String, Path, description = "Registry publish request identifier"),
+        ("Idempotency-Key" = String, Header, description = "Required non-nil UUID for live validation-stage reports; not required for dry-run previews")
     ),
     request_body = RegistryValidationStageReportRequest,
     responses(
@@ -934,6 +935,14 @@ async fn report_validation_stage(
         ));
     }
 
+    let idempotency_key = required_non_nil_idempotency_key(&headers)?;
+    let command_context = auth
+        .map(|auth| registry_platform_command_context(auth, idempotency_key))
+        .ok_or_else(|| {
+            Error::Unauthorized(
+                "Registry validation stage reporting requires authentication".into(),
+            )
+        })?;
     let result = RegistryGovernanceService::new(ctx.db_clone())
         .report_validation_stage(
             &request_id,
@@ -942,6 +951,7 @@ async fn report_validation_stage(
             &request.status,
             request.reason_code.as_deref(),
             request.requeue,
+            command_context,
         )
         .await
         .map_err(map_registry_governance_error)?;

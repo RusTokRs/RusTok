@@ -454,7 +454,7 @@ async fn scope_sqlite_legacy_reservation(
 ) -> Result<(), DbErr> {
     let row = manager
         .get_connection()
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'order_inventory_reserve_on_confirm'"
                 .to_string(),

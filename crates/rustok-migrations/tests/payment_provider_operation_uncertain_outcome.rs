@@ -84,7 +84,7 @@ async fn uncertain_executing_provider_operation_requires_reconciliation_without_
 }
 
 async fn seed_tenant(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO tenants (id, name, slug, domain, settings, default_locale, is_active, created_at, updated_at)\n         VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         vec![

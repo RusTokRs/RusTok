@@ -210,7 +210,7 @@ async fn tenant_policy_deferral_removes_candidate_from_bounded_head() {
         .expect("disabled tenant candidate should receive durable backoff");
 
     let deferred_row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Sqlite,
             format!(
                 "SELECT status, attempt_count, next_attempt_at, lease_owner, lease_expires_at, last_error_code FROM notification_fanout_items WHERE id = '{}'",
@@ -312,7 +312,7 @@ async fn commit_policy_revision_change_rolls_back_notification_and_retries_candi
     assert!(error.is_retryable());
 
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Sqlite,
             format!(
                 "SELECT status, attempt_count, notification_id, last_error_code, next_attempt_at FROM notification_fanout_items WHERE id = '{item_id}'"

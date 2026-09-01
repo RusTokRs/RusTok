@@ -400,7 +400,7 @@ async fn reply_state_row(
     db: &DatabaseConnection,
     seed: ReplySeed,
 ) -> TestResult<sea_orm::QueryResult> {
-    db.query_one(Statement::from_string(
+    db.query_one_raw(Statement::from_string(
         DatabaseBackend::Postgres,
         format!(
             r#"
@@ -466,7 +466,7 @@ async fn assert_receipt(
     expected_status: &str,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT status, COUNT(*) OVER ()::bigint AS receipt_count FROM owner_operation_receipts WHERE tenant_id = $1 AND owner_slug = 'forum' AND idempotency_key = $2 AND operation = $3",
             vec![
@@ -484,7 +484,7 @@ async fn assert_receipt(
 
 async fn scalar_i64(db: &DatabaseConnection, sql: String) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_string(DatabaseBackend::Postgres, sql))
+        .query_one_raw(Statement::from_string(DatabaseBackend::Postgres, sql))
         .await?
         .ok_or_else(|| test_error("scalar PostgreSQL query returned no row"))?;
     Ok(row.try_get("", "value")?)

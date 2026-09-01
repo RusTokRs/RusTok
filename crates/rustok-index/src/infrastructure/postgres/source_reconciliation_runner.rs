@@ -586,7 +586,7 @@ async fn acquire_in_transaction(
     verify_schema_registration(transaction, request, backend).await?;
 
     let rows = transaction
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             select_jobs_sql(backend),
             scope_values(request, backend),
@@ -638,7 +638,7 @@ async fn acquire_in_transaction(
             .checked_add(1)
             .ok_or(IndexReconciliationRunError::CounterOverflow)?;
         let updated = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 claim_job_sql(backend),
                 vec![
@@ -673,7 +673,7 @@ async fn acquire_in_transaction(
         let cursor_json = serde_json::to_value(&state)
             .map_err(|error| IndexReconciliationRunError::Storage(error.to_string()))?;
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 insert_job_sql(backend),
                 vec![
@@ -778,7 +778,7 @@ async fn lock_reconciliation_scope(
         request.schema.version.get(),
     );
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![lock_key.into()],
@@ -794,7 +794,7 @@ async fn verify_schema_registration(
     backend: DbBackend,
 ) -> Result<(), IndexReconciliationRunError> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             select_schema_sql(backend),
             scope_values(request, backend),
@@ -823,7 +823,7 @@ async fn persist_progress(
     let mut values = lease_values(lease, backend);
     values.push(SqlValue::Json(Some(Box::new(state_json))));
     let updated = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             persist_progress_sql(backend),
             values,
@@ -848,7 +848,7 @@ async fn heartbeat(
             .into(),
     );
     let updated = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             heartbeat_sql(backend),
             values,
@@ -876,7 +876,7 @@ async fn finish_success(
     let mut values = lease_values(lease, backend);
     values.push(SqlValue::Json(Some(Box::new(state_json))));
     let updated = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             finish_success_sql(backend),
             values,
@@ -940,7 +940,7 @@ async fn yield_for_resume(
     let backend = db.get_database_backend();
     ensure_supported_backend(backend)?;
     let updated = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             yield_job_sql(backend),
             lease_values(lease, backend),
@@ -958,7 +958,7 @@ async fn request_cancel_in_transaction(
     let backend = transaction.get_database_backend();
     ensure_supported_backend(backend)?;
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             select_cancel_job_sql(backend),
             vec![uuid_value(tenant_id, backend), uuid_value(job_id, backend)],
@@ -972,7 +972,7 @@ async fn request_cancel_in_transaction(
     match state.as_str() {
         "pending" => {
             let updated = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     cancel_pending_job_sql(backend),
                     vec![uuid_value(tenant_id, backend), uuid_value(job_id, backend)],
@@ -986,7 +986,7 @@ async fn request_cancel_in_transaction(
         }
         "running" => {
             let updated = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     request_running_cancel_sql(backend),
                     vec![uuid_value(tenant_id, backend), uuid_value(job_id, backend)],
@@ -1020,7 +1020,7 @@ async fn cancel_if_requested(
     let backend = db.get_database_backend();
     ensure_supported_backend(backend)?;
     let updated = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             cancel_active_job_sql(backend),
             lease_values(lease, backend),
@@ -1155,7 +1155,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexReconciliatio
         backend => Err(IndexReconciliationRunError::Storage(format!(
             "Index reconciliation does not support {backend:?}"
         ))),
-    }
+}
 }
 
 fn storage_error(error: impl std::fmt::Display) -> IndexReconciliationRunError {

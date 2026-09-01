@@ -10,7 +10,7 @@ impl MigrationTrait for Migration {
         let connection = manager.get_connection();
         let backend = manager.get_database_backend();
         let rows = connection
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend,
                 "SELECT slug FROM ai_provider_profiles WHERE api_key_secret IS NOT NULL AND TRIM(api_key_secret) <> '' ORDER BY slug".to_string(),
             ))
@@ -48,7 +48,7 @@ impl MigrationTrait for Migration {
                     "AI Rig provider migration does not support database backend {other:?}"
                 )));
             }
-        };
+};
         for statement in statements {
             connection.execute_unprepared(statement).await?;
         }
@@ -101,7 +101,7 @@ mod tests {
         Migration.up(&SchemaManager::new(&database)).await.unwrap();
 
         let row = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT provider_slug, settings, credential_refs FROM ai_provider_profiles"
                     .to_string(),
@@ -120,7 +120,7 @@ mod tests {
         assert_eq!(String::try_get(&row, "", "credential_refs").unwrap(), "{}");
 
         let columns = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "PRAGMA table_info(ai_provider_profiles)".to_string(),
             ))
@@ -153,7 +153,7 @@ mod tests {
         Migration.up(&SchemaManager::new(&database)).await.unwrap();
 
         let rows = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT slug, provider_slug, settings, credential_refs FROM ai_provider_profiles ORDER BY slug"
                     .to_string(),
@@ -206,7 +206,7 @@ mod tests {
         assert!(error.to_string().contains("primary"));
 
         let columns = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "PRAGMA table_info(ai_provider_profiles)".to_string(),
             ))

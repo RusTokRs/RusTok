@@ -83,7 +83,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         vec![user_id.into(), tenant_id.into()],
@@ -334,7 +334,7 @@ async fn historical_merge_audience_reconciliation_moves_source_only_layer_and_is
     ));
 
     assert!(db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE forum_topic_merge_audience_reconciliations SET reason = 'tampered' WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],
@@ -342,7 +342,7 @@ async fn historical_merge_audience_reconciliation_moves_source_only_layer_and_is
         .await
         .is_err());
     assert!(db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "DELETE FROM forum_topic_merge_audience_reconciliations WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],
@@ -597,7 +597,7 @@ async fn assert_archived_audience_database_guard(
     source_topic_id: Uuid,
 ) -> TestResult<()> {
     let result = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO forum_topic_audience_roles (tenant_id, topic_id, role) VALUES (?, ?, 'admin')",
             vec![tenant_id.into(), source_topic_id.into()],
@@ -641,7 +641,7 @@ async fn policy_updated_at(
     topic_id: Uuid,
 ) -> TestResult<Option<String>> {
     Ok(db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT updated_at FROM forum_topic_audience_policies WHERE tenant_id = ? AND topic_id = ?",
             vec![tenant_id.into(), topic_id.into()],
@@ -657,7 +657,7 @@ async fn topic_status(
     topic_id: Uuid,
 ) -> TestResult<String> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT status FROM forum_topics WHERE tenant_id = ? AND id = ?",
             vec![tenant_id.into(), topic_id.into()],
@@ -725,7 +725,7 @@ async fn assert_reconciliation_event(
     reconciled: &rustok_forum::ForumTopicMergeAudienceReconciliationResult,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             r#"
             SELECT aggregate_type, aggregate_id, event_type, schema_version,
@@ -775,7 +775,7 @@ async fn projection_root_ids(
     tenant_id: Uuid,
 ) -> TestResult<BTreeSet<Uuid>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT payload FROM sys_events WHERE event_type = 'index.reindex_requested'",
             Vec::new(),
@@ -797,7 +797,7 @@ async fn projection_targets(
     event_ids: &BTreeSet<Uuid>,
 ) -> TestResult<BTreeSet<(String, Option<Uuid>)>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT payload FROM sys_events WHERE event_type = 'index.reindex_requested'",
             Vec::new(),
@@ -823,6 +823,6 @@ async fn projection_targets(
 }
 
 async fn scalar_i64(db: &DatabaseConnection, statement: Statement) -> TestResult<i64> {
-    let row: QueryResult = db.query_one(statement).await?.ok_or("scalar row missing")?;
+    let row: QueryResult = db.query_one_raw(statement).await?.ok_or("scalar row missing")?;
     Ok(row.try_get("", "value")?)
 }

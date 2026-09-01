@@ -2380,7 +2380,7 @@ where
     let update = apply_operation::Entity::update_many()
         .col_expr(
             apply_operation::Column::AttemptCount,
-            Expr::col(apply_operation::Column::AttemptCount).add(1),
+            sea_orm::sea_query::ExprTrait::add(Expr::col(apply_operation::Column::AttemptCount), 1),
         )
         .col_expr(
             apply_operation::Column::LastErrorKind,

@@ -66,7 +66,7 @@ impl SeaOrmArtifactBindingExecutionAuditReader {
             .map_err(storage_error)?;
         let backend = transaction.get_database_backend();
         let rows = transaction
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT CAST(execution_id AS TEXT) AS execution_id, status, \
@@ -152,7 +152,7 @@ impl SeaOrmArtifactExecutionObserver {
                     .collect::<Vec<_>>()
                     .join(", ");
                 transaction
-                    .execute(Statement::from_sql_and_values(
+                    .execute_raw(Statement::from_sql_and_values(
                         backend,
                         format!(
                             "INSERT INTO module_artifact_execution_audit ({columns}) \
@@ -179,7 +179,7 @@ impl SeaOrmArtifactExecutionObserver {
             }
             ExecutionStatus::Succeeded | ExecutionStatus::Failed => {
                 let updated = transaction
-                    .execute(Statement::from_sql_and_values(
+                    .execute_raw(Statement::from_sql_and_values(
                         backend,
                         format!(
                             "UPDATE module_artifact_execution_audit \

@@ -33,7 +33,7 @@ async fn sqlite_trigger_rejects_mutations_to_immutable_provider_event_fields() {
         .expect("verified provider event must be persisted");
 
     let error = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "UPDATE payment_provider_events SET event_type = ? WHERE id = ? AND tenant_id = ?",
             ["payment.captured".into(), event.id.into(), tenant_id.into()],

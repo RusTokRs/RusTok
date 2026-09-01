@@ -612,7 +612,7 @@ fn assert_ids_ordered(page: IndexQueryPage, expected: &[Uuid], exact_count: u64)
 
 async fn update_variant_a_sku(db: &DatabaseConnection) -> TestResult<()> {
     let result = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE product_variants SET sku = $3 WHERE tenant_id = $1 AND id = $2",
             vec![
@@ -628,7 +628,7 @@ async fn update_variant_a_sku(db: &DatabaseConnection) -> TestResult<()> {
 
 async fn update_channel_a_name(db: &DatabaseConnection) -> TestResult<()> {
     let result = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE channels SET name = $3 WHERE tenant_id = $1 AND id = $2",
             vec![
@@ -669,7 +669,7 @@ async fn live_revision(
     label: &str,
 ) -> TestResult<u64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             vec![TENANT_ID.into(), entity_id.into()],
@@ -682,7 +682,7 @@ async fn live_revision(
 
 async fn channel_generation(db: &DatabaseConnection) -> TestResult<u64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT generation FROM channel_index_identity_generations WHERE tenant_id = $1",
             vec![TENANT_ID.into()],
@@ -701,7 +701,7 @@ async fn materialized_target_version(
     entity_id: Uuid,
 ) -> TestResult<u64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT CAST(source_version AS TEXT) AS source_version_text

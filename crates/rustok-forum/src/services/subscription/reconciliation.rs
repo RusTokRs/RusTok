@@ -236,7 +236,7 @@ impl ForumSubscriptionReconciliationService {
         let fetch_limit = effective_limit.saturating_add(1);
 
         let topic_rows = transaction
-            .query_all(subscription_statement(
+            .query_all_raw(subscription_statement(
                 backend,
                 TOPIC_SUBSCRIPTIONS_SQLITE,
                 TOPIC_SUBSCRIPTIONS_AFTER_SQLITE,
@@ -248,7 +248,7 @@ impl ForumSubscriptionReconciliationService {
             )?)
             .await?;
         let category_rows = transaction
-            .query_all(subscription_statement(
+            .query_all_raw(subscription_statement(
                 backend,
                 CATEGORY_SUBSCRIPTIONS_SQLITE,
                 CATEGORY_SUBSCRIPTIONS_AFTER_SQLITE,

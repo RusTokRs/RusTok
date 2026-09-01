@@ -67,7 +67,7 @@ async fn create_window_queries_use_author_time_indexes_on_sqlite() {
         ("forum_replies", REPLY_INDEX),
     ] {
         let rows = db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 format!(
                     "EXPLAIN QUERY PLAN \
@@ -118,7 +118,7 @@ async fn assert_index_definition(
     required_fragments: &[&str],
 ) {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?1",
             vec![index_name.into()],

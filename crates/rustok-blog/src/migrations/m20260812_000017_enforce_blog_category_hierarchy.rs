@@ -91,7 +91,7 @@ where
     C: ConnectionTrait,
 {
     let rows = connection
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             connection.get_database_backend(),
             "SELECT id, tenant_id, parent_id, depth FROM blog_categories ORDER BY tenant_id, id"
                 .to_string(),
@@ -201,7 +201,7 @@ where
             .and_where(Expr::col(BlogCategories::Id).eq(node.id))
             .and_where(Expr::col(BlogCategories::TenantId).eq(node.tenant_id));
         let result = connection
-            .execute(connection.get_database_backend().build(&update))
+            .execute_raw(connection.get_database_backend().build(&update))
             .await?;
         if result.rows_affected() != 1 {
             return Err(DbErr::Migration(format!(

@@ -225,6 +225,8 @@ try {
     !jobLauncher.includes('#[serde(deny_unknown_fields)]') ||
     !jobLauncher.includes('isolation_attestation') ||
     !jobLauncher.includes('network_mode') ||
+    !jobLauncher.includes('pid_limit') ||
+    !jobLauncher.includes('file_limit') ||
     !jobLauncher.includes('launcher_digest') ||
     !jobLauncher.includes('tenant_database_access') ||
     !jobLauncher.includes('general_platform_secret_access') ||

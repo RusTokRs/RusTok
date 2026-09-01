@@ -34,7 +34,7 @@ async fn legacy_database() -> (DatabaseConnection, Box<dyn MigrationTrait>) {
 }
 
 async fn query_string(db: &DatabaseConnection, sql: &str, column: &str) -> String {
-    db.query_one(Statement::from_string(DbBackend::Sqlite, sql.to_string()))
+    db.query_one_raw(Statement::from_string(DbBackend::Sqlite, sql.to_string()))
         .await
         .expect("query")
         .expect("row")
@@ -43,7 +43,7 @@ async fn query_string(db: &DatabaseConnection, sql: &str, column: &str) -> Strin
 }
 
 async fn count(db: &DatabaseConnection, table: &str) -> i64 {
-    db.query_one(Statement::from_string(
+    db.query_one_raw(Statement::from_string(
         DbBackend::Sqlite,
         format!("SELECT COUNT(*) AS count FROM {table}"),
     ))
@@ -55,7 +55,7 @@ async fn count(db: &DatabaseConnection, table: &str) -> i64 {
 }
 
 async fn table_exists(db: &DatabaseConnection, table: &str) -> bool {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = ?1",
         [table.into()],

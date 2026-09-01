@@ -339,7 +339,7 @@ where
         let backend = transaction.get_database_backend();
 
         if let Some(row) = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT reference_name, resolver_alias, resolver_key, expected_revision, actor_id, trace_id, correlation_id, idempotency_key, reason, revision
@@ -390,7 +390,7 @@ where
         }
 
         let current = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT revision FROM module_artifact_secret_bindings
@@ -417,7 +417,7 @@ where
                 .checked_add(1)
                 .ok_or(ArtifactSecretError::RevisionConflict)?;
             let updated = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "UPDATE module_artifact_secret_bindings
@@ -463,7 +463,7 @@ where
                 return Err(ArtifactSecretError::RevisionConflict);
             }
             transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "INSERT INTO module_artifact_secret_bindings
@@ -499,7 +499,7 @@ where
         };
 
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_secret_binding_operations
@@ -595,7 +595,7 @@ where
             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
         let backend = transaction.get_database_backend();
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT reference_name, revision FROM module_artifact_secret_bindings
@@ -667,7 +667,7 @@ where
             .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
         let backend = transaction.get_database_backend();
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT resolver_alias, resolver_key, revision
@@ -1209,7 +1209,7 @@ mod tests {
         let settings_instance_id = Uuid::new_v4();
 
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO module_artifact_installations (
                     installation_id, scope_kind, tenant_id, registry, repository, manifest_digest,
@@ -1244,7 +1244,7 @@ mod tests {
             .await
             .expect("installation fixture");
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO module_artifact_admissions (
                     stage_id, installation_id, payload_digest, media_type, size_bytes,
@@ -1262,7 +1262,7 @@ mod tests {
             .await
             .expect("active admission fixture");
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO module_artifact_sandbox_policies (
                     installation_id, tenant_id, capability_grant_revision, policy, created_at
@@ -1466,7 +1466,7 @@ mod tests {
         assert_eq!(replay, first);
 
         let receipt = database
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT actor_id, trace_id, correlation_id, idempotency_key
                  FROM module_artifact_secret_binding_operations
@@ -1508,7 +1508,7 @@ mod tests {
         );
 
         let event = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT payload FROM sys_events WHERE event_type = 'module.artifact.secret_bound'"
                     .to_string(),
@@ -1603,7 +1603,7 @@ mod tests {
             unreachable!("fixture uses an artifact subject")
         };
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE module_artifact_admissions SET status = 'inactive' WHERE installation_id = ?1",
                 vec![installation_id.to_string().into()],
@@ -1616,7 +1616,7 @@ mod tests {
         ));
 
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE module_artifact_admissions SET status = 'active' WHERE installation_id = ?1",
                 vec![installation_id.to_string().into()],
@@ -1624,7 +1624,7 @@ mod tests {
             .await
             .expect("reactivate fixture");
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE module_artifact_sandbox_policies SET policy = ?1 WHERE installation_id = ?2",
                 vec![
@@ -1685,7 +1685,7 @@ mod tests {
         }
         let binding = request();
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO module_artifact_secret_bindings
                  (tenant_id, module_slug, data_contract_revision, reference_name, resolver_alias,

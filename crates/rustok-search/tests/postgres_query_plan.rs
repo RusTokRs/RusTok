@@ -15,7 +15,7 @@ async fn representative_search_queries_use_expected_indexes() {
     assert_eq!(db.get_database_backend(), DbBackend::Postgres);
 
     let table = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT to_regclass('public.search_documents')::text AS table_name".to_string(),
         ))
@@ -79,10 +79,10 @@ async fn representative_search_queries_use_expected_indexes() {
         FROM generate_series(1, {REPRESENTATIVE_ROWS}) AS item
         "#
     );
-    db.execute(Statement::from_string(DbBackend::Postgres, seed_sql))
+    db.execute_raw(Statement::from_string(DbBackend::Postgres, seed_sql))
         .await
         .expect("seed representative search documents");
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Postgres,
         "ANALYZE search_documents".to_string(),
     ))
@@ -133,7 +133,7 @@ async fn representative_search_queries_use_expected_indexes() {
     let fts_plan = explain_json(&db, fts_sql).await;
     let typo_plan = explain_json(&db, typo_sql).await;
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Postgres,
         format!("DELETE FROM search_documents WHERE tenant_id = '{tenant_id}'::uuid"),
     ))
@@ -164,7 +164,7 @@ async fn representative_search_queries_use_expected_indexes() {
 }
 
 async fn explain_json(db: &sea_orm::DatabaseConnection, sql: String) -> Value {
-    db.query_one(Statement::from_string(DbBackend::Postgres, sql))
+    db.query_one_raw(Statement::from_string(DbBackend::Postgres, sql))
         .await
         .expect("execute EXPLAIN")
         .expect("EXPLAIN row")

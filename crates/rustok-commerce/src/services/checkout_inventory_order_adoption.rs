@@ -285,7 +285,7 @@ impl CheckoutInventoryOrderAdoptionService {
             }
 
             let result = txn
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     txn.get_database_backend(),
                     r#"
                     UPDATE checkout_inventory_reservations
@@ -356,7 +356,7 @@ async fn load_order_line_adoption<C>(
 where
     C: ConnectionTrait,
 {
-    conn.query_one(Statement::from_sql_and_values(
+    conn.query_one_raw(Statement::from_sql_and_values(
         conn.get_database_backend(),
         r#"
         SELECT order_line_item_id
@@ -378,7 +378,7 @@ where
     C: ConnectionTrait,
 {
     let rows = conn
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             conn.get_database_backend(),
             r#"
             SELECT reservation_id, cart_line_item_id, order_line_item_id

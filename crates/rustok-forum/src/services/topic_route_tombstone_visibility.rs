@@ -201,7 +201,7 @@ where
         ),
         backend => return Err(unsupported_backend(backend)),
     };
-    db.query_all(statement)
+    db.query_all_raw(statement)
         .await?
         .into_iter()
         .map(|row| {
@@ -243,7 +243,7 @@ where
         ),
         backend => return Err(unsupported_backend(backend)),
     };
-    db.query_one(statement)
+    db.query_one_raw(statement)
         .await?
         .map(snapshot_from_row)
         .transpose()
@@ -322,7 +322,7 @@ async fn insert_snapshot_in_tx(
         ),
         backend => return Err(unsupported_backend(backend)),
     };
-    txn.execute(statement).await?;
+    txn.execute_raw(statement).await?;
     Ok(())
 }
 
@@ -366,7 +366,7 @@ async fn insert_snapshot_channels_in_tx(
             ),
             backend => return Err(unsupported_backend(backend)),
         };
-        txn.execute(statement).await?;
+        txn.execute_raw(statement).await?;
     }
     Ok(())
 }

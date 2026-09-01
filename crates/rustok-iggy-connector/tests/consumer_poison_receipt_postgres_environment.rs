@@ -22,7 +22,7 @@ async fn reports_postgres_server_version_for_retained_evidence() -> TestResult<(
 
     let db = connect(&database_url).await?;
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT current_setting('server_version') AS server_version, current_setting('server_version_num') AS server_version_num".to_string(),
         ))

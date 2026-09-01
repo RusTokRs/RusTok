@@ -17,7 +17,7 @@ pub(crate) async fn validate_virtual_category_rule_references(
 
     if let Some(category_id) = rule.primary_category_subtree_id {
         let category_exists = txn
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 txn.get_database_backend(),
                 r#"
                 SELECT 1

@@ -132,7 +132,7 @@ impl PostgresIndexDriftSnapshotReader {
         source: &IndexDriftSourceObservation,
     ) -> Result<IndexDriftSnapshotPair, IndexDriftDependencyFailure> {
         let snapshot = transaction
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Postgres,
                 "SELECT txid_current_snapshot()::text AS snapshot_token".to_owned(),
             ))
@@ -179,7 +179,7 @@ impl PostgresIndexDriftSnapshotReader {
             .ok_or_else(|| permanent_failure(SCHEMA_UNAVAILABLE))?;
         let locale = persisted_locale(key.locale.as_ref());
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT CAST(source_version AS TEXT) AS source_version_text, schema_fingerprint, payload, is_deleted FROM index_entities WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4 AND entity_id = $5 AND locale_key = $6 LIMIT 1",
                 vec![
@@ -323,7 +323,7 @@ async fn load_links(
     source_version: u64,
 ) -> Result<BTreeMap<LinkName, Vec<(usize, LinkedEntityKey)>>, IndexDriftDependencyFailure> {
     let rows = transaction
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT link_name, ordinal, target_module, target_entity, target_schema_version, target_entity_id, target_locale_key FROM index_links WHERE tenant_id = $1 AND source_module = $2 AND source_entity = $3 AND source_schema_version = $4 AND source_entity_id = $5 AND source_locale_key = $6 AND CAST(source_version AS TEXT) = $7 ORDER BY link_name ASC, ordinal ASC",
             vec![

@@ -388,7 +388,7 @@ async fn record_finding_in_transaction(
 
     let finding_id = Uuid::new_v4();
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "INSERT INTO index_consistency_findings (tenant_id, finding_id, finding_key, check_name, severity, state, scope_kind, module_name, entity_name, schema_version, entity_id, locale_key, expected_digest, actual_digest, details) VALUES ($1, $2, $3, $4, $5, 'open', $6, $7, $8, $9, $10, $11, $12, $13, $14) ON CONFLICT (tenant_id, finding_key) DO NOTHING",
             insert_values(request, finding_id, &expected_scope),
@@ -418,7 +418,7 @@ async fn lock_finding_key(
         request.finding_key(),
     );
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![lock_key.into()],
@@ -433,7 +433,7 @@ async fn load_existing_finding(
     request: &IndexDriftDigestFindingRequest,
 ) -> Result<Option<StoredFinding>, IndexDriftConfirmedCandidateRecordError> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT finding_id, check_name, state, scope_kind, module_name, entity_name, CAST(schema_version AS BIGINT) AS schema_version_value, entity_id, locale_key FROM index_consistency_findings WHERE tenant_id = $1 AND finding_key = $2 FOR UPDATE",
             vec![request.tenant_id().into(), request.finding_key().to_owned().into()],
@@ -518,7 +518,7 @@ async fn refresh_existing_finding(
         _ => return Err(IndexDriftConfirmedCandidateRecordError::FindingContract),
     };
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             update_values(request, existing.finding_id),
@@ -597,7 +597,7 @@ async fn materialized_missing_entity_matches(
     candidate: &IndexDriftConfirmedMissingEntity,
 ) -> Result<bool, IndexDriftConfirmedCandidateRecordError> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT CAST(source_version AS TEXT) AS source_version_text, is_deleted FROM index_entities WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4 AND entity_id = $5 AND locale_key = $6 LIMIT 1 FOR SHARE",
             entity_values(candidate.key()),
@@ -632,7 +632,7 @@ async fn materialized_source_matches(
     candidate: &IndexDriftConfirmedOrphanLink,
 ) -> Result<bool, IndexDriftConfirmedCandidateRecordError> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT CAST(source_version AS TEXT) AS source_version_text, is_deleted FROM index_entities WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4 AND entity_id = $5 AND locale_key = $6 LIMIT 1 FOR SHARE",
             entity_values(candidate.source_key()),
@@ -656,7 +656,7 @@ async fn materialized_link_matches(
     let source = candidate.source_key();
     let target = candidate.target();
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT 1 AS link_match FROM index_links WHERE tenant_id = $1 AND source_module = $2 AND source_entity = $3 AND source_schema_version = $4 AND source_entity_id = $5 AND source_locale_key = $6 AND CAST(source_version AS TEXT) = $7 AND link_name = $8 AND ordinal = $9 AND target_module = $10 AND target_entity = $11 AND target_schema_version = $12 AND target_entity_id = $13 AND target_locale_key = $14 LIMIT 1 FOR SHARE",
             vec![
@@ -687,7 +687,7 @@ async fn materialized_target_absent(
 ) -> Result<bool, IndexDriftConfirmedCandidateRecordError> {
     let target = candidate.target();
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT CAST(source_version AS TEXT) AS source_version_text, is_deleted FROM index_entities WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4 AND entity_id = $5 AND locale_key = $6 LIMIT 1 FOR SHARE",
             vec![

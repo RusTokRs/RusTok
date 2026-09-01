@@ -157,7 +157,7 @@ async fn load_resolution_step(
         }
     };
 
-    let rows = db.query_all(statement).await?;
+    let rows = db.query_all_raw(statement).await?;
     let Some(first) = rows.first() else {
         return Err(ForumError::TopicCanonicalResolutionConflict(
             requested_topic_id,

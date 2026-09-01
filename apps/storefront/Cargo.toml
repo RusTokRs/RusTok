@@ -104,7 +104,6 @@ leptos-shadcn-pagination = { workspace = true }
 leptos-use = { workspace = true }
 leptos_i18n = { workspace = true }
 leptos-next-metadata = { workspace = true, optional = true }
-leptos_query = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_urlencoded.workspace = true
@@ -172,7 +171,6 @@ normal = [
   "leptos-use",
   "leptos_i18n",
   "leptos-next-metadata",
-  "leptos_query",
   "leptos_router",
   "rustok-blog-storefront",
   "rustok-cart-storefront",
@@ -205,7 +203,6 @@ ignored = [
   "leptos-zod",
   "leptos-zustand",
   "leptos_i18n",
-  "leptos_query",
   "leptos_router",
   "rustok-cart-storefront",
   "rustok-commerce-storefront",

@@ -208,7 +208,7 @@ async fn owner_snapshot(
     target_id: Uuid,
 ) -> (i64, i64, String, String, i64, i64, String, i64) {
     let group = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT version, member_count FROM groups WHERE tenant_id = '{tenant_id}' AND id = '{group_id}'"
@@ -218,7 +218,7 @@ async fn owner_snapshot(
         .expect("group snapshot query should succeed")
         .expect("group should exist");
     let membership = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT role, status, revision FROM group_memberships WHERE tenant_id = '{tenant_id}' AND group_id = '{group_id}' AND user_id = '{target_id}'"
@@ -228,7 +228,7 @@ async fn owner_snapshot(
         .expect("membership snapshot query should succeed")
         .expect("target membership should exist");
     let enforcement = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT revision, source_kind, CASE WHEN revoked_at IS NULL THEN 0 ELSE 1 END AS revoked FROM group_membership_enforcements WHERE tenant_id = '{tenant_id}' AND group_id = '{group_id}' AND user_id = '{target_id}'"

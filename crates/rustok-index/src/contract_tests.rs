@@ -99,7 +99,7 @@ async fn canonical_storage_migrations_round_trip_on_sqlite() {
     }
 
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DbBackend::Sqlite,
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'index_%'"
                 .to_owned(),
@@ -246,7 +246,7 @@ async fn canonical_storage_migrations_round_trip_on_sqlite() {
             .unwrap_or_else(|error| panic!("{} should roll back: {error}", migration.name()));
     }
     let remaining = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DbBackend::Sqlite,
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'index_%'"
                 .to_owned(),

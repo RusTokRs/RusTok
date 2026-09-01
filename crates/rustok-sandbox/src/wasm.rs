@@ -37,7 +37,7 @@ pub const WASM_COMPONENT_ERROR_ENCODING: &str = "wit-result-string";
 /// Wasmtime version encoded into every serialized-component cache key.
 ///
 /// Update this value in the same change as the pinned `wasmtime` dependency.
-pub const WASMTIME_ENGINE_VERSION: &str = "46.0.1";
+pub const WASMTIME_ENGINE_VERSION: &str = "48.0.0";
 
 const MAX_COMPONENT_CACHE_ENTRIES: usize = 64;
 const MAX_COMPONENT_CACHE_BYTES: usize = 128 * 1024 * 1024;

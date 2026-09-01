@@ -65,7 +65,7 @@ where
     C: ConnectionTrait,
 {
     if db.get_database_backend() == DatabaseBackend::Postgres {
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             [format!("blog-category-tree:{tenant_id}").into()],

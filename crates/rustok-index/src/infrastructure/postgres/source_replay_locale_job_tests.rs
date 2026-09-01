@@ -52,7 +52,7 @@ impl Fixture {
         let schema = schema(locale_mode);
         let fingerprint = schema.fingerprint().unwrap().to_string();
         let schema_json = serde_json::to_value(&schema).unwrap();
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO index_schemas (tenant_id, module_name, entity_name, schema_version, schema_fingerprint, schema_json, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active')",
             vec![
@@ -153,7 +153,7 @@ async fn locale_jobs_are_distinct_from_schema_and_other_locales() {
 
     let rows = fixture
         .db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DbBackend::Sqlite,
             "SELECT scope_kind, locale_key, request FROM index_jobs WHERE tenant_id = '22222222-2222-2222-2222-222222222222' AND kind = 'rebuild' ORDER BY scope_kind, locale_key"
                 .to_owned(),
@@ -225,7 +225,7 @@ async fn locale_job_scope_rejects_nonlocalized_schema() {
 
     let count: i64 = fixture
         .db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Sqlite,
             "SELECT COUNT(*) AS value FROM index_jobs".to_owned(),
         ))

@@ -517,7 +517,7 @@ impl SeaOrmArtifactNodeReadiness {
         let backend = self.db.get_database_backend();
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT reconciliation.reconciliation_id \
@@ -1473,7 +1473,7 @@ async fn load_current_installation_identity(
         ""
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT installation.scope_kind, installation.manifest_digest, installation.payload_digest, \
@@ -1541,7 +1541,7 @@ async fn insert_reconciliation(
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
     let backend = transaction.get_database_backend();
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_node_reconciliations \
@@ -1587,7 +1587,7 @@ async fn insert_assignments(
     let backend = transaction.get_database_backend();
     for (ordinal, assignment) in assignments.iter().enumerate() {
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_node_reconciliation_assignments \
@@ -1700,7 +1700,7 @@ async fn update_assignment(
         .as_ref()
         .map(|failure| failure.detail.clone());
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_artifact_node_reconciliation_assignments \
@@ -1791,7 +1791,7 @@ async fn load_phase_counts(
 ) -> Result<PhaseCounts, ModuleArtifactNodeReconciliationError> {
     let backend = connection.get_database_backend();
     let rows = connection
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT phase, COUNT(*) AS count \
@@ -1829,7 +1829,7 @@ async fn activate_healthy_assignments(
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
     let backend = transaction.get_database_backend();
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_artifact_node_reconciliation_assignments \
@@ -1863,7 +1863,7 @@ async fn update_reconciliation_status(
         _ => ("NULL".to_string(), "NULL".to_string()),
     };
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_artifact_node_reconciliations \
@@ -1899,7 +1899,7 @@ async fn supersede_reconciliation(
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_artifact_node_reconciliations \
@@ -1929,7 +1929,7 @@ async fn load_state<C: ConnectionTrait>(
         ""
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT revision, desired_reconciliation_id, observed_reconciliation_id \
@@ -1962,7 +1962,7 @@ async fn advance_state(
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_artifact_node_reconciliation_state \
@@ -2008,7 +2008,7 @@ async fn load_reconciliation<C: ConnectionTrait>(
         ""
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT reconciliation_id, predecessor_reconciliation_id, reconciliation_revision, \
@@ -2024,7 +2024,7 @@ async fn load_reconciliation<C: ConnectionTrait>(
         .map_err(store_error)?
         .ok_or(ModuleArtifactNodeReconciliationError::ReconciliationNotFound)?;
     let assignment_rows = connection
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT node_id, installation_id, installation_scope, release_digest, payload_digest, \
@@ -2101,7 +2101,7 @@ async fn load_assignment<C: ConnectionTrait>(
         ""
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT node_id, installation_id, installation_scope, release_digest, payload_digest, \
@@ -2148,7 +2148,7 @@ async fn load_next_assignment_for_node(
         ""
     };
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT node_id, installation_id, installation_scope, release_digest, payload_digest, \
@@ -2206,7 +2206,7 @@ async fn claim_assignment(
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_artifact_node_reconciliation_assignments \
@@ -2251,7 +2251,7 @@ async fn heartbeat_assignment(
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_artifact_node_reconciliation_assignments \
@@ -2501,7 +2501,7 @@ async fn reserve_operation(
 ) -> Result<Option<OperationRecord>, ModuleArtifactNodeReconciliationError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_node_reconciliation_operations \
@@ -2550,7 +2550,7 @@ async fn load_operation<C: ConnectionTrait>(
 ) -> Result<Option<OperationRecord>, ModuleArtifactNodeReconciliationError> {
     let backend = connection.get_database_backend();
     let Some(row) = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT operation_kind, request_digest, principal_id, trace_id, correlation_id, reconciliation_id, \
@@ -2659,7 +2659,7 @@ async fn complete_operation(
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE module_artifact_node_reconciliation_operations \
@@ -2775,10 +2775,10 @@ fn valid_text(value: &str, maximum_bytes: usize) -> bool {
 
 fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> sea_orm::Value {
     match (backend, value) {
-        (DbBackend::Postgres, value) => sea_orm::Value::Uuid(value.map(Box::new)),
+        (DbBackend::Postgres, value) => sea_orm::Value::Uuid(value),
         (_, Some(value)) => value.to_string().into(),
         (_, None) => sea_orm::Value::String(None),
-    }
+}
 }
 
 fn optional_uuid_from_row(
@@ -2988,7 +2988,7 @@ mod tests {
         assert!(created.created);
         let operation = service
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT principal_id, trace_id, correlation_id
                  FROM module_artifact_node_reconciliation_operations

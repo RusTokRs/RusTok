@@ -111,7 +111,8 @@ where
             }
             target
         }
-    };
+        _ => unreachable!("unsupported SeaORM database backend"),
+};
     target.ok_or(Error::NotFound)
 }
 
@@ -220,7 +221,8 @@ where
         DbBackend::Postgres | DbBackend::MySql => {
             query().lock_exclusive().one(db).await.map_err(Into::into)
         }
-    }
+        _ => unreachable!("unsupported SeaORM database backend"),
+}
 }
 
 #[cfg(test)]

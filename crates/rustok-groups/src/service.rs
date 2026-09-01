@@ -4,6 +4,8 @@ use std::str::FromStr;
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, normalize_locale_tag};
+#[cfg(test)]
+use sea_orm::Database;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, Set, TransactionTrait,
@@ -1024,7 +1026,9 @@ mod tests {
 
     #[tokio::test]
     async fn lock_membership_enforcement_target_by_id_returns_none_or_err() {
-        let db = DatabaseConnection::Disconnected;
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory database should connect");
         let service = GroupsService::new(db);
         let result = service
             .lock_membership_enforcement_target_by_id(Uuid::new_v4(), Uuid::new_v4())

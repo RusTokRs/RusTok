@@ -334,7 +334,7 @@ async fn discover_due_reconciliation(
     let backend = db.get_database_backend();
     ensure_supported_backend(backend)?;
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             backend,
             due_reconciliation_sql(backend),
         ))

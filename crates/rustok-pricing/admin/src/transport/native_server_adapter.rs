@@ -668,7 +668,7 @@ async fn validate_active_price_list_for_rule_update(
     use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "SELECT CASE
                 WHEN lower(status) != 'active' THEN 'inactive'
@@ -1346,7 +1346,7 @@ mod tests {
     }
 
     async fn seed_tenant_context(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
-        db.execute(sea_orm::Statement::from_sql_and_values(
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO tenants (id, name, slug, domain, settings, default_locale, is_active, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -1425,7 +1425,7 @@ mod tests {
         status: &str,
     ) -> Uuid {
         let price_list_id = Uuid::new_v4();
-        db.execute(sea_orm::Statement::from_sql_and_values(
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO price_lists (
                 id,
@@ -1449,7 +1449,7 @@ mod tests {
         .await
         .expect("price list should be inserted");
 
-        db.execute(sea_orm::Statement::from_sql_and_values(
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO price_list_translations (
                 id,
@@ -1478,7 +1478,7 @@ mod tests {
         status: &str,
     ) -> Uuid {
         let price_list_id = Uuid::new_v4();
-        db.execute(sea_orm::Statement::from_sql_and_values(
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO price_lists (
                 id,
@@ -1500,7 +1500,7 @@ mod tests {
         .await
         .expect("price list should be inserted");
 
-        db.execute(sea_orm::Statement::from_sql_and_values(
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO price_list_translations (
                 id,
@@ -1529,7 +1529,7 @@ mod tests {
         status: &str,
     ) -> Uuid {
         let price_list_id = Uuid::new_v4();
-        db.execute(sea_orm::Statement::from_sql_and_values(
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO price_lists (
                 id,
@@ -1551,7 +1551,7 @@ mod tests {
         .await
         .expect("price list should be inserted");
 
-        db.execute(sea_orm::Statement::from_sql_and_values(
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO price_list_translations (
                 id,

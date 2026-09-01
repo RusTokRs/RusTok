@@ -295,7 +295,7 @@ where
         configure_tenant_scope(&transaction, request.scope.tenant_id).await?;
         let backend = transaction.get_database_backend();
         if let Some(row) = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT snapshot_id, request_digest FROM module_artifact_data_snapshots
@@ -327,7 +327,7 @@ where
         }
 
         let namespace = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT namespace_revision, CASE WHEN purged_at IS NULL THEN 0 ELSE 1 END AS is_purged
@@ -369,7 +369,7 @@ where
         })?;
         let snapshot_id = self.infrastructure.new_id();
         let inserted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_snapshots
@@ -411,7 +411,7 @@ where
             .map_err(snapshot_storage_error)?;
         if inserted.rows_affected() == 0 {
             let row = transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT snapshot_id, request_digest FROM module_artifact_data_snapshots
@@ -514,7 +514,7 @@ where
             configure_tenant_scope(&transaction, tenant_id).await?;
             let backend = transaction.get_database_backend();
             transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "UPDATE module_artifact_data_snapshot_objects SET snapshot_storage_key = {}
@@ -578,7 +578,7 @@ where
             return Err(ArtifactDataError::SnapshotIntegrity);
         }
         let finalized = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_data_snapshots SET status = 'ready', manifest_digest = {}, ready_at = {}
@@ -768,7 +768,7 @@ where
             .checked_add(1)
             .ok_or(ArtifactDataError::RestorePrecondition)?;
         let updated = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_data_namespaces SET namespace_revision = {}, updated_at = {}
@@ -793,7 +793,7 @@ where
         let restored_records = manifest.records.len() as u64;
         let restored_objects = manifest.objects.len() as u64;
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_restore_operations
@@ -941,7 +941,7 @@ where
             .checked_add(1)
             .ok_or(ArtifactDataError::SnapshotRetentionPrecondition)?;
         let updated = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_data_snapshots
@@ -970,7 +970,7 @@ where
             return Err(ArtifactDataError::SnapshotRetentionPrecondition);
         }
         let completed = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_snapshot_retention_operations
@@ -1134,7 +1134,7 @@ where
         configure_tenant_scope(&transaction, request.tenant_id).await?;
         let backend = transaction.get_database_backend();
         let rows = transaction
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT snapshot_id, tenant_id, module_slug, data_contract_revision,
@@ -1191,7 +1191,7 @@ where
         }
         let collection_id = self.infrastructure.new_id();
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_snapshot_collections
@@ -1231,7 +1231,7 @@ where
             .await
             .map_err(snapshot_storage_error)?;
         let updated = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_data_snapshots SET status = 'collecting'
@@ -1324,7 +1324,7 @@ where
             return Err(ArtifactDataError::SnapshotCollectionPrecondition);
         }
         let completed = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_data_snapshot_collections SET completed_at = {}
@@ -1365,7 +1365,7 @@ where
             .await
             .map_err(snapshot_storage_error)?;
         let deleted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_snapshots
@@ -1463,7 +1463,7 @@ async fn query_snapshot_records<C: ConnectionTrait>(
 ) -> Result<Vec<ArtifactDataRecord>, ArtifactDataError> {
     let backend = connection.get_database_backend();
     connection
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT data_key, value, revision FROM module_artifact_data
@@ -1497,7 +1497,7 @@ async fn query_source_objects<C: ConnectionTrait>(
 ) -> Result<Vec<SnapshotObject>, ArtifactDataError> {
     let backend = connection.get_database_backend();
     connection
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key
@@ -1524,7 +1524,7 @@ async fn query_snapshot_indexes<C: ConnectionTrait>(
 ) -> Result<Vec<SnapshotIndex>, ArtifactDataError> {
     let backend = connection.get_database_backend();
     connection
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT index_name, index_value, data_key FROM module_artifact_data_indexes
@@ -1562,7 +1562,7 @@ async fn query_index_contract<C: ConnectionTrait>(
 ) -> Result<Option<String>, ArtifactDataError> {
     let backend = connection.get_database_backend();
     connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT contract_digest FROM module_artifact_data_index_contracts
@@ -1593,25 +1593,25 @@ async fn persist_snapshot_rows(
 ) -> Result<(), ArtifactDataError> {
     let backend = transaction.get_database_backend();
     for record in records {
-        transaction.execute(Statement::from_sql_and_values(backend, format!(
+        transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
             "INSERT INTO module_artifact_data_snapshot_records (tenant_id, snapshot_id, data_key, value, revision) VALUES ({}, {}, {}, {}, {})",
             placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5)), vec![
             uuid_value(tenant_id, backend), uuid_value(snapshot_id, backend), record.key.clone().into(), record.value.clone().into(), revision_value(record.revision)?])).await.map_err(snapshot_storage_error)?;
     }
     for object in objects {
-        transaction.execute(Statement::from_sql_and_values(backend, format!(
+        transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
             "INSERT INTO module_artifact_data_snapshot_objects (tenant_id, snapshot_id, object_name, content_type, size_bytes, digest_sha256, revision, source_storage_key, snapshot_storage_key) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, NULL)",
             placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), placeholder(backend,6), placeholder(backend,7), placeholder(backend,8)), vec![
             uuid_value(tenant_id, backend), uuid_value(snapshot_id, backend), object.object.name.clone().into(), object.object.content_type.clone().into(), revision_value(object.object.size_bytes)?, object.object.digest_sha256.clone().into(), revision_value(object.object.revision)?, object.source_storage_key.clone().into()])).await.map_err(snapshot_storage_error)?;
     }
     for index in indexes {
-        transaction.execute(Statement::from_sql_and_values(backend, format!(
+        transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
             "INSERT INTO module_artifact_data_snapshot_indexes (tenant_id, snapshot_id, index_name, index_value, data_key) VALUES ({}, {}, {}, {}, {})",
             placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5)), vec![
             uuid_value(tenant_id, backend), uuid_value(snapshot_id, backend), index.index_name.clone().into(), index.index_value.clone().into(), index.data_key.clone().into()])).await.map_err(snapshot_storage_error)?;
     }
     if let Some(digest) = index_contract {
-        transaction.execute(Statement::from_sql_and_values(backend, format!(
+        transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
             "INSERT INTO module_artifact_data_snapshot_index_contracts (tenant_id, snapshot_id, contract_digest) VALUES ({}, {}, {})",
             placeholder(backend,1), placeholder(backend,2), placeholder(backend,3)), vec![uuid_value(tenant_id, backend), uuid_value(snapshot_id, backend), digest.to_owned().into()])).await.map_err(snapshot_storage_error)?;
     }
@@ -1627,14 +1627,14 @@ async fn load_manifest<C: ConnectionTrait>(
     let snapshot_row = lock_snapshot(connection, tenant_id, snapshot_id).await?;
     let scope = snapshot_scope_from_row(&snapshot_row, backend)?;
     let source_namespace_revision = positive_u64(&snapshot_row, "source_namespace_revision")?;
-    let records = connection.query_all(Statement::from_sql_and_values(backend, format!(
+    let records = connection.query_all_raw(Statement::from_sql_and_values(backend, format!(
         "SELECT data_key, value, revision FROM module_artifact_data_snapshot_records WHERE tenant_id = {} AND snapshot_id = {} ORDER BY data_key ASC LIMIT {}",
         placeholder(backend,1), placeholder(backend,2), MAX_SNAPSHOT_RECORDS + 1), vec![uuid_value(tenant_id, backend), uuid_value(snapshot_id, backend)])).await.map_err(snapshot_storage_error)?.into_iter().map(|row| Ok(ArtifactDataRecord { key: row.try_get("", "data_key").map_err(snapshot_storage_error)?, value: row.try_get("", "value").map_err(snapshot_storage_error)?, revision: positive_u64(&row, "revision")? })).collect::<Result<Vec<_>, ArtifactDataError>>()?;
     let objects = query_stored_snapshot_objects(connection, tenant_id, snapshot_id).await?;
-    let indexes = connection.query_all(Statement::from_sql_and_values(backend, format!(
+    let indexes = connection.query_all_raw(Statement::from_sql_and_values(backend, format!(
         "SELECT index_name, index_value, data_key FROM module_artifact_data_snapshot_indexes WHERE tenant_id = {} AND snapshot_id = {} ORDER BY index_name ASC, index_value ASC, data_key ASC LIMIT {}",
         placeholder(backend,1), placeholder(backend,2), MAX_SNAPSHOT_INDEX_ROWS + 1), vec![uuid_value(tenant_id, backend), uuid_value(snapshot_id, backend)])).await.map_err(snapshot_storage_error)?.into_iter().map(|row| Ok(SnapshotIndex { index_name: row.try_get("", "index_name").map_err(snapshot_storage_error)?, index_value: row.try_get("", "index_value").map_err(snapshot_storage_error)?, data_key: row.try_get("", "data_key").map_err(snapshot_storage_error)? })).collect::<Result<Vec<_>, ArtifactDataError>>()?;
-    let index_contract_digest = connection.query_one(Statement::from_sql_and_values(backend, format!(
+    let index_contract_digest = connection.query_one_raw(Statement::from_sql_and_values(backend, format!(
         "SELECT contract_digest FROM module_artifact_data_snapshot_index_contracts WHERE tenant_id = {} AND snapshot_id = {}",
         placeholder(backend,1), placeholder(backend,2)), vec![uuid_value(tenant_id, backend), uuid_value(snapshot_id, backend)])).await.map_err(snapshot_storage_error)?.map(|row| row.try_get("", "contract_digest").map_err(snapshot_storage_error)).transpose()?;
     Ok(StoredSnapshotManifest {
@@ -1653,7 +1653,7 @@ async fn query_stored_snapshot_objects<C: ConnectionTrait>(
     snapshot_id: Uuid,
 ) -> Result<Vec<SnapshotObject>, ArtifactDataError> {
     let backend = connection.get_database_backend();
-    connection.query_all(Statement::from_sql_and_values(backend, format!(
+    connection.query_all_raw(Statement::from_sql_and_values(backend, format!(
         "SELECT object_name, content_type, size_bytes, digest_sha256, revision, source_storage_key, snapshot_storage_key FROM module_artifact_data_snapshot_objects WHERE tenant_id = {} AND snapshot_id = {} ORDER BY object_name ASC LIMIT {}",
         placeholder(backend,1), placeholder(backend,2), MAX_SNAPSHOT_OBJECTS + 1), vec![uuid_value(tenant_id, backend), uuid_value(snapshot_id, backend)])).await.map_err(snapshot_storage_error)?.into_iter().map(snapshot_object_from_snapshot_row).collect()
 }
@@ -1664,7 +1664,7 @@ async fn lock_snapshot<C: ConnectionTrait>(
     snapshot_id: Uuid,
 ) -> Result<sea_orm::QueryResult, ArtifactDataError> {
     let backend = connection.get_database_backend();
-    connection.query_one(Statement::from_sql_and_values(backend, format!(
+    connection.query_one_raw(Statement::from_sql_and_values(backend, format!(
         "SELECT snapshot_id, tenant_id, module_slug, data_contract_revision, policy_revision, source_namespace_revision, status, retention_revision, manifest_digest, structured_record_count, object_count, total_object_bytes, retain_until, legal_hold, actor_id, trace_id, correlation_id, idempotency_key FROM module_artifact_data_snapshots WHERE tenant_id = {} AND snapshot_id = {}{}",
         placeholder(backend,1), placeholder(backend,2), namespace_lock_clause(backend)), vec![uuid_value(tenant_id, backend), uuid_value(snapshot_id, backend)])).await.map_err(snapshot_storage_error)?.ok_or(ArtifactDataError::SnapshotPrecondition)
 }
@@ -1694,10 +1694,10 @@ async fn lock_restore_namespace(
     request: &ArtifactDataRestoreRequest,
 ) -> Result<(u64, bool), ArtifactDataError> {
     let backend = transaction.get_database_backend();
-    transaction.execute(Statement::from_sql_and_values(backend, format!(
+    transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
         "INSERT INTO module_artifact_data_namespaces (tenant_id, module_slug, data_contract_revision, namespace_revision, created_at, updated_at) VALUES ({}, {}, {}, 1, {}, {}) ON CONFLICT DO NOTHING",
         placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), now_expression(backend), now_expression(backend)), scope_values(&request.target, backend)?)).await.map_err(snapshot_storage_error)?;
-    let row = transaction.query_one(Statement::from_sql_and_values(backend, format!(
+    let row = transaction.query_one_raw(Statement::from_sql_and_values(backend, format!(
         "SELECT namespace_revision, CASE WHEN purged_at IS NULL THEN 0 ELSE 1 END AS is_purged FROM module_artifact_data_namespaces WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}{}",
         placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), namespace_lock_clause(backend)), scope_values(&request.target, backend)?)).await.map_err(snapshot_storage_error)?.ok_or(ArtifactDataError::RestorePrecondition)?;
     let is_purged: i64 = row
@@ -1717,7 +1717,7 @@ async fn ensure_namespace_empty(
         "module_artifact_data_indexes",
         "module_artifact_data_index_contracts",
     ] {
-        let row = transaction.query_one(Statement::from_sql_and_values(backend, format!(
+        let row = transaction.query_one_raw(Statement::from_sql_and_values(backend, format!(
             "SELECT COUNT(*) AS row_count FROM {table} WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
             placeholder(backend,1), placeholder(backend,2), placeholder(backend,3)), scope_values(scope, backend)?)).await.map_err(snapshot_storage_error)?.ok_or(ArtifactDataError::RestorePrecondition)?;
         let count: i64 = row
@@ -1751,22 +1751,22 @@ async fn persist_restore_rows(
     let backend = transaction.get_database_backend();
     for record in &manifest.records {
         let value_size_bytes = artifact_data_value_size(&record.value)?;
-        transaction.execute(Statement::from_sql_and_values(backend, format!(
+        transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
             "INSERT INTO module_artifact_data (tenant_id, module_slug, data_contract_revision, data_key, value, value_size_bytes, revision, updated_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {})",
             placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), placeholder(backend,6), placeholder(backend,7), now_expression(backend)), vec![uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, record.key.clone().into(), record.value.clone().into(), revision_value(value_size_bytes)?, revision_value(record.revision)?])).await.map_err(snapshot_storage_error)?;
     }
     for (object, storage_key) in objects.iter().zip(copied) {
-        transaction.execute(Statement::from_sql_and_values(backend, format!(
+        transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
             "INSERT INTO module_artifact_data_objects (tenant_id, module_slug, data_contract_revision, object_name, storage_key, content_type, size_bytes, digest_sha256, revision, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
             placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), placeholder(backend,6), placeholder(backend,7), placeholder(backend,8), placeholder(backend,9), now_expression(backend), now_expression(backend)), vec![uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, object.object.name.clone().into(), storage_key.clone().into(), object.object.content_type.clone().into(), revision_value(object.object.size_bytes)?, object.object.digest_sha256.clone().into(), revision_value(object.object.revision)?])).await.map_err(snapshot_storage_error)?;
     }
     for index in &manifest.indexes {
-        transaction.execute(Statement::from_sql_and_values(backend, format!(
+        transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
             "INSERT INTO module_artifact_data_indexes (tenant_id, module_slug, data_contract_revision, index_name, index_value, data_key) VALUES ({}, {}, {}, {}, {}, {})",
             placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), placeholder(backend,6)), vec![uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, index.index_name.clone().into(), index.index_value.clone().into(), index.data_key.clone().into()])).await.map_err(snapshot_storage_error)?;
     }
     if let Some(digest) = &manifest.index_contract_digest {
-        transaction.execute(Statement::from_sql_and_values(backend, format!(
+        transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
             "INSERT INTO module_artifact_data_index_contracts (tenant_id, module_slug, data_contract_revision, contract_digest, bound_at) VALUES ({}, {}, {}, {}, {})",
             placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), now_expression(backend)), vec![uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, digest.clone().into()])).await.map_err(snapshot_storage_error)?;
     }
@@ -1779,7 +1779,7 @@ async fn find_restore_operation_in<C: ConnectionTrait>(
     request_digest: &str,
 ) -> Result<Option<ArtifactDataRestoreResult>, ArtifactDataError> {
     let backend = connection.get_database_backend();
-    let row = connection.query_one(Statement::from_sql_and_values(backend, format!(
+    let row = connection.query_one_raw(Statement::from_sql_and_values(backend, format!(
         "SELECT request_digest, snapshot_id, namespace_revision, restored_records, restored_objects FROM module_artifact_data_restore_operations WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND idempotency_key = {}",
         placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4)), vec![uuid_value(request.target.tenant_id, backend), request.target.module_slug.clone().into(), revision_value(request.target.data_contract_revision)?, uuid_value(request.context.idempotency_key, backend)])).await.map_err(snapshot_storage_error)?;
     let Some(row) = row else {
@@ -1807,7 +1807,7 @@ async fn find_retention_operation<C: ConnectionTrait>(
 ) -> Result<Option<ArtifactDataSnapshotRetention>, ArtifactDataError> {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT request_digest, retention_revision, retain_until, legal_hold
@@ -1876,7 +1876,7 @@ async fn collection_work_in<C: ConnectionTrait>(
 ) -> Result<CollectionWork, ArtifactDataError> {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT collection_id, tenant_id, snapshot_id, module_slug,
@@ -2232,7 +2232,7 @@ fn datetime_from_row(
 
 fn datetime_value(value: DateTime<Utc>, backend: DbBackend) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(Box::new(value))),
+        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value)),
         _ => value.to_rfc3339().into(),
     }
 }

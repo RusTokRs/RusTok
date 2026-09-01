@@ -151,7 +151,7 @@ mod tests {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("in-memory SQLite should connect");
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE forum_topic_read_states (\
                 tenant_id TEXT NOT NULL, \
@@ -176,7 +176,7 @@ mod tests {
         topic_id: Uuid,
         user_id: Uuid,
     ) {
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO forum_topic_read_states (\
                 tenant_id, topic_id, user_id, last_read_position, \

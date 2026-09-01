@@ -841,7 +841,7 @@ async fn assert_legacy_inventory_mapping(
     db: &DatabaseConnection,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             r#"
 SELECT inventory_management, inventory_policy, position
@@ -1351,7 +1351,7 @@ async fn migration_is_applied(
     migration: &str,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT EXISTS (SELECT 1 FROM seaql_migrations WHERE version = $1) AS exists",
             [migration.to_owned().into()],
@@ -1390,7 +1390,7 @@ async fn assert_table_exists(
     table: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT to_regclass($1) IS NOT NULL AS exists",
             [format!("public.{table}").into()],
@@ -1412,7 +1412,7 @@ async fn assert_table_does_not_exist(
     table: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT to_regclass($1) IS NOT NULL AS exists",
             [format!("public.{table}").into()],
@@ -1475,7 +1475,7 @@ async fn assert_catalog_object_exists(
     kind: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             query,
             [name.to_owned().into()],

@@ -195,7 +195,7 @@ impl ForumMentionReconciliationService {
             .clamp(1, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT);
         let fetch_limit = effective_limit.saturating_add(1);
         let rows = transaction
-            .query_all(mention_statement(
+            .query_all_raw(mention_statement(
                 backend,
                 tenant_id,
                 relation_after,

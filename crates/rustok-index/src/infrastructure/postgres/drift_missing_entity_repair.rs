@@ -137,7 +137,7 @@ impl PostgresIndexDriftMissingEntityEvidenceReader {
     ) -> Result<MissingEntityMaterialized, IndexDriftRepairFailure> {
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT CAST(source_version AS TEXT) AS source_version_text, is_deleted FROM index_entities WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4 AND entity_id = $5 AND locale_key = $6 LIMIT 1",
                 entity_values(key),

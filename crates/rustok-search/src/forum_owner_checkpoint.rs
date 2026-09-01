@@ -315,7 +315,7 @@ impl ForumOwnerCheckpointReconciler {
     ) -> Result<u64> {
         let rows = self
             .db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 format!(
                     r#"
@@ -342,7 +342,7 @@ impl ForumOwnerCheckpointReconciler {
                 continue;
             }
             let result = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DbBackend::Postgres,
                     format!(
                         r#"
@@ -380,7 +380,7 @@ impl ForumOwnerCheckpointReconciler {
     async fn load_scan_cursor(&self) -> Result<Option<Uuid>> {
         let row = self
             .db
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Postgres,
                 "SELECT after_tenant_id FROM search_projection_owner_scan_cursors WHERE source_module = 'forum'"
                     .to_string(),
@@ -402,7 +402,7 @@ impl ForumOwnerCheckpointReconciler {
     ) -> Result<bool> {
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 INSERT INTO search_projection_owner_scan_cursors (
@@ -444,7 +444,7 @@ async fn try_acquire_tenant_lock(
 ) -> Result<bool> {
     let lock_key = format!("search:{FORUM_SOURCE_MODULE}:{tenant_id}:{FULL_SCOPE_KEY}");
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired",
             vec![lock_key.into()],
@@ -457,7 +457,7 @@ async fn try_acquire_tenant_lock(
 
 async fn load_checkpoint(transaction: &DatabaseTransaction, tenant_id: Uuid) -> Result<i64> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT owner_revision
@@ -490,7 +490,7 @@ async fn has_non_terminal_inbox_work(
     tenant_id: Uuid,
 ) -> Result<bool> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT EXISTS (
@@ -515,7 +515,7 @@ async fn load_delivery_coverage(
     event_id: Uuid,
 ) -> Result<DeliveryCoverage> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT status
@@ -551,7 +551,7 @@ async fn advance_checkpoint(
     outcome: &str,
 ) -> Result<()> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             INSERT INTO search_projection_owner_checkpoints (

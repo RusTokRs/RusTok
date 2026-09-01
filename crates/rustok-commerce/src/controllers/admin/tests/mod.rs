@@ -129,7 +129,7 @@ pub(crate) fn test_app_context(
 }
 
 pub(crate) async fn seed_tenant_context(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
-    db.execute(sea_orm::Statement::from_sql_and_values(
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO tenants (id, name, slug, domain, settings, default_locale, is_active, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -146,7 +146,7 @@ pub(crate) async fn seed_tenant_context(db: &sea_orm::DatabaseConnection, tenant
         .await
         .expect("tenant should be inserted");
 
-    db.execute(sea_orm::Statement::from_sql_and_values(
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",

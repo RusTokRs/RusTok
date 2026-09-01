@@ -540,7 +540,10 @@ impl AiManagementService {
             )
             .col_expr(
                 ai_agent_workflow_stages::Column::AttemptCount,
-                Expr::col(ai_agent_workflow_stages::Column::AttemptCount).add(1),
+                sea_orm::sea_query::ExprTrait::add(
+                    Expr::col(ai_agent_workflow_stages::Column::AttemptCount),
+                    1,
+                ),
             )
             .col_expr(
                 ai_agent_workflow_stages::Column::StartedAt,
@@ -1713,7 +1716,7 @@ mod approval_outcome_tests {
 
     async fn approval_test_db() -> DatabaseConnection {
         let db = rustok_test_utils::setup_test_db().await;
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE ai_approval_requests (\
                 id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, session_id TEXT NOT NULL,\
@@ -1730,7 +1733,7 @@ mod approval_outcome_tests {
     }
 
     async fn add_chat_run_test_schema(db: &DatabaseConnection) {
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE ai_chat_runs (\
                 id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, session_id TEXT NOT NULL,\
@@ -1970,7 +1973,7 @@ mod approval_outcome_tests {
     #[tokio::test]
     async fn rolls_back_trace_when_later_finalization_write_fails() {
         let db = approval_test_db().await;
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE ai_tool_traces (\
                 id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, session_id TEXT NOT NULL,\
@@ -2004,7 +2007,7 @@ mod approval_outcome_tests {
         .expect("insert trace before later finalization step");
         assert!(
             transaction
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     "INSERT INTO ai_chat_messages (id) VALUES ('missing-table')".to_string(),
                 ))
@@ -2320,7 +2323,7 @@ mod product_agent_workflow_persistence_tests {
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -2367,7 +2370,7 @@ mod product_agent_workflow_persistence_tests {
         let database = database().await;
         let operator = operator();
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO tenants (id, default_locale, settings) VALUES (?, ?, ?)".to_string(),
                 vec![

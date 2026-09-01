@@ -14,7 +14,9 @@ Build RPCs use the shared process-wide bounded admission policy; readiness stays
 available while saturated. SIGTERM/Ctrl+C initiates tonic graceful shutdown,
 and cancellation kills worker-owned subprocesses instead of orphaning builds.
 
-The isolation attestation is a strict, unknown-field-rejecting contract. The
+The isolation attestation is a strict, unknown-field-rejecting contract. It
+includes positive PID and open-file ceilings in addition to its resource and
+isolation facts. The
 worker has no attestation-free constructor and reloads the deployment-owned file
 through its readiness gate before every build, so a caller cannot bypass or
 outlive revoked configuration evidence. It binds the exact launcher digest and

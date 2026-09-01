@@ -536,7 +536,7 @@ impl CatalogService {
         };
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 self.db.get_database_backend(),
                 "SELECT kind FROM catalog_categories WHERE tenant_id = $1 AND id = $2",
                 [tenant_id.into(), category_id.into()],

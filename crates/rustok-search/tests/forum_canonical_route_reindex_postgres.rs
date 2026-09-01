@@ -306,7 +306,7 @@ async fn execute(
     sql: &str,
     values: Vec<sea_orm::Value>,
 ) -> Result<(), sea_orm::DbErr> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         sql,
         values,
@@ -354,7 +354,7 @@ async fn load_documents(
     tenant_id: Uuid,
 ) -> Result<Vec<Document>, sea_orm::DbErr> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT document_id, entity_type, locale, title, payload FROM search_documents WHERE tenant_id = $1 AND source_module = 'forum' AND entity_type IN ('forum_category', 'forum_topic', 'forum_reply') ORDER BY entity_type",
             vec![tenant_id.into()],
@@ -379,7 +379,7 @@ async fn load_document(
     id: Uuid,
 ) -> Result<Option<Document>, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT document_id, entity_type, locale, title, payload FROM search_documents WHERE tenant_id = $1 AND document_id = $2 AND source_module = 'forum'",
             vec![tenant_id.into(), id.into()],
@@ -402,7 +402,7 @@ async fn count_legacy_routes(
     tenant_id: Uuid,
 ) -> Result<i64, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT COUNT(*)::bigint AS value FROM search_documents WHERE tenant_id = $1 AND source_module = 'forum' AND payload ->> 'route' LIKE '/modules/forum%'",
             vec![tenant_id.into()],
@@ -418,7 +418,7 @@ async fn assert_inbox_completed(
     event_id: Uuid,
 ) -> Result<(), sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT scope_key, status FROM search_projection_inbox WHERE tenant_id = $1 AND event_id = $2",
             vec![tenant_id.into(), event_id.into()],

@@ -25,7 +25,7 @@ impl MigrationTrait for Migration {
         ] {
             manager
                 .get_connection()
-                .execute(Statement::from_string(DbBackend::Postgres, statement))
+                .execute_raw(Statement::from_string(DbBackend::Postgres, statement))
                 .await?;
         }
         Ok(())
@@ -42,7 +42,7 @@ impl MigrationTrait for Migration {
         ] {
             manager
                 .get_connection()
-                .execute(Statement::from_string(DbBackend::Postgres, statement))
+                .execute_raw(Statement::from_string(DbBackend::Postgres, statement))
                 .await?;
         }
         Ok(())

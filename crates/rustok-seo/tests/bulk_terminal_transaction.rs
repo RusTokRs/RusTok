@@ -159,7 +159,7 @@ async fn create_tables(db: &DatabaseConnection) {
         "CREATE UNIQUE INDEX idx_seo_event_deliveries_idempotency
             ON seo_event_deliveries (tenant_id, idempotency_key)",
     ] {
-        db.execute(Statement::from_string(DbBackend::Sqlite, sql.to_string()))
+        db.execute_raw(Statement::from_string(DbBackend::Sqlite, sql.to_string()))
             .await
             .expect("failed to create SEO bulk transaction test table");
     }

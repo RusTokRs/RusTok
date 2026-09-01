@@ -679,7 +679,7 @@ async fn load_reply_branch_ids_in_tx(
         }
     };
     let rows = txn
-        .query_all(Statement::from_sql_and_values(backend, sql, values))
+        .query_all_raw(Statement::from_sql_and_values(backend, sql, values))
         .await?;
     if rows.is_empty() {
         return Err(ForumError::ReplyNotFound(root_reply_id));

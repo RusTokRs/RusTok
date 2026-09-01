@@ -415,7 +415,7 @@ async fn assert_owner_projection_advanced(
     delayed_source_version: u64,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT CAST(projection_epoch AS TEXT) AS projection_epoch_text
@@ -445,7 +445,7 @@ async fn assert_materialized_source_version(
     expected_source_version: u64,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT CAST(source_version AS TEXT) AS source_version_text

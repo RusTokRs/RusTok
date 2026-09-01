@@ -241,7 +241,7 @@ async fn allocate_reply_position_in_tx(
         }
         DatabaseBackend::Sqlite => {
             let row = txn
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
                     "UPDATE forum_topics \
                      SET next_reply_position = next_reply_position + 1 \
@@ -275,7 +275,7 @@ async fn claim_reply_delete_in_tx(
         tenant_id,
         reply_id,
     )?;
-    let result = txn.execute(statement).await?;
+    let result = txn.execute_raw(statement).await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::ReplyDeleted);
     }
@@ -298,7 +298,7 @@ async fn mark_reply_deleted_in_tx(
         tenant_id,
         reply_id,
     )?;
-    let result = txn.execute(statement).await?;
+    let result = txn.execute_raw(statement).await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::ReplyDeleted);
     }

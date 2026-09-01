@@ -425,7 +425,7 @@ async fn lock_active_subject_and_revision(
                 "SELECT id FROM {subject_table} WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE"
             );
             let subject = transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     subject_sql,
                     vec![tenant_id.into(), subject_id.into()],
@@ -440,7 +440,7 @@ async fn lock_active_subject_and_revision(
                 "SELECT revision FROM {revision_table} WHERE tenant_id = $1 AND {revision_id_column} = $2 FOR UPDATE"
             );
             let revision = transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     revision_sql,
                     vec![tenant_id.into(), subject_id.into()],
@@ -459,7 +459,7 @@ async fn lock_active_subject_and_revision(
                 "UPDATE {revision_table} SET revision = revision WHERE tenant_id = ? AND {revision_id_column} = ?"
             );
             transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
                     reserve_sql,
                     vec![tenant_id.into(), subject_id.into()],
@@ -471,7 +471,7 @@ async fn lock_active_subject_and_revision(
                 "SELECT revision FROM {revision_table} WHERE tenant_id = ? AND {revision_id_column} = ?"
             );
             let revision = transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
                     revision_sql,
                     vec![tenant_id.into(), subject_id.into()],
@@ -486,7 +486,7 @@ async fn lock_active_subject_and_revision(
                 "SELECT id FROM {subject_table} WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL"
             );
             let subject = transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
                     subject_sql,
                     vec![tenant_id.into(), subject_id.into()],
@@ -532,7 +532,7 @@ async fn current_subject_revision(
     };
 
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![tenant_id.into(), subject_id.into()],

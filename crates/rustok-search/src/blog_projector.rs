@@ -116,7 +116,7 @@ impl BlogSearchProjector {
             .to_string(),
         );
         let available = conn
-            .query_one(stmt)
+            .query_one_raw(stmt)
             .await
             .map_err(Error::Database)?
             .and_then(|row| row.try_get::<bool>("", "available").ok())
@@ -158,7 +158,7 @@ impl BlogSearchProjector {
         C: ConnectionTrait,
     {
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
-        conn.execute(stmt).await.map_err(Error::Database)?;
+        conn.execute_raw(stmt).await.map_err(Error::Database)?;
         Ok(())
     }
 
@@ -321,7 +321,7 @@ impl BlogSearchProjector {
         );
 
         let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
-        conn.execute(stmt).await.map_err(Error::Database)?;
+        conn.execute_raw(stmt).await.map_err(Error::Database)?;
         self.refresh_article_bodies_in(conn, tenant_id, post_id)
             .await?;
         Ok(())
@@ -356,7 +356,7 @@ impl BlogSearchProjector {
             "#
         );
         let rows = conn
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 sql,
                 values,
@@ -375,7 +375,7 @@ impl BlogSearchProjector {
             let article_text = project_canonical_article_plain_text(&body)?;
             let search_body = compose_search_body(excerpt.as_deref(), &article_text);
 
-            conn.execute(Statement::from_sql_and_values(
+            conn.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "UPDATE search_documents SET body = $1 WHERE tenant_id = $2 AND document_key = $3 AND source_module = 'blog' AND entity_type = 'blog_post'",
                 vec![search_body.into(), tenant_id.into(), document_key.into()],

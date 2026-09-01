@@ -232,7 +232,7 @@ async fn read_field_definition_cache_generation(db: &DatabaseConnection) -> Resu
         db.get_database_backend(),
         format!("SELECT generation FROM {FIELD_DEFINITION_CACHE_GENERATION_TABLE} WHERE id = 1"),
     );
-    let row = db.query_one(statement).await?.ok_or_else(|| {
+    let row = db.query_one_raw(statement).await?.ok_or_else(|| {
         DbErr::RecordNotFound(
             "field-definition cache generation singleton row is missing".to_string(),
         )

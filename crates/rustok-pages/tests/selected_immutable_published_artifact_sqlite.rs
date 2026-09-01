@@ -300,18 +300,18 @@ async fn setup_db(tenant_id: Uuid) -> TestResult<DatabaseConnection> {
         .sqlx_logging(false);
     let db = Database::connect(options).await?;
 
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL)".to_string(),
     ))
     .await?;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO tenants (id) VALUES (?)",
         [tenant_id.into()],
     ))
     .await?;
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "CREATE TABLE tenant_modules (\
             id TEXT PRIMARY KEY NOT NULL, \

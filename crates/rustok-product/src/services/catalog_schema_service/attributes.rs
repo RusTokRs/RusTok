@@ -43,7 +43,7 @@ impl ProductCatalogSchemaService {
         let attribute_id = current_product_operation_id().unwrap_or_else(generate_id);
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             txn.get_database_backend(),
             r#"
             INSERT INTO product_attributes (
@@ -83,7 +83,7 @@ impl ProductCatalogSchemaService {
         .await?;
 
         for translation in &input.translations {
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 txn.get_database_backend(),
                 r#"
                 INSERT INTO product_attribute_translations (
@@ -141,7 +141,7 @@ impl ProductCatalogSchemaService {
         }
 
         let option_id = current_product_operation_id().unwrap_or_else(generate_id);
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             txn.get_database_backend(),
             r#"
             INSERT INTO product_attribute_options (
@@ -159,7 +159,7 @@ impl ProductCatalogSchemaService {
         ))
         .await?;
         for translation in &input.translations {
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 txn.get_database_backend(),
                 r#"
                 INSERT INTO product_attribute_option_translations (

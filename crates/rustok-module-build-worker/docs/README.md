@@ -27,7 +27,8 @@ The renderer invokes the image-owned
 `/app/rustok-module-build-worker-probe` for startup, readiness, and liveness.
 The probe establishes mTLS and calls the generated readiness RPC; it does not
 treat an open TCP listener as evidence that the OCI launcher, pinned image, or
-isolation attestation remain valid. The mounted `attestation.json` is
+isolation attestation remain valid. The mounted `attestation.json` includes
+positive PID and open-file ceilings alongside its runtime and image facts. It is
 configuration evidence only. Production still needs retained cluster evidence
 that the selected RuntimeClass and launcher actually enforce the declared OCI
 job controls.

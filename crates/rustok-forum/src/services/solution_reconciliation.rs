@@ -193,7 +193,7 @@ impl ForumSolutionReconciliationService {
         let fetch_limit = effective_limit.saturating_add(1);
 
         let solution_rows = transaction
-            .query_all(solution_statement(
+            .query_all_raw(solution_statement(
                 backend,
                 tenant_id,
                 solution_after,
@@ -201,7 +201,7 @@ impl ForumSolutionReconciliationService {
             )?)
             .await?;
         let stat_rows = transaction
-            .query_all(solution_stat_statement(
+            .query_all_raw(solution_stat_statement(
                 backend,
                 tenant_id,
                 solution_stat_after,

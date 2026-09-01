@@ -23,7 +23,7 @@ impl MigrationTrait for Migration {
         };
         manager
             .get_connection()
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 backend,
                 format!(
                     "UPDATE regions

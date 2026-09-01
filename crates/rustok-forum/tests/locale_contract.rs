@@ -161,7 +161,7 @@ async fn ensure_topic_flex_schema(db: &DatabaseConnection) {
                 .default(sea_orm::sea_query::Expr::current_timestamp()),
         )
         .to_owned();
-    db.execute(builder.build(&attached_table))
+    db.execute_raw(builder.build(&attached_table))
         .await
         .expect("flex attached localized values table should be created");
 }
@@ -172,7 +172,7 @@ async fn create_entity_table(
     mut statement: sea_orm::sea_query::TableCreateStatement,
 ) {
     statement.if_not_exists();
-    db.execute(builder.build(&statement))
+    db.execute_raw(builder.build(&statement))
         .await
         .expect("test table should be created");
 }

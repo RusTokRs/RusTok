@@ -1,9 +1,9 @@
 use chrono::Utc;
 use object_store::{ObjectStoreExt, path::Path};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection,
-    DatabaseTransaction, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction,
+    DbBackend, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    Set, TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -1557,10 +1557,10 @@ impl MediaService {
             .filter(AssetCol::TenantId.eq(tenant_id))
             .filter(AssetCol::Id.eq(media_id));
         let asset = match backend {
-            DbBackend::Postgres | DbBackend::MySql => {
+            DbBackend::Sqlite => asset_query.one(transaction).await?,
+            _ => {
                 asset_query.lock_exclusive().one(transaction).await?
             }
-            DbBackend::Sqlite => asset_query.one(transaction).await?,
         }
         .filter(|asset| asset.lifecycle_state == AssetState::Active.as_str())
         .ok_or(MediaError::NotFound(media_id))?;
@@ -1576,10 +1576,10 @@ impl MediaService {
                 .order_by_asc(TransCol::Locale)
         };
         let locked_translations = match backend {
-            DbBackend::Postgres | DbBackend::MySql => {
+            DbBackend::Sqlite => locale_query().all(transaction).await?,
+            _ => {
                 locale_query().lock_exclusive().all(transaction).await?
             }
-            DbBackend::Sqlite => locale_query().all(transaction).await?,
         };
 
         let source = locked_translations

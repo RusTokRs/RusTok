@@ -279,6 +279,10 @@ pub struct ModuleValidationStageReportCommand {
     /// Revision observed from the authorized publish-request snapshot before
     /// the manual stage transition.
     pub expected_revision: i64,
+    /// Authenticated platform-scoped evidence for exactly-once manual review.
+    /// Registry validation stages belong to the global publish-request
+    /// aggregate, so tenant scope is deliberately absent.
+    pub context: ModuleCommandContext,
     pub stage_key: String,
     pub status: String,
     pub actor_principal: serde_json::Value,
@@ -1206,7 +1210,7 @@ async fn release_yank_replay(
 ) -> Result<bool, ModuleGovernanceError> {
     let mark = |n| placeholder(backend, n);
     let existing = tx
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT CAST(actor_id AS TEXT) AS actor_id, trace_id, \
@@ -1272,7 +1276,7 @@ async fn record_release_yank_receipt(
     receipt: &ReleaseYankReceipt<'_>,
 ) -> Result<(), ModuleGovernanceError> {
     let mark = |n| placeholder(backend, n);
-    tx.execute(Statement::from_sql_and_values(
+    tx.execute_raw(Statement::from_sql_and_values(
         backend,
         format!(
             "INSERT INTO registry_release_yank_operations \
@@ -1326,7 +1330,7 @@ async fn owner_transfer_replay(
     receipt: &OwnerTransferReceipt<'_>,
 ) -> Result<bool, ModuleGovernanceError> {
     let mark = |n| placeholder(backend, n);
-    let existing = tx.query_one(Statement::from_sql_and_values(
+    let existing = tx.query_one_raw(Statement::from_sql_and_values(
         backend,
         format!("SELECT CAST(actor_id AS TEXT) AS actor_id, trace_id, CAST(correlation_id AS TEXT) AS correlation_id, CAST(previous_owner_principal AS TEXT) AS previous_owner_principal, CAST(new_owner_principal AS TEXT) AS new_owner_principal, CAST(actor_principal AS TEXT) AS actor_principal, actor_can_manage_modules, reason, reason_code FROM registry_owner_transfer_operations WHERE slug = {} AND idempotency_key = {}", mark(1), mark(2)),
         vec![receipt.slug.to_string().into(), registry_uuid_value(receipt.context.idempotency_key, backend)],
@@ -1378,7 +1382,7 @@ async fn record_owner_transfer_receipt(
     receipt: &OwnerTransferReceipt<'_>,
 ) -> Result<(), ModuleGovernanceError> {
     let mark = |n| placeholder(backend, n);
-    tx.execute(Statement::from_sql_and_values(backend, format!("INSERT INTO registry_owner_transfer_operations (operation_id, slug, idempotency_key, actor_id, trace_id, correlation_id, previous_owner_principal, new_owner_principal, actor_principal, actor_can_manage_modules, reason, reason_code, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9), mark(10), mark(11), mark(12)), vec![registry_uuid_value(infrastructure.new_id(), backend), receipt.slug.to_string().into(), registry_uuid_value(receipt.context.idempotency_key, backend), registry_uuid_value(receipt.context.actor_id, backend), receipt.context.trace_id.clone().into(), registry_uuid_value(receipt.context.correlation_id, backend), Value::Json(Some(Box::new(receipt.previous_owner_principal.clone()))), Value::Json(Some(Box::new(receipt.new_owner_principal.clone()))), Value::Json(Some(Box::new(receipt.actor_principal.clone()))), receipt.actor_can_manage_modules.into(), receipt.reason.to_string().into(), receipt.reason_code.to_string().into()])).await.map_err(store_error)?;
+    tx.execute_raw(Statement::from_sql_and_values(backend, format!("INSERT INTO registry_owner_transfer_operations (operation_id, slug, idempotency_key, actor_id, trace_id, correlation_id, previous_owner_principal, new_owner_principal, actor_principal, actor_can_manage_modules, reason, reason_code, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9), mark(10), mark(11), mark(12)), vec![registry_uuid_value(infrastructure.new_id(), backend), receipt.slug.to_string().into(), registry_uuid_value(receipt.context.idempotency_key, backend), registry_uuid_value(receipt.context.actor_id, backend), receipt.context.trace_id.clone().into(), registry_uuid_value(receipt.context.correlation_id, backend), Value::Json(Some(Box::new(receipt.previous_owner_principal.clone()))), Value::Json(Some(Box::new(receipt.new_owner_principal.clone()))), Value::Json(Some(Box::new(receipt.actor_principal.clone()))), receipt.actor_can_manage_modules.into(), receipt.reason.to_string().into(), receipt.reason_code.to_string().into()])).await.map_err(store_error)?;
     Ok(())
 }
 
@@ -1393,7 +1397,7 @@ async fn publish_artifact_replay(
 ) -> Result<Option<ModulePublishArtifactAttachResult>, ModuleGovernanceError> {
     let mark = |n| placeholder(backend, n);
     let existing = tx
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT expected_revision, CAST(actor_id AS TEXT) AS actor_id, trace_id, \
@@ -1482,7 +1486,7 @@ async fn record_publish_artifact_receipt(
 ) -> Result<(), ModuleGovernanceError> {
     let mark = |n| placeholder(backend, n);
     let command = receipt.command;
-    tx.execute(Statement::from_sql_and_values(
+    tx.execute_raw(Statement::from_sql_and_values(
         backend,
         format!(
             "INSERT INTO registry_publish_artifact_operations \
@@ -1540,7 +1544,145 @@ struct PublishRequestReviewReceipt<'a> {
     reason_code: &'a str,
 }
 
-async fn lock_publish_request_review(
+struct ValidationStageReportReceipt<'a> {
+    request_id: &'a str,
+    expected_revision: i64,
+    context: &'a ModuleCommandContext,
+    actor_principal: &'a serde_json::Value,
+    stage_key: &'a str,
+    status: &'a str,
+    reason_code: Option<&'a str>,
+    requeue: bool,
+}
+
+async fn validation_stage_report_replay(
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    receipt: &ValidationStageReportReceipt<'_>,
+) -> Result<bool, ModuleGovernanceError> {
+    let mark = |n| placeholder(backend, n);
+    let existing = tx
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT expected_revision, CAST(actor_id AS TEXT) AS actor_id, trace_id, \\
+                 CAST(correlation_id AS TEXT) AS correlation_id, \\
+                 CAST(actor_principal AS TEXT) AS actor_principal, stage_key, status, reason_code, requeue \\
+                 FROM registry_validation_stage_report_operations \\
+                 WHERE request_id = {} AND idempotency_key = {}",
+                mark(1),
+                mark(2),
+            ),
+            vec![
+                receipt.request_id.to_string().into(),
+                registry_uuid_value(receipt.context.idempotency_key, backend),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+    let Some(existing) = existing else {
+        return Ok(false);
+    };
+    let stored_actor: serde_json::Value = serde_json::from_str(
+        &existing
+            .try_get::<String>("", "actor_principal")
+            .map_err(store_error)?,
+    )
+    .map_err(store_error)?;
+    let stored_reason_code: Option<String> =
+        existing.try_get("", "reason_code").map_err(store_error)?;
+    if existing
+        .try_get::<i64>("", "expected_revision")
+        .map_err(store_error)?
+        != receipt.expected_revision
+        || existing
+            .try_get::<String>("", "actor_id")
+            .map_err(store_error)?
+            != receipt.context.actor_id.to_string()
+        || existing
+            .try_get::<String>("", "trace_id")
+            .map_err(store_error)?
+            != receipt.context.trace_id
+        || existing
+            .try_get::<String>("", "correlation_id")
+            .map_err(store_error)?
+            != receipt.context.correlation_id.to_string()
+        || stored_actor != *receipt.actor_principal
+        || existing
+            .try_get::<String>("", "stage_key")
+            .map_err(store_error)?
+            != receipt.stage_key
+        || existing
+            .try_get::<String>("", "status")
+            .map_err(store_error)?
+            != receipt.status
+        || stored_reason_code.as_deref() != receipt.reason_code
+        || existing
+            .try_get::<bool>("", "requeue")
+            .map_err(store_error)?
+            != receipt.requeue
+    {
+        return Err(ModuleGovernanceError::ValidationStageReportIdempotencyConflict);
+    }
+    Ok(true)
+}
+
+async fn record_validation_stage_report_receipt(
+    infrastructure: &ControlPlaneInfrastructure,
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    now: &str,
+    receipt: &ValidationStageReportReceipt<'_>,
+    stage_id: &str,
+    resulting_request_revision: i64,
+) -> Result<(), ModuleGovernanceError> {
+    let mark = |n| placeholder(backend, n);
+    tx.execute_raw(Statement::from_sql_and_values(
+        backend,
+        format!(
+            "INSERT INTO registry_validation_stage_report_operations \\
+             (operation_id, request_id, idempotency_key, expected_revision, actor_id, trace_id, \\
+              correlation_id, actor_principal, stage_key, status, reason_code, requeue, stage_id, \\
+              resulting_request_revision, committed_at) \\
+             VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now})",
+            mark(1),
+            mark(2),
+            mark(3),
+            mark(4),
+            mark(5),
+            mark(6),
+            mark(7),
+            mark(8),
+            mark(9),
+            mark(10),
+            mark(11),
+            mark(12),
+            mark(13),
+            mark(14),
+        ),
+        vec![
+            registry_uuid_value(infrastructure.new_id(), backend),
+            receipt.request_id.to_string().into(),
+            registry_uuid_value(receipt.context.idempotency_key, backend),
+            receipt.expected_revision.into(),
+            registry_uuid_value(receipt.context.actor_id, backend),
+            receipt.context.trace_id.clone().into(),
+            registry_uuid_value(receipt.context.correlation_id, backend),
+            Value::Json(Some(Box::new(receipt.actor_principal.clone()))),
+            receipt.stage_key.to_string().into(),
+            receipt.status.to_string().into(),
+            receipt.reason_code.map(ToString::to_string).into(),
+            receipt.requeue.into(),
+            stage_id.to_string().into(),
+            resulting_request_revision.into(),
+        ],
+    ))
+    .await
+    .map_err(store_error)?;
+    Ok(())
+}
+
+async fn lock_publish_request(
     tx: &DatabaseTransaction,
     backend: DbBackend,
     request_id: &str,
@@ -1555,7 +1697,7 @@ async fn lock_publish_request_review(
     } else {
         ""
     };
-    tx.query_one(Statement::from_sql_and_values(
+    tx.query_one_raw(Statement::from_sql_and_values(
         backend,
         format!("SELECT id FROM registry_publish_requests WHERE id = {mark}{request_lock}"),
         vec![request_id.to_string().into()],
@@ -1579,7 +1721,7 @@ async fn publish_request_review_replay(
         }
     };
     let existing = tx
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT operation_kind, expected_revision, CAST(actor_id AS TEXT) AS actor_id, \
@@ -1657,7 +1799,7 @@ async fn record_publish_request_review_receipt(
             format!("?{n}")
         }
     };
-    tx.execute(Statement::from_sql_and_values(
+    tx.execute_raw(Statement::from_sql_and_values(
         backend,
         format!(
             "INSERT INTO registry_publish_request_review_operations \
@@ -1754,8 +1896,10 @@ impl ModuleValidationStageReportCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
             || self.expected_revision < 1
+            || self.expected_revision == i64::MAX
             || self.stage_key.trim().is_empty()
             || !self.actor_principal.is_object()
+            || !valid_platform_registry_command_context(&self.context, &self.actor_principal)
             || !matches!(
                 self.status.as_str(),
                 "queued" | "running" | "passed" | "failed" | "blocked"
@@ -2388,7 +2532,7 @@ impl SeaOrmModuleGovernanceService {
         let mark = |position| placeholder(backend, position);
         let owner_row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT CAST(owner_principal AS TEXT) AS owner_principal, \
@@ -2403,7 +2547,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         let request_row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT id, revision, slug, version, status, artifact_origin, \
@@ -2430,7 +2574,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         let release_row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT version, status, \
@@ -2447,7 +2591,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         let event_rows = self
             .db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT id, event_type, \
@@ -2482,7 +2626,7 @@ impl SeaOrmModuleGovernanceService {
 
         let stage_rows = if let Some(request) = latest_request.as_ref() {
             self.db
-                .query_all(Statement::from_sql_and_values(
+                .query_all_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT stage_key, status, detail, attempt_number, updated_at, \
@@ -2561,7 +2705,7 @@ impl SeaOrmModuleGovernanceService {
         let backend = self.db.get_database_backend();
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT CAST(owner_principal AS TEXT) AS owner_principal, \
@@ -2592,7 +2736,7 @@ impl SeaOrmModuleGovernanceService {
         let backend = self.db.get_database_backend();
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT artifact_storage_key, artifact_content_type \
@@ -2637,7 +2781,7 @@ impl SeaOrmModuleGovernanceService {
         let mark = |position| placeholder(backend, position);
         let request_row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT slug, id, revision, version, status, artifact_origin, \
@@ -2669,7 +2813,7 @@ impl SeaOrmModuleGovernanceService {
 
         let owner_row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT CAST(owner_principal AS TEXT) AS owner_principal, \
@@ -2688,7 +2832,7 @@ impl SeaOrmModuleGovernanceService {
             .transpose()?;
         let stage_rows = self
             .db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT stage_key, status, detail, attempt_number, updated_at, \
@@ -2735,7 +2879,7 @@ impl SeaOrmModuleGovernanceService {
         let rejected_retry_allowed = if request.snapshot.status == "rejected" {
             let latest_event_type = self
                 .db
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT event_type FROM registry_governance_events \
@@ -2832,7 +2976,7 @@ impl SeaOrmModuleGovernanceService {
         let backend = self.db.get_database_backend();
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type \
@@ -2897,7 +3041,7 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::PublishRequestCreationUnauthorized);
         }
         let existing = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT command_digest, CAST(actor_id AS TEXT) AS actor_id, trace_id, \
@@ -2945,7 +3089,7 @@ impl SeaOrmModuleGovernanceService {
             return Ok(request_id);
         }
         let already_created = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT id FROM registry_publish_requests WHERE id = {}",
@@ -2959,7 +3103,7 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::PublishRequestCreationConflict);
         }
         let active_release = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT id FROM registry_module_releases WHERE slug = {} AND version = {} AND status = 'active' LIMIT 1",
@@ -2976,17 +3120,17 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let warnings = dedupe_validation_messages(warnings);
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!("INSERT INTO registry_publish_requests (id, slug, version, crate_name, default_locale, ownership, trust_level, license, entry_type, artifact_origin, marketplace, ui_packages, status, requested_by_principal, publisher_principal, approved_by_principal, rejected_by_principal, rejection_reason, changes_requested_by_principal, changes_requested_reason, changes_requested_reason_code, changes_requested_at, held_by_principal, held_reason, held_reason_code, held_at, held_from_status, validation_warnings, validation_errors, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, submitted_at, validated_at, approved_at, published_at, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'draft', {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9), mark(10), mark(11), mark(12), mark(13), mark(14), mark(15), mark(16)),
             vec![request_id.clone().into(), command.slug.clone().into(), command.version.clone().into(), command.crate_name.into(), default_locale.clone().into(), command.ownership.into(), command.trust_level.into(), command.license.into(), command.entry_type.into(), command.artifact_origin.as_str().into(), Value::Json(Some(Box::new(command.marketplace))), Value::Json(Some(Box::new(command.ui_packages))), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([]))))],
         )).await.map_err(store_error)?;
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!("INSERT INTO registry_publish_request_create_operations (operation_id, request_id, idempotency_key, command_digest, actor_id, trace_id, correlation_id, actor_principal, actor_can_manage_modules, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9)),
             vec![registry_uuid_value(self.infrastructure.new_id(), backend), request_id.clone().into(), registry_uuid_value(command.context.idempotency_key, backend), command_digest.clone().into(), registry_uuid_value(command.context.actor_id, backend), command.context.trace_id.clone().into(), registry_uuid_value(command.context.correlation_id, backend), Value::Json(Some(Box::new(command.actor_principal.clone()))), command.actor_can_manage_modules.into()],
         )).await.map_err(store_error)?;
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!("INSERT INTO registry_publish_request_translations (request_id, locale, name, description, created_at, updated_at) VALUES ({}, {}, {}, {}, {now}, {now})", mark(1), mark(2), mark(3), mark(4)),
             vec![request_id.clone().into(), default_locale.into(), marketplace_content.name.into(), marketplace_content.description.into()],
@@ -2998,7 +3142,7 @@ impl SeaOrmModuleGovernanceService {
             "command_digest": command_digest,
             "warnings": warnings,
         });
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'request_created', {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
             vec![self.infrastructure.prefixed_id("rge").into(), command.slug.into(), request_id.clone().into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(command.actor_principal))), Value::Json(Some(Box::new(details)))],
@@ -3026,7 +3170,7 @@ impl SeaOrmModuleGovernanceService {
             ""
         };
         let receipt = PublishArtifactReceipt { command: &command };
-        let request = tx.query_one(Statement::from_sql_and_values(
+        let request = tx.query_one_raw(Statement::from_sql_and_values(
             backend,
             format!("SELECT slug, version, revision, status, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, CAST(validation_warnings AS TEXT) AS validation_warnings, CAST(requested_by_principal AS TEXT) AS requested_by_principal FROM registry_publish_requests WHERE id = {}{request_lock}", mark(1)),
             vec![command.request_id.clone().into()],
@@ -3108,7 +3252,7 @@ impl SeaOrmModuleGovernanceService {
             warnings.push(format!("Artifact was uploaded by '{actor}' for publish request originally created by '{requested_by_label}'."));
         }
         let warnings = dedupe_validation_messages(warnings);
-        let request_updated = tx.execute(Statement::from_sql_and_values(
+        let request_updated = tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!("UPDATE registry_publish_requests SET status = 'submitted', artifact_storage_key = {}, artifact_checksum_sha256 = {}, artifact_size = {}, artifact_content_type = {}, submitted_at = {now}, validation_warnings = {}, validation_errors = {}, approved_by_principal = NULL, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = NULL, approved_at = NULL, published_at = NULL, revision = revision + 1, updated_at = {now} WHERE id = {} AND status IN ('draft', 'changes_requested') AND revision = {}", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8)),
             vec![artifact_storage_key.clone().into(), command.checksum_sha256.clone().into(), command.artifact_size.into(), command.content_type.clone().into(), Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([])))), command.request_id.clone().into(), command.expected_revision.into()],
@@ -3124,7 +3268,7 @@ impl SeaOrmModuleGovernanceService {
         }
         if reuploaded {
             for table in ["registry_validation_stages", "registry_validation_jobs"] {
-                tx.execute(Statement::from_sql_and_values(
+                tx.execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!("DELETE FROM {table} WHERE request_id = {}", mark(1)),
                     vec![command.request_id.clone().into()],
@@ -3144,7 +3288,7 @@ impl SeaOrmModuleGovernanceService {
             if event_type == "artifact_reuploaded_after_changes_requested" && !reuploaded {
                 continue;
             }
-            tx.execute(Statement::from_sql_and_values(backend, format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)), vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), command.request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(details)))] )).await.map_err(store_error)?;
+            tx.execute_raw(Statement::from_sql_and_values(backend, format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)), vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), command.request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(details)))] )).await.map_err(store_error)?;
         }
         let result = ModulePublishArtifactAttachResult {
             request_id: command.request_id.clone(),
@@ -3227,7 +3371,7 @@ impl SeaOrmModuleGovernanceService {
             ""
         };
         let request = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
@@ -3285,7 +3429,7 @@ impl SeaOrmModuleGovernanceService {
 
         let staging_id = self.infrastructure.prefixed_id("rpbs");
         let inserted = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_publish_build_staging \
@@ -3328,7 +3472,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         if inserted.rows_affected() == 0 {
             let existing = tx
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT id, expected_revision, CAST(tenant_id AS TEXT) AS tenant_id, \
@@ -3430,7 +3574,7 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let request_updated = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
@@ -3474,7 +3618,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?;
         }
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -3535,7 +3679,7 @@ impl SeaOrmModuleGovernanceService {
         let mark = |position| placeholder(backend, position);
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT request.slug, request.version, request.revision, request.status, request.artifact_origin, \
@@ -3669,7 +3813,7 @@ impl SeaOrmModuleGovernanceService {
             ""
         };
         let request = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT slug, revision, status, artifact_origin, artifact_checksum_sha256 \
@@ -3699,7 +3843,7 @@ impl SeaOrmModuleGovernanceService {
 
         let staging_id = self.infrastructure.prefixed_id("rpes");
         let inserted = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_publish_external_staging \
@@ -3760,7 +3904,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         if inserted.rows_affected() == 0 {
             let existing = tx
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT id, expected_revision, artifact_digest, source_evidence_kind, source_reference, source_digest, \
@@ -3877,7 +4021,7 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let request_updated = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
@@ -3901,7 +4045,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -3974,7 +4118,7 @@ impl SeaOrmModuleGovernanceService {
             ""
         };
         let request = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT slug, version, revision, status, artifact_origin, artifact_checksum_sha256 \
@@ -4020,7 +4164,7 @@ impl SeaOrmModuleGovernanceService {
 
         let staging_id = self.infrastructure.prefixed_id("rpas");
         let inserted = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_publish_alloy_staging \
@@ -4106,7 +4250,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(store_error)?;
         if inserted.rows_affected() == 0 {
             let existing = tx
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT id, expected_revision, CAST(alloy_tenant_id AS TEXT) AS alloy_tenant_id, \
@@ -4246,7 +4390,7 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let request_updated = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
@@ -4270,7 +4414,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -4367,7 +4511,7 @@ impl SeaOrmModuleGovernanceService {
         let backend = self.db.get_database_backend();
         let artifact_origin = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT artifact_origin FROM registry_publish_requests WHERE id = {}",
@@ -4402,7 +4546,7 @@ impl SeaOrmModuleGovernanceService {
             ""
         };
         let request = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT slug, version, revision, status, artifact_origin FROM registry_publish_requests WHERE id = {}{request_lock}",
@@ -4430,7 +4574,7 @@ impl SeaOrmModuleGovernanceService {
         let evidence_digest_sha256 = publication_evidence_digest_sha256(&command);
         let evidence_id = self.infrastructure.prefixed_id("rpe");
         let inserted = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_publication_evidence \
@@ -4480,7 +4624,7 @@ impl SeaOrmModuleGovernanceService {
         }
         if inserted.rows_affected() == 0 {
             let existing = tx
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT id FROM registry_publication_evidence \
@@ -4529,7 +4673,7 @@ impl SeaOrmModuleGovernanceService {
             });
         }
         let request_updated = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
@@ -4553,7 +4697,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -4623,7 +4767,7 @@ impl SeaOrmModuleGovernanceService {
             ""
         };
         let release = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT id, request_id, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
@@ -4675,7 +4819,7 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::ReleaseCannotBeYanked(status));
         }
         let update = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_module_releases SET status = 'yanked', yanked_reason = {}, \
@@ -4695,7 +4839,7 @@ impl SeaOrmModuleGovernanceService {
         if update.rows_affected() != 1 {
             return Err(ModuleGovernanceError::ReleaseNotFound);
         }
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -4789,7 +4933,7 @@ impl SeaOrmModuleGovernanceService {
         }
 
         let update = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_module_owners \
@@ -4811,7 +4955,7 @@ impl SeaOrmModuleGovernanceService {
         if update.rows_affected() != 1 {
             return Err(ModuleGovernanceError::OwnerBindingNotFound);
         }
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -4875,7 +5019,7 @@ impl SeaOrmModuleGovernanceService {
             "datetime('now')"
         };
         let existing = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT CAST(owner_principal AS TEXT) AS owner_principal \
@@ -4895,7 +5039,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             if previous_owner == command.owner_principal {
-                tx.execute(Statement::from_sql_and_values(
+                tx.execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "UPDATE registry_module_owners \
@@ -4919,7 +5063,7 @@ impl SeaOrmModuleGovernanceService {
             if !command.allow_rebind {
                 return Err(ModuleGovernanceError::OwnerAlreadyBound);
             }
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_module_owners \
@@ -4940,7 +5084,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             ("rebind", Some(previous_owner))
         } else {
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_module_owners \
@@ -4960,7 +5104,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             ("initial", None)
         };
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -5030,13 +5174,13 @@ impl SeaOrmModuleGovernanceService {
             reason: &command.reason,
             reason_code: &command.reason_code,
         };
-        lock_publish_request_review(&tx, backend, &command.request_id).await?;
+        lock_publish_request(&tx, backend, &command.request_id).await?;
         if publish_request_review_replay(&tx, backend, &receipt).await? {
             tx.commit().await.map_err(store_error)?;
             return Ok(());
         }
         let request = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT slug, version, revision, status, CAST(validation_errors AS TEXT) AS validation_errors \
@@ -5098,7 +5242,7 @@ impl SeaOrmModuleGovernanceService {
         }
         let validation_errors = serde_json::json!(deduplicated);
         let update = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_publish_requests \
@@ -5130,7 +5274,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -5209,13 +5353,13 @@ impl SeaOrmModuleGovernanceService {
             reason: &command.reason,
             reason_code: &command.reason_code,
         };
-        lock_publish_request_review(&tx, backend, &command.request_id).await?;
+        lock_publish_request(&tx, backend, &command.request_id).await?;
         if publish_request_review_replay(&tx, backend, &receipt).await? {
             tx.commit().await.map_err(store_error)?;
             return Ok(());
         }
         let request = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT slug, version, revision, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
@@ -5257,7 +5401,7 @@ impl SeaOrmModuleGovernanceService {
             .transpose()
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let update = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_publish_requests \
@@ -5290,7 +5434,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -5370,13 +5514,13 @@ impl SeaOrmModuleGovernanceService {
             reason: &command.reason,
             reason_code: &command.reason_code,
         };
-        lock_publish_request_review(&tx, backend, &command.request_id).await?;
+        lock_publish_request(&tx, backend, &command.request_id).await?;
         if publish_request_review_replay(&tx, backend, &receipt).await? {
             tx.commit().await.map_err(store_error)?;
             return Ok(());
         }
         let request = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT slug, version, revision, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
@@ -5421,7 +5565,7 @@ impl SeaOrmModuleGovernanceService {
             .transpose()
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let update = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_publish_requests \
@@ -5456,7 +5600,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -5535,12 +5679,12 @@ impl SeaOrmModuleGovernanceService {
             reason: &command.reason,
             reason_code: &command.reason_code,
         };
-        lock_publish_request_review(&tx, backend, &command.request_id).await?;
+        lock_publish_request(&tx, backend, &command.request_id).await?;
         if publish_request_review_replay(&tx, backend, &receipt).await? {
             tx.commit().await.map_err(store_error)?;
             return Ok(());
         }
-        let request = tx.query_one(Statement::from_sql_and_values(backend, format!("SELECT slug, version, revision, status, artifact_origin, held_from_status, CAST(publisher_principal AS TEXT) AS publisher_principal FROM registry_publish_requests WHERE id = {}", mark(1)), vec![command.request_id.clone().into()])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+        let request = tx.query_one_raw(Statement::from_sql_and_values(backend, format!("SELECT slug, version, revision, status, artifact_origin, held_from_status, CAST(publisher_principal AS TEXT) AS publisher_principal FROM registry_publish_requests WHERE id = {}", mark(1)), vec![command.request_id.clone().into()])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
         let slug: String = request
             .try_get("", "slug")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -5581,7 +5725,7 @@ impl SeaOrmModuleGovernanceService {
             .map(|value| serde_json::from_str(&value))
             .transpose()
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        let update = tx.execute(Statement::from_sql_and_values(backend, format!("UPDATE registry_publish_requests SET status = {}, revision = revision + 1, updated_at = {now} WHERE id = {} AND revision = {}", mark(1), mark(2), mark(3)), vec![resumed_status.clone().into(), command.request_id.clone().into(), command.expected_revision.into()])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let update = tx.execute_raw(Statement::from_sql_and_values(backend, format!("UPDATE registry_publish_requests SET status = {}, revision = revision + 1, updated_at = {now} WHERE id = {} AND revision = {}", mark(1), mark(2), mark(3)), vec![resumed_status.clone().into(), command.request_id.clone().into(), command.expected_revision.into()])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if update.rows_affected() != 1 {
             return Err(publish_request_revision_conflict(
                 &tx,
@@ -5591,7 +5735,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute(Statement::from_sql_and_values(backend, format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'request_resumed', {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)), vec![self.infrastructure.prefixed_id("rge").into(), slug.into(), command.request_id.clone().into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(publisher.map(Box::new)), Value::Json(Some(Box::new(serde_json::json!({"version": version, "status": resumed_status.clone(), "resumed_from_hold": true, "resumed_to_status": resumed_status, "reason": command.reason, "reason_code": command.reason_code}))))])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        tx.execute_raw(Statement::from_sql_and_values(backend, format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'request_resumed', {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)), vec![self.infrastructure.prefixed_id("rge").into(), slug.into(), command.request_id.clone().into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(publisher.map(Box::new)), Value::Json(Some(Box::new(serde_json::json!({"version": version, "status": resumed_status.clone(), "resumed_from_hold": true, "resumed_to_status": resumed_status, "reason": command.reason, "reason_code": command.reason_code}))))])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if resumed_status == "approved" {
             if artifact_origin == ModulePublicationArtifactOrigin::ExternalPrebuilt.as_str() {
                 reconcile_external_prebuilt_security_stage(
@@ -5654,13 +5798,28 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
+        let receipt = ValidationStageReportReceipt {
+            request_id: &command.request_id,
+            expected_revision: command.expected_revision,
+            context: &command.context,
+            actor_principal: &command.actor_principal,
+            stage_key: &command.stage_key,
+            status: &command.status,
+            reason_code: command.reason_code.as_deref(),
+            requeue: command.requeue,
+        };
+        lock_publish_request(&tx, backend, &command.request_id).await?;
+        if validation_stage_report_replay(&tx, backend, &receipt).await? {
+            tx.commit().await.map_err(store_error)?;
+            return Ok(());
+        }
         let request_lock = if backend == sea_orm::DbBackend::Postgres {
             " FOR UPDATE"
         } else {
             ""
         };
         let request = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT slug, version, revision, status, artifact_origin \
@@ -5724,7 +5883,7 @@ impl SeaOrmModuleGovernanceService {
         let actor_label = validation_stage_actor_label(&command.actor_principal)?;
         let (stage_id, attempt_number, queue_reason, event_type) = if command.requeue {
             let next_attempt =
-                tx.query_one(Statement::from_sql_and_values(
+                tx.query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT COALESCE(MAX(attempt_number), 0) AS attempt_number \
@@ -5747,7 +5906,7 @@ impl SeaOrmModuleGovernanceService {
                     + 1;
             let stage_id = self.infrastructure.prefixed_id("rvs");
             let queue_reason = "manual_requeue".to_string();
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_validation_stages \
@@ -5775,7 +5934,7 @@ impl SeaOrmModuleGovernanceService {
             )
         } else {
             let stage = tx
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT id, status, attempt_number, queue_reason \
@@ -5809,7 +5968,7 @@ impl SeaOrmModuleGovernanceService {
             let queue_reason: String = stage
                 .try_get("", "queue_reason")
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_validation_stages SET status = {}, detail = {}, \
@@ -5856,7 +6015,7 @@ impl SeaOrmModuleGovernanceService {
         };
 
         let request_updated = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
@@ -5894,7 +6053,7 @@ impl SeaOrmModuleGovernanceService {
         if let Some(reason_code) = &command.reason_code {
             stage_details["reason_code"] = serde_json::Value::String(reason_code.clone());
         }
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -5934,7 +6093,7 @@ impl SeaOrmModuleGovernanceService {
             if let Some(reason_code) = &command.reason_code {
                 gate_details["reason_code"] = serde_json::Value::String(reason_code.clone());
             }
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_governance_events \
@@ -5951,15 +6110,25 @@ impl SeaOrmModuleGovernanceService {
                 vec![
                     self.infrastructure.prefixed_id("rge").into(),
                     slug.into(),
-                    command.request_id.into(),
+                    command.request_id.clone().into(),
                     event_type.into(),
-                    Value::Json(Some(Box::new(command.actor_principal))),
+                    Value::Json(Some(Box::new(command.actor_principal.clone()))),
                     Value::Json(Some(Box::new(gate_details))),
                 ],
             ))
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         }
+        record_validation_stage_report_receipt(
+            &self.infrastructure,
+            &tx,
+            backend,
+            now,
+            &receipt,
+            &stage_id,
+            command.expected_revision + 1,
+        )
+        .await?;
         tx.commit()
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -5993,7 +6162,7 @@ impl SeaOrmModuleGovernanceService {
             "datetime('now')"
         };
         let request = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT id, slug, version, revision, status, artifact_origin FROM registry_publish_requests WHERE id = {}",
@@ -6053,7 +6222,7 @@ impl SeaOrmModuleGovernanceService {
                 VALIDATION_JOB_STALE_AFTER_SECONDS
             )
         };
-        let stale_job = tx.query_one(Statement::from_sql_and_values(
+        let stale_job = tx.query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT id FROM registry_validation_jobs WHERE request_id = {} AND status = 'running' AND {stale_predicate} ORDER BY started_at ASC LIMIT 1",
@@ -6065,7 +6234,7 @@ impl SeaOrmModuleGovernanceService {
             let stale_job_id: String = job
                 .try_get("", "id")
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            let updated = tx.execute(Statement::from_sql_and_values(
+            let updated = tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_validation_jobs SET status = 'failed', finished_at = {now}, last_error = 'validation_worker_lease_expired', updated_at = {now} WHERE id = {} AND status = 'running' AND {stale_predicate}",
@@ -6079,7 +6248,7 @@ impl SeaOrmModuleGovernanceService {
                     "reason_code": "validation_worker_lease_expired",
                     "lease_timeout_seconds": VALIDATION_JOB_STALE_AFTER_SECONDS,
                 });
-                tx.execute(Statement::from_sql_and_values(
+                tx.execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'validation_job_recovered', {}, NULL, {}, {now})",
@@ -6100,7 +6269,7 @@ impl SeaOrmModuleGovernanceService {
         } else {
             false
         };
-        let active_job = tx.query_one(Statement::from_sql_and_values(
+        let active_job = tx.query_one_raw(Statement::from_sql_and_values(
             backend,
             format!("SELECT id FROM registry_validation_jobs WHERE request_id = {} AND status IN ('queued', 'running') ORDER BY created_at DESC LIMIT 1", mark(1)),
             vec![request_id.clone().into()],
@@ -6130,7 +6299,7 @@ impl SeaOrmModuleGovernanceService {
             "initial_validation"
         };
         if status != "validating" {
-            let request_updated = tx.execute(Statement::from_sql_and_values(
+            let request_updated = tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!("UPDATE registry_publish_requests SET status = 'validating', validation_errors = {}, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = NULL, revision = revision + 1, updated_at = {now} WHERE id = {} AND revision = {}", mark(1), mark(2), mark(3)),
                 vec![Value::Json(Some(Box::new(serde_json::json!([])))), request_id.clone().into(), command.expected_revision.into()],
@@ -6145,13 +6314,13 @@ impl SeaOrmModuleGovernanceService {
                 .await?);
             }
         }
-        let attempt = tx.query_one(Statement::from_sql_and_values(
+        let attempt = tx.query_one_raw(Statement::from_sql_and_values(
             backend,
             format!("SELECT COALESCE(MAX(attempt_number), 0) AS attempt_number FROM registry_validation_jobs WHERE request_id = {}", mark(1)),
             vec![request_id.clone().into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or_else(|| ModuleGovernanceError::Store("missing validation job attempt aggregate".to_string()))?.try_get::<i64>("", "attempt_number").map_err(|e| ModuleGovernanceError::Store(e.to_string()))? as i32 + 1;
         let job_id = self.infrastructure.prefixed_id("rvj");
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!("INSERT INTO registry_validation_jobs (id, request_id, slug, version, status, triggered_by, queue_reason, attempt_number, started_at, finished_at, last_error, created_at, updated_at) VALUES ({}, {}, {}, {}, 'queued', {}, {}, {}, NULL, NULL, NULL, {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7)),
             vec![job_id.clone().into(), request_id.clone().into(), slug.clone().into(), version.clone().into(), actor.clone().into(), queue_reason.into(), attempt.into()],
@@ -6175,7 +6344,7 @@ impl SeaOrmModuleGovernanceService {
             ),
         ];
         for (event_type, details) in events {
-            tx.execute(Statement::from_sql_and_values(backend,
+            tx.execute_raw(Statement::from_sql_and_values(backend,
                 format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
                 vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(actor_json.clone()))), Value::Json(Some(Box::new(details)))],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -6217,7 +6386,7 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
-        let Some(job) = tx.query_one(Statement::from_sql_and_values(
+        let Some(job) = tx.query_one_raw(Statement::from_sql_and_values(
             backend,
             format!("SELECT j.status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.revision AS request_revision, r.crate_name, r.ownership, r.trust_level, r.license, r.entry_type, r.artifact_origin, r.marketplace, r.ui_packages, r.validation_warnings, r.status AS request_status, r.artifact_storage_key, r.artifact_checksum_sha256, r.artifact_size, r.artifact_content_type, t.name AS module_name, t.description AS module_description FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id LEFT JOIN registry_publish_request_translations t ON t.request_id = r.id AND t.locale = r.default_locale WHERE j.id = {}", mark(1)),
             vec![command.validation_job_id.clone().into()],
@@ -6307,7 +6476,7 @@ impl SeaOrmModuleGovernanceService {
                     contract: module_publish_validation_contract_from_row(&job)?,
                 })
             })();
-        let updated = tx.execute(Statement::from_sql_and_values(
+        let updated = tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!("UPDATE registry_validation_jobs SET status = 'running', started_at = {now}, finished_at = NULL, last_error = NULL, updated_at = {now} WHERE id = {} AND status = 'queued'", mark(1)),
             vec![command.validation_job_id.clone().into()],
@@ -6350,7 +6519,7 @@ impl SeaOrmModuleGovernanceService {
                 }));
             }
         };
-        tx.execute(Statement::from_sql_and_values(backend,
+        tx.execute_raw(Statement::from_sql_and_values(backend,
             format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'validation_job_started', {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5)),
             vec![self.infrastructure.prefixed_id("rge").into(), slug.into(), request_id.clone().into(), Value::Json(Some(Box::new(command.actor_principal))), Value::Json(Some(Box::new(serde_json::json!({"job_id":command.validation_job_id,"attempt_number":attempt_number,"queue_reason":queue_reason,"request_status":request_status,"version":version}))))],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -6384,7 +6553,7 @@ impl SeaOrmModuleGovernanceService {
             let backend = self.db.get_database_backend();
             let candidate = self
                 .db
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     "SELECT id FROM registry_validation_jobs WHERE status = 'queued' \
                      ORDER BY created_at ASC, id ASC LIMIT 1"
@@ -6438,7 +6607,7 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
-        let job = tx.query_one(Statement::from_sql_and_values(
+        let job = tx.query_one_raw(Statement::from_sql_and_values(
             backend,
             format!("SELECT j.status AS job_status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.artifact_origin, r.status AS request_status, r.revision AS request_revision FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id WHERE j.id = {}", mark(1)),
             vec![command.validation_job_id.clone().into()],
@@ -6507,12 +6676,12 @@ impl SeaOrmModuleGovernanceService {
         let last_error = errors.first().cloned();
         let actor = validation_stage_actor_label(&command.actor_principal)?;
         let request_updated = match command.outcome {
-            ModuleValidationJobResultOutcome::Passed => tx.execute(Statement::from_sql_and_values(
+            ModuleValidationJobResultOutcome::Passed => tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!("UPDATE registry_publish_requests SET status = 'approved', validation_warnings = {}, validation_errors = {}, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = {now}, approved_by_principal = {}, approved_at = {now}, revision = revision + 1, updated_at = {now} WHERE id = {} AND status = 'validating' AND revision = {}", mark(1), mark(2), mark(3), mark(4), mark(5)),
                 vec![Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([])))), Value::Json(Some(Box::new(command.actor_principal.clone()))), request_id.clone().into(), command.expected_request_revision.into()],
             )),
-            ModuleValidationJobResultOutcome::Failed => tx.execute(Statement::from_sql_and_values(
+            ModuleValidationJobResultOutcome::Failed => tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!("UPDATE registry_publish_requests SET status = 'rejected', validation_warnings = {}, validation_errors = {}, rejected_by_principal = {}, rejection_reason = {}, validated_at = {now}, approved_by_principal = NULL, approved_at = NULL, published_at = NULL, revision = revision + 1, updated_at = {now} WHERE id = {} AND status = 'validating' AND revision = {}", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
                 vec![Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!(errors.clone())))), Value::Json(Some(Box::new(command.actor_principal.clone()))), last_error.clone().into(), request_id.clone().into(), command.expected_request_revision.into()],
@@ -6527,7 +6696,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        let job_updated = tx.execute(Statement::from_sql_and_values(
+        let job_updated = tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!("UPDATE registry_validation_jobs SET status = {}, finished_at = {now}, last_error = {}, updated_at = {now} WHERE id = {} AND status = 'running'", mark(1), mark(2), mark(3)),
             vec![terminal_job_status.into(), last_error.clone().into(), command.validation_job_id.clone().into()],
@@ -6544,7 +6713,7 @@ impl SeaOrmModuleGovernanceService {
             let platform_build_staged = artifact_origin
                 == ModulePublicationArtifactOrigin::PlatformBuilt
                 && tx
-                    .query_one(Statement::from_sql_and_values(
+                    .query_one_raw(Statement::from_sql_and_values(
                         backend,
                         format!(
                             "SELECT 1 FROM registry_publish_build_staging WHERE request_id = {} LIMIT 1",
@@ -6567,7 +6736,7 @@ impl SeaOrmModuleGovernanceService {
                     .is_some();
             for stage in publication_follow_up_stages(artifact_origin) {
                 let stage_key = stage.key;
-                let active_stage = tx.query_one(Statement::from_sql_and_values(
+                let active_stage = tx.query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!("SELECT id FROM registry_validation_stages WHERE request_id = {} AND stage_key = {} AND status IN ('queued', 'running') LIMIT 1", mark(1), mark(2)),
                     vec![request_id.clone().into(), stage_key.into()],
@@ -6575,7 +6744,7 @@ impl SeaOrmModuleGovernanceService {
                 if active_stage.is_some() {
                     continue;
                 }
-                let prior_attempt = tx.query_one(Statement::from_sql_and_values(
+                let prior_attempt = tx.query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!("SELECT COALESCE(MAX(attempt_number), 0) AS attempt_number FROM registry_validation_stages WHERE request_id = {} AND stage_key = {}", mark(1), mark(2)),
                     vec![request_id.clone().into(), stage_key.into()],
@@ -6623,7 +6792,7 @@ impl SeaOrmModuleGovernanceService {
                 } else {
                     Some(stage.runner_kind.to_string())
                 };
-                tx.execute(Statement::from_sql_and_values(
+                tx.execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!("INSERT INTO registry_validation_stages (id, request_id, slug, version, stage_key, status, triggered_by, queue_reason, attempt_number, detail, started_at, finished_at, last_error, claim_id, claimed_by, claim_expires_at, last_heartbeat_at, runner_kind, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, {}, {}, 'validation_passed', {}, {}, {started_at}, {finished_at}, NULL, NULL, NULL, NULL, NULL, {}, {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9), mark(10)),
                     vec![stage_id.clone().into(), request_id.clone().into(), slug.clone().into(), version.clone().into(), stage_key.into(), status.into(), actor.clone().into(), attempt_number.into(), detail.clone().into(), runner_kind.into()],
@@ -6661,7 +6830,7 @@ impl SeaOrmModuleGovernanceService {
                         serde_json::json!({"stage_key":stage_key,"status":gate_status,"detail":detail,"reason_code":pass_reason_code}),
                     ),
                 ] {
-                    tx.execute(Statement::from_sql_and_values(backend,
+                    tx.execute_raw(Statement::from_sql_and_values(backend,
                         format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
                         vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(details)))],
                     )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -6685,7 +6854,7 @@ impl SeaOrmModuleGovernanceService {
                 serde_json::json!({"job_id":command.validation_job_id,"attempt_number":attempt_number,"queue_reason":queue_reason,"request_status":terminal_request_status,"version":version,"error":last_error}),
             ),
         ] {
-            tx.execute(Statement::from_sql_and_values(backend,
+            tx.execute_raw(Statement::from_sql_and_values(backend,
                 format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
                 vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(details)))],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -6721,7 +6890,7 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
-        let job = tx.query_one(Statement::from_sql_and_values(
+        let job = tx.query_one_raw(Statement::from_sql_and_values(
             backend,
             format!("SELECT j.status, j.attempt_number, r.id AS request_id, r.slug, r.version, r.status AS request_status FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id WHERE j.id = {}", mark(1)),
             vec![command.validation_job_id.clone().into()],
@@ -6766,7 +6935,7 @@ impl SeaOrmModuleGovernanceService {
         } else {
             details["max_attempts"] = serde_json::json!(command.attempt);
         }
-        tx.execute(Statement::from_sql_and_values(backend,
+        tx.execute_raw(Statement::from_sql_and_values(backend,
             format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
             vec![self.infrastructure.prefixed_id("rge").into(), slug.into(), request_id.into(), event_type.into(), Value::Json(Some(Box::new(command.actor_principal))), Value::Json(Some(Box::new(details)))],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -6799,7 +6968,7 @@ impl SeaOrmModuleGovernanceService {
         };
         let updated = self
             .db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_validation_stages SET last_heartbeat_at = {}, \
@@ -6831,7 +7000,7 @@ impl SeaOrmModuleGovernanceService {
         }
         let stage = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT status, claimed_by, runner_kind FROM registry_validation_stages \
@@ -6895,7 +7064,7 @@ impl SeaOrmModuleGovernanceService {
         candidate_values.push(now.into());
         let candidates = self
             .db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT id FROM registry_validation_stages WHERE stage_key IN ({stage_marks}) \
@@ -6935,7 +7104,7 @@ impl SeaOrmModuleGovernanceService {
                 "datetime('now')"
             };
             let Some(stage) = tx
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     tx_backend,
                     format!(
                         "SELECT s.stage_key, s.status, s.claim_id, s.claimed_by, s.attempt_number, \
@@ -7033,7 +7202,7 @@ impl SeaOrmModuleGovernanceService {
                     command.lease_ttl_ms.max(1).min(i64::MAX as u64) as i64
                 );
             let updated = tx
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     tx_backend,
                     format!(
                         "UPDATE registry_validation_stages SET status = 'running', detail = {}, \
@@ -7069,7 +7238,7 @@ impl SeaOrmModuleGovernanceService {
                 continue;
             }
             let request_updated = tx
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     tx_backend,
                     format!(
                         "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {tx_now} \
@@ -7103,7 +7272,7 @@ impl SeaOrmModuleGovernanceService {
                 "previous_claim_id": previous_claim_id,
                 "previous_runner_id": previous_runner_id,
             });
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 tx_backend,
                 format!(
                     "INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'validation_stage_running', {}, NULL, {}, {tx_now})",
@@ -7176,7 +7345,7 @@ impl SeaOrmModuleGovernanceService {
         let now = self.infrastructure.now();
         let snapshot = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT COUNT(*) AS active_claims, \
@@ -7231,7 +7400,7 @@ impl SeaOrmModuleGovernanceService {
             }
         };
         let now = self.infrastructure.now();
-        let candidates = self.db.query_all(Statement::from_sql_and_values(
+        let candidates = self.db.query_all_raw(Statement::from_sql_and_values(
             backend,
             format!("SELECT id FROM registry_validation_stages WHERE status = 'running' AND runner_kind = 'remote' AND claim_expires_at < {} ORDER BY claim_expires_at ASC", mark(1)),
             vec![now.into()],
@@ -7259,7 +7428,7 @@ impl SeaOrmModuleGovernanceService {
             } else {
                 "datetime('now')"
             };
-            let Some(stage) = tx.query_one(Statement::from_sql_and_values(
+            let Some(stage) = tx.query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!("SELECT s.stage_key, s.attempt_number, s.queue_reason, s.claim_id, s.claimed_by, r.id AS request_id, r.revision AS request_revision, r.slug, r.version, r.status AS request_status FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id WHERE s.id = {}", mark(1)),
                 vec![stage_id.clone().into()],
@@ -7302,7 +7471,7 @@ impl SeaOrmModuleGovernanceService {
                 claimed_by.as_deref().unwrap_or("unknown"),
                 claim_id.as_deref().unwrap_or("unknown")
             );
-            let blocked = tx.execute(Statement::from_sql_and_values(
+            let blocked = tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!("UPDATE registry_validation_stages SET status = 'blocked', detail = {}, last_error = NULL, finished_at = {now}, claim_id = NULL, claimed_by = NULL, claim_expires_at = NULL, last_heartbeat_at = NULL, runner_kind = NULL, updated_at = {now} WHERE id = {} AND status = 'running' AND runner_kind = 'remote' AND claim_expires_at < {now}", mark(1), mark(2)),
                 vec![detail.clone().into(), stage_id.clone().into()],
@@ -7313,7 +7482,7 @@ impl SeaOrmModuleGovernanceService {
                     .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
                 continue;
             }
-            let next_attempt = tx.query_one(Statement::from_sql_and_values(
+            let next_attempt = tx.query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!("SELECT COALESCE(MAX(attempt_number), 0) AS attempt_number FROM registry_validation_stages WHERE request_id = {} AND stage_key = {}", mark(1), mark(2)),
                 vec![request_id.clone().into(), stage_key.clone().into()],
@@ -7323,13 +7492,13 @@ impl SeaOrmModuleGovernanceService {
                 "Remote validation lease expired; retry attempt {} is queued for stage '{}'.",
                 next_attempt, stage_key
             );
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!("INSERT INTO registry_validation_stages (id, request_id, slug, version, stage_key, status, triggered_by, queue_reason, attempt_number, detail, started_at, finished_at, last_error, claim_id, claimed_by, claim_expires_at, last_heartbeat_at, runner_kind, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, 'queued', 'system:registry-runner-reaper', 'remote_lease_expired', {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'remote', {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7)),
                 vec![queued_id.clone().into(), request_id.clone().into(), slug.clone().into(), version.clone().into(), stage_key.clone().into(), next_attempt.into(), queued_detail.clone().into()],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             let request_updated = tx
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
@@ -7361,7 +7530,7 @@ impl SeaOrmModuleGovernanceService {
                 ),
             ];
             for (event_type, details) in events {
-                tx.execute(Statement::from_sql_and_values(backend,
+                tx.execute_raw(Statement::from_sql_and_values(backend,
                     format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
                     vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(actor.clone()))), Value::Json(Some(Box::new(details)))],
                 )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -7400,7 +7569,7 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
-        let row = tx.query_one(Statement::from_sql_and_values(backend, format!(
+        let row = tx.query_one_raw(Statement::from_sql_and_values(backend, format!(
             "SELECT s.id, s.stage_key, s.status, s.claimed_by, s.runner_kind, s.attempt_number, s.queue_reason, r.id AS request_id, r.revision AS request_revision, r.slug, r.version, r.status AS request_status \
              FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id WHERE s.claim_id = {}", mark(1)), vec![command.claim_id.clone().into()]))
             .await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
@@ -7491,13 +7660,13 @@ impl SeaOrmModuleGovernanceService {
             terminal_status,
             Some(reason_code.as_str()),
         );
-        let update = tx.execute(Statement::from_sql_and_values(backend, format!(
+        let update = tx.execute_raw(Statement::from_sql_and_values(backend, format!(
             "UPDATE registry_validation_stages SET status = {}, detail = {}, last_error = {}, started_at = COALESCE(started_at, {now}), finished_at = {now}, claim_id = NULL, claimed_by = NULL, claim_expires_at = NULL, last_heartbeat_at = NULL, runner_kind = NULL, updated_at = {now} WHERE id = {} AND claim_id = {} AND claimed_by = {} AND status = 'running' AND claim_expires_at >= {now}", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
             vec![terminal_status.into(), detail.clone().into(), if terminal_status == "failed" { Some(detail.clone()).into() } else { Option::<String>::None.into() }, stage_id.clone().into(), command.claim_id.clone().into(), command.runner_id.clone().into()]))
             .await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if update.rows_affected() != 1 {
             let current = tx
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT status, claimed_by, runner_kind FROM registry_validation_stages \
@@ -7531,7 +7700,7 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::RemoteValidationLeaseExpired);
         }
         let request_updated = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
@@ -7566,7 +7735,7 @@ impl SeaOrmModuleGovernanceService {
                 serde_json::json!({"stage_key":stage_key,"status":gate_status,"detail":detail,"reason_code":reason_code}),
             ),
         ] {
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})",
@@ -7625,7 +7794,7 @@ impl SeaOrmModuleGovernanceService {
         } else {
             ""
         };
-        tx.query_one(Statement::from_sql_and_values(
+        tx.query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT id FROM registry_publish_requests WHERE id = {}{request_lock}",
@@ -7643,7 +7812,7 @@ impl SeaOrmModuleGovernanceService {
             .transpose()
             .map_err(store_error)?;
         let existing_operation = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT CAST(actor_principal AS TEXT) AS actor_principal, \
@@ -7718,7 +7887,7 @@ impl SeaOrmModuleGovernanceService {
             }
             let release_id: String = operation.try_get("", "release_id").map_err(store_error)?;
             let release_exists = tx
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT release.id FROM registry_module_releases AS release \
@@ -7739,7 +7908,7 @@ impl SeaOrmModuleGovernanceService {
             return Ok(());
         }
         let request = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT slug, version, revision, crate_name, default_locale, ownership, trust_level, license, \
@@ -7774,7 +7943,7 @@ impl SeaOrmModuleGovernanceService {
         }
         if status == "published" {
             let release_exists = tx
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT release.id FROM registry_module_releases AS release \
@@ -7863,7 +8032,7 @@ impl SeaOrmModuleGovernanceService {
         let platform_build_manifest = match artifact_origin {
             ModulePublicationArtifactOrigin::PlatformBuilt => {
                 let platform_build_manifest = tx
-                    .query_one(Statement::from_sql_and_values(
+                    .query_one_raw(Statement::from_sql_and_values(
                         backend,
                         format!(
                             "SELECT artifact_manifest_digest FROM registry_publish_build_staging AS stage \
@@ -7891,7 +8060,7 @@ impl SeaOrmModuleGovernanceService {
             }
             ModulePublicationArtifactOrigin::ExternalPrebuilt => {
                 let external_prebuilt_staged = tx
-                    .query_one(Statement::from_sql_and_values(
+                    .query_one_raw(Statement::from_sql_and_values(
                         backend,
                         format!(
                             "SELECT 1 FROM registry_publish_external_staging AS stage \
@@ -7920,7 +8089,7 @@ impl SeaOrmModuleGovernanceService {
             }
             ModulePublicationArtifactOrigin::AlloyAuthored => {
                 let alloy_authored_staged = tx
-                    .query_one(Statement::from_sql_and_values(
+                    .query_one_raw(Statement::from_sql_and_values(
                         backend,
                         format!(
                             "SELECT 1 FROM registry_publish_alloy_staging AS stage \
@@ -7950,7 +8119,7 @@ impl SeaOrmModuleGovernanceService {
         };
 
         let author_signature_recorded = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT 1 FROM registry_publication_evidence AS author \
@@ -7980,7 +8149,7 @@ impl SeaOrmModuleGovernanceService {
                 let platform_build_manifest = platform_build_manifest
                     .expect("platform-built staging must provide an OCI manifest digest");
                 let matched_build_and_platform_evidence = tx
-                    .query_one(Statement::from_sql_and_values(
+                    .query_one_raw(Statement::from_sql_and_values(
                         backend,
                         format!(
                             "SELECT 1 FROM registry_publication_evidence AS build \
@@ -8022,7 +8191,7 @@ impl SeaOrmModuleGovernanceService {
             ModulePublicationArtifactOrigin::ExternalPrebuilt
             | ModulePublicationArtifactOrigin::AlloyAuthored => {
                 let platform_admission_recorded = tx
-                    .query_one(Statement::from_sql_and_values(
+                    .query_one_raw(Statement::from_sql_and_values(
                         backend,
                         format!(
                             "SELECT 1 FROM registry_publication_evidence AS platform \
@@ -8059,7 +8228,7 @@ impl SeaOrmModuleGovernanceService {
         }
 
         let translations = tx
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT locale, name, description FROM registry_publish_request_translations \
@@ -8109,7 +8278,7 @@ impl SeaOrmModuleGovernanceService {
         let marketplace_approval_digest = publication_evidence_digest_sha256(&marketplace_approval);
         let marketplace_approval_id = self.infrastructure.prefixed_id("rpe");
         let marketplace_approval_inserted = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_publication_evidence \
@@ -8141,7 +8310,7 @@ impl SeaOrmModuleGovernanceService {
             .await
             .map_err(store_error)?;
         if marketplace_approval_inserted.rows_affected() == 1 {
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_governance_events \
@@ -8166,7 +8335,7 @@ impl SeaOrmModuleGovernanceService {
         }
 
         if let Some(override_evidence) = &command.approval_override {
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_governance_events \
@@ -8211,7 +8380,7 @@ impl SeaOrmModuleGovernanceService {
             .await?;
 
         let release_id = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT id FROM registry_module_releases WHERE slug = {} AND version = {}",
@@ -8229,7 +8398,7 @@ impl SeaOrmModuleGovernanceService {
             .transpose()?
             .unwrap_or_else(|| self.infrastructure.prefixed_id("rrel"));
         let release_exists = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT id FROM registry_module_releases WHERE id = {}",
@@ -8241,7 +8410,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
             .is_some();
         if release_exists {
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_module_releases SET request_id = {}, crate_name = {}, \
@@ -8287,7 +8456,7 @@ impl SeaOrmModuleGovernanceService {
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         } else {
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_module_releases \
@@ -8324,7 +8493,7 @@ impl SeaOrmModuleGovernanceService {
         )
         .await?;
 
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "DELETE FROM registry_module_release_translations WHERE release_id = {}",
@@ -8335,7 +8504,7 @@ impl SeaOrmModuleGovernanceService {
         .await
         .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         for (locale, name, description) in translations {
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_module_release_translations \
@@ -8358,7 +8527,7 @@ impl SeaOrmModuleGovernanceService {
         }
 
         let existing_owner = tx
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT CAST(owner_principal AS TEXT) AS owner_principal \
@@ -8377,7 +8546,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             if previous_owner == command.publisher_principal {
-                tx.execute(Statement::from_sql_and_values(
+                tx.execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "UPDATE registry_module_owners SET bound_by_principal = {}, updated_at = {now} \
@@ -8396,7 +8565,7 @@ impl SeaOrmModuleGovernanceService {
                 if !command.allow_owner_rebind {
                     return Err(ModuleGovernanceError::OwnerAlreadyBound);
                 }
-                tx.execute(Statement::from_sql_and_values(
+                tx.execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "UPDATE registry_module_owners SET owner_principal = {}, bound_by_principal = {}, \
@@ -8414,7 +8583,7 @@ impl SeaOrmModuleGovernanceService {
                 Some(("rebind", Some(previous_owner)))
             }
         } else {
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_module_owners \
@@ -8435,7 +8604,7 @@ impl SeaOrmModuleGovernanceService {
             Some(("initial", None))
         };
         if let Some((mode, previous_owner)) = owner_transition {
-            tx.execute(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO registry_governance_events \
@@ -8471,7 +8640,7 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         }
 
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_publication_operations \
@@ -8508,7 +8677,7 @@ impl SeaOrmModuleGovernanceService {
         .await
         .map_err(store_error)?;
 
-        let request_updated = tx.execute(Statement::from_sql_and_values(
+        let request_updated = tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE registry_publish_requests SET status = 'published', approved_by_principal = {}, \
@@ -8533,7 +8702,7 @@ impl SeaOrmModuleGovernanceService {
             )
             .await?);
         }
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -8581,7 +8750,7 @@ impl SeaOrmModuleGovernanceService {
         let backend = self.db.get_database_backend();
         let rows = self
             .db
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend,
                 "SELECT artifact.release_id, CAST(artifact.artifact AS TEXT) AS artifact, \
                  CAST(artifact.descriptor AS TEXT) AS descriptor, CAST(artifact.lineage AS TEXT) AS lineage, \
@@ -8714,7 +8883,7 @@ impl SeaOrmModuleGovernanceService {
         let backend = self.db.get_database_backend();
         let rows = self
             .db
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend,
                 "SELECT id, slug, version, status, \
                         CAST(publisher_principal AS TEXT) AS publisher_principal, \
@@ -8757,7 +8926,7 @@ impl SeaOrmModuleGovernanceService {
         let mark = |position| placeholder(backend, position);
         let rows = self
             .db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT locale, name, description \
@@ -8908,7 +9077,7 @@ async fn pass_owner_evidence_validation_stage(
     let mark = |n| placeholder(backend, n);
     let now = database_now(backend);
     let Some(stage) = tx
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT id, status, attempt_number, queue_reason, runner_kind \
@@ -8944,7 +9113,7 @@ async fn pass_owner_evidence_validation_stage(
         let stage_id = infrastructure.prefixed_id("rvs");
         let attempt_number = prior_attempt + 1;
         let queue_reason = reason_code.to_string();
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_validation_stages \
@@ -8973,7 +9142,7 @@ async fn pass_owner_evidence_validation_stage(
     } else {
         let stage_id: String = stage.try_get("", "id").map_err(store_error)?;
         let updated = tx
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE registry_validation_stages SET status = 'passed', detail = {}, \
@@ -9024,7 +9193,7 @@ async fn pass_owner_evidence_validation_stage(
             }),
         ),
     ] {
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -9060,7 +9229,7 @@ async fn external_prebuilt_supply_chain_evidence(
 ) -> Result<Option<(String, String)>, ModuleGovernanceError> {
     let mark = |n| placeholder(backend, n);
     let Some(row) = tx
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT request.slug, request.version, request.status, request.artifact_origin, \
@@ -9149,7 +9318,7 @@ async fn alloy_authored_supply_chain_evidence(
 ) -> Result<Option<(String, String)>, ModuleGovernanceError> {
     let mark = |n| placeholder(backend, n);
     let Some(row) = tx
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT request.slug, request.version, request.status, request.artifact_origin, \
@@ -9255,7 +9424,7 @@ async fn active_published_rhai_parent_exists(
     let checksum = receipt_digest_sha256(&parent.digest)
         .map_err(|_| ModuleGovernanceError::InvalidAlloyAuthoredStageCommand)?;
     let mark = |position| placeholder(backend, position);
-    tx.query_one(Statement::from_sql_and_values(
+    tx.query_one_raw(Statement::from_sql_and_values(
         backend,
         format!(
             "SELECT 1 FROM registry_module_releases AS release \
@@ -9352,7 +9521,7 @@ async fn terminalize_invalid_validation_work_item(
     };
     let errors = serde_json::json!([VALIDATION_WORK_ITEM_INVALID_ERROR]);
     let request_updated = tx
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE registry_publish_requests \
@@ -9387,7 +9556,7 @@ async fn terminalize_invalid_validation_work_item(
         .await?);
     }
     let job_updated = tx
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE registry_validation_jobs \
@@ -9434,7 +9603,7 @@ async fn terminalize_invalid_validation_work_item(
         ),
     ];
     for (event_type, details) in events {
-        tx.execute(Statement::from_sql_and_values(
+        tx.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_governance_events \
@@ -10394,7 +10563,7 @@ async fn governance_owner_principal_for_slug(
         ""
     };
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT CAST(owner_principal AS TEXT) AS owner_principal \
@@ -10439,7 +10608,7 @@ async fn current_publish_request_revision(
     request_id: &str,
 ) -> Result<i64, ModuleGovernanceError> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT revision FROM registry_publish_requests WHERE id = {}",
@@ -10505,7 +10674,7 @@ fn database_now(backend: sea_orm::DbBackend) -> &'static str {
 
 fn registry_uuid_value(value: Uuid, backend: sea_orm::DbBackend) -> Value {
     if backend == sea_orm::DbBackend::Postgres {
-        Value::Uuid(Some(Box::new(value)))
+        Value::Uuid(Some(value))
     } else {
         value.to_string().into()
     }
@@ -10651,7 +10820,7 @@ async fn load_publication_evidence_contract(
 ) -> Result<(String, String), ModuleGovernanceError> {
     let mark = |position| placeholder(backend, position);
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT evidence_reference, evidence_digest_sha256 \
@@ -10701,7 +10870,7 @@ async fn canonical_marketplace_artifact_contract(
 > {
     let mark = |position| placeholder(backend, position);
     let admitted = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT registry_id, repository, manifest_digest, payload_digest, \
@@ -10758,7 +10927,7 @@ async fn canonical_marketplace_artifact_contract(
     let (source_reference, source_digest, parent_release) = match artifact_origin {
         ModulePublicationArtifactOrigin::PlatformBuilt => {
             let source = transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT source_reference, source_digest, \
@@ -10798,7 +10967,7 @@ async fn canonical_marketplace_artifact_contract(
         }
         ModulePublicationArtifactOrigin::ExternalPrebuilt => {
             let source = transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT source_reference, source_digest \
@@ -10829,7 +10998,7 @@ async fn canonical_marketplace_artifact_contract(
         }
         ModulePublicationArtifactOrigin::AlloyAuthored => {
             let source = transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT CAST(alloy_tenant_id AS TEXT) AS alloy_tenant_id, \
@@ -11010,7 +11179,7 @@ async fn persist_published_artifact_contract(
     let descriptor_json = serde_json::to_value(descriptor).map_err(store_error)?;
     let lineage_json = serde_json::to_value(lineage).map_err(store_error)?;
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_module_release_artifacts \
@@ -11034,7 +11203,7 @@ async fn persist_published_artifact_contract(
         .await
         .map_err(store_error)?;
     let stored = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT request_id, CAST(artifact AS TEXT) AS artifact, \
@@ -11109,7 +11278,7 @@ async fn persist_platform_admission_contract(
     let mark = |position| placeholder(backend, position);
     let now = database_now(backend);
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO registry_publish_platform_admissions \
@@ -11164,7 +11333,7 @@ async fn persist_platform_admission_contract(
         .map_err(store_error)?;
 
     let stored = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT registry_id, registry, repository, manifest_digest, payload_digest, \
@@ -11593,6 +11762,10 @@ pub enum ModuleGovernanceError {
         "registry publish-request review idempotency key was reused for a different immutable command"
     )]
     PublishRequestReviewIdempotencyConflict,
+    #[error(
+        "registry validation-stage report idempotency key was reused for a different immutable command"
+    )]
+    ValidationStageReportIdempotencyConflict,
     #[error("published registry request has no matching publication idempotency record")]
     PublishedRequestMissingIdempotencyRecord,
     #[error("registry publish request in status `{0}` cannot accept an artifact")]
@@ -11794,6 +11967,7 @@ impl ModuleGovernanceError {
             | Self::AlloyAuthoredStageIdempotencyConflict
             | Self::PublicationIdempotencyConflict
             | Self::PublishRequestReviewIdempotencyConflict
+            | Self::ValidationStageReportIdempotencyConflict
             | Self::PublishedRequestMissingIdempotencyRecord => {
                 ModuleGovernanceErrorCategory::Conflict
             }
@@ -11866,6 +12040,11 @@ mod tests {
             ),
             (
                 ModuleGovernanceError::PublishRequestReviewIdempotencyConflict,
+                ModuleGovernanceErrorCategory::Conflict,
+                "module_governance_conflict",
+            ),
+            (
+                ModuleGovernanceError::ValidationStageReportIdempotencyConflict,
                 ModuleGovernanceErrorCategory::Conflict,
                 "module_governance_conflict",
             ),
@@ -12142,7 +12321,7 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -12168,7 +12347,7 @@ mod tests {
             .validate_against(&build_request)
             .expect("valid evolved build result");
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO module_build_requests (request_id, request, result, status, revision) \
                  VALUES (?1, ?2, ?3, 'completed', 3)"
@@ -12187,7 +12366,7 @@ mod tests {
             .expect("completed build fixture");
         let actor_principal = serde_json::json!({ "kind": "user", "id": actor_id });
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_publish_requests (\
                     id, slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
@@ -12212,7 +12391,7 @@ mod tests {
              VALUES ('parent-request', 'rhai')",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -12241,7 +12420,7 @@ mod tests {
             .expect("first stage");
         assert!(first.created);
         let receipt = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT expected_revision, tenant_id, actor_id, trace_id, correlation_id, \
                  parent_release_slug, parent_release_version, parent_release_digest, \
@@ -12361,7 +12540,7 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -12372,7 +12551,7 @@ mod tests {
         let actor_id = Uuid::new_v4();
         let actor_principal = serde_json::json!({ "kind": "user", "id": actor_id });
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_publish_requests (\
                     id, slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
@@ -12416,7 +12595,7 @@ mod tests {
             .expect("first stage");
         assert!(first.created);
         let receipt = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT expected_revision, actor_id, trace_id, correlation_id, \
                  actor_can_manage_modules, idempotency_key FROM registry_publish_external_staging"
@@ -12472,7 +12651,7 @@ mod tests {
         );
 
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "UPDATE registry_publish_external_staging SET actor_can_manage_modules = 0"
                     .to_string(),
@@ -12520,7 +12699,7 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -12531,7 +12710,7 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_publish_requests (\
                     id, slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
@@ -12579,7 +12758,7 @@ mod tests {
             .expect("first stage");
         assert!(first.created);
         let receipt = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT expected_revision, actor_id, trace_id, correlation_id, idempotency_key, sandbox_scenario_digest \
                  FROM registry_publish_alloy_staging"
@@ -12636,7 +12815,7 @@ mod tests {
         );
 
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "UPDATE registry_publish_alloy_staging SET actor_id = 'corrupt-actor'".to_string(),
             ))
@@ -12810,7 +12989,7 @@ mod tests {
             .await
             .expect("database");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "CREATE TABLE registry_module_owners (\
                     slug TEXT PRIMARY KEY, owner_principal TEXT NOT NULL, \
@@ -12821,7 +13000,7 @@ mod tests {
             .await
             .expect("owner schema");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_module_owners \
                  (slug, owner_principal, bound_by_principal, bound_at, updated_at) VALUES \
@@ -13034,7 +13213,7 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -13042,7 +13221,7 @@ mod tests {
                 .expect("schema");
         }
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_publish_requests (\
                     id, slug, version, status, artifact_origin, requested_by_principal, publisher_principal,\
@@ -13062,7 +13241,7 @@ mod tests {
             .await
             .expect("request fixture");
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_module_owners (\
                     slug, owner_principal, bound_by_principal, bound_at, updated_at\
@@ -13079,7 +13258,7 @@ mod tests {
             .await
             .expect("owner fixture");
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_validation_stages (\
                     id, request_id, stage_key, status, detail, attempt_number, updated_at, created_at\
@@ -13169,7 +13348,7 @@ mod tests {
         assert!(denied.governance_actions.is_empty());
 
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "UPDATE registry_publish_requests SET status = 'draft', artifact_storage_key = NULL, \
                  artifact_checksum_sha256 = NULL, artifact_size = NULL, artifact_content_type = NULL \
@@ -13235,7 +13414,7 @@ mod tests {
         );
 
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE registry_publish_requests SET status = 'submitted', artifact_storage_key = ?, \
                  artifact_checksum_sha256 = ?, artifact_size = ?, artifact_content_type = ? \
@@ -13281,7 +13460,7 @@ mod tests {
             .await
             .expect("database");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "CREATE TABLE registry_publish_requests (\
                     id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 1, artifact_storage_key TEXT NULL, artifact_content_type TEXT NULL\
@@ -13297,7 +13476,7 @@ mod tests {
              VALUES ('draft', NULL, NULL)",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -13499,7 +13678,7 @@ mod tests {
               'evidence://admission', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -13572,7 +13751,7 @@ mod tests {
         };
         descriptor.validate().expect("descriptor");
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_publish_platform_admissions \
                  (request_id, registry_id, repository, manifest_digest, payload_digest, descriptor_digest, \
@@ -13599,7 +13778,7 @@ mod tests {
             .expect("admission fixture");
         for (authority, marker) in [("author_signature", '5'), ("marketplace_approval", '6')] {
             database
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DbBackend::Sqlite,
                     "INSERT INTO registry_publication_evidence \
                      (id, request_id, authority, subject_digest_sha256, evidence_reference, \
@@ -13618,7 +13797,7 @@ mod tests {
         }
 
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "UPDATE registry_module_releases SET status = 'yanked' WHERE id = 'parent-release'"
                     .to_string(),
@@ -13645,7 +13824,7 @@ mod tests {
             .await
             .expect("rollback revoked parent transaction");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "UPDATE registry_module_releases SET status = 'active' WHERE id = 'parent-release'"
                     .to_string(),
@@ -13682,7 +13861,7 @@ mod tests {
         assert_eq!(lineage.origin, crate::ArtifactOrigin::Marketplace);
         assert_eq!(lineage.source_digest, artifact.source_digest);
         let stored = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT CAST(lineage AS TEXT) AS lineage FROM registry_module_release_artifacts \
                  WHERE release_id = 'child-release'"
@@ -13756,7 +13935,7 @@ mod tests {
                      '2026-07-20 10:04:00', '2026-07-20 10:04:00')",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -13788,7 +13967,7 @@ mod tests {
         transaction.commit().await.expect("commit");
 
         let stage = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT status, runner_kind FROM registry_validation_stages WHERE id = 'stage-1'"
                     .to_string(),
@@ -13807,7 +13986,7 @@ mod tests {
             None
         );
         let events = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT event_type FROM registry_governance_events ORDER BY event_type".to_string(),
             ))
@@ -13886,7 +14065,7 @@ mod tests {
                      '2026-07-20 10:04:00', '2026-07-20 10:04:00')",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -13894,7 +14073,7 @@ mod tests {
                 .expect("schema or fixture");
         }
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE registry_publish_alloy_staging \
                  SET sandbox_scenario_digest = ?1 WHERE request_id = 'request-alloy'"
@@ -13921,7 +14100,7 @@ mod tests {
         transaction.commit().await.expect("commit");
 
         let stage = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT status, runner_kind FROM registry_validation_stages \
                  WHERE id = 'stage-alloy'"
@@ -13941,7 +14120,7 @@ mod tests {
             None
         );
         let events = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT event_type FROM registry_governance_events".to_string(),
             ))
@@ -14225,6 +14404,13 @@ mod tests {
             ModuleValidationJobEnqueueCommand {
                 request_id: " ".to_string(),
                 expected_revision: 1,
+                context: ModuleCommandContext {
+                    actor_id: Uuid::new_v4(),
+                    tenant_id: None,
+                    trace_id: "test:validation-job-enqueue".to_string(),
+                    correlation_id: Uuid::new_v4(),
+                    idempotency_key: Uuid::new_v4(),
+                },
                 actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
                 allow_rejected_retry: false,
             }
@@ -14235,6 +14421,13 @@ mod tests {
             ModuleValidationJobEnqueueCommand {
                 request_id: "request-1".to_string(),
                 expected_revision: 1,
+                context: ModuleCommandContext {
+                    actor_id: Uuid::new_v4(),
+                    tenant_id: None,
+                    trace_id: "test:validation-job-enqueue".to_string(),
+                    correlation_id: Uuid::new_v4(),
+                    idempotency_key: Uuid::new_v4(),
+                },
                 actor_principal: serde_json::json!("operator"),
                 allow_rejected_retry: false,
             }
@@ -14245,12 +14438,20 @@ mod tests {
 
     #[test]
     fn validation_stage_report_normalizes_transport_values_inside_owner() {
+        let actor_id = Uuid::new_v4();
         let command = ModuleValidationStageReportCommand {
             request_id: " request-1 ".to_string(),
             expected_revision: 1,
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: None,
+                trace_id: "test:validation-stage-report".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
             stage_key: " TARGETED_TESTS ".to_string(),
             status: " PASSED ".to_string(),
-            actor_principal: serde_json::json!({ "kind": "user", "id": "reviewer" }),
+            actor_principal: serde_json::json!({ "kind": "user", "id": actor_id }),
             reason_code: Some(" TEST_FAILURE ".to_string()),
             requeue: false,
         }
@@ -14331,7 +14532,7 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -14370,7 +14571,7 @@ mod tests {
             Ok("request-1".to_string())
         );
         let request = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT status, revision FROM registry_publish_requests WHERE id = 'request-1'"
                     .to_string(),
@@ -14391,7 +14592,7 @@ mod tests {
             5
         );
         let job = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT status FROM registry_validation_jobs WHERE id = 'job-1'".to_string(),
             ))
@@ -14448,7 +14649,7 @@ mod tests {
              ('owner-expired', 'running', 'owner_evidence', '2000-01-01T00:00:00Z')",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -14500,7 +14701,7 @@ mod tests {
                      'system', 'initial_validation', 1, 'Queued.', 'remote')",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -14552,7 +14753,7 @@ mod tests {
         assert_eq!(terminal.status, "passed");
 
         let request = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT revision FROM registry_publish_requests WHERE id = 'request-1'".to_string(),
             ))
@@ -14612,7 +14813,7 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -14686,7 +14887,7 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -14761,7 +14962,7 @@ mod tests {
             }),
         };
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_module_releases \
                  (id, slug, version, status, published_at) \
@@ -14772,7 +14973,7 @@ mod tests {
             .await
             .expect("release");
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_module_release_artifacts \
                  (release_id, request_id, artifact, descriptor, lineage) VALUES ('release-1', 'request-1', ?, ?, ?)"
@@ -14792,7 +14993,7 @@ mod tests {
             .await
             .expect("artifact projection");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 format!(
                     "INSERT INTO registry_publish_platform_admissions (request_id, media_type) \
@@ -14823,7 +15024,7 @@ mod tests {
         assert_eq!(source.workspace, workspace);
 
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "UPDATE registry_publish_platform_admissions \
                  SET media_type = 'application/json' WHERE request_id = 'request-1'"
@@ -14880,7 +15081,7 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -14924,7 +15125,7 @@ mod tests {
             Err(ModuleGovernanceError::ReleaseYankIdempotencyConflict)
         ));
         let release = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT status, yanked_reason, artifact_storage_key, checksum_sha256, artifact_size \
                  FROM registry_module_releases"
@@ -14962,7 +15163,7 @@ mod tests {
             42
         );
         let event = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT request_id, release_id, event_type FROM registry_governance_events"
                     .to_string(),
@@ -15017,7 +15218,7 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -15077,7 +15278,7 @@ mod tests {
             Err(ModuleGovernanceError::OwnerTransferIdempotencyConflict)
         ));
         let binding = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT owner_principal, bound_by_principal FROM registry_module_owners"
                     .to_string(),
@@ -15103,7 +15304,7 @@ mod tests {
             operator_actor_id.to_string()
         );
         let event = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT event_type, request_id, release_id, details FROM registry_governance_events"
                     .to_string(),
@@ -15176,7 +15377,7 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -15260,7 +15461,7 @@ mod tests {
             .await
             .expect("resume request");
         let request = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT status, held_from_status FROM registry_publish_requests".to_string(),
             ))
@@ -15278,7 +15479,7 @@ mod tests {
             "approved"
         );
         let events = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT event_type FROM registry_governance_events ORDER BY created_at, id"
                     .to_string(),
@@ -15386,7 +15587,7 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -15425,7 +15626,7 @@ mod tests {
             ModuleGovernanceError::PublishRequestMissingPlatformBuildStage
         ));
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_publish_build_staging \
                  (id, request_id, source_reference, source_digest, component_digest, \
@@ -15474,7 +15675,7 @@ mod tests {
             )
         };
         database
-            .execute(evidence_fixture(
+            .execute_raw(evidence_fixture(
                 "rpe_author",
                 "author_signature",
                 staged_subject.as_str(),
@@ -15495,7 +15696,7 @@ mod tests {
             ("rpe_platform", "platform_admission"),
         ] {
             database
-                .execute(evidence_fixture(
+                .execute_raw(evidence_fixture(
                     id,
                     authority,
                     oci_subject.as_str(),
@@ -15506,7 +15707,7 @@ mod tests {
         }
 
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "UPDATE registry_publish_requests \
                  SET submitted_at = datetime('now', '+1 second') WHERE id = 'request-1'"
@@ -15515,7 +15716,7 @@ mod tests {
             .await
             .expect("reupload stage fixture");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_publish_build_staging \
                  (id, request_id, source_reference, source_digest, component_digest, \
@@ -15539,7 +15740,7 @@ mod tests {
             ModuleGovernanceError::PublishRequestMissingAuthorSignature
         ));
         database
-            .execute(evidence_fixture(
+            .execute_raw(evidence_fixture(
                 "rpe_author_current",
                 "author_signature",
                 staged_subject.as_str(),
@@ -15552,7 +15753,7 @@ mod tests {
             ("rpe_platform_current", "platform_admission"),
         ] {
             database
-                .execute(evidence_fixture(
+                .execute_raw(evidence_fixture(
                     id,
                     authority,
                     oci_subject.as_str(),
@@ -15562,7 +15763,7 @@ mod tests {
                 .expect("current publication evidence fixture");
         }
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "UPDATE registry_publish_build_staging \
                  SET artifact_manifest_digest = \
@@ -15581,7 +15782,7 @@ mod tests {
             ModuleGovernanceError::PublishRequestMissingBuildOrPlatformAdmission
         ));
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "UPDATE registry_publish_build_staging \
                  SET artifact_manifest_digest = \
@@ -15615,7 +15816,7 @@ mod tests {
             persistence_contract: None,
         };
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO registry_publish_platform_admissions \
                  (request_id, registry_id, registry, repository, manifest_digest, payload_digest, \
@@ -15663,7 +15864,7 @@ mod tests {
         ));
 
         let release_count = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM registry_module_releases".to_string(),
             ))
@@ -15677,7 +15878,7 @@ mod tests {
             1
         );
         let artifact_contract_count = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM registry_module_release_artifacts".to_string(),
             ))
@@ -15691,7 +15892,7 @@ mod tests {
             1
         );
         let publication_operation_count = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM registry_publication_operations".to_string(),
             ))
@@ -15706,7 +15907,7 @@ mod tests {
         );
 
         let request = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT status FROM registry_publish_requests WHERE id = 'request-1'".to_string(),
             ))
@@ -15720,7 +15921,7 @@ mod tests {
             "published"
         );
         let release = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT id, status, checksum_sha256 FROM registry_module_releases".to_string(),
             ))
@@ -15741,7 +15942,7 @@ mod tests {
         );
         let release_id: String = release.try_get("", "id").expect("release id");
         let translations = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT locale, name FROM registry_module_release_translations".to_string(),
             ))
@@ -15755,7 +15956,7 @@ mod tests {
             "en"
         );
         let owner = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT owner_principal FROM registry_module_owners WHERE slug = 'sample_module'"
                     .to_string(),
@@ -15771,7 +15972,7 @@ mod tests {
         .expect("owner JSON");
         assert_eq!(owner["id"], "publisher");
         let events = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT event_type, release_id FROM registry_governance_events ORDER BY created_at, id"
                     .to_string(),
@@ -15813,7 +16014,7 @@ mod tests {
                 .any(|event_type| event_type == "marketplace_approval_recorded")
         );
         let evidence = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT authority, subject_digest_sha256 FROM registry_publication_evidence \
                  WHERE authority = 'marketplace_approval'"
@@ -15873,7 +16074,7 @@ mod tests {
              VALUES ('request-1', 'sample_module', '1.0.0', 'platform_built', 'approved')",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -16045,7 +16246,7 @@ mod tests {
         assert_eq!(admission.request_revision, 4);
         assert_eq!(repeated_admission.request_revision, 4);
         let request_revision = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT revision FROM registry_publish_requests WHERE id = 'request-1'".to_string(),
             ))
@@ -16059,7 +16260,7 @@ mod tests {
             4
         );
         let evidence = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT authority, subject_digest_sha256 FROM registry_publication_evidence"
                     .to_string(),

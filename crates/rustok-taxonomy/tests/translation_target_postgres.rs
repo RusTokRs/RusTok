@@ -474,7 +474,7 @@ fn postgres_database_url() -> Option<String> {
 async fn ensure_canonical_schema(db: &DatabaseConnection) -> TestResult<()> {
     for table in REQUIRED_CANONICAL_TABLES {
         let row = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT to_regclass($1) IS NOT NULL AS present",
                 [(*table).into()],

@@ -71,11 +71,11 @@ impl MigrationTrait for Migration {
                     "artifact security migration does not support {backend:?}"
                 )));
             }
-        };
+};
         for statement in statements {
             manager
                 .get_connection()
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     manager.get_database_backend(),
                     (*statement).to_string(),
                 ))
@@ -91,7 +91,7 @@ impl MigrationTrait for Migration {
         ] {
             manager
                 .get_connection()
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     manager.get_database_backend(),
                     format!("DROP TABLE IF EXISTS {table}"),
                 ))

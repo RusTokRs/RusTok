@@ -686,7 +686,7 @@ GROUP BY
     }
 
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             db.get_database_backend(),
             sql,
             values,

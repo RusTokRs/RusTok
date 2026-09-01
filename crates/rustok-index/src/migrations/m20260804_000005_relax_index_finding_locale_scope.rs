@@ -27,7 +27,7 @@ impl MigrationTrait for Migration {
                 .await
             }
             DbBackend::Sqlite => rebuild_sqlite_table(manager, RELAXED_SCOPE_CHECK).await,
-            DbBackend::MySql => Err(DbErr::Custom(
+            _ => Err(DbErr::Custom(
                 "rustok-index locale-optional finding migration supports PostgreSQL and SQLite"
                     .to_owned(),
             )),
@@ -45,7 +45,7 @@ impl MigrationTrait for Migration {
                 .await
             }
             DbBackend::Sqlite => rebuild_sqlite_table(manager, STRICT_SCOPE_CHECK).await,
-            DbBackend::MySql => Err(DbErr::Custom(
+            _ => Err(DbErr::Custom(
                 "rustok-index locale-optional finding migration supports PostgreSQL and SQLite"
                     .to_owned(),
             )),
@@ -60,7 +60,7 @@ async fn replace_postgres_scope_constraint(
 ) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     let rows = connection
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DbBackend::Postgres,
             format!(
                 "SELECT c.conname FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE c.contype = 'c' AND n.nspname = current_schema() AND t.relname = '{TABLE_NAME}' AND pg_get_constraintdef(c.oid) LIKE '%scope_kind%' AND pg_get_constraintdef(c.oid) LIKE '%entity_id%' AND pg_get_constraintdef(c.oid) LIKE '%locale_key%' ORDER BY c.conname"

@@ -49,7 +49,7 @@ async fn create_entity_table(
     mut statement: sea_orm::sea_query::TableCreateStatement,
 ) {
     statement.if_not_exists();
-    db.execute(builder.build(&statement))
+    db.execute_raw(builder.build(&statement))
         .await
         .expect("failed to create fulfillment test table");
 }

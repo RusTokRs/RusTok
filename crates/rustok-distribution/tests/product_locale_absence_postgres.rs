@@ -319,7 +319,7 @@ async fn wait_for_blocked_materialized_read(
 ) -> TestResult<()> {
     for _ in 0..500 {
         let row = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
 SELECT EXISTS (

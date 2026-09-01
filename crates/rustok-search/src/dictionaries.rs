@@ -125,7 +125,7 @@ impl SearchDictionaryService {
         );
 
         let row = db
-            .query_one(stmt)
+            .query_one_raw(stmt)
             .await
             .map_err(Error::Database)?
             .ok_or_else(|| Error::NotFound("search synonym row".to_string()))?;
@@ -145,7 +145,7 @@ impl SearchDictionaryService {
             "DELETE FROM search_synonyms WHERE tenant_id = $1 AND id = $2",
             vec![tenant_id.into(), synonym_id.into()],
         );
-        db.execute(stmt).await.map_err(Error::Database)?;
+        db.execute_raw(stmt).await.map_err(Error::Database)?;
         Ok(())
     }
 
@@ -180,7 +180,7 @@ impl SearchDictionaryService {
         );
 
         let row = db
-            .query_one(stmt)
+            .query_one_raw(stmt)
             .await
             .map_err(Error::Database)?
             .ok_or_else(|| Error::NotFound("search stop word row".to_string()))?;
@@ -200,7 +200,7 @@ impl SearchDictionaryService {
             "DELETE FROM search_stop_words WHERE tenant_id = $1 AND id = $2",
             vec![tenant_id.into(), stop_word_id.into()],
         );
-        db.execute(stmt).await.map_err(Error::Database)?;
+        db.execute_raw(stmt).await.map_err(Error::Database)?;
         Ok(())
     }
 
@@ -233,7 +233,7 @@ impl SearchDictionaryService {
             vec![tenant_id.into(), document_id.into()],
         );
         let document_row = db
-            .query_one(document_stmt)
+            .query_one_raw(document_stmt)
             .await
             .map_err(Error::Database)?
             .ok_or_else(|| Error::NotFound("search document for query rule".to_string()))?;
@@ -290,7 +290,7 @@ impl SearchDictionaryService {
         );
 
         let row = db
-            .query_one(stmt)
+            .query_one_raw(stmt)
             .await
             .map_err(Error::Database)?
             .ok_or_else(|| Error::NotFound("search query rule row".to_string()))?;
@@ -310,7 +310,7 @@ impl SearchDictionaryService {
             "DELETE FROM search_query_rules WHERE tenant_id = $1 AND id = $2",
             vec![tenant_id.into(), query_rule_id.into()],
         );
-        db.execute(stmt).await.map_err(Error::Database)?;
+        db.execute_raw(stmt).await.map_err(Error::Database)?;
         Ok(())
     }
 
@@ -467,7 +467,7 @@ impl SearchDictionaryService {
             vec![tenant_id.into(), document_id.into()],
         );
 
-        let row = db.query_one(stmt).await.map_err(Error::Database)?;
+        let row = db.query_one_raw(stmt).await.map_err(Error::Database)?;
         row.filter(|row| pinned_item_matches_query(query, row, storefront_channel))
             .map(map_pinned_item_row)
             .transpose()
@@ -488,7 +488,7 @@ impl SearchDictionaryService {
             vec![tenant_id.into()],
         );
 
-        db.query_all(stmt)
+        db.query_all_raw(stmt)
             .await
             .map_err(Error::Database)?
             .into_iter()
@@ -511,7 +511,7 @@ impl SearchDictionaryService {
             vec![tenant_id.into()],
         );
 
-        db.query_all(stmt)
+        db.query_all_raw(stmt)
             .await
             .map_err(Error::Database)?
             .into_iter()
@@ -535,7 +535,7 @@ impl SearchDictionaryService {
             vec![tenant_id.into()],
         );
 
-        db.query_all(stmt)
+        db.query_all_raw(stmt)
             .await
             .map_err(Error::Database)?
             .into_iter()
@@ -562,7 +562,7 @@ impl SearchDictionaryService {
             vec![tenant_id.into(), normalized_query.to_string().into()],
         );
 
-        db.query_all(stmt)
+        db.query_all_raw(stmt)
             .await
             .map_err(Error::Database)?
             .into_iter()

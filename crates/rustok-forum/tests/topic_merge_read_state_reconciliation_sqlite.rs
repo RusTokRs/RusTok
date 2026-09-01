@@ -51,7 +51,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         vec![user_id.into(), tenant_id.into()],
@@ -146,7 +146,7 @@ async fn insert_read_state(
     last_read_revision: i64,
     timestamp: &str,
 ) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         r#"
         INSERT INTO forum_topic_read_states (
@@ -329,7 +329,7 @@ async fn merge_read_state_reconciliation_is_conservative_atomic_and_idempotent()
     assert!(matches!(service_write, Err(ForumError::Validation(_))));
 
     assert!(
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             r#"
             INSERT INTO forum_topic_read_states (
@@ -347,7 +347,7 @@ async fn merge_read_state_reconciliation_is_conservative_atomic_and_idempotent()
         .is_err()
     );
     assert!(
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             r#"
             UPDATE forum_topic_read_states
@@ -451,7 +451,7 @@ async fn merge_read_state_reconciliation_is_conservative_atomic_and_idempotent()
     ));
 
     assert!(db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE forum_topic_merge_read_state_reconciliations SET reason = 'tampered' WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],
@@ -459,7 +459,7 @@ async fn merge_read_state_reconciliation_is_conservative_atomic_and_idempotent()
         .await
         .is_err());
     assert!(db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "DELETE FROM forum_topic_merge_read_state_reconciliations WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],
@@ -498,7 +498,7 @@ async fn read_state_snapshots(
     topic_id: Uuid,
 ) -> TestResult<Vec<ReadStateSnapshot>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             r#"
             SELECT user_id, last_read_position, last_read_revision, created_at, updated_at
@@ -556,7 +556,7 @@ async fn assert_reconciliation_event(
     reconciled: &rustok_forum::ForumTopicMergeReadStateReconciliationResult,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             r#"
             SELECT aggregate_type, aggregate_id, event_type, schema_version, actor_id, payload
@@ -612,6 +612,6 @@ async fn assert_reconciliation_event(
 }
 
 async fn scalar_i64(db: &DatabaseConnection, statement: Statement) -> TestResult<i64> {
-    let row: QueryResult = db.query_one(statement).await?.ok_or("scalar row missing")?;
+    let row: QueryResult = db.query_one_raw(statement).await?.ok_or("scalar row missing")?;
     Ok(row.try_get("", "value")?)
 }

@@ -180,7 +180,7 @@ async fn query_positions(
     topic_id: Uuid,
 ) -> TestResult<Vec<i64>> {
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT position::bigint AS value

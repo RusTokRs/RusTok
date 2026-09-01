@@ -70,7 +70,7 @@ async fn order_lifecycle_rejects_stale_and_reverse_transitions() {
     assert!(confirmed.confirmed_at.is_some());
 
     let stale_confirm = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE orders
              SET status = 'confirmed', updated_at = CURRENT_TIMESTAMP
@@ -97,7 +97,7 @@ async fn order_lifecycle_rejects_stale_and_reverse_transitions() {
     assert!(paid.paid_at.is_some());
 
     let reverse = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE orders
              SET status = 'confirmed', paid_at = NULL, updated_at = CURRENT_TIMESTAMP

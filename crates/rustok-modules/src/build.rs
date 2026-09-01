@@ -513,7 +513,7 @@ impl SeaOrmModuleBuildService {
 
         let backend = transaction.get_database_backend();
         let inserted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_build_requests \
@@ -613,7 +613,7 @@ impl SeaOrmModuleBuildService {
             .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
         let backend = transaction.get_database_backend();
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT request, status, result_hash, revision FROM module_build_requests \
@@ -654,7 +654,7 @@ impl SeaOrmModuleBuildService {
             return Err(ModuleBuildProtocolError::ExecutionClaimConflict);
         }
         let updated = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_build_requests \
@@ -727,7 +727,7 @@ impl SeaOrmModuleBuildService {
             .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
         let backend = transaction.get_database_backend();
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT request, status, revision FROM module_build_requests WHERE request_id = {}{}",
@@ -758,7 +758,7 @@ impl SeaOrmModuleBuildService {
         let revision = build_revision_from_row(&row)?;
         let claim_id = self.infrastructure.new_id();
         let updated = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_build_requests \
@@ -814,7 +814,7 @@ impl SeaOrmModuleBuildService {
             .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
         let backend = transaction.get_database_backend();
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT request, result, status, revision FROM module_build_requests WHERE request_id = {}",
@@ -1311,7 +1311,7 @@ async fn existing_submission<C: ConnectionTrait>(
 ) -> Result<Option<ExistingSubmission>, ModuleBuildProtocolError> {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT request_id, request_hash, revision FROM module_build_requests \
@@ -1662,7 +1662,7 @@ mod tests {
 
         service
             .db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE module_build_requests SET lease_expires_at = datetime('now', '-1 second') WHERE request_id = ?1".to_string(),
                 [uuid_value(request.request_id, DbBackend::Sqlite)],

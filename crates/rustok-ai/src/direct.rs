@@ -2202,7 +2202,7 @@ mod tests {
         let operator = admin_operator();
         for (table, id) in [("tenants", operator.tenant_id), ("users", operator.user_id)] {
             database
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DbBackend::Sqlite,
                     format!("INSERT INTO {table} (id) VALUES (?)"),
                     vec![id.into()],
@@ -2275,7 +2275,7 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -2292,7 +2292,7 @@ mod tests {
         let product_id = Uuid::new_v4();
         let now = "2026-07-16T00:00:00Z".to_string();
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO products (id, tenant_id, status, metadata, created_at, updated_at) \
                  VALUES (?, ?, ?, ?, ?, ?)"
@@ -2323,7 +2323,7 @@ mod tests {
             ),
         ] {
             database
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DbBackend::Sqlite,
                     "INSERT INTO product_translations \
                      (id, product_id, tenant_id, locale, title, handle, description) VALUES \

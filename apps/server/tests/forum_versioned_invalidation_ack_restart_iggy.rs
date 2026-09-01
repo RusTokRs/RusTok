@@ -439,7 +439,7 @@ fn ensure_durable_outcome(
 
 async fn load_snapshot(db: &DatabaseConnection, event_id: Uuid) -> TestResult<InboxSnapshot> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT event_id, tenant_id, scope_key, event_type,
@@ -496,7 +496,7 @@ fn ensure_snapshot(
 
 async fn count_event_rows(db: &DatabaseConnection, event_id: Uuid) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT COUNT(*)::BIGINT AS value FROM search_projection_inbox WHERE event_id = $1",
             vec![event_id.into()],

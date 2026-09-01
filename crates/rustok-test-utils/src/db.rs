@@ -145,7 +145,7 @@ pub async fn create_postgres_database(
 ) -> Result<(), sea_orm::DbErr> {
     assert_valid_postgres_database_name(database_name);
     admin
-        .execute(Statement::from_string(
+        .execute_raw(Statement::from_string(
             DbBackend::Postgres,
             format!("CREATE DATABASE {}", quoted_identifier(database_name)),
         ))
@@ -160,7 +160,7 @@ pub async fn drop_postgres_database_if_exists(
 ) -> Result<(), sea_orm::DbErr> {
     assert_valid_postgres_database_name(database_name);
     admin
-        .execute(Statement::from_string(
+        .execute_raw(Statement::from_string(
             DbBackend::Postgres,
             format!(
                 "DROP DATABASE IF EXISTS {} WITH (FORCE)",
@@ -242,7 +242,7 @@ pub async fn assert_postgres_table_missing(
     table: &str,
 ) -> Result<(), sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT to_regclass($1) IS NULL AS missing",
             [format!("public.{table}").into()],
@@ -267,7 +267,7 @@ pub async fn assert_postgres_column_missing(
     column: &str,
 ) -> Result<(), sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT NOT EXISTS (
@@ -304,7 +304,7 @@ pub async fn assert_postgres_column_contract(
     nullable: bool,
 ) -> Result<(), sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT data_type, is_nullable

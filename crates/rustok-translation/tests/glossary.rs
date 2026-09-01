@@ -215,7 +215,7 @@ async fn term_replacement_preserves_revision_snapshots() {
 
     let persisted_versions: i64 = fixture
         .database
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT COUNT(*) AS count FROM translation_glossary_terms \
              WHERE tenant_id = ? AND glossary_id = ?",
@@ -535,7 +535,7 @@ async fn fixture(tenant_ids: &[Uuid]) -> Fixture {
     }
     for tenant_id in tenant_ids {
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO tenants (id) VALUES (?)",
                 [(*tenant_id).into()],

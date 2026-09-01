@@ -1091,7 +1091,8 @@ async fn find_group_for_update(
     match transaction.get_database_backend() {
         DbBackend::Sqlite => query().one(transaction).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
-    }
+        _ => unreachable!("unsupported SeaORM database backend"),
+}
     .ok_or(GroupsError::NotFound)
 }
 
@@ -1108,7 +1109,8 @@ async fn find_application_for_update(
     match transaction.get_database_backend() {
         DbBackend::Sqlite => query().one(transaction).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
-    }
+        _ => unreachable!("unsupported SeaORM database backend"),
+}
     .ok_or(GroupsError::NotFound)
 }
 

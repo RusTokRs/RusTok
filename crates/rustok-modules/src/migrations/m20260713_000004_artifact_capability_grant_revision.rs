@@ -25,10 +25,10 @@ impl MigrationTrait for Migration {
                     "module artifact capability-grant migration does not support database backend {backend:?}"
                 )));
             }
-        };
+};
         manager
             .get_connection()
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 manager.get_database_backend(),
                 statement,
             ))
@@ -41,7 +41,7 @@ impl MigrationTrait for Migration {
             DROP COLUMN capability_grant_revision";
         manager
             .get_connection()
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 manager.get_database_backend(),
                 statement,
             ))

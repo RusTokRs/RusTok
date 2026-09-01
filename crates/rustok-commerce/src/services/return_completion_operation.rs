@@ -238,7 +238,10 @@ impl ReturnCompletionOperationJournal {
             )
             .col_expr(
                 return_completion_operation::Column::AttemptCount,
-                Expr::col(return_completion_operation::Column::AttemptCount).add(1),
+                sea_orm::sea_query::ExprTrait::add(
+                    Expr::col(return_completion_operation::Column::AttemptCount),
+                    1,
+                ),
             )
             .col_expr(
                 return_completion_operation::Column::LastErrorCode,

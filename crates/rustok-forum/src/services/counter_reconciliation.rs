@@ -209,7 +209,7 @@ impl ForumCounterReconciliationService {
             .clamp(1, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT);
         let fetch_limit = effective_limit.saturating_add(1);
         let topic_rows = transaction
-            .query_all(counter_statement(
+            .query_all_raw(counter_statement(
                 backend,
                 TOPIC_COUNTER_SQLITE,
                 TOPIC_COUNTER_AFTER_SQLITE,
@@ -221,7 +221,7 @@ impl ForumCounterReconciliationService {
             )?)
             .await?;
         let category_rows = transaction
-            .query_all(counter_statement(
+            .query_all_raw(counter_statement(
                 backend,
                 CATEGORY_COUNTER_SQLITE,
                 CATEGORY_COUNTER_AFTER_SQLITE,

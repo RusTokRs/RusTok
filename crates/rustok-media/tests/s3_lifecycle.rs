@@ -47,7 +47,7 @@ async fn database(tenant_id: Uuid) -> sea_orm::DatabaseConnection {
             .expect("Media migration should apply");
     }
     database
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO tenants (id) VALUES (?)",
             [tenant_id.into()],

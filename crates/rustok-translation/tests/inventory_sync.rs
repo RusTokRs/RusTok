@@ -325,7 +325,7 @@ async fn initialize_fixture(
     }
     let tenant_id = Uuid::new_v4();
     database
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO tenants (id) VALUES (?)",
             [tenant_id.into()],
@@ -618,7 +618,7 @@ async fn provider_inventory_and_checkpoints_are_tenant_isolated() {
     let first_tenant_id = Uuid::parse_str(&first_context.tenant_id).unwrap();
     let second_tenant_id = Uuid::new_v4();
     database
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO tenants (id) VALUES (?)",
             [second_tenant_id.into()],

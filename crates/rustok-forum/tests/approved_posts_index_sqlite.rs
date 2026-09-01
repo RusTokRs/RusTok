@@ -91,7 +91,7 @@ async fn approved_posts_aggregate_uses_partial_author_indexes_on_sqlite() {
         "#
     );
     let rows = db
-        .query_all(Statement::from_string(DbBackend::Sqlite, sql))
+        .query_all_raw(Statement::from_string(DbBackend::Sqlite, sql))
         .await
         .expect("approved-post EXPLAIN QUERY PLAN should succeed");
 
@@ -142,7 +142,7 @@ async fn assert_index_definition(
     required_fragments: &[&str],
 ) {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?1",
             vec![index_name.into()],

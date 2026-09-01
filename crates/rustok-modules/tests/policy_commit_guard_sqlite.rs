@@ -62,7 +62,7 @@ async fn static_policy_resolves_tenant_override_under_lifecycle_cursor_lock() {
 
     let disabled_txn = db.begin().await.expect("disabled policy transaction");
     disabled_txn
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO tenant_modules (tenant_id, module_slug, enabled) VALUES (?1, ?2, ?3)"
                 .to_string(),
@@ -89,7 +89,7 @@ async fn static_policy_resolves_tenant_override_under_lifecycle_cursor_lock() {
     disabled_txn.commit().await.expect("disabled policy commit");
 
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT current_revision FROM module_policy_revision_cursors WHERE tenant_id = ?1 AND consumer_key = ?2"
                 .to_string(),

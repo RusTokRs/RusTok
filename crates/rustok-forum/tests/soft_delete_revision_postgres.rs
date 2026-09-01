@@ -292,7 +292,7 @@ async fn assert_reply_tombstone(
     seed: &ThreadSeed,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 r#"
@@ -356,7 +356,7 @@ async fn assert_topic_tombstone(
     seed: &ThreadSeed,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 r#"

@@ -57,7 +57,7 @@ impl ProductCatalogSchemaService {
             .map(|row| format!("{}/{}", row.path, input.slug))
             .unwrap_or_else(|| input.slug.clone());
 
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             txn.get_database_backend(),
             r#"
             INSERT INTO catalog_categories (
@@ -82,7 +82,7 @@ impl ProductCatalogSchemaService {
         .await?;
 
         if should_write_product_category_closure(txn.get_database_backend()) {
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 txn.get_database_backend(),
                 r#"
                 INSERT INTO catalog_category_closure (tenant_id, ancestor_id, descendant_id, depth)
@@ -93,7 +93,7 @@ impl ProductCatalogSchemaService {
             .await?;
 
             if let Some(parent_id) = input.parent_id {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     txn.get_database_backend(),
                     r#"
                     INSERT INTO catalog_category_closure (
@@ -111,7 +111,7 @@ impl ProductCatalogSchemaService {
 
         for translation in &translations {
             if should_write_legacy_category_translation(txn.get_database_backend()) {
-                txn.execute(Statement::from_sql_and_values(
+                txn.execute_raw(Statement::from_sql_and_values(
                     txn.get_database_backend(),
                     r#"
                     INSERT INTO catalog_category_translations (
@@ -184,7 +184,7 @@ impl ProductCatalogSchemaService {
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
         ensure_structural_category(&txn, tenant_id, input.category_id).await?;
         let group_id = current_product_operation_id().unwrap_or_else(generate_id);
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             txn.get_database_backend(),
             r#"
             INSERT INTO category_attribute_groups (
@@ -245,7 +245,7 @@ impl ProductCatalogSchemaService {
             Value::Object(Default::default())
         };
 
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             txn.get_database_backend(),
             r#"
             INSERT INTO category_attribute_schema_assignments (
@@ -302,7 +302,7 @@ impl ProductCatalogSchemaService {
             None => None,
         };
 
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             txn.get_database_backend(),
             r#"
             INSERT INTO category_attributes (
@@ -621,7 +621,7 @@ async fn write_category_seo_translation_in_tx(
         return Ok(());
     }
 
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
         INSERT INTO catalog_category_seo_translations (
@@ -682,7 +682,7 @@ async fn sync_created_category_to_taxonomy_in_tx(
         .map_err(map_taxonomy_category_sync_error)?;
     }
 
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         txn.get_database_backend(),
         r#"
         INSERT INTO product_catalog_category_taxonomy_bindings (

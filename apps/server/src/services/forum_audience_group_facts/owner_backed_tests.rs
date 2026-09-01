@@ -113,7 +113,7 @@ async fn membership_snapshot(
     member_id: Uuid,
 ) -> (String, i64) {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             db.get_database_backend(),
             format!(
                 "SELECT status, revision FROM group_memberships WHERE tenant_id = '{tenant_id}' AND user_id = '{member_id}'"
@@ -132,7 +132,7 @@ async fn membership_snapshot(
 
 async fn group_member_count(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> i64 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             db.get_database_backend(),
             format!(
                 "SELECT member_count FROM groups WHERE tenant_id = '{tenant_id}' AND id = '{group_id}'"

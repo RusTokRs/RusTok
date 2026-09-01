@@ -315,12 +315,12 @@ async fn setup_db() -> TestResult<Option<DatabaseConnection>> {
 
     if database_url.starts_with("postgres://") || database_url.starts_with("postgresql://") {
         let schema_name = format!("rustok_outbox_test_{}", Uuid::new_v4().simple());
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(r#"CREATE SCHEMA "{schema_name}""#),
         ))
         .await?;
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(r#"SET search_path TO "{schema_name}""#),
         ))

@@ -209,7 +209,7 @@ async fn result_digest(
         "SELECT row_to_json(result)::text AS result_json FROM ({sql}) AS result ORDER BY {order_by}"
     );
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DbBackend::Postgres,
             ordered_json_sql,
         ))
@@ -226,7 +226,7 @@ async fn result_digest(
     }
 
     let digest_row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT md5($1::text) AS result_digest",
             vec![payload.into()],
@@ -245,7 +245,7 @@ async fn explain(db: &DatabaseConnection, sql: &str) -> Result<ExplainEvidence> 
         format!("EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON) {sql}"),
     );
     let row = db
-        .query_one(statement)
+        .query_one_raw(statement)
         .await
         .context("EXPLAIN query failed")?
         .context("EXPLAIN returned no row")?;
@@ -280,7 +280,7 @@ async fn schema_size_bytes(db: &DatabaseConnection, schema: &str) -> Result<i64>
         vec![schema.into()],
     );
     let row = db
-        .query_one(statement)
+        .query_one_raw(statement)
         .await?
         .context("schema size query returned no row")?;
     row.try_get("", "bytes").map_err(Into::into)
@@ -306,7 +306,7 @@ async fn prototype_cardinality(
 
 async fn cardinality_query(db: &DatabaseConnection, sql: &str) -> Result<Cardinality> {
     let row = db
-        .query_one(Statement::from_string(DbBackend::Postgres, sql.to_owned()))
+        .query_one_raw(Statement::from_string(DbBackend::Postgres, sql.to_owned()))
         .await?
         .context("cardinality query returned no row")?;
     Ok(Cardinality {

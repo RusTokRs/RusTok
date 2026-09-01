@@ -616,7 +616,7 @@ where
         )
         .col_expr(
             memory_entry::Column::Revision,
-            Expr::col(memory_entry::Column::Revision).add(1),
+            sea_orm::sea_query::ExprTrait::add(Expr::col(memory_entry::Column::Revision), 1),
         )
         .col_expr(memory_entry::Column::UpdatedAt, Expr::value(observed_at))
         .filter(memory_entry::Column::TenantId.eq(tenant_id))

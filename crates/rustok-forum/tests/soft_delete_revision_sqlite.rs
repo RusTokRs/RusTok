@@ -157,7 +157,7 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
     ] {
         let mut create = create;
         create.if_not_exists();
-        db.execute(builder.build(&create)).await?;
+        db.execute_raw(builder.build(&create)).await?;
     }
     db.execute_unprepared(
         "CREATE TABLE users (
@@ -328,7 +328,7 @@ WHERE lower(hex(tenant_id)) = replace('{}', '-', '')
 
 async fn assert_reply_tombstone(db: &DatabaseConnection, seed: &ThreadSeed) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 r#"
@@ -390,7 +390,7 @@ WHERE lower(hex(reply.tenant_id)) = replace('{}', '-', '')
 
 async fn assert_topic_tombstone(db: &DatabaseConnection, seed: &ThreadSeed) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 r#"

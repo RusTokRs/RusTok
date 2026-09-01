@@ -534,11 +534,11 @@ impl MigrationTrait for Migration {
                     "static promotion migration does not support database backend {backend:?}"
                 )));
             }
-        };
+};
         for statement in statements {
             manager
                 .get_connection()
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     manager.get_database_backend(),
                     (*statement).to_string(),
                 ))
@@ -601,7 +601,7 @@ mod tests {
         assert!(!release_columns.contains("activated_by"));
 
         let tables = db
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT name FROM sqlite_master WHERE type = 'table'".to_string(),
             ))
@@ -622,7 +622,7 @@ mod tests {
     }
 
     async fn column_names(db: &sea_orm::DatabaseConnection, table: &str) -> HashSet<String> {
-        db.query_all(Statement::from_string(
+        db.query_all_raw(Statement::from_string(
             DbBackend::Sqlite,
             format!("PRAGMA table_info({table})"),
         ))

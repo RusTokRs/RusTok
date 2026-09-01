@@ -216,7 +216,7 @@ impl PostgresIndexDriftOrphanLinkEvidenceReader {
         command_id: Uuid,
     ) -> Result<OrphanMaterialized, IndexDriftRepairFailure> {
         let source_row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT CAST(source_version AS TEXT) AS source_version_text, is_deleted FROM index_entities WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4 AND entity_id = $5 AND locale_key = $6 LIMIT 1",
                 entity_values(target.source_key),
@@ -239,7 +239,7 @@ impl PostgresIndexDriftOrphanLinkEvidenceReader {
         };
 
         let link_row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT target_module, target_entity, target_schema_version, target_entity_id, target_locale_key FROM index_links WHERE tenant_id = $1 AND source_module = $2 AND source_entity = $3 AND source_schema_version = $4 AND source_entity_id = $5 AND source_locale_key = $6 AND source_version = $7 AND link_name = $8 AND ordinal = $9 LIMIT 1",
                 link_identity_values(target),
@@ -256,7 +256,7 @@ impl PostgresIndexDriftOrphanLinkEvidenceReader {
 
         let payload_digest = link_removal_payload_digest(command_id, target);
         let delivery_row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT mutation_kind, module_name, entity_name, schema_version, entity_id, locale_key, CAST(source_version AS TEXT) AS source_version_text, payload_hash, state FROM index_inbox WHERE tenant_id = $1 AND source_name = $2 AND delivery_id = $3 LIMIT 1",
                 vec![
@@ -372,7 +372,7 @@ impl PostgresIndexOrphanLinkMutationStore {
         payload_digest: &str,
     ) -> Result<IndexOrphanLinkRemovalOutcome, IndexDriftRepairFailure> {
         let inserted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "INSERT INTO index_inbox (tenant_id, source_name, delivery_id, mutation_kind, module_name, entity_name, schema_version, entity_id, locale_key, source_version, payload_hash, state, attempt_count) VALUES ($1, $2, $3, 'delete', $4, $5, $6, $7, $8, $9, $10, 'pending', 1) ON CONFLICT (tenant_id, source_name, delivery_id) DO NOTHING",
                 vec![
@@ -401,7 +401,7 @@ impl PostgresIndexOrphanLinkMutationStore {
         require_exact_link(transaction, target).await?;
 
         let deleted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "DELETE FROM index_links WHERE tenant_id = $1 AND source_module = $2 AND source_entity = $3 AND source_schema_version = $4 AND source_entity_id = $5 AND source_locale_key = $6 AND source_version = $7 AND link_name = $8 AND ordinal = $9 AND target_module = $10 AND target_entity = $11 AND target_schema_version = $12 AND target_entity_id = $13 AND target_locale_key = $14",
                 exact_link_values(target),
@@ -424,7 +424,7 @@ impl PostgresIndexOrphanLinkMutationStore {
         payload_digest: &str,
     ) -> Result<IndexOrphanLinkRemovalOutcome, IndexDriftRepairFailure> {
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT mutation_kind, module_name, entity_name, schema_version, entity_id, locale_key, CAST(source_version AS TEXT) AS source_version_text, payload_hash, state FROM index_inbox WHERE tenant_id = $1 AND source_name = $2 AND delivery_id = $3 LIMIT 1 FOR UPDATE",
                 vec![
@@ -876,7 +876,7 @@ async fn require_exact_live_source(
     target: OrphanLinkTargetRef<'_>,
 ) -> Result<(), IndexDriftRepairFailure> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT CAST(source_version AS TEXT) AS source_version_text, is_deleted FROM index_entities WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4 AND entity_id = $5 AND locale_key = $6 LIMIT 1 FOR UPDATE",
             entity_values(target.source_key),
@@ -899,7 +899,7 @@ async fn require_exact_link(
     target: OrphanLinkTargetRef<'_>,
 ) -> Result<(), IndexDriftRepairFailure> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT target_module, target_entity, target_schema_version, target_entity_id, target_locale_key FROM index_links WHERE tenant_id = $1 AND source_module = $2 AND source_entity = $3 AND source_schema_version = $4 AND source_entity_id = $5 AND source_locale_key = $6 AND source_version = $7 AND link_name = $8 AND ordinal = $9 LIMIT 1 FOR UPDATE",
             link_identity_values(target),
@@ -920,7 +920,7 @@ async fn complete_delivery(
     payload_digest: &str,
 ) -> Result<(), IndexDriftRepairFailure> {
     let updated = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE index_inbox SET state = 'applied', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, lease_owner = NULL, lease_expires_at = NULL, error_code = NULL, error_details = NULL WHERE tenant_id = $1 AND source_name = $2 AND delivery_id = $3 AND payload_hash = $4 AND state = 'pending'",
             vec![
@@ -952,7 +952,7 @@ async fn lock_entity_key(
         locale_text(key.locale.as_ref()),
     );
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![lock_key.into()],

@@ -606,7 +606,7 @@ async fn assert_entity_version(
     expected: u64,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT CAST(source_version AS TEXT) AS source_version_text
@@ -645,7 +645,7 @@ async fn assert_applied_inbox_once(
     event_id: Uuid,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT COUNT(*) AS row_count,
@@ -678,7 +678,7 @@ async fn assert_inbox_absent(
     event_id: Uuid,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT COUNT(*) AS row_count FROM index_inbox WHERE tenant_id = $1 AND source_name = $2 AND delivery_id = $3",
             vec![

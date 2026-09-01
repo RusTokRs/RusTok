@@ -582,7 +582,7 @@ async fn assert_graph_payload(
 
 async fn update_variant_sku(db: &DatabaseConnection, sku: &str) -> TestResult<()> {
     let result = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE product_variants SET sku = $3 WHERE tenant_id = $1 AND id = $2",
             vec![TENANT_ID.into(), VARIANT_ID.into(), sku.to_owned().into()],
@@ -594,7 +594,7 @@ async fn update_variant_sku(db: &DatabaseConnection, sku: &str) -> TestResult<()
 
 async fn materialized_variant_version(db: &DatabaseConnection) -> TestResult<u64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT CAST(source_version AS TEXT) AS source_version_text

@@ -123,7 +123,7 @@ async fn seed_channel_binding(
     module_slug: &str,
     is_enabled: bool,
 ) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, status, settings, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -141,7 +141,7 @@ async fn seed_channel_binding(
         .await
         .expect("channel should be inserted for test");
 
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO channel_module_bindings (id, channel_id, module_slug, is_enabled, settings, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -162,7 +162,7 @@ async fn set_stock_location_channel_visibility(
     tenant_id: Uuid,
     allowed_channel_slugs: &[&str],
 ) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "UPDATE stock_locations SET metadata = ? WHERE tenant_id = ?",
         vec![
@@ -239,7 +239,7 @@ pub(crate) fn test_app_context(
 }
 
 pub(crate) async fn seed_store_tenant_context(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
-    db.execute(sea_orm::Statement::from_sql_and_values(
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO tenants (id, name, slug, domain, settings, default_locale, is_active, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
@@ -260,7 +260,7 @@ pub(crate) async fn seed_store_tenant_context(db: &sea_orm::DatabaseConnection, 
         ("en", "English", "English", true),
         ("de", "German", "Deutsch", false),
     ] {
-        db.execute(sea_orm::Statement::from_sql_and_values(
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(
                 sea_orm::DatabaseBackend::Sqlite,
                 "INSERT INTO tenant_locales (id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale, created_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
@@ -279,7 +279,7 @@ pub(crate) async fn seed_store_tenant_context(db: &sea_orm::DatabaseConnection, 
             .expect("tenant locale should be inserted");
     }
 
-    db.execute(sea_orm::Statement::from_sql_and_values(
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",

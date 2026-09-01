@@ -5,7 +5,7 @@ use rustok_core::SecurityContext;
 use rustok_taxonomy::{TaxonomyError, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    sea_query::{Expr, Query, SelectStatement},
+    sea_query::{Query, SelectStatement},
 };
 use uuid::Uuid;
 
@@ -117,7 +117,7 @@ impl CategoryTaxonomyReadService {
         let mut query = forum_category::Entity::find()
             .filter(forum_category::Column::TenantId.eq(tenant_id))
             .filter(
-                Expr::col((forum_category::Entity, forum_category::Column::Id))
+                forum_category::Column::Id
                     .not_in_subquery(archived_category_ids_subquery(tenant_id)),
             );
         if !hidden_category_ids.is_empty() {
@@ -239,13 +239,7 @@ fn archived_category_ids_subquery(tenant_id: Uuid) -> SelectStatement {
     Query::select()
         .column(forum_category_lifecycle::Column::CategoryId)
         .from(forum_category_lifecycle::Entity)
-        .and_where(
-            Expr::col((
-                forum_category_lifecycle::Entity,
-                forum_category_lifecycle::Column::TenantId,
-            ))
-            .eq(tenant_id),
-        )
+        .and_where(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
         .to_owned()
 }
 

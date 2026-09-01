@@ -930,7 +930,7 @@ impl SeaOrmArtifactDataSchemaValidator {
             _ => ("?1", "?2", "?3"),
         };
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT installation.descriptor \
@@ -1348,7 +1348,7 @@ where
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let backend = transaction.get_database_backend();
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT data_key, value, revision FROM module_artifact_data
@@ -1476,7 +1476,7 @@ where
         }
 
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT data_key, value, revision FROM module_artifact_data
@@ -1497,7 +1497,7 @@ where
             return Err(ArtifactDataError::RevisionConflict);
         }
         let deleted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data
@@ -1591,7 +1591,7 @@ where
             ),
         };
         let mut records = transaction
-            .query_all(Statement::from_sql_and_values(backend, query, values))
+            .query_all_raw(Statement::from_sql_and_values(backend, query, values))
             .await
             .map_err(storage_error)?
             .into_iter()
@@ -1715,7 +1715,7 @@ where
             ),
         };
         let mut records = transaction
-            .query_all(Statement::from_sql_and_values(backend, statement, values))
+            .query_all_raw(Statement::from_sql_and_values(backend, statement, values))
             .await
             .map_err(storage_error)?
             .into_iter()
@@ -1880,7 +1880,7 @@ where
         let backend = transaction.get_database_backend();
         ensure_active_namespace(&transaction, scope, backend).await?;
         if let Some(row) = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT session_id, object_name, content_type, expected_revision, request_digest, CAST(expires_at AS TEXT) AS expires_at
@@ -1907,7 +1907,7 @@ where
             return Ok(session);
         }
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT COUNT(*) AS session_count
@@ -1936,7 +1936,7 @@ where
             projected_sessions,
         )?;
         let session_id = self.infrastructure.new_id();
-        transaction.execute(Statement::from_sql_and_values(
+        transaction.execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_object_upload_sessions
@@ -1946,7 +1946,7 @@ where
             ),
             vec![uuid_value(session_id, backend), uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, revision_value(scope.policy_revision)?, request.name.clone().into(), request.content_type.clone().into(), optional_revision_value(request.expected_revision)?, uuid_value(request.idempotency_key, backend), request_digest.into()],
         )).await.map_err(storage_error)?;
-        let row = transaction.query_one(Statement::from_sql_and_values(
+        let row = transaction.query_one_raw(Statement::from_sql_and_values(
             backend,
             format!("SELECT CAST(expires_at AS TEXT) AS expires_at FROM module_artifact_data_object_upload_sessions WHERE session_id = {}", placeholder(backend, 1)),
             vec![uuid_value(session_id, backend)],
@@ -1988,7 +1988,7 @@ where
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let backend = transaction.get_database_backend();
-        if let Some(row) = transaction.query_one(Statement::from_sql_and_values(
+        if let Some(row) = transaction.query_one_raw(Statement::from_sql_and_values(
             backend,
             format!("SELECT size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} AND sequence = {}", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3)),
             vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend), revision_value(chunk.sequence)?],
@@ -2005,7 +2005,7 @@ where
         let backend = transaction.get_database_backend();
         ensure_active_namespace(&transaction, scope, backend).await?;
         let active = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_data_object_upload_sessions
@@ -2034,7 +2034,7 @@ where
             let _ = transaction.rollback().await;
             return Err(ArtifactDataError::NamespacePurged);
         }
-        if let Some(row) = transaction.query_one(Statement::from_sql_and_values(
+        if let Some(row) = transaction.query_one_raw(Statement::from_sql_and_values(
             backend,
             format!("SELECT size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} AND sequence = {}", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3)),
             vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend), revision_value(chunk.sequence)?],
@@ -2047,7 +2047,7 @@ where
             }
             return Err(ArtifactDataError::IdempotencyConflict);
         }
-        let row = transaction.query_one(Statement::from_sql_and_values(
+        let row = transaction.query_one_raw(Statement::from_sql_and_values(
             backend,
             format!("SELECT COALESCE(SUM(size_bytes), 0) AS total_size FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", placeholder(backend, 1), placeholder(backend, 2)),
             vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend)],
@@ -2064,7 +2064,7 @@ where
             return Err(ArtifactDataError::InvalidObject);
         }
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT COALESCE(SUM(chunk.size_bytes), 0) AS total_size
@@ -2116,7 +2116,7 @@ where
             .await
             .map_err(storage_error)?;
         let stored_size = chunk.data.len() as u64;
-        let inserted = transaction.execute(Statement::from_sql_and_values(
+        let inserted = transaction.execute_raw(Statement::from_sql_and_values(
             backend,
             format!("INSERT INTO module_artifact_data_object_upload_chunks (tenant_id, session_id, sequence, storage_key, size_bytes, digest_sha256, created_at) VALUES ({}, {}, {}, {}, {}, {}, {})", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), placeholder(backend,6), now_expression(backend)),
             vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend), revision_value(chunk.sequence)?, stored_path.clone().into(), i64::try_from(stored_size).map_err(|_| ArtifactDataError::InvalidObject)?.into(), digest_sha256.into()],
@@ -2174,7 +2174,7 @@ where
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let backend = transaction.get_database_backend();
-        let rows = transaction.query_all(Statement::from_sql_and_values(
+        let rows = transaction.query_all_raw(Statement::from_sql_and_values(
             backend,
             format!("SELECT sequence, storage_key, size_bytes, digest_sha256 FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {} ORDER BY sequence ASC", placeholder(backend,1), placeholder(backend,2)),
             vec![uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)],
@@ -2236,11 +2236,11 @@ where
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let backend = transaction.get_database_backend();
-        let completed = transaction.execute(Statement::from_sql_and_values(backend, format!("UPDATE module_artifact_data_object_upload_sessions SET status = 'completed', completed_revision = {}, completed_at = {}, updated_at = {} WHERE tenant_id = {} AND session_id = {} AND status = 'completing' AND expires_at > {}", placeholder(backend,1), now_expression(backend), now_expression(backend), placeholder(backend,2), placeholder(backend,3), now_expression(backend)), vec![revision_value(object.revision)?, uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
+        let completed = transaction.execute_raw(Statement::from_sql_and_values(backend, format!("UPDATE module_artifact_data_object_upload_sessions SET status = 'completed', completed_revision = {}, completed_at = {}, updated_at = {} WHERE tenant_id = {} AND session_id = {} AND status = 'completing' AND expires_at > {}", placeholder(backend,1), now_expression(backend), now_expression(backend), placeholder(backend,2), placeholder(backend,3), now_expression(backend)), vec![revision_value(object.revision)?, uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
         if completed.rows_affected() != 1 {
             return Err(ArtifactDataError::NamespacePurged);
         }
-        let rows = transaction.query_all(Statement::from_sql_and_values(backend, format!("SELECT storage_key FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", placeholder(backend,1), placeholder(backend,2)), vec![uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
+        let rows = transaction.query_all_raw(Statement::from_sql_and_values(backend, format!("SELECT storage_key FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", placeholder(backend,1), placeholder(backend,2)), vec![uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
         for row in rows {
             let key: String = row.try_get("", "storage_key").map_err(storage_error)?;
             queue_artifact_data_object_gc_candidate(
@@ -2251,7 +2251,7 @@ where
             )
             .await?;
         }
-        transaction.execute(Statement::from_sql_and_values(backend, format!("DELETE FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", placeholder(backend,1), placeholder(backend,2)), vec![uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
+        transaction.execute_raw(Statement::from_sql_and_values(backend, format!("DELETE FROM module_artifact_data_object_upload_chunks WHERE tenant_id = {} AND session_id = {}", placeholder(backend,1), placeholder(backend,2)), vec![uuid_value(scope.tenant_id, backend), uuid_value(request.session_id, backend)])).await.map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
         Ok(object)
     }
@@ -2271,7 +2271,7 @@ where
         configure_tenant_scope(&transaction, tenant_id).await?;
         let backend = transaction.get_database_backend();
         let sessions = transaction
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT session_id, module_slug, data_contract_revision, policy_revision
@@ -2306,7 +2306,7 @@ where
             configure_tenant_scope(&transaction, tenant_id).await?;
             let tx_backend = transaction.get_database_backend();
             let abandoned = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     tx_backend,
                     format!(
                         "UPDATE module_artifact_data_object_upload_sessions
@@ -2337,7 +2337,7 @@ where
                 continue;
             }
             let chunks = transaction
-                .query_all(Statement::from_sql_and_values(
+                .query_all_raw(Statement::from_sql_and_values(
                     tx_backend,
                     format!(
                         "SELECT storage_key FROM module_artifact_data_object_upload_chunks
@@ -2368,7 +2368,7 @@ where
                 })?;
             }
             transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     tx_backend,
                     format!(
                         "DELETE FROM module_artifact_data_object_upload_chunks
@@ -2404,7 +2404,7 @@ where
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let backend = transaction.get_database_backend();
-        let row = transaction.query_one(Statement::from_sql_and_values(backend, format!("SELECT object_name, content_type, expected_revision, idempotency_key FROM module_artifact_data_object_upload_sessions WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND policy_revision = {} AND session_id = {} AND status = 'open' AND expires_at > {}", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), now_expression(backend)), vec![uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, revision_value(scope.policy_revision)?, uuid_value(session_id, backend)])).await.map_err(storage_error)?;
+        let row = transaction.query_one_raw(Statement::from_sql_and_values(backend, format!("SELECT object_name, content_type, expected_revision, idempotency_key FROM module_artifact_data_object_upload_sessions WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND policy_revision = {} AND session_id = {} AND status = 'open' AND expires_at > {}", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), now_expression(backend)), vec![uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, revision_value(scope.policy_revision)?, uuid_value(session_id, backend)])).await.map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
         let row = row.ok_or(ArtifactDataError::NamespacePurged)?;
         let expected_revision: Option<i64> = row
@@ -2429,7 +2429,7 @@ where
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let backend = transaction.get_database_backend();
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT object_name, content_type, expected_revision, idempotency_key, status
@@ -2463,7 +2463,7 @@ where
             return Err(ArtifactDataError::NamespacePurged);
         }
         let claimed = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_data_object_upload_sessions
@@ -2594,7 +2594,7 @@ impl SeaOrmArtifactDataObjectGcService {
         configure_tenant_scope(&transaction, tenant_id).await?;
         let backend = transaction.get_database_backend();
         let candidates = transaction
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT candidate_id, module_slug, data_contract_revision, policy_revision, storage_key
@@ -2626,7 +2626,7 @@ impl SeaOrmArtifactDataObjectGcService {
             configure_tenant_scope(&transaction, tenant_id).await?;
             let backend = transaction.get_database_backend();
             transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT namespace_revision FROM module_artifact_data_namespaces
@@ -2641,7 +2641,7 @@ impl SeaOrmArtifactDataObjectGcService {
                 .await
                 .map_err(storage_error)?;
             let snapshot_reference = transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT COUNT(*) AS reference_count
@@ -2683,7 +2683,7 @@ impl SeaOrmArtifactDataObjectGcService {
                 .await
                 .map_err(storage_error)?;
             transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "DELETE FROM module_artifact_data_object_gc_candidates
@@ -2950,7 +2950,7 @@ where
             return Err(ArtifactDataError::RevisionConflict);
         }
         let deleted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_objects
@@ -3052,7 +3052,7 @@ where
             ),
         };
         let mut objects = transaction
-            .query_all(Statement::from_sql_and_values(backend, query, values))
+            .query_all_raw(Statement::from_sql_and_values(backend, query, values))
             .await
             .map_err(storage_error)?
             .into_iter()
@@ -3111,7 +3111,7 @@ async fn find_artifact_data_object<C: ConnectionTrait>(
 ) -> Result<Option<StoredArtifactDataObject>, ArtifactDataError> {
     let backend = connection.get_database_backend();
     connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key
@@ -3137,7 +3137,7 @@ async fn find_artifact_data_object_delete_operation<C: ConnectionTrait>(
 ) -> Result<Option<ArtifactDataObjectDeleteResult>, ArtifactDataError> {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT object_name, expected_revision, deleted_revision
@@ -3191,7 +3191,7 @@ async fn persist_artifact_data_object_delete_operation<C: ConnectionTrait>(
 ) -> Result<(), ArtifactDataError> {
     let backend = connection.get_database_backend();
     connection
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_object_delete_operations
@@ -3232,7 +3232,7 @@ async fn queue_artifact_data_object_gc_candidate<C: ConnectionTrait>(
 ) -> Result<(), ArtifactDataError> {
     let backend = connection.get_database_backend();
     connection
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_object_gc_candidates
@@ -3298,7 +3298,7 @@ async fn persist_artifact_data_object(
                 .checked_add(1)
                 .ok_or(ArtifactDataError::RevisionConflict)?;
             let result = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "UPDATE module_artifact_data_objects
@@ -3338,7 +3338,7 @@ async fn persist_artifact_data_object(
                 return Err(ArtifactDataError::RevisionConflict);
             }
             let result = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "INSERT INTO module_artifact_data_objects
@@ -3374,7 +3374,7 @@ async fn persist_artifact_data_object(
         storage_key: storage_key.to_owned(),
     };
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_object_operations
@@ -3409,7 +3409,7 @@ async fn enforce_object_data_quota<C: ConnectionTrait>(
 ) -> Result<(), ArtifactDataError> {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT COUNT(*) AS object_count, COALESCE(SUM(size_bytes), 0) AS total_bytes
@@ -3446,7 +3446,7 @@ async fn find_artifact_data_object_operation<C: ConnectionTrait>(
 ) -> Result<Option<(StoredArtifactDataObject, Option<u64>)>, ArtifactDataError> {
     let backend = connection.get_database_backend();
     connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key, expected_revision
@@ -3520,7 +3520,7 @@ async fn find_artifact_data_delete_operation<C: ConnectionTrait>(
 ) -> Result<Option<ArtifactDataDeleteResult>, ArtifactDataError> {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT data_key, expected_revision, deleted_revision
@@ -3574,7 +3574,7 @@ async fn persist_artifact_data_delete_operation<C: ConnectionTrait>(
 ) -> Result<(), ArtifactDataError> {
     let backend = connection.get_database_backend();
     connection
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_delete_operations
@@ -3629,7 +3629,7 @@ async fn persist_artifact_data_write(
         .await?;
     }
     if let Some(row) = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT data_key, value, revision, expected_revision FROM module_artifact_data_operations
@@ -3671,7 +3671,7 @@ async fn persist_artifact_data_write(
 
     let value_size_bytes = artifact_data_value_size(&write.value)?;
     let current = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT data_key, value, value_size_bytes, revision FROM module_artifact_data
@@ -3711,7 +3711,7 @@ async fn persist_artifact_data_write(
             .checked_add(1)
             .ok_or(ArtifactDataError::RevisionConflict)?;
         let result = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_data SET value = {}, value_size_bytes = {}, revision = {}, updated_at = {}
@@ -3749,7 +3749,7 @@ async fn persist_artifact_data_write(
             return Err(ArtifactDataError::RevisionConflict);
         }
         let result = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data
@@ -3786,7 +3786,7 @@ async fn persist_artifact_data_write(
     };
     synchronize_artifact_data_indexes(transaction, scope, &record, indexes).await?;
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_operations
@@ -3829,7 +3829,7 @@ async fn enforce_structured_data_quota<C: ConnectionTrait>(
 ) -> Result<(), ArtifactDataError> {
     let backend = connection.get_database_backend();
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT COUNT(*) AS record_count, COALESCE(SUM(value_size_bytes), 0) AS total_bytes
@@ -3888,7 +3888,7 @@ async fn synchronize_artifact_data_indexes(
             return Err(ArtifactDataError::InvalidIndexQuery);
         }
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_indexes
@@ -3923,7 +3923,7 @@ async fn delete_artifact_data_indexes<C: ConnectionTrait>(
 ) -> Result<(), ArtifactDataError> {
     let backend = connection.get_database_backend();
     connection
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "DELETE FROM module_artifact_data_indexes
@@ -5098,7 +5098,7 @@ where
             ),
         };
         let mut records = transaction
-            .query_all(Statement::from_sql_and_values(backend, query, values))
+            .query_all_raw(Statement::from_sql_and_values(backend, query, values))
             .await
             .map_err(storage_error)?
             .into_iter()
@@ -5118,7 +5118,7 @@ where
         let exported_records =
             i64::try_from(page.records.len()).map_err(|_| ArtifactDataError::ExportPrecondition)?;
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_exports
@@ -5230,7 +5230,7 @@ where
         configure_tenant_scope(&transaction, request.scope.tenant_id).await?;
         let backend = transaction.get_database_backend();
         if let Some(row) = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT expected_namespace_revision, actor_id, trace_id, correlation_id, reason, namespace_revision, purged_records
@@ -5285,7 +5285,7 @@ where
         }
 
         let namespace = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT namespace_revision, CASE WHEN purged_at IS NULL THEN 0 ELSE 1 END AS is_purged
@@ -5314,7 +5314,7 @@ where
             return Err(ArtifactDataError::PurgePrecondition);
         }
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_index_contracts
@@ -5328,7 +5328,7 @@ where
             .await
             .map_err(storage_error)?;
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_indexes
@@ -5342,7 +5342,7 @@ where
             .await
             .map_err(storage_error)?;
         let structured_records = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data
@@ -5357,7 +5357,7 @@ where
             .map_err(storage_error)?
             .rows_affected();
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_operations
@@ -5371,7 +5371,7 @@ where
             .await
             .map_err(storage_error)?;
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_delete_operations
@@ -5385,7 +5385,7 @@ where
             .await
             .map_err(storage_error)?;
         let object_storage_keys = transaction
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT storage_key FROM module_artifact_data_objects
@@ -5409,7 +5409,7 @@ where
             .await?;
         }
         let object_records = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_objects
@@ -5424,7 +5424,7 @@ where
             .map_err(storage_error)?
             .rows_affected();
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_object_operations
@@ -5438,7 +5438,7 @@ where
             .await
             .map_err(storage_error)?;
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_object_delete_operations
@@ -5456,7 +5456,7 @@ where
             .and_then(|value| value.checked_add(1))
             .ok_or(ArtifactDataError::PurgePrecondition)?;
         let updated = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_data_namespaces
@@ -5489,7 +5489,7 @@ where
             .and_then(|count| i64::try_from(count).ok())
             .ok_or(ArtifactDataError::PurgePrecondition)?;
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_purge_operations
@@ -5559,7 +5559,7 @@ pub(crate) async fn configure_tenant_scope<C: ConnectionTrait>(
 ) -> Result<(), ArtifactDataError> {
     if connection.get_database_backend() == DbBackend::Postgres {
         connection
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT set_config('rustok.tenant_id', $1, true)",
                 vec![tenant_id.to_string().into()],
@@ -5576,7 +5576,7 @@ async fn ensure_active_namespace<C: ConnectionTrait>(
     backend: DbBackend,
 ) -> Result<(), ArtifactDataError> {
     connection
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_namespaces
@@ -5593,7 +5593,7 @@ async fn ensure_active_namespace<C: ConnectionTrait>(
         .await
         .map_err(storage_error)?;
     let active = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT namespace_revision FROM module_artifact_data_namespaces
@@ -5624,7 +5624,7 @@ async fn require_active_namespace<C: ConnectionTrait>(
     backend: DbBackend,
 ) -> Result<u64, ArtifactDataError> {
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT namespace_revision FROM module_artifact_data_namespaces
@@ -5665,7 +5665,7 @@ async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
 ) -> Result<(), ArtifactDataError> {
     let values = namespace_values(scope, backend)?;
     let existing = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT contract_digest FROM module_artifact_data_index_contracts
@@ -5685,7 +5685,7 @@ async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
             .ok_or(ArtifactDataError::IndexQueryUnavailable);
     }
     let has_records = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT 1 FROM module_artifact_data
@@ -5706,7 +5706,7 @@ async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
         return Ok(());
     }
     connection
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_index_contracts
@@ -5728,7 +5728,7 @@ async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
         .await
         .map_err(storage_error)?;
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT contract_digest FROM module_artifact_data_index_contracts
@@ -5819,7 +5819,7 @@ pub(crate) fn optional_revision_value(value: Option<u64>) -> Result<SqlValue, Ar
 
 pub(crate) fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::Uuid(Some(Box::new(value))),
+        DbBackend::Postgres => SqlValue::Uuid(Some(value)),
         _ => value.to_string().into(),
     }
 }
@@ -6598,7 +6598,7 @@ mod tests {
             ("module_artifact_data_delete_operations", "operation_count"),
         ] {
             let row = database
-                .query_one(Statement::from_string(
+                .query_one_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     format!("SELECT COUNT(*) AS {count_column} FROM {table}"),
                 ))
@@ -6736,7 +6736,7 @@ mod tests {
             Err(ArtifactDataError::IdempotencyConflict)
         ));
         let purge_receipt = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT actor_id, trace_id, correlation_id \
                  FROM module_artifact_data_purge_operations"
@@ -6764,7 +6764,7 @@ mod tests {
             purge_context.correlation_id.to_string()
         );
         let purge_event = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT payload FROM sys_events \
                  WHERE event_type = 'module.artifact.data_purged'"
@@ -6790,7 +6790,7 @@ mod tests {
             "module_artifact_data_purge_operations",
         ] {
             let row = database
-                .query_one(Statement::from_string(
+                .query_one_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     format!("SELECT policy_revision FROM {table}"),
                 ))
@@ -7120,7 +7120,7 @@ mod tests {
         );
 
         let row = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS candidate_count FROM module_artifact_data_object_gc_candidates"
                     .to_string(),

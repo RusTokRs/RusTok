@@ -52,7 +52,7 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
 
     let active_child_id = Uuid::new_v4();
     let active_child = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             db.get_database_backend(),
             "INSERT INTO forum_categories \
              (id, tenant_id, parent_id, position, moderated, topic_count, reply_count) \
@@ -92,7 +92,7 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
     insert_topic(db, allowed_topic_id, tenant_id, grandchild_id).await?;
 
     let direct_parent_archive = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             db.get_database_backend(),
             "INSERT INTO forum_category_lifecycle \
              (category_id, tenant_id, archived_at, updated_at) \
@@ -106,7 +106,7 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
         .archive_subtree(tenant_id, root_id, security.clone())
         .await?;
     let partial_restore = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             db.get_database_backend(),
             "DELETE FROM forum_category_lifecycle WHERE category_id = ?",
             [grandchild_id.into()],
@@ -115,7 +115,7 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
     assert_error_contains(partial_restore.map(|_| ()), "archived parent")?;
 
     let tenant_mismatch = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             db.get_database_backend(),
             "INSERT INTO forum_category_lifecycle \
              (category_id, tenant_id, archived_at, updated_at) \

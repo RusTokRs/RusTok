@@ -63,6 +63,7 @@ impl RegistryGovernanceService {
         status: &str,
         reason_code: Option<&str>,
         requeue: bool,
+        context: ModuleCommandContext,
     ) -> anyhow::Result<RegistryValidationStageReportResult> {
         let request = self
             .authorized_publish_request_status_snapshot(
@@ -77,6 +78,7 @@ impl RegistryGovernanceService {
             .report_validation_stage(ModuleValidationStageReportCommand {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
+                context,
                 stage_key: stage_key.to_string(),
                 status: status.to_string(),
                 actor_principal: authority.principal.to_json_value(),

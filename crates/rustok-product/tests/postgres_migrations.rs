@@ -208,7 +208,7 @@ INSERT INTO product_attribute_schema_translations (id, schema_id, locale, name) 
         }
 
         let row = db
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Postgres,
                 r#"
 SELECT
@@ -246,7 +246,7 @@ async fn assert_constraint_rejection(
     constraint: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let error = db
-        .execute(Statement::from_string(DbBackend::Postgres, sql))
+        .execute_raw(Statement::from_string(DbBackend::Postgres, sql))
         .await
         .expect_err("cross-tenant Product storage write must be rejected");
     if !error.to_string().contains(constraint) {
@@ -299,7 +299,7 @@ async fn seed_products(
     first_row: i32,
     last_row: i32,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DbBackend::Postgres,
         format!(
             r#"
@@ -387,7 +387,7 @@ async fn explain_json(
     sql: &str,
 ) -> Result<Value, Box<dyn std::error::Error>> {
     let row = db
-        .query_one(Statement::from_string(DbBackend::Postgres, sql))
+        .query_one_raw(Statement::from_string(DbBackend::Postgres, sql))
         .await?
         .ok_or("EXPLAIN must return one row")?;
     Ok(row.try_get("", "QUERY PLAN")?)
@@ -487,7 +487,7 @@ VALUES (
     .await?;
 
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT weight FROM product_variants \
              WHERE id = '00000000-0000-0000-0000-000000000121'",

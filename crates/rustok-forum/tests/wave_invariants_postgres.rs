@@ -44,7 +44,7 @@ async fn reply_positions_use_a_monotonic_topic_allocator() -> TestResult<()> {
 
         let row = context
             .db
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Postgres,
                 format!(
                     "SELECT

@@ -42,7 +42,7 @@ async fn leptos_admin_mcp_route_renders() -> Result<()> {
     let status = response.status();
     anyhow::ensure!(status < 400, "expected /mcp status < 400, got {status}");
 
-    let body = page.locator("body").await;
+    let body = page.locator("body");
     let text = body
         .text_content()
         .await

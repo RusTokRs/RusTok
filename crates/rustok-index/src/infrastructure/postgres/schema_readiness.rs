@@ -153,7 +153,7 @@ impl PostgresIndexSchemaReadinessStore {
         ensure_supported_backend(backend)?;
         let rows = self
             .db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 readiness_sql(backend, request.schemas.len()),
                 readiness_values(request, backend),

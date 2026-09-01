@@ -141,7 +141,7 @@ fn field(name: &str) -> IndexField {
 async fn persist_schema(db: &DatabaseConnection, tenant: &str, schema: &IndexSchema) {
     let fingerprint = schema.fingerprint().unwrap().to_string();
     let schema_json = serde_json::to_value(schema).unwrap();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO index_schemas (tenant_id, module_name, entity_name, schema_version, schema_fingerprint, schema_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         vec![
@@ -170,7 +170,7 @@ fn upsert_delivery(source: &str, delivery: &str, record: IndexRecord) -> Mutatio
 }
 
 async fn scalar_i64(db: &DatabaseConnection, sql: &str) -> i64 {
-    db.query_one(Statement::from_string(DbBackend::Sqlite, sql.to_owned()))
+    db.query_one_raw(Statement::from_string(DbBackend::Sqlite, sql.to_owned()))
         .await
         .expect("scalar query should execute")
         .expect("scalar query should return one row")
@@ -226,7 +226,7 @@ async fn atomically_upserts_entity_links_and_terminal_inbox_state() {
     );
     let target: String = fixture
         .db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Sqlite,
             "SELECT target_entity_id FROM index_links".to_owned(),
         ))

@@ -71,9 +71,10 @@ impl AuthUserBootstrapDbWriter {
                 "INSERT INTO users (id, tenant_id, email, password_hash, name) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (tenant_id, email) DO NOTHING"
             }
             DbBackend::MySql => unreachable!("unsupported backend rejected before SQL rendering"),
-        };
+            _ => unreachable!("unsupported SeaORM database backend"),
+};
         let result = db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 sql,
                 vec![
@@ -135,9 +136,10 @@ impl AuthUserBootstrapDbWriter {
                 "SELECT id, email FROM users WHERE tenant_id = $1 AND email = $2 LIMIT 1"
             }
             DbBackend::MySql => unreachable!("unsupported backend rejected before SQL rendering"),
-        };
+            _ => unreachable!("unsupported SeaORM database backend"),
+};
         let row = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 sql,
                 vec![tenant_id.into(), email.into()],
@@ -166,7 +168,8 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), AuthLifecycleMutat
         DbBackend::MySql => Err(AuthLifecycleMutationError::Internal(
             "auth user bootstrap does not support mysql".to_string(),
         )),
-    }
+        _ => unreachable!("unsupported SeaORM database backend"),
+}
 }
 
 #[cfg(test)]

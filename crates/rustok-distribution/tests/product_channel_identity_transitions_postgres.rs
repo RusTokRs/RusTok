@@ -465,7 +465,7 @@ fn product_schema_ref() -> TestResult<SchemaRef> {
 
 async fn channel_generation(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<u64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT COALESCE(
@@ -487,7 +487,7 @@ async fn latest_membership(
     product_id: Uuid,
 ) -> TestResult<(u64, Vec<Uuid>)> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT relation_epoch, channel_ids
@@ -523,7 +523,7 @@ async fn latest_projection(
     product_id: Uuid,
 ) -> TestResult<u64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT projection_epoch
@@ -547,7 +547,7 @@ async fn assert_freshness_generation(
     expected_generation: u64,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT channel_identity_generation
@@ -571,7 +571,7 @@ async fn materialized_source_version(
     product_id: Uuid,
 ) -> TestResult<u64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT CAST(source_version AS TEXT) AS source_version_text
@@ -598,7 +598,7 @@ async fn assert_state_checkpoint(
     expected_generation: u64,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT channel_identity_generation, sweep_generation, sweep_after_product_id, lease_token
@@ -627,7 +627,7 @@ async fn insert_channel(
     slug: &str,
     name: &str,
 ) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO channels (id, tenant_id, slug, name) VALUES ($1, $2, $3, $4)",
         vec![
@@ -646,7 +646,7 @@ async fn delete_channel(
     tenant_id: Uuid,
     channel_id: Uuid,
 ) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "DELETE FROM channels WHERE tenant_id = $1 AND id = $2",
         vec![tenant_id.into(), channel_id.into()],
@@ -662,7 +662,7 @@ async fn move_channel(
     to_tenant: Uuid,
 ) -> TestResult<()> {
     let result = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE channels SET tenant_id = $3 WHERE tenant_id = $1 AND id = $2",
             vec![from_tenant.into(), channel_id.into(), to_tenant.into()],

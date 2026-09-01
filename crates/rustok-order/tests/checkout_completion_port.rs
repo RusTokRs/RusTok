@@ -69,7 +69,7 @@ impl TestDatabase {
                 .if_not_exists()
                 .to_owned(),
         ] {
-            db.execute(backend.build(&statement)).await.unwrap();
+            db.execute_raw(backend.build(&statement)).await.unwrap();
         }
         db.execute_unprepared(
             "CREATE UNIQUE INDEX ux_test_completion_identity_order ON order_checkout_identities (tenant_id, order_id);",

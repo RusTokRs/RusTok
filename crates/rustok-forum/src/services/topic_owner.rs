@@ -326,7 +326,7 @@ async fn claim_topic_delete_in_tx(
             vec![tenant_id.into(), topic_id.into()],
         ),
     };
-    let result = txn.execute(stmt).await?;
+    let result = txn.execute_raw(stmt).await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::TopicDeleted);
     }
@@ -354,7 +354,7 @@ async fn mark_topic_thread_deleted_in_tx(
             vec![tenant_id.into(), topic_id.into()],
         ),
     };
-    txn.execute(update_replies_stmt).await?;
+    txn.execute_raw(update_replies_stmt).await?;
 
     let update_topics_stmt = match txn.get_database_backend() {
         DatabaseBackend::Postgres => Statement::from_sql_and_values(
@@ -374,7 +374,7 @@ async fn mark_topic_thread_deleted_in_tx(
             vec![tenant_id.into(), topic_id.into()],
         ),
     };
-    let result = txn.execute(update_topics_stmt).await?;
+    let result = txn.execute_raw(update_topics_stmt).await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::TopicDeleted);
     }

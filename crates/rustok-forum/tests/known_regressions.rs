@@ -642,7 +642,7 @@ async fn forum_07_concurrent_reply_positions_are_unique_and_contiguous() -> Test
 
         let rows = context
             .db
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DatabaseBackend::Postgres,
                 format!(
                     "SELECT position::bigint AS value
@@ -831,7 +831,7 @@ fn reply_input(content: &str) -> CreateReplyInput {
 
 async fn scalar_i64(db: &sea_orm::DatabaseConnection, sql: impl Into<String>) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             sql.into(),
         ))

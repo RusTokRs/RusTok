@@ -1140,7 +1140,7 @@ impl SeaOrmArtifactInstallationStore {
             "?1"
         };
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT slug, version, payload_digest FROM module_artifact_installations WHERE installation_id = {placeholder} LIMIT 1"
@@ -1205,7 +1205,7 @@ impl SeaOrmArtifactInstallationStore {
             _ => "installation.scope_kind = ?3 AND installation.tenant_id IS ?4",
         };
         let existing = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT operation.expected_revision, operation.revision, operation.request_digest \
@@ -1245,7 +1245,7 @@ impl SeaOrmArtifactInstallationStore {
             return positive_revision(revision, "migration checkpoint replay");
         }
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT admission.revision, admission.status, installation.has_irreversible_migration \
@@ -1303,7 +1303,7 @@ impl SeaOrmArtifactInstallationStore {
             _ => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,datetime('now')",
         };
         let claimed = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_migration_checkpoint_operations \
@@ -1328,7 +1328,7 @@ impl SeaOrmArtifactInstallationStore {
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         if claimed.rows_affected() != 1 {
             let existing = transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "SELECT operation.expected_revision, operation.revision, operation.request_digest \
@@ -1382,7 +1382,7 @@ impl SeaOrmArtifactInstallationStore {
             }
         };
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 update_installation.to_string(),
                 vec![
@@ -1407,7 +1407,7 @@ impl SeaOrmArtifactInstallationStore {
             }
         );
         if transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 update_admission,
                 vec![
@@ -1477,7 +1477,7 @@ impl SeaOrmArtifactInstallationStore {
             _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
         };
         let existing = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT operation.operation_id, operation.installation_id, \
@@ -1547,7 +1547,7 @@ impl SeaOrmArtifactInstallationStore {
         }
 
         let candidate = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT installation.slug, installation.registry, installation.repository, \
@@ -1629,7 +1629,7 @@ impl SeaOrmArtifactInstallationStore {
             predecessor_installation_id
         {
             let predecessor = transaction
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                             "SELECT admission.revision, installation.registry, installation.repository, \
@@ -1696,7 +1696,7 @@ impl SeaOrmArtifactInstallationStore {
             let settings_instance_id =
                 required_uuid_from_row(&predecessor, "settings_instance_id", backend)?;
             let deactivated = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "UPDATE module_artifact_admissions \
@@ -1747,7 +1747,7 @@ impl SeaOrmArtifactInstallationStore {
             )
         })?;
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_installations SET previous_installation_id = {}, \
@@ -1784,7 +1784,7 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let activated = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_admissions SET status = 'active', revision = revision + 1 \
@@ -1811,7 +1811,7 @@ impl SeaOrmArtifactInstallationStore {
             _ => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,datetime('now')",
         };
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_activation_operations \
@@ -1894,7 +1894,7 @@ impl SeaOrmArtifactInstallationStore {
             _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
         };
         let existing = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT operation.operation_id, operation.installation_id, \
@@ -1944,7 +1944,7 @@ impl SeaOrmArtifactInstallationStore {
             });
         }
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT installation.slug, admission.status, admission.revision \
@@ -1983,7 +1983,7 @@ impl SeaOrmArtifactInstallationStore {
             .try_get("", "slug")
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let dependents = transaction
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT CAST(installation.descriptor AS TEXT) AS descriptor \
@@ -2023,7 +2023,7 @@ impl SeaOrmArtifactInstallationStore {
             _ => "?1,?2,?3,?4,?5,?6,?7,?8,datetime('now')",
         };
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_deactivation_operations \
@@ -2044,7 +2044,7 @@ impl SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let updated = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_artifact_admissions SET status = 'inactive', revision = revision + 1 \
@@ -2131,7 +2131,7 @@ impl SeaOrmArtifactInstallationStore {
             }
         };
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT CAST(installation.descriptor AS TEXT) AS descriptor, \
@@ -2270,7 +2270,7 @@ impl SeaOrmArtifactInstallationStore {
             }
         };
         let artifact = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT CAST(installation.descriptor AS TEXT) AS descriptor \
@@ -2320,7 +2320,7 @@ impl SeaOrmArtifactInstallationStore {
             "?2"
         };
         let existing = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT revision \
@@ -2357,7 +2357,7 @@ impl SeaOrmArtifactInstallationStore {
             };
             let enabled = if request.enabled { "TRUE" } else { "FALSE" };
             let updated = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     format!(
                         "UPDATE module_artifact_tenant_lifecycle \
@@ -2423,7 +2423,7 @@ impl SeaOrmArtifactInstallationStore {
                 ),
             };
             let inserted = transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     insert_sql,
                     vec![
@@ -2521,7 +2521,7 @@ impl SeaOrmArtifactInstallationStore {
             _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
         };
         let existing = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT uninstall.operation_id, uninstall.installation_id, \
@@ -2571,7 +2571,7 @@ impl SeaOrmArtifactInstallationStore {
             });
         }
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT installation.slug, admission.status, admission.revision \
@@ -2618,7 +2618,7 @@ impl SeaOrmArtifactInstallationStore {
             .try_get("", "slug")
             .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
         let dependents = transaction
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT installation.slug, CAST(installation.descriptor AS TEXT) AS descriptor \
@@ -2658,8 +2658,8 @@ impl SeaOrmArtifactInstallationStore {
         } else {
             "?1,?2,?3,?4,?5,?6,?7,?8,datetime('now')"
         };
-        transaction.execute(Statement::from_sql_and_values(backend, format!("INSERT INTO module_artifact_uninstall_operations (operation_id, installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) VALUES ({p})"), vec![uuid_value(operation_id, backend), uuid_value(request.installation_id, backend), revision.into(), uuid_value(request.context.actor_id, backend), request.context.trace_id.clone().into(), uuid_value(request.context.correlation_id, backend), request.reason.into(), uuid_value(request.context.idempotency_key, backend)])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
-        let updated = transaction.execute(Statement::from_sql_and_values(backend, format!("UPDATE module_artifact_admissions SET revision = revision + 1 WHERE installation_id = {} AND revision = {} AND status = 'inactive'", if backend == DbBackend::Postgres { "$1" } else { "?1" }, if backend == DbBackend::Postgres { "$2" } else { "?2" }), vec![uuid_value(request.installation_id, backend), revision.into()])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        transaction.execute_raw(Statement::from_sql_and_values(backend, format!("INSERT INTO module_artifact_uninstall_operations (operation_id, installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) VALUES ({p})"), vec![uuid_value(operation_id, backend), uuid_value(request.installation_id, backend), revision.into(), uuid_value(request.context.actor_id, backend), request.context.trace_id.clone().into(), uuid_value(request.context.correlation_id, backend), request.reason.into(), uuid_value(request.context.idempotency_key, backend)])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
+        let updated = transaction.execute_raw(Statement::from_sql_and_values(backend, format!("UPDATE module_artifact_admissions SET revision = revision + 1 WHERE installation_id = {} AND revision = {} AND status = 'inactive'", if backend == DbBackend::Postgres { "$1" } else { "?1" }, if backend == DbBackend::Postgres { "$2" } else { "?2" }), vec![uuid_value(request.installation_id, backend), revision.into()])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
         if updated.rows_affected() != 1 {
             return Err(ModuleInstallationError::AdmissionRevisionConflict(
                 "installation became stale during uninstall".into(),
@@ -2735,7 +2735,7 @@ impl SeaOrmArtifactInstallationStore {
             _ => "installation.scope_kind = ?2 AND installation.tenant_id IS ?3",
         };
         let existing = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT operation.operation_id, operation.installation_id, \
@@ -2832,7 +2832,7 @@ impl SeaOrmArtifactInstallationStore {
             _ => ("?1", "?2"),
         };
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT installation.previous_installation_id, \
@@ -2904,7 +2904,7 @@ impl SeaOrmArtifactInstallationStore {
             ));
         }
         let target_revision_row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT admission.revision, admission.status, installation.slug, \
@@ -2982,7 +2982,7 @@ impl SeaOrmArtifactInstallationStore {
             )
         })?;
         let operation_id = self.infrastructure.new_id();
-        transaction.execute(Statement::from_sql_and_values(
+        transaction.execute_raw(Statement::from_sql_and_values(
             backend,
             match backend {
                 DbBackend::Postgres => "INSERT INTO module_artifact_rollback_operations (operation_id, installation_id, target_installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, target_capability_grant_revision, migration_rollback_mode, source_revision, target_revision, committed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())",
@@ -3004,7 +3004,7 @@ impl SeaOrmArtifactInstallationStore {
                 target_revision.into(),
             ],
         )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-        let source = transaction.execute(Statement::from_sql_and_values(
+        let source = transaction.execute_raw(Statement::from_sql_and_values(
             backend,
             format!("UPDATE module_artifact_admissions SET status = 'rolled_back', revision = revision + 1 WHERE installation_id = {} AND revision = {}", placeholders.0, placeholders.1),
             vec![uuid_value(request.installation_id, backend), expected_revision.into()],
@@ -3014,7 +3014,7 @@ impl SeaOrmArtifactInstallationStore {
                 "rollback source is missing or stale".into(),
             ));
         }
-        let target = transaction.execute(Statement::from_sql_and_values(
+        let target = transaction.execute_raw(Statement::from_sql_and_values(
             backend,
             format!("UPDATE module_artifact_admissions SET status = 'active', revision = revision + 1 WHERE installation_id = {} AND revision = {} AND status IN ('admitted', 'installed', 'inactive', 'rolled_back')", placeholders.0, placeholders.1),
             vec![uuid_value(target_installation_id, backend), target_expected_revision.into()],
@@ -3024,7 +3024,7 @@ impl SeaOrmArtifactInstallationStore {
                 "rollback predecessor is not activatable".into(),
             ));
         }
-        transaction.execute(Statement::from_sql_and_values(
+        transaction.execute_raw(Statement::from_sql_and_values(
             backend,
             format!("UPDATE module_artifact_installations SET capability_grant_revision = {} WHERE installation_id = {}", placeholders.0, placeholders.1),
             vec![target_capability_grant_revision.into(), uuid_value(target_installation_id, backend)],
@@ -3116,7 +3116,7 @@ impl SeaOrmArtifactInstallationStore {
         ];
         values.extend(scope_values);
         let updated = transaction
-            .execute(Statement::from_sql_and_values(backend, sql, values))
+            .execute_raw(Statement::from_sql_and_values(backend, sql, values))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         if updated.rows_affected() != 1 {
@@ -3177,7 +3177,7 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
             _ => "COALESCE(tenant_lifecycle.enabled, 1) = 1",
         };
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT installation.installation_id, installation.data_owner_id, \
@@ -3381,7 +3381,7 @@ impl ArtifactSandboxPolicyResolver for SeaOrmArtifactSandboxPolicyResolver {
             _ => "COALESCE(lifecycle.enabled, 1) = 1",
         };
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT policy.capability_grant_revision, CAST(policy.policy AS TEXT) AS policy \
@@ -3510,7 +3510,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             _ => ("?1", "?2", "?3", "?4"),
         };
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT request_digest, installation_id \
@@ -3576,7 +3576,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
         let committed_at = self.infrastructure.now();
         let (scope_kind, scope_tenant_key) = admission_command_scope(command);
         let reservation = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 admission_command_insert_sql(backend),
                 vec![
@@ -3627,7 +3627,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             });
         }
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 installation_insert_sql(backend),
                 installation_values(artifact, None, backend)?,
@@ -3635,7 +3635,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 sandbox_policy_insert_sql(backend),
                 sandbox_policy_values(artifact, &command.sandbox_policy, backend, &committed_at)?,
@@ -3643,7 +3643,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let bound = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 admission_command_bind_sql(backend),
                 vec![
@@ -3664,7 +3664,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             ));
         }
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 admission_insert_sql(backend),
                 admission_values(artifact, staged, evidence, backend, &committed_at)?,
@@ -3706,7 +3706,7 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
         let backend = self.db.get_database_backend();
         let rows = self
             .db
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend,
                 "SELECT admission.payload_digest FROM module_artifact_admissions admission \
                  WHERE NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
@@ -3733,7 +3733,7 @@ fn admission_command_scope(command: &ArtifactAdmissionCommand) -> (&'static str,
 
 fn datetime_value(backend: DbBackend, value: &DateTime<Utc>) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(Box::new(value.to_owned()))),
+        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(value.to_owned())),
         _ => value.to_rfc3339().into(),
     }
 }
@@ -3782,7 +3782,7 @@ async fn existing_admission_command<C: ConnectionTrait>(
         _ => ("?1", "?2", "?3", "?4"),
     };
     let row = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT request_digest, installation_id \
@@ -3869,7 +3869,7 @@ async fn replay_artifact_tenant_lifecycle_operation<C: ConnectionTrait>(
         _ => ("?1", "?2"),
     };
     let Some(row) = connection
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT installation_id, requested_enabled, expected_revision, \
@@ -3952,7 +3952,7 @@ async fn record_artifact_tenant_lifecycle_operation<C: ConnectionTrait>(
         _ => "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,datetime('now')",
     };
     let recorded = connection
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_tenant_lifecycle_operations \
@@ -3996,7 +3996,7 @@ async fn configure_rls_scope<C: ConnectionTrait>(
             // module-control-plane RLS policy.
             ModuleInstallationScope::Platform => {
                 connection
-                    .execute(Statement::from_sql_and_values(
+                    .execute_raw(Statement::from_sql_and_values(
                         DbBackend::Postgres,
                         "SELECT set_config('rustok.module_control_plane_owner', $1, true)",
                         vec!["platform".into()],
@@ -4006,7 +4006,7 @@ async fn configure_rls_scope<C: ConnectionTrait>(
             }
             ModuleInstallationScope::Tenant { tenant_id } => {
                 connection
-                    .execute(Statement::from_sql_and_values(
+                    .execute_raw(Statement::from_sql_and_values(
                         DbBackend::Postgres,
                         "SELECT set_config('rustok.tenant_id', $1, true)",
                         vec![tenant_id.to_string().into()],
@@ -4014,7 +4014,7 @@ async fn configure_rls_scope<C: ConnectionTrait>(
                     .await
                     .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
             }
-        }
+}
     }
     Ok(())
 }
@@ -4153,7 +4153,7 @@ fn installation_values(
     let installation_id = uuid_value(artifact.installation_id, backend);
     let tenant_id = optional_uuid_value(tenant_id, backend);
     let installed_at = match backend {
-        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(Box::new(artifact.installed_at))),
+        DbBackend::Postgres => SqlValue::ChronoDateTimeUtc(Some(artifact.installed_at)),
         _ => artifact.installed_at.to_rfc3339().into(),
     };
     Ok(vec![
@@ -4219,7 +4219,7 @@ async fn active_predecessor_installation<C: ConnectionTrait>(
         slug.into(),
     ];
     let rows = connection
-        .query_all(Statement::from_sql_and_values(backend, sql, values))
+        .query_all_raw(Statement::from_sql_and_values(backend, sql, values))
         .await
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     match rows.as_slice() {
@@ -4258,7 +4258,7 @@ pub(crate) async fn acquire_artifact_activation_lock<C: ConnectionTrait>(
         _ => "?1,?2,?3",
     };
     connection
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "INSERT INTO module_artifact_activation_locks \
@@ -4307,7 +4307,7 @@ async fn acquire_artifact_ui_resource_locks<C: ConnectionTrait>(
     };
     for resource in resources {
         connection
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_ui_contribution_locks \
@@ -4393,9 +4393,9 @@ async fn assert_artifact_ui_contributions_available<C: ConnectionTrait>(
                 uuid_value(*tenant_id, backend),
             ],
         ),
-    };
+};
     let rows = connection
-        .query_all(Statement::from_sql_and_values(backend, sql, values))
+        .query_all_raw(Statement::from_sql_and_values(backend, sql, values))
         .await
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
     for row in rows {
@@ -4475,14 +4475,14 @@ fn admission_values(
 
 fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::Uuid(Some(Box::new(value))),
+        DbBackend::Postgres => SqlValue::Uuid(Some(value)),
         _ => value.to_string().into(),
     }
 }
 
 fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> SqlValue {
     match backend {
-        DbBackend::Postgres => SqlValue::Uuid(value.map(Box::new)),
+        DbBackend::Postgres => SqlValue::Uuid(value),
         _ => value.map(|value| value.to_string()).into(),
     }
 }
@@ -5101,7 +5101,7 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -5133,7 +5133,7 @@ mod tests {
             (uninstalled, "active"),
         ] {
             database
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DbBackend::Sqlite,
                     "INSERT INTO module_artifact_installations \
                      (installation_id, scope_kind, tenant_id, slug) VALUES (?1, 'platform', NULL, ?2)"
@@ -5146,7 +5146,7 @@ mod tests {
                 .await
                 .expect("installation fixture");
             database
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DbBackend::Sqlite,
                     "INSERT INTO module_artifact_admissions (installation_id, status) VALUES (?1, ?2)"
                         .to_string(),
@@ -5156,7 +5156,7 @@ mod tests {
                 .expect("admission fixture");
         }
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO module_artifact_uninstall_operations (installation_id) VALUES (?1)"
                     .to_string(),
@@ -5179,7 +5179,7 @@ mod tests {
 
         for (installation_id, status) in [(conflicting, "active")] {
             database
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DbBackend::Sqlite,
                     "INSERT INTO module_artifact_installations \
                      (installation_id, scope_kind, tenant_id, slug) VALUES (?1, 'platform', NULL, ?2)"
@@ -5192,7 +5192,7 @@ mod tests {
                 .await
                 .expect("conflicting installation fixture");
             database
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DbBackend::Sqlite,
                     "INSERT INTO module_artifact_admissions (installation_id, status) VALUES (?1, ?2)"
                         .to_string(),
@@ -5214,7 +5214,7 @@ mod tests {
         ));
 
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE module_artifact_admissions SET status = 'inactive' WHERE installation_id = ?1"
                     .to_string(),
@@ -5223,7 +5223,7 @@ mod tests {
             .await
             .expect("clear conflicting predecessor");
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE module_artifact_admissions SET status = 'inactive' WHERE installation_id = ?1"
                     .to_string(),
@@ -5939,7 +5939,7 @@ mod tests {
         };
 
         let row = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT installation_id, scope_kind, tenant_id, manifest_digest, payload_digest, \
                  dependency_graph_revision, dependency_graph_digest \
@@ -5978,7 +5978,7 @@ mod tests {
             installed.dependency_lock.graph_digest
         );
         let admission = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT installation_id, payload_digest FROM module_artifact_admissions"
                     .to_string(),
@@ -5995,7 +5995,7 @@ mod tests {
             installed.descriptor.artifact_digest
         );
         let admission_command_count = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM module_artifact_admission_commands".to_string(),
             ))
@@ -6007,7 +6007,7 @@ mod tests {
             1
         );
         let admission_command_receipt = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT actor_id, trace_id, correlation_id, idempotency_key \
                  FROM module_artifact_admission_commands"
@@ -6035,7 +6035,7 @@ mod tests {
             command.context.idempotency_key.to_string()
         );
         let outbox_count = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM sys_events WHERE event_type = 'module.artifact.admitted'"
                     .to_string(),
@@ -6048,7 +6048,7 @@ mod tests {
             1
         );
         let admitted_event = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT payload FROM sys_events WHERE event_type = 'module.artifact.admitted'"
                     .to_string(),
@@ -6099,7 +6099,7 @@ mod tests {
             2
         );
         let reverification_outbox_count = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM sys_events \
                  WHERE event_type = 'module.artifact.reverified'"
@@ -6147,7 +6147,7 @@ mod tests {
             Err(ModuleInstallationError::AdmissionRevisionConflict(_))
         ));
         let checkpoint_outbox_count = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM sys_events \
                  WHERE event_type = 'module.artifact.migration_checkpointed'"
@@ -6161,7 +6161,7 @@ mod tests {
             1
         );
         let checkpoint_operation = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT revision, request_digest, actor_id \
                  FROM module_artifact_migration_checkpoint_operations"
@@ -6184,7 +6184,7 @@ mod tests {
             checkpoint_actor_id.to_string()
         );
         let checkpoint_row = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT migration_checkpoint, has_irreversible_migration \
                  FROM module_artifact_installations"
@@ -6204,7 +6204,7 @@ mod tests {
             1
         );
         database
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE module_artifact_admissions SET status = 'active' WHERE installation_id = ?1"
                     .to_string(),
@@ -6257,7 +6257,7 @@ mod tests {
             deactivated
         );
         let deactivation_outbox_count = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM sys_events \
                  WHERE event_type = 'module.artifact.deactivated'"
@@ -6272,7 +6272,7 @@ mod tests {
             1
         );
         let deactivation_event = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT payload FROM sys_events \
                  WHERE event_type = 'module.artifact.deactivated'"
@@ -6300,7 +6300,7 @@ mod tests {
             Some(deactivation_context.trace_id.as_str())
         );
         let deactivation_row = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT status, revision FROM module_artifact_admissions".to_string(),
             ))
@@ -6419,7 +6419,7 @@ mod tests {
         assert_eq!(enabled_tenant_intent.revision, 2);
         assert_eq!(enabled_tenant_intent.expected_revision, 2);
         let tenant_disable_outbox = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM sys_events WHERE event_type = 'module.artifact.tenant_disabled'".to_string(),
             ))
@@ -6431,7 +6431,7 @@ mod tests {
             1
         );
         let tenant_enable_outbox = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM sys_events WHERE event_type = 'module.artifact.tenant_enabled'".to_string(),
             ))
@@ -6443,7 +6443,7 @@ mod tests {
             1
         );
         let tenant_lifecycle_operations = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM module_artifact_tenant_lifecycle_operations"
                     .to_string(),
@@ -6516,7 +6516,7 @@ mod tests {
             1
         );
         let uninstall_outbox_count = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM sys_events \
                  WHERE event_type = 'module.artifact.uninstalled'"
@@ -6619,7 +6619,7 @@ mod tests {
                 if reason == "activation conflicts with an active artifact UI contribution"
         ));
         let tenant_admission = database
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT status, revision FROM module_artifact_admissions \
                  WHERE installation_id = ?1"
@@ -6714,7 +6714,7 @@ mod tests {
                 if reason == "activation conflicts with an active artifact UI contribution"
         ));
         let platform_admission = database
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT status, revision FROM module_artifact_admissions \
                  WHERE installation_id = ?1"
@@ -6855,7 +6855,7 @@ mod tests {
                 if reason == "activation conflicts with an active artifact UI contribution"
         ));
         let source_admission = database
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT status, revision FROM module_artifact_admissions \
                  WHERE installation_id = ?1"
@@ -7001,7 +7001,7 @@ mod tests {
         .await
         .expect("successor admission");
         let admitted_successor_pointer = database
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT previous_installation_id FROM module_artifact_installations \
                  WHERE installation_id = ?1"
@@ -7034,7 +7034,7 @@ mod tests {
         assert_eq!(successor_activation.installation_revision, 2);
         assert_eq!(successor_activation.predecessor_revision, Some(3));
         let successor_pointer = database
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT previous_installation_id FROM module_artifact_installations \
                  WHERE installation_id = ?1"
@@ -7051,7 +7051,7 @@ mod tests {
             predecessor.installation_id.to_string()
         );
         let predecessor_persistence = database
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT data_owner_id, settings_instance_id FROM module_artifact_installations \
                  WHERE installation_id = ?1"
@@ -7062,7 +7062,7 @@ mod tests {
             .expect("predecessor persistence query")
             .expect("predecessor persistence row");
         let successor_persistence = database
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT data_owner_id, settings_instance_id FROM module_artifact_installations \
                  WHERE installation_id = ?1"
@@ -7122,7 +7122,7 @@ mod tests {
             Err(ModuleInstallationError::AdmissionRevisionConflict(_))
         ));
         let rollback_event_count = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM sys_events \
                  WHERE event_type = 'module.artifact.rolled_back'"
@@ -7187,7 +7187,7 @@ mod tests {
         .await
         .expect("tenant admission");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "UPDATE module_artifact_admissions SET status = 'active'".to_string(),
             ))

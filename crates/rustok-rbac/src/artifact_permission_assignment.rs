@@ -195,7 +195,7 @@ impl SeaOrmArtifactPermissionAuthorizer {
         );
         Ok(self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 sql,
                 vec![
@@ -307,7 +307,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), ArtifactPermission
         backend => Err(ArtifactPermissionAssignmentError::Database(format!(
             "artifact permission assignment does not support {backend:?}"
         ))),
-    }
+}
 }
 
 async fn find_operation(
@@ -320,7 +320,7 @@ async fn find_operation(
         "SELECT role_id, artifact_permission_id, permission_scope_key, actor_id, granted FROM rbac_artifact_role_permission_operations WHERE tenant_id = {tenant_id} AND idempotency_key = {idempotency_key} LIMIT 1",
     );
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
@@ -372,7 +372,7 @@ async fn insert_operation(
         "INSERT INTO rbac_artifact_role_permission_operations (id, tenant_id, idempotency_key, role_id, artifact_permission_id, permission_scope_key, actor_id, granted) VALUES ({id}, {tenant_id}, {idempotency_key}, {role_id}, {artifact_permission_id}, {permission_scope_key}, {actor_id}, {granted}) ON CONFLICT (tenant_id, idempotency_key) DO NOTHING",
     );
     let result = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
@@ -401,7 +401,7 @@ async fn role_exists(
         "SELECT 1 FROM roles WHERE id = {role_id} AND tenant_id = {tenant_id} LIMIT 1",
     );
     Ok(transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
@@ -425,7 +425,7 @@ async fn resolve_artifact_permission_identity(
         "SELECT id, scope_key, installation_id, permission_key FROM rbac_artifact_permission_definitions WHERE scope_key = {scope_key} AND installation_id = {installation_id} AND permission_key = {permission_key} LIMIT 1",
     );
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
@@ -459,7 +459,7 @@ async fn grant_permission(
         "INSERT INTO rbac_artifact_role_permissions (id, tenant_id, role_id, artifact_permission_id, permission_scope_key, granted_by_actor_id) VALUES ({id}, {tenant_id}, {role_id}, {artifact_permission_id}, {permission_scope_key}, {actor_id}) ON CONFLICT (tenant_id, role_id, artifact_permission_id) DO NOTHING",
     );
     let result = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![
@@ -487,7 +487,7 @@ async fn revoke_permission(
         "DELETE FROM rbac_artifact_role_permissions WHERE tenant_id = {tenant_id} AND role_id = {role_id} AND artifact_permission_id = {artifact_permission_id} AND permission_scope_key = {permission_scope_key}",
     );
     let result = transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![

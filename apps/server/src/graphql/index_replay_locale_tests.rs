@@ -456,7 +456,7 @@ fn response_job_id(run: &JsonValue) -> Uuid {
 }
 
 async fn scalar_i64(db: &DatabaseConnection, sql: &str) -> i64 {
-    db.query_one(Statement::from_string(DbBackend::Sqlite, sql.to_owned()))
+    db.query_one_raw(Statement::from_string(DbBackend::Sqlite, sql.to_owned()))
         .await
         .expect("scalar query should execute")
         .expect("scalar query should return a row")
@@ -465,7 +465,7 @@ async fn scalar_i64(db: &DatabaseConnection, sql: &str) -> i64 {
 }
 
 async fn scalar_string(db: &DatabaseConnection, sql: &str) -> String {
-    db.query_one(Statement::from_string(DbBackend::Sqlite, sql.to_owned()))
+    db.query_one_raw(Statement::from_string(DbBackend::Sqlite, sql.to_owned()))
         .await
         .expect("scalar query should execute")
         .expect("scalar query should return a row")

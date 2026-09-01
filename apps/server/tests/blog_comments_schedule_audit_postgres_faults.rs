@@ -670,7 +670,7 @@ fn is_commit_query(query: &[u8]) -> bool {
 
 async fn inject_third_state(database: &DatabaseConnection) -> TestResult<()> {
     let result = database
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "UPDATE {COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_TABLE} \
@@ -793,7 +793,7 @@ fn proxy_database_url(target_url: &str, address: std::net::SocketAddr) -> TestRe
 
 async fn read_state(database: &DatabaseConnection) -> TestResult<StateRow> {
     let row = database
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "SELECT generation, schedule_digest_hex \
@@ -815,7 +815,7 @@ async fn read_audit(
     request_id: Uuid,
 ) -> TestResult<Option<AuditRow>> {
     let row = database
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!(
                 "SELECT request_id, previous_generation, \
@@ -839,7 +839,7 @@ async fn read_audit(
 
 async fn count_outbox(database: &DatabaseConnection) -> TestResult<i64> {
     let row = database
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             format!(
                 "SELECT COUNT(*)::BIGINT AS row_count \

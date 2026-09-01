@@ -904,7 +904,7 @@ async fn complete_checkout_rejects_stale_shipping_profile_snapshot_after_variant
         .await
         .unwrap();
 
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "UPDATE product_variants SET shipping_profile_slug = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         vec!["frozen".into(), variant.id.into()],

@@ -3,7 +3,8 @@ use std::sync::Arc;
 use axum::{Router, body::Body, http::Request, middleware as axum_middleware, routing::get};
 use rustok_cache::{CacheService, VersionedCacheInvalidation};
 use rustok_migrations::SqliteTestMigrator as Migrator;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
+use rustok_tenant::entities::tenant_locale;
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, sea_query::Expr};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -42,26 +43,39 @@ async fn insert_locale(
     is_default: bool,
     is_enabled: bool,
 ) {
-    db.execute_unprepared(&format!(
-        "INSERT INTO tenant_locales (id, tenant_id, locale, name, native_name, is_default, is_enabled, fallback_locale, created_at) VALUES ('{}', '{}', '{}', '{}', '{}', {}, {}, NULL, CURRENT_TIMESTAMP)",
-        Uuid::new_v4(),
-        tenant_id,
-        locale,
-        locale,
-        locale,
-        u8::from(is_default),
-        u8::from(is_enabled),
-    ))
+    let now = chrono::Utc::now();
+    tenant_locale::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        locale: Set(locale.to_string()),
+        name: Set(locale.to_string()),
+        native_name: Set(locale.to_string()),
+        is_default: Set(is_default),
+        is_enabled: Set(is_enabled),
+        fallback_locale: Set(None),
+        policy_revision: Set(1),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(db)
     .await
     .expect("tenant locale should insert");
 }
 
 async fn replace_default_locale(db: &sea_orm::DatabaseConnection, tenant_id: Uuid, locale: &str) {
-    db.execute_unprepared(&format!(
-        "UPDATE tenant_locales SET is_default = 0, is_enabled = 0 WHERE tenant_id = '{tenant_id}'"
-    ))
-    .await
-    .expect("old tenant locales should disable");
+    tenants::Entity::update_many()
+        .filter(tenants::Column::Id.eq(tenant_id))
+        .col_expr(tenants::Column::DefaultLocale, Expr::value(locale.to_string()))
+        .exec(db)
+        .await
+        .expect("tenant default locale should update");
+    tenant_locale::Entity::update_many()
+        .filter(tenant_locale::Column::TenantId.eq(tenant_id))
+        .col_expr(tenant_locale::Column::IsDefault, Expr::value(false))
+        .col_expr(tenant_locale::Column::IsEnabled, Expr::value(false))
+        .exec(db)
+        .await
+        .expect("old tenant locales should disable");
     insert_locale(db, tenant_id, locale, true, true).await;
 }
 

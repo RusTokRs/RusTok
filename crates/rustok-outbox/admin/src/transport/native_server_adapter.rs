@@ -124,7 +124,7 @@ async fn query_status_count(
 
     let sql = tenant_scoped_status_sql(backend);
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             [status.into(), tenant_id.to_string().into()],
@@ -145,7 +145,7 @@ async fn query_max_retry_count(
 
     let sql = tenant_scoped_max_retry_sql(backend);
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             [tenant_id.to_string().into()],

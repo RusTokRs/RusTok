@@ -930,15 +930,15 @@ pub fn json_field_eq(
     key: &str,
     value: &str,
 ) -> sea_orm::Condition {
-    use sea_orm::sea_query::{Expr, Value};
+    use sea_orm::sea_query::Expr;
 
     let column = Expr::expr(column.into());
     let expr = Expr::cust_with_exprs(
         "$1->>$2 = $3",
         [
             column.into(),
-            Expr::value(Value::String(Some(Box::new(key.to_string())))),
-            Expr::value(Value::String(Some(Box::new(value.to_string())))),
+            Expr::val(key.to_string()),
+            Expr::val(value.to_string()),
         ],
     );
 
@@ -950,14 +950,14 @@ pub fn json_field_exists(
     column: impl Into<sea_orm::sea_query::SimpleExpr>,
     key: &str,
 ) -> sea_orm::Condition {
-    use sea_orm::sea_query::{Expr, Value};
+    use sea_orm::sea_query::Expr;
 
     let column = Expr::expr(column.into());
     let expr = Expr::cust_with_exprs(
         "$1 ? $2",
         [
             column.into(),
-            Expr::value(Value::String(Some(Box::new(key.to_string())))),
+            Expr::val(key.to_string()),
         ],
     );
 
@@ -969,14 +969,14 @@ pub fn json_field_extract(
     column: impl Into<sea_orm::sea_query::SimpleExpr>,
     key: &str,
 ) -> sea_orm::sea_query::SimpleExpr {
-    use sea_orm::sea_query::{Expr, Value};
+    use sea_orm::sea_query::Expr;
 
     let column = Expr::expr(column.into());
     Expr::cust_with_exprs(
         "$1->>$2",
         [
             column.into(),
-            Expr::value(Value::String(Some(Box::new(key.to_string())))),
+            Expr::val(key.to_string()),
         ],
     )
 }
@@ -987,7 +987,7 @@ pub fn json_field_contains(
     key: &str,
     value: serde_json::Value,
 ) -> sea_orm::Condition {
-    use sea_orm::sea_query::{Expr, Value};
+    use sea_orm::sea_query::Expr;
 
     let payload = serde_json::json!({ key: value });
     let payload = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
@@ -997,7 +997,7 @@ pub fn json_field_contains(
         "$1 @> $2::jsonb",
         [
             column.into(),
-            Expr::value(Value::String(Some(Box::new(payload)))),
+            Expr::val(payload),
         ],
     );
 
@@ -1978,7 +1978,7 @@ mod tests {
             .expect("table creation should succeed");
 
         let exists_after_create = db
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 db.get_database_backend(),
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='user_field_definitions'"
                     .to_string(),
@@ -1992,7 +1992,7 @@ mod tests {
             .expect("table drop should succeed");
 
         let exists_after_drop = db
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 db.get_database_backend(),
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='user_field_definitions'"
                     .to_string(),

@@ -39,7 +39,7 @@ async fn assert_composition(url: &str, selector: &str, label: &str) -> Result<()
     let status = response.status();
     anyhow::ensure!(status < 400, "expected {label} status < 400, got {status}");
 
-    let composition = page.locator(selector).await;
+    let composition = page.locator(selector);
     let text = composition
         .text_content()
         .await

@@ -117,7 +117,7 @@ impl ForumProjectionOwnerRevisionSourcePort for DatabaseOwnerSource {
     ) -> Result<Vec<ForumProjectionOwnerRevisionRecord>, PortError> {
         let rows = self
             .db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 SELECT owner_revision, event_id
@@ -158,7 +158,7 @@ impl ForumProjectionOwnerRevisionSourcePort for DatabaseOwnerSource {
         let rows = match request.after_tenant_id {
             Some(after_tenant_id) => {
                 self.db
-                    .query_all(Statement::from_sql_and_values(
+                    .query_all_raw(Statement::from_sql_and_values(
                         DbBackend::Postgres,
                         r#"
                         SELECT tenant_id, latest_owner_revision
@@ -173,7 +173,7 @@ impl ForumProjectionOwnerRevisionSourcePort for DatabaseOwnerSource {
             }
             None => {
                 self.db
-                    .query_all(Statement::from_sql_and_values(
+                    .query_all_raw(Statement::from_sql_and_values(
                         DbBackend::Postgres,
                         r#"
                         SELECT tenant_id, latest_owner_revision
@@ -185,7 +185,7 @@ impl ForumProjectionOwnerRevisionSourcePort for DatabaseOwnerSource {
                     ))
                     .await
             }
-        }
+}
         .map_err(|_| owner_source_unavailable())?;
 
         rows.into_iter()
@@ -240,7 +240,7 @@ impl SearchProjectionSource for DatabaseProjectionSource {
         }
 
         self.db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 UPDATE forum_d7_coordination
@@ -260,7 +260,7 @@ impl SearchProjectionSource for DatabaseProjectionSource {
 
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 SELECT document_id, title, slug
@@ -322,7 +322,7 @@ async fn wait_for_holder_release(db: &DatabaseConnection, tenant_id: Uuid) -> Co
     let started = Instant::now();
     loop {
         let row = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "SELECT release_holder FROM forum_d7_coordination WHERE tenant_id = $1",
                 vec![tenant_id.into()],
@@ -847,7 +847,7 @@ async fn store_process_report(
     db: &DatabaseConnection,
     report: &ProcessReport,
 ) -> Result<(), sea_orm::DbErr> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         INSERT INTO forum_d7_process_reports (
@@ -874,7 +874,7 @@ async fn store_process_report(
 
 async fn require_process_report(db: &DatabaseConnection, role: &str) -> TestResult<ProcessReport> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT role, process_id, owner_tenants_scanned,
@@ -902,7 +902,7 @@ async fn require_process_report(db: &DatabaseConnection, role: &str) -> TestResu
 
 async fn holder_entered(db: &DatabaseConnection) -> Result<bool, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT holder_entered FROM forum_d7_coordination WHERE tenant_id = $1",
             vec![first_tenant_id().into()],
@@ -913,7 +913,7 @@ async fn holder_entered(db: &DatabaseConnection) -> Result<bool, sea_orm::DbErr>
 }
 
 async fn release_holder(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "UPDATE forum_d7_coordination SET release_holder = TRUE, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = $1",
         vec![first_tenant_id().into()],
@@ -924,7 +924,7 @@ async fn release_holder(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
 
 async fn rebuild_calls(db: &DatabaseConnection, tenant_id: Uuid) -> Result<i64, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT rebuild_calls FROM forum_d7_coordination WHERE tenant_id = $1",
             vec![tenant_id.into()],
@@ -936,7 +936,7 @@ async fn rebuild_calls(db: &DatabaseConnection, tenant_id: Uuid) -> Result<i64, 
 
 async fn load_scan_cursor(db: &DatabaseConnection) -> Result<Option<Uuid>, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT after_tenant_id FROM search_projection_owner_scan_cursors WHERE source_module = 'forum'"
                 .to_string(),
@@ -948,7 +948,7 @@ async fn load_scan_cursor(db: &DatabaseConnection) -> Result<Option<Uuid>, sea_o
 }
 
 async fn load_cursor_audit(db: &DatabaseConnection) -> Result<Vec<CursorAuditRow>, sea_orm::DbErr> {
-    db.query_all(Statement::from_string(
+    db.query_all_raw(Statement::from_string(
         DbBackend::Postgres,
         "SELECT previous_tenant_id, next_tenant_id FROM forum_d7_scan_cursor_audit ORDER BY sequence ASC"
             .to_string(),
@@ -968,7 +968,7 @@ async fn load_checkpoint_audit(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> Result<Vec<CheckpointAuditRow>, sea_orm::DbErr> {
-    db.query_all(Statement::from_sql_and_values(
+    db.query_all_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
         SELECT tenant_id, owner_revision, event_id, outcome,
@@ -998,7 +998,7 @@ async fn count_checkpoint_audit(
     tenant_id: Uuid,
 ) -> Result<i64, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT COUNT(*)::BIGINT AS value FROM forum_d7_checkpoint_audit WHERE tenant_id = $1",
             vec![tenant_id.into()],
@@ -1014,7 +1014,7 @@ async fn projection_replaced(
     current_document_id: Uuid,
 ) -> Result<bool, sea_orm::DbErr> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT COUNT(*)::BIGINT AS total,

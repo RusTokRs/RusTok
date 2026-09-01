@@ -62,7 +62,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
         vec![user_id.into(), tenant_id.into()],
@@ -322,7 +322,7 @@ async fn merge_tag_reconciliation_is_atomic_idempotent_and_preserves_relation_id
     ));
 
     assert!(db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE forum_topic_merge_tag_reconciliations SET reason = 'tampered' WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],
@@ -330,7 +330,7 @@ async fn merge_tag_reconciliation_is_atomic_idempotent_and_preserves_relation_id
         .await
         .is_err());
     assert!(db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "DELETE FROM forum_topic_merge_tag_reconciliations WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],
@@ -370,7 +370,7 @@ async fn assert_archived_tag_database_guards(
     new_term_id: Uuid,
 ) -> TestResult<()> {
     let update = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE forum_topic_tags SET created_at = created_at WHERE id = ? AND tenant_id = ?",
             vec![existing.id.into(), tenant_id.into()],
@@ -379,7 +379,7 @@ async fn assert_archived_tag_database_guards(
     assert!(update.is_err());
 
     let insert = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO forum_topic_tags (id, topic_id, term_id, tenant_id, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
             vec![
@@ -400,7 +400,7 @@ async fn tag_snapshots(
     topic_id: Uuid,
 ) -> TestResult<BTreeMap<String, TagSnapshot>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             r#"
             SELECT term.canonical_key, tag.id, tag.topic_id, tag.term_id, tag.created_at
@@ -459,7 +459,7 @@ async fn assert_reconciliation_event(
     reconciled: &rustok_forum::ForumTopicMergeTagReconciliationResult,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             r#"
             SELECT aggregate_type, aggregate_id, event_type, schema_version,
@@ -517,7 +517,7 @@ async fn projection_root_ids(
     tenant_id: Uuid,
 ) -> TestResult<BTreeSet<Uuid>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT payload FROM sys_events WHERE event_type = 'index.reindex_requested'",
             Vec::new(),
@@ -539,7 +539,7 @@ async fn projection_targets(
     event_ids: &BTreeSet<Uuid>,
 ) -> TestResult<BTreeSet<(String, Option<Uuid>)>> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT payload FROM sys_events WHERE event_type = 'index.reindex_requested'",
             Vec::new(),
@@ -565,6 +565,6 @@ async fn projection_targets(
 }
 
 async fn scalar_i64(db: &DatabaseConnection, statement: Statement) -> TestResult<i64> {
-    let row: QueryResult = db.query_one(statement).await?.ok_or("scalar row missing")?;
+    let row: QueryResult = db.query_one_raw(statement).await?.ok_or("scalar row missing")?;
     Ok(row.try_get("", "value")?)
 }

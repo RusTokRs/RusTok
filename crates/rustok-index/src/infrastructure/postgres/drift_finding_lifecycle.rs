@@ -58,7 +58,7 @@ impl PostgresIndexDriftFindingLifecycleStore {
         }
 
         let updated = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "UPDATE index_consistency_findings SET state = $3, closed_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND finding_id = $2 AND state = $4 AND closed_at IS NULL",
                 vec![
@@ -75,7 +75,7 @@ impl PostgresIndexDriftFindingLifecycleStore {
         }
 
         let inserted = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "INSERT INTO index_consistency_finding_lifecycle_events (tenant_id, command_id, finding_id, action, from_state, to_state, actor_kind, actor_subject, reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
                 vec![
@@ -203,7 +203,7 @@ async fn lock_command_id(
         command.command_id(),
     );
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![key.into()],
@@ -218,7 +218,7 @@ async fn load_existing_event(
     command: &IndexDriftFindingLifecycleCommand,
 ) -> Result<Option<StoredLifecycleEvent>, IndexDriftFindingLifecycleFailure> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT finding_id, action, from_state, to_state, actor_kind, actor_subject, reason FROM index_consistency_finding_lifecycle_events WHERE tenant_id = $1 AND command_id = $2 LIMIT 1",
             vec![command.tenant_id().into(), command.command_id().into()],
@@ -261,7 +261,7 @@ async fn lock_finding_state(
     command: &IndexDriftFindingLifecycleCommand,
 ) -> Result<Option<IndexDriftFindingState>, IndexDriftFindingLifecycleFailure> {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT state FROM index_consistency_findings WHERE tenant_id = $1 AND finding_id = $2 FOR UPDATE",
             vec![command.tenant_id().into(), command.finding_id().into()],

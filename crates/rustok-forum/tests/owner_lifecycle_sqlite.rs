@@ -270,7 +270,7 @@ async fn seed_topic(
 }
 
 async fn scalar_i64(db: &DatabaseConnection, sql: String) -> i64 {
-    db.query_one(Statement::from_string(DatabaseBackend::Sqlite, sql))
+    db.query_one_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))
         .await
         .expect("scalar query should execute")
         .expect("scalar query should return a row")
@@ -279,7 +279,7 @@ async fn scalar_i64(db: &DatabaseConnection, sql: String) -> i64 {
 }
 
 async fn scalar_string(db: &DatabaseConnection, sql: String) -> String {
-    db.query_one(Statement::from_string(DatabaseBackend::Sqlite, sql))
+    db.query_one_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))
         .await
         .expect("scalar query should execute")
         .expect("scalar query should return a row")

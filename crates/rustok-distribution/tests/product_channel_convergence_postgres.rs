@@ -535,7 +535,7 @@ fn product_schema_ref() -> TestResult<SchemaRef> {
 
 async fn current_channel_generation(db: &DatabaseConnection) -> TestResult<u64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT generation FROM channel_index_identity_generations WHERE tenant_id = $1",
             vec![TENANT_ID.into()],
@@ -551,7 +551,7 @@ async fn latest_relation_membership(
     product_id: Uuid,
 ) -> TestResult<(u64, Vec<Uuid>)> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT relation_epoch, channel_ids
@@ -583,7 +583,7 @@ LIMIT 1
 
 async fn latest_projection_epoch(db: &DatabaseConnection, product_id: Uuid) -> TestResult<u64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT projection_epoch
@@ -606,7 +606,7 @@ async fn assert_freshness_generation(
     expected_generation: u64,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT channel_identity_generation
@@ -633,7 +633,7 @@ async fn assert_no_relation_or_freshness(
         "product_sales_channel_index_relation_freshness_snapshots",
     ] {
         let row = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 format!(
                     "SELECT COUNT(*)::bigint AS row_count FROM {table} WHERE tenant_id = $1 AND product_id = $2"
@@ -686,7 +686,7 @@ async fn assert_state_checkpoint(db: &DatabaseConnection, generation: u64) -> Te
 }
 
 async fn convergence_state(db: &DatabaseConnection) -> TestResult<sea_orm::QueryResult> {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
 SELECT visibility_cursor, channel_identity_generation, sweep_generation, sweep_after_product_id,
@@ -706,7 +706,7 @@ async fn assert_materialized_source_version(
     expected_source_version: u64,
 ) -> TestResult<()> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
 SELECT CAST(source_version AS TEXT) AS source_version_text
@@ -732,7 +732,7 @@ async fn update_restricted_visibility(db: &DatabaseConnection, slug: &str) -> Te
     let metadata = serde_json::json!({
         "channel_visibility": {"allowed_channel_slugs": [slug]}
     });
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "UPDATE products SET metadata = $3 WHERE tenant_id = $1 AND id = $2",
         vec![
@@ -746,7 +746,7 @@ async fn update_restricted_visibility(db: &DatabaseConnection, slug: &str) -> Te
 }
 
 async fn rename_channel(db: &DatabaseConnection, channel_id: Uuid, slug: &str) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "UPDATE channels SET slug = $3 WHERE tenant_id = $1 AND id = $2",
         vec![TENANT_ID.into(), channel_id.into(), slug.to_owned().into()],

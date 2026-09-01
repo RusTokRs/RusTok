@@ -367,7 +367,7 @@ ANALYZE forum_topic_read_states;
     .await?;
 
     let rows = db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT id
@@ -396,7 +396,7 @@ async fn latest_topic_revision(
     topic_id: Uuid,
 ) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT MAX(id)::bigint AS revision_id
@@ -467,7 +467,7 @@ async fn explain_json(
         "COSTS OFF, FORMAT JSON"
     };
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             format!("EXPLAIN ({options}) {sql}"),
         ))

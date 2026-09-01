@@ -35,14 +35,14 @@ async fn database() -> DatabaseConnection {
 }
 
 async fn execute(db: &DatabaseConnection, sql: impl Into<String>) -> Result<(), String> {
-    db.execute(Statement::from_string(DbBackend::Sqlite, sql.into()))
+    db.execute_raw(Statement::from_string(DbBackend::Sqlite, sql.into()))
         .await
         .map(|_| ())
         .map_err(|error| error.to_string())
 }
 
 async fn count(db: &DatabaseConnection, table: &str) -> i64 {
-    db.query_one(Statement::from_string(
+    db.query_one_raw(Statement::from_string(
         DbBackend::Sqlite,
         format!("SELECT COUNT(*) AS count FROM {table}"),
     ))

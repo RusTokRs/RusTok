@@ -656,7 +656,7 @@ impl InstallDatabasePort for SeaOrmInstallerPorts {
             .await
             .map_err(database_error)?;
         runtime
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 runtime.get_database_backend(),
                 "SELECT 1".to_string(),
             ))
@@ -849,7 +849,7 @@ async fn ensure_postgres_database(
     let password = target.password.as_deref().unwrap_or_default();
     let admin = Database::connect(admin_url).await.map_err(database_error)?;
     let role_exists = admin
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             format!(
                 "SELECT 1 FROM pg_roles WHERE rolname = {}",
@@ -861,7 +861,7 @@ async fn ensure_postgres_database(
         .is_some();
     if !role_exists {
         admin
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Postgres,
                 format!(
                     "CREATE ROLE {} LOGIN PASSWORD {}",
@@ -873,7 +873,7 @@ async fn ensure_postgres_database(
             .map_err(database_error)?;
     }
     let database_exists = admin
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             format!(
                 "SELECT 1 FROM pg_database WHERE datname = {}",
@@ -887,7 +887,7 @@ async fn ensure_postgres_database(
         return Ok(false);
     }
     admin
-        .execute(Statement::from_string(
+        .execute_raw(Statement::from_string(
             DbBackend::Postgres,
             format!(
                 "CREATE DATABASE {} OWNER {}",

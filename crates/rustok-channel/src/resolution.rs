@@ -366,7 +366,7 @@ mod tests {
 
     async fn setup_channel_db() -> DatabaseConnection {
         let db = setup_test_db().await;
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             db.get_database_backend(),
             r#"
             CREATE TABLE tenants (
@@ -384,7 +384,7 @@ mod tests {
         ))
         .await
         .expect("tenants table should exist for channel foreign keys");
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             db.get_database_backend(),
             r#"
             CREATE TABLE o_auth_apps (
@@ -412,7 +412,7 @@ mod tests {
     }
 
     async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             db.get_database_backend(),
             "INSERT INTO tenants (id, name, slug, settings, default_locale, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             [

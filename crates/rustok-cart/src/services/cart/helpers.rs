@@ -572,7 +572,7 @@ where
     C: ConnectionTrait,
 {
     let row = conn
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             conn.get_database_backend(),
             "SELECT default_locale FROM tenants WHERE id = ?",
             vec![tenant_id.into()],

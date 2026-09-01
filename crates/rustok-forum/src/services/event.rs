@@ -116,7 +116,7 @@ impl ForumEventService {
 
         let rows = self
             .db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 SELECT revision, event_id
@@ -191,7 +191,7 @@ impl ForumEventService {
         };
         let rows = self
             .db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 sql,
                 values,

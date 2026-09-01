@@ -112,7 +112,8 @@ where
             }
             Ok(role)
         }
-    }
+        _ => unreachable!("unsupported SeaORM database backend"),
+}
 }
 
 fn internal(error: sea_orm::DbErr) -> AuthAdminMutationError {

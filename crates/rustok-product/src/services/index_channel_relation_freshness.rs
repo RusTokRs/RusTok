@@ -224,7 +224,7 @@ impl ProductSalesChannelIndexRelationFreshnessStore {
         }
 
         let row = transaction
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
                 INSERT INTO product_sales_channel_index_relation_freshness_snapshots (
@@ -272,7 +272,7 @@ async fn require_live_product(
     product_id: Uuid,
 ) -> Result<(), ProductSalesChannelIndexRelationFreshnessError> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT 1 AS present
@@ -298,7 +298,7 @@ async fn require_current_relation_epoch(
     relation_epoch: i64,
 ) -> Result<(), ProductSalesChannelIndexRelationFreshnessError> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT relation_epoch
@@ -330,7 +330,7 @@ async fn lock_domain(
 ) -> Result<(), ProductSalesChannelIndexRelationFreshnessError> {
     let lock_key = format!("{tenant_id}\u{1f}{product_id}\u{1f}{domain}");
     transaction
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
             vec![lock_key.into()],
@@ -349,7 +349,7 @@ async fn load_latest(
     ProductSalesChannelIndexRelationFreshnessError,
 > {
     transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT

@@ -232,7 +232,7 @@ impl ProductSalesChannelRelationResolver {
         };
 
         self.db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 sql,
                 values,
@@ -258,7 +258,7 @@ async fn load_product_visibility(
     product_id: Uuid,
 ) -> Result<(ProductChannelVisibility, u64), ProductSalesChannelRelationResolverError> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT metadata, index_revision FROM products WHERE tenant_id = $1 AND id = $2",
             vec![tenant_id.into(), product_id.into()],
@@ -288,7 +288,7 @@ async fn load_channel_identity_generation(
     tenant_id: Uuid,
 ) -> Result<u64, ProductSalesChannelRelationResolverError> {
     let row = transaction
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
             SELECT generation
@@ -320,7 +320,7 @@ async fn resolve_channel_ids(
         .expect("relation target limit is bounded below i64::MAX");
     let (sql, values) = channel_resolution_query(tenant_id, visibility, fetch_limit);
     let rows = transaction
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             sql,
             values,

@@ -52,7 +52,7 @@ fn create_command() -> CreateFieldDefinitionCommand {
 }
 
 async fn generation(db: &sea_orm::DatabaseConnection) -> i64 {
-    db.query_one(Statement::from_string(
+    db.query_one_raw(Statement::from_string(
         DatabaseBackend::Postgres,
         "SELECT generation FROM flex_field_definition_cache_generation WHERE id = 1".to_string(),
     ))

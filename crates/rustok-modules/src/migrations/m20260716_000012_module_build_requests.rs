@@ -56,11 +56,11 @@ impl MigrationTrait for Migration {
                     "module build request migration does not support database backend {backend:?}"
                 )));
             }
-        };
+};
         for statement in statements {
             manager
                 .get_connection()
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     manager.get_database_backend(),
                     (*statement).to_string(),
                 ))

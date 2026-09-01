@@ -83,12 +83,12 @@ impl MigrationTrait for Migration {
                     "module artifact installation migration does not support database backend {backend:?}"
                 )));
             }
-        };
+};
 
         for statement in statements {
             manager
                 .get_connection()
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     manager.get_database_backend(),
                     (*statement).to_string(),
                 ))
@@ -154,7 +154,7 @@ mod tests {
         assert!(duplicate.is_err());
 
         let row = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT scope_kind FROM module_artifact_installations".to_string(),
             ))

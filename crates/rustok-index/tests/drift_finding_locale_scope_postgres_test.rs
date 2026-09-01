@@ -52,7 +52,7 @@ async fn run_scenario(database_url: &str, schema_name: &str) -> TestResult<()> {
     db.execute_unprepared("CREATE TABLE tenants (id UUID NOT NULL PRIMARY KEY)")
         .await?;
     let tenant_id = Uuid::new_v4();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO tenants (id) VALUES ($1)",
         vec![tenant_id.into()],
@@ -105,7 +105,7 @@ async fn run_scenario(database_url: &str, schema_name: &str) -> TestResult<()> {
     ));
 
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT finding_id, finding_key, locale_key FROM index_consistency_findings WHERE tenant_id = $1 ORDER BY locale_key NULLS FIRST",
             vec![tenant_id.into()],

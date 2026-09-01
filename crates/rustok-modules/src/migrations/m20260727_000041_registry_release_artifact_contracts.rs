@@ -112,11 +112,11 @@ impl MigrationTrait for Migration {
                     "registry release artifact contracts do not support database backend {backend:?}"
                 )));
             }
-        };
+};
         for statement in statements {
             manager
                 .get_connection()
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     manager.get_database_backend(),
                     (*statement).to_string(),
                 ))
@@ -162,7 +162,7 @@ mod tests {
             "CREATE TABLE registry_module_releases (id TEXT PRIMARY KEY)",
         ] {
             database
-                .execute(Statement::from_string(
+                .execute_raw(Statement::from_string(
                     DbBackend::Sqlite,
                     statement.to_string(),
                 ))
@@ -175,7 +175,7 @@ mod tests {
             .expect("release artifact migration");
 
         let columns = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "PRAGMA table_info(registry_publish_alloy_staging)".to_string(),
             ))

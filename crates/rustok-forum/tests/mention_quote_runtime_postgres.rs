@@ -47,7 +47,7 @@ async fn d1_replacement_wins_before_stale_d2_preserve_on_postgres() -> TestResul
         let blocker_db = context.peer().await?;
         let blocker = blocker_db.begin().await?;
         blocker
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Postgres,
                 format!(
                     "SELECT id FROM forum_replies \
@@ -327,7 +327,7 @@ async fn mention_owner_event_commits_with_notifications_not_composed() -> TestRe
 
         let journal_row = context
             .db
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Postgres,
                 format!(
                     "SELECT event_id FROM forum_domain_events \
@@ -475,7 +475,7 @@ async fn wait_until_lock_wait(db: &DatabaseConnection, application_name: &str) -
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let row = db
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DatabaseBackend::Postgres,
                 format!(
                     "SELECT EXISTS (\
@@ -568,7 +568,7 @@ async fn latest_quote_count(
 
 async fn scalar_i64(db: &DatabaseConnection, sql: impl Into<String>) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             sql.into(),
         ))
@@ -579,7 +579,7 @@ async fn scalar_i64(db: &DatabaseConnection, sql: impl Into<String>) -> TestResu
 
 async fn scalar_string(db: &DatabaseConnection, sql: impl Into<String>) -> TestResult<String> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             sql.into(),
         ))

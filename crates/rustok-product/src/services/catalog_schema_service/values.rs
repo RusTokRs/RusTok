@@ -417,7 +417,7 @@ impl ProductCatalogSchemaService {
             let (placeholders, mut values) = uuid_filter_values(tenant_id, &target_attribute_ids);
             let product_placeholder = format!("${}", values.len() + 1);
             values.push(product_id.into());
-            txn.execute(Statement::from_sql_and_values(
+            txn.execute_raw(Statement::from_sql_and_values(
                 txn.get_database_backend(),
                 format!(
                     r#"

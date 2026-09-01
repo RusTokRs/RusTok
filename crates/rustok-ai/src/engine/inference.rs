@@ -7,13 +7,12 @@ use async_trait::async_trait;
 use futures_util::StreamExt;
 use rig::prelude::ImageGenerationClient;
 use rig::{
-    OneOrMany,
     client::CompletionClient,
     completion::{
         CompletionModel, CompletionRequest, Message, ToolDefinition as RigToolDefinition,
     },
     image_generation::ImageGenerationModel,
-    message::{AssistantContent, ToolCall as RigToolCall, ToolFunction, UserContent},
+    message::{AssistantContent, ToolCall as RigToolCall, ToolCallId, ToolFunction, UserContent},
     providers::{
         anthropic, azure, chatgpt, cohere, copilot, deepseek, gemini, groq, huggingface,
         hyperbolic, llamafile, minimax, mira, mistral, moonshot, ollama, openai, openrouter,
@@ -492,8 +491,13 @@ async fn complete_with<M: CompletionModel>(
         .completion(request)
         .await
         .map_err(|error| AiError::Provider(error.to_string()))?;
-    let raw_payload = serde_json::to_value(&response.raw_response)
-        .unwrap_or_else(|_| serde_json::json!({"provider": provider}));
+    let raw_payload = serde_json::json!({
+        "provider": provider,
+        "message_id": response.message_id,
+        "response_id": response.response_id,
+        "provider_request_id": response.provider_request_id,
+        "usage": response.usage,
+    });
     Ok(map_response(
         response.choice.into_iter().collect(),
         response.message_id,
@@ -522,29 +526,29 @@ async fn stream_with<M: CompletionModel>(
                 }
             }
             StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                emitted_tool_call_ids.insert(tool_call.id.clone());
+                let tool_call_id_str = tool_call.id.to_string();
+                emitted_tool_call_ids.insert(tool_call_id_str.clone());
                 if let Some(emitter) = &emitter {
                     emitter.emit_tool_call(ToolCall {
-                        id: tool_call.id,
+                        id: tool_call_id_str,
                         name: tool_call.function.name,
                         arguments: tool_call.function.arguments,
                     });
                 }
             }
             StreamedAssistantContent::ToolCallDelta {
-                id,
                 internal_call_id,
                 content,
             } => {
                 let entry = assembled_tool_calls
-                    .entry(internal_call_id)
-                    .or_insert_with(|| (id, String::new(), String::new()));
+                    .entry(internal_call_id.clone())
+                    .or_insert_with(|| (internal_call_id, String::new(), String::new()));
                 match content {
                     ToolCallDeltaContent::Name(name) => entry.1 = name,
                     ToolCallDeltaContent::Delta(delta) => entry.2.push_str(&delta),
                 }
             }
-            StreamedAssistantContent::Reasoning(_)
+            StreamedAssistantContent::Reasoning { .. }
             | StreamedAssistantContent::ReasoningDelta { .. }
             | StreamedAssistantContent::Final(_) => {}
             StreamedAssistantContent::Unknown(_) => {
@@ -669,7 +673,7 @@ mod live_connectivity_tests {
 }
 
 fn map_request(request: ProviderChatRequest) -> AiResult<CompletionRequest> {
-    let mut messages = request
+    let messages = request
         .messages
         .into_iter()
         .map(map_message)
@@ -688,12 +692,10 @@ fn map_request(request: ProviderChatRequest) -> AiResult<CompletionRequest> {
             parameters: tool.input_schema,
         })
         .collect();
-    let history = OneOrMany::many(std::mem::take(&mut messages))
-        .map_err(|error| AiError::Validation(error.to_string()))?;
     Ok(CompletionRequest {
         model: Some(request.model),
         preamble: None,
-        chat_history: history,
+        chat_history: messages,
         documents: Vec::new(),
         tools,
         temperature: request.temperature.map(f64::from),
@@ -701,6 +703,7 @@ fn map_request(request: ProviderChatRequest) -> AiResult<CompletionRequest> {
         tool_choice: None,
         additional_params: None,
         output_schema: None,
+        record_telemetry_content: false,
     })
 }
 
@@ -708,12 +711,16 @@ pub(crate) fn map_message(message: ChatMessage) -> AiResult<Message> {
     Ok(match message.role {
         ChatMessageRole::System => Message::system(message.content.unwrap_or_default()),
         ChatMessageRole::User => Message::user(message.content.unwrap_or_default()),
-        ChatMessageRole::Tool => Message::tool_result(
-            message.tool_call_id.ok_or_else(|| {
+        ChatMessageRole::Tool => {
+            let tool_call_id = message.tool_call_id.ok_or_else(|| {
                 AiError::Validation("tool message requires tool_call_id".to_string())
-            })?,
-            message.content.unwrap_or_default(),
-        ),
+            })?;
+            Message::tool_result(
+                tool_call_id.as_str(),
+                message.name.unwrap_or_default(),
+                message.content.unwrap_or_default(),
+            )
+        }
         ChatMessageRole::Assistant => {
             let mut content = Vec::new();
             if let Some(text) = message.content.filter(|value| !value.is_empty()) {
@@ -721,7 +728,7 @@ pub(crate) fn map_message(message: ChatMessage) -> AiResult<Message> {
             }
             content.extend(message.tool_calls.into_iter().map(|call| {
                 AssistantContent::ToolCall(RigToolCall::new(
-                    call.id,
+                    ToolCallId::new_or_mint(call.id),
                     ToolFunction::new(call.name, call.arguments),
                 ))
             }));
@@ -730,8 +737,7 @@ pub(crate) fn map_message(message: ChatMessage) -> AiResult<Message> {
             }
             Message::Assistant {
                 id: None,
-                content: OneOrMany::many(content)
-                    .map_err(|error| AiError::Serialization(error.to_string()))?,
+                content,
             }
         }
     })
@@ -745,7 +751,7 @@ pub(crate) fn map_rig_message(message: Message) -> ChatMessage {
             name: None,
             tool_call_id: None,
             tool_calls: Vec::new(),
-            metadata: serde_json::json!({"engine": "rig_0_39"}),
+            metadata: serde_json::json!({"engine": "rig_0_42"}),
         },
         Message::User { content } => {
             let mut text = String::new();
@@ -754,7 +760,7 @@ pub(crate) fn map_rig_message(message: Message) -> ChatMessage {
                 match item {
                     UserContent::Text(value) => text.push_str(&value.text),
                     UserContent::ToolResult(result) => {
-                        tool_call_id = Some(result.id);
+                        tool_call_id = Some(result.call.to_string());
                         for value in result.content {
                             if let rig::message::ToolResultContent::Text(value) = value {
                                 text.push_str(&value.text);
@@ -777,7 +783,7 @@ pub(crate) fn map_rig_message(message: Message) -> ChatMessage {
                 name: None,
                 tool_call_id,
                 tool_calls: Vec::new(),
-                metadata: serde_json::json!({"engine": "rig_0_39"}),
+                metadata: serde_json::json!({"engine": "rig_0_42"}),
             }
         }
         Message::Assistant { id, content } => {
@@ -792,7 +798,7 @@ pub(crate) fn map_rig_message(message: Message) -> ChatMessage {
     }
 }
 
-pub(crate) fn assistant_choice(message: &ChatMessage) -> AiResult<OneOrMany<AssistantContent>> {
+pub(crate) fn assistant_choice(message: &ChatMessage) -> AiResult<Vec<AssistantContent>> {
     let Message::Assistant { content, .. } = map_message(message.clone())? else {
         return Err(AiError::Validation(
             "Rig model turn must be an assistant message".to_string(),
@@ -813,11 +819,11 @@ fn map_response(
         match item {
             AssistantContent::Text(value) => text.push_str(&value.text),
             AssistantContent::ToolCall(call) => tool_calls.push(ToolCall {
-                id: call.id,
+                id: call.id.to_string(),
                 name: call.function.name,
                 arguments: call.function.arguments,
             }),
-            AssistantContent::Reasoning(_) | AssistantContent::Image(_) => {}
+            AssistantContent::Reasoning { .. } | AssistantContent::Image(_) => {}
         }
     }
     ProviderChatResponse {

@@ -14,9 +14,7 @@ use rustok_product::{
 };
 use rustok_telemetry::metrics;
 use rustok_web::{HttpError, HttpResult};
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{collections::HashMap, time::Instant};

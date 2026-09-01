@@ -11,7 +11,8 @@ impl MigrationTrait for Migration {
             DbBackend::Postgres => postgres_up(manager).await,
             DbBackend::Sqlite => sqlite_up(manager).await,
             DbBackend::MySql => Ok(()),
-        }
+            _ => unreachable!("unsupported SeaORM database backend"),
+}
     }
 
     async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {

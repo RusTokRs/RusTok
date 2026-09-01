@@ -202,7 +202,7 @@ fn reply_input(content: &str) -> CreateReplyInput {
 
 async fn scalar_i64(db: &sea_orm::DatabaseConnection, sql: impl Into<String>) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             sql.into(),
         ))

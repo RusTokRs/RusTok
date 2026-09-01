@@ -16,8 +16,25 @@ updates:
       timezone: "Europe/Minsk"
     open-pull-requests-limit: 50
     groups:
-      all-updates:
-        patterns: ["*"]
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      sea-orm:
+        patterns:
+          - "sea-orm*"
+          - "sea-query*"
+          - "sea-schema*"
+      rig-ai:
+        patterns:
+          - "rig*"
+      wasm-runtime:
+        patterns:
+          - "wasmtime*"
+          - "wasmparser*"
+          - "wit-*"
+          - "cranelift-*"
+          - "pulley-*"
   - package-ecosystem: "npm"
     directory: "/"
     schedule:

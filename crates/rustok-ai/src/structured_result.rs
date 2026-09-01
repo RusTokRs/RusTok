@@ -322,7 +322,10 @@ impl StructuredResultStore {
         let replayed = ai_structured_results::Entity::update_many()
             .col_expr(
                 ai_structured_results::Column::ReplayCount,
-                Expr::col(ai_structured_results::Column::ReplayCount).add(1),
+                sea_orm::sea_query::ExprTrait::add(
+                    Expr::col(ai_structured_results::Column::ReplayCount),
+                    1,
+                ),
             )
             .col_expr(
                 ai_structured_results::Column::LastReplayedAt,

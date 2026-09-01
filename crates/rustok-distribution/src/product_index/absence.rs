@@ -72,7 +72,7 @@ impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider {
         // Product-SalesChannel freshness witness. Missing or stale freshness returns no watermark.
         let row = self
             .db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"
 SELECT

@@ -1,5 +1,5 @@
 use sea_orm::{
-    Condition, ConnectionTrait, DatabaseConnection, DbBackend, FromQueryResult, Statement,
+    Condition, DatabaseConnection, DbBackend, FromQueryResult, Statement,
     sea_query::Expr,
 };
 use std::collections::HashMap;

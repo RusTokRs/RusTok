@@ -230,7 +230,7 @@ async fn category_audience_layers_inherit_conjunctively_and_remain_bounded() {
     ));
 
     let direct_overflow = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO forum_category_audience_channels (tenant_id, category_id, channel_slug) VALUES (?, ?, ?)",
             [
@@ -246,7 +246,7 @@ async fn category_audience_layers_inherit_conjunctively_and_remain_bounded() {
     );
 
     let direct_relation_update = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "UPDATE forum_category_audience_channels SET channel_slug = ? WHERE tenant_id = ? AND category_id = ? AND channel_slug = ?",
             [
@@ -263,7 +263,7 @@ async fn category_audience_layers_inherit_conjunctively_and_remain_bounded() {
     );
 
     let direct_policy_update = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "UPDATE forum_category_audience_policies SET minimum_trust_level = ? WHERE tenant_id = ? AND category_id = ?",
             [
@@ -279,7 +279,7 @@ async fn category_audience_layers_inherit_conjunctively_and_remain_bounded() {
     );
 
     let cross_tenant_policy = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO forum_category_audience_policies (tenant_id, category_id, minimum_trust_level, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
             [

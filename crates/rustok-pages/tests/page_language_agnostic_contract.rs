@@ -219,7 +219,7 @@ async fn sqlite_db_rejects_cross_locale_body_rows() {
         .expect("page should be created");
 
     let result = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO page_bodies (id, page_id, locale, content, format, updated_at, tenant_id) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)",
             [

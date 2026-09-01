@@ -1098,7 +1098,7 @@ mod tests {
         }
 
         statement.if_not_exists();
-        db.execute(builder.build(&statement))
+        db.execute_raw(builder.build(&statement))
             .await
             .unwrap_or_else(|error| panic!("create {table_name} for oauth tests: {error}"));
 

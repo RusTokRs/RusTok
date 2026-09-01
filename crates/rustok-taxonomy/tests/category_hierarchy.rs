@@ -282,7 +282,7 @@ async fn sqlite_storage_guard_rejects_tag_rows_and_cycle_through_implicit_root()
     )
     .await;
     let err = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO taxonomy_category_hierarchy (tenant_id, term_id, parent_term_id, position) VALUES (?, ?, NULL, ?)",
             vec![tenant_id.into(), tag.into(), 0.into()],
@@ -292,7 +292,7 @@ async fn sqlite_storage_guard_rejects_tag_rows_and_cycle_through_implicit_root()
     assert!(err.to_string().contains("not a Category"));
 
     let err = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO taxonomy_category_hierarchy (tenant_id, term_id, parent_term_id, position) VALUES (?, ?, ?, ?)",
             vec![tenant_id.into(), root.into(), child.into(), 0.into()],

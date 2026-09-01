@@ -156,7 +156,7 @@ async fn revoke(
 
 async fn scalar_count(db: &DatabaseConnection, sql: String) -> i64 {
     let row = db
-        .query_one(Statement::from_string(DatabaseBackend::Sqlite, sql))
+        .query_one_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))
         .await
         .expect("SQLite concurrency count query should succeed")
         .expect("count row should exist");
@@ -165,7 +165,7 @@ async fn scalar_count(db: &DatabaseConnection, sql: String) -> i64 {
 
 async fn group_snapshot(db: &DatabaseConnection, fixture: Fixture) -> (i64, i64) {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT version, member_count FROM groups WHERE tenant_id = '{}' AND id = '{}'",
@@ -185,7 +185,7 @@ async fn group_snapshot(db: &DatabaseConnection, fixture: Fixture) -> (i64, i64)
 
 async fn target_revision(db: &DatabaseConnection, fixture: Fixture) -> i64 {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT revision FROM group_memberships WHERE tenant_id = '{}' AND group_id = '{}' AND user_id = '{}'",
@@ -201,7 +201,7 @@ async fn target_revision(db: &DatabaseConnection, fixture: Fixture) -> i64 {
 
 async fn enforcement_snapshot(db: &DatabaseConnection, fixture: Fixture) -> (i64, i64) {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "SELECT revision, CASE WHEN revoked_at IS NULL THEN 0 ELSE 1 END AS revoked FROM group_membership_enforcements WHERE tenant_id = '{}' AND group_id = '{}' AND user_id = '{}'",

@@ -256,7 +256,7 @@ async fn expired_claim_is_recovered_by_scheduler_without_duplicate_start_transit
 
     let storage = database.connection("scheduler_crash_storage").await?;
     storage
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "UPDATE moderation_application_operations SET lease_expires_at = NOW() - INTERVAL '1 second' WHERE tenant_id = $1 AND decision_id = $2",
             vec![tenant_id.into(), decision.id.into()],
@@ -496,7 +496,7 @@ async fn count_events(
     event_type: &str,
 ) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT COUNT(*)::bigint AS value FROM moderation_events WHERE tenant_id = $1 AND aggregate_kind = $2 AND aggregate_id = $3 AND event_type = $4",
             vec![

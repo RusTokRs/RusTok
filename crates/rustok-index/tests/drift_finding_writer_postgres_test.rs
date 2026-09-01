@@ -253,7 +253,7 @@ fn request(
 }
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<()> {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO tenants (id) VALUES ($1)",
         vec![tenant_id.into()],
@@ -264,7 +264,7 @@ async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<(
 
 async fn read_finding(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<FindingEvidence> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT finding_id, finding_key, check_name, severity, state, scope_kind, module_name, entity_name, schema_version::bigint AS schema_version_value, entity_id, locale_key, expected_digest, actual_digest, details, (closed_at IS NOT NULL) AS closed FROM index_consistency_findings WHERE tenant_id = $1 ORDER BY first_detected_at, finding_id LIMIT 1",
             vec![tenant_id.into()],
@@ -301,7 +301,7 @@ async fn set_state(
     state: &str,
 ) -> TestResult<()> {
     let updated = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE index_consistency_findings SET state = $3, closed_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND finding_id = $2",
             vec![tenant_id.into(), finding_id.into(), state.to_owned().into()],
@@ -315,7 +315,7 @@ async fn set_state(
 
 async fn count_findings(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT COUNT(*)::bigint AS value FROM index_consistency_findings WHERE tenant_id = $1",
             vec![tenant_id.into()],
@@ -327,7 +327,7 @@ async fn count_findings(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<
 
 async fn count_all_findings(db: &DatabaseConnection) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             DbBackend::Postgres,
             "SELECT COUNT(*)::bigint AS value FROM index_consistency_findings".to_owned(),
         ))

@@ -159,7 +159,7 @@ impl ModuleOperationJournal {
             DbBackend::Postgres => format!("{} WHERE id = $1", operation_select_sql()),
             _ => format!("{} WHERE id = ?1", operation_select_sql()),
         };
-        db.query_one(Statement::from_sql_and_values(
+        db.query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![operation_id.into()],
@@ -219,8 +219,8 @@ impl ModuleOperationJournal {
                     ModuleOperationStatus::Failed.as_str().into(),
                 ],
             ),
-        };
-        db.query_all(Statement::from_sql_and_values(backend, sql, values))
+};
+        db.query_all_raw(Statement::from_sql_and_values(backend, sql, values))
             .await
             .map_err(database_error)?
             .into_iter()
@@ -351,7 +351,7 @@ impl ModuleOperationJournal {
                 operation_select_sql()
             ),
         };
-        db.query_one(Statement::from_sql_and_values(
+        db.query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![tenant_id.into(), idempotency_key.into()],
@@ -450,7 +450,7 @@ impl StaticTenantLifecycleStore {
                  WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
         };
-        db.query_one(Statement::from_sql_and_values(
+        db.query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![tenant_id.into(), module_slug.into()],
@@ -492,7 +492,7 @@ impl StaticTenantLifecycleStore {
             _ => "?1",
         };
         let rows = db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT module_slug, revision, active_idempotency_key \
@@ -565,7 +565,7 @@ impl StaticTenantLifecycleStore {
         let backend = db.get_database_backend();
         if persisted.is_none() {
             let insert = db
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     backend,
                     match backend {
                         DbBackend::Postgres => {
@@ -631,7 +631,7 @@ impl StaticTenantLifecycleStore {
         }
 
         let result = db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
@@ -697,7 +697,7 @@ impl StaticTenantLifecycleStore {
         })?;
         let backend = db.get_database_backend();
         let result = db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
@@ -746,7 +746,7 @@ impl StaticTenantLifecycleStore {
     ) -> Result<(), StaticTenantLifecycleStoreError> {
         let backend = db.get_database_backend();
         let result = db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
                 render_parameters(
                     "UPDATE module_static_tenant_lifecycle \
@@ -881,7 +881,7 @@ impl TenantModuleStateStore {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
             }
         };
-        db.query_one(Statement::from_sql_and_values(
+        db.query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
             vec![tenant_id.into(), module_slug.into()],
@@ -914,7 +914,7 @@ impl TenantModuleStateStore {
             }
         };
         if let Some(row) = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select,
                 vec![request.tenant_id.into(), request.module_slug.clone().into()],
@@ -980,7 +980,7 @@ impl TenantModuleStateStore {
             }
         };
         let existing = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 select,
                 vec![request.tenant_id.into(), request.module_slug.clone().into()],
@@ -1048,7 +1048,7 @@ async fn execute<C: ConnectionTrait>(
     values: Vec<sea_orm::Value>,
 ) -> Result<(), ModuleOperationStoreError> {
     let backend = db.get_database_backend();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         backend,
         render_parameters(sql_template, backend),
         values,
@@ -1080,7 +1080,7 @@ mod tests {
             .await
             .expect("database");
         database
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "CREATE TABLE tenant_modules (\
                     id TEXT PRIMARY KEY NOT NULL, \

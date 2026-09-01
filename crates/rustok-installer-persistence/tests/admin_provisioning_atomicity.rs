@@ -41,7 +41,7 @@ fn test_plan(email: &str) -> InstallPlan {
 }
 
 async fn insert_tenant(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO tenants (id, name, slug, domain, settings, default_locale, is_active) VALUES (?1, ?2, ?3, NULL, ?4, ?5, TRUE)",
         vec![
@@ -61,7 +61,7 @@ async fn insert_reserved_slug_collision(
     tenant_id: Uuid,
     slug: &str,
 ) {
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES (?1, ?2, ?3, ?4, NULL, FALSE)",
         vec![
@@ -80,7 +80,7 @@ async fn bootstrap_user_count(
     tenant_id: Uuid,
     email: &str,
 ) -> i64 {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "SELECT COUNT(*) AS total FROM users WHERE tenant_id = ?1 AND email = ?2",
         vec![tenant_id.into(), email.into()],
@@ -168,7 +168,7 @@ async fn successful_provisioning_commits_identity_and_role_together() {
     assert_eq!(bootstrap_user_count(&db, tenant_id, admin_email).await, 1);
 
     let role_links: i64 = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT COUNT(*) AS total FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ?1 AND r.tenant_id = ?2 AND r.slug = ?3 AND r.is_system = TRUE",
             vec![outcome.user_id.into(), tenant_id.into(), "super_admin".into()],

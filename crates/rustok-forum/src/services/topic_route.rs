@@ -642,7 +642,7 @@ async fn load_topic_translation_routes_in_tx(
         ),
         backend => return Err(unsupported_backend(backend)),
     };
-    txn.query_all(statement)
+    txn.query_all_raw(statement)
         .await?
         .into_iter()
         .map(topic_translation_route_from_row)
@@ -703,7 +703,7 @@ where
         ),
         backend => return Err(unsupported_backend(backend)),
     };
-    db.query_all(statement)
+    db.query_all_raw(statement)
         .await?
         .into_iter()
         .map(topic_translation_route_from_row)
@@ -719,7 +719,7 @@ async fn lock_topic_route_for_rename_in_tx(
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
             let row = txn
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     r#"
                     SELECT topic.id AS topic_id, translation.slug
@@ -744,7 +744,7 @@ async fn lock_topic_route_for_rename_in_tx(
         }
         DatabaseBackend::Sqlite => {
             let result = txn
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
                     r#"
                     UPDATE forum_topic_translations
@@ -819,7 +819,7 @@ async fn update_topic_route_slug_in_tx(
         ),
         backend => return Err(unsupported_backend(backend)),
     };
-    let result = txn.execute(statement).await?;
+    let result = txn.execute_raw(statement).await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::TopicRouteResolutionConflict);
     }
@@ -874,7 +874,7 @@ where
         ),
         backend => return Err(unsupported_backend(backend)),
     };
-    let row = db.query_one(statement).await?;
+    let row = db.query_one_raw(statement).await?;
     row.map(current_route_from_row).transpose()
 }
 
@@ -928,7 +928,7 @@ where
         ),
         backend => return Err(unsupported_backend(backend)),
     };
-    db.query_all(statement)
+    db.query_all_raw(statement)
         .await?
         .into_iter()
         .map(current_route_from_row)
@@ -1010,7 +1010,7 @@ where
         ),
         backend => return Err(unsupported_backend(backend)),
     };
-    db.query_all(statement)
+    db.query_all_raw(statement)
         .await?
         .into_iter()
         .map(stored_alias_from_row)
@@ -1117,7 +1117,7 @@ async fn record_alias_in_tx(
         ),
         backend => return Err(unsupported_backend(backend)),
     };
-    txn.execute(statement).await?;
+    txn.execute_raw(statement).await?;
 
     let aliases = load_route_aliases(txn, tenant_id, &locale, &short_id, &slug).await?;
     let existing = match aliases.as_slice() {

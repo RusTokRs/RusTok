@@ -141,7 +141,7 @@ impl SearchAnalyticsService {
             ],
         );
 
-        let row = db.query_one(stmt).await.map_err(Error::Database)?;
+        let row = db.query_one_raw(stmt).await.map_err(Error::Database)?;
         Ok(row.map(|row| read_i64(&row, "id")))
     }
 
@@ -177,7 +177,7 @@ impl SearchAnalyticsService {
             ],
         );
 
-        let result = db.execute(stmt).await.map_err(Error::Database)?;
+        let result = db.execute_raw(stmt).await.map_err(Error::Database)?;
         if result.rows_affected() == 0 {
             return Err(Error::NotFound(
                 "search query log not found for click tracking".to_string(),
@@ -241,7 +241,7 @@ impl SearchAnalyticsService {
         );
 
         let row = db
-            .query_one(stmt)
+            .query_one_raw(stmt)
             .await
             .map_err(Error::Database)?
             .ok_or_else(|| Error::NotFound("search analytics summary row".to_string()))?;
@@ -295,7 +295,7 @@ impl SearchAnalyticsService {
             },
         );
 
-        db.query_all(stmt)
+        db.query_all_raw(stmt)
             .await
             .map_err(Error::Database)?
             .into_iter()

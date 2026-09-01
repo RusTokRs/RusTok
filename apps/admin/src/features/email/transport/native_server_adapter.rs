@@ -64,7 +64,7 @@ pub(super) async fn email_settings_native() -> Result<PlatformSettingsResponse, 
         };
         let settings = match runtime
             .db()
-            .query_one(statement)
+            .query_one_raw(statement)
             .await
             .map_err(|err| server_error(err.to_string()))?
         {

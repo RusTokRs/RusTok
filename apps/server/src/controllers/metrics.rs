@@ -317,7 +317,7 @@ async fn render_outbox_metrics(ctx: &ServerRuntimeContext) -> String {
 
     let retries_total = ctx
         .db()
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             ctx.db().get_database_backend(),
             "SELECT COALESCE(SUM(retry_count), 0) AS total FROM sys_events".to_string(),
         ))
@@ -517,7 +517,7 @@ async fn render_search_metrics(ctx: &ServerRuntimeContext) -> String {
     let backend = ctx.db().get_database_backend();
     let stmt = Statement::from_string(backend, search_metrics_snapshot_query(backend).to_string());
 
-    match ctx.db().query_one(stmt).await {
+    match ctx.db().query_one_raw(stmt).await {
         Ok(Some(row)) => {
             let read_metric =
                 |column: &str| -> i64 { row.try_get::<i64>("", column).unwrap_or(0).max(0) };

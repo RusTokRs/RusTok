@@ -50,7 +50,7 @@ pub async fn exercise_category_topic_policy(db: &DatabaseConnection) -> TestResu
 
     let blocked_topic_id = Uuid::new_v4();
     let blocked = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             db.get_database_backend(),
             "INSERT INTO forum_topics \
              (id, tenant_id, category_id, status, is_pinned, is_locked, reply_count) \
@@ -97,7 +97,7 @@ pub async fn exercise_category_topic_policy(db: &DatabaseConnection) -> TestResu
         )
         .await?;
     let allowed_topic_id = Uuid::new_v4();
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         db.get_database_backend(),
         "INSERT INTO forum_topics \
          (id, tenant_id, category_id, status, is_pinned, is_locked, reply_count) \

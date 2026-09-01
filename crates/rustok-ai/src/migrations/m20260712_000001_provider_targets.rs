@@ -23,9 +23,9 @@ impl MigrationTrait for Migration {
                     "AI provider target migration does not support database backend {other:?}"
                 )));
             }
-        };
+};
         let rows = connection
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 backend,
                 custom_endpoint_query.to_string(),
             ))
@@ -61,7 +61,7 @@ impl MigrationTrait for Migration {
                     "AI provider target migration does not support database backend {other:?}"
                 )));
             }
-        };
+};
         for statement in statements {
             connection.execute_unprepared(statement).await?;
         }
@@ -109,7 +109,7 @@ mod tests {
         let database = legacy_database("{}").await;
         Migration.up(&SchemaManager::new(&database)).await.unwrap();
         let row = database
-            .query_one(Statement::from_string(
+            .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT provider_target_id FROM ai_provider_profiles".to_string(),
             ))
@@ -121,7 +121,7 @@ mod tests {
             "openai_compatible"
         );
         let columns = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "PRAGMA table_info(ai_provider_profiles)".to_string(),
             ))
@@ -156,7 +156,7 @@ mod tests {
         }
         Migration.up(&SchemaManager::new(&database)).await.unwrap();
         let rows = database
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT slug, provider_slug, provider_target_id FROM ai_provider_profiles ORDER BY slug"
                     .to_string(),

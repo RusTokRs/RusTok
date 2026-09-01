@@ -114,7 +114,7 @@ mod tests {
     async fn seed_tables(db: &DatabaseConnection) {
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE content_canonical_urls (
                 id TEXT PRIMARY KEY,
@@ -131,7 +131,7 @@ mod tests {
         .await
         .expect("create canonical table");
 
-        db.execute(Statement::from_string(
+        db.execute_raw(Statement::from_string(
             DbBackend::Sqlite,
             "CREATE TABLE content_url_aliases (
                 id TEXT PRIMARY KEY,
