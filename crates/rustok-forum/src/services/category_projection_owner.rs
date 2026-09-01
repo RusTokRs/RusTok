@@ -90,6 +90,11 @@ impl CategoryProjectionOwnerService {
         input: UpdateCategoryInput,
     ) -> ForumResult<()> {
         enforce_scope(&security, Resource::ForumCategories, Action::Update)?;
+        if input.position.is_some() {
+            return Err(ForumError::Validation(
+                "Category position must be changed through move/reorder commands".to_string(),
+            ));
+        }
         let locale = normalize_locale(&input.locale)?;
         let requested_name = input.name.clone();
         let requested_slug = input.slug.clone();
@@ -103,9 +108,6 @@ impl CategoryProjectionOwnerService {
 
         let mut active: forum_category::ActiveModel = category.into();
         active.updated_at = Set(Utc::now().into());
-        if let Some(position) = input.position {
-            active.position = Set(position);
-        }
         if input.icon.is_some() {
             active.icon = Set(input.icon);
         }
