@@ -119,13 +119,9 @@ impl CategoryProjectionOwnerService {
         }
         active.update(&txn).await?;
 
-        let existing_canonical = taxonomy_sync::load_category_locale_copy_in_tx(
-            &txn,
-            tenant_id,
-            category_id,
-            &locale,
-        )
-        .await?;
+        let existing_canonical =
+            taxonomy_sync::load_category_locale_copy_in_tx(&txn, tenant_id, category_id, &locale)
+                .await?;
         let (canonical_name, canonical_slug, canonical_description) = match existing_canonical {
             Some(existing) => {
                 let name = requested_name.clone().unwrap_or(existing.name);
