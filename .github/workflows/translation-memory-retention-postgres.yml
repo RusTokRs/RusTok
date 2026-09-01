@@ -1,0 +1,83 @@
+name: Translation Memory Retention PostgreSQL Evidence
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "crates/rustok-translation/Cargo.toml"
+      - "crates/rustok-translation/src/entities/memory_entry.rs"
+      - "crates/rustok-translation/src/entities/memory_receipt.rs"
+      - "crates/rustok-translation/src/memory.rs"
+      - "crates/rustok-translation/src/scheduler.rs"
+      - "crates/rustok-translation/src/migrations/**"
+      - "crates/rustok-translation/tests/memory_retention_postgres.rs"
+      - ".github/workflows/translation-memory-retention-postgres.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.lock"
+      - "crates/rustok-translation/Cargo.toml"
+      - "crates/rustok-translation/src/entities/memory_entry.rs"
+      - "crates/rustok-translation/src/entities/memory_receipt.rs"
+      - "crates/rustok-translation/src/memory.rs"
+      - "crates/rustok-translation/src/scheduler.rs"
+      - "crates/rustok-translation/src/migrations/**"
+      - "crates/rustok-translation/tests/memory_retention_postgres.rs"
+      - ".github/workflows/translation-memory-retention-postgres.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: translation-memory-retention-postgres-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  RUSTOK_TRANSLATION_TEST_POSTGRES_URL: postgres://postgres:postgres@localhost:5432/rustok_translation_retention_evidence
+
+jobs:
+  postgres-retention-evidence:
+    name: Translation Memory multi-replica PostgreSQL retention evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_translation_retention_evidence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_translation_retention_evidence"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Require exact checked-out SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: translation-memory-retention-postgres
+      - name: Check focused evidence formatting
+        run: rustfmt +1.96.0 --edition 2024 --check crates/rustok-translation/tests/memory_retention_postgres.rs
+      - name: Compile focused PostgreSQL evidence
+        run: cargo test --locked -p rustok-translation --features runtime --test memory_retention_postgres --no-run
+      - name: Execute multi-replica tombstone/purge convergence evidence
+        run: cargo test --locked -p rustok-translation --features runtime --test memory_retention_postgres -- --ignored --nocapture
