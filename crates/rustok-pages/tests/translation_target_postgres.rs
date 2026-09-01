@@ -67,8 +67,8 @@ impl TestDatabase {
 
 #[tokio::test]
 #[ignore = "requires RUSTOK_PAGES_TRANSLATION_TEST_POSTGRES_URL"]
-async fn pages_translation_target_concurrent_metadata_and_cursor_recovery_postgres() -> TestResult<()>
-{
+async fn pages_translation_target_concurrent_metadata_and_cursor_recovery_postgres()
+-> TestResult<()> {
     let database = TestDatabase::setup().await?;
     let result = run_contract(&database).await;
     let cleanup = database.cleanup().await;
