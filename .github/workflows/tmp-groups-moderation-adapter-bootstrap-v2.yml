@@ -1,0 +1,75 @@
+name: Temporary Groups Moderation Adapter Bootstrap V2
+
+on:
+  push:
+    branches:
+      - agent/groups-moderation-membership-adapter-v2-20260901
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v7
+        with:
+          ref: agent/groups-moderation-membership-adapter-v2-20260901
+          fetch-depth: 0
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply fail-closed Groups moderation adapter patch
+        run: python3 scripts/tmp_groups_moderation_adapter.py
+
+      - name: Format touched Rust sources
+        run: |
+          rustfmt --edition 2024 \
+            crates/rustok-moderation-api/src/model.rs \
+            crates/rustok-moderation/src/application_dispatch.rs \
+            crates/rustok-groups/src/lib.rs \
+            crates/rustok-groups/src/moderation_subject.rs
+
+      - name: Refresh lockfile and compile Groups owner
+        run: cargo check -p rustok-groups --lib
+
+      - name: Verify Groups moderation adapter source boundary
+        run: node scripts/verify/verify-groups-moderation-subject-adapter.mjs
+
+      - name: Test neutral moderation scope claim contract
+        run: cargo test -p rustok-moderation-api --lib scope_claim
+
+      - name: Test Moderation dispatcher trusted scope propagation
+        run: cargo test -p rustok-moderation --lib application_dispatch::tests
+
+      - name: Test Groups moderation adapter contract
+        run: cargo test -p rustok-groups --lib moderation_subject::tests
+
+      - name: Compile focused owner crates with locked graph
+        run: |
+          cargo check --locked -p rustok-moderation-api --lib
+          cargo check --locked -p rustok-moderation --lib
+          cargo check --locked -p rustok-groups --lib
+
+      - name: Ensure bootstrap files are the only temporary paths
+        run: |
+          test -f scripts/tmp_groups_moderation_adapter.py
+          test -f .github/workflows/tmp-groups-moderation-adapter-bootstrap-v2.yml
+          git diff --check
+
+      - name: Remove bootstrap and commit verified implementation
+        run: |
+          rm scripts/tmp_groups_moderation_adapter.py
+          rm .github/workflows/tmp-groups-moderation-adapter-bootstrap-v2.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat(groups): add moderation membership subject adapter"
+          git push origin HEAD:agent/groups-moderation-membership-adapter-v2-20260901
