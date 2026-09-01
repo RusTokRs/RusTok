@@ -48,7 +48,7 @@ This preserves fail-closed behavior without making the Groups adapter responsibl
 
 `crates/rustok-groups/contracts/groups-effective-membership-access.json` records `forum_audience_group_facts` as `source_delivered_execution_pending` and keeps `additional_provider_specific_acl_adapters` in remaining work.
 
-The broad Groups FBA field `membership_enforcement.provider_acl_integration` remains open because one delivered Forum consumer does not complete all additional provider ACL profiles. `evidence.membership_enforcement_access_path_integration` remains null because the owner-backed commands were not executed by this implementation agent.
+The broad Groups FBA field `membership_enforcement.provider_acl_integration` remains open because one delivered Forum consumer does not complete all additional provider ACL profiles. `evidence.membership_enforcement_access_path_integration` remains null because the owner-backed commands have not yet completed the durable runtime gate.
 
 ## Upstream Forum evidence
 
@@ -64,6 +64,25 @@ The Groups-side cross-module verifier is:
 
 `node scripts/verify/verify-groups-membership-enforcement-access-path-integration.mjs`
 
+## Durable execution gate
+
+The path-scoped workflow **Groups Forum Provider ACL Runtime Evidence** is:
+
+`.github/workflows/groups-forum-provider-acl-runtime.yml`
+
+It runs the already-published owner-backed commands against the exact event SHA, including PostgreSQL 16:
+
+```bash
+cargo test --locked -p rustok-server --features mod-forum,mod-groups \
+  forum_group_facts_follow_groups_owner_clock_sqlite -- --nocapture
+
+RUSTOK_GROUPS_TEST_POSTGRES_URL='postgres://postgres:postgres@localhost:5432/rustok_groups_forum_acl_evidence' \
+  cargo test --locked -p rustok-server --features mod-forum,mod-groups \
+  forum_group_facts_follow_groups_owner_clock_postgres -- --ignored --nocapture
+```
+
+A successful run may close only the delivered Forum consumer's SQLite/PostgreSQL owner-clock runtime evidence. It must not promote the broad provider ACL integration to complete while Blog, Pages/Wiki, Marketplace, Media, Events, Chat and remote/degraded profiles remain separate work.
+
 ## Execution status
 
-No Cargo command, test, Node verifier, formatter, migration execution, workflow, browser/schema execution, or CI job was run while adding this Groups-side evidence linkage.
+The durable workflow source is present, but no successful execution is retained yet. The Forum consumer therefore remains source-delivered/execution-pending, and both Groups evidence fields stay null until an exact run succeeds.
