@@ -1,0 +1,70 @@
+name: Translation Runtime Composition Evidence
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/services/graphql_schema.rs"
+      - "apps/server/src/services/app_router.rs"
+      - "crates/rustok-translation/admin/src/transport/native_server_adapter.rs"
+      - "crates/rustok-translation/docs/implementation-plan.md"
+      - "docs/modules/translation-implementation-plan.md"
+      - "scripts/verify/verify-translation-admin-boundary.mjs"
+      - ".github/workflows/translation-runtime-composition-evidence.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.lock"
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/services/graphql_schema.rs"
+      - "apps/server/src/services/app_router.rs"
+      - "crates/rustok-translation/admin/src/transport/native_server_adapter.rs"
+      - "crates/rustok-translation/docs/implementation-plan.md"
+      - "docs/modules/translation-implementation-plan.md"
+      - "scripts/verify/verify-translation-admin-boundary.mjs"
+      - ".github/workflows/translation-runtime-composition-evidence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: translation-runtime-composition-evidence-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  runtime-evidence:
+    name: Translation-only GraphQL/native runtime composition evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Require exact checked-out SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: translation-runtime-composition-evidence
+      - name: Verify Translation admin/runtime source boundary
+        run: npm run verify:translation:admin-boundary
+      - name: Execute Translation-only GraphQL StorageRuntime composition evidence
+        run: cargo test --locked -p rustok-server --lib --no-default-features --features mod-translation translation_graphql_host_receives_initialized_storage_runtime -- --nocapture
+      - name: Execute authenticated production application-router native evidence
+        run: cargo test --locked -p rustok-server --lib --no-default-features --features mod-translation application_router_executes_authenticated_server_function -- --nocapture
