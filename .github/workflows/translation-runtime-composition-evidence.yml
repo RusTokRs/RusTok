@@ -30,45 +30,43 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: translation-runtime-composition-evidence
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
-  patch-source:
-    name: Apply generated-client protocol evidence patch
+  runtime-evidence:
+    name: Translation-only GraphQL/native runtime composition evidence
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: test/translation-router-generated-client-protocol-20260901
-      - name: Patch exact Translation application-router request helper
-        shell: python
-        run: |
-          from pathlib import Path
-          path = Path("apps/server/src/services/app_router.rs")
-          source = path.read_text()
-          before = '''                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-                .header(header::AUTHORIZATION, format!("Bearer {access_token}"))'''
-          after = '''                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-                .header(header::ACCEPT, "application/json")
-                .header(header::AUTHORIZATION, format!("Bearer {access_token}"))'''
-          if after in source:
-              raise SystemExit("generated-client protocol header is already present")
-          if source.count(before) != 1:
-              raise SystemExit(f"expected exactly one request marker, found {source.count(before)}")
-          path.write_text(source.replace(before, after, 1))
-      - name: Commit focused request-protocol fix
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Require exact checked-out SHA
         shell: bash
-        run: |
-          git diff --check
-          test "$(git diff --name-only | wc -l)" -eq 1
-          test "$(git diff --name-only)" = "apps/server/src/services/app_router.rs"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/server/src/services/app_router.rs
-          git commit -m "test(translation): match generated server-fn response protocol"
-          git push origin HEAD:test/translation-router-generated-client-protocol-20260901
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: translation-runtime-composition-evidence
+      - name: Verify Translation admin/runtime source boundary
+        run: npm run verify:translation:admin-boundary
+      - name: Execute Translation-only GraphQL StorageRuntime composition evidence
+        run: cargo test --locked -p rustok-server --lib --no-default-features --features mod-translation translation_graphql_host_receives_initialized_storage_runtime -- --nocapture
+      - name: Execute authenticated production application-router native evidence
+        run: cargo test --locked -p rustok-server --lib --no-default-features --features mod-translation application_router_executes_authenticated_server_function -- --nocapture
