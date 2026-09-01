@@ -406,6 +406,9 @@ claim, completion, abandonment, replay, and lease recovery set the transaction's
 `rustok.tenant_id` before touching request identity or stored responses. The
 tenant remains part of every unique key and mutation predicate; RLS is the
 independent fail-closed boundary rather than a substitute for those predicates.
+Each binding receipt is also bound to one tenant-matched `ModuleCommandContext`:
+actor, trace, correlation, and UUID idempotency evidence must match before a
+stored response can replay.
 
 Structured-data and object-data list calls validate bounded keyset continuation
 inside the requested logical prefix before invoking any capability broker. A

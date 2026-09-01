@@ -10,8 +10,8 @@ use rustok_core::ModuleRegistry;
 use rustok_modules::{
     ArtifactBindingExecutionContext, ArtifactBindingIdempotencyClaim,
     ArtifactBindingIdempotencyError, ArtifactBindingIdempotencyRequest, ArtifactInstallationTarget,
-    InstalledModuleArtifact, ModuleBindingIdempotency, ModuleControlPlane, ModuleDispatchError,
-    ModuleHttpMethod, ModuleRuntimeBinding, SharedArtifactBindingExecutor,
+    InstalledModuleArtifact, ModuleBindingIdempotency, ModuleCommandContext, ModuleControlPlane,
+    ModuleDispatchError, ModuleHttpMethod, ModuleRuntimeBinding, SharedArtifactBindingExecutor,
     artifact_binding_request_digest, dispatch_artifact_command_binding,
     dispatch_artifact_http_binding,
 };
@@ -66,7 +66,7 @@ pub(crate) async fn dispatch_artifact_binding_operation(
     actor_id: Uuid,
     installation: &InstalledModuleArtifact,
     binding: &ModuleRuntimeBinding,
-    idempotency_key: Option<String>,
+    idempotency_key: Option<Uuid>,
     operation: ArtifactBindingOperation,
 ) -> Result<serde_json::Value> {
     let registry = ctx.shared_get::<ModuleRegistry>().ok_or_else(|| {
@@ -100,9 +100,12 @@ pub(crate) async fn dispatch_artifact_binding_operation(
         idempotency_key,
         operation.request_digest()?,
     )?;
-    let context = ArtifactBindingExecutionContext {
+    let binding_execution_context = ArtifactBindingExecutionContext {
         actor_id: Some(actor_id.to_string()),
-        trace_id: None,
+        trace_id: request
+            .as_ref()
+            .map(|request| request.context.trace_id.clone())
+            .or_else(|| rustok_telemetry::current_trace_id()),
     };
     match request {
         Some(request) => {
@@ -122,7 +125,7 @@ pub(crate) async fn dispatch_artifact_binding_operation(
                         installation,
                         tenant_id,
                         operation,
-                        context,
+                        binding_execution_context,
                     )
                     .await;
                     match result {
@@ -147,7 +150,7 @@ pub(crate) async fn dispatch_artifact_binding_operation(
                 installation,
                 tenant_id,
                 operation,
-                context,
+                binding_execution_context,
             )
             .await
         }
@@ -215,7 +218,7 @@ fn idempotency_request(
     actor_id: Uuid,
     installation_id: Uuid,
     binding: &ModuleRuntimeBinding,
-    key: Option<String>,
+    key: Option<Uuid>,
     request_digest: String,
 ) -> Result<Option<ArtifactBindingIdempotencyRequest>> {
     let key = match (binding.idempotency.clone(), key) {
@@ -230,13 +233,28 @@ fn idempotency_request(
         (ModuleBindingIdempotency::BestEffort, None) => return Ok(None),
     };
     Ok(Some(ArtifactBindingIdempotencyRequest {
-        tenant_id,
-        actor_id,
+        context: artifact_binding_command_context(tenant_id, actor_id, key),
         installation_id,
         binding_id: binding.id.clone(),
-        idempotency_key: key,
         request_digest,
     }))
+}
+
+fn artifact_binding_command_context(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    idempotency_key: Uuid,
+) -> ModuleCommandContext {
+    let trace_id = rustok_telemetry::current_trace_id()
+        .filter(|trace_id| !trace_id.trim().is_empty())
+        .unwrap_or_else(|| format!("artifact-binding:{idempotency_key}"));
+    ModuleCommandContext {
+        actor_id,
+        tenant_id: Some(tenant_id),
+        trace_id,
+        correlation_id: idempotency_key,
+        idempotency_key,
+    }
 }
 
 fn map_dispatch_error(error: ModuleDispatchError) -> Error {

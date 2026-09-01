@@ -18,7 +18,10 @@ or host infrastructure.
   owner.
 - [ ] Compile the exact rendered fixture with the pinned native Rust component
   target and toolchain in isolated CI.
-- [ ] Publish SDK/template identity into the module init/build CLI flow.
+- [x] Publish SDK/template identity into the canonical module init/build CLI
+  flow. `rustok module init` invokes the template renderer, returns exact SDK
+  and template versions in its owner-local outcome, and produces the pinned
+  source manifest consumed by the isolated build request.
 
 ## Completion Condition
 

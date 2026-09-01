@@ -1534,6 +1534,66 @@ async fn record_publish_artifact_receipt(
     Ok(())
 }
 
+async fn validation_job_enqueue_replay(
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    command: &ModuleValidationJobEnqueueCommand,
+) -> Result<Option<ModuleValidationJobEnqueueResult>, ModuleGovernanceError> {
+    let mark = |n| placeholder(backend, n);
+    let Some(row) = tx.query_one_raw(Statement::from_sql_and_values(
+        backend,
+        format!("SELECT expected_revision, CAST(actor_id AS TEXT) AS actor_id, trace_id, CAST(correlation_id AS TEXT) AS correlation_id, CAST(actor_principal AS TEXT) AS actor_principal, allow_rejected_retry, request_status, queued, validation_job_id FROM registry_validation_job_enqueue_operations WHERE request_id = {} AND idempotency_key = {}", mark(1), mark(2)),
+        vec![command.request_id.clone().into(), registry_uuid_value(command.context.idempotency_key, backend)],
+    )).await.map_err(store_error)? else { return Ok(None); };
+    let actor: serde_json::Value = serde_json::from_str(
+        &row.try_get::<String>("", "actor_principal")
+            .map_err(store_error)?,
+    )
+    .map_err(store_error)?;
+    if row
+        .try_get::<i64>("", "expected_revision")
+        .map_err(store_error)?
+        != command.expected_revision
+        || row.try_get::<String>("", "actor_id").map_err(store_error)?
+            != command.context.actor_id.to_string()
+        || row.try_get::<String>("", "trace_id").map_err(store_error)? != command.context.trace_id
+        || row
+            .try_get::<String>("", "correlation_id")
+            .map_err(store_error)?
+            != command.context.correlation_id.to_string()
+        || actor != command.actor_principal
+        || row
+            .try_get::<bool>("", "allow_rejected_retry")
+            .map_err(store_error)?
+            != command.allow_rejected_retry
+    {
+        return Err(ModuleGovernanceError::ValidationJobEnqueueIdempotencyConflict);
+    }
+    Ok(Some(ModuleValidationJobEnqueueResult {
+        request_id: command.request_id.clone(),
+        request_status: row.try_get("", "request_status").map_err(store_error)?,
+        queued: row.try_get("", "queued").map_err(store_error)?,
+        validation_job_id: row.try_get("", "validation_job_id").map_err(store_error)?,
+    }))
+}
+
+async fn record_validation_job_enqueue_receipt(
+    infrastructure: &ControlPlaneInfrastructure,
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    now: &str,
+    command: &ModuleValidationJobEnqueueCommand,
+    result: &ModuleValidationJobEnqueueResult,
+) -> Result<(), ModuleGovernanceError> {
+    let mark = |n| placeholder(backend, n);
+    tx.execute_raw(Statement::from_sql_and_values(
+        backend,
+        format!("INSERT INTO registry_validation_job_enqueue_operations (operation_id, request_id, idempotency_key, expected_revision, actor_id, trace_id, correlation_id, actor_principal, allow_rejected_retry, request_status, queued, validation_job_id, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9), mark(10), mark(11), mark(12)),
+        vec![registry_uuid_value(infrastructure.new_id(), backend), command.request_id.clone().into(), registry_uuid_value(command.context.idempotency_key, backend), command.expected_revision.into(), registry_uuid_value(command.context.actor_id, backend), command.context.trace_id.clone().into(), registry_uuid_value(command.context.correlation_id, backend), Value::Json(Some(Box::new(command.actor_principal.clone()))), command.allow_rejected_retry.into(), result.request_status.clone().into(), result.queued.into(), result.validation_job_id.clone().into()],
+    )).await.map_err(store_error)?;
+    Ok(())
+}
+
 struct PublishRequestReviewReceipt<'a> {
     operation_kind: &'static str,
     request_id: &'a str,
@@ -1980,6 +2040,7 @@ impl ModuleValidationJobEnqueueCommand {
         if self.request_id.trim().is_empty()
             || self.expected_revision < 1
             || !self.actor_principal.is_object()
+            || !valid_platform_registry_command_context(&self.context, &self.actor_principal)
         {
             return Err(ModuleGovernanceError::InvalidValidationJobEnqueueCommand);
         }
@@ -6165,8 +6226,9 @@ impl SeaOrmModuleGovernanceService {
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT id, slug, version, revision, status, artifact_origin FROM registry_publish_requests WHERE id = {}",
-                    mark(1)
+                    "SELECT id, slug, version, revision, status, artifact_origin FROM registry_publish_requests WHERE id = {}{}",
+                    mark(1),
+                    if backend == DbBackend::Postgres { " FOR UPDATE" } else { "" },
                 ),
                 vec![command.request_id.clone().into()],
             ))
@@ -6188,6 +6250,10 @@ impl SeaOrmModuleGovernanceService {
         let current_revision: i64 = request
             .try_get("", "revision")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if let Some(result) = validation_job_enqueue_replay(&tx, backend, &command).await? {
+            tx.commit().await.map_err(store_error)?;
+            return Ok(result);
+        }
         if command.expected_revision != current_revision {
             return Err(ModuleGovernanceError::PublishRequestRevisionConflict {
                 expected: command.expected_revision,
@@ -6278,15 +6344,25 @@ impl SeaOrmModuleGovernanceService {
             let job_id: String = job
                 .try_get("", "id")
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            tx.commit()
-                .await
-                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            return Ok(ModuleValidationJobEnqueueResult {
+            let result = ModuleValidationJobEnqueueResult {
                 request_id,
                 request_status: status,
                 queued: false,
                 validation_job_id: Some(job_id),
-            });
+            };
+            record_validation_job_enqueue_receipt(
+                &self.infrastructure,
+                &tx,
+                backend,
+                now,
+                &command,
+                &result,
+            )
+            .await?;
+            tx.commit()
+                .await
+                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+            return Ok(result);
         }
         let requeued = status == "rejected";
         let queue_reason = if recovered_stale_job {
@@ -6349,15 +6425,25 @@ impl SeaOrmModuleGovernanceService {
                 vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(actor_json.clone()))), Value::Json(Some(Box::new(details)))],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         }
-        tx.commit()
-            .await
-            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        Ok(ModuleValidationJobEnqueueResult {
+        let result = ModuleValidationJobEnqueueResult {
             request_id,
             request_status: "validating".to_string(),
             queued: true,
             validation_job_id: Some(job_id),
-        })
+        };
+        record_validation_job_enqueue_receipt(
+            &self.infrastructure,
+            &tx,
+            backend,
+            now,
+            &command,
+            &result,
+        )
+        .await?;
+        tx.commit()
+            .await
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        Ok(result)
     }
 
     /// Claims a queued validation job through a conditional update and emits
@@ -11632,6 +11718,10 @@ pub enum ModuleGovernanceError {
     #[error("validation-stage report requires request ID, stage key, known status, and actor")]
     InvalidValidationStageReportCommand,
     #[error(
+        "registry validation-job enqueue idempotency key was reused for a different immutable command"
+    )]
+    ValidationJobEnqueueIdempotencyConflict,
+    #[error(
         "validation stage `{stage_key}` is not required for artifact origin `{artifact_origin}`"
     )]
     ValidationStageNotRequiredForArtifactOrigin {
@@ -11961,6 +12051,7 @@ impl ModuleGovernanceError {
             | Self::RemoteValidationLeaseNotRunning(_)
             | Self::RemoteValidationLeaseExpired
             | Self::InvalidValidationStageTransition { .. }
+            | Self::ValidationJobEnqueueIdempotencyConflict
             | Self::PublishRequestInvalidHeldFromStatus
             | Self::PlatformBuildStageIdempotencyConflict
             | Self::ExternalPrebuiltStageIdempotencyConflict
@@ -12045,6 +12136,11 @@ mod tests {
             ),
             (
                 ModuleGovernanceError::ValidationStageReportIdempotencyConflict,
+                ModuleGovernanceErrorCategory::Conflict,
+                "module_governance_conflict",
+            ),
+            (
+                ModuleGovernanceError::ValidationJobEnqueueIdempotencyConflict,
                 ModuleGovernanceErrorCategory::Conflict,
                 "module_governance_conflict",
             ),
@@ -14434,6 +14530,24 @@ mod tests {
             .validate(),
             Err(ModuleGovernanceError::InvalidValidationJobEnqueueCommand)
         ));
+        let actor_id = Uuid::new_v4();
+        assert!(matches!(
+            ModuleValidationJobEnqueueCommand {
+                request_id: "request-1".to_string(),
+                expected_revision: 1,
+                context: ModuleCommandContext {
+                    actor_id,
+                    tenant_id: Some(Uuid::new_v4()),
+                    trace_id: "test:validation-job-enqueue".to_string(),
+                    correlation_id: Uuid::new_v4(),
+                    idempotency_key: Uuid::new_v4(),
+                },
+                actor_principal: serde_json::json!({ "kind": "user", "id": actor_id }),
+                allow_rejected_retry: false,
+            }
+            .validate(),
+            Err(ModuleGovernanceError::InvalidValidationJobEnqueueCommand)
+        ));
     }
 
     #[test]
@@ -14493,6 +14607,114 @@ mod tests {
             .validate(),
             Err(ModuleGovernanceError::InvalidValidationJobResultCommand)
         ));
+    }
+
+    #[tokio::test]
+    async fn validation_job_enqueue_replays_only_the_exact_command_context() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        for statement in [
+            "CREATE TABLE registry_publish_requests (\
+                id TEXT PRIMARY KEY, revision INTEGER NOT NULL, slug TEXT NOT NULL, version TEXT NOT NULL,\
+                status TEXT NOT NULL, artifact_origin TEXT NOT NULL, validation_errors TEXT NOT NULL,\
+                rejected_by_principal TEXT NULL, rejection_reason TEXT NULL, validated_at TEXT NULL,\
+                updated_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_validation_jobs (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, slug TEXT NOT NULL, version TEXT NOT NULL,\
+                status TEXT NOT NULL, triggered_by TEXT NOT NULL, queue_reason TEXT NOT NULL,\
+                attempt_number INTEGER NOT NULL, started_at TEXT NULL, finished_at TEXT NULL,\
+                last_error TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_governance_events (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, request_id TEXT NULL, release_id TEXT NULL,\
+                event_type TEXT NOT NULL, actor_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
+                details TEXT NOT NULL, created_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_validation_job_enqueue_operations (\
+                operation_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, idempotency_key TEXT NOT NULL,\
+                expected_revision INTEGER NOT NULL, actor_id TEXT NOT NULL, trace_id TEXT NOT NULL,\
+                correlation_id TEXT NOT NULL, actor_principal JSON NOT NULL,\
+                allow_rejected_retry INTEGER NOT NULL, request_status TEXT NOT NULL, queued INTEGER NOT NULL,\
+                validation_job_id TEXT NULL, committed_at TEXT NOT NULL,\
+                UNIQUE (request_id, idempotency_key)\
+             )",
+            "INSERT INTO registry_publish_requests (\
+                id, revision, slug, version, status, artifact_origin, validation_errors, updated_at\
+             ) VALUES (\
+                'request-1', 1, 'sample_module', '1.0.0', 'submitted', 'platform_built', '[]', datetime('now')\
+             )",
+        ] {
+            database
+                .execute_raw(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("schema or fixture");
+        }
+
+        let service = SeaOrmModuleGovernanceService::new(database.clone());
+        let actor_id = Uuid::new_v4();
+        let command = ModuleValidationJobEnqueueCommand {
+            request_id: "request-1".to_string(),
+            expected_revision: 1,
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: None,
+                trace_id: "test:validation-job-enqueue-replay".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            actor_principal: serde_json::json!({ "kind": "user", "id": actor_id }),
+            allow_rejected_retry: false,
+        };
+
+        let queued = service
+            .enqueue_validation_job(command.clone())
+            .await
+            .expect("initial enqueue");
+        assert!(queued.queued);
+        assert_eq!(queued.request_status, "validating");
+        assert!(queued.validation_job_id.is_some());
+        assert_eq!(
+            service
+                .enqueue_validation_job(command.clone())
+                .await
+                .expect("exact replay"),
+            queued
+        );
+
+        let mut changed_context = command;
+        changed_context.context.trace_id = "test:changed-validation-job-enqueue-replay".to_string();
+        assert_eq!(
+            service.enqueue_validation_job(changed_context).await,
+            Err(ModuleGovernanceError::ValidationJobEnqueueIdempotencyConflict)
+        );
+
+        let job_count = database
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM registry_validation_jobs".to_string(),
+            ))
+            .await
+            .expect("job count query")
+            .expect("job count row")
+            .try_get::<i64>("", "count")
+            .expect("job count");
+        let event_count = database
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM registry_governance_events".to_string(),
+            ))
+            .await
+            .expect("event count query")
+            .expect("event count row")
+            .try_get::<i64>("", "count")
+            .expect("event count");
+        assert_eq!(job_count, 1);
+        assert_eq!(event_count, 2);
     }
 
     #[tokio::test]

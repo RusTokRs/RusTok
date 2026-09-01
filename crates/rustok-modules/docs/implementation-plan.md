@@ -21,6 +21,13 @@ boundary and the module-owned admin transport for backend write/build logic.
 
 ## Current verification evidence
 
+On 2026-09-01, the validation-job enqueue owner path gained a durable exact-replay
+receipt. The platform-scoped command context, expected request revision, actor
+principal, and rejected-retry policy are bound to one idempotency key; an exact
+retry returns the stored queue result, while changed context fails closed. The
+focused governance test, scoped owner check, formatting, and control-plane
+write-path verifier provide the current evidence for this slice.
+
 On 2026-08-22, the scoped owner test command
 `cargo test --locked -p rustok-modules --lib` passed 243 tests. This includes
 the durable build execution-claim/recovery cases, artifact lifecycle and
@@ -1271,7 +1278,9 @@ admitted HTTP timeout; an HTTP host must still own the external route prefix,
 authenticate and authorize the binding permission, map transport responses, and
 apply the binding's idempotency policy. `SeaOrmArtifactBindingIdempotencyStore`
 owns durable request identity, replay output, and an expiring execution lease
-for every externally routed binding. The server HTTP route is
+for every externally routed binding. Its receipt binds one tenant-matched
+`ModuleCommandContext`, so replay also requires the original actor, trace,
+correlation, and UUID idempotency evidence. The server HTTP route is
 `/api/artifacts/{installation_id}/{*path}`: it resolves only an exact active
 installation, matches a literal admitted method/path pair, authorizes the
 binding's declared dynamic RBAC key, accepts exactly JSON, and dispatches only
@@ -1746,9 +1755,11 @@ can mark itself authorized.
 
 `SeaOrmArtifactDataExportService` provides the first owner-only export slice.
 Each bounded keyset page requires a host `ArtifactDataExportAuthorizer`, an
-expected active namespace revision, and actor/reason metadata. It holds the
+expected active namespace revision, a tenant-matched `ModuleCommandContext`,
+and a reason. It holds the
 namespace lifecycle lock while it reads the page and records a redacted durable
-audit row plus `module.artifact.data_exported` outbox fact. Export is not a
+audit row plus `module.artifact.data_exported` outbox fact with the same actor,
+trace, correlation, and idempotency evidence. Export is not a
 sandbox capability and is deliberately not described as a full backup snapshot.
 
 The current durable backup/restore implementation is a separate owner boundary

@@ -502,7 +502,9 @@ pub struct ArtifactDataExportRequest {
     /// has since been purged or otherwise lifecycle-revised.
     pub expected_namespace_revision: u64,
     pub page: ArtifactDataPageRequest,
-    pub actor_id: Uuid,
+    /// Authenticated command evidence for this owner-only export. Its tenant
+    /// must match the retained namespace exactly.
+    pub context: ModuleCommandContext,
     pub reason: String,
 }
 
@@ -5123,8 +5125,9 @@ where
                 format!(
                     "INSERT INTO module_artifact_data_exports
                      (export_id, tenant_id, module_slug, data_contract_revision, policy_revision, namespace_revision,
-                      actor_id, prefix, after_key, page_limit, reason, exported_records, completed_at)
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                      actor_id, trace_id, correlation_id, idempotency_key, prefix, after_key, page_limit, reason,
+                      exported_records, completed_at)
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5137,6 +5140,9 @@ where
                     placeholder(backend, 10),
                     placeholder(backend, 11),
                     placeholder(backend, 12),
+                    placeholder(backend, 13),
+                    placeholder(backend, 14),
+                    placeholder(backend, 15),
                     now_expression(backend),
                 ),
                 vec![
@@ -5146,7 +5152,10 @@ where
                     revision_value(request.scope.data_contract_revision)?,
                     revision_value(request.scope.policy_revision)?,
                     revision_value(namespace_revision)?,
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                     request.page.prefix.clone().into(),
                     request
                         .page
@@ -5163,9 +5172,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(request.scope.tenant_id),
-                    Some(request.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &request.context,
                     DomainEvent::ModuleArtifactDataExported {
                         export_id,
                         tenant_id: request.scope.tenant_id,
@@ -5767,7 +5775,8 @@ fn validate_export_request(request: &ArtifactDataExportRequest) -> Result<(), Ar
     request.scope.validate()?;
     validate_page_request(&request.page)?;
     if request.expected_namespace_revision == 0
-        || request.actor_id.is_nil()
+        || request.context.tenant_id != Some(request.scope.tenant_id)
+        || request.context.validate().is_err()
         || request.reason.trim().is_empty()
         || request.reason.trim() != request.reason
         || request.reason.len() > 2_000
@@ -6324,14 +6333,20 @@ mod tests {
             policy_revision: 1,
         };
         let mut request = ArtifactDataExportRequest {
-            scope,
+            scope: scope.clone(),
             expected_namespace_revision: 1,
             page: ArtifactDataPageRequest {
                 prefix: "state/".to_string(),
                 after_key: None,
                 limit: 100,
             },
-            actor_id: Uuid::new_v4(),
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: Some(scope.tenant_id),
+                trace_id: "test:artifact-data-export".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
             reason: "operator backup review".to_string(),
         };
         assert!(validate_export_request(&request).is_ok());
@@ -6342,6 +6357,12 @@ mod tests {
             Err(ArtifactDataError::ExportPrecondition)
         ));
         request.expected_namespace_revision = 1;
+        request.context.tenant_id = Some(Uuid::new_v4());
+        assert!(matches!(
+            validate_export_request(&request),
+            Err(ArtifactDataError::ExportPrecondition)
+        ));
+        request.context.tenant_id = Some(request.scope.tenant_id);
         request.reason = " ".to_string();
         assert!(matches!(
             validate_export_request(&request),
@@ -6660,6 +6681,13 @@ mod tests {
                 .is_some()
         );
 
+        let export_context = ModuleCommandContext {
+            actor_id: Uuid::new_v4(),
+            tenant_id: Some(next_scope.tenant_id),
+            trace_id: "test:artifact-data-export".to_string(),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        };
         SeaOrmArtifactDataExportService::new(database.clone(), AllowExportAuthorizer)
             .export(ArtifactDataExportRequest {
                 scope: next_scope.clone(),
@@ -6669,11 +6697,70 @@ mod tests {
                     after_key: None,
                     limit: 10,
                 },
-                actor_id: Uuid::new_v4(),
+                context: export_context.clone(),
                 reason: "verify policy-scoped export evidence".to_string(),
             })
             .await
             .expect("export data");
+        let export_audit = database
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT actor_id, trace_id, correlation_id, idempotency_key \
+                 FROM module_artifact_data_exports"
+                    .to_string(),
+            ))
+            .await
+            .expect("export audit query")
+            .expect("export audit");
+        assert_eq!(
+            export_audit
+                .try_get::<String>("", "actor_id")
+                .expect("export audit actor"),
+            export_context.actor_id.to_string()
+        );
+        assert_eq!(
+            export_audit
+                .try_get::<String>("", "trace_id")
+                .expect("export audit trace"),
+            export_context.trace_id
+        );
+        assert_eq!(
+            export_audit
+                .try_get::<String>("", "correlation_id")
+                .expect("export audit correlation"),
+            export_context.correlation_id.to_string()
+        );
+        assert_eq!(
+            export_audit
+                .try_get::<String>("", "idempotency_key")
+                .expect("export audit idempotency"),
+            export_context.idempotency_key.to_string()
+        );
+        let export_event = database
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT payload FROM sys_events \
+                 WHERE event_type = 'module.artifact.data_exported'"
+                    .to_string(),
+            ))
+            .await
+            .expect("export event query")
+            .expect("export event");
+        let export_payload: Value = export_event
+            .try_get("", "payload")
+            .expect("export event payload");
+        let export_envelope: rustok_events::EventEnvelope =
+            serde_json::from_value(export_payload).expect("export event envelope");
+        assert_eq!(export_envelope.actor_id, Some(export_context.actor_id));
+        assert_eq!(export_envelope.tenant_id, next_scope.tenant_id);
+        assert_eq!(
+            export_envelope.correlation_id,
+            export_context.correlation_id
+        );
+        assert_eq!(
+            export_envelope.trace_id.as_deref(),
+            Some(export_context.trace_id.as_str())
+        );
         let purge_request = ArtifactDataPurgeRequest {
             scope: next_scope.clone(),
             expected_namespace_revision: 1,

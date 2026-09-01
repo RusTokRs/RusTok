@@ -495,7 +495,7 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   artifact lifecycle family (activation, deactivation, tenant intent,
   uninstall, rollback, migration checkpoints, tenant data purge, and artifact
   admission),
-  settings recovery, data snapshots, artifact secret binding, global
+  settings recovery, data snapshots, owner-only artifact-data export, artifact secret binding, global
   artifact-security transitions, static promotion, and static-distribution
   bootstrap/admission/revocation, and tenant-scoped registry platform-build
   staging now carry this one context through their owner validation, durable
@@ -945,8 +945,10 @@ adapter and must not be used as artifact identity or durable policy state.
   rejects unadmitted routes and envelopes over the declared size, while the
   artifact runtime clamps the effective sandbox wall-clock limit to the
   declared timeout. `SeaOrmArtifactBindingIdempotencyStore` supplies one durable
-  request-digest/replay/lease coordinator for every externally routed binding,
-  so a crashed pending request can be reclaimed after its lease instead of
+  request-digest/replay/lease coordinator for every externally routed binding.
+  Its durable receipt binds one tenant-matched `ModuleCommandContext`, so a
+  replay cannot substitute actor, trace, correlation, or UUID idempotency
+  evidence. A crashed pending request can be reclaimed after its lease instead of
   becoming permanently stuck. The platform route now resolves an exact active
   installation, matches only its literal admitted binding, authorizes its
   declared RBAC key, and dispatches through the shared CAS sandbox executor.
@@ -1146,7 +1148,9 @@ adapter and must not be used as artifact identity or durable policy state.
   stages are owner-owned: manual report/requeue transitions, remote lease claim,
   heartbeat, terminal completion, expired-lease requeue, validation-job enqueue,
   job claim, stale-job recovery, worker retry telemetry, and automated result
-  materialization. A later authorized enqueue marks a validation job still
+  materialization. Live enqueue binds the platform-scoped command context,
+  expected revision, actor principal, and rejected-retry policy to a durable
+  receipt, so only the exact retry returns the original queue result. A later authorized enqueue marks a validation job still
   running after 15 minutes as failed with the stable
   `validation_worker_lease_expired` reason, then creates the next durable
   attempt and audit facts atomically. The worker supplies only immutable
@@ -2131,8 +2135,9 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   platform-storage, and general-secret dependencies or APIs in the worker crate
   and verifies that the untrusted runner is environment-cleared without
   database or credential forwarding. The worker also fails closed without the
-  bounded isolation attestation, which binds the launcher digest and requires
-  explicit false tenant-database/general-secret access facts, while deployment
+  bounded isolation attestation, which binds the launcher digest, requires
+  explicit false tenant-database/general-secret access facts, and accepts only
+  positive bounded PID and open-file ceilings, while deployment
   isolation evidence remains required before this item can close.
 
 ### 4.2 Build Request Contract

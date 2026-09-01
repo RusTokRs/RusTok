@@ -132,7 +132,7 @@ pub(crate) async fn execute_artifact_ui_action(
     installation_id: Uuid,
     contribution_id: &str,
     input: serde_json::Value,
-    idempotency_key: Option<String>,
+    idempotency_key: Option<Uuid>,
 ) -> Result<serde_json::Value> {
     let installation = resolve_artifact_installation(ctx, installation_id, tenant_id).await?;
     let binding = find_artifact_ui_action_binding(

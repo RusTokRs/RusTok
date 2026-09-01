@@ -19,6 +19,9 @@ impl MigrationTrait for Migration {
                     policy_revision BIGINT NOT NULL CHECK (policy_revision > 0),\
                     namespace_revision BIGINT NOT NULL CHECK (namespace_revision > 0),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) BETWEEN 1 AND 512),\
+                    correlation_id UUID NOT NULL,\
+                    idempotency_key UUID NOT NULL,\
                     prefix TEXT NOT NULL CHECK (length(prefix) BETWEEN 2 AND 256),\
                     after_key TEXT NULL CHECK (after_key IS NULL OR length(after_key) BETWEEN 1 AND 256),\
                     page_limit BIGINT NOT NULL CHECK (page_limit BETWEEN 1 AND 100),\
@@ -42,6 +45,9 @@ impl MigrationTrait for Migration {
                     policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),\
                     namespace_revision INTEGER NOT NULL CHECK (namespace_revision > 0),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) BETWEEN 1 AND 512),\
+                    correlation_id TEXT NOT NULL,\
+                    idempotency_key TEXT NOT NULL,\
                     prefix TEXT NOT NULL CHECK (length(prefix) BETWEEN 2 AND 256),\
                     after_key TEXT NULL CHECK (after_key IS NULL OR length(after_key) BETWEEN 1 AND 256),\
                     page_limit INTEGER NOT NULL CHECK (page_limit BETWEEN 1 AND 100),\
@@ -57,7 +63,7 @@ impl MigrationTrait for Migration {
                     "artifact data export migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

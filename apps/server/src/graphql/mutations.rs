@@ -1208,7 +1208,7 @@ impl RootMutation {
             installation_id,
             &contribution_id,
             input.0,
-            Some(idempotency_key.to_string()),
+            Some(idempotency_key),
         )
         .await
         .map_err(map_artifact_ui_action_error)?;

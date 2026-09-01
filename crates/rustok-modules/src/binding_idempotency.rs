@@ -10,19 +10,16 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::ControlPlaneInfrastructure;
+use crate::{ControlPlaneInfrastructure, ModuleCommandContext};
 
-const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 128;
 const LEASE_SECONDS: i64 = 60;
 
 /// Immutable identity for a single externally routed artifact binding operation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArtifactBindingIdempotencyRequest {
-    pub tenant_id: Uuid,
-    pub actor_id: Uuid,
+    pub context: ModuleCommandContext,
     pub installation_id: Uuid,
     pub binding_id: String,
-    pub idempotency_key: String,
     pub request_digest: String,
 }
 
@@ -86,7 +83,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
         let transaction = self.db.begin().await.map_err(storage_error)?;
         let backend = transaction.get_database_backend();
         ensure_supported_backend(backend)?;
-        configure_tenant_scope(&transaction, request.tenant_id)
+        configure_tenant_scope(&transaction, request_tenant_id(request))
             .await
             .map_err(storage_error)?;
         let existing = transaction
@@ -103,6 +100,16 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                 .try_get("", "request_digest")
                 .map_err(storage_error)?;
             if stored_digest != request.request_digest {
+                return Err(ArtifactBindingIdempotencyError::Conflict);
+            }
+            let stored_trace_id: String =
+                existing.try_get("", "trace_id").map_err(storage_error)?;
+            let stored_correlation_id: String = existing
+                .try_get("", "correlation_id")
+                .map_err(storage_error)?;
+            if stored_trace_id != request.context.trace_id
+                || stored_correlation_id != request.context.correlation_id.to_string()
+            {
                 return Err(ArtifactBindingIdempotencyError::Conflict);
             }
             let status: String = existing.try_get("", "status").map_err(storage_error)?;
@@ -122,11 +129,13 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                     vec![
                         uuid_value(operation_id, backend),
                         lease_value(self.infrastructure.now(), backend),
-                        uuid_value(request.tenant_id, backend),
-                        uuid_value(request.actor_id, backend),
+                        uuid_value(request_tenant_id(request), backend),
+                        uuid_value(request.context.actor_id, backend),
                         uuid_value(request.installation_id, backend),
                         request.binding_id.clone().into(),
-                        request.idempotency_key.clone().into(),
+                        uuid_value(request.context.idempotency_key, backend),
+                        request.context.trace_id.clone().into(),
+                        uuid_value(request.context.correlation_id, backend),
                     ],
                 ))
                 .await
@@ -146,12 +155,14 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                 insert_operation_sql(backend),
                 vec![
                     uuid_value(operation_id, backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request_tenant_id(request), backend),
+                    uuid_value(request.context.actor_id, backend),
                     uuid_value(request.installation_id, backend),
                     request.binding_id.clone().into(),
-                    request.idempotency_key.clone().into(),
+                    uuid_value(request.context.idempotency_key, backend),
                     request.request_digest.clone().into(),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
                     lease_value(self.infrastructure.now(), backend),
                 ],
             ))
@@ -180,7 +191,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
         let transaction = self.db.begin().await.map_err(storage_error)?;
         let backend = transaction.get_database_backend();
         ensure_supported_backend(backend)?;
-        configure_tenant_scope(&transaction, request.tenant_id)
+        configure_tenant_scope(&transaction, request_tenant_id(request))
             .await
             .map_err(storage_error)?;
         let completed = transaction
@@ -190,12 +201,14 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                 vec![
                     SqlValue::Json(Some(Box::new(response.clone()))),
                     uuid_value(operation_id, backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request_tenant_id(request), backend),
+                    uuid_value(request.context.actor_id, backend),
                     uuid_value(request.installation_id, backend),
                     request.binding_id.clone().into(),
-                    request.idempotency_key.clone().into(),
+                    uuid_value(request.context.idempotency_key, backend),
                     request.request_digest.clone().into(),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
                 ],
             ))
             .await
@@ -221,7 +234,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
         let transaction = self.db.begin().await.map_err(storage_error)?;
         let backend = transaction.get_database_backend();
         ensure_supported_backend(backend)?;
-        configure_tenant_scope(&transaction, request.tenant_id)
+        configure_tenant_scope(&transaction, request_tenant_id(request))
             .await
             .map_err(storage_error)?;
         transaction
@@ -230,12 +243,14 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                 abandon_operation_sql(backend),
                 vec![
                     uuid_value(operation_id, backend),
-                    uuid_value(request.tenant_id, backend),
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request_tenant_id(request), backend),
+                    uuid_value(request.context.actor_id, backend),
                     uuid_value(request.installation_id, backend),
                     request.binding_id.clone().into(),
-                    request.idempotency_key.clone().into(),
+                    uuid_value(request.context.idempotency_key, backend),
                     request.request_digest.clone().into(),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
                 ],
             ))
             .await
@@ -248,15 +263,11 @@ impl SeaOrmArtifactBindingIdempotencyStore {
 fn validate_request(
     request: &ArtifactBindingIdempotencyRequest,
 ) -> Result<(), ArtifactBindingIdempotencyError> {
-    if request.tenant_id.is_nil()
-        || request.actor_id.is_nil()
+    if request.context.tenant_id.is_none()
+        || request.context.validate().is_err()
         || request.installation_id.is_nil()
         || request.binding_id.trim().is_empty()
         || request.binding_id.len() > 256
-        || request.idempotency_key.trim() != request.idempotency_key
-        || request.idempotency_key.is_empty()
-        || request.idempotency_key.len() > MAX_IDEMPOTENCY_KEY_LENGTH
-        || request.idempotency_key.chars().any(char::is_control)
         || !is_digest(&request.request_digest)
     {
         return Err(ArtifactBindingIdempotencyError::InvalidRequest);
@@ -278,7 +289,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), ArtifactBindingIde
         backend => Err(ArtifactBindingIdempotencyError::Storage(format!(
             "artifact binding idempotency does not support {backend:?}"
         ))),
-}
+    }
 }
 
 fn request_values(
@@ -286,12 +297,19 @@ fn request_values(
     backend: DbBackend,
 ) -> Vec<sea_orm::Value> {
     vec![
-        uuid_value(request.tenant_id, backend),
-        uuid_value(request.actor_id, backend),
+        uuid_value(request_tenant_id(request), backend),
+        uuid_value(request.context.actor_id, backend),
         uuid_value(request.installation_id, backend),
         request.binding_id.clone().into(),
-        request.idempotency_key.clone().into(),
+        uuid_value(request.context.idempotency_key, backend),
     ]
+}
+
+fn request_tenant_id(request: &ArtifactBindingIdempotencyRequest) -> Uuid {
+    request
+        .context
+        .tenant_id
+        .expect("artifact binding idempotency validates tenant-scoped context before persistence")
 }
 
 fn lease_value(now: DateTime<Utc>, backend: DbBackend) -> sea_orm::Value {
@@ -314,7 +332,7 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> sea_orm::Value {
 fn select_operation_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
     format!(
-        "SELECT request_digest, status, CAST(response AS TEXT) AS response FROM module_artifact_binding_operations WHERE tenant_id = {prefix}1 AND actor_id = {prefix}2 AND installation_id = {prefix}3 AND binding_id = {prefix}4 AND idempotency_key = {prefix}5 LIMIT 1"
+        "SELECT request_digest, trace_id, CAST(correlation_id AS TEXT) AS correlation_id, status, CAST(response AS TEXT) AS response FROM module_artifact_binding_operations WHERE tenant_id = {prefix}1 AND actor_id = {prefix}2 AND installation_id = {prefix}3 AND binding_id = {prefix}4 AND idempotency_key = {prefix}5 LIMIT 1"
     )
 }
 
@@ -326,28 +344,28 @@ fn recover_operation_sql(backend: DbBackend) -> String {
         _ => unreachable!("unsupported database backend was validated"),
     };
     format!(
-        "UPDATE module_artifact_binding_operations SET operation_id = {prefix}1, lease_expires_at = {prefix}2 WHERE tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND status = 'pending' AND {expired}"
+        "UPDATE module_artifact_binding_operations SET operation_id = {prefix}1, lease_expires_at = {prefix}2 WHERE tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND trace_id = {prefix}8 AND correlation_id = {prefix}9 AND status = 'pending' AND {expired}"
     )
 }
 
 fn insert_operation_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
     format!(
-        "INSERT INTO module_artifact_binding_operations (operation_id, tenant_id, actor_id, installation_id, binding_id, idempotency_key, request_digest, status, lease_expires_at) VALUES ({prefix}1, {prefix}2, {prefix}3, {prefix}4, {prefix}5, {prefix}6, {prefix}7, 'pending', {prefix}8) ON CONFLICT (tenant_id, actor_id, installation_id, binding_id, idempotency_key) DO NOTHING"
+        "INSERT INTO module_artifact_binding_operations (operation_id, tenant_id, actor_id, installation_id, binding_id, idempotency_key, request_digest, trace_id, correlation_id, status, lease_expires_at) VALUES ({prefix}1, {prefix}2, {prefix}3, {prefix}4, {prefix}5, {prefix}6, {prefix}7, {prefix}8, {prefix}9, 'pending', {prefix}10) ON CONFLICT (tenant_id, actor_id, installation_id, binding_id, idempotency_key) DO NOTHING"
     )
 }
 
 fn complete_operation_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
     format!(
-        "UPDATE module_artifact_binding_operations SET status = 'completed', response = {prefix}1, completed_at = CURRENT_TIMESTAMP WHERE operation_id = {prefix}2 AND tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND request_digest = {prefix}8 AND status = 'pending'"
+        "UPDATE module_artifact_binding_operations SET status = 'completed', response = {prefix}1, completed_at = CURRENT_TIMESTAMP WHERE operation_id = {prefix}2 AND tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND request_digest = {prefix}8 AND trace_id = {prefix}9 AND correlation_id = {prefix}10 AND status = 'pending'"
     )
 }
 
 fn abandon_operation_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
     format!(
-        "DELETE FROM module_artifact_binding_operations WHERE operation_id = {prefix}1 AND tenant_id = {prefix}2 AND actor_id = {prefix}3 AND installation_id = {prefix}4 AND binding_id = {prefix}5 AND idempotency_key = {prefix}6 AND request_digest = {prefix}7 AND status = 'pending'"
+        "DELETE FROM module_artifact_binding_operations WHERE operation_id = {prefix}1 AND tenant_id = {prefix}2 AND actor_id = {prefix}3 AND installation_id = {prefix}4 AND binding_id = {prefix}5 AND idempotency_key = {prefix}6 AND request_digest = {prefix}7 AND trace_id = {prefix}8 AND correlation_id = {prefix}9 AND status = 'pending'"
     )
 }
 
@@ -376,7 +394,8 @@ mod tests {
             "CREATE TABLE module_artifact_binding_operations (\
              operation_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, actor_id TEXT NOT NULL, \
              installation_id TEXT NOT NULL, binding_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, \
-             request_digest TEXT NOT NULL, status TEXT NOT NULL, response TEXT NULL, \
+             request_digest TEXT NOT NULL, trace_id TEXT NOT NULL, correlation_id TEXT NOT NULL, \
+             status TEXT NOT NULL, response TEXT NULL, \
              lease_expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
              completed_at TEXT NULL, \
              UNIQUE (tenant_id, actor_id, installation_id, binding_id, idempotency_key))",
@@ -388,11 +407,15 @@ mod tests {
 
     fn request(tenant_id: Uuid, digest_payload: &str) -> ArtifactBindingIdempotencyRequest {
         ArtifactBindingIdempotencyRequest {
-            tenant_id,
-            actor_id: Uuid::new_v4(),
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: Some(tenant_id),
+                trace_id: "test:artifact-binding".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
             installation_id: Uuid::new_v4(),
             binding_id: "admin_action".to_string(),
-            idempotency_key: "stable-request-key".to_string(),
             request_digest: artifact_binding_request_digest(&serde_json::json!({
                 "payload": digest_payload,
             }))
@@ -408,6 +431,41 @@ mod tests {
             ArtifactBindingIdempotencyClaim::Execute { operation_id } => operation_id,
             other => panic!("expected execution claim, got {other:?}"),
         };
+        let receipt = store
+            .db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT actor_id, trace_id, correlation_id, idempotency_key \
+                 FROM module_artifact_binding_operations"
+                    .to_string(),
+            ))
+            .await
+            .expect("binding receipt query")
+            .expect("binding receipt");
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "actor_id")
+                .expect("binding receipt actor"),
+            request.context.actor_id.to_string()
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "trace_id")
+                .expect("binding receipt trace"),
+            request.context.trace_id
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "correlation_id")
+                .expect("binding receipt correlation"),
+            request.context.correlation_id.to_string()
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "idempotency_key")
+                .expect("binding receipt idempotency"),
+            request.context.idempotency_key.to_string()
+        );
         let response = serde_json::json!({ "status": "accepted" });
         store
             .complete(&request, operation_id, &response)
@@ -425,7 +483,7 @@ mod tests {
         let store = store().await;
         let first = request(Uuid::new_v4(), "same");
         let mut second = first.clone();
-        second.tenant_id = Uuid::new_v4();
+        second.context.tenant_id = Some(Uuid::new_v4());
 
         assert!(matches!(
             store.claim(&first).await.expect("first tenant claim"),
@@ -435,5 +493,21 @@ mod tests {
             store.claim(&second).await.expect("second tenant claim"),
             ArtifactBindingIdempotencyClaim::Execute { .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn changed_command_context_conflicts_with_a_binding_replay() {
+        let store = store().await;
+        let request = request(Uuid::new_v4(), "stable");
+        assert!(matches!(
+            store.claim(&request).await.expect("initial claim"),
+            ArtifactBindingIdempotencyClaim::Execute { .. }
+        ));
+        let mut changed_context = request;
+        changed_context.context.trace_id = "test:changed-artifact-binding-trace".to_string();
+        assert_eq!(
+            store.claim(&changed_context).await,
+            Err(ArtifactBindingIdempotencyError::Conflict)
+        );
     }
 }

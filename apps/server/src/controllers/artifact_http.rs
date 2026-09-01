@@ -154,14 +154,25 @@ async fn list_ui_action_audit(
     Ok(json_response(evidence))
 }
 
-fn header_idempotency_key(headers: &HeaderMap) -> Result<Option<String>> {
+fn header_idempotency_key(headers: &HeaderMap) -> Result<Option<Uuid>> {
     headers
         .get(IDEMPOTENCY_KEY_HEADER)
         .map(|value| {
             value
                 .to_str()
-                .map(ToString::to_string)
-                .map_err(|_| Error::BadRequest("Idempotency-Key header is invalid".to_string()))
+                .map_err(|_| Error::BadRequest("Idempotency-Key header is invalid".to_string()))?
+                .trim()
+                .parse::<Uuid>()
+                .map_err(|_| Error::BadRequest("Idempotency-Key header must be a UUID".to_string()))
+                .and_then(|key| {
+                    if key.is_nil() {
+                        Err(Error::BadRequest(
+                            "Idempotency-Key header must not be the nil UUID".to_string(),
+                        ))
+                    } else {
+                        Ok(key)
+                    }
+                })
         })
         .transpose()
 }
@@ -215,4 +226,46 @@ pub fn router() -> crate::routes::ServerRouter {
             "/api/artifacts/{installation_id}/{*path}",
             any(dispatch_http),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn artifact_binding_idempotency_header_requires_a_non_nil_uuid() {
+        let key = Uuid::new_v4();
+        let mut headers = HeaderMap::new();
+        assert_eq!(header_idempotency_key(&headers).expect("absent key"), None);
+
+        headers.insert(
+            IDEMPOTENCY_KEY_HEADER,
+            key.to_string().parse().expect("valid header value"),
+        );
+        assert_eq!(
+            header_idempotency_key(&headers).expect("valid UUID key"),
+            Some(key)
+        );
+
+        headers.insert(
+            IDEMPOTENCY_KEY_HEADER,
+            "not-a-uuid".parse().expect("valid text header value"),
+        );
+        assert!(matches!(
+            header_idempotency_key(&headers),
+            Err(Error::BadRequest(_))
+        ));
+
+        headers.insert(
+            IDEMPOTENCY_KEY_HEADER,
+            Uuid::nil()
+                .to_string()
+                .parse()
+                .expect("valid nil UUID header value"),
+        );
+        assert!(matches!(
+            header_idempotency_key(&headers),
+            Err(Error::BadRequest(_))
+        ));
+    }
 }

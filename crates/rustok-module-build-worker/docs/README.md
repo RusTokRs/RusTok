@@ -28,7 +28,8 @@ The renderer invokes the image-owned
 The probe establishes mTLS and calls the generated readiness RPC; it does not
 treat an open TCP listener as evidence that the OCI launcher, pinned image, or
 isolation attestation remain valid. The mounted `attestation.json` includes
-positive PID and open-file ceilings alongside its runtime and image facts. It is
+positive PID and open-file ceilings (at most 1,024 processes and 65,536 open
+files) alongside its runtime and image facts. It is
 configuration evidence only. Production still needs retained cluster evidence
 that the selected RuntimeClass and launcher actually enforce the declared OCI
 job controls.
@@ -48,7 +49,8 @@ job controls.
 - `RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION` (an absolute regular deployment
   evidence file proving the selected runtime/image job has no host mounts,
   container socket, host PID/network, tenant database access, general platform
-  secret access, or privileged mode, and binding the exact launcher digest).
+  secret access, or privileged mode, binding the exact launcher digest, and
+  declaring bounded PID/open-file ceilings).
 - `RUSTOK_MODULE_BUILD_WORKDIR` (an existing absolute image-owned directory).
 - `RUSTOK_MODULE_BUILD_SOURCE_ROOT` (an existing absolute read-only CAS archive mount).
 - `RUSTOK_MODULE_BUILD_CARGO` (an absolute non-symlink Cargo executable owned by the image).

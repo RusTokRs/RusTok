@@ -42,6 +42,8 @@ use crate::{
 const MAX_PUBLICATION_WINDOW: Duration = Duration::from_secs(14 * 60);
 const CREDENTIAL_LEASE_SAFETY_MARGIN: Duration = Duration::from_secs(30);
 const MAX_ISOLATION_ATTESTATION_BYTES: u64 = 16 * 1024;
+const MAX_OCI_JOB_PID_LIMIT: u32 = 1_024;
+const MAX_OCI_JOB_FILE_LIMIT: u32 = 65_536;
 const MAX_OCI_JOB_RECEIPT_BYTES: u64 = 8 * 1024;
 const MAX_SCENARIO_BYTES: u64 = 512 * 1024;
 /// External receipt contract emitted by the independently deployed OCI-job
@@ -990,8 +992,8 @@ impl OciJobIsolationAttestation {
             && !self.general_platform_secret_access
             && self.network_mode == "none"
             && self.resource_limits
-            && self.pid_limit > 0
-            && self.file_limit > 0
+            && (1..=MAX_OCI_JOB_PID_LIMIT).contains(&self.pid_limit)
+            && (1..=MAX_OCI_JOB_FILE_LIMIT).contains(&self.file_limit)
             && self.ephemeral_job
     }
 }
@@ -1238,8 +1240,9 @@ async fn collect_job_output(
 #[cfg(test)]
 mod tests {
     use super::{
-        OCI_JOB_RECEIPT_PROTOCOL_VERSION, OciJobIsolationAttestation, OciJobReceipt, OciJobRuntime,
-        ScenarioContractError, is_sha256_digest, validate_source_scenario,
+        MAX_OCI_JOB_FILE_LIMIT, MAX_OCI_JOB_PID_LIMIT, OCI_JOB_RECEIPT_PROTOCOL_VERSION,
+        OciJobIsolationAttestation, OciJobReceipt, OciJobRuntime, ScenarioContractError,
+        is_sha256_digest, validate_source_scenario,
     };
     use rustok_modules::{
         MODULE_BUILD_PROTOCOL_VERSION, ModuleBuildAuthoring, ModuleBuildDependencyPolicy,
@@ -1349,6 +1352,29 @@ mod tests {
         let attestation_with_zero_file_limit: OciJobIsolationAttestation =
             serde_json::from_value(with_zero_file_limit).expect("syntactically valid attestation");
         assert!(!attestation_with_zero_file_limit.matches(
+            OciJobRuntime::Gvisor,
+            &digest,
+            &launcher_digest,
+        ));
+
+        let mut with_excessive_pid_limit = value.clone();
+        with_excessive_pid_limit["pid_limit"] = serde_json::Value::from(MAX_OCI_JOB_PID_LIMIT + 1);
+        let attestation_with_excessive_pid_limit: OciJobIsolationAttestation =
+            serde_json::from_value(with_excessive_pid_limit)
+                .expect("syntactically valid attestation");
+        assert!(!attestation_with_excessive_pid_limit.matches(
+            OciJobRuntime::Gvisor,
+            &digest,
+            &launcher_digest,
+        ));
+
+        let mut with_excessive_file_limit = value.clone();
+        with_excessive_file_limit["file_limit"] =
+            serde_json::Value::from(MAX_OCI_JOB_FILE_LIMIT + 1);
+        let attestation_with_excessive_file_limit: OciJobIsolationAttestation =
+            serde_json::from_value(with_excessive_file_limit)
+                .expect("syntactically valid attestation");
+        assert!(!attestation_with_excessive_file_limit.matches(
             OciJobRuntime::Gvisor,
             &digest,
             &launcher_digest,

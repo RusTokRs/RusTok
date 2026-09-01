@@ -23,6 +23,19 @@ const ownerManifestPath = path.join(root, 'crates/rustok-modules/Cargo.toml');
 const ownerContractsPath = path.join(root, 'crates/rustok-modules/src/contracts.rs');
 const lifecycleOwnerPath = path.join(root, 'crates/rustok-modules/src/installation.rs');
 const artifactDataOwnerPath = path.join(root, 'crates/rustok-modules/src/data.rs');
+const artifactDataExportMigrationPath = path.join(
+  root,
+  'crates/rustok-modules/src/migrations/m20260718_000031_artifact_data_exports.rs',
+);
+const artifactBindingIdempotencyOwnerPath = path.join(
+  root,
+  'crates/rustok-modules/src/binding_idempotency.rs',
+);
+const artifactBindingIdempotencyMigrationPath = path.join(
+  root,
+  'crates/rustok-modules/src/migrations/m20260717_000023_artifact_binding_operations.rs',
+);
+const serverArtifactBindingPath = path.join(root, 'apps/server/src/services/artifact_binding.rs');
 const artifactSettingsRecoveryOwnerPath = path.join(
   root,
   'crates/rustok-modules/src/artifact_settings_recovery.rs',
@@ -197,6 +210,16 @@ try {
   const ownerContracts = fs.readFileSync(ownerContractsPath, 'utf8');
   const lifecycleOwner = fs.readFileSync(lifecycleOwnerPath, 'utf8');
   const artifactDataOwner = fs.readFileSync(artifactDataOwnerPath, 'utf8');
+  const artifactDataExportMigration = fs.readFileSync(artifactDataExportMigrationPath, 'utf8');
+  const artifactBindingIdempotencyOwner = fs.readFileSync(
+    artifactBindingIdempotencyOwnerPath,
+    'utf8',
+  );
+  const artifactBindingIdempotencyMigration = fs.readFileSync(
+    artifactBindingIdempotencyMigrationPath,
+    'utf8',
+  );
+  const serverArtifactBinding = fs.readFileSync(serverArtifactBindingPath, 'utf8');
   const artifactSettingsRecoveryOwner = fs.readFileSync(
     artifactSettingsRecoveryOwnerPath,
     'utf8',
@@ -401,6 +424,43 @@ try {
   ) {
     fail(
       'dynamic artifact data purge must preserve a tenant-matched ModuleCommandContext in its durable receipt and owner-created outbox event',
+    );
+  }
+
+  const exportRequest = artifactDataOwner.match(
+    /pub struct ArtifactDataExportRequest\s*\{(?<fields>[\s\S]*?)\n\}/,
+  );
+  if (
+    !exportRequest?.groups?.fields.includes('pub context: ModuleCommandContext,') ||
+    !artifactDataOwner.includes('request.context.tenant_id != Some(request.scope.tenant_id)') ||
+    !artifactDataOwner.includes('actor_id, trace_id, correlation_id, idempotency_key') ||
+    !artifactDataOwner.includes('event_envelope_for_command(\n                    &request.context,') ||
+    !artifactDataExportMigration.includes('trace_id TEXT NOT NULL') ||
+    !artifactDataExportMigration.includes('correlation_id UUID NOT NULL') ||
+    !artifactDataExportMigration.includes('idempotency_key UUID NOT NULL')
+  ) {
+    fail(
+      'dynamic artifact data export must preserve a tenant-matched ModuleCommandContext in its durable audit row and owner-created outbox event',
+    );
+  }
+
+  const bindingIdempotencyRequest = artifactBindingIdempotencyOwner.match(
+    /pub struct ArtifactBindingIdempotencyRequest\s*\{(?<fields>[\s\S]*?)\n\}/,
+  );
+  if (
+    !bindingIdempotencyRequest?.groups?.fields.includes('pub context: ModuleCommandContext,') ||
+    !artifactBindingIdempotencyOwner.includes('stored_trace_id != request.context.trace_id') ||
+    !artifactBindingIdempotencyOwner.includes(
+      'stored_correlation_id != request.context.correlation_id.to_string()',
+    ) ||
+    !artifactBindingIdempotencyMigration.includes('idempotency_key UUID NOT NULL') ||
+    !artifactBindingIdempotencyMigration.includes('trace_id TEXT NOT NULL') ||
+    !artifactBindingIdempotencyMigration.includes('correlation_id UUID NOT NULL') ||
+    !serverArtifactBinding.includes('artifact_binding_command_context') ||
+    !serverArtifactBinding.includes('idempotency_key: Option<Uuid>')
+  ) {
+    fail(
+      'routed artifact binding idempotency must retain a tenant-matched ModuleCommandContext in its durable replay receipt and server adapter',
     );
   }
 
@@ -611,6 +671,21 @@ try {
   ) {
     fail(
       'manual registry validation-stage reports must use a platform-scoped ModuleCommandContext and an immutable exact-replay receipt before they mutate the publish-request aggregate',
+    );
+  }
+  if (
+    !alloyOwnerSource.includes('registry_validation_job_enqueue_operations') ||
+    !alloyOwnerSource.includes('ValidationJobEnqueueIdempotencyConflict') ||
+    !alloyOwnerSource.includes('validation_job_enqueue_replay') ||
+    !alloyOwnerSource.includes('record_validation_job_enqueue_receipt') ||
+    !alloyOwnerSource.includes('valid_platform_registry_command_context(&self.context, &self.actor_principal)') ||
+    !registryPublicationMigration.includes('CREATE TABLE registry_validation_job_enqueue_operations') ||
+    !/\.validate_publish_request\(\s*&request_id,\s*&authority,\s*command_context,?\s*\)/s.test(
+      registryHttpController,
+    )
+  ) {
+    fail(
+      'registry validation-job enqueue must use a platform-scoped ModuleCommandContext and durable exact-replay receipt before it mutates the publish-request aggregate',
     );
   }
   if (
