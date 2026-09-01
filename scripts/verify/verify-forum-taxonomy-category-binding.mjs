@@ -128,6 +128,21 @@ if (failures.length === 0) {
   ]) {
     requireMarker(categoryProjectionOwner, marker, `live projection-owner support call ${marker}`);
   }
+  requireMarker(
+    categoryProjectionOwner,
+    'if input.position.is_some() {',
+    'transactional metadata-update placement guard',
+  );
+  requireMarker(
+    categoryProjectionOwner,
+    'Category position must be changed through move/reorder commands',
+    'transactional placement rejection contract',
+  );
+  rejectMarker(
+    categoryProjectionOwner,
+    'active.position = Set(position);',
+    'direct Category placement write in metadata update',
+  );
 
   rejectMarker(forumServices, 'ForumCategoryTranslationTargetProvider', 'retired duplicate Forum Translation provider');
 }
