@@ -159,7 +159,7 @@ impl ContractEventEnvelope {
     where
         E: EventContract,
     {
-        let id = Uuid::from_bytes(Ulid::r#gen().to_bytes());
+        let id = Uuid::from_bytes(Ulid::generate().to_bytes());
         Self::new_with_identity(id, tenant_id, actor_id, None, event)
     }
 
@@ -216,7 +216,7 @@ impl ContractEventEnvelope {
     where
         E: EventContract,
     {
-        let id = Uuid::from_bytes(Ulid::r#gen().to_bytes());
+        let id = Uuid::from_bytes(Ulid::generate().to_bytes());
         Self::new_with_identity(id, tenant_id, actor_id, Some(causation_id), event)
     }
 

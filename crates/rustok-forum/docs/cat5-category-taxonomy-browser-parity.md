@@ -2,6 +2,8 @@
 
 Status: **executable browser source / maintainer execution pending**
 
+Tracking: **final production-validation phase; this packet does not block CAT-5 implementation completion**
+
 ## Purpose
 
 This is the final mounted-browser evidence source for the Forum Category → Taxonomy cutover. The backend ownership/storage cutover is already complete; this packet does not change Forum or Taxonomy production behavior.
@@ -177,7 +179,7 @@ Post-cutover backend cleanup accepted after the browser packet was already sourc
 
 These cleanup and hardening merges do not alter the browser packet's execution contract or substitute for mounted evidence. They narrow the remaining historical/runtime bypass surface while preserving the published backfill migration and the still-required maintainer execution boundary.
 
-No successful `Forum Category Taxonomy Browser Evidence` `workflow_dispatch` run is retained yet. The source-ready runs above prove the executable packet and its security/route/RTL contracts only; they do not prove deployment provenance, mounted browser execution, production rollout completion or TAXONOMY-CAT-5 completion.
+No successful `Forum Category Taxonomy Browser Evidence` `workflow_dispatch` run is retained yet. The source-ready runs above prove the executable packet and its security/route/RTL contracts only; they do not prove deployment provenance, mounted browser execution, production rollout completion or final Category production-validation completion. TAXONOMY-CAT-5 implementation is complete and this packet is retained as deferred deployment evidence.
 
 ## Maintainer execution
 
@@ -186,7 +188,7 @@ Preferred repository execution after the workflow is present on `main`:
 1. configure a GitHub environment with the secret and variables documented above;
 2. open **Actions → Forum Category Taxonomy Browser Evidence → Run workflow**;
 3. run the workflow from `main`, select that environment and keep the prepared fixture values within the preflight contract above;
-4. retain the successful workflow run URL/ID and exact head SHA as CAT-5 mounted evidence before changing the CAT-5 status.
+4. retain the successful workflow run URL/ID and exact head SHA as final Category production-validation evidence.
 
 The equivalent local execution remains available from the repository root after the environment above is populated:
 
@@ -196,4 +198,4 @@ cd apps/next-admin
 npx playwright test --config playwright.forum-category-taxonomy.config.ts
 ```
 
-A successful mounted browser run is the missing multilingual/RTL parity evidence required before TAXONOMY-CAT-5 can be marked complete. Adding or merging the workflow itself still does **not** claim browser execution, deployment provenance, rollout completion or CAT-5 completion.
+A successful mounted browser run remains required before final Category production validation can be marked complete. Adding or merging the workflow itself still does **not** claim browser execution, deployment provenance or rollout completion; TAXONOMY-CAT-5 implementation status is already complete.

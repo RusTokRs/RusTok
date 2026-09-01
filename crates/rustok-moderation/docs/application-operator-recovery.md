@@ -1,6 +1,6 @@
 # Moderation application operator recovery
 
-Status: **owner recovery + authorized GraphQL recovery/re-review transport source-ready / maintainer execution pending**
+Status: **owner recovery + authorized GraphQL recovery/re-review transport implemented / production promotion deferred**
 
 ## Scope
 
@@ -140,25 +140,9 @@ This slice does not add:
 - admin UI;
 - public typed recovery/re-review event contracts;
 - a migration, orchestration table or new persistence owner;
-- retained runtime, PostgreSQL, SQLite or concurrency evidence.
 
-## Maintainer verification handoff
+## Verification and promotion handoff
 
-Suggested checks, intentionally not run while preparing this slice:
+The recovery/RBAC/GraphQL/re-review implementation is retained by the existing source verifiers plus later repository evidence. PostgreSQL recovery parity landed in #3213; application-operation/dispatcher/lost-response/scheduler evidence landed in #3216, #3217, #3219 and #3221; SQLite/PostgreSQL migration and host-composition evidence landed in #3225/#3226.
 
-```bash
-node scripts/verify/verify-moderation-application-operator-recovery.mjs
-node scripts/verify/verify-moderation-recovery-graphql-transport.mjs
-node scripts/verify/verify-moderation-application-audit-lifecycle.mjs
-node scripts/verify/verify-moderation-application-dispatch-once.mjs
-cargo check -p rustok-moderation --all-targets
-cargo check -p rustok-server --features mod-moderation
-cargo test -p rustok-moderation
-cargo test -p rustok-server moderation_recovery
-cargo xtask module validate moderation
-git diff --check
-```
-
-Retained evidence should cover GraphQL tenant mismatch/module-disabled/service-principal/permission denial; effective `moderation_cases:manage` authorization; ordinary Forum moderation permission denial; root and per-step idempotency replay; source-decision/case identity mismatch; non-escalated source denial; equal/older fresh revision denial; preservation of source subject/scope/queue/policy identity; no historical report reuse; active-case dedup collision with foreign ownership marker; assign/decide revision contention; fresh typed decision enqueue; stale/fabricated producer revision conflict at domain application; rejected/operator-review requeue; applied requeue rejection; legacy terminal reconciliation/no-op; and PostgreSQL/SQLite parity.
-
-No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows, CI or `git diff --check` were executed while preparing this source slice.
+The transport remains deliberately UI-agnostic. A module-owned Moderation admin UI is broader product work, not a prerequisite for the completed recovery transport or the bounded FORUM-19 producer integration. Deployment-dependent promotion belongs to the final production-validation phase rather than reopening these implementation slices.

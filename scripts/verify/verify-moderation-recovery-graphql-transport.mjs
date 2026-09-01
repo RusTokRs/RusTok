@@ -87,7 +87,7 @@ for (const rereviewMarker of [
   '"open"',
   '"assign"',
   '"decide"',
-  '":rereview:{step}"',
+  'format!("{root_idempotency_key}:rereview:{step}")',
 ]) {
   requireText(
     transport,
@@ -142,7 +142,7 @@ requireText(
 );
 requireText(
   schema,
-  '#[cfg(feature = "mod-moderation")]\n    ModerationRecoveryMutation,',
+  '#[cfg(feature = "mod-moderation")] ModerationRecoveryMutation,',
   "Server schema must merge the Moderation recovery mutation only with mod-moderation",
 );
 requireText(

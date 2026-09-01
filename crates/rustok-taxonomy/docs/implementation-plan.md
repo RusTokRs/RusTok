@@ -172,7 +172,7 @@ the platform Flex transport/schema-builder boundary, with tenant/kind ownership 
 cleanup proved, while Taxonomy implements no second field-definition service, validator or custom
 form engine.
 
-### TAXONOMY-CAT-5 — Forum category cutover — IN PROGRESS
+### TAXONOMY-CAT-5 — Forum category cutover — COMPLETE
 
 Forum is the first consumer migration because FORUM-25 exposed the ownership conflict.
 
@@ -186,7 +186,7 @@ Migration rules:
   deterministic backfill/read-write cutover evidence;
 - make Forum admin/storefront consume Taxonomy `requested_locale`/`effective_locale` projections;
 - keep Topic Flex support independent of Category migration;
-- complete mounted multilingual/RTL browser parity only against Taxonomy-owned Category data.
+- retain mounted multilingual/RTL browser parity only against Taxonomy-owned Category data and execute it in the final production-validation phase.
 
 **Backend cutover status: COMPLETE.** Forum Category canonical identity, localized copy, routes,
 aliases, hierarchy, sibling ordering and presentation are Taxonomy-owned. Forum retains typed
@@ -226,13 +226,14 @@ Accepted CAT-5 slices already in `main`:
   `forum_category_route_aliases`, `forum_category_translations` and `forum_translation_changes`.
 - PR #3708 added the retained mounted multilingual/RTL Playwright evidence source, dedicated config,
   machine-readable execution contract and source verifier. Its contract remains
-  `source_ready_maintainer_execution_pending`: it does not claim browser execution or CAT-5
-  completion.
+  `source_ready_maintainer_execution_pending`: it does not claim browser execution, deployment
+  provenance or final production-validation completion. CAT-5 implementation completion is tracked
+  separately from that mounted evidence.
 - PR #3750 added the credential-safe `Forum Category Taxonomy Browser Evidence` execution handoff.
   Pull requests run the source verifier and Playwright compile-list without mounted credentials; the
   mounted browser job is `workflow_dispatch`-only and reads authenticated storage state plus fixture
   inputs from a maintainer-selected GitHub environment. Its merge deliberately did not claim browser
-  execution or CAT-5 completion.
+  execution, deployment provenance or final production-validation completion.
 - PR #3752 made the mounted Forum Category admin evidence locale-addressable through the exact
   normalized `categories/<locale>` module subpath while preserving legacy `/categories` behavior,
   so fresh authenticated browser navigation can deterministically select RTL and fallback locales.
@@ -340,17 +341,14 @@ bypasses. The mounted execution path is main-only; the raw authenticated state i
 materialized late into a restricted `RUNNER_TEMP` file whose path is exposed only to Playwright; all
 non-secret fixture values, URL safety and static locale/fallback/alias relationships are checked
 before that credential exists; and focused pull-request triggers cover every verifier-owned source
-seam. None of those source-ready or cleanup merges substitutes for the still-required successful
-mounted browser execution against a prepared Taxonomy-backed fixture.
+seam. The retained mounted execution packet remains required for the final production-validation
+phase, but it no longer gates CAT-5 implementation completion.
 
-**Next:** configure the GitHub environment required by `Forum Category Taxonomy Browser Evidence` and
-run its `workflow_dispatch` mounted job from `main` against the prepared authenticated admin/storefront
-fixture, including requested/effective locale fallback, canonical localized routes, hierarchy/order,
-presentation and alias redirect. No backend donor/storage cutover remains.
-
-**Done when:** the backend ownership/storage cutover above remains intact and a successful mounted
-multilingual/RTL browser run confirms that Forum Category behavior uses the shared Taxonomy
-identity/copy/routes without losing Forum-specific policy.
+**Implementation status: COMPLETE.** The backend ownership/storage cutover above is complete and the
+retained source/browser contracts guard the Taxonomy-owned behavior. No backend donor/storage cutover
+remains. The still-unexecuted mounted multilingual/RTL browser packet is deferred to the final
+production-validation phase below; it must not reopen CAT-5 implementation scope unless it exposes a
+real source/backend regression.
 
 ### Blog consumer cutover — COMPLETE
 
@@ -539,6 +537,29 @@ evidence. Unrelated/common workspace CI failures are not a reason to expand a Ca
 9. Media owns binary lifecycle; Taxonomy/Flex store typed Media references.
 10. Every slice starts from fresh `main`, stays narrow, and fixes only failures caused by its own
     boundary.
+
+## Final production / mounted validation — DEFERRED
+
+Production/deployment evidence is intentionally collected only after the remaining source/backend
+implementation queue is exhausted. A live deployment, maintainer credential, mounted browser fixture
+or observed tenant rollout does not keep an otherwise complete implementation slice open. Future
+production-only checks are appended to this section instead of being inserted into the CAT cursor.
+
+Repository-executable engineering gates are **not** deferred: focused tests, source verifiers,
+migration compatibility, PostgreSQL evidence and other CI/runtime checks that can run against an
+isolated test environment remain part of the slice that changes their boundary.
+
+### PROD-CAT-1 — Forum Category mounted multilingual/RTL evidence — DEFERRED
+
+Retain `.github/workflows/forum-category-taxonomy-browser-evidence.yml` and execute a successful
+`workflow_dispatch` from `main` only after a prepared Taxonomy-backed Forum admin/storefront fixture
+and authenticated GitHub environment exist. The run must execute, not skip, the mounted multilingual/
+RTL job and cover requested/effective locale fallback, canonical localized routes, hierarchy/order,
+presentation and alias redirect.
+
+**Done when:** the successful mounted run URL/ID and exact `main` head SHA are retained as final
+production-validation evidence. Until then the browser packet remains
+`source_ready_maintainer_execution_pending` without reopening TAXONOMY-CAT-5.
 
 ## References
 
