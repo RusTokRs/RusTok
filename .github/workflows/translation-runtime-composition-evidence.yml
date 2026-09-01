@@ -7,6 +7,7 @@ on:
       - "apps/server/Cargo.toml"
       - "apps/server/src/services/graphql_schema.rs"
       - "apps/server/src/services/app_router.rs"
+      - "crates/rustok-index/**"
       - "crates/rustok-translation/admin/src/transport/native_server_adapter.rs"
       - "crates/rustok-translation/docs/implementation-plan.md"
       - "docs/modules/translation-implementation-plan.md"
@@ -20,6 +21,7 @@ on:
       - "apps/server/Cargo.toml"
       - "apps/server/src/services/graphql_schema.rs"
       - "apps/server/src/services/app_router.rs"
+      - "crates/rustok-index/**"
       - "crates/rustok-translation/admin/src/transport/native_server_adapter.rs"
       - "crates/rustok-translation/docs/implementation-plan.md"
       - "docs/modules/translation-implementation-plan.md"
@@ -31,7 +33,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: translation-runtime-composition-evidence-${{ github.event.pull_request.number || github.ref }}
+  group: translation-runtime-composition-evidence
   cancel-in-progress: true
 
 env:
