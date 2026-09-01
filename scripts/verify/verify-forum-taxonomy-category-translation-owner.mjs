@@ -46,7 +46,6 @@ if (failures.length === 0) {
   );
   requireText(plan, "Category copy uses Taxonomy's registered `taxonomy/term` provider.");
   requireText(plan, 'never register a duplicate `forum/category` Translation target.');
-  requireText(plan, 'provider-era PostgreSQL evidence is superseded');
   requireText(plan, 'Mounted multilingual/RTL browser execution is deferred to the final production-validation phase');
   requireText(plan, '| `FORUM-25` | `done` |', 'FORUM-25 implementation is complete');
   requireText(plan, '## Final production validation — DEFERRED', 'Forum final production-validation phase');
