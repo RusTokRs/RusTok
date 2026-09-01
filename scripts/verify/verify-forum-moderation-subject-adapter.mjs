@@ -9,6 +9,7 @@ const revisionMigration = fs.readFileSync(
 );
 const adapter = fs.readFileSync("crates/rustok-forum/src/moderation_subject.rs", "utf8");
 const replyOwner = fs.readFileSync("crates/rustok-forum/src/services/reply_owner.rs", "utf8");
+const recoveryTransport = fs.readFileSync("apps/server/src/graphql/moderation_recovery.rs", "utf8");
 const contract = JSON.parse(
   fs.readFileSync("crates/rustok-forum/contracts/forum-moderation-subject-adapter.json", "utf8"),
 );
@@ -166,6 +167,22 @@ if (contract.status !== "source_ready_maintainer_execution_pending") {
 if (contract.capability_owner !== "rustok-moderation") {
   throw new Error("Moderation ownership must remain with rustok-moderation");
 }
+if (contract.implementation_status !== "complete") {
+  throw new Error("FORUM-19 bounded implementation must be complete");
+}
+if (contract.production_validation !== "deferred" || !contract.completion_boundary?.includes("deployment-dependent promotion")) {
+  throw new Error("FORUM-19 production validation must be deferred without reopening implementation");
+}
+for (const marker of [
+  "requeue_moderation_application",
+  "reconcile_legacy_moderation_application",
+  "create_moderation_rereview",
+  "auth.is_human_user_principal()",
+  "Permission::MODERATION_CASES_OVERRIDE",
+  "require_module_enabled(ctx, MODULE_SLUG).await?",
+]) {
+  requireText(recoveryTransport, marker, `Moderation recovery GraphQL transport is missing ${marker}`);
+}
 if (!contract.supported_effects.some((effect) => effect.includes("SetVisibility Hidden"))) {
   throw new Error("contract must record the exact hidden reply visibility effect");
 }
@@ -202,8 +219,21 @@ if (!contract.forbidden.includes("direct rustok-moderation owner dependency")) {
 if (!contract.forbidden.includes("reusing Reactions or content revision as the Moderation subject clock")) {
   throw new Error("contract must forbid reuse of Reactions/content revision as Moderation clock");
 }
-if (!contract.not_claimed.includes("complete FORUM-19 effect coverage")) {
-  throw new Error("bounded slice must not claim complete FORUM-19 coverage");
+if (!contract.not_claimed.includes("all neutral Moderation effect coverage")) {
+  throw new Error("completed bounded FORUM-19 slice must not claim every neutral Moderation effect");
+}
+for (const staleClaim of [
+  "authorized admin transport or UI for operator recovery",
+  "retained operator recovery execution evidence",
+  "retained host composition execution evidence",
+  "retained runtime decision application execution",
+  "retained multi-host scheduler race and graceful shutdown evidence",
+  "PostgreSQL concurrency evidence",
+  "SQLite evidence",
+]) {
+  if (contract.not_claimed.includes(staleClaim)) {
+    throw new Error(`FORUM-19 contract still carries completed evidence as not claimed: ${staleClaim}`);
+  }
 }
 
 console.log("Forum Moderation subject adapter ownership guard passed");

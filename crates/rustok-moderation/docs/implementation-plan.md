@@ -353,10 +353,12 @@ Forum moderation subject revision. Reply `Hidden` and `RejectPublication` share 
 bounded non-public lifecycle transaction; reply `Removed` uses the complete Forum removal
 owner path.
 
-The remaining orchestration code gap is no longer same-decision requeue or legacy-terminal
-reconciliation. Remaining owner/product work is the authorized admin transport/UI for these
-commands and the explicit fresh-case/new-decision re-review workflow, plus retained runtime,
-concurrency and database evidence before promotion.
+The previously open FORUM-19 orchestration gaps are closed: dedicated `moderation_cases`
+RBAC, the authorized recovery GraphQL transport and the explicit fresh-revision -> new case ->
+new immutable decision re-review workflow are present. Repository-executable PostgreSQL/SQLite,
+host-composition, dispatcher, scheduler, lost-response and concurrency evidence is also retained.
+A module-owned admin UI remains broader Moderation product work; deployment promotion is deferred
+to final production validation rather than keeping the bounded Forum integration open.
 
 ## Source completed
 
@@ -406,40 +408,23 @@ concurrency and database evidence before promotion.
   fresh-case/new-decision re-review semantics, guarded by
   `scripts/verify/verify-moderation-application-operator-recovery.mjs`.
 
+- dedicated Moderation recovery authorization through `moderation_cases:override` / effective
+  `moderation_cases:manage`, with tenant permission vocabulary supplied by platform RBAC;
+- host-owned authenticated GraphQL recovery transport for same-decision requeue, legacy-terminal
+  reconciliation and fresh-revision re-review;
+- replay-safe fresh-revision re-review that creates a new case and immutable decision without
+  retargeting historical truth;
+- retained repository evidence for PostgreSQL owner/recovery/application/dispatcher/scheduler and
+  lost-response behavior, SQLite/PostgreSQL operation migration parity, host-composition failures,
+  and Forum revision/concurrency/effect/accounting boundaries.
+
 ## Next priorities
 
-1. Add the authorized Moderation admin transport/UI over the source-ready application recovery
-   commands and define the explicit fresh producer-revision -> new case -> new immutable
-   decision re-review workflow without mutating historical cases/decisions.
-2. Retain operator-recovery, application-audit and shared-scheduler evidence: human actor gate,
-   command receipt replay/conflict, expected case revision contention, rejected/operator-review
-   requeue, applied requeue denial, next scheduler claim after requeue, legacy terminal
-   reconciliation/no-op, no domain invocation during reconciliation, audit rollback,
-   first-claim lifecycle, multi-host CAS convergence, graceful stop and crash recovery.
-3. Retain clean/upgraded PostgreSQL/SQLite application-operation migration/backfill evidence,
-   atomic decision enqueue, due bounds/order, concurrent claim, lease expiry/reclaim,
-   stale-token rejection, command reconstruction, exact adapter selection, retry/error
-   classification, stale-conflict review, invalid-success-evidence review, lost-response
-   replay, exactly-one case close and legacy-terminal reconciliation parity.
-4. Retain executable host-composition evidence for selected-owner/missing-owner,
-   Moderation-only empty materialization and Forum+Moderation topic/reply materialization;
-   prove factory build failures remain fail-closed.
-5. Keep Forum `SetVisibility(Unpublished)` blocked until Forum owns an explicit lifecycle
-   meaning distinct from `RejectPublication`; add explicit expiry-safe state before temporary
-   restrictions and admit no lossy approximation.
-6. Retain PostgreSQL/SQLite migration/backfill/trigger evidence for Forum moderation revision
-   clocks plus concurrent content/lifecycle edit versus permanent-lock/reply-hide/
-   reply-reject/reply-remove application evidence, approved-to-hidden/approved-to-rejected
-   accounting/event atomicity and removed-reply tombstone/accepted-solution/accounting/event
-   atomicity.
-7. Add PostgreSQL Moderation active-case/decision-effect/revision-CAS evidence.
-8. Add moderation-specific RBAC resources and tenant permission registration.
-9. Publish remaining transactional outbox contracts and integrate Groups as the
-   membership-scoped expiry reference adapter, then Blog, Comments, Pages, Reviews,
-   Marketplace, Media, Messaging, and Profiles.
-10. Add versioned policies, premoderation, automated assessment providers, appeals, and
-   capability-scoped account sanctions; publish broader admin queue/case/application surfaces
-   only after owner runtime composition.
+1. Publish the remaining typed transactional/public Moderation application event contracts without turning the internal `moderation_events` audit ledger into an accidental cross-domain API.
+2. Integrate Groups as the membership-scoped expiry reference adapter, then continue the accepted producer sequence (Blog, Comments, Pages, Reviews, Marketplace, Media, Messaging and Profiles) through `rustok-moderation-api` without cross-owner persistence reads.
+3. Add versioned policies, premoderation, automated assessment providers, appeals and capability-scoped account sanctions while preserving immutable decision/effect identity and owner-side application evidence.
+4. Build the broader module-owned Moderation admin queue/case/application UI over the existing authorized ports and transport. The recovery GraphQL boundary already exists; UI navigation is not a security boundary.
+5. Keep Forum `SetVisibility(Unpublished)` and temporary/restriction effects fail-closed until Forum owns exact distinct lifecycle/expiry-safe semantics; do not approximate unsupported effects to existing statuses.
 
 ## Invariants
 
@@ -598,3 +583,9 @@ concurrency and database evidence before promotion.
 
 No new execution evidence is claimed by the application operator-recovery source slice.
 Maintainer-run verification remains required before promotion.
+
+## Final production validation — DEFERRED
+
+Deployment-dependent promotion is collected after the remaining Moderation source/backend product queue is exhausted. Live deployment selection, operator credentials, observed background-worker behavior and release provenance do not keep an otherwise complete implementation slice open.
+
+Repository-executable engineering evidence is not deferred: SQLite/PostgreSQL migrations and owner contracts, concurrency/lease/replay tests, host composition profiles, source verifiers and isolated runtime scheduler tests remain part of the implementation boundary that changes them.

@@ -252,9 +252,10 @@ decision UUID and returns work to the existing scheduler/dispatcher; `applied`
 can never be requeued. Pre-audit terminal rows can be reconciled to Moderation
 case state without invoking Forum or fabricating historical lifecycle facts. A
 true stale-revision re-review is explicitly a new case/new immutable decision on
-a fresh producer-supplied revision, never a retargeted old decision. Retained
-scheduler/runtime/recovery/concurrency evidence and authorized admin transport
-remain pending.
+a fresh producer-supplied revision, never a retargeted old decision. Authorized recovery GraphQL transport/RBAC and fresh-revision re-review are now
+present, and the repository retains the PostgreSQL/SQLite, scheduler, host-composition,
+lost-response and Forum concurrency/accounting evidence. Deployment-dependent promotion
+is deferred to the final production-validation phase.
 
 ## Program ledger
 
@@ -279,7 +280,7 @@ remain pending.
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
 | `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply host UI composition and Rust Playwright browser-evidence source are ready. Retain the browser execution plus event-digest, owner/event/repair/Forum+Blog/GraphQL/UI/runtime evidence and release lockfile verification; Forum votes remain separate and no reaction ownership moves into Forum. |
-| `FORUM-19` | `in_progress` | Neutral `forum_topic`/`forum_post` adapter factories, dedicated Forum moderation subject revision clocks, shared receipt/revision fencing, trusted application callers, permanent topic lock, exact reply Hidden/Removed/RejectPublication, optional host materialization, Moderation-owned durable application operations, bounded one-attempt exact adapter dispatch, shared `ModuleWorkScheduler`, atomic application/case audit lifecycle, same-decision human operator requeue for rejected/operator-review, and truthful legacy-terminal reconciliation without domain invocation are source-ready. Applied decisions cannot be requeued; true stale-revision re-review requires a fresh case/new immutable decision. Retain host/scheduler/recovery plus PostgreSQL/SQLite migration/lease/dispatch/lost-response/concurrency and Forum accounting/event/tombstone/solution evidence; keep `Unpublished` distinct/fail-closed. Remaining code/product work is authorized Moderation admin transport/RBAC and explicit fresh-revision re-review flow. Moderation keeps cases, decisions, appeals and audit. |
+| `FORUM-19` | `done` | Bounded Forum/Moderation integration is complete: neutral topic/reply adapters, Forum-owned revision fencing and exact supported effects, Moderation-owned durable dispatch/scheduler/audit/recovery, dedicated `moderation_cases` RBAC, authorized recovery GraphQL transport, replay-safe fresh-revision new-case/new-decision re-review, and retained PostgreSQL/SQLite/host/concurrency/lost-response/accounting evidence are present. `Unpublished`, temporary restrictions and broader neutral effects remain separate future feature scope rather than lossy approximations. Deployment/promotion evidence is deferred to `PROD-FORUM-19`; Moderation keeps cases, decisions, appeals and audit. |
 | `FORUM-20` | `in_progress` | Rich visibility and recipient-aware source/inbox slices largely exist. Complete remaining reads, Search/SEO/deep links, reconciliation, delivery and PostgreSQL evidence. |
 | `FORUM-21` | `in_progress` | A-X provide move/merge/split/fork/range owners, transports and UI. Retained runtime evidence remains. |
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
@@ -1004,6 +1005,12 @@ exist. The mounted multilingual/RTL job must execute rather than skip and its su
 plus exact `main` head SHA must be retained. Until then the browser packet remains production evidence
 pending without reopening FORUM-25 or TAXONOMY-CAT-5 implementation.
 
+### PROD-FORUM-19 — Moderation composed deployment/promotion validation — DEFERRED
+
+After the remaining Forum source/backend queue is exhausted, retain deployment-level proof for the selected production distribution: Moderation owner/runtime selection, real background-worker lifecycle, recovery operator access and representative Forum decision application under the deployed host configuration. Capture the exact deployment/release provenance required by the final release gate.
+
+This item does **not** absorb repository-executable engineering gates. SQLite/PostgreSQL migration/operation tests, host composition profiles, scheduler concurrency/stop tests, lost-response replay and Forum revision/effect/accounting tests remain implementation evidence and are already retained in the repository. Pending deployment promotion does not reopen FORUM-19 unless it exposes a genuine implementation regression.
+
 ## Release gates
 
 Forum is not production-ready while there are cross-tenant references, copied
@@ -1058,41 +1065,7 @@ browser harness from
 catalogs, state, commands, aggregate ownership or copied Reactions presentation
 to Forum.
 
-For FORUM-19, retain server composition evidence for selected `mod-moderation`
-with a registered owner, selected-feature/missing-owner failure,
-Moderation-only empty materialization and Forum+Moderation topic/reply adapter
-materialization. Retain shared module-work evidence for Moderation registration,
-background-worker-disabled no-dispatch, earliest-due selection, two-host
-same-candidate CAS convergence, deployment stop/no-new-claim with in-flight
-completion and missing-registry registration failure. Retain application audit
-lifecycle evidence for first-claim `decided -> applying_decision`, retry/reclaim
-without duplicate case revision, retry audit atomicity, applied + closed +
-active-key release + audit atomicity, rejected/operator-review + escalated +
-audit atomicity, audit-insert rollback, stale-token finalizer rollback and case
-revision contention. Retain operator recovery evidence for human-user gate,
-command receipt replay/changed-request conflict, expected case revision CAS,
-rejected/operator-review same-decision requeue, applied requeue denial, next
-scheduler claim with unchanged decision UUID idempotency, applied/rejected/
-operator-review legacy reconciliation, already-consistent no-op, current-time
-case close semantics, active-key release/preservation and proof that legacy
-reconciliation invokes no Forum/domain adapter. Retain clean/upgraded
-PostgreSQL/SQLite evidence for `moderation_application_operations`,
-typed-effect-only backfill, atomic decision/effect/pending-operation/event/receipt
-commit, bounded due ordering, concurrent claim, lease expiry/reclaim, stale-token
-rejection, exact immutable command reconstruction, exact adapter selection,
-missing-adapter retry, retryable/non-retryable classification, stale-conflict
-operator-review, invalid-success-evidence operator-review, decision-UUID
-lost-response replay, exactly-one case close and applied-evidence validation.
-Also retain the Forum moderation subject revision migration/trigger,
-shared-receipt replay/request-conflict, stale revision, trusted caller and
-concurrent content/lifecycle evidence plus hide/reject/removal
-accounting/event/tombstone/solution semantics. `SetVisibility(Unpublished)` stays
-blocked until Forum owns a distinct exact lifecycle, and temporary effects still
-require expiry-safe Forum state. The next FORUM-19 product/code milestone is the
-authorized Moderation admin transport/RBAC plus an explicit fresh producer
-revision -> new case -> new immutable decision re-review workflow. Do not add
-Forum-owned case queues, recovery state, audit, scheduler state or a duplicate
-worker loop.
+FORUM-19 implementation is complete. Do not reopen it for deployment-only promotion; track deployed-host/runtime/release proof under `PROD-FORUM-19`. Unsupported `SetVisibility(Unpublished)`, temporary restrictions and other neutral effects remain fail-closed until a separately accepted feature slice defines exact Forum owner semantics. The broader Moderation admin UI, public event family and additional producer adapters remain Moderation-platform work rather than Forum-owned recovery or queue logic.
 
 ## Verification checklist
 
