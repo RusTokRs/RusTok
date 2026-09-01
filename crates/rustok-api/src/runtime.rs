@@ -28,7 +28,7 @@ pub async fn is_tenant_module_enabled(
         }
     };
 
-    db.query_one(&Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         backend,
         query,
         vec![tenant_id.into(), module_slug.into()],
@@ -64,7 +64,7 @@ pub async fn tenant_module_settings(
     };
 
     let Some(row) = db
-        .query_one(&Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             backend,
             query,
             vec![tenant_id.into(), module_slug.into()],
