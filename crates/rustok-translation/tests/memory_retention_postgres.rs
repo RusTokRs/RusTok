@@ -119,7 +119,10 @@ async fn run_multi_replica_contract(database: &TestDatabase) -> TestResult<()> {
         .ok_or_else(|| test_error("tombstoned Translation Memory entry disappeared"))?;
     assert!(tombstoned.tombstoned_at.is_some());
     assert_eq!(tombstoned.revision, 2);
-    assert_eq!(receipt_count(&observer, tombstone_id, "tombstone").await?, 1);
+    assert_eq!(
+        receipt_count(&observer, tombstone_id, "tombstone").await?,
+        1
+    );
 
     let purge_id = insert_memory_entry(
         &observer,
@@ -240,9 +243,8 @@ async fn scoped_connection(
     schema_name: &str,
 ) -> TestResult<DatabaseConnection> {
     let separator = if database_url.contains('?') { '&' } else { '?' };
-    let scoped_url = format!(
-        "{database_url}{separator}options=-csearch_path%3D{schema_name}%2Cpublic"
-    );
+    let scoped_url =
+        format!("{database_url}{separator}options=-csearch_path%3D{schema_name}%2Cpublic");
     connect(&scoped_url).await
 }
 
