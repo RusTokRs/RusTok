@@ -87,7 +87,7 @@ for (const rereviewMarker of [
   '"open"',
   '"assign"',
   '"decide"',
-  '":rereview:{step}"',
+  'format!("{root_idempotency_key}:rereview:{step}")',
 ]) {
   requireText(
     transport,
