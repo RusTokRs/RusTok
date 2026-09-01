@@ -35,105 +35,75 @@ jobs:
               p.write_text(text.replace(old, new, 1))
 
           taxonomy = "crates/rustok-taxonomy/docs/implementation-plan.md"
-          replace_once(
-              taxonomy,
+          replace_once(taxonomy,
               "### TAXONOMY-CAT-5 — Forum category cutover — IN PROGRESS",
-              "### TAXONOMY-CAT-5 — Forum category cutover — COMPLETE",
-          )
-          replace_once(
-              taxonomy,
+              "### TAXONOMY-CAT-5 — Forum category cutover — COMPLETE")
+          replace_once(taxonomy,
               "- complete mounted multilingual/RTL browser parity only against Taxonomy-owned Category data.",
-              "- retain mounted multilingual/RTL browser parity only against Taxonomy-owned Category data and execute it in the final production-validation phase.",
-          )
-          replace_once(
-              taxonomy,
+              "- retain mounted multilingual/RTL browser parity only against Taxonomy-owned Category data and execute it in the final production-validation phase.")
+          replace_once(taxonomy,
               "  machine-readable execution contract and source verifier. Its contract remains\n  `source_ready_maintainer_execution_pending`: it does not claim browser execution or CAT-5\n  completion.",
-              "  machine-readable execution contract and source verifier. Its contract remains\n  `source_ready_maintainer_execution_pending`: it does not claim browser execution, deployment\n  provenance or final production-validation completion. CAT-5 implementation completion is tracked\n  separately from that mounted evidence.",
-          )
-          replace_once(
-              taxonomy,
+              "  machine-readable execution contract and source verifier. Its contract remains\n  `source_ready_maintainer_execution_pending`: it does not claim browser execution, deployment\n  provenance or final production-validation completion. CAT-5 implementation completion is tracked\n  separately from that mounted evidence.")
+          replace_once(taxonomy,
               "  mounted browser job is `workflow_dispatch`-only and reads authenticated storage state plus fixture\n  inputs from a maintainer-selected GitHub environment. Its merge deliberately did not claim browser\n  execution or CAT-5 completion.",
-              "  mounted browser job is `workflow_dispatch`-only and reads authenticated storage state plus fixture\n  inputs from a maintainer-selected GitHub environment. Its merge deliberately did not claim browser\n  execution, deployment provenance or final production-validation completion.",
-          )
-          replace_once(
-              taxonomy,
+              "  mounted browser job is `workflow_dispatch`-only and reads authenticated storage state plus fixture\n  inputs from a maintainer-selected GitHub environment. Its merge deliberately did not claim browser\n  execution, deployment provenance or final production-validation completion.")
+          replace_once(taxonomy,
               "before that credential exists; and focused pull-request triggers cover every verifier-owned source\nseam. None of those source-ready or cleanup merges substitutes for the still-required successful\nmounted browser execution against a prepared Taxonomy-backed fixture.\n\n**Next:** configure the GitHub environment required by `Forum Category Taxonomy Browser Evidence` and\nrun its `workflow_dispatch` mounted job from `main` against the prepared authenticated admin/storefront\nfixture, including requested/effective locale fallback, canonical localized routes, hierarchy/order,\npresentation and alias redirect. No backend donor/storage cutover remains.\n\n**Done when:** the backend ownership/storage cutover above remains intact and a successful mounted\nmultilingual/RTL browser run confirms that Forum Category behavior uses the shared Taxonomy\nidentity/copy/routes without losing Forum-specific policy.",
-              "before that credential exists; and focused pull-request triggers cover every verifier-owned source\nseam. The retained mounted execution packet remains required for the final production-validation\nphase, but it no longer gates CAT-5 implementation completion.\n\n**Implementation status: COMPLETE.** The backend ownership/storage cutover above is complete and the\nretained source/browser contracts guard the Taxonomy-owned behavior. No backend donor/storage cutover\nremains. The still-unexecuted mounted multilingual/RTL browser packet is deferred to the final\nproduction-validation phase below; it must not reopen CAT-5 implementation scope unless it exposes a\nreal source/backend regression.",
+              "before that credential exists; and focused pull-request triggers cover every verifier-owned source\nseam. The retained mounted execution packet remains required for the final production-validation\nphase, but it no longer gates CAT-5 implementation completion.\n\n**Implementation status: COMPLETE.** The backend ownership/storage cutover above is complete and the\nretained source/browser contracts guard the Taxonomy-owned behavior. No backend donor/storage cutover\nremains. The still-unexecuted mounted multilingual/RTL browser packet is deferred to the final\nproduction-validation phase below; it must not reopen CAT-5 implementation scope unless it exposes a\nreal source/backend regression.")
+
+          final_section = (
+              "## Final production / mounted validation — DEFERRED\n\n"
+              "Production/deployment evidence is intentionally collected only after the remaining source/backend\n"
+              "implementation queue is exhausted. A live deployment, maintainer credential, mounted browser fixture\n"
+              "or observed tenant rollout does not keep an otherwise complete implementation slice open. Future\n"
+              "production-only checks are appended to this section instead of being inserted into the CAT cursor.\n\n"
+              "Repository-executable engineering gates are **not** deferred: focused tests, source verifiers,\n"
+              "migration compatibility, PostgreSQL evidence and other CI/runtime checks that can run against an\n"
+              "isolated test environment remain part of the slice that changes their boundary.\n\n"
+              "### PROD-CAT-1 — Forum Category mounted multilingual/RTL evidence — DEFERRED\n\n"
+              "Retain `.github/workflows/forum-category-taxonomy-browser-evidence.yml` and execute a successful\n"
+              "`workflow_dispatch` from `main` only after a prepared Taxonomy-backed Forum admin/storefront fixture\n"
+              "and authenticated GitHub environment exist. The run must execute, not skip, the mounted multilingual/\n"
+              "RTL job and cover requested/effective locale fallback, canonical localized routes, hierarchy/order,\n"
+              "presentation and alias redirect.\n\n"
+              "**Done when:** the successful mounted run URL/ID and exact `main` head SHA are retained as final\n"
+              "production-validation evidence. Until then the browser packet remains\n"
+              "`source_ready_maintainer_execution_pending` without reopening TAXONOMY-CAT-5.\n\n"
           )
-          final_section = """## Final production / mounted validation — DEFERRED
-
-Production/deployment evidence is intentionally collected only after the remaining source/backend
-implementation queue is exhausted. A live deployment, maintainer credential, mounted browser fixture
-or observed tenant rollout does not keep an otherwise complete implementation slice open. Future
-production-only checks are appended to this section instead of being inserted into the CAT cursor.
-
-Repository-executable engineering gates are **not** deferred: focused tests, source verifiers,
-migration compatibility, PostgreSQL evidence and other CI/runtime checks that can run against an
-isolated test environment remain part of the slice that changes their boundary.
-
-### PROD-CAT-1 — Forum Category mounted multilingual/RTL evidence — DEFERRED
-
-Retain `.github/workflows/forum-category-taxonomy-browser-evidence.yml` and execute a successful
-`workflow_dispatch` from `main` only after a prepared Taxonomy-backed Forum admin/storefront fixture
-and authenticated GitHub environment exist. The run must execute, not skip, the mounted multilingual/
-RTL job and cover requested/effective locale fallback, canonical localized routes, hierarchy/order,
-presentation and alias redirect.
-
-**Done when:** the successful mounted run URL/ID and exact `main` head SHA are retained as final
-production-validation evidence. Until then the browser packet remains
-`source_ready_maintainer_execution_pending` without reopening TAXONOMY-CAT-5.
-
-"""
-          marker = "## References\n"
           p = Path(taxonomy)
           text = p.read_text()
-          if final_section in text:
-              raise SystemExit("taxonomy final production section already present")
-          if text.count(marker) != 1:
-              raise SystemExit("taxonomy references marker must occur once")
+          marker = "## References\n"
+          if final_section in text or text.count(marker) != 1:
+              raise SystemExit("taxonomy final-production insertion precondition failed")
           p.write_text(text.replace(marker, final_section + marker, 1))
 
           architecture = "docs/architecture/taxonomy-flex-category-platform-plan.md"
-          replace_once(
-              architecture,
-              "**Reviewed:** 2026-08-30",
-              "**Reviewed:** 2026-09-01",
-          )
-          replace_once(
-              architecture,
+          replace_once(architecture, "**Reviewed:** 2026-08-30", "**Reviewed:** 2026-09-01")
+          replace_once(architecture,
               "Forum established the first consumer migration precedent and its backend ownership/storage cutover is\ncomplete. TAXONOMY-CAT-5 remains open only for the retained mounted multilingual/RTL browser packet to\nbe executed against prepared authenticated admin/storefront fixtures; the browser source already\nexists and no backend donor/storage cutover remains.",
-              "Forum established the first consumer migration precedent and TAXONOMY-CAT-5 implementation is\ncomplete: its backend ownership/storage cutover is finished and no backend donor/storage cutover\nremains. The retained mounted multilingual/RTL browser packet is deferred to the final production-\nvalidation phase and no longer holds the implementation cursor open.",
-          )
-          replace_once(
-              architecture,
+              "Forum established the first consumer migration precedent and TAXONOMY-CAT-5 implementation is\ncomplete: its backend ownership/storage cutover is finished and no backend donor/storage cutover\nremains. The retained mounted multilingual/RTL browser packet is deferred to the final production-\nvalidation phase and no longer holds the implementation cursor open.")
+          replace_once(architecture,
               "Forum established the first migration precedent. Its backend cutover is complete, with only the\nprepared mounted multilingual/RTL browser execution still pending. Blog has completed this consumer migration through\nTAXONOMY-CAT-12. Product PostgreSQL completed its canonical localized-copy and hierarchy donor\nretirement through TAXONOMY-CAT-34 while deliberately retaining Product-owned navigation/policy state\nand non-PostgreSQL compatibility. No later consumer is selected by this plan; selecting one is a\nseparate accepted planning decision.",
-              "Forum established the first migration precedent and its TAXONOMY-CAT-5 implementation cutover is\ncomplete. Its prepared mounted multilingual/RTL browser execution is retained only for final\nproduction validation. Blog has completed this consumer migration through TAXONOMY-CAT-12. Product\nPostgreSQL completed its canonical localized-copy and hierarchy donor retirement through\nTAXONOMY-CAT-34 while deliberately retaining Product-owned navigation/policy state and non-PostgreSQL\ncompatibility. No later consumer is selected by this plan; selecting one is a separate accepted\nplanning decision.",
-          )
-          replace_once(
-              architecture,
+              "Forum established the first migration precedent and its TAXONOMY-CAT-5 implementation cutover is\ncomplete. Its prepared mounted multilingual/RTL browser execution is retained only for final\nproduction validation. Blog has completed this consumer migration through TAXONOMY-CAT-12. Product\nPostgreSQL completed its canonical localized-copy and hierarchy donor retirement through\nTAXONOMY-CAT-34 while deliberately retaining Product-owned navigation/policy state and non-PostgreSQL\ncompatibility. No later consumer is selected by this plan; selecting one is a separate accepted\nplanning decision.")
+          replace_once(architecture,
               "- Forum mounted multilingual/RTL admin/storefront evidence uses Taxonomy-owned category data;",
-              "- the retained Forum mounted multilingual/RTL packet remains source-guarded against Taxonomy-owned category data and is executed only in final production validation;",
+              "- the retained Forum mounted multilingual/RTL packet remains source-guarded against Taxonomy-owned category data and is executed only in final production validation;")
+          architecture_final = (
+              "## Final production validation\n\n"
+              "Deployment-dependent evidence is intentionally deferred until source/backend implementation work is\n"
+              "otherwise exhausted. Live/mounted environments, maintainer credentials and observed tenant rollout do\n"
+              "not keep implementation phases open; repository-executable focused/runtime/migration gates remain\n"
+              "in-phase and must continue to pass normally.\n\n"
+              "The first retained production item is the Forum Category multilingual/RTL browser packet. A successful\n"
+              "`Forum Category Taxonomy Browser Evidence` `workflow_dispatch` from `main` must eventually execute the\n"
+              "mounted job against prepared authenticated admin/storefront fixtures and be retained with its exact\n"
+              "head SHA. That evidence closes final production validation, not TAXONOMY-CAT-5 implementation.\n\n"
           )
-          architecture_final = """## Final production validation
-
-Deployment-dependent evidence is intentionally deferred until source/backend implementation work is
-otherwise exhausted. Live/mounted environments, maintainer credentials and observed tenant rollout do
-not keep implementation phases open; repository-executable focused/runtime/migration gates remain
-in-phase and must continue to pass normally.
-
-The first retained production item is the Forum Category multilingual/RTL browser packet. A successful
-`Forum Category Taxonomy Browser Evidence` `workflow_dispatch` from `main` must eventually execute the
-mounted job against prepared authenticated admin/storefront fixtures and be retained with its exact
-head SHA. That evidence closes final production validation, not TAXONOMY-CAT-5 implementation.
-
-"""
-          marker = "## Change rules\n"
           p = Path(architecture)
           text = p.read_text()
-          if architecture_final in text:
-              raise SystemExit("architecture final production section already present")
-          if text.count(marker) != 1:
-              raise SystemExit("architecture change-rules marker must occur once")
+          marker = "## Change rules\n"
+          if architecture_final in text or text.count(marker) != 1:
+              raise SystemExit("architecture final-production insertion precondition failed")
           p.write_text(text.replace(marker, architecture_final + marker, 1))
 
           contract_path = Path("crates/rustok-forum/contracts/evidence/forum-category-taxonomy-browser-execution-contract.json")
@@ -141,7 +111,7 @@ head SHA. That evidence closes final production validation, not TAXONOMY-CAT-5 i
           old_claim = "TAXONOMY-CAT-5 completion"
           new_claim = "final Category production validation completion"
           if contract.get("not_claimed", []).count(old_claim) != 1:
-              raise SystemExit("contract must contain exactly one old CAT-5 completion claim")
+              raise SystemExit("contract old completion claim precondition failed")
           contract["not_claimed"] = [new_claim if value == old_claim else value for value in contract["not_claimed"]]
           boundary = "CAT-5 implementation completion is source/backend scoped; mounted browser execution is deferred to the final Category production-validation phase"
           if boundary not in contract.get("boundaries", []):
@@ -149,44 +119,26 @@ head SHA. That evidence closes final production validation, not TAXONOMY-CAT-5 i
           contract_path.write_text(json.dumps(contract, indent=2) + "\n")
 
           verifier = "scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs"
-          replace_once(
-              verifier,
+          replace_once(verifier,
               '  "TAXONOMY-CAT-5 completion",',
-              '  "final Category production validation completion",',
-          )
-          verifier_boundary_anchor = """if (!contract.boundaries?.includes(focusedPathClosureBoundary)) {
-  throw new Error("CAT-5 browser contract must retain focused pull-request path closure");
-}
-"""
-          verifier_boundary_new = verifier_boundary_anchor + """const deferredProductionValidationBoundary =
-  "CAT-5 implementation completion is source/backend scoped; mounted browser execution is deferred to the final Category production-validation phase";
-if (!contract.boundaries?.includes(deferredProductionValidationBoundary)) {
-  throw new Error("CAT-5 browser contract must retain the deferred final production-validation boundary");
-}
-"""
-          replace_once(verifier, verifier_boundary_anchor, verifier_boundary_new)
+              '  "final Category production validation completion",')
+          anchor = 'if (!contract.boundaries?.includes(focusedPathClosureBoundary)) {\n  throw new Error("CAT-5 browser contract must retain focused pull-request path closure");\n}\n'
+          addition = anchor + 'const deferredProductionValidationBoundary =\n  "CAT-5 implementation completion is source/backend scoped; mounted browser execution is deferred to the final Category production-validation phase";\nif (!contract.boundaries?.includes(deferredProductionValidationBoundary)) {\n  throw new Error("CAT-5 browser contract must retain the deferred final production-validation boundary");\n}\n'
+          replace_once(verifier, anchor, addition)
 
           parity = "crates/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md"
-          replace_once(
-              parity,
+          replace_once(parity,
               "Status: **executable browser source / maintainer execution pending**\n",
-              "Status: **executable browser source / maintainer execution pending**\n\nTracking: **final production-validation phase; this packet does not block CAT-5 implementation completion**\n",
-          )
-          replace_once(
-              parity,
+              "Status: **executable browser source / maintainer execution pending**\n\nTracking: **final production-validation phase; this packet does not block CAT-5 implementation completion**\n")
+          replace_once(parity,
               "No successful `Forum Category Taxonomy Browser Evidence` `workflow_dispatch` run is retained yet. The source-ready runs above prove the executable packet and its security/route/RTL contracts only; they do not prove deployment provenance, mounted browser execution, production rollout completion or TAXONOMY-CAT-5 completion.",
-              "No successful `Forum Category Taxonomy Browser Evidence` `workflow_dispatch` run is retained yet. The source-ready runs above prove the executable packet and its security/route/RTL contracts only; they do not prove deployment provenance, mounted browser execution, production rollout completion or final Category production-validation completion. TAXONOMY-CAT-5 implementation is complete and this packet is retained as deferred deployment evidence.",
-          )
-          replace_once(
-              parity,
+              "No successful `Forum Category Taxonomy Browser Evidence` `workflow_dispatch` run is retained yet. The source-ready runs above prove the executable packet and its security/route/RTL contracts only; they do not prove deployment provenance, mounted browser execution, production rollout completion or final Category production-validation completion. TAXONOMY-CAT-5 implementation is complete and this packet is retained as deferred deployment evidence.")
+          replace_once(parity,
               "4. retain the successful workflow run URL/ID and exact head SHA as CAT-5 mounted evidence before changing the CAT-5 status.",
-              "4. retain the successful workflow run URL/ID and exact head SHA as final Category production-validation evidence.",
-          )
-          replace_once(
-              parity,
+              "4. retain the successful workflow run URL/ID and exact head SHA as final Category production-validation evidence.")
+          replace_once(parity,
               "A successful mounted browser run is the missing multilingual/RTL parity evidence required before TAXONOMY-CAT-5 can be marked complete. Adding or merging the workflow itself still does **not** claim browser execution, deployment provenance, rollout completion or CAT-5 completion.",
-              "A successful mounted browser run remains required before final Category production validation can be marked complete. Adding or merging the workflow itself still does **not** claim browser execution, deployment provenance or rollout completion; TAXONOMY-CAT-5 implementation status is already complete.",
-          )
+              "A successful mounted browser run remains required before final Category production validation can be marked complete. Adding or merging the workflow itself still does **not** claim browser execution, deployment provenance or rollout completion; TAXONOMY-CAT-5 implementation status is already complete.")
           PY
           rm -f .github/workflows/tmp-taxonomy-production-deferral-patcher.yml
           git config user.name "github-actions[bot]"
