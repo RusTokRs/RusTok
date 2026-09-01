@@ -39,6 +39,9 @@ impl TestDatabase {
         migration
             .execute_unprepared("CREATE TABLE tenants (id UUID PRIMARY KEY NOT NULL)")
             .await?;
+        migration
+            .execute_unprepared("CREATE TABLE oauth_apps (id UUID PRIMARY KEY NOT NULL)")
+            .await?;
         let manager = SchemaManager::new(&migration);
         SysEventsMigration.up(&manager).await?;
         for step in ChannelModule.migrations() {
