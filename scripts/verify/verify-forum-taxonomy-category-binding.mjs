@@ -20,6 +20,7 @@ const relation = 'crates/rustok-forum/src/entities/forum_category_taxonomy_bindi
 const runtimeTest = 'crates/rustok-forum/tests/category_taxonomy_binding.rs';
 const entities = 'crates/rustok-forum/src/entities/mod.rs';
 const legacyCategory = 'crates/rustok-forum/src/entities/forum_category.rs';
+const categoryService = 'crates/rustok-forum/src/services/category.rs';
 const forumServices = 'crates/rustok-forum/src/services/mod.rs';
 
 for (const path of [
@@ -30,6 +31,7 @@ for (const path of [
   runtimeTest,
   entities,
   legacyCategory,
+  categoryService,
   forumServices,
 ]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
@@ -63,6 +65,25 @@ if (failures.length === 0) {
 
   rejectMarker(legacyCategory, 'taxonomy_category_id', 'binding state embedded in legacy category row');
   requireMarker(legacyCategory, 'pub parent_id: Option<Uuid>', 'legacy hierarchy retained during staged cutover');
+
+  requireMarker(categoryService, 'pub(super) struct CategoryService;', 'crate-private Category persistence seam');
+  requireMarker(categoryService, 'pub(crate) async fn ensure_exists_in_tx(', 'retained Category existence helper');
+  requireMarker(categoryService, 'pub(crate) async fn find_category_in_tx(', 'retained Category lookup helper');
+  requireMarker(categoryService, 'pub(crate) async fn adjust_counters_in_tx(', 'retained Category counter helper');
+  for (const [marker, label] of [
+    ['lock_category_tree_in_tx', 'retired Category tree-lock scaffold'],
+    ['shift_siblings_for_insert_in_tx', 'retired Category create sibling-shift scaffold'],
+    ['validate_category_name', 'retired Category name validation scaffold'],
+    ['normalize_locale(', 'retired Category locale normalization scaffold'],
+    ['normalize_required_slug', 'retired Category required-slug scaffold'],
+    ['normalize_slug(', 'retired Category slug normalization scaffold'],
+    ['CreateCategoryInput', 'retired Category create DTO dependency'],
+    ['UpdateCategoryInput', 'retired Category update DTO dependency'],
+    ['Resource::ForumCategories', 'retired Category command authorization dependency'],
+  ]) {
+    rejectMarker(categoryService, marker, label);
+  }
+
   rejectMarker(forumServices, 'ForumCategoryTranslationTargetProvider', 'retired duplicate Forum Translation provider');
 }
 
