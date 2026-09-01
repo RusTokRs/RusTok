@@ -50,6 +50,44 @@ for (const pending of [
     throw new Error(`CAT-5 browser contract must keep ${pending} pending`);
   }
 }
+for (const claim of [
+  "admin Category tree renders RTL Taxonomy-owned copy with effective locale, dir=auto and browser-computed direction=rtl",
+  "storefront Category rail renders the same RTL Taxonomy-owned copy with browser-computed direction=rtl and canonical localized hrefs",
+]) {
+  if (!contract.claims_after_successful_execution?.includes(claim)) {
+    throw new Error(`CAT-5 browser contract must retain computed RTL claim: ${claim}`);
+  }
+}
+const mainOnlyDispatchBoundary =
+  "mounted workflow_dispatch evidence fails closed unless the selected GitHub ref is refs/heads/main";
+if (!contract.boundaries?.includes(mainOnlyDispatchBoundary)) {
+  throw new Error("CAT-5 browser contract must retain the main-only mounted execution boundary");
+}
+const scopedAdminStateSecretBoundary =
+  "raw authenticated admin storage state is scoped only to the late materialization step; the credential file is created after source verification and browser setup, only the Playwright execution step receives its path through a step output, and cleanup runs always";
+if (!contract.boundaries?.includes(scopedAdminStateSecretBoundary)) {
+  throw new Error("CAT-5 browser contract must retain the bounded admin storage-state lifetime boundary");
+}
+const mountedFixtureValuePreflightBoundary =
+  "all non-secret mounted fixture values are preflighted with the runner's bounded non-empty environment contract before authenticated storage-state materialization";
+if (!contract.boundaries?.includes(mountedFixtureValuePreflightBoundary)) {
+  throw new Error("CAT-5 browser contract must retain the pre-auth bounded fixture-value validation boundary");
+}
+const mountedUrlPreflightBoundary =
+  "mounted fixture URLs are preflighted before authenticated storage-state materialization and must be credential-free HTTP(S) URLs without fragments";
+if (!contract.boundaries?.includes(mountedUrlPreflightBoundary)) {
+  throw new Error("CAT-5 browser contract must retain the pre-auth mounted URL validation boundary");
+}
+const mountedFixtureRelationPreflightBoundary =
+  "mounted fixture locale/route relationships are preflighted before authenticated storage-state materialization: requested locales must appear in their configured admin/storefront URL paths, fallback requested/effective locales must differ, and alias/canonical URLs must differ";
+if (!contract.boundaries?.includes(mountedFixtureRelationPreflightBoundary)) {
+  throw new Error("CAT-5 browser contract must retain the pre-auth fixture relation validation boundary");
+}
+const focusedPathClosureBoundary =
+  "pull-request path filters cover every retained CAT-5 verifier input plus the next-admin package manifests so guarded source drift always runs the focused source contract";
+if (!contract.boundaries?.includes(focusedPathClosureBoundary)) {
+  throw new Error("CAT-5 browser contract must retain focused pull-request path closure");
+}
 
 for (const marker of contract.required_environment ?? []) {
   need(testSource, marker, "CAT-5 browser runner");
@@ -60,6 +98,7 @@ for (const marker of [
   "data-forum-route-identifier",
   "toHaveAttribute('dir', 'auto')",
   "toHaveAttribute('dir', 'ltr')",
+  "toHaveCSS('direction', 'rtl')",
   "depth 0 · position 0",
   "depth 1 · position 0",
   "allTextContents()",
@@ -68,6 +107,33 @@ for (const marker of [
   "browser.newContext({ storageState })",
 ]) {
   need(testSource, marker, "CAT-5 browser runner");
+}
+for (const marker of [
+  "function requiredEnvironment(name: string, maximumLength = 4096): string",
+  "value.trim().length === 0",
+  "value.length > maximumLength",
+  "/[\\u0000\\r\\n]/u.test(value)",
+  "must be a bounded non-empty environment value",
+]) {
+  need(testSource, marker, "CAT-5 browser runner bounded environment validation");
+}
+for (const marker of [
+  "function requiredUrl(name: string): string",
+  "!['http:', 'https:'].includes(parsed.protocol)",
+  "parsed.username",
+  "parsed.password",
+  "parsed.hash",
+  "must be a credential-free HTTP(S) URL without a fragment",
+]) {
+  need(testSource, marker, "CAT-5 browser runner URL validation");
+}
+for (const marker of [
+  "function requestedLocaleAppearsInPath(url: string, locale: string): boolean",
+  "expect(requestedLocaleAppearsInPath(url, requestedLocale)).toBe(true);",
+  "expect(requestedLocale).not.toBe(effectiveLocale);",
+  "expect(aliasUrl).not.toBe(canonicalUrl);",
+]) {
+  need(testSource, marker, "CAT-5 browser runner fixture relationship validation");
 }
 for (const forbidden of [
   "GraphqlRequest",
@@ -106,9 +172,11 @@ for (const marker of [
   "type: environment",
   "if: github.event_name == 'workflow_dispatch'",
   "environment: ${{ inputs.target_environment }}",
-  "ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}",
+  "run: test \"$GITHUB_REF\" = \"refs/heads/main\"",
+  "id: admin-storage-state",
   "state=\"$RUNNER_TEMP/forum-category-admin-storage-state.json\"",
-  "echo \"RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE=$state\" >> \"$GITHUB_ENV\"",
+  "echo \"path=$state\" >> \"$GITHUB_OUTPUT\"",
+  "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE: ${{ steps.admin-storage-state.outputs.path }}",
   "npm ci --no-audit --no-fund",
   "npx --no-install playwright install --with-deps chromium",
   "npx --no-install playwright test --config=playwright.forum-category-taxonomy.config.ts --list",
@@ -117,9 +185,172 @@ for (const marker of [
 ]) {
   need(workflow, marker, "CAT-5 manual browser execution workflow");
 }
-for (const marker of (contract.required_environment ?? []).filter(
+const pullRequestPathsStart = workflow.indexOf("  pull_request:\n    paths:\n");
+const workflowDispatchStart = workflow.indexOf("  workflow_dispatch:", pullRequestPathsStart);
+if (pullRequestPathsStart < 0 || workflowDispatchStart <= pullRequestPathsStart) {
+  throw new Error("CAT-5 workflow must retain an explicit pull_request path filter before workflow_dispatch");
+}
+const pullRequestPathsBlock = workflow.slice(pullRequestPathsStart, workflowDispatchStart);
+for (const path of [
+  workflowPath,
+  "apps/next-admin/package.json",
+  "apps/next-admin/package-lock.json",
+  configPath,
+  testPath,
+  "apps/storefront/src/forum_category_route.rs",
+  "crates/rustok-forum/admin/src/ui/root.rs",
+  "crates/rustok-forum/admin/src/ui/category_dnd.rs",
+  "crates/rustok-forum/storefront/src/ui/leptos.rs",
+  "crates/rustok-forum/src/services/category_taxonomy_tree_read.rs",
+  contractPath,
+  "crates/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md",
+  "scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs",
+]) {
+  need(
+    pullRequestPathsBlock,
+    `      - "${path}"`,
+    "CAT-5 focused workflow pull-request path closure",
+  );
+}
+const adminStateSecretBinding =
+  "ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}";
+const materializationSecretBlock = [
+  "      - name: Materialize authenticated admin storage state",
+  "        id: admin-storage-state",
+  "        shell: bash",
+  "        env:",
+  `          ${adminStateSecretBinding}`,
+  "        run: |",
+  "          set -euo pipefail",
+  '          test -n "$ADMIN_STORAGE_STATE_JSON"',
+].join("\n");
+need(
+  workflow,
+  materializationSecretBlock,
+  "CAT-5 manual browser execution workflow step-scoped admin storage-state secret",
+);
+if (workflow.split(adminStateSecretBinding).length - 1 !== 1) {
+  throw new Error("CAT-5 admin storage-state secret must be bound exactly once");
+}
+const storageStatePathBinding =
+  "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE: ${{ steps.admin-storage-state.outputs.path }}";
+if (workflow.split(storageStatePathBinding).length - 1 !== 1) {
+  throw new Error("CAT-5 admin storage-state file path must be exposed only to the browser execution step");
+}
+forbid(
+  workflow,
+  "environment: ${{ inputs.target_environment }}\n    env:\n      ADMIN_STORAGE_STATE_JSON:",
+  "CAT-5 admin storage-state secret must not be exposed at mounted job scope",
+);
+forbid(
+  workflow,
+  'echo "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE=$state" >> "$GITHUB_ENV"',
+  "CAT-5 admin storage-state path must not be exported job-wide",
+);
+const mountedJobStart = workflow.indexOf("  mounted-browser-evidence:");
+const mountedStepIndex = (marker) => workflow.indexOf(marker, mountedJobStart);
+const mountedFixtureValidationIndex = mountedStepIndex(
+  "      - name: Validate configured mounted fixture inputs",
+);
+const mountedVerifierIndex = mountedStepIndex("      - name: Verify CAT-5 browser evidence source contract");
+const mountedInstallIndex = mountedStepIndex("      - name: Install next-admin dependencies");
+const mountedChromiumIndex = mountedStepIndex("      - name: Install Chromium");
+const mountedMaterializeIndex = mountedStepIndex("      - name: Materialize authenticated admin storage state");
+const mountedExecuteIndex = mountedStepIndex("      - name: Execute mounted multilingual RTL browser evidence");
+const mountedCleanupIndex = mountedStepIndex("      - name: Remove authenticated admin storage state");
+if (
+  mountedJobStart < 0 ||
+  mountedFixtureValidationIndex < 0 ||
+  mountedVerifierIndex < 0 ||
+  mountedInstallIndex < 0 ||
+  mountedChromiumIndex < 0 ||
+  mountedMaterializeIndex < 0 ||
+  mountedExecuteIndex < 0 ||
+  mountedCleanupIndex < 0 ||
+  !(
+    mountedFixtureValidationIndex < mountedVerifierIndex &&
+    mountedVerifierIndex < mountedInstallIndex &&
+    mountedInstallIndex < mountedChromiumIndex &&
+    mountedChromiumIndex < mountedMaterializeIndex &&
+    mountedMaterializeIndex < mountedExecuteIndex &&
+    mountedExecuteIndex < mountedCleanupIndex
+  )
+) {
+  throw new Error(
+    "CAT-5 mounted fixture validation and source/dependency/browser setup must complete before authenticated admin storage-state materialization and browser execution",
+  );
+}
+const mountedFixtureValidationBlock = workflow.slice(
+  mountedFixtureValidationIndex,
+  mountedVerifierIndex,
+);
+for (const marker of [
+  "node <<'NODE'",
+  "const fixtureNames = [",
+  "const requiredEnvironment = (name, maximumLength = 4096) => {",
+  "raw.trim().length === 0",
+  "raw.length > maximumLength",
+  "/[\\u0000\\r\\n]/u.test(raw)",
+  "must be a bounded non-empty environment value",
+  "return raw.trim();",
+  "requiredEnvironment(name);",
+  "const urlNames = [",
+  "const validatedUrls = new Map();",
+  "const raw = requiredEnvironment(name);",
+  "new URL(raw)",
+  '!["http:", "https:"].includes(parsed.protocol)',
+  "parsed.username",
+  "parsed.password",
+  "parsed.hash",
+  "must be a credential-free HTTP(S) URL without a fragment",
+  "validatedUrls.set(name, parsed.toString());",
+  "const requestedLocaleAppearsInPath = (url, locale) =>",
+  "const localeUrlPairs = [",
+  '["RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL", rtlRequestedLocale]',
+  '["RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL", rtlRequestedLocale]',
+  '["RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL", fallbackRequestedLocale]',
+  '["RUSTOK_FORUM_CATEGORY_STOREFRONT_FALLBACK_E2E_URL", fallbackRequestedLocale]',
+  "requestedLocaleAppearsInPath(validatedUrls.get(name), locale)",
+  "fallbackRequestedLocale === fallbackEffectiveLocale",
+  "CAT-5 fallback requested and effective locales must differ",
+  "aliasUrl === canonicalUrl",
+  "CAT-5 alias and canonical storefront URLs must differ",
+]) {
+  need(
+    mountedFixtureValidationBlock,
+    marker,
+    "CAT-5 mounted fixture preflight before authenticated state materialization",
+  );
+}
+const mountedFixtureEnvironmentNames = (contract.required_environment ?? []).filter(
   (name) => name !== "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE",
-)) {
+);
+for (const name of mountedFixtureEnvironmentNames) {
+  need(
+    mountedFixtureValidationBlock,
+    `"${name}"`,
+    "CAT-5 mounted fixture bounded-value preflight coverage",
+  );
+}
+const mountedUrlEnvironmentNames = mountedFixtureEnvironmentNames.filter((name) =>
+  name.endsWith("_E2E_URL"),
+);
+if (mountedUrlEnvironmentNames.length !== 6) {
+  throw new Error("CAT-5 browser contract must retain the six mounted browser URL inputs");
+}
+for (const name of mountedUrlEnvironmentNames) {
+  need(
+    mountedFixtureValidationBlock,
+    `"${name}"`,
+    "CAT-5 mounted fixture URL preflight coverage",
+  );
+}
+forbid(
+  mountedFixtureValidationBlock,
+  "ADMIN_STORAGE_STATE_JSON",
+  "CAT-5 mounted fixture validation must complete before the authenticated state secret is accessed",
+);
+for (const marker of mountedFixtureEnvironmentNames) {
   need(
     workflow,
     marker + ": ${{ vars." + marker + " }}",

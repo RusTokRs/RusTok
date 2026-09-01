@@ -36,12 +36,12 @@
     "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_CANONICAL_PATH"
   ],
   "claims_after_successful_execution": [
-    "admin Category tree renders RTL Taxonomy-owned copy with effective locale and dir=auto",
+    "admin Category tree renders RTL Taxonomy-owned copy with effective locale, dir=auto and browser-computed direction=rtl",
     "admin route identifiers remain LTR while localized copy is RTL-capable",
     "admin Category hierarchy and sibling order match the prepared Taxonomy-owned fixture",
     "admin Category icon/accent presentation matches the prepared Taxonomy-owned fixture",
     "admin requested locale can fall back to a different Taxonomy effective locale",
-    "storefront Category rail renders the same RTL Taxonomy-owned copy and canonical localized hrefs",
+    "storefront Category rail renders the same RTL Taxonomy-owned copy with browser-computed direction=rtl and canonical localized hrefs",
     "storefront Category rail preserves Taxonomy owner ordering",
     "storefront requested locale fallback renders effective-locale copy and canonical effective-locale href",
     "legacy Category alias navigation redirects to the Taxonomy canonical route"
@@ -50,12 +50,16 @@
     "browser source does not seed Forum or Taxonomy state",
     "browser source does not call GraphQL or owner APIs directly",
     "authenticated admin state is maintainer supplied through Playwright storage state",
-    "fixture URLs are credential-free",
+    "all non-secret mounted fixture values are preflighted with the runner's bounded non-empty environment contract before authenticated storage-state materialization",
+    "mounted fixture URLs are preflighted before authenticated storage-state materialization and must be credential-free HTTP(S) URLs without fragments",
+    "mounted fixture locale/route relationships are preflighted before authenticated storage-state materialization: requested locales must appear in their configured admin/storefront URL paths, fallback requested/effective locales must differ, and alias/canonical URLs must differ",
     "production Forum and Taxonomy ownership behavior is unchanged by this evidence slice",
     "screenshots, video and tracing are disabled",
     "mounted browser execution is workflow_dispatch-only and requires a maintainer-selected GitHub environment",
-    "authenticated admin storage state enters the workflow only through the RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON environment secret and is materialized under RUNNER_TEMP",
+    "mounted workflow_dispatch evidence fails closed unless the selected GitHub ref is refs/heads/main",
+    "raw authenticated admin storage state is scoped only to the late materialization step; the credential file is created after source verification and browser setup, only the Playwright execution step receives its path through a step output, and cleanup runs always",
     "credential-free mounted URLs and expected fixture values enter the workflow through GitHub environment variables",
+    "pull-request path filters cover every retained CAT-5 verifier input plus the next-admin package manifests so guarded source drift always runs the focused source contract",
     "pull-request runs verify source and compile-list the retained Playwright runner without mounted credentials or fixture execution"
   ],
   "not_claimed": [

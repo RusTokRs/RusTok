@@ -233,6 +233,39 @@ Accepted CAT-5 slices already in `main`:
   mounted browser job is `workflow_dispatch`-only and reads authenticated storage state plus fixture
   inputs from a maintainer-selected GitHub environment. Its merge deliberately did not claim browser
   execution or CAT-5 completion.
+- PR #3752 made the mounted Forum Category admin evidence locale-addressable through the exact
+  normalized `categories/<locale>` module subpath while preserving legacy `/categories` behavior,
+  so fresh authenticated browser navigation can deterministically select RTL and fallback locales.
+- PR #3753 strengthened the retained browser packet so authenticated admin and storefront root/child
+  localized headings must resolve to browser-computed `direction: rtl`, not merely retain source
+  `dir="auto"`.
+- PR #3755 aligned the machine-readable CAT-5 execution claims with the computed RTL runner contract
+  and made the focused verifier reject regressions to weaker admin/storefront RTL claims.
+- PR #3757 made the mounted `workflow_dispatch` fail closed outside `refs/heads/main`, so stale-branch
+  browser evidence cannot be mistaken for completion evidence.
+- PR #3758 scoped the raw authenticated admin storage-state JSON to the single materialization step;
+  PR #3759 delayed credential-file creation until after source verification, dependency install and
+  Chromium setup, passed only the step-output path to Playwright and retained unconditional cleanup.
+- PR #3760 preflighted all mounted targets as credential-free HTTP(S) URLs without fragments before
+  authenticated storage-state materialization while retaining runner-side URL validation.
+- PR #3761 closed the focused pull-request path set over every runtime/source seam guarded by the
+  retained verifier plus the next-admin package manifests.
+- PR #3762 moved bounded non-empty/control-character validation for every non-secret mounted fixture
+  value before authenticated-state materialization; PR #3763 moved the static locale→URL, fallback
+  requested/effective and storefront alias/canonical relationship checks to that same pre-auth
+  boundary. The execution contract remains `source_ready_maintainer_execution_pending`.
+- PR #3771 confined the historical `forum_category_translation` entity to crate-private migration
+  compatibility and removed the retired runtime Category→translation SeaORM relation without
+  rewriting the published deterministic backfill migration.
+- PR #3772 removed the unreachable private pre-cutover Category read-model donor path, including its
+  legacy translation query and Category cursors, while preserving the Topic/Reply delegate and adding
+  an executable exact-SHA ownership/compile/regression gate.
+- PR #3774 isolated the live Category mutation support used by import/projection-owner composition
+  from the narrow `CategoryService` persistence seam without changing mutation behavior, and closed
+  the focused binding verifier/path/formatting boundary over those support sources.
+- PR #3775 made the transactional Category metadata-update owner fail closed on placement changes,
+  removing the dormant direct `active.position` write so future internal callers cannot bypass the
+  atomic move/reorder commands and their Taxonomy hierarchy synchronization.
 
 Retained focused evidence for the foundation:
 
@@ -252,16 +285,67 @@ Retained focused evidence for the foundation:
 - PR #3750 exact head `6cf7325a4f32a1cff6859792978523e21913e873` passed `Forum Category Taxonomy Browser Evidence`
   run `33306801105`: exact checkout, source contract and retained Playwright compile-list succeeded,
   while the mounted multilingual/RTL job was correctly skipped on the pull-request event. PR #3750
-  was squash-merged as `287db4a8857663e0355712d9cb5893f118f65608`.
+  was squash-merged as `287db4a8857663e0355712d9cb5893f118f65608`;
+- PR #3752 exact head `448e50a2b499aedeea45c5d448b0f832a51f9da0` passed focused
+  `Forum Category Taxonomy Browser Evidence` run `33365642047` and was squash-merged as
+  `2f5e03e8cb5c0577686e0cf527f93d8897b46fbe`;
+- PR #3753 exact head `cfe009e9cfa10d0c78c7768489467669577003e0` passed focused
+  `Forum Category Taxonomy Browser Evidence` run `33387441260` and was squash-merged as
+  `4471ef63d0f49f683b819b527baaf13d45ec8297`;
+- PR #3755 exact head `c33b632710401a34caedab96fb384aff88d99c78` passed focused
+  `Forum Category Taxonomy Browser Evidence` run `33389998207`: exact checkout, source contract,
+  dependency install and retained Playwright compile-list succeeded while the mounted job was
+  correctly skipped on the pull-request event. PR #3755 was squash-merged as
+  `f4de7c3ccbc1c0b32c9c6bcd6f0394e07981a063`;
+- PR #3757 exact head `4dd055b54e5d15f7329acff802688a74e52d3a7e` passed focused run
+  `33393245584` and was squash-merged as `246aadc49857bfd8442bb526d0da7713061d0b60`;
+- PR #3758 exact head `362fd08972875cd20f0ff45487d56cd82daa77f5` passed focused run
+  `33395511932` and was squash-merged as `b04434a1172db0282eaf4afe45e603ba6f75edb2`;
+- PR #3759 exact head `5644a2ffd6c4836bb6d7a36178f65af87a8f0099` passed focused run
+  `33395884361` and was squash-merged as `befdc7f6ddcd506a24f5d069dbb4ad17a14556fb`;
+- PR #3760 exact head `8f29938750c71cc41711eb5a8b39022fc64faa68` passed focused run
+  `33398827860` and was squash-merged as `14ffe3729870a929c2621ed68483ddaf10a3dfee`;
+- PR #3761 exact head `aff03fdf06df6529cc9176dff02a524d07b035ff` passed focused run
+  `33403955051` and was squash-merged as `2e2774e67bae5c7c8aef3db56f3d402771137d48`;
+- PR #3762 exact head `067f6ec3c2c138a29265a172ae17632c9269827b` passed focused run
+  `33404692954` and was squash-merged as `a64f2b1c36112f6e8e4cd9166040bfcfaf11e877`;
+- PR #3763 exact head `5bd030a05e5ca59dcd6b6c317cf22400fc20b1f9` passed focused run
+  `33405293672` and was squash-merged as `261ce7e00629b0759042d3ebca62e6c9e2f39216`;
+- PR #3771 exact head `13919479c99ec755d1f7cc3f758c14680d821659` passed focused
+  `Forum Taxonomy Category Backfill Contract` run `33436045515`, including the updated source boundary
+  and full `cargo check --locked -p rustok-forum --lib`, then squash-merged as
+  `2f1f97a65c4719ae4f793ff81b925fe0e6121936`;
+- PR #3772 exact head `4cf6e711d6b56dbd9cf9222bbfd4c3f04d1a0391` passed focused
+  `Forum Read Model Category Taxonomy Copy` run `33437621508`: exact-SHA ownership verification,
+  Rust formatting, full Forum library compile and retained Topic unread SQLite regression all
+  succeeded; Browser E2E, Hardening Gates and Ecommerce Hardening also passed on that head. PR #3772
+  was squash-merged as `3b15ab139636d31dca027045d3a53a5769a62b1a`;
+- PR #3774 exact head `6815c17cffbac3f10db3f94a7058aba78201bef8` passed focused
+  `Forum Taxonomy Category Binding Contract` run `33468821321`: exact-SHA source verification,
+  focused Rust formatting, the runtime binding contract and full Forum library compilation all
+  succeeded; Browser E2E, Hardening Gates and Ecommerce Hardening also passed. PR #3774 was
+  squash-merged as `7ec72d3d890e3ead9d8618db179fa55bf50477e7`;
+- PR #3775 exact head `1d4db5dd40f0183f36c4802261b8193d377a3db8` passed focused
+  `Forum Taxonomy Category Binding Contract` run `33470821294`: exact-SHA source verification,
+  focused Rust formatting, the runtime binding contract and full Forum library compilation all
+  succeeded; Browser E2E run `33470821176`, Hardening Gates run `33470821175` and Ecommerce
+  Hardening run `33470821177` also passed. PR #3775 was squash-merged as
+  `95a25063b613105ce78eac13b3b025aaa3e17380`.
 
-Later CAT-5 runtime slices include focused source/integration contracts. PR #3708 provides the retained
-browser runner and PR #3750 provides its credential-safe manual execution path, but neither merge
-substitutes for the still-required successful mounted browser execution against a prepared
-Taxonomy-backed fixture.
+The retained browser execution packet itself remains hardened through PR #3763. The CAT-5 backend
+handoff is actualized through PR #3775: PR #3771/#3772 removed the remaining runtime legacy
+translation/read donors, PR #3774 isolated the still-live shared Category mutation support from the
+narrow persistence seam, and PR #3775 fail-closed transactional metadata updates against placement
+bypasses. The mounted execution path is main-only; the raw authenticated state is step-scoped and
+materialized late into a restricted `RUNNER_TEMP` file whose path is exposed only to Playwright; all
+non-secret fixture values, URL safety and static locale/fallback/alias relationships are checked
+before that credential exists; and focused pull-request triggers cover every verifier-owned source
+seam. None of those source-ready or cleanup merges substitutes for the still-required successful
+mounted browser execution against a prepared Taxonomy-backed fixture.
 
 **Next:** configure the GitHub environment required by `Forum Category Taxonomy Browser Evidence` and
-run its `workflow_dispatch` mounted job against the prepared authenticated admin/storefront fixture,
-including requested/effective locale fallback, canonical localized routes, hierarchy/order,
+run its `workflow_dispatch` mounted job from `main` against the prepared authenticated admin/storefront
+fixture, including requested/effective locale fallback, canonical localized routes, hierarchy/order,
 presentation and alias redirect. No backend donor/storage cutover remains.
 
 **Done when:** the backend ownership/storage cutover above remains intact and a successful mounted
@@ -352,11 +436,14 @@ The existing route and Translation machinery remains authoritative for both demo
 - requested locale -> explicit fallback -> platform fallback remains the presentation order;
 - `requested_locale` and `effective_locale` must both survive owner projections;
 - localized authoring never copies fallback content into the target locale;
-- hard delete releases canonical/route identities through owner-controlled persistence semantics;
+- hard deletion releases canonical/route identities through owner-controlled persistence semantics;
 - Translation applies use resource/source/target revision CAS and durable owner change cursors.
 
 A richer bounded resolver must preserve each resolved term's `effective_locale`; consumers must not
 label fallback text with the requested/content locale when Taxonomy resolved another locale.
+
+Exactly one stale-revision candidate may commit for a same-snapshot Translation apply; competing
+stale candidates close as conflicts without advancing durable revision/change evidence twice.
 
 ## PostgreSQL evidence policy
 
@@ -394,17 +481,25 @@ translation update rolls back. The winner's translation and route reservation co
 exactly one durable route owner remains. This is the translation apply CAS boundary for route key
 ownership.
 
-Recorded runtime evidence runs:
+Recorded runtime evidence:
 
-- Final exact-head pull-request run `32708155467` (HEAD `a102c224888459ddab8ab4875083b656e97a56f3`):
-  source boundary, route contention harness, translation apply CAS, and the gate all succeeded.
-- Post-merge main run `32712523041` (HEAD `e8d228cd1bd74a3ad42d6a9947114024896daeee`):
-  canonical PostgreSQL 16 migrations, route-registry contention, translation apply CAS and gate
-  all succeeded. Result 4 is complete for the current runtime input fingerprints.
+- Final exact-head pull-request run `33407161450` (HEAD `3c42235867036511eabeb87ed421d9d74b7ff997`):
+  source contract, canonical PostgreSQL 16 migrations, Category presentation CAS, Category hierarchy
+  contention, route-registry contention, Translation-target CAS/change-cursor evidence, artifact
+  upload and the final gate all succeeded. Artifact `9763777630`, named
+  `taxonomy-postgres-evidence-33407161450-3c42235867036511eabeb87ed421d9d74b7ff997`, has digest
+  `sha256:70d124fba72cf14c00f88330639ff8e70200a6f3919963ae0af5cf9760874854`.
+- Post-merge main run `33420044854` (HEAD `0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6`):
+  source contract, canonical PostgreSQL 16 migrations, Category presentation CAS, Category hierarchy
+  contention, route-registry contention, Translation-target CAS/change-cursor evidence, artifact
+  upload and the final gate all succeeded. Artifact `9768688596`, named
+  `taxonomy-postgres-evidence-33420044854-0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6`, has digest
+  `sha256:bed3651b428a2e779cec8faca0bef804b079655608982ddb3de922549f195303`.
+- Result 4 is complete for the current runtime input fingerprints.
 
-The `evidence.json` runtime input fingerprints record the exact git object SHAs for all runtime
-inputs at the time of the post-merge main run. When any of these inputs changes, the verifier
-requires fresh PostgreSQL evidence to be collected and the fingerprints updated.
+The evidence runtime input fingerprints record the exact git object SHAs validated by the successful
+post-merge main run. Later changes to any fingerprinted runtime input require fresh PostgreSQL
+evidence; changes outside that runtime-input set do not silently invalidate the retained proof.
 
 ## Verification
 

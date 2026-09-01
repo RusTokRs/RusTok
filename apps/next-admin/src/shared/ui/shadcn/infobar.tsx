@@ -249,7 +249,7 @@ function Infobar({
           data-infobar='infobar'
           data-slot='infobar'
           data-mobile='true'
-          className='bg-sidebar text-sidebar-foreground w-[18rem] p-0 [&>button]:hidden'
+          className='bg-sidebar text-sidebar-foreground w-[18rem] max-w-[70%] p-0 [&>button]:hidden'
           side={side}
         >
           <SheetHeader className='sr-only'>

@@ -4,8 +4,15 @@ on:
   pull_request:
     paths:
       - ".github/workflows/forum-category-taxonomy-browser-evidence.yml"
+      - "apps/next-admin/package.json"
+      - "apps/next-admin/package-lock.json"
       - "apps/next-admin/playwright.forum-category-taxonomy.config.ts"
       - "apps/next-admin/tests/forum-category-taxonomy/browser-evidence.spec.ts"
+      - "apps/storefront/src/forum_category_route.rs"
+      - "crates/rustok-forum/admin/src/ui/root.rs"
+      - "crates/rustok-forum/admin/src/ui/category_dnd.rs"
+      - "crates/rustok-forum/storefront/src/ui/leptos.rs"
+      - "crates/rustok-forum/src/services/category_taxonomy_tree_read.rs"
       - "crates/rustok-forum/contracts/evidence/forum-category-taxonomy-browser-execution-contract.json"
       - "crates/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md"
       - "scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs"
@@ -42,6 +49,10 @@ jobs:
         env:
           TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - name: Require main for mounted evidence
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: test "$GITHUB_REF" = "refs/heads/main"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
@@ -64,7 +75,6 @@ jobs:
     timeout-minutes: 20
     environment: ${{ inputs.target_environment }}
     env:
-      ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}
       RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL: ${{ vars.RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL }}
       RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL: ${{ vars.RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL }}
       RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL: ${{ vars.RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL }}
@@ -105,41 +115,108 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$ADMIN_STORAGE_STATE_JSON"
-          for name in \
-            RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL \
-            RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL \
-            RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL \
-            RUSTOK_FORUM_CATEGORY_STOREFRONT_FALLBACK_E2E_URL \
-            RUSTOK_FORUM_CATEGORY_STOREFRONT_ALIAS_E2E_URL \
-            RUSTOK_FORUM_CATEGORY_STOREFRONT_CANONICAL_E2E_URL \
-            RUSTOK_FORUM_CATEGORY_E2E_RTL_REQUESTED_LOCALE \
-            RUSTOK_FORUM_CATEGORY_E2E_RTL_EFFECTIVE_LOCALE \
-            RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_REQUESTED_LOCALE \
-            RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_EFFECTIVE_LOCALE \
-            RUSTOK_FORUM_CATEGORY_E2E_ROOT_NAME \
-            RUSTOK_FORUM_CATEGORY_E2E_ROOT_SLUG \
-            RUSTOK_FORUM_CATEGORY_E2E_CHILD_NAME \
-            RUSTOK_FORUM_CATEGORY_E2E_CHILD_SLUG \
-            RUSTOK_FORUM_CATEGORY_E2E_ROOT_ICON \
-            RUSTOK_FORUM_CATEGORY_E2E_ACCENT_CLASS \
-            RUSTOK_FORUM_CATEGORY_E2E_ROOT_CANONICAL_PATH \
-            RUSTOK_FORUM_CATEGORY_E2E_CHILD_CANONICAL_PATH \
-            RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_NAME \
-            RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_SLUG \
-            RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_CANONICAL_PATH
-          do
-            test -n "${!name}"
-          done
-      - name: Materialize authenticated admin storage state
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          state="$RUNNER_TEMP/forum-category-admin-storage-state.json"
-          printf '%s' "$ADMIN_STORAGE_STATE_JSON" > "$state"
-          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$state"
-          echo "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE=$state" >> "$GITHUB_ENV"
+          node <<'NODE'
+          const fixtureNames = [
+            "RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL",
+            "RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL",
+            "RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL",
+            "RUSTOK_FORUM_CATEGORY_STOREFRONT_FALLBACK_E2E_URL",
+            "RUSTOK_FORUM_CATEGORY_STOREFRONT_ALIAS_E2E_URL",
+            "RUSTOK_FORUM_CATEGORY_STOREFRONT_CANONICAL_E2E_URL",
+            "RUSTOK_FORUM_CATEGORY_E2E_RTL_REQUESTED_LOCALE",
+            "RUSTOK_FORUM_CATEGORY_E2E_RTL_EFFECTIVE_LOCALE",
+            "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_REQUESTED_LOCALE",
+            "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_EFFECTIVE_LOCALE",
+            "RUSTOK_FORUM_CATEGORY_E2E_ROOT_NAME",
+            "RUSTOK_FORUM_CATEGORY_E2E_ROOT_SLUG",
+            "RUSTOK_FORUM_CATEGORY_E2E_CHILD_NAME",
+            "RUSTOK_FORUM_CATEGORY_E2E_CHILD_SLUG",
+            "RUSTOK_FORUM_CATEGORY_E2E_ROOT_ICON",
+            "RUSTOK_FORUM_CATEGORY_E2E_ACCENT_CLASS",
+            "RUSTOK_FORUM_CATEGORY_E2E_ROOT_CANONICAL_PATH",
+            "RUSTOK_FORUM_CATEGORY_E2E_CHILD_CANONICAL_PATH",
+            "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_NAME",
+            "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_SLUG",
+            "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_CANONICAL_PATH",
+          ];
+          const requiredEnvironment = (name, maximumLength = 4096) => {
+            const raw = process.env[name];
+            if (
+              typeof raw !== "string" ||
+              raw.trim().length === 0 ||
+              raw.length > maximumLength ||
+              /[\u0000\r\n]/u.test(raw)
+            ) {
+              throw new Error(`${name} must be a bounded non-empty environment value`);
+            }
+            return raw.trim();
+          };
+          for (const name of fixtureNames) {
+            requiredEnvironment(name);
+          }
+          const urlNames = [
+            "RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL",
+            "RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL",
+            "RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL",
+            "RUSTOK_FORUM_CATEGORY_STOREFRONT_FALLBACK_E2E_URL",
+            "RUSTOK_FORUM_CATEGORY_STOREFRONT_ALIAS_E2E_URL",
+            "RUSTOK_FORUM_CATEGORY_STOREFRONT_CANONICAL_E2E_URL",
+          ];
+          const validatedUrls = new Map();
+          for (const name of urlNames) {
+            const raw = requiredEnvironment(name);
+            let parsed;
+            try {
+              parsed = new URL(raw);
+            } catch {
+              throw new Error(`${name} must be a valid URL`);
+            }
+            if (
+              !["http:", "https:"].includes(parsed.protocol) ||
+              parsed.username ||
+              parsed.password ||
+              parsed.hash
+            ) {
+              throw new Error(`${name} must be a credential-free HTTP(S) URL without a fragment`);
+            }
+            validatedUrls.set(name, parsed.toString());
+          }
+          const requestedLocaleAppearsInPath = (url, locale) =>
+            new URL(url).pathname
+              .split("/")
+              .filter(Boolean)
+              .some((segment) => segment === locale);
+          const rtlRequestedLocale = requiredEnvironment(
+            "RUSTOK_FORUM_CATEGORY_E2E_RTL_REQUESTED_LOCALE",
+          );
+          const fallbackRequestedLocale = requiredEnvironment(
+            "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_REQUESTED_LOCALE",
+          );
+          const fallbackEffectiveLocale = requiredEnvironment(
+            "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_EFFECTIVE_LOCALE",
+          );
+          const localeUrlPairs = [
+            ["RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL", rtlRequestedLocale],
+            ["RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL", rtlRequestedLocale],
+            ["RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL", fallbackRequestedLocale],
+            ["RUSTOK_FORUM_CATEGORY_STOREFRONT_FALLBACK_E2E_URL", fallbackRequestedLocale],
+          ];
+          for (const [name, locale] of localeUrlPairs) {
+            if (!requestedLocaleAppearsInPath(validatedUrls.get(name), locale)) {
+              throw new Error(`${name} must contain requested locale ${locale} as an exact path segment`);
+            }
+          }
+          if (fallbackRequestedLocale === fallbackEffectiveLocale) {
+            throw new Error("CAT-5 fallback requested and effective locales must differ");
+          }
+          const aliasUrl = validatedUrls.get("RUSTOK_FORUM_CATEGORY_STOREFRONT_ALIAS_E2E_URL");
+          const canonicalUrl = validatedUrls.get(
+            "RUSTOK_FORUM_CATEGORY_STOREFRONT_CANONICAL_E2E_URL",
+          );
+          if (aliasUrl === canonicalUrl) {
+            throw new Error("CAT-5 alias and canonical storefront URLs must differ");
+          }
+          NODE
       - name: Verify CAT-5 browser evidence source contract
         run: node scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs
       - name: Install next-admin dependencies
@@ -148,8 +225,23 @@ jobs:
       - name: Install Chromium
         working-directory: apps/next-admin
         run: npx --no-install playwright install --with-deps chromium
+      - name: Materialize authenticated admin storage state
+        id: admin-storage-state
+        shell: bash
+        env:
+          ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$ADMIN_STORAGE_STATE_JSON"
+          umask 077
+          state="$RUNNER_TEMP/forum-category-admin-storage-state.json"
+          printf '%s' "$ADMIN_STORAGE_STATE_JSON" > "$state"
+          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$state"
+          echo "path=$state" >> "$GITHUB_OUTPUT"
       - name: Execute mounted multilingual RTL browser evidence
         working-directory: apps/next-admin
+        env:
+          RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE: ${{ steps.admin-storage-state.outputs.path }}
         run: npx --no-install playwright test --config=playwright.forum-category-taxonomy.config.ts
       - name: Remove authenticated admin storage state
         if: always()

@@ -20,6 +20,10 @@ const relation = 'crates/rustok-forum/src/entities/forum_category_taxonomy_bindi
 const runtimeTest = 'crates/rustok-forum/tests/category_taxonomy_binding.rs';
 const entities = 'crates/rustok-forum/src/entities/mod.rs';
 const legacyCategory = 'crates/rustok-forum/src/entities/forum_category.rs';
+const categoryService = 'crates/rustok-forum/src/services/category.rs';
+const categoryMutationSupport = 'crates/rustok-forum/src/services/category_mutation_support.rs';
+const categoryImport = 'crates/rustok-forum/src/services/category_import.rs';
+const categoryProjectionOwner = 'crates/rustok-forum/src/services/category_projection_owner.rs';
 const forumServices = 'crates/rustok-forum/src/services/mod.rs';
 
 for (const path of [
@@ -30,6 +34,10 @@ for (const path of [
   runtimeTest,
   entities,
   legacyCategory,
+  categoryService,
+  categoryMutationSupport,
+  categoryImport,
+  categoryProjectionOwner,
   forumServices,
 ]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
@@ -63,6 +71,79 @@ if (failures.length === 0) {
 
   rejectMarker(legacyCategory, 'taxonomy_category_id', 'binding state embedded in legacy category row');
   requireMarker(legacyCategory, 'pub parent_id: Option<Uuid>', 'legacy hierarchy retained during staged cutover');
+
+  requireMarker(categoryService, 'include!("category_mutation_support.rs");', 'explicit shared Category mutation support');
+  requireMarker(categoryService, 'pub(super) struct CategoryService;', 'crate-private Category persistence seam');
+  requireMarker(categoryService, 'pub(crate) async fn ensure_exists_in_tx(', 'retained Category existence helper');
+  requireMarker(categoryService, 'pub(crate) async fn find_category_in_tx(', 'retained Category lookup helper');
+  requireMarker(categoryService, 'pub(crate) async fn adjust_counters_in_tx(', 'retained Category counter helper');
+  for (const [marker, label] of [
+    ['async fn lock_category_tree_in_tx', 'shared Category tree-lock implementation'],
+    ['async fn shift_siblings_for_insert_in_tx', 'shared Category insert-order implementation'],
+    ['fn validate_category_name', 'shared Category name validation implementation'],
+    ['fn normalize_locale(', 'shared Category locale normalization implementation'],
+    ['fn normalize_required_slug', 'shared Category required-slug implementation'],
+    ['fn normalize_slug(', 'shared Category slug normalization implementation'],
+    ['use crate::dto::{CreateCategoryInput, UpdateCategoryInput};', 'Category command DTO imports'],
+    ['use rustok_api::{Action, Resource};', 'Category command authorization imports'],
+  ]) {
+    rejectMarker(categoryService, marker, label);
+  }
+
+  requireMarker(categoryMutationSupport, 'Shared implementation support for the `category` include group', 'live shared-support boundary');
+  requireMarker(categoryMutationSupport, 'use tracing::instrument;', 'projection owner instrumentation import');
+  requireMarker(categoryMutationSupport, 'use crate::dto::{CreateCategoryInput, UpdateCategoryInput};', 'projection owner command DTO imports');
+  requireMarker(categoryMutationSupport, 'use rustok_api::{Action, Resource};', 'projection owner authorization imports');
+  requireMarker(categoryMutationSupport, 'async fn lock_category_tree_in_tx', 'shared Category tree lock');
+  requireMarker(categoryMutationSupport, 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', 'tenant Category tree lock key');
+  requireMarker(categoryMutationSupport, 'async fn shift_siblings_for_insert_in_tx', 'shared Category insert ordering');
+  requireMarker(categoryMutationSupport, 'fn validate_category_name', 'shared Category name validator');
+  requireMarker(categoryMutationSupport, 'fn normalize_locale(', 'shared Category locale normalizer');
+  requireMarker(categoryMutationSupport, 'fn normalize_required_slug', 'shared Category required-slug normalizer');
+  requireMarker(categoryMutationSupport, 'fn normalize_slug(', 'shared Category slug normalizer');
+  rejectMarker(categoryMutationSupport, 'forum_category_translation', 'retired Forum-local Category translation donor');
+
+  for (const marker of [
+    'insert_import_category_in_tx(',
+    'validate_category_name(&record.name)',
+    'normalize_locale(&record.locale)',
+    'normalize_required_slug(&record.slug)',
+    'lock_category_tree_in_tx(txn, tenant_id)',
+    'shift_siblings_for_insert_in_tx(',
+    'taxonomy_sync::sync_category_copy_in_tx(',
+  ]) {
+    requireMarker(categoryImport, marker, `live import support call ${marker}`);
+  }
+
+  for (const marker of [
+    'CategoryProjectionOwnerService',
+    'enforce_scope(&security, Resource::ForumCategories, Action::Create)',
+    'enforce_scope(&security, Resource::ForumCategories, Action::Update)',
+    'lock_category_tree_in_tx(&txn, tenant_id)',
+    'shift_siblings_for_insert_in_tx(',
+    'validate_category_name(',
+    'normalize_locale(',
+    'normalize_required_slug',
+    'taxonomy_sync::sync_category_copy_in_tx(',
+  ]) {
+    requireMarker(categoryProjectionOwner, marker, `live projection-owner support call ${marker}`);
+  }
+  requireMarker(
+    categoryProjectionOwner,
+    'if input.position.is_some() {',
+    'transactional metadata-update placement guard',
+  );
+  requireMarker(
+    categoryProjectionOwner,
+    'Category position must be changed through move/reorder commands',
+    'transactional placement rejection contract',
+  );
+  rejectMarker(
+    categoryProjectionOwner,
+    'active.position = Set(position);',
+    'direct Category placement write in metadata update',
+  );
+
   rejectMarker(forumServices, 'ForumCategoryTranslationTargetProvider', 'retired duplicate Forum Translation provider');
 }
 

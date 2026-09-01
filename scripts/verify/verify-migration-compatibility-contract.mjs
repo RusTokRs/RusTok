@@ -237,7 +237,7 @@ requireMarkers(workflow, [
   "postgres://rustok_migration:rustok_migration@localhost:5432/postgres",
   "CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8",
   "Download selected backfill fixtures",
-  "actions/download-artifact@v5",
+  "actions/download-artifact@v8.0.1",
   "Verify selected backfill fixtures",
   "migration-backfill/backfill-fixtures.json",
   "Apply base migrations and preserve database",

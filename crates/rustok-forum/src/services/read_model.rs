@@ -14,21 +14,18 @@ use rustok_content::{
 use rustok_core::SecurityContext;
 
 use crate::dto::{
-    CategoryCursorPage, CategoryCursorQuery, CategoryReadModel, MAX_FORUM_READ_LIMIT,
-    ReplyCursorPage, ReplyCursorQuery, ReplyReadModel, TopicCursorPage, TopicCursorQuery,
-    TopicReadModel, TopicUnreadCursorPage, TopicUnreadCursorQuery, TopicUnreadReadModel,
-    TopicUnreadSummaryReadModel, bounded_forum_read_limit,
+    MAX_FORUM_READ_LIMIT, ReplyCursorPage, ReplyCursorQuery, ReplyReadModel, TopicCursorPage,
+    TopicCursorQuery, TopicReadModel, TopicUnreadCursorPage, TopicUnreadCursorQuery,
+    TopicUnreadReadModel, TopicUnreadSummaryReadModel, bounded_forum_read_limit,
 };
 use crate::entities::{
-    forum_category, forum_category_translation, forum_reply, forum_reply_body, forum_solution,
-    forum_topic, forum_topic_translation,
+    forum_reply, forum_reply_body, forum_solution, forum_topic, forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
 use crate::services::vote::VoteService;
 
-const CATEGORY_CURSOR_VERSION: &str = "c1";
 const TOPIC_CURSOR_VERSION: &str = "t1";
 const REPLY_CURSOR_VERSION: &str = "r1";
 
@@ -39,97 +36,6 @@ pub struct ForumReadModelService {
 impl ForumReadModelService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
-    }
-
-    pub async fn list_categories(
-        &self,
-        tenant_id: Uuid,
-        security: SecurityContext,
-        query: CategoryCursorQuery,
-    ) -> ForumResult<CategoryCursorPage> {
-        enforce_scope(&security, Resource::ForumCategories, Action::List)?;
-        let locale = normalized_locale(query.locale.as_deref())?;
-        let fallback_locale = normalized_optional_locale(query.fallback_locale.as_deref())?;
-        let limit = bounded_forum_read_limit(query.limit);
-
-        let mut select =
-            forum_category::Entity::find().filter(forum_category::Column::TenantId.eq(tenant_id));
-        if let Some(cursor) = query.cursor.as_deref() {
-            let cursor = decode_category_cursor(cursor)?;
-            select = select.filter(
-                Condition::any()
-                    .add(forum_category::Column::Position.gt(cursor.position))
-                    .add(
-                        Condition::all()
-                            .add(forum_category::Column::Position.eq(cursor.position))
-                            .add(forum_category::Column::Id.gt(cursor.id)),
-                    ),
-            );
-        }
-
-        let mut categories = select
-            .order_by_asc(forum_category::Column::Position)
-            .order_by_asc(forum_category::Column::Id)
-            .limit(limit + 1)
-            .all(&self.db)
-            .await?;
-        let has_more = categories.len() > limit as usize;
-        categories.truncate(limit as usize);
-        let next_cursor = has_more
-            .then(|| categories.last().map(encode_category_cursor))
-            .flatten();
-
-        let ids = categories.iter().map(|item| item.id).collect::<Vec<_>>();
-        let translations = category_translations_by_id(&self.db, tenant_id, &ids).await?;
-        let subscriptions = SubscriptionService::new(self.db.clone())
-            .category_subscription_flags(tenant_id, &ids, security.user_id)
-            .await?;
-
-        let items = categories
-            .into_iter()
-            .map(|category| {
-                let localized = translations.get(&category.id).cloned().unwrap_or_default();
-                let resolved = resolve_by_locale_with_fallback(
-                    &localized,
-                    &locale,
-                    fallback_locale.as_deref(),
-                    |translation| translation.locale.as_str(),
-                );
-                CategoryReadModel {
-                    id: category.id,
-                    parent_id: category.parent_id,
-                    position: category.position,
-                    requested_locale: locale.clone(),
-                    effective_locale: resolved.effective_locale,
-                    available_locales: available_locales_from(&localized, |translation| {
-                        translation.locale.as_str()
-                    }),
-                    name: resolved
-                        .item
-                        .map(|translation| translation.name.clone())
-                        .unwrap_or_default(),
-                    slug: resolved
-                        .item
-                        .map(|translation| translation.slug.clone())
-                        .unwrap_or_default(),
-                    description: resolved
-                        .item
-                        .and_then(|translation| translation.description.clone()),
-                    icon: category.icon,
-                    color: category.color,
-                    moderated: category.moderated,
-                    topic_count: category.topic_count,
-                    reply_count: category.reply_count,
-                    is_subscribed: subscriptions.get(&category.id).copied().unwrap_or(false),
-                }
-            })
-            .collect();
-
-        Ok(CategoryCursorPage {
-            items,
-            next_cursor,
-            has_more,
-        })
     }
 
     pub async fn list_topics(
@@ -462,12 +368,6 @@ impl ForumReadModelService {
     }
 }
 
-#[derive(Clone, Copy)]
-struct CategoryCursor {
-    position: i32,
-    id: Uuid,
-}
-
 #[derive(Clone)]
 struct TopicCursor {
     updated_at: sea_orm::prelude::DateTimeWithTimeZone,
@@ -478,29 +378,6 @@ struct TopicCursor {
 struct ReplyCursor {
     position: i64,
     id: Uuid,
-}
-
-fn encode_category_cursor(category: &forum_category::Model) -> String {
-    format!(
-        "{CATEGORY_CURSOR_VERSION}:{}:{}",
-        category.position, category.id
-    )
-}
-
-fn decode_category_cursor(value: &str) -> ForumResult<CategoryCursor> {
-    let mut parts = value.splitn(3, ':');
-    if parts.next() != Some(CATEGORY_CURSOR_VERSION) {
-        return Err(invalid_cursor("category"));
-    }
-    let position = parts
-        .next()
-        .and_then(|value| value.parse().ok())
-        .ok_or_else(|| invalid_cursor("category"))?;
-    let id = parts
-        .next()
-        .and_then(|value| Uuid::parse_str(value).ok())
-        .ok_or_else(|| invalid_cursor("category"))?;
-    Ok(CategoryCursor { position, id })
 }
 
 fn encode_topic_cursor(topic: &forum_topic::Model) -> String {
@@ -715,22 +592,6 @@ GROUP BY
         );
     }
     Ok(summaries)
-}
-
-async fn category_translations_by_id(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    ids: &[Uuid],
-) -> ForumResult<HashMap<Uuid, Vec<forum_category_translation::Model>>> {
-    if ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-    let rows = forum_category_translation::Entity::find()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_translation::Column::CategoryId.is_in(ids.to_vec()))
-        .all(db)
-        .await?;
-    Ok(group_by(rows, |row| row.category_id))
 }
 
 async fn topic_translations_by_id(

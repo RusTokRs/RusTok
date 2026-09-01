@@ -31,28 +31,28 @@ const runtimeInputPaths = [
   '.github/workflows/taxonomy-postgres-evidence.yml',
 ];
 const exactHead = {
-  runId: 32708155467,
-  headSha: 'a102c224888459ddab8ab4875083b656e97a56f3',
-  sourceJobId: 97373619017,
-  runtimeJobId: 97374012385,
-  gateJobId: 97375839207,
-  artifactId: 9513303945,
+  runId: 33407161450,
+  headSha: '3c42235867036511eabeb87ed421d9d74b7ff997',
+  sourceJobId: 99537462097,
+  runtimeJobId: 99537547759,
+  gateJobId: 99539081717,
+  artifactId: 9763777630,
   artifactName:
-    'taxonomy-postgres-evidence-32708155467-a102c224888459ddab8ab4875083b656e97a56f3',
-  artifactDigest: 'sha256:194a5d135f02f8a1b184e4d7ca08d5b38296eebfe07c25f1724395520eb5cd35',
-  artifactExpiresAt: '2026-08-31T08:48:16Z',
+    'taxonomy-postgres-evidence-33407161450-3c42235867036511eabeb87ed421d9d74b7ff997',
+  artifactDigest: 'sha256:70d124fba72cf14c00f88330639ff8e70200a6f3919963ae0af5cf9760874854',
+  artifactExpiresAt: '2026-09-07T15:13:04Z',
 };
 const postMergeMain = {
-  runId: 32712523041,
-  headSha: 'e8d228cd1bd74a3ad42d6a9947114024896daeee',
-  sourceJobId: 97386800738,
-  runtimeJobId: 97386903412,
-  gateJobId: 97388162736,
-  artifactId: 9514787477,
+  runId: 33420044854,
+  headSha: '0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6',
+  sourceJobId: 99579915117,
+  runtimeJobId: 99580063917,
+  gateJobId: 99581484039,
+  artifactId: 9768688596,
   artifactName:
-    'taxonomy-postgres-evidence-32712523041-e8d228cd1bd74a3ad42d6a9947114024896daeee',
-  artifactDigest: 'sha256:133d557207b72c7df9edaef4e9bbbfb8619a66ea976f58ce0348e3fb1c849a05',
-  artifactExpiresAt: '2026-08-31T09:37:11Z',
+    'taxonomy-postgres-evidence-33420044854-0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6',
+  artifactDigest: 'sha256:bed3651b428a2e779cec8faca0bef804b079655608982ddb3de922549f195303',
+  artifactExpiresAt: '2026-09-07T17:31:39Z',
 };
 
 function read(relativePath) {
@@ -153,6 +153,7 @@ function verifyRun(recorded, expected, label) {
 
 function verifyRecordedRuntimeEvidence(evidence, label) {
   const runtime = evidence.runtime_evidence ?? {};
+
   if (
     runtime.workflow !== 'Taxonomy PostgreSQL Evidence' ||
     runtime.required_backend !== 'PostgreSQL 16'
@@ -285,8 +286,8 @@ requireMarkers(
     'two-writer route-key contention',
     'translation apply CAS',
     'change-cursor',
-    'Final exact-head pull-request run `32708155467`',
-    'Post-merge main run `32712523041`',
+    'Final exact-head pull-request run `33407161450`',
+    'Post-merge main run `33420044854`',
     'Result 4 is complete for the current runtime input fingerprints.',
     'runtime input fingerprints',
   ],
