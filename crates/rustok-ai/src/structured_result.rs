@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use aes_gcm::{
     Aes256Gcm, KeyInit,
-    aead::{Aead, OsRng, rand_core::RngCore},
+    aead::{Aead, Payload},
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::{DateTime, Utc};
@@ -142,7 +142,8 @@ impl StructuredResultKeyring {
         let key = self.resolve_key(tenant_id, &self.active_key_id).await?;
         let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| result_key_invalid())?;
         let mut nonce = [0_u8; NONCE_BYTES];
-        OsRng.fill_bytes(&mut nonce);
+        let random_bytes = Uuid::new_v4();
+        nonce.copy_from_slice(&random_bytes.as_bytes()[..NONCE_BYTES]);
         let aad = result_aad(
             tenant_id,
             execution_id,
@@ -153,7 +154,7 @@ impl StructuredResultKeyring {
         let ciphertext = cipher
             .encrypt(
                 (&nonce).into(),
-                aes_gcm::aead::Payload {
+                Payload {
                     msg: &plaintext,
                     aad: aad.as_bytes(),
                 },
@@ -225,10 +226,15 @@ impl StructuredResultKeyring {
             &result.output_digest,
             &result.key_id,
         );
+        let nonce: &[u8; NONCE_BYTES] = result
+            .nonce
+            .as_slice()
+            .try_into()
+            .map_err(|_| result_invariant())?;
         let plaintext = cipher
             .decrypt(
-                result.nonce.as_slice().into(),
-                aes_gcm::aead::Payload {
+                nonce.into(),
+                Payload {
                     msg: &result.ciphertext,
                     aad: aad.as_bytes(),
                 },

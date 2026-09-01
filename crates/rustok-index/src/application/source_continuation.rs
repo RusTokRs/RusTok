@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fmt, sync::Arc, time::Duration};
 
 use aes_gcm::{
     Aes256Gcm, KeyInit,
-    aead::{Aead, OsRng, Payload, rand_core::RngCore},
+    aead::{Aead, Payload},
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
@@ -254,7 +254,8 @@ impl IndexSourceContinuationCodec {
             IndexSourceContinuationError::InvalidKeyMaterial(self.active_key_id.clone())
         })?;
         let mut nonce = [0_u8; NONCE_BYTES];
-        OsRng.fill_bytes(&mut nonce);
+        let random_bytes = Uuid::new_v4();
+        nonce.copy_from_slice(&random_bytes.as_bytes()[..NONCE_BYTES]);
         let aad = associated_data(&self.active_key_id);
         let ciphertext = cipher
             .encrypt(
@@ -334,7 +335,9 @@ impl IndexSourceContinuationCodec {
             .ok_or_else(|| IndexSourceContinuationError::KeyUnavailable(key_id.to_owned()))?;
         let cipher = Aes256Gcm::new_from_slice(key)
             .map_err(|_| IndexSourceContinuationError::InvalidKeyMaterial(key_id.to_owned()))?;
-        let nonce = &decoded[key_id_end..nonce_end];
+        let nonce: &[u8; NONCE_BYTES] = decoded[key_id_end..nonce_end]
+            .try_into()
+            .map_err(|_| IndexSourceContinuationError::MalformedEnvelope)?;
         let ciphertext = &decoded[nonce_end..];
         let aad = associated_data(key_id);
         let plaintext = cipher

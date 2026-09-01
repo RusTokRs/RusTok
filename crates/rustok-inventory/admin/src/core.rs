@@ -117,6 +117,42 @@ pub(crate) struct InventorySummary {
 }
 
 
+#[cfg(any(feature = "ssr", test))]
+pub(crate) fn normalize_status_filter(value: Option<String>) -> Option<String> {
+    value.and_then(|v| {
+        let trimmed = v.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_ascii_uppercase())
+        }
+    })
+}
+
+#[cfg(any(feature = "ssr", test))]
+pub(crate) fn normalize_locale_filter(value: Option<String>) -> Option<String> {
+    value.and_then(|v| {
+        let trimmed = v.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+#[cfg(any(feature = "ssr", test))]
+pub(crate) fn normalize_search_filter(value: Option<String>) -> Option<String> {
+    value.and_then(|v| {
+        let trimmed = v.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
 pub(crate) fn normalized_set_quantity_input(
     tenant_id: String,
     variant_id: String,
@@ -589,6 +625,30 @@ mod tests {
         assert_eq!(
             summary.healthy + summary.low_stock + summary.out_of_stock + summary.backorder,
             summary.variant_count
+        );
+    }
+
+    #[test]
+    fn filter_normalizers_trim_and_handle_empty_inputs() {
+        assert_eq!(normalize_status_filter(None), None);
+        assert_eq!(normalize_status_filter(Some("  ".to_string())), None);
+        assert_eq!(
+            normalize_status_filter(Some(" active ".to_string())),
+            Some("ACTIVE".to_string())
+        );
+
+        assert_eq!(normalize_locale_filter(None), None);
+        assert_eq!(normalize_locale_filter(Some("   ".to_string())), None);
+        assert_eq!(
+            normalize_locale_filter(Some(" en-US ".to_string())),
+            Some("en-US".to_string())
+        );
+
+        assert_eq!(normalize_search_filter(None), None);
+        assert_eq!(normalize_search_filter(Some("  ".to_string())), None);
+        assert_eq!(
+            normalize_search_filter(Some(" widget ".to_string())),
+            Some("widget".to_string())
         );
     }
 }
