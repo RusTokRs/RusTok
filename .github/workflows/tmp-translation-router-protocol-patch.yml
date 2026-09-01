@@ -6,6 +6,11 @@ on:
       - test/translation-router-generated-client-protocol-20260901
     paths:
       - ".github/workflows/tmp-translation-router-protocol-patch.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/tmp-translation-router-protocol-patch.yml"
 
 permissions:
   contents: write
@@ -29,6 +34,8 @@ jobs:
           after = '''                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .header(header::ACCEPT, "application/json")
                 .header(header::AUTHORIZATION, format!("Bearer {access_token}"))'''
+          if after in source:
+              raise SystemExit("generated-client Accept header is already present")
           if source.count(before) != 1:
               raise SystemExit(f"expected one exact request marker, found {source.count(before)}")
           path.write_text(source.replace(before, after, 1))
