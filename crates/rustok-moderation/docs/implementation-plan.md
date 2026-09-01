@@ -98,15 +98,17 @@ Every decision references the exact subject revision that was reviewed. Domain a
 must expose a stable monotonic subject revision; timestamps and unrelated aggregate versions
 are not substitutes.
 
-For Groups compatibility:
+For Groups compatibility now present in source:
 
 - group subject: `module="groups"`, kind `Group`, ID `groups.id`, revision
   `groups.version`;
 - membership subject: `module="groups"`, kind `GroupMembership`, ID
   `group_memberships.id`, revision a new monotonic `group_memberships.revision`;
 - local scope: `ModerationScopeKind::Group` with `scope.id = group_id`;
-- the Groups adapter verifies tenant, scope, subject ID/revision, decision hash, effect
-  compatibility, and local invariants inside the owner transaction.
+- the Groups adapter verifies tenant, canonical trusted group scope, subject ID/revision,
+  decision hash, effect compatibility, and local invariants inside the owner transaction;
+- `SuspendSubject { effective_until }` is the bounded first mapping and reuses Groups-owned
+  expiry/enforcement state; unsupported effects remain non-successful.
 
 For Forum compatibility now present in source:
 
@@ -142,7 +144,9 @@ For Groups:
 - Groups stores only bounded enforcement provenance required for replay and audit;
 - Groups never copies reports, case notes, policy snapshots, appeal state, or queue data;
 - moderation admin FFA owns queue/case/decision/application surfaces; Groups FFA owns current
-  local enforcement state and authorized direct domain actions.
+  local enforcement state and authorized direct domain actions;
+- Groups registers only the neutral `groups/group_membership` adapter factory and depends on
+  `rustok-moderation-api`, never the Moderation persistence owner.
 
 For Forum's bounded adapter source:
 
@@ -247,9 +251,11 @@ revisions older than the reviewed revision.
 
 `dispatch_application_operation_once` is source-ready as the bounded dispatcher. It claims
 at most one exact due operation, reconstructs `ApplyModerationDecisionCommand` from immutable
-decision/effect/case facts, verifies decision hash and exact reviewed subject, looks up only
-the exact materialized `(subject_module, subject_kind)` adapter and invokes it with a trusted
-service `PortContext`.
+decision/effect/case facts, verifies decision hash and exact reviewed subject, canonicalizes the
+immutable case scope into a versioned trusted `PortContext` claim, looks up only the exact materialized
+`(subject_module, subject_kind)` adapter and invokes it with a trusted service context. Keeping scope
+outside the serialized command preserves historical domain receipt request digests; scope-aware
+adapters bind the canonical claim alongside the command in their own receipt.
 
 The domain call uses the immutable decision UUID as `PortContext.idempotency_key`; the current
 lease token appears only in the attempt correlation ID. This is the lost-response boundary:
@@ -421,7 +427,7 @@ to final production validation rather than keeping the bounded Forum integration
 ## Next priorities
 
 1. Publish the remaining typed transactional/public Moderation application event contracts without turning the internal `moderation_events` audit ledger into an accidental cross-domain API.
-2. Integrate Groups as the membership-scoped expiry reference adapter, then continue the accepted producer sequence (Blog, Comments, Pages, Reviews, Marketplace, Media, Messaging and Profiles) through `rustok-moderation-api` without cross-owner persistence reads.
+2. Retain runtime/replay/concurrency evidence for the Groups membership-scoped expiry reference adapter, then continue the accepted producer sequence with Blog, Comments, Pages, Reviews, Marketplace, Media, Messaging and Profiles through `rustok-moderation-api` without cross-owner persistence reads.
 3. Add versioned policies, premoderation, automated assessment providers, appeals and capability-scoped account sanctions while preserving immutable decision/effect identity and owner-side application evidence.
 4. Build the broader module-owned Moderation admin queue/case/application UI over the existing authorized ports and transport. The recovery GraphQL boundary already exists; UI navigation is not a security boundary.
 5. Keep Forum `SetVisibility(Unpublished)` and temporary/restriction effects fail-closed until Forum owns exact distinct lifecycle/expiry-safe semantics; do not approximate unsupported effects to existing statuses.

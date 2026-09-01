@@ -24,7 +24,10 @@ Source now exists for:
 - owner-clock effective-state resolution with expired/revoked fallback;
 - direct `GroupMembershipEnforcementCommandPort` suspend/revoke with expected-revision CAS,
   receipt-first replay, local hierarchy, owner protection, group-version advance, audit/events and
-  shared owner mutation functions reserved for the later neutral Moderation adapter;
+  shared owner mutation functions also used by the neutral Moderation adapter;
+- neutral `GroupsModerationSubjectAdapterFactory` for `groups/group_membership`, with trusted
+  Moderation scope propagation, producer receipt replay, exact membership revision/group scope
+  fencing and `SuspendSubject` -> Groups-owned expiry-aware enforcement;
 - stored lifecycle active `groups.member_count` semantics: temporary enforcement never changes the
   counter, so owner-clock expiry cannot leave a cleanup-dependent count split;
 - append-only membership suspension/revocation semantic events beside targeted invitation events;
@@ -54,9 +57,9 @@ rustok_groups::targeted_invitations::*
 rustok_groups::applications::*
 ```
 
-Localization/governance transaction-aware conversion, provider ACL integration, the neutral
-moderation adapter/application orchestration, native/GraphQL direct-enforcement transport, and
-runtime evidence remain open. `GROUPS-07` remains `in_progress`.
+Provider ACL integration, broader native/GraphQL parity, and moderation/direct-enforcement
+runtime/replay/concurrency evidence remain open. The neutral membership Moderation adapter is now
+source-complete, while `GROUPS-07` remains `in_progress` until its declared runtime gates close.
 
 ## Responsibilities
 
@@ -186,8 +189,9 @@ Primary ports:
   consume Groups access ports.
 - Notifications may consume committed targeted-invitation events asynchronously.
 - Moderation owns reports, cases, decisions, retries, appeals, and application orchestration.
-  The neutral adapter will call the shared Groups enforcement owner mutation after producer receipt,
-  scope, subject revision and effect validation; moderation never writes Groups tables directly.
+  The neutral adapter calls the shared Groups enforcement owner mutation after producer receipt,
+  exact trusted scope, subject revision and effect validation; moderation never writes Groups tables
+  directly.
 
 ## Readiness
 
@@ -195,8 +199,8 @@ Source presence does not prove compilation, migration behavior, PostgreSQL/SQLit
 concurrency, replay, CAS, transport parity, security, accessibility, retry, or recovery.
 
 FFA, FBA, `GROUPS-06`, `GROUPS-07`, and `GROUPS-19` remain `in_progress`. Transaction-aware
-invitation/application authorization and the direct enforcement command are source-complete, but
-runtime evidence and the remaining owner/adapter paths are open.
+invitation/application authorization, direct enforcement, and the neutral membership Moderation
+adapter are source-complete, but runtime evidence and remaining provider/owner paths are open.
 
 ## Documentation
 
@@ -211,5 +215,6 @@ runtime evidence and the remaining owner/adapter paths are open.
 - [Bulk review guard](../../scripts/verify/verify-groups-application-bulk-review.mjs)
 - [Membership enforcement read guard](../../scripts/verify/verify-groups-membership-enforcement-read-path.mjs)
 - [Membership enforcement command guard](../../scripts/verify/verify-groups-membership-enforcement-command.mjs)
+- [Moderation membership adapter guard](../../scripts/verify/verify-groups-moderation-subject-adapter.mjs)
 - [Effective membership access guard](../../scripts/verify/verify-groups-effective-membership-access.mjs)
 - [Effective invitation/application guard](../../scripts/verify/verify-groups-effective-membership-invitations-applications.mjs)
