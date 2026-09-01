@@ -731,6 +731,7 @@ mod tests {
                 .method("POST")
                 .uri(EXECUTE_PATH)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .header(header::ACCEPT, "application/json")
                 .header(header::AUTHORIZATION, format!("Bearer {access_token}"))
                 .header("X-Tenant-ID", tenant_id.to_string())
                 .header(header::ACCEPT_LANGUAGE, "de-DE,de;q=0.9")
