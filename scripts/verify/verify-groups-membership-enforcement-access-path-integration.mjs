@@ -12,6 +12,7 @@ const ownerBackedPath =
   "apps/server/src/services/forum_audience_group_facts/owner_backed_tests.rs";
 const compositionPath = "apps/server/src/services/module_event_dispatcher.rs";
 const forumGuardPath = "scripts/verify/verify-forum-audience-group-facts-host-runtime.mjs";
+const workflowPath = ".github/workflows/groups-forum-provider-acl-runtime.yml";
 
 const groupsContract = JSON.parse(fs.readFileSync(groupsContractPath, "utf8"));
 const groupsFba = JSON.parse(fs.readFileSync(groupsFbaPath, "utf8"));
@@ -21,6 +22,7 @@ const adapter = fs.readFileSync(adapterPath, "utf8");
 const ownerBacked = fs.readFileSync(ownerBackedPath, "utf8");
 const composition = fs.readFileSync(compositionPath, "utf8");
 const forumGuard = fs.readFileSync(forumGuardPath, "utf8");
+const workflow = fs.readFileSync(workflowPath, "utf8");
 
 function requireText(source, marker, message) {
   if (!source.includes(marker)) throw new Error(message);
@@ -152,6 +154,18 @@ for (const marker of [
 }
 
 for (const marker of [
+  "name: Groups Forum Provider ACL Runtime Evidence",
+  "postgres:16",
+  "RUSTOK_GROUPS_TEST_POSTGRES_URL:",
+  "verify-groups-membership-enforcement-access-path-integration.mjs",
+  "verify-forum-audience-group-facts-host-runtime.mjs",
+  "cargo test --locked -p rustok-server --features mod-forum,mod-groups forum_group_facts_follow_groups_owner_clock_sqlite -- --nocapture",
+  "cargo test --locked -p rustok-server --features mod-forum,mod-groups forum_group_facts_follow_groups_owner_clock_postgres -- --ignored --nocapture",
+]) {
+  requireText(workflow, marker, `Groups Forum provider ACL runtime workflow is missing ${marker}`);
+}
+
+for (const marker of [
   "Forum audience provider ACL source delivered / maintainer execution pending",
   "Owner boundary",
   "GroupMembershipEnforcementReadPort::read_membership_enforcement",
@@ -163,6 +177,8 @@ for (const marker of [
   "Degraded and partial-provider semantics",
   "additional_provider_specific_acl_adapters",
   "membership_enforcement_access_path_integration",
+  "Groups Forum Provider ACL Runtime Evidence",
+  "groups-forum-provider-acl-runtime.yml",
 ]) {
   requireText(docs, marker, `Groups enforcement access-path integration handoff is missing ${marker}`);
 }
