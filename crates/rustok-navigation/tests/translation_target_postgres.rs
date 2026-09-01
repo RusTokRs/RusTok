@@ -67,8 +67,8 @@ impl TestDatabase {
 
 #[tokio::test]
 #[ignore = "requires RUSTOK_NAVIGATION_TEST_POSTGRES_URL"]
-async fn navigation_translation_target_concurrent_aggregate_and_cursor_recovery_postgres(
-) -> TestResult<()> {
+async fn navigation_translation_target_concurrent_aggregate_and_cursor_recovery_postgres()
+-> TestResult<()> {
     let database = TestDatabase::setup().await?;
     let result = run_contract(&database).await;
     let cleanup = database.cleanup().await;
@@ -137,7 +137,10 @@ async fn run_contract(database: &TestDatabase) -> TestResult<()> {
         first_snapshot.summary.resource_revision,
         second_snapshot.summary.resource_revision
     );
-    assert_eq!(first_snapshot.source_revision, second_snapshot.source_revision);
+    assert_eq!(
+        first_snapshot.source_revision,
+        second_snapshot.source_revision
+    );
     assert!(first_snapshot.target_revision.is_none());
     assert!(second_snapshot.target_revision.is_none());
 
@@ -198,7 +201,10 @@ async fn run_contract(database: &TestDatabase) -> TestResult<()> {
         )
         .await?;
     assert_eq!(target_changes.changes.len(), 1);
-    assert_eq!(target_changes.changes[0].resource_revision, receipt.resource_revision);
+    assert_eq!(
+        target_changes.changes[0].resource_revision,
+        receipt.resource_revision
+    );
     let target_cursor = target_changes
         .next_cursor
         .ok_or_else(|| test_error("target Navigation change cursor is missing"))?;
@@ -336,11 +342,13 @@ async fn connect(database_url: &str) -> TestResult<DatabaseConnection> {
     Ok(Database::connect(options).await?)
 }
 
-async fn scoped_connection(database_url: &str, schema_name: &str) -> TestResult<DatabaseConnection> {
+async fn scoped_connection(
+    database_url: &str,
+    schema_name: &str,
+) -> TestResult<DatabaseConnection> {
     let separator = if database_url.contains('?') { '&' } else { '?' };
-    let scoped_url = format!(
-        "{database_url}{separator}options=-csearch_path%3D{schema_name}%2Cpublic"
-    );
+    let scoped_url =
+        format!("{database_url}{separator}options=-csearch_path%3D{schema_name}%2Cpublic");
     connect(&scoped_url).await
 }
 
