@@ -285,7 +285,7 @@ remain pending.
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
 | `FORUM-23` | `in_progress` | Search projection/filtering, ordering, owner revisions and repair exist. PostgreSQL/Iggy and cross-module evidence remain. |
 | `FORUM-24` | `in_progress` | A-S plus descriptor correction provide category/topic routes, transports, mounts, SEO/hreflang and Search URLs. Execute registered-host, HTTP, browser and reindex evidence. |
-| `FORUM-25` | `in_progress` | The Category backend/Translation ownership cutover is complete: canonical Category copy/routes/hierarchy are Taxonomy-owned, while the duplicate Forum provider, cursor/progress runtime and legacy donor storage are retired and provider-era PostgreSQL evidence is superseded. Arabic admin/storefront catalogs, content-locale SEO/editor boundaries and multilingual/RTL admin read/write surfaces remain source-ready. Retain mounted multilingual/RTL browser parity against Taxonomy-owned Category data; topic/reply UGC translation remains opt-in rather than an automatic provider. |
+| `FORUM-25` | `done` | Category backend/Translation implementation is complete: canonical Category copy/routes/hierarchy are Taxonomy-owned, the duplicate Forum provider/cursor/progress runtime and legacy donor storage are retired, and Arabic/admin/storefront locale boundaries are source-ready. Mounted multilingual/RTL browser execution is deferred to the final production-validation phase and does not keep FORUM-25 open; topic/reply UGC translation remains opt-in rather than an automatic provider. |
 | `FORUM-26` | `in_progress` | Forum trust/posting facts exist. Add Moderation/Reputation facts, persistence/enforcement, shared rate limits, transports/UI and evidence. |
 | `FORUM-27` | `planned` | Compose Profiles directory/profile with Forum stats/activity and permitted reputation/achievements. |
 | `FORUM-28` | `in_progress` | Canonical storage, renderer, projections, shared editor runtime, Leptos and Next topic create/edit and reply composition, native SSR/hydrate plus GraphQL CSR reply writes, owner content-locale/direction/spellcheck propagation and dynamic read-only state are implemented. Dirty locale switching is now fail-closed for category/topic editors, fallback-only localized form state is scrubbed before writes, unsaved reply drafts block locale changes, and unchanged Taxonomy tag attachments are preserved. Complete owner-copy i18n and mounted save/reload/browser parity evidence. |
@@ -984,6 +984,25 @@ Source contracts, Moderation adapter/migration/materialization/application-opera
 one-attempt-dispatch/shared-scheduler/application-audit/operator-recovery source,
 Forum Page Builder Fly/owner-preview/owner-property host source and browser harness
 source do not promote runtime status.
+
+## Final production validation — DEFERRED
+
+Deployment-dependent evidence is collected after the remaining Forum source/backend product queue is
+exhausted. A live tenant, maintainer credential, mounted browser fixture or observed rollout does not
+keep an otherwise complete Forum implementation task open. Production-only checks are appended here
+instead of being used as intermediate ledger blockers.
+
+Repository-executable engineering gates are **not** deferred: focused source/runtime tests, SQLite/
+PostgreSQL migration evidence, composition profiles, schema checks and browser harnesses that can run
+against isolated test fixtures remain part of the task that changes their boundary.
+
+### PROD-FORUM-25 — Category multilingual/RTL mounted evidence — DEFERRED
+
+Execute the retained `Forum Category Taxonomy Browser Evidence` `workflow_dispatch` from `main` only
+after a prepared Taxonomy-backed Forum admin/storefront fixture and authenticated GitHub environment
+exist. The mounted multilingual/RTL job must execute rather than skip and its successful run URL/ID
+plus exact `main` head SHA must be retained. Until then the browser packet remains production evidence
+pending without reopening FORUM-25 or TAXONOMY-CAT-5 implementation.
 
 ## Release gates
 

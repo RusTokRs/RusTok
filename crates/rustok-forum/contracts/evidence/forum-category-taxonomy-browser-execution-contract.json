@@ -60,12 +60,13 @@
     "raw authenticated admin storage state is scoped only to the late materialization step; the credential file is created after source verification and browser setup, only the Playwright execution step receives its path through a step output, and cleanup runs always",
     "credential-free mounted URLs and expected fixture values enter the workflow through GitHub environment variables",
     "pull-request path filters cover every retained CAT-5 verifier input plus the next-admin package manifests so guarded source drift always runs the focused source contract",
-    "pull-request runs verify source and compile-list the retained Playwright runner without mounted credentials or fixture execution"
+    "pull-request runs verify source and compile-list the retained Playwright runner without mounted credentials or fixture execution",
+    "CAT-5 implementation completion is source/backend scoped; mounted browser execution is deferred to the final Category production-validation phase"
   ],
   "not_claimed": [
     "browser execution",
     "deployment provenance",
     "production rollout completion",
-    "TAXONOMY-CAT-5 completion"
+    "final Category production validation completion"
   ]
 }

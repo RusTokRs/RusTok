@@ -46,9 +46,10 @@ if (failures.length === 0) {
   );
   requireText(plan, "Category copy uses Taxonomy's registered `taxonomy/term` provider.");
   requireText(plan, 'never register a duplicate `forum/category` Translation target.');
-  requireText(plan, 'provider-era PostgreSQL evidence is superseded');
-  requireText(plan, 'Retain mounted multilingual/RTL browser parity against Taxonomy-owned Category data');
-  requireText(plan, '| `FORUM-25` | `in_progress` |', 'FORUM-25 remains in progress');
+  requireText(plan, 'Mounted multilingual/RTL browser execution is deferred to the final production-validation phase');
+  requireText(plan, '| `FORUM-25` | `done` |', 'FORUM-25 implementation is complete');
+  requireText(plan, '## Final production validation — DEFERRED', 'Forum final production-validation phase');
+  requireText(plan, 'without reopening FORUM-25 or TAXONOMY-CAT-5 implementation', 'Forum Category deferred production evidence boundary');
   rejectText(plan, '- category hierarchy and policy;', 'stale Forum-owned Category hierarchy');
   rejectText(
     plan,
@@ -161,4 +162,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('[forum-taxonomy-category-translation-owner] Forum Category ownership matches Taxonomy cutover');
+console.log(
+  '[forum-taxonomy-category-translation-owner] Forum Category implementation is complete; mounted production validation remains deferred',
+);
