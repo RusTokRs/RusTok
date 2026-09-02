@@ -175,3 +175,7 @@ impl ReplyService {
         self.get(tenant_id, security, reply_id, &locale).await
     }
 }
+
+pub(crate) mod ugc_translation_apply {
+    include!("ugc_translation_apply.rs");
+}
