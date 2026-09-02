@@ -34,8 +34,14 @@ selection.
   replica pools reading the same checkpoint revision: one advances and one
   receives `CheckpointConflict`, without duplicate inventory. Separate
   processes also recover from a provider outage, resume cursor sync, and
-  atomically replace the projection through full-rescan. Actual isolated Media
-  deployment evidence remains a provider-owned rollout gate.
+  atomically replace the projection through full-rescan. Media-owned PostgreSQL
+  CI evidence also covers independent replicas sharing the owner tables:
+  exact-head run `33623651814` on
+  `52e4ae005f13e9bf303431dc5066a943096eacc8` and post-merge run
+  `33635199181` on `main@47f700ea638ea5bd0978f05db654c725d5164576`
+  verify CAS apply/conflict, durable cursor recovery, idempotent replay, and
+  aggregate progress convergence. This is repository-hosted PostgreSQL evidence
+  only; actual isolated/live Media deployment remains a provider-owned gate.
 - The first manual-workflow persistence slice creates tenant-scoped jobs,
   immutable owner-provider source snapshots, proposal/approval tables, and
   application-receipt tables. `TranslationWorkflowService` exposes idempotent
@@ -386,8 +392,10 @@ selection.
     associations; axe reports zero violations on every tab;
   - focused evidence ledger: Translation Memory retention `33539223647`, Pages
     `pages/page_metadata` `33545157694`, Navigation `navigation/menu`
-    `33549035590`, Forum Category/Taxonomy cutover `33431200532`, application
-    router exact-head `33608857569`, and post-merge `main` `33609559524`.
+    `33549035590`, Forum Category/Taxonomy cutover `33431200532`, Media
+    `media/asset` PostgreSQL exact-head `33623651814` and post-merge `main`
+    `33635199181`, application router exact-head `33608857569`, and post-merge
+    `main` `33609559524`.
 - Last verified at (UTC): 2026-09-02
 - Owner: Translation module maintainers
 
@@ -396,8 +404,11 @@ selection.
 1. File-backed Translation-side multi-replica/restart evidence is complete for
    inventory replay, stale-checkpoint conflict, provider outage recovery, and
    atomic full-rescan. Tenant isolation is covered by integration execution.
-   Complete the provider-owned gate with isolated live Media deployment and
-   production-database multi-replica evidence.
+   Repository-hosted PostgreSQL multi-replica/cursor evidence is also complete
+   for Media: exact-head run `33623651814` and post-merge run `33635199181`
+   passed. Complete the provider-owned gate with isolated live Media deployment
+   and production-database rollout evidence; do not treat GitHub-hosted
+   PostgreSQL as deployment evidence.
 2. Registered native HTTP server-function parity is runtime-verified for
    recovery, assignment, cancellation, retry, policy, glossaries, Translation
    Memory, QA, progress, reviewer queue/workload, inventory, direct interchange,
