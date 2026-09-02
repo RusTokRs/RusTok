@@ -69,15 +69,4 @@ jobs:
       - name: Execute Translation-only GraphQL StorageRuntime composition evidence
         run: cargo test --locked -p rustok-server --lib --no-default-features --features mod-translation translation_graphql_host_receives_initialized_storage_runtime -- --nocapture
       - name: Execute authenticated production application-router native evidence
-        shell: bash
-        run: |
-          set -o pipefail
-          RUST_MIN_STACK=33554432 cargo test --locked -p rustok-server --lib --no-default-features --features mod-translation application_router_executes_authenticated_server_function -- --nocapture 2>&1 | tee /tmp/translation-router-evidence.log
-      - name: Upload Translation router diagnostic
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: translation-router-evidence-${{ env.TARGET_SHA }}
-          path: /tmp/translation-router-evidence.log
-          if-no-files-found: error
-          retention-days: 1
+        run: RUST_MIN_STACK=33554432 cargo test --locked -p rustok-server --lib --no-default-features --features mod-translation application_router_executes_authenticated_server_function -- --nocapture
