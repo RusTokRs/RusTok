@@ -69,4 +69,4 @@ jobs:
       - name: Execute Translation-only GraphQL StorageRuntime composition evidence
         run: cargo test --locked -p rustok-server --lib --no-default-features --features mod-translation translation_graphql_host_receives_initialized_storage_runtime -- --nocapture
       - name: Execute authenticated production application-router native evidence
-        run: cargo test --locked -p rustok-server --lib --no-default-features --features mod-translation application_router_executes_authenticated_server_function -- --nocapture
+        run: RUST_MIN_STACK=33554432 cargo test --locked -p rustok-server --lib --no-default-features --features mod-translation application_router_executes_authenticated_server_function -- --nocapture
