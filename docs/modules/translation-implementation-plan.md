@@ -36,7 +36,7 @@ operations, not request-locale selection.
 
 ## Planning status
 
-This is the active cross-cutting implementation plan. As of 2026-08-28:
+This is the active cross-cutting implementation plan. As of 2026-09-02:
 
 - the dependency boundary for machine translation now exists:
   `rustok-translation` owns `MachineTranslationPort`, `rustok-ai` owns
@@ -44,24 +44,24 @@ This is the active cross-cutting implementation plan. As of 2026-08-28:
   the only crate importing both. It owns `machine_translation`, typed
   schemas/policy, bounded mapping, placeholder/unit/length validation, and
   review-required evidence plus an exact owner/policy/schema task descriptor.
-  It is deliberately not runtime-registered. `rustok-ai` now has the
-  content-free execution/attempt schema, idempotent ledger, task catalog,
-  leases, cancellation receipts, conservative tenant budget reservations,
-  settlement, immutable provider price/concurrency policies, durable provider
-  slots, per-attempt price snapshots, and actual token/cost evidence; ordered
-  atomic terminal settlement and accounting-aware expired-lease recovery are
-  implemented; the private runtime now covers ordered inference/fallback and
-  cancellation/deadline observation. Concurrent submissions with the same
-  owner/idempotency key coalesce onto one running provider execution, and a
-  terminal same-key replay returns the stored result without another billable
-  call. Authenticated AES-256-GCM transient-result
-  storage now commits with successful attempt/accounting evidence, supports
-  tenant-scoped retained-key replay, and expires without re-billing.
-  Tenant accounting-policy provisioning, deployment keyring publication, and
-  scheduler-owned recovery/result cleanup now exist. The optional distribution
+  `rustok-ai` now has the content-free execution/attempt schema, idempotent
+  ledger, task catalog, leases, cancellation receipts, conservative tenant
+  budget reservations, settlement, immutable provider price/concurrency
+  policies, durable provider slots, per-attempt price snapshots, and actual
+  token/cost evidence; ordered atomic terminal settlement and accounting-aware
+  expired-lease recovery are implemented; the private runtime covers ordered
+  inference/fallback and cancellation/deadline observation. Concurrent
+  submissions with the same owner/idempotency key coalesce onto one running
+  provider execution, and a terminal same-key replay returns the stored result
+  without another billable call. Authenticated AES-256-GCM transient-result
+  storage commits with successful attempt/accounting evidence, supports
+  tenant-scoped retained-key replay, and expires without re-billing. Tenant
+  accounting-policy provisioning, deployment keyring publication, and
+  scheduler-owned recovery/result cleanup exist. The optional distribution
   bridge publishes the Translation-owned lazy runtime factory without server
-  capability imports; production-profile enablement and live failure/restart
-  evidence remain open;
+  capability imports; the production server selects it and missing-keyring
+  composition is verified as optional and fail-closed. Live external-provider
+  outage/degradation/restart evidence remains open;
 - the optional `translation` slug and `rustok-translation` crate now exist with
   module metadata, RBAC resources, a module-owned migration source, and the first
   rebuildable inventory/checkpoint service. Inventory synchronization rejects
@@ -100,15 +100,15 @@ This is the active cross-cutting implementation plan. As of 2026-08-28:
   proposal, while conflict/stale work remains rebase-required. A content-free
   per-job workflow progress projection is updated transactionally and can be
   deterministically rebuilt with source/proposal digest and receipt checks.
-  Provider-level exact-locale coverage is now read through the neutral owner
-  SPI, validated by Translation, and paired with tenant/provider inventory
+  Provider-level exact-locale coverage is read through the neutral owner SPI,
+  validated by Translation, and paired with tenant/provider inventory
   checkpoints as `current`, `behind`, or `unknown`; numeric lag is deliberately
-  absent because owner cursors are opaque. Translation now owns a revisioned
+  absent because owner cursors are opaque. Translation owns a revisioned
   required-target-locale subset validated through the Tenant locale-policy
   port, and required-target progress aggregates checked exact-locale totals
   with worst-target freshness. A stale policy remains readable with CAS and
   disabled-locale evidence, while progress fails closed until revalidation.
-  The module now publishes manifest-composed GraphQL queries and mutations for
+  The module publishes manifest-composed GraphQL queries and mutations for
   target discovery, policy, job/provider progress, inventory
   synchronization/rebuild, and every implemented workflow command. Its
   capability-owned runtime factory consumes only neutral typed host values.
@@ -122,30 +122,31 @@ This is the active cross-cutting implementation plan. As of 2026-08-28:
   classifier. The contract includes six glossary operations, six Translation
   Memory list/read/lookup/retention/tombstone/purge operations, bounded
   interchange export/import, and non-billable machine estimation plus machine
-  proposal generation/status/cancellation/recovery. Both workbenches also
-  expose the same revision-guarded item assignment/unassignment, bounded
-  reviewer queue and workload reads, blocked-item retry, job cancellation, and
-  owner-apply recovery commands. Private workflow-note list/create/resolve is
-  also implemented as Translation-owned collaboration: notes bind to a job and
-  optional item, use actor-bound idempotency and resolution CAS, and their
-  bodies never enter memory, machine requests, owner application, or events.
-  Translation-owned interchange artifacts now complement the bounded direct
-  export/import path: their documents are stored only at private tenant-scoped
-  object keys, while `translation_exchange_jobs` retains authorization,
-  idempotency, an exclusive short-lived import-processing lease, checksum,
-  size, expiry, deletion, and aggregate conflict-report evidence. Reads verify
-  the object size and SHA-256 checksum; a missing storage runtime fails closed.
-  Artifacts are bounded to 8 MiB and a 5-minute to 7-day lifetime. A
-  Translation-owned runtime worker deletes their private object on expiry even
-  without a later tenant request, and artifacts expose no blob URL or document
-  content through events. An import starts only when its remaining artifact
-  lifetime can cover the bounded lease; concurrent retries fail retryably
-  instead of racing. The
-  module-level GraphQL fixture supplies storage explicitly; the server still
-  must attach initialized `StorageRuntime` to a Translation-only GraphQL host
-  rather than gate it on `mod-media`;
-  Live browser, accessibility, module-disablement, and authenticated transport
-  evidence remain open;
+  proposal generation/status/cancellation/recovery. Both workbenches expose the
+  same revision-guarded item assignment/unassignment, bounded reviewer queue and
+  workload reads, blocked-item retry, job cancellation, and owner-apply recovery
+  commands. Private workflow-note list/create/resolve is implemented as
+  Translation-owned collaboration: notes bind to a job and optional item, use
+  actor-bound idempotency and resolution CAS, and their bodies never enter
+  memory, machine requests, owner application, or events. Translation-owned
+  interchange artifacts complement the bounded direct export/import path:
+  documents are stored only at private tenant-scoped object keys, while
+  `translation_exchange_jobs` retains authorization, idempotency, an exclusive
+  short-lived import-processing lease, checksum, size, expiry, deletion, and
+  aggregate conflict-report evidence. Reads verify object size and SHA-256;
+  absent runtime storage fails closed. Artifacts are bounded to 8 MiB and a
+  5-minute to 7-day lifetime. A Translation-owned runtime worker deletes their
+  private object on expiry even without a later tenant request, and artifacts
+  expose no blob URL or document content through events. An import starts only
+  when its remaining artifact lifetime can cover the bounded lease; concurrent
+  retries fail retryably instead of racing. Translation-only production server
+  GraphQL composition now supplies initialized `StorageRuntime` independently
+  of `mod-media`. Authenticated native application-router execution covers
+  tenant cache/resolution, locale negotiation, JWT/session/RBAC, channel,
+  rate-limit, security headers, and cross-tenant token rejection. Authenticated
+  Next module-disablement/URL-state evidence and compiled Leptos CSR
+  accessibility evidence are complete. Focused exact-head runtime-composition
+  run `33608857569` and post-merge `main` run `33609559524` both passed;
 - deterministic QA now runs on proposal save, review submission, and approval.
   Typed platform/owner warnings and errors cover active lifecycle, required and
   excluded fields, empty values, character limits, explicit protected-token
@@ -162,11 +163,10 @@ This is the active cross-cutting implementation plan. As of 2026-08-28:
   evidence proves concurrent independent worker pools converge on one
   transition/receipt and separate processes reclaim post-claim work through
   tombstone and purge restarts. Production-database multi-replica evidence
-  remains separate. Machine
-  operations pin normalized memory entry identities, order, and match scores
-  until completion or cancellation; replay can read tombstoned pins, and purge
-  is blocked while a pin exists;
-- `rustok-translation-targets` now defines the neutral provider/resource/field,
+  remains separate. Machine operations pin normalized memory entry identities,
+  order, and match scores until completion or cancellation; replay can read
+  tombstoned pins, and purge is blocked while a pin exists;
+- `rustok-translation-targets` defines the neutral provider/resource/field,
   exact-locale, revision, validation, apply, progress, change-cursor, and
   interchange contracts;
 - Media, Taxonomy, Navigation menu, and Pages metadata are registered owner
@@ -180,27 +180,31 @@ This is the active cross-cutting implementation plan. As of 2026-08-28:
   exposes exact `name`, review-only `slug`, and optional `description`, applies
   target-locale resource/source/target CAS, uses the shared owner receipt
   ledger, and records an append-only owner change cursor. Taxonomy does not
-  claim a global owner-event contract. Blog Category copy now follows that
+  claim a global owner-event contract. Blog Category copy follows that
   canonical Taxonomy provider through the same-ID Blog-to-Taxonomy Category
   binding. Forum Category copy also follows the canonical Taxonomy provider
   through the same-ID Forum-to-Taxonomy Category binding. The former
   `blog/category` provider, Blog change cursor/journal, and Blog-local Category
   translation storage were retired by TAXONOMY-CAT-8..12; the duplicate Forum
-  `forum/category` provider, change cursor/progress runtime, and donor translation
-  storage are retired after the verified CAT-5 cutover. Those consumer-local
-  provider/storage paths remain historical migration evidence only. Navigation's `navigation/menu`
-  provider applies an exact locale aggregate containing the menu name and every
-  item title through `MenuService`, with resource/source/target CAS, the shared
-  receipt ledger, and a content-free owner cursor; it does not claim a generic
-  menu event. Pages' `pages/page_metadata` provider exposes exact `title`,
-  review-only `slug`, optional `meta_title`, and optional `meta_description`.
-  It applies through `PageService` with page resource/source/target CAS, the
-  shared receipt ledger, a content-free owner cursor, and the existing
-  `NodeUpdated` owner event. Fly/GrapesJS bodies remain outside this pilot.
-  Taxonomy-owned tags and Blog posts remain outside this pilot;
-- module-owned Leptos and Next admin workbenches now expose six parity tabs for
-  policy, target, inventory, progress, reviewed workflow, versioned
-  glossaries, and Translation Memory. Both use URL-owned `glossary_id` and
+  `forum/category` provider, change cursor/progress runtime, and donor
+  translation storage are retired after the verified CAT-5 cutover. Those
+  consumer-local provider/storage paths remain historical migration evidence
+  only. Navigation's `navigation/menu` provider applies an exact locale
+  aggregate containing the menu name and every item title through `MenuService`,
+  with resource/source/target CAS, the shared receipt ledger, and a content-free
+  owner cursor; it does not claim a generic menu event. Pages'
+  `pages/page_metadata` provider exposes exact `title`, review-only `slug`,
+  optional `meta_title`, and optional `meta_description`. It applies through
+  `PageService` with page resource/source/target CAS, the shared receipt ledger,
+  a content-free owner cursor, and the existing `NodeUpdated` owner event.
+  Fly/GrapesJS bodies remain outside this pilot. Taxonomy-owned tags and Blog
+  posts remain outside this pilot. Focused evidence includes Translation Memory
+  retention run `33539223647`, Pages `page_metadata` run `33545157694`,
+  Navigation `navigation/menu` run `33549035590`, and Forum Category/Taxonomy
+  cutover run `33431200532`;
+- module-owned Leptos and Next admin workbenches expose six parity tabs for
+  policy, target, inventory, progress, reviewed workflow, versioned glossaries,
+  and Translation Memory. Both use URL-owned `glossary_id` and
   `memory_entry_id` selection without implicit first-item selection. Their
   Workflow tab exposes the same machine estimate, generation, status,
   cancellation, and recovery controls plus assignment/unassignment, blocked
@@ -210,12 +214,13 @@ This is the active cross-cutting implementation plan. As of 2026-08-28:
 - the current multilingual storage and runtime locale foundations are
   substantial. Baseline verifier repair, runtime/storage locale typing, tenant
   locale-policy ownership, the readiness registry, and the neutral target SPI
-  are implemented in `main`. Owner write paths, remaining ownership drift,
-  settings, provider onboarding, production AI enablement, and live recovery
-  evidence still require work before broad implementation.
+  are implemented in `main`. Remaining ownership drift, settings, additional
+  provider onboarding, production-database multi-replica evidence, and live
+  external-provider AI evidence still require work before a broad all-platform
+  completion claim.
 
-The live module plan and FFA/FBA readiness row are now maintained with the
-scaffold in `crates/rustok-translation/docs/implementation-plan.md`.
+The live module plan and FFA/FBA readiness row are maintained with the scaffold
+in `crates/rustok-translation/docs/implementation-plan.md`.
 
 ## Decisions fixed by this plan
 
@@ -277,59 +282,58 @@ Four related planes must remain distinct:
 ### Foundations that can be reused
 
 - `rustok-api::locale` owns the shared BCP47-like normalizer and locale
-  candidate helpers. It is a useful base, but it does not yet distinguish
-  runtime locales from storage-provenance locales.
-- Server middleware resolves effective locale against `tenant_locales`.
+  candidate helpers. Runtime/tenant and stored-provenance locale types now use
+  that normalizer with their distinct `und` rules.
+- Server middleware resolves effective locale against `tenant_locales` through
+  the Tenant-owned locale policy contract.
 - The accepted storage target is language-neutral base rows plus parallel
   `*_translations` and optional `*_bodies`, with normalized `VARCHAR(32)`
   locale columns.
-- The multilingual database registry already guards Pages, Forum, Groups,
-  Product, Content, Blog, Taxonomy, Comments, Profiles, Commerce, Flex,
-  Marketplace Seller, OAuth applications, Registry copy, and several commerce
-  display-data cutovers.
-- Product, Blog, Content, and Pages already demonstrate versions,
-  `updated_at`-based revisions, or idempotency in parts of their write paths.
-- `ModuleRuntimeExtensions` and the `rustok-seo-targets` registry demonstrate
-  owner-contributed capability registration without a host-maintained provider
-  list.
-- `rustok-ai` already owns provider/deployment configuration, secret and egress
-  policy, routing decisions, run traces, approvals, model assignment, and
-  durable workflow primitives. Its current execution path is not yet a
-  production-ready cross-module structured-inference port and does not yet
-  provide the durable usage/cost/quota and retry semantics required by bulk
-  translation.
-- `rustok-ui-i18n` already keeps UI message resolution separate from locale
-  selection.
-- Fly already has project-local translation, locale-policy, and coverage
-  primitives that a Page Builder provider can adapt rather than duplicate.
-- Flex already declares `is_localized` field semantics and stores localized
-  values outside language-neutral payloads.
+- The multilingual database registry guards Pages, Forum, Groups, Product,
+  Content, Blog, Taxonomy, Comments, Profiles, Commerce, Flex, Marketplace
+  Seller, OAuth applications, Registry copy, and several commerce display-data
+  cutovers.
+- Product, Blog, Content, and Pages demonstrate versions, `updated_at`-based
+  revisions, or idempotency in parts of their write paths.
+- `ModuleRuntimeExtensions`, `rustok-seo-targets`, and the implemented
+  `rustok-translation-targets` registry demonstrate owner-contributed
+  capability registration without a host-maintained provider list.
+- `rustok-ai` owns provider/deployment configuration, secret and egress policy,
+  routing, structured task execution, durable execution/attempt/usage/cost
+  evidence, budgets, fallback, cancellation, encrypted result replay, and
+  recovery primitives required by the Translation adapter. Live external
+  provider evidence remains a deployment gate rather than a contract gap.
+- `rustok-ui-i18n` keeps UI message resolution separate from locale selection.
+- Fly has project-local translation, locale-policy, and coverage primitives that
+  a Page Builder provider can adapt rather than duplicate.
+- Flex declares `is_localized` field semantics and stores localized values
+  outside language-neutral payloads.
 
 ### Gaps that prevent an honest “all modules” claim
 
 | Area | Current gap | Required preparation |
 | --- | --- | --- |
-| Resource discovery | There is no owner-neutral translation target registry | Define provider descriptors, capabilities, cursoring, and runtime registration |
-| Exact locale vs fallback | Runtime reads commonly return a resolved/fallback view | Every provider must expose exact-locale availability separately from rendered fallback |
-| Locale type boundary | The shared normalizer accepts `und`, although `und` is forbidden as an effective tenant locale | Introduce distinct runtime/tenant and stored-provenance locale types over one canonical normalizer |
-| Tenant locale ownership | Middleware and consumers read `tenant_locales` directly; `rustok-tenant` has no complete policy port | Give `rustok-tenant` read/write ownership and enforce default, enabled, fallback, and cycle invariants |
-| Source language | Many resources do not identify an authoritative source locale | Provider must return an exact selected source locale; `und` cannot be a source for AI or memory |
-| Revision safety | Owner modules use mixed version, timestamp, or no-CAS writes | Normalize provider-visible opaque revisions and require expected source/target revisions |
-| Idempotency | Not every localized owner write is idempotent | Require idempotency keys and replay receipts before onboarding |
-| Owner events | Translation changes do not share a generic invalidation contract | Add owner adapters that publish typed target-change facts transactionally |
-| Baseline verification | Current i18n/DB verifiers contain stale paths and owner markers and are not all green | Repair the existing contract and documentation before adding translation-specific verification |
+| Resource discovery | Completed for the Translation control plane: `rustok-translation-targets` provides owner-neutral descriptors, registry, capabilities, cursoring, and runtime registration | Keep the registry dependency-neutral and onboard additional owners only through it |
+| Exact locale vs fallback | Registered pilot providers expose exact-locale state, but candidate owners still commonly expose fallback-oriented reads | Every additional provider must expose exact-locale availability separately from rendered fallback |
+| Locale type boundary | Completed at the platform contract: runtime/tenant and stored-provenance locale types share one canonical normalizer with distinct `und` rules | Migrate remaining package-local DTOs/validators before onboarding those owners |
+| Tenant locale ownership | Completed: `rustok-tenant` owns revisioned enabled/default/fallback policy and invariants | Keep admin/runtime callers on the owner port; do not restore direct SQL |
+| Source language | Many not-yet-onboarded resources do not identify an authoritative source locale | Provider must return an exact selected source locale; `und` cannot be a source for AI or memory |
+| Revision safety | Media, Taxonomy, Navigation menu, and Pages metadata expose resource/source/target CAS; other candidate owners remain mixed | Normalize provider-visible opaque revisions before each additional onboarding |
+| Idempotency | Registered pilot owner applies have durable replay receipts; not every candidate owner write is idempotent | Require idempotency keys and replay receipts before onboarding |
+| Owner events | Registered owners expose their documented event/change-cursor repair contracts; there is deliberately no invented universal owner event | Each new provider must supply transactional owner change evidence or a bounded repair cursor |
+| Baseline verification | Completed for the Translation baseline and focused runtime evidence | Keep multilingual and Translation verifiers green on every affected change |
 | Owner identity | Pages/Navigation, Content/SEO, and Product/Commerce Foundation still contain ownership drift or duplicate schema evidence; Blog Category/Taxonomy and Forum Category/Taxonomy ownership are resolved | Assign exactly one owner and remove superseded schema/entity paths before target registration; do not reintroduce a Blog- or Forum-local Category Translation owner |
 | Settings | Host/platform and tenant-module settings are unversioned JSON without localized-leaf semantics | Assign owners, add typed localization metadata, parallel localized storage, revisions, and events |
 | Richtext | Blog, Forum, and Comments use canonical owner profiles, while UI parity and obsolete shared-helper/migration cleanup remain open | Translate only validated canonical document segments; do not wait for editor-host parity or reintroduce a format/version branch |
 | Page Builder | Fly translation state is project-local and not a platform target provider | Add a Page Builder owner adapter with lossless segment identity and revision checks |
 | Flex exact-locale behavior | Some attached and standalone paths seed or read through fallback/default locale | Add exact read/apply operations and finish the parallel localized-record cutover before onboarding |
 | Static catalogs | `rustok-core` match tables and compiled UI bundles are separate systems | Finish the Fluent/catalog ownership track before claiming all platform copy is editable |
-| AI task contract | `AiStructuredTaskPort` defines bounded non-billable estimate plus execute/health/status/cancel and typed attempt/usage/cost evidence. The estimate uses the same tenant routing, attempt bounds, and immutable provider price policies as reservation without registering execution, reserving budget, or calling a provider. A private canonical implementation binds the exact task descriptor to tenant routing, durable accounting, ordered structured inference/fallback, cancellation, deadlines, and encrypted TTL-bound result replay. Tenant accounting policies have permission-checked GraphQL/native provisioning, the keyring remains deployment-owned, the AI scheduler performs recovery and expiry cleanup before claims, and the optional distribution bridge publishes a Translation-owned lazy runtime factory. | Enable the bridge in the production profile and collect live failure/restart evidence without routing machine translation through chat sessions |
-| AI task ownership | Completed at contract level: the hard-coded `"translation"` free-locale alias is removed and `rustok-ai-translation` owns `machine_translation` | Register only after the structured runtime activation gate passes |
-| AI accounting/recovery | Durable token/cost/quota, request idempotency, typed retryability, ordered fallback, cancellation, recovery, atomic encrypted result handoff, permission-checked tenant policy provisioning, deployment-owned keyring publication, and scheduler recovery/expiry cleanup now exist | Verify multi-replica maintenance and accounting behavior in the live machine-translation composition |
+| AI task contract | `AiStructuredTaskPort` defines bounded non-billable estimate plus execute/health/status/cancel and typed attempt/usage/cost evidence. A private canonical implementation binds the exact task descriptor to tenant routing, durable accounting, ordered structured inference/fallback, cancellation, deadlines, and encrypted TTL-bound result replay. Tenant accounting policies have permission-checked GraphQL/native provisioning, the keyring remains deployment-owned, the AI scheduler performs recovery and expiry cleanup, and the production distribution bridge publishes the Translation-owned lazy runtime factory. | Collect live external-provider outage/degradation/restart evidence without routing machine translation through chat sessions |
+| AI task ownership | Completed at contract level: the hard-coded `"translation"` free-locale alias is removed and `rustok-ai-translation` owns `machine_translation` | Keep registration and policy ownership in the support adapter |
+| AI accounting/recovery | Durable token/cost/quota, request idempotency, typed retryability, ordered fallback, cancellation, recovery, atomic encrypted result handoff, permission-checked tenant policy provisioning, deployment-owned keyring publication, and scheduler recovery/expiry cleanup exist | Verify production-database multi-replica maintenance/accounting behavior and live provider recovery |
 | Multilingual storage gaps | Alloy, RBAC, Channel, Workflow, MCP, AI control-plane copy, and Order prose remain open | Close or explicitly exclude each owner gap before its provider is marked ready |
-| Progress denominator | Enabled tenant locales do not express translation-required policy | Let `rustok-translation` own a required-target-locale subset validated against enabled tenant locales |
-| Security | A central translator could otherwise bypass domain permissions | Require translation permission and the provider-declared owner permission floor |
+| Progress denominator | Completed for Translation: a revisioned required-target-locale subset is validated against enabled tenant locales | Preserve CAS/revalidation behavior as policy evolves |
+| Security | Translation workflow authorization and provider permission-floor intersection are implemented for onboarded paths; future owners may add stricter floors | Require both Translation permission and provider-declared owner permission floor for every new target |
 
 The canonical gap inventory remains
 `docs/architecture/database-multilingual-audit.md` and
@@ -340,9 +344,9 @@ surfaces; it does not replace the storage audit.
 ### Current P0 cleanup ledger
 
 The following repository facts were confirmed during the 2026-07-26 planning
-audit and updated for the 2026-08-28 Blog and Forum Category cutovers. They are explicit
-preparation work, not implementation details to defer until after the module
-exists.
+audit and updated for the 2026-09-02 Translation evidence reconciliation. They
+are explicit preparation work, not implementation details to defer until after
+the module exists.
 
 | P0 item | Current evidence | Exit condition |
 | --- | --- | --- |
@@ -355,7 +359,7 @@ exists.
 | Correct Flex exact semantics | Attached and standalone authoring reject invalid locales and prepare from an exact target-locale row; presentation fallback remains isolated to explicit read resolution | Add provider-facing exact source/target APIs, owner-local revision-safe apply, and field-policy exposure limited to schema-declared `is_localized` leaves |
 | Type localized settings | [`ModuleSettingSpec`](../../crates/rustok-modules/src/settings.rs) and host settings writes have no localized-leaf, sensitivity, or revision contract | A named owner exposes stable field IDs, `localized` and field-policy metadata, parallel localized rows, CAS, events, and secret-safe validation |
 | Finish semantic string classification | Product image alt text has base/translation drift; Search linguistic dictionaries, channel policy names, and transactional tax/order prose need explicit classification | Every candidate is classified as identifier, technical, secret, code-owned message, tenant-localized copy, immutable snapshot, search-linguistic data, or excluded with owner/reason |
-| Prepare structured AI execution | The cross-module port and content-free execution/attempt/accounting schema now exist. Registration is request-hash idempotent; execution leases, cancellation receipts, tenant budget reservation/concurrency, immutable provider price/concurrency policy, exact task descriptors, durable provider slots, actual per-attempt token/cost evidence, atomic queued/terminal settlement, and accounting-aware expired-lease recovery are implemented. A dedicated AES-256-GCM transient-result table keeps content out of the generic ledger; successful attempt, encrypted handoff, slot release, budget settlement, and terminal execution commit together. Tenant-scoped replay authenticates identity/digests/size, supports retained-key rotation, records replay counts, and expires without reopening or re-billing execution. Tenant operators can provision accounting policies through GraphQL/native contracts, the result keyring is deployment-owned, and the existing AI scheduler reconciles cancellations/leases and removes expired handoffs before claims. The private executor validates exact policy/schema identity, selects preferred then deterministic eligible providers, performs real structured inference/fallback, records typed content-free failures, enforces deadlines, and observes durable cancellation. The optional distribution bridge publishes the owner-neutral lazy runtime factory, and the separate chat task service is not used. | Enable the bridge in the production profile and collect live accounting, restart, fallback, cancellation, and expiry evidence |
+| Prepare structured AI execution | The cross-module port and content-free execution/attempt/accounting schema exist. Registration is request-hash idempotent; execution leases, cancellation receipts, tenant budget reservation/concurrency, immutable provider price/concurrency policy, exact task descriptors, durable provider slots, actual per-attempt token/cost evidence, atomic queued/terminal settlement, and accounting-aware expired-lease recovery are implemented. AES-256-GCM transient-result storage keeps content out of the generic ledger; successful attempt, encrypted handoff, slot release, budget settlement, and terminal execution commit together. Tenant-scoped replay authenticates identity/digests/size, supports retained-key rotation, records replay counts, and expires without reopening or re-billing execution. Tenant operators can provision accounting policies through GraphQL/native contracts, the result keyring is deployment-owned, and the AI scheduler reconciles cancellations/leases and removes expired handoffs before claims. The private executor validates exact policy/schema identity, selects preferred then deterministic eligible providers, performs real structured inference/fallback, records typed content-free failures, enforces deadlines, and observes durable cancellation. The production distribution bridge publishes the owner-neutral lazy runtime factory, and the separate chat task service is not used. | Collect live external-provider accounting, outage, restart, fallback, cancellation, and expiry evidence; retain production-database multi-replica evidence separately |
 
 The baseline repair should update
 [`verify-i18n-contract.mjs`](../../scripts/verify/verify-i18n-contract.mjs),
@@ -470,7 +474,7 @@ The target path module is:
 - manually functional when the globally composed AI capability is absent;
 - provider-discoverable for enabled owner modules only.
 
-The module must publish owner-owned GraphQL and module-owned operational REST
+The module publishes owner-owned GraphQL and module-owned operational REST
 surfaces. Its Leptos admin uses native `#[server]` functions by default in
 SSR/hydrate and retains GraphQL in parallel for Next, mobile/headless, and CSR.
 
@@ -767,10 +771,10 @@ The dependency boundary is deliberately acyclic between the two domain owners:
 
 `rustok-ai-translation` depends on both owner crates. `rustok-translation` does
 not depend on `rustok-ai`, and `rustok-ai` does not depend on
-`rustok-translation`. A dependency guard must ensure this adapter is the only
-crate allowed to bridge both capabilities. It registers through a neutral
-runtime contribution; it is not wired by another host `match`, direct service
-handle, or owner import.
+`rustok-translation`. A dependency guard ensures this adapter is the only crate
+allowed to bridge both capabilities. It registers through a neutral runtime
+contribution; it is not wired by another host `match`, direct service handle, or
+owner import.
 
 The translation-side port exposes a bounded `translate_batch` operation with a
 provider descriptor and health/degraded state. The AI-side high-level
@@ -779,43 +783,39 @@ The public low-level inference engine is not a suitable adapter boundary because
 it would force the adapter to resolve secrets, provider configuration, routing,
 fallback, and budgets itself.
 
-### Required AI runtime preparation
+### AI runtime preparation status
 
-Before the adapter is connected:
+The structured AI execution preparation below is implemented at contract and
+deterministic runtime level. The remaining gate is live external-provider and
+production-database multi-replica evidence:
 
-1. Publish `AiStructuredTaskPort` through `ModuleRuntimeExtensions` with bounded
-   structured execution, durable execution identity/status, cancellation,
-   `PortContext`, deadline, idempotency, and typed unavailable/degraded
-   behavior. Billable inference uses a write-like port policy even when it does
-   not mutate an owner record.
-2. Add a durable execution/attempt/usage ledger with a unique
+1. `AiStructuredTaskPort` is published through `ModuleRuntimeExtensions` with
+   bounded structured execution, durable execution identity/status,
+   cancellation, `PortContext`, deadline, idempotency, and typed
+   unavailable/degraded behavior. Billable inference uses a write-like port
+   policy even when it does not mutate an owner record.
+2. Durable execution/attempt/usage evidence binds a unique
    `(tenant, owner, idempotency_key)`, request-hash conflict detection, actual
    tokens, immutable price snapshot/cost, budget reserve/commit/release, and
    tenant/provider concurrency limits.
-3. Add execution-time ordered provider fallback, deadline budgeting,
+3. Execution-time ordered provider fallback, deadline budgeting,
    `Retry-After`, and typed rate-limit, timeout, invalid-output, context-limit,
-   authentication, policy, and quota errors. Authentication, validation,
-   policy, and quota failures do not retry as transient errors.
-4. Keep machine translation out of chat-session and agent-stage persistence.
-   Do not persist the full translation packet in generic metadata; persist only
-   content-safe hashes, identities, classifications, and execution evidence.
-5. Remove closed domain-vertical composition from the adapter path. The new
-   descriptor and handler register through runtime contributions, without a
-   manual import in `apps/server` or a new entry in a core domain `match`.
-6. Replace the hard-coded `"translation"` free-locale match with
-   descriptor-owned `machine_translation` policy. Do not retain an alias.
-7. Make source and target locale explicit policy inputs; a single generic task
-   locale is insufficient for machine translation.
-8. Keep the translation queue in `rustok-translation`. It may call bounded AI
-   executions, but it does not reuse AI agent-stage tables or assume the current
-   generic scheduler supplies retry/backoff/DLQ semantics.
-9. Classify existing direct Product/Blog/Media AI write paths: creative
-   generation remains a separate owner-approved capability, while canonical
-   machine translation can apply only through the translation proposal/review
-   and owner-provider path.
-10. Return quota and cost estimates before a bulk job is accepted, and ensure
-   run traces correlate to translation job/item/proposal
-   identities without logging content.
+   authentication, policy, and quota errors are implemented. Authentication,
+   validation, policy, and quota failures do not retry as transient errors.
+4. Machine translation stays out of chat-session and agent-stage persistence.
+   The generic ledger persists only content-safe hashes, identities,
+   classifications, and execution evidence, not the full translation packet.
+5. The descriptor and handler register through runtime contributions without a
+   manual domain composition switch.
+6. The hard-coded `"translation"` free-locale path is removed;
+   descriptor-owned `machine_translation` policy is canonical.
+7. Source and target locale are explicit policy inputs.
+8. The translation queue remains in `rustok-translation` and invokes bounded AI
+   executions rather than AI agent-stage tables.
+9. Existing direct owner creative-generation paths remain separate from
+   canonical machine translation and cannot bypass Translation review/apply.
+10. Cost estimation and execution evidence correlate to Translation identities
+    without logging content.
 
 The translation module must not instantiate `AiManagementService`, read AI
 tables, call its own GraphQL endpoint, import AI provider SDKs, or implement a
@@ -870,31 +870,30 @@ bound glossary revision and at most five tenant-scoped memory suggestions per
 unit, checks provider health/capacity, and calls the neutral port. It then
 revalidates the output and calls the canonical proposal workflow with AI
 origin; direct proposal-row writes and owner mutations are forbidden. A
-content-free `translation_machine_operations` row binds actor, idempotency
-key, request/context digests, provider policy, execution/attempt/usage/cost
-evidence, diagnostic codes, and proposal identity. Source, memory, and
-translated values remain in their existing Translation-owned records rather
-than being copied into the operation journal. Registered operations pin
-normalized memory-entry identities, order, and match scores. Replay reads the
-same entries even after tombstone; purge is blocked while a pin exists, and
-completion or actor-bound idempotent cancellation releases the pins
-atomically. Cancellation is accepted only while the operation is `registered`;
-once canonical proposal save enters `saving`, it fails closed. AI execution
-status and cancellation resolve through the stable owner/idempotency identity;
-a content-free AI cancellation intent also closes cancellation before
-execution registration, while the Translation receipt records propagation
-status and retries incomplete propagation on exact replay. An audited
-Manage/Update-authorized recovery command handles indefinitely `saving`
-operations without starting another billable execution: it binds the actor,
-idempotency key, reason, and observed operation revision before retrieval,
-reconstructs and revalidates the original request digest, reads the completed
-result through the stable provider key, and resumes canonical proposal save.
-File-backed separate-process evidence closes the original runtime and resumes
-that command in a child process for both durable crash boundaries: provider
-completion before proposal persistence, and proposal persistence before
-operation completion. It proves one proposal, one recovery receipt, preserved
-proposal identity for the latter boundary, atomic memory-pin release, and
-provider-free terminal replay.
+content-free `translation_machine_operations` row binds actor, idempotency key,
+request/context digests, provider policy, execution/attempt/usage/cost evidence,
+diagnostic codes, and proposal identity. Source, memory, and translated values
+remain in their existing Translation-owned records rather than being copied
+into the operation journal. Registered operations pin normalized memory-entry
+identities, order, and match scores. Replay reads the same entries even after
+tombstone; purge is blocked while a pin exists, and completion or actor-bound
+idempotent cancellation releases the pins atomically. Cancellation is accepted
+only while the operation is `registered`; once canonical proposal save enters
+`saving`, it fails closed. AI execution status and cancellation resolve through
+the stable owner/idempotency identity; a content-free AI cancellation intent
+also closes cancellation before execution registration, while the Translation
+receipt records propagation status and retries incomplete propagation on exact
+replay. An audited Manage/Update-authorized recovery command handles
+indefinitely `saving` operations without starting another billable execution:
+it binds the actor, idempotency key, reason, and observed operation revision
+before retrieval, reconstructs and revalidates the original request digest,
+reads the completed result through the stable provider key, and resumes
+canonical proposal save. File-backed separate-process evidence closes the
+original runtime and resumes that command in a child process for both durable
+crash boundaries: provider completion before proposal persistence, and proposal
+persistence before operation completion. It proves one proposal, one recovery
+receipt, preserved proposal identity for the latter boundary, atomic memory-pin
+release, and provider-free terminal replay.
 
 Missing units, extra units, invalid structured output, changed placeholders,
 invalid locale, malformed Unicode, owner-limit violations, or structure drift
@@ -994,11 +993,11 @@ adapter expose policy, progress, inventory, reviewed workflow, versioned
 glossary, Translation Memory, bounded direct interchange plus private
 object-storage-backed artifact lifecycle, derived reviewer queue and workload
 operations, and private workflow-note collaboration through one 49-operation
-client contract. The manifest publishes its module-owned six-tab Leptos workbench,
-while `@rustok/translation-admin` renders the matching Next workbench through
-the same GraphQL contract. Both keep glossary and memory selection in
-URL-owned `glossary_id` and `memory_entry_id`. The contract will extend as
-later domain capabilities land, for:
+client contract. The manifest publishes its module-owned six-tab Leptos
+workbench, while `@rustok/translation-admin` renders the matching Next workbench
+through the same GraphQL contract. Both keep glossary and memory selection in
+URL-owned `glossary_id` and `memory_entry_id`. The contract will extend as later
+domain capabilities land, for:
 
 - provider/resource inventory and progress;
 - resource and unit reads;
@@ -1006,8 +1005,8 @@ later domain capabilities land, for:
 - draft save and proposal history;
 - assignment, review, approval, and apply;
 - additional memory propagation and automation;
-- third-party interchange/TMS orchestration beyond the current bounded
-  artifact lifecycle;
+- third-party interchange/TMS orchestration beyond the current bounded artifact
+  lifecycle;
 - additional glossary operator context;
 - import/export lifecycle and reports.
 
@@ -1052,9 +1051,10 @@ Selection/filter state uses typed `snake_case` URL keys, initially:
 The Leptos package follows `core/transport/ui`; native `#[server]` is the
 SSR/hydrate selected path and GraphQL is the CSR/headless selected path. The
 Next admin package consumes the same GraphQL/REST contract. There is no
-translation storefront package. The current package implements `core` and
-`transport` only; adding `ui`, the Next package, manifest publication, and host
-registration is one parity change rather than independent host-specific work.
+translation storefront package. The current package implements
+`core/transport/ui`; the Next package, manifest publication, host registration,
+and authenticated browser/accessibility evidence are present and remain one
+parity contract rather than independent host-specific work.
 
 ## Authorization
 
@@ -1328,11 +1328,11 @@ Deliverables:
   `rustok-translation-targets`;
 - [x] classify current candidate surfaces in `translation-surfaces.json`, with
   named blockers and exclusions;
-- [ ] replace package-local locale validators and close fallback behavior that would
-  make exact provider results inconsistent;
+- [ ] replace package-local locale validators and close fallback behavior that
+  would make exact provider results inconsistent;
 - [x] specify atomic per-locale owner apply, CAS, idempotency, and owner-event
   evidence;
-- [ ] design settings-localized storage and the AI execution port;
+- [ ] design settings-localized storage and the remaining live AI evidence gate;
 - [x] commit executable reference provider fixtures and negative fixtures in
   `rustok-translation-targets/tests/reference_provider_conformance.rs`, covering
   exact-locale discovery, CAS apply, replay, stale revisions, and
@@ -1357,18 +1357,19 @@ Deliverables:
   copy is consumed through the canonical Taxonomy provider rather than a
   duplicate Blog provider;
 - [x] complete required-target-locale policies and deterministic Phase 1 QA;
-  job completion, safe
-  blocked-item retry, rebuildable job workflow progress, jobs, items,
-  proposals, assignments, cancellation, receipts, durable apply recovery, and
-  rebuildable inventory are implemented;
+  job completion, safe blocked-item retry, rebuildable job workflow progress,
+  jobs, items, proposals, assignments, cancellation, receipts, durable apply
+  recovery, and rebuildable inventory are implemented;
 - [x] implement the module-owned GraphQL service adapter and manifest runtime
   composition for the current Phase 1 control plane;
 - [x] implement the typed native server-function transport foundation for the
   current GraphQL surface, with schema and idempotency parity tests;
-- [ ] mount the native adapter and capture authenticated tenant/runtime parity
-  evidence;
+- [x] mount the native adapter and capture authenticated tenant/runtime parity
+  through the production application router; exact-head run `33608857569` and
+  post-merge `main` run `33609559524` are green;
 - [x] implement and manifest-publish module-owned Leptos and Next admin shells;
-- [ ] verify module disablement leaves owner reads and locale fallback unchanged.
+- [x] verify module disablement through the authenticated Next host
+  `ModuleGuard` fallback while Translation remains an optional authoring plane.
 
 Done when a fake reference provider supports a complete manual
 discover-to-owner-receipt flow with conflicts, replay, and recovery.
@@ -1405,6 +1406,11 @@ target:
    body content remains a separate Page Builder target; retain PostgreSQL
    migration, concurrent apply, and cursor-recovery evidence before production
    inventory enablement.
+
+Focused retained evidence currently includes Translation Memory retention
+`33539223647`, Pages `page_metadata` `33545157694`, Navigation
+`navigation/menu` `33549035590`, and Forum Category/Taxonomy cutover
+`33431200532`.
 
 The conformance suite still contains non-production reference fixtures for
 long/structured content, Product/commerce, and a localized setting so the
@@ -1463,21 +1469,26 @@ revisions, placeholders, or audit.
 
 ### Phase 4 — AI adapter pilot
 
+The adapter/runtime implementation below is complete at deterministic
+composition level. Live external-provider outage/degradation/restart evidence
+and approved locale-pair rollout remain open.
+
 Deliverables:
 
-- add `AiStructuredTaskPort`, typed errors, durable execution/attempt/usage/cost
-  evidence, idempotency, budget reservation, runtime fallback, cancellation,
-  and bounded retry semantics to `rustok-ai`;
-- add the translation-owned `MachineTranslationPort` provider SPI;
-- create `rustok-ai-translation` and register `machine_translation`;
-- add plain-text and placeholder-template translation first;
-- remove the hard-coded legacy task slug path and prevent generic chat/agent
-  persistence or direct owner writes for machine translation;
-- add tenant provider egress-classification policy, estimate, quota, trace
+- [x] add `AiStructuredTaskPort`, typed errors, durable
+  execution/attempt/usage/cost evidence, idempotency, budget reservation,
+  runtime fallback, cancellation, and bounded retry semantics to `rustok-ai`;
+- [x] add the translation-owned `MachineTranslationPort` provider SPI;
+- [x] create `rustok-ai-translation` and register `machine_translation`;
+- [x] add plain-text and placeholder-template translation foundations;
+- [x] remove the hard-coded legacy task slug path and prevent generic
+  chat/agent persistence or direct owner writes for machine translation;
+- [x] add tenant provider egress-classification policy, estimate, quota, trace
   correlation, content-safe evidence, and deterministic validation;
-- compose AI controls inside the translation workbench while generic run
+- [x] compose AI controls inside the translation workbench while generic run
   diagnostics remain visible in the AI owner surface;
-- pilot selected locale pairs on the representative owner providers.
+- [ ] collect live external-provider evidence and approve selected locale pairs
+  on representative owner providers.
 
 Done when AI results are typed proposals, never direct owner mutations, and the
 manual/review/apply contract remains identical regardless of proposal origin.
@@ -1599,6 +1610,16 @@ Baseline repository gates:
 - API reference artifact export/verification;
 - FFA/FBA and module-specific provider conformance verifiers;
 - `git diff --check`.
+
+Focused retained evidence as of 2026-09-02:
+
+- Translation Memory retention: `33539223647`;
+- Pages `pages/page_metadata`: `33545157694`;
+- Navigation `navigation/menu`: `33549035590`;
+- Forum Category/Taxonomy cutover: `33431200532`;
+- Translation runtime composition exact PR head: `33608857569`;
+- Translation runtime composition post-merge `main@b16da9a8babe147b7ce75f871913b4bc4c34c506`:
+  `33609559524`.
 
 New verifier names are added only with their executable implementation; this
 plan does not reserve decorative scripts.
