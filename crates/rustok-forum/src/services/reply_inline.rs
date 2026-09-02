@@ -177,5 +177,9 @@ impl ReplyService {
 }
 
 pub(crate) mod ugc_translation_apply {
-    include!("ugc_translation_apply.rs");
+    pub(crate) use crate::services::{ReplyService, TopicService};
+
+    pub(crate) mod owner {
+        include!("ugc_translation_apply.rs");
+    }
 }
