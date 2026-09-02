@@ -41,13 +41,12 @@ function main() {
   const modulePlan = read(modulePlanPath);
   const registry = JSON.parse(read(registryPath));
 
-  assertIncludes(centralPlan, "This is the active cross-cutting implementation plan. As of 2026-08-28:", centralPlanPath);
+  assertIncludes(centralPlan, "This is the active cross-cutting implementation plan.", centralPlanPath);
   assertIncludes(centralPlan, "Blog Category consumer cutover: completed through TAXONOMY-CAT-12.", centralPlanPath);
   assertIncludes(centralPlan, "[x] resolve Blog Category/Taxonomy ownership drift through TAXONOMY-CAT-1..12;", centralPlanPath);
   assertIncludes(centralPlan, "Blog Category canonical copy is not a Blog Translation target.", centralPlanPath);
   assertIncludes(moduleReadme, "Canonical Blog Category copy is\nnot a separate Translation aggregate", moduleReadmePath);
   assertIncludes(moduleReadme, "The former `blog/category` provider, Blog Category Translation\nchange journal, and Blog-local Category translation storage are retired", moduleReadmePath);
-  assertIncludes(modulePlan, "last_reviewed: 2026-08-28", modulePlanPath);
   assertIncludes(modulePlan, "Blog\n  Category canonical copy is consumed through the same-ID Blog-to-Taxonomy\n  Category binding and the `taxonomy/term` provider", modulePlanPath);
 
   for (const [label, source] of [

@@ -3,7 +3,7 @@ id: doc://crates/rustok-translation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress
-last_reviewed: 2026-08-28
+last_reviewed: 2026-09-02
 ---
 
 # Translation implementation plan
@@ -227,7 +227,10 @@ selection.
   with tenant resolution/cache, locale negotiation, JWT/session resolution,
   RBAC, channel resolution, rate limiting, and security headers; it verifies
   the effective `de-DE` response locale and rejects a valid token replayed
-  against another tenant. Production AI execution remains open.
+  against another tenant. The same focused runtime-composition gate verifies
+  that a Translation-only GraphQL host receives initialized `StorageRuntime`
+  without depending on `mod-media`. Exact-head run `33608857569` and post-merge
+  `main` run `33609559524` both passed. Production AI execution remains open.
 - The manifest now publishes and mounts the Leptos workbench, and the matching
   `@rustok/translation-admin` package owns the Next workbench over the same
   GraphQL contract. Both workbenches expose six tabs and keep glossary and
@@ -353,9 +356,9 @@ selection.
     through the real `AuthContext` and `RequestContext`; they verify invalid
     bounds, stale source rejection, aggregate import outcomes, cross-tenant
     isolation, and mismatched tenant denial;
-  - the artifact GraphQL fixture explicitly supplies `StorageRuntime`. The
-    production server still needs to compose that initialized runtime for a
-    Translation-only GraphQL profile instead of gating it on `mod-media`;
+  - the production Translation-only GraphQL server composition supplies
+    initialized `StorageRuntime` independently of `mod-media`; focused runtime
+    composition verifies this on both PR head and merged `main`;
   - registered native HTTP server-function tests execute policy, glossaries,
     bounded direct interchange and private object-storage artifacts, assignment,
     manual workflow/apply, QA rejection,
@@ -380,8 +383,12 @@ selection.
   - compiled Leptos CSR browser execution verifies all six URL-owned tabs,
     literal `aria-selected` state, one roving tab stop, arrow/Home/End focus and
     URL synchronization, tab/panel relationships, and localized form-label
-    associations; axe reports zero violations on every tab.
-- Last verified at (UTC): 2026-07-30
+    associations; axe reports zero violations on every tab;
+  - focused evidence ledger: Translation Memory retention `33539223647`, Pages
+    `pages/page_metadata` `33545157694`, Navigation `navigation/menu`
+    `33549035590`, Forum Category/Taxonomy cutover `33431200532`, application
+    router exact-head `33608857569`, and post-merge `main` `33609559524`.
+- Last verified at (UTC): 2026-09-02
 - Owner: Translation module maintainers
 
 ## Milestones
@@ -405,13 +412,13 @@ selection.
 4. Full application-router middleware execution is runtime-verified for the
    registered native read-policy function, including tenant cache/resolution,
    locale, JWT/session/RBAC, channel, rate-limit, security headers, and
-   cross-tenant rejection. Authenticated GraphQL and registered native HTTP
+   cross-tenant rejection. The same focused runtime-composition gate verifies
+   that the Translation-only GraphQL host receives initialized `StorageRuntime`
+   without `mod-media`. Exact-head run `33608857569` and post-merge run
+   `33609559524` both passed. Authenticated GraphQL and registered native HTTP
    tests separately cover bounded direct interchange and private artifact
    lifecycle, malformed bounds, stale source rejection, tenant isolation, and
    successful import through canonical QA.
-   The server GraphQL host must also attach initialized `StorageRuntime` when
-   Translation is enabled without Media before the artifact lifecycle can claim
-   that deployment-profile evidence.
 5. Registered HTTP parity for machine generation/status/cancellation/recovery
    is runtime-verified through a deterministic neutral provider, including
    degraded health and audited stuck-save recovery. Production-provider
@@ -445,7 +452,7 @@ selection.
 - `cargo clippy -p rustok-translation --all-targets --all-features -- -D warnings`
 - `cargo test -p rustok-translation-admin`
 - `cargo check -p rustok-translation-admin --features ssr`
-- `cargo test -p rustok-server --lib --no-default-features --features mod-translation application_router_executes_authenticated_server_function`
+- `RUST_MIN_STACK=33554432 cargo test -p rustok-server --lib --no-default-features --features mod-translation application_router_executes_authenticated_server_function`
 - `cargo xtask module validate translation`
 - `cargo xtask validate-manifest`
 - `cargo check -p rustok-server --lib --no-default-features --features mod-translation`
