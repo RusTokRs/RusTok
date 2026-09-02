@@ -160,7 +160,10 @@ async fn run_contract(database: &TestDatabase) -> TestResult<()> {
         first_snapshot.summary.resource_revision,
         second_snapshot.summary.resource_revision
     );
-    assert_eq!(first_snapshot.source_revision, second_snapshot.source_revision);
+    assert_eq!(
+        first_snapshot.source_revision,
+        second_snapshot.source_revision
+    );
     assert!(first_snapshot.target_revision.is_none());
     assert!(second_snapshot.target_revision.is_none());
 
