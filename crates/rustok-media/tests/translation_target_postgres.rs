@@ -143,7 +143,7 @@ async fn run_contract(database: &TestDatabase) -> TestResult<()> {
     let request = ReadTranslationResourceRequest {
         identity: rustok_translation_targets::TranslationResourceIdentity {
             owner_slug: rustok_translation_targets::OwnerSlug::new("media")?,
-            resource_kind: rustok_translation_targets::ResourceKind::new("media_assets")?,
+            resource_kind: rustok_translation_targets::ResourceKind::new("asset")?,
             resource_id: rustok_translation_targets::ResourceId::new(media.id.to_string())?,
             subresource_id: None,
         },
