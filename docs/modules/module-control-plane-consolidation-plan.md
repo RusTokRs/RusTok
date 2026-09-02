@@ -493,8 +493,8 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   trace; a
   tenant context is either absent for platform scope or a non-nil UUID. The
   artifact lifecycle family (activation, deactivation, tenant intent,
-  uninstall, rollback, migration checkpoints, tenant data purge, and artifact
-  admission),
+  uninstall, rollback, migration checkpoints, tenant data purge, admission
+  reverification, and artifact admission),
   settings recovery, data snapshots, owner-only artifact-data export, artifact secret binding, global
   artifact-security transitions, static promotion, and static-distribution
   bootstrap/admission/revocation, and tenant-scoped registry platform-build
@@ -505,6 +505,8 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   evidence. Platform static-distribution rollout and recovery do the same;
   static-distribution build intent does so before an immutable snapshot is
   queued;
+  isolated tenant build requests bind the complete context into their immutable
+  request/replay hash and use it for both queued and completed outbox envelopes;
   node-agent reports remain separately authenticated deployment observations.
   Each receipt rejects an idempotency reuse with different context
   evidence. GraphQL and REST adapters carry the context where those surfaces
@@ -1144,7 +1146,10 @@ adapter and must not be used as artifact identity or durable policy state.
   authorization, updates the relevant state, and writes its governance audit
   facts in one transaction. Publication atomically writes
   the release projection and translations, owner binding or authorized rebind,
-  optional approval-override evidence, and request finalization. Validation
+  optional approval-override evidence, and request finalization. Initial
+  binding and authorized rebind have no parallel direct owner-bind command;
+  later ownership changes use the separately context-bound transfer command.
+  Validation
   stages are owner-owned: manual report/requeue transitions, remote lease claim,
   heartbeat, terminal completion, expired-lease requeue, validation-job enqueue,
   job claim, stale-job recovery, worker retry telemetry, and automated result
@@ -2485,9 +2490,18 @@ trust policy before admission.
   digest and one of `author_signature`, `build_service_attestation`,
   `marketplace_approval`, or `platform_admission`; repeat submission of the
   same fact is idempotent through a domain-separated evidence digest and a
-  database uniqueness constraint. Promotion/admission requires the applicable
+  database uniqueness constraint. The operator-facing author-signature route
+  accepts only context-bound signature facts; while holding the request and
+  current owner-binding locks, `ModuleAuthorSignatureEvidenceCommand` rechecks
+  the authenticated `modules:manage` fact or current requester/publisher/owner
+  principal before an idempotent replay or write, then derives the canonical attached-artifact
+  SHA-256, persists the signature digest in the immutable publication-evidence
+  row used by finalization (whose schema rejects an author-signature row without
+  that digest), and persists an exact-replay receipt over the
+  actor/context, signature digest, signer, policy revision, reference, and
+  resulting evidence. Promotion/admission requires the applicable
   distinct facts. Marketplace approval
-  is not accepted through the generic evidence command: the owner creates it
+  is not accepted through a transport evidence command: the owner creates it
   only in the atomic final-publication transaction, bound to the canonical
   staged artifact SHA-256 and the approving principal. Build-service
   attestation is also reserved: only `ModuleBuildServiceAttestationCommand`
@@ -2505,8 +2519,9 @@ trust policy before admission.
   descriptor digest, logical registry identity, OCI repository, runtime/media
   type, and those typed evidence references in a create-once
   platform-admission contract, and rejects conflicting replay. The owner
-  now fails publication closed unless author-signature evidence is bound to the
-  staged artifact SHA-256 and build-service attestation plus platform-admission
+  now fails publication closed unless author-signature evidence and its
+  immutable signature digest are bound to the staged artifact SHA-256 and
+  build-service attestation plus platform-admission
   evidence share one exact OCI manifest subject; marketplace approval is added
   only inside that same final-release transaction. A reupload invalidates prior
   evidence for promotion: the owner accepts only facts recorded after the
@@ -2569,9 +2584,12 @@ trust policy before admission.
   source/provenance/quarantine facts, and both authenticated principals. Any
   conflicting reuse fails closed. Alloy-authored staging uses the corresponding
   tenant-scoped context derived by authenticated HTTP and GraphQL adapters;
-  its receipt binds expected revision, Alloy tenant/script, reviewed source and
-  sandbox facts, actor, trace, correlation, and idempotency. The owner requires
-  the staged user principal to equal the context actor UUID and rejects a
+  those adapters pass the authenticated `modules:manage` fact, and the owner
+  rechecks it or the current requester/publisher/owner principal while holding
+  the request and owner-binding locks before a replay or write. Its receipt
+  binds expected revision, Alloy tenant/script, reviewed source and sandbox
+  facts, actor, trace, correlation, and idempotency. The owner requires the
+  staged user principal to equal the context actor UUID and rejects a
   changed-context replay.
 - [x] Run automated descriptor, compatibility, dependency, signature, SBOM,
   provenance, license, vulnerability, and sandbox smoke checks. The owner
@@ -3217,7 +3235,7 @@ multi-node reconciliation path consumed by those transports.
   claim covers pre/post hooks as well as the transaction that commits override
   or settings state; different commands fail closed while it is held. Toggle,
   normalized settings, post-hook retry, and compensation carry the same
-  authenticated actor/tenant/idempotency/revision context, expose the resulting
+  authenticated actor/tenant/trace/correlation/idempotency/revision context, expose the resulting
   revision through owner snapshots and GraphQL, and use the same aggregate.
   Hook operations retain `module_operations` for recovery evidence, while
   settings retain an exact result in the shared owner-operation receipt ledger.
@@ -3268,8 +3286,9 @@ multi-node reconciliation path consumed by those transports.
   idempotency UUIDs plus a non-negative aggregate revision. Retry and
   compensation now enter the owner only through
   `ModuleLifecycleRecoveryCommand`; it rejects nil identity, derives persisted
-  actor text from the actor UUID, and cannot accept transport-controlled actor
-  labels or correlation. It claims the same aggregate before hook dispatch and
+  actor text, trace, correlation, and idempotency evidence from the authenticated
+  command context, and cannot accept transport-controlled actor labels or
+  correlation. It claims the same aggregate before hook dispatch and
   releases it on every terminal path, including configuration failure.
 - [x] Keep subscriptions/build events as transport adapters over owner events.
   Build completion contains build facts only. Static admission, rollout,
@@ -3498,7 +3517,9 @@ workers, transports, and UI.
   the canonical catalog and tenant overrides, checks the durable lifecycle
   predecessor cursor, and appends the explicit transition event in the state
   transaction through `ModuleEffectivePolicyTransitionCoordinator`. A
-  concurrent stale policy transition rolls back the lifecycle mutation;
+  concurrent stale policy transition rolls back the lifecycle mutation. The
+  lifecycle journal and derived transition event retain the authenticated
+  tenant command's actor, correlation, and trace evidence;
   runtime, routing, scheduler, transport, and UI consumers remain open until
   they use the same decision directly.
 - [x] Make the server artifact HTTP/command transport resolve the canonical
@@ -3659,7 +3680,8 @@ accepts a caller-selected actor or artifact identity; the owner
   serving rollout, never a merely desired or failed candidate; rollout
   revisions still advance from the latest desired operation. Operator rollout
   and recovery receipts retain one platform-scoped `ModuleCommandContext` and
-  derive their outbox envelopes from it. This does not claim the generic
+  derive their outbox envelopes from it; release-revocation-derived rollout
+  status events retain that same command context. This does not claim the generic
   artifact/sandbox reconciler or the retained-predecessor recovery command is
   complete.
 - [ ] Publish composition, installation, activation, grant, quarantine,

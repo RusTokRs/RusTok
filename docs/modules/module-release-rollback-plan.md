@@ -1852,12 +1852,12 @@ backend preflight.
   required to produce a bounded phase plan.
 - [ ] Consolidate unreleased migrations before establishing immutable
   production migration identities.
-- [ ] Classify supported transition classes and evidence gaps for existing
+- [x] Classify supported transition classes and evidence gaps for existing
   modules without assigning module-wide automatic eligibility.
 
 ### 3. Implement the Owner Decision and Durable Coordinator
 
-- [ ] Add the owner-issued executable preflight receipt and denial taxonomy.
+- [x] Add the owner-issued executable preflight receipt and denial taxonomy.
 - [ ] Give release preparation its own `preparation_id`, explicit
   platform-public or tenant-private authorization/RLS domain, and sanitized
   evidence projection. Share preparation/release metadata across tenants only
@@ -1868,7 +1868,7 @@ backend preflight.
   installs must never share authority or raw logs.
 - [ ] Bind preview, explicit confirmation where required, apply, safe
   cancellation, and fresh manual-rollback decisions to immutable receipts.
-- [ ] Freeze the direct predecessor from exact observed serving state only when
+- [x] Freeze the direct predecessor from exact observed serving state only when
   the production transition begins; admission/build lineage cannot supply or
   change it.
 - [ ] Replace caller-selected migration rollback mode with an owner-loaded
@@ -1894,19 +1894,19 @@ backend preflight.
   grants become dormant, and rollback reselects definitions but never restores
   a revoked grant or membership. Show bounded affected role/key summaries
   without assigning grants during admission/install.
-- [ ] Add one durable owner operation that derives and atomically acquires the
+- [x] Add one durable owner operation that derives and atomically acquires the
   canonical conflict-key set across rollback units, data/schema owners,
   dependencies/dependents, topology, and affected namespaces.
-- [ ] Persist monotonic phases, one automatic attempt, immutable requests,
+- [x] Persist monotonic phases, one automatic attempt, immutable requests,
   external-work leases, idempotent receipts, outbox facts, and restart
   reconciliation; transactional phases use CAS rather than leases.
 - [ ] Revalidate security, policy, topology, checkpoint, and predecessor
   retention before every mutation.
-- [ ] Make quarantine/revocation commit one global monotonic release-security
+- [x] Make quarantine/revocation commit one global monotonic release-security
   epoch/fence and return without enumerating scopes or waiting for external
   leases. Gate every claim/activation/transition/result commit on that epoch,
   then reconcile affected tenants in bounded independently fenced pages.
-- [ ] Add the outside-candidate automatic evaluator/control path with
+- [x] Add the outside-candidate automatic evaluator/control path with
   atomically reserved same-operation replay authority.
 - [ ] Advance one binding/work generation and its outbox facts atomically with
   dynamic serving selection; delayed events cannot reactivate an obsolete
@@ -1923,7 +1923,7 @@ backend preflight.
 
 ### 4. Implement the Safe Data Path
 
-- [ ] Make `rustok-migrations` generate the normalized owner-scoped declarative
+- [x] Make `rustok-migrations` generate the normalized owner-scoped declarative
   schema diff and no-write dry-run receipt, bind them into the existing
   immutable preflight/operator preview, and execute only the confirmed exact
   migration-plan digest rather than an unbounded migrator during update. Reuse
@@ -2110,7 +2110,7 @@ backend preflight.
   `dynamic_artifact_settings_purge`, retention/GC status,
   and authorized support-bundle
   retrieval without adding raw pointer/registry/delete/restore controls.
-- [ ] Render the WordPress-like flow from the exact canonical tokens `ready`,
+- [x] Render the WordPress-like flow from the exact canonical tokens `ready`,
   `running`, `observing`, `accepted`, `recovering`, `recovered`, `rejected`,
   `cancelled`, and `recovery_required`. Friendly labels such as "Updating" or
   "Recovery required" are a documented one-to-one presentation mapping, never

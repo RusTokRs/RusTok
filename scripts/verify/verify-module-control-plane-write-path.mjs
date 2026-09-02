@@ -22,7 +22,12 @@ const adminModuleTransportRoot = path.join(root, 'apps/admin/src/features/module
 const ownerManifestPath = path.join(root, 'crates/rustok-modules/Cargo.toml');
 const ownerContractsPath = path.join(root, 'crates/rustok-modules/src/contracts.rs');
 const lifecycleOwnerPath = path.join(root, 'crates/rustok-modules/src/installation.rs');
+const artifactAdmissionReverificationMigrationPath = path.join(
+  root,
+  'crates/rustok-modules/src/migrations/m20260901_000045_artifact_admission_reverification_operations.rs',
+);
 const artifactDataOwnerPath = path.join(root, 'crates/rustok-modules/src/data.rs');
+const moduleBuildOwnerPath = path.join(root, 'crates/rustok-modules/src/build.rs');
 const artifactDataExportMigrationPath = path.join(
   root,
   'crates/rustok-modules/src/migrations/m20260718_000031_artifact_data_exports.rs',
@@ -78,8 +83,14 @@ const publicationEvidencePath = path.join(ownerRoot, 'publication_evidence.rs');
 const recoveryPath = path.join(ownerRoot, 'recovery.rs');
 const serverLifecyclePath = path.join(root, 'apps/server/src/services/module_lifecycle.rs');
 const staticLifecycleWriterPath = path.join(ownerRoot, 'lifecycle_writer.rs');
+const lifecycleExecutorPath = path.join(ownerRoot, 'executor.rs');
+const effectivePolicyTransitionOwnerPath = path.join(ownerRoot, 'policy_transition_event.rs');
 const staticLifecycleJournalPath = path.join(ownerRoot, 'operation_store.rs');
 const alloyOwnerSourcePath = path.join(ownerRoot, 'governance.rs');
+const registryPublicationEvidenceMigrationPath = path.join(
+  root,
+  'crates/rustok-migrations/src/m20260717_000001_create_registry_publication_evidence.rs',
+);
 const registryPublicationMigrationPath = path.join(
   root,
   'crates/rustok-migrations/src/m20260718_000002_add_registry_publication_idempotency.rs',
@@ -209,7 +220,12 @@ try {
   const ownerManifest = fs.readFileSync(ownerManifestPath, 'utf8');
   const ownerContracts = fs.readFileSync(ownerContractsPath, 'utf8');
   const lifecycleOwner = fs.readFileSync(lifecycleOwnerPath, 'utf8');
+  const artifactAdmissionReverificationMigration = fs.readFileSync(
+    artifactAdmissionReverificationMigrationPath,
+    'utf8',
+  );
   const artifactDataOwner = fs.readFileSync(artifactDataOwnerPath, 'utf8');
+  const moduleBuildOwner = fs.readFileSync(moduleBuildOwnerPath, 'utf8');
   const artifactDataExportMigration = fs.readFileSync(artifactDataExportMigrationPath, 'utf8');
   const artifactBindingIdempotencyOwner = fs.readFileSync(
     artifactBindingIdempotencyOwnerPath,
@@ -245,6 +261,13 @@ try {
     artifactNodeReconciliationOwnerPath,
     'utf8',
   );
+  const lifecycleExecutor = fs.readFileSync(lifecycleExecutorPath, 'utf8');
+  const effectivePolicyTransitionOwner = fs.readFileSync(
+    effectivePolicyTransitionOwnerPath,
+    'utf8',
+  );
+  const staticLifecycleWriter = fs.readFileSync(staticLifecycleWriterPath, 'utf8');
+  const recoverySource = fs.readFileSync(recoveryPath, 'utf8');
   const runtimeManifest = fs.readFileSync(runtimeManifestPath, 'utf8');
   const forbiddenDependencyViolations = forbiddenOwnerDependencies.filter((dependency) =>
     new RegExp(`^${dependency.replaceAll('-', '\\-')}\\s*=`, 'm').test(ownerManifest),
@@ -328,10 +351,16 @@ try {
     !staticDistributionRolloutOwner.includes('command.context.tenant_id.is_some()') ||
     !staticDistributionRolloutOwner.includes('trace_id, correlation_id, created_at') ||
     !staticDistributionRolloutOwner.includes('event_envelope_for_command(') ||
-    !staticDistributionRolloutOwner.includes('record.trace_id.as_deref()')
+    !staticDistributionRolloutOwner.includes('record.trace_id.as_deref()') ||
+    !staticDistributionRolloutOwner.includes('revoke_rollouts_for_release(') ||
+    !staticDistributionRolloutOwner.includes('context: &ModuleCommandContext,') ||
+    !staticDistributionRolloutOwner.includes('infrastructure.event_envelope_for_command(\n                        context,') ||
+    !staticDistributionRolloutOwner.includes(
+      'release_revocation_preserves_command_context_in_derived_rollout_event',
+    )
   ) {
     fail(
-      'static distribution rollout and recovery commands must retain platform-scoped ModuleCommandContext evidence in durable receipts and owner-created outbox events',
+      'static distribution rollout, recovery, and revocation-derived events must retain platform-scoped ModuleCommandContext evidence in durable receipts and owner-created outbox events',
     );
   }
 
@@ -343,6 +372,35 @@ try {
   ) {
     fail(
       'static distribution build commands must retain platform-scoped ModuleCommandContext evidence in their durable receipt and owner-created outbox event',
+    );
+  }
+
+  const moduleBuildContextFields = moduleBuildOwner.match(/pub context: ModuleCommandContext,/g) ?? [];
+  const moduleBuildCommandEnvelopes = moduleBuildOwner.match(/event_envelope_for_command\(/g) ?? [];
+  if (
+    moduleBuildContextFields.length !== 1 ||
+    moduleBuildCommandEnvelopes.length < 2 ||
+    !moduleBuildOwner.includes('let request_hash = build_request_hash(&request)?;') ||
+    !moduleBuildOwner.includes('build_events_retain_the_submitted_command_context')
+  ) {
+    fail(
+      'module build submission must bind the tenant-scoped ModuleCommandContext into its replay identity and both queued/completed owner-created outbox events',
+    );
+  }
+
+  if (
+    !staticLifecycleWriter.includes('context: &\'a ModuleCommandContext,') ||
+    !staticLifecycleWriter.includes('context: request.context.clone(),') ||
+    !lifecycleExecutor.includes('pub context: ModuleCommandContext,') ||
+    lifecycleExecutor.includes('requested_by: request.requested_by') ||
+    !effectivePolicyTransitionOwner.includes('context: &ModuleCommandContext,') ||
+    !effectivePolicyTransitionOwner.includes('event_envelope_for_command(\n                    context,') ||
+    !effectivePolicyTransitionOwner.includes(
+      'publisher_retains_the_command_context_in_the_transition_event',
+    )
+  ) {
+    fail(
+      'tenant lifecycle transitions must retain one tenant-scoped ModuleCommandContext through the journal and effective-policy outbox event',
     );
   }
 
@@ -395,6 +453,26 @@ try {
   ) {
     fail(
       'artifact lifecycle commands must carry one scope-matched ModuleCommandContext through durable receipts and owner-created events',
+    );
+  }
+
+  const reverificationCommand = lifecycleOwner.match(
+    /pub struct ArtifactAdmissionReverification\s*\{(?<fields>[\s\S]*?)\n\}/,
+  );
+  if (
+    !reverificationCommand?.groups?.fields.includes('pub context: ModuleCommandContext,') ||
+    !lifecycleOwner.includes('validate_admission_reverification(&request)?') ||
+    !lifecycleOwner.includes('admission_reverification_request_digest(&request)?') ||
+    !lifecycleOwner.includes('event_envelope_for_command(\n                    &request.context,') ||
+    !lifecycleOwner.includes('replay_admission_reverification(') ||
+    !artifactAdmissionReverificationMigration.includes(
+      'module_artifact_admission_reverification_operations',
+    ) ||
+    !artifactAdmissionReverificationMigration.includes('trace_id TEXT NOT NULL') ||
+    !artifactAdmissionReverificationMigration.includes('correlation_id UUID NOT NULL')
+  ) {
+    fail(
+      'artifact admission reverification must retain a scope-matched ModuleCommandContext in a durable exact-replay receipt and its owner-created outbox event',
     );
   }
 
@@ -570,11 +648,13 @@ try {
     )
     .map(relative);
   const publicationEvidence = fs.readFileSync(publicationEvidencePath, 'utf8');
-  const recoverySource = fs.readFileSync(recoveryPath, 'utf8');
   const serverLifecycleSource = fs.readFileSync(serverLifecyclePath, 'utf8');
-  const staticLifecycleWriter = fs.readFileSync(staticLifecycleWriterPath, 'utf8');
   const staticLifecycleJournal = fs.readFileSync(staticLifecycleJournalPath, 'utf8');
   const alloyOwnerSource = fs.readFileSync(alloyOwnerSourcePath, 'utf8');
+  const registryPublicationEvidenceMigration = fs.readFileSync(
+    registryPublicationEvidenceMigrationPath,
+    'utf8',
+  );
   const registryPublicationMigration = fs.readFileSync(registryPublicationMigrationPath, 'utf8');
   const registryHttpController = fs.readFileSync(registryHttpControllerPath, 'utf8');
   const alloyServerImport = fs.readFileSync(alloyServerImportPath, 'utf8');
@@ -706,6 +786,8 @@ try {
     !alloyOwnerSource.includes('registry_owner_transfer_operations') ||
     !alloyOwnerSource.includes('OwnerTransferIdempotencyConflict') ||
     !alloyOwnerSource.includes('owner_transfer_replay') ||
+    alloyOwnerSource.includes('ModuleOwnerBindCommand') ||
+    /\bpub\s+async\s+fn\s+bind_owner\s*\(/.test(alloyOwnerSource) ||
     !registryPublicationMigration.includes('CREATE TABLE registry_owner_transfer_operations') ||
     !/\.transfer_registry_slug_owner\(\s*&request\.slug,[\s\S]*?&authority,\s*command_context,/s.test(registryHttpController)
   ) {
@@ -730,6 +812,39 @@ try {
     )
   ) {
     fail('registry publish-artifact attachment must use a typed command context and durable immutable exact-replay receipt');
+  }
+  if (
+    !alloyOwnerSource.includes('ModuleAuthorSignatureEvidenceCommand') ||
+    !alloyOwnerSource.includes('record_author_signature_evidence') ||
+    !alloyOwnerSource.includes('author_signature_evidence_replay') ||
+    !alloyOwnerSource.includes('record_author_signature_evidence_receipt') ||
+    !alloyOwnerSource.includes('PublishRequestAuthorSignatureUnauthorized') ||
+    !alloyOwnerSource.includes('author_signature.actor_can_manage_modules') ||
+    !alloyOwnerSource.includes('artifact_checksum_sha256') ||
+    !alloyOwnerSource.includes('signature_digest_sha256 IS NOT NULL') ||
+    !alloyOwnerSource.includes('command.signature_digest_sha256.clone().into()') ||
+    alloyOwnerSource.includes('pub async fn record_publication_evidence') ||
+    !registryPublicationEvidenceMigration.includes('SignatureDigestSha256') ||
+    !registryPublicationEvidenceMigration.includes(
+      'chk_registry_publication_evidence_author_signature_digest',
+    ) ||
+    !registryPublicationMigration.includes('CREATE TABLE registry_author_signature_evidence_operations') ||
+    !registryHttpController.includes('registry_publish_author_signature_path()') ||
+    !registryHttpController.includes('registry_platform_command_context(auth, request.idempotency_key)') ||
+    !/\.record_author_signature_evidence\(\s*&request_id,\s*&authority,/s.test(registryHttpController)
+  ) {
+    fail('author-signature evidence must use the authenticated platform command context, owner-derived artifact digest, immutable signature digest, and durable exact-replay receipt');
+  }
+  if (
+    !alloyOwnerSource.includes('ModuleAlloyAuthoredStageCommand') ||
+    !alloyOwnerSource.includes('PublishRequestAlloyAuthoredStagingUnauthorized') ||
+    !alloyOwnerSource.includes('command.actor_can_manage_modules') ||
+    !alloyOwnerSource.includes('governance_owner_principal_for_slug(&tx, backend, &slug, true)') ||
+    !alloyReleaseStager.includes('actor_can_manage_modules: command.actor_can_manage_modules') ||
+    !alloyHttpController.includes('actor_can_manage_modules: true') ||
+    !alloyGraphqlMutation.includes('actor_can_manage_modules: true')
+  ) {
+    fail('Alloy-authored staging must carry only the authenticated modules:manage fact and recheck it with the locked request and owner binding before replay or write');
   }
   if (
     !registryValidationWorkerLibrary.includes('CredentialedOciRegistryProvider') ||
@@ -778,8 +893,10 @@ try {
   if (
     staticLifecycleContextFields.length !== 3 ||
     !staticLifecycleWriter.includes('command.context.tenant_id != Some(command.tenant_id)') ||
-    !staticLifecycleWriter.includes('trace_id: Some(command.context.trace_id.clone())') ||
-    !staticLifecycleWriter.includes('context: &command.context') ||
+    !staticLifecycleWriter.includes('context: command.context.clone(),') ||
+    !recoverySource.includes('pub context: ModuleCommandContext,') ||
+    !recoverySource.includes('context: &ModuleCommandContext,') ||
+    !recoverySource.includes('request.context.tenant_id != Some(plan.tenant_id)') ||
     !staticLifecycleJournal.includes('pub trace_id: Option<String>,') ||
     !staticLifecycleJournal.includes('existing.trace_id != request.trace_id') ||
     !serverLifecycleSource.includes('context: ModuleCommandContext')

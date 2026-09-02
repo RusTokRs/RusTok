@@ -1425,4 +1425,30 @@ impl RootQuery {
 
         Ok(activities)
     }
+
+    /// Query the current status of a governed module release transition.
+    async fn module_transition_checkpoint(
+        &self,
+        ctx: &Context<'_>,
+        operation_id: Uuid,
+    ) -> Result<Option<crate::graphql::transition_lifecycle::ModuleTransitionCheckpointGql>> {
+        let db = ctx.data::<DatabaseConnection>()?;
+        let checkpoint =
+            rustok_modules::TransitionCheckpointStore::load_checkpoint(db, operation_id)
+                .await
+                .map_err(crate::graphql::transition_lifecycle::map_transition_store_error)?;
+        Ok(checkpoint.map(Into::into))
+    }
+
+    /// Query all active artifact retention holds protecting CAS blobs, slots, and recovery points.
+    async fn module_retention_holds(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Vec<crate::graphql::transition_lifecycle::RetentionHoldGql>> {
+        let db = ctx.data::<DatabaseConnection>()?;
+        let holds = rustok_modules::RetentionHoldStore::list_active_holds(db)
+            .await
+            .map_err(crate::graphql::transition_lifecycle::map_transition_store_error)?;
+        Ok(holds.into_iter().map(Into::into).collect())
+    }
 }

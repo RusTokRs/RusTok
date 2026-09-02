@@ -1161,9 +1161,12 @@ pub(crate) async fn revoke_rollouts_for_release(
     transaction: &DatabaseTransaction,
     infrastructure: &ControlPlaneInfrastructure,
     release_id: Uuid,
-    actor_id: Uuid,
+    context: &ModuleCommandContext,
     policy_revision: &str,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
+    if context.validate().is_err() || context.tenant_id.is_some() {
+        return Err(ModuleStaticDistributionRolloutError::InvalidCommand);
+    }
     let state = load_rollout_state(transaction, true).await?;
     let mut rollout_ids = Vec::new();
     for rollout_id in [state.desired_id, state.observed_id].into_iter().flatten() {
@@ -1226,9 +1229,8 @@ pub(crate) async fn revoke_rollouts_for_release(
             infrastructure
                 .write_event(
                     transaction,
-                    infrastructure.event_envelope(
-                        None,
-                        Some(actor_id),
+                    infrastructure.event_envelope_for_command(
+                        context,
                         DomainEvent::ModuleStaticDistributionRolloutStatusChanged {
                             rollout_id: rollout.rollout_id,
                             distribution_release_id: rollout.distribution_release_id,
@@ -2807,17 +2809,41 @@ fn store_error(error: impl std::fmt::Display) -> ModuleStaticDistributionRollout
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use async_trait::async_trait;
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TransactionTrait};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+
     use super::{
-        ModuleReconciliationPhase, ModuleStaticDistributionAssignment,
+        ControlPlaneInfrastructure, ModuleReconciliationPhase, ModuleStaticDistributionAssignment,
         ModuleStaticDistributionAssignmentClaimCommand,
         ModuleStaticDistributionAssignmentHeartbeatCommand,
         ModuleStaticDistributionAssignmentReport, ModuleStaticDistributionRolloutError,
         ModuleStaticDistributionRolloutRequest, module_static_distribution_topology_digest,
-        validate_assignment_claim, validate_assignment_heartbeat, validate_report,
-        validate_request,
+        revoke_rollouts_for_release, validate_assignment_claim, validate_assignment_heartbeat,
+        validate_report, validate_request,
     };
     use crate::{ModuleCommandContext, ModuleStaticDistributionRole};
     use uuid::Uuid;
+
+    #[derive(Clone, Default)]
+    struct CapturingEventWriter(Arc<Mutex<Vec<rustok_events::EventEnvelope>>>);
+
+    #[async_trait]
+    impl rustok_outbox::TransactionalEventWriter for CapturingEventWriter {
+        async fn write_event(
+            &self,
+            _transaction: &sea_orm::DatabaseTransaction,
+            envelope: rustok_events::EventEnvelope,
+        ) -> rustok_core::Result<()> {
+            self.0
+                .lock()
+                .expect("capturing event writer lock")
+                .push(envelope);
+            Ok(())
+        }
+    }
 
     #[test]
     fn topology_digest_binds_each_role_digest_on_the_same_node() {
@@ -2910,6 +2936,129 @@ mod tests {
             Err(ModuleStaticDistributionRolloutError::InvalidCommand)
         ));
     }
+
+    #[tokio::test]
+    async fn release_revocation_preserves_command_context_in_derived_rollout_event() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        database
+            .execute_unprepared(
+                "CREATE TABLE module_static_distribution_releases (\
+                    distribution_release_id TEXT PRIMARY KEY\
+                 )",
+            )
+            .await
+            .expect("release prerequisite");
+        crate::migrations::m20260722_000035_static_distribution_rollouts::Migration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("rollout schema");
+
+        let release_id = Uuid::new_v4();
+        let rollout_id = Uuid::new_v4();
+        let context = ModuleCommandContext {
+            actor_id: Uuid::new_v4(),
+            tenant_id: None,
+            trace_id: "test:static-distribution-revocation".to_string(),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_static_distribution_releases (distribution_release_id) VALUES (?1)"
+                    .to_string(),
+                vec![release_id.to_string().into()],
+            ))
+            .await
+            .expect("release fixture");
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_static_distribution_rollouts (\
+                    rollout_id, distribution_release_id, transition_kind, rollout_revision, \
+                    distribution_release_revision, release_state_revision_at_request, \
+                    composition_revision, composition_digest, bundle_reference, bundle_root_digest, \
+                    role_set_digest, executor_mode, topology_reference, topology_digest, \
+                    policy_revision, target_assignment_count, status, requested_by\
+                 ) VALUES (\
+                    ?1, ?2, 'update', 1, 1, 1, 1, ?3, 'cas://bundle', ?4, ?5, \
+                    'static_native', 'topology:one', ?6, 'policy-current', 1, 'preparing', ?7\
+                 )"
+                    .to_string(),
+                vec![
+                    rollout_id.to_string().into(),
+                    release_id.to_string().into(),
+                    digest('a').into(),
+                    digest('b').into(),
+                    digest('c').into(),
+                    digest('d').into(),
+                    context.actor_id.to_string().into(),
+                ],
+            ))
+            .await
+            .expect("rollout fixture");
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_static_distribution_rollout_assignments (\
+                    rollout_id, node_id, role, candidate_artifact_digest, ordinal, phase\
+                 ) VALUES (?1, 'node-a', 'api', ?2, 0, 'pending')"
+                    .to_string(),
+                vec![rollout_id.to_string().into(), digest('e').into()],
+            ))
+            .await
+            .expect("assignment fixture");
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_static_distribution_rollout_state \
+                 SET revision = 1, desired_rollout_id = ?1 WHERE state_id = 'current'"
+                    .to_string(),
+                vec![rollout_id.to_string().into()],
+            ))
+            .await
+            .expect("rollout state fixture");
+
+        let event_writer = CapturingEventWriter::default();
+        let infrastructure = ControlPlaneInfrastructure::default()
+            .with_transactional_event_writer(Arc::new(event_writer.clone()));
+        let transaction = database.begin().await.expect("transaction");
+        revoke_rollouts_for_release(
+            &transaction,
+            &infrastructure,
+            release_id,
+            &context,
+            "policy-revoked",
+        )
+        .await
+        .expect("revoke rollouts");
+        transaction.commit().await.expect("commit");
+
+        let events = event_writer
+            .0
+            .lock()
+            .expect("capturing event writer lock")
+            .clone();
+        assert_eq!(events.len(), 1);
+        let event = &events[0];
+        assert_eq!(event.actor_id, Some(context.actor_id));
+        assert_eq!(event.correlation_id, context.correlation_id);
+        assert_eq!(event.trace_id.as_deref(), Some(context.trace_id.as_str()));
+
+        let row = database
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT status FROM module_static_distribution_rollouts".to_string(),
+            ))
+            .await
+            .expect("status query")
+            .expect("status row");
+        let status: String = row.try_get("", "status").expect("status");
+        assert_eq!(status, "failed");
+    }
+
     fn digest(character: char) -> String {
         format!("sha256:{}", character.to_string().repeat(64))
     }

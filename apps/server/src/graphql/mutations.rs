@@ -1419,6 +1419,66 @@ impl RootMutation {
             })?,
         })
     }
+
+    /// Trigger an emergency or operator-directed single-attempt rollback to the direct predecessor.
+    async fn trigger_module_recovery(
+        &self,
+        ctx: &Context<'_>,
+        operation_id: Uuid,
+        reason: String,
+    ) -> Result<crate::graphql::transition_lifecycle::ModuleTransitionCheckpointGql> {
+        let db = ctx.data::<DatabaseConnection>()?;
+        let checkpoint =
+            rustok_modules::TransitionCheckpointStore::load_checkpoint(db, operation_id)
+                .await
+                .map_err(crate::graphql::transition_lifecycle::map_transition_store_error)?
+                .ok_or_else(|| {
+                    crate::graphql::transition_lifecycle::map_transition_store_error(
+                        rustok_modules::TransitionStoreError::CheckpointNotFound(operation_id),
+                    )
+                })?;
+
+        let mut coordinator = rustok_modules::ModuleTransitionCoordinator::new(checkpoint);
+        coordinator
+            .record_recovery_trigger(reason)
+            .map_err(crate::graphql::transition_lifecycle::map_transition_coordinator_error)?;
+
+        rustok_modules::TransitionCheckpointStore::save_checkpoint(db, coordinator.checkpoint())
+            .await
+            .map_err(crate::graphql::transition_lifecycle::map_transition_store_error)?;
+
+        Ok(coordinator.checkpoint().clone().into())
+    }
+
+    /// Finalize a converged module release transition, closing the rollback window.
+    async fn finalize_module_transition(
+        &self,
+        ctx: &Context<'_>,
+        operation_id: Uuid,
+    ) -> Result<crate::graphql::transition_lifecycle::ModuleTransitionCheckpointGql> {
+        let db = ctx.data::<DatabaseConnection>()?;
+        let checkpoint =
+            rustok_modules::TransitionCheckpointStore::load_checkpoint(db, operation_id)
+                .await
+                .map_err(crate::graphql::transition_lifecycle::map_transition_store_error)?
+                .ok_or_else(|| {
+                    crate::graphql::transition_lifecycle::map_transition_store_error(
+                        rustok_modules::TransitionStoreError::CheckpointNotFound(operation_id),
+                    )
+                })?;
+
+        let security_registry = rustok_modules::SecurityEpochRegistry::new();
+        let mut coordinator = rustok_modules::ModuleTransitionCoordinator::new(checkpoint);
+        coordinator
+            .finalize_convergence(&security_registry)
+            .map_err(crate::graphql::transition_lifecycle::map_transition_coordinator_error)?;
+
+        rustok_modules::TransitionCheckpointStore::save_checkpoint(db, coordinator.checkpoint())
+            .await
+            .map_err(crate::graphql::transition_lifecycle::map_transition_store_error)?;
+
+        Ok(coordinator.checkpoint().clone().into())
+    }
 }
 
 #[cfg(test)]

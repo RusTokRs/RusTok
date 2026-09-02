@@ -453,7 +453,7 @@ where
             &transaction,
             &self.infrastructure,
             command.distribution_release_id,
-            command.context.actor_id,
+            &command.context,
             &command.policy_revision,
         )
         .await

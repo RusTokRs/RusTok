@@ -114,6 +114,18 @@ pub struct RegistryPlatformBuildStageInput {
     pub build_request_id: Uuid,
 }
 
+/// Authenticated author-signature facts for the currently staged artifact.
+/// The caller never supplies the signed artifact digest: the registry owner
+/// derives it under the publish-request lock before creating immutable evidence.
+#[derive(Debug, Clone)]
+pub struct RegistryAuthorSignatureEvidenceInput {
+    pub context: rustok_modules::ModuleCommandContext,
+    pub evidence_reference: String,
+    pub signature_digest_sha256: String,
+    pub signer_identity: String,
+    pub policy_revision: String,
+}
+
 #[derive(Clone)]
 pub struct RegistryGovernanceService {
     db: DatabaseConnection,

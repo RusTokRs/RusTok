@@ -2,11 +2,11 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use thiserror::Error;
 
 use crate::{
-    ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationIssue,
-    ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecordOutcome,
-    ModuleOperationRecoveryAction, ModuleOperationRequest, ModuleOperationSnapshot,
-    ModuleOperationStatus, ModuleOperationStoreError, TenantModuleStateRecord,
-    TenantModuleStateRequest, TenantModuleStateStore,
+    ModuleCommandContext, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
+    ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecord,
+    ModuleOperationRecordOutcome, ModuleOperationRecoveryAction, ModuleOperationRequest,
+    ModuleOperationSnapshot, ModuleOperationStatus, ModuleOperationStoreError,
+    TenantModuleStateRecord, TenantModuleStateRequest, TenantModuleStateStore,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -88,11 +88,11 @@ impl ModuleOperationRecoveryPlan {
 }
 
 #[derive(Clone, Debug)]
-pub struct ModulePostHookRetryRequest {
+pub(crate) struct ModulePostHookRetryRequest {
     pub operation_id: uuid::Uuid,
-    pub requested_by: Option<String>,
-    pub trace_id: Option<String>,
-    pub idempotency_key: uuid::Uuid,
+    /// Authenticated tenant-scoped command evidence retained by the retry
+    /// journal entry. Recovery retries never synthesize a new correlation.
+    pub context: ModuleCommandContext,
     /// Revision reviewed by the actor before retrying a static lifecycle
     /// operation. Dynamic artifact recovery deliberately leaves this absent.
     pub expected_revision: Option<u64>,
@@ -171,9 +171,7 @@ pub(crate) async fn failed_module_operation_recovery_plans(
 
 fn retry_operation_request(
     plan: &ModuleOperationRecoveryPlan,
-    requested_by: Option<String>,
-    trace_id: Option<String>,
-    idempotency_key: uuid::Uuid,
+    context: &ModuleCommandContext,
     expected_revision: Option<u64>,
 ) -> ModuleOperationRequest {
     ModuleOperationRequest {
@@ -181,10 +179,10 @@ fn retry_operation_request(
         module_slug: plan.module_slug.clone(),
         requested_enabled: plan.requested_enabled,
         previous_effective_enabled: plan.previous_effective_enabled,
-        requested_by,
-        trace_id,
-        correlation_id: plan.operation_id.to_string(),
-        idempotency_key: Some(idempotency_key),
+        requested_by: Some(context.actor_id.to_string()),
+        trace_id: Some(context.trace_id.clone()),
+        correlation_id: context.correlation_id.to_string(),
+        idempotency_key: Some(context.idempotency_key),
         expected_revision,
     }
 }
@@ -194,17 +192,15 @@ pub(crate) async fn retry_failed_post_hook_operation(
     dispatcher: &ModuleExecutionDispatcher<'_>,
     request: ModulePostHookRetryRequest,
 ) -> Result<ModuleOperationRecord, ModuleOperationRecoveryError> {
-    if request.idempotency_key.is_nil() {
-        return Err(ModuleOperationRecoveryError::InvalidIdempotencyKey);
+    if request.context.validate().is_err() {
+        return Err(ModuleOperationRecoveryError::InvalidCommandIdentity);
     }
     let plan = module_operation_recovery_plan(db, request.operation_id).await?;
-    let journal_request = retry_operation_request(
-        &plan,
-        request.requested_by.clone(),
-        request.trace_id.clone(),
-        request.idempotency_key,
-        request.expected_revision,
-    );
+    if request.context.tenant_id != Some(plan.tenant_id) {
+        return Err(ModuleOperationRecoveryError::InvalidCommandIdentity);
+    }
+    let journal_request =
+        retry_operation_request(&plan, &request.context, request.expected_revision);
     if let Some(operation) = ModuleOperationJournal::replay_idempotent(db, &journal_request)
         .await
         .map_err(|error| match error {
@@ -521,13 +517,14 @@ mod tests {
             snapshot(Some("post-hook: timeout")),
             Some(override_state()),
         );
-        let request = retry_operation_request(
-            &plan,
-            Some("retry-operator".to_string()),
-            Some("test:retry".to_string()),
-            Uuid::new_v4(),
-            Some(4),
-        );
+        let context = ModuleCommandContext {
+            actor_id: Uuid::new_v4(),
+            tenant_id: Some(plan.tenant_id),
+            trace_id: "test:retry".to_string(),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        let request = retry_operation_request(&plan, &context, Some(4));
 
         assert_eq!(request.requested_enabled, plan.requested_enabled);
         assert_eq!(request.expected_revision, Some(4));
@@ -537,7 +534,11 @@ mod tests {
         );
         assert_eq!(plan.previous_override_enabled, Some(false));
         assert_eq!(plan.requested_override_enabled, Some(true));
-        assert_eq!(request.correlation_id, plan.operation_id.to_string());
+        let actor_id = context.actor_id.to_string();
+        assert_eq!(request.requested_by.as_deref(), Some(actor_id.as_str()));
+        assert_eq!(request.trace_id.as_deref(), Some(context.trace_id.as_str()));
+        assert_eq!(request.correlation_id, context.correlation_id.to_string());
+        assert_eq!(request.idempotency_key, Some(context.idempotency_key));
     }
 
     #[test]

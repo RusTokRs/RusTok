@@ -147,7 +147,7 @@ where
                 oauth_apps::Entity::update_many()
                     .col_expr(
                         oauth_apps::Column::UpdatedAt,
-                        Expr::col(oauth_apps::Column::UpdatedAt).into(),
+                        Expr::col(oauth_apps::Column::UpdatedAt),
                     )
                     .filter(oauth_apps::Column::Id.eq(app.id))
                     .filter(oauth_apps::Column::TenantId.eq(tenant_id))
@@ -158,7 +158,7 @@ where
             app
         }
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
 
     app.ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))
 }

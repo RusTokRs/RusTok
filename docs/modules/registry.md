@@ -417,6 +417,51 @@ Synchronization with `modules.toml`: updated per manifest composition as of 2026
 | `apps/next-admin` | Next.js admin host |
 | `apps/next-frontend` | Next.js storefront host |
 
+## Module Release, Rollback and Transition Readiness Board
+
+This board defines the canonical transition class, data ownership boundary, predecessor retention strategy, and automated rollback eligibility for each platform module in accordance with [Module Release and Rollback Plan](./module-release-rollback-plan.md) and [ADR 2026-08-06](../DECISIONS/2026-08-06-module-release-rollback-safety.md).
+
+### Transition Classes:
+- `Stateless`: Zero persistent module state. Immediate side-by-side slot switch (`SlotA`/`SlotB`) with zero risk of database corruption.
+- `BrokeredData`: Storage isolated under opaque broker namespaces or CAS blobs. Data is written to fresh instances with copy-on-write or create-only semantics.
+- `StatefulSchema`: Native SeaORM/PostgreSQL migrations. Requires verified dry-run preflight receipt (`MigrationDryRunReceipt`), DDL lock level inspection, and active N/N+1 settings guard (`SettingsCompatibilityGuard`).
+- `Irreversible`: Transitions involving destructive table alterations, financial ledger commitments, or external side effects. Automatic rollback is strictly denied (`DeniedMaintenanceOnly`); failure triggers immediate safe quarantine (`FailedClosed`).
+
+| Module slug | Transition Class | Data Boundary Owner | Predecessor Standby | Rollback Eligibility | Recovery Invariants & Guards |
+|---|---|---|---|---|---|
+| `rustok-modules` | `StatefulSchema` | `module_transition_checkpoints`, `module_retention_holds` | Standby DB + CAS Holds | `AutomaticSingleAttempt` | Monotonic Epoch, Zero-Flapping, CAS Hold Ledger |
+| `cache` | `Stateless` | In-memory Redis keys | Hot-Standby Slot | `AutomaticSingleAttempt` | Safe eviction, no persistent DB migration |
+| `channel` | `Stateless` | Host route mappings | Hot-Standby Slot | `AutomaticSingleAttempt` | Revert traffic pointer without schema effects |
+| `email` | `Stateless` | SMTP/API transport credentials | Hot-Standby Slot | `AutomaticSingleAttempt` | In-flight queue drainage |
+| `flex` | `BrokeredData` | Multilingual message bundles | CAS Hold Blob | `AutomaticSingleAttempt` | Immutable CAS versioning |
+| `page_builder` | `BrokeredData` | Layout block definitions | CAS Hold Blob | `AutomaticSingleAttempt` | Immutable block descriptors |
+| `pages` | `StatefulSchema` | `pages`, `page_translations` | Standby DB + Slot | `AutomaticSingleAttempt` | N/N+1 schema intersection, Dry-run receipt |
+| `blog` | `StatefulSchema` | `blog_posts`, `blog_categories` | Standby DB + Slot | `AutomaticSingleAttempt` | Additive migrations, comment port decoupling |
+| `forum` | `StatefulSchema` | `forum_threads`, `forum_messages` | Standby DB + Slot | `AutomaticSingleAttempt` | Additive schema, soft-deletion |
+| `comments` | `StatefulSchema` | `comments`, `comment_reactions` | Standby DB + Slot | `AutomaticSingleAttempt` | Additive migrations, thread state continuity |
+| `auth` | `StatefulSchema` | `users`, `credentials`, `sessions` | Standby DB + Slot | `AutomaticSingleAttempt` | Monotonic Security Epoch, session revocation guard |
+| `rbac` | `StatefulSchema` | `roles`, `permissions`, `grants` | Standby DB + Slot | `AutomaticSingleAttempt` | RBAC monotonic epoch fence, no auto-regrant |
+| `outbox` | `StatefulSchema` | `outbox_events` | Standby DB + Slot | `AutomaticSingleAttempt` | Event ID continuity, idempotency keys |
+| `events` | `Stateless` | Iggy/NATS event stream connectors | Hot-Standby Slot | `AutomaticSingleAttempt` | Consumer offset freeze |
+| `iggy_connector` | `Stateless` | Connector stream topologies | Hot-Standby Slot | `AutomaticSingleAttempt` | Stream topic isolation |
+| `tenant` | `StatefulSchema` | `tenants`, `tenant_bindings` | Standby DB + Slot | `AutomaticSingleAttempt` | Strict RLS isolation, immutable tenant ID |
+| `product` | `StatefulSchema` | `products`, `product_variants`, EAV | Standby DB + Slot | `AutomaticSingleAttempt` | Tenant-scoped SKU/handles, additive EAV columns |
+| `inventory` | `StatefulSchema` | `inventory_items`, `stock_levels` | Standby DB + Slot | `AutomaticSingleAttempt` | Additive stock fields, reservation leases |
+| `pricing` | `StatefulSchema` | `price_lists`, `product_prices` | Standby DB + Slot | `AutomaticSingleAttempt` | Read-port price enrichment, currency invariants |
+| `customer` | `StatefulSchema` | `customers`, `customer_addresses` | Standby DB + Slot | `AutomaticSingleAttempt` | Additive profiles, encrypted PII retention |
+| `cart` | `StatefulSchema` | `cart_items`, `cart_sessions` | Standby DB + Slot | `AutomaticSingleAttempt` | Session-bound items, currency snapshot |
+| `order` | `Irreversible` | `orders`, `order_items`, `order_state` | Standby DB + Slot | `DeniedMaintenanceOnly` | Financial state machine, ledger non-destructive |
+| `payment` | `Irreversible` | `payment_transactions`, `settlements` | Standby DB + Slot | `DeniedMaintenanceOnly` | Financial settlement irreversible, manual refund only |
+| `fulfillment` | `Irreversible` | `shipments`, `dispatch_records` | Standby DB + Slot | `DeniedMaintenanceOnly` | External carrier dispatch irrevocable |
+| `media` | `BrokeredData` | `media_assets`, S3/Blob storage | CAS Hold Blob | `AutomaticSingleAttempt` | RetentionHold protects asset blobs from GC |
+| `search` | `BrokeredData` | Search index indices | CAS Hold Blob | `AutomaticSingleAttempt` | Side-by-side index shadow build |
+| `index` | `BrokeredData` | Index projection tables | CAS Hold Blob | `AutomaticSingleAttempt` | Atomic swap via projection alias |
+| `seo` | `BrokeredData` | SEO metadata and targets | CAS Hold Blob | `AutomaticSingleAttempt` | Additive descriptors |
+| `taxonomy` | `StatefulSchema` | `taxonomy_terms`, `taxonomies` | Standby DB + Slot | `AutomaticSingleAttempt` | Closure table preservation, parent cycle checks |
+| `rustok-mcp` | `Stateless` | MCP protocol tools/prompts | Hot-Standby Slot | `AutomaticSingleAttempt` | Tool manifest rollback |
+| `rustok-ai` | `Stateless` | Model routing & system prompts | Hot-Standby Slot | `AutomaticSingleAttempt` | Context-length & provider fallback |
+| `alloy` | `BrokeredData` | Rhai scripts & OCI packages | CAS Hold Blob | `AutomaticSingleAttempt` | Immutable sandbox hashes, source CAS |
+
 ## Important Rules
 
 1. If a component is declared as a platform module in `modules.toml`, it must be

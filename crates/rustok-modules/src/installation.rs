@@ -553,6 +553,10 @@ pub struct ArtifactAdmissionReverification {
     pub scope: ModuleInstallationScope,
     pub expected_revision: u64,
     pub evidence: ArtifactVerificationEvidence,
+    /// Reverification is an owner control-plane write, not a worker report.
+    /// It therefore carries the same authenticated evidence as every other
+    /// mutable admission command.
+    pub context: ModuleCommandContext,
 }
 
 /// Immutable command envelope for a rollback selection. The caller supplies
@@ -3065,16 +3069,23 @@ impl SeaOrmArtifactInstallationStore {
         &self,
         request: ArtifactAdmissionReverification,
     ) -> Result<u64, ModuleInstallationError> {
+        validate_admission_reverification(&request)?;
         let expected_revision = i64::try_from(request.expected_revision).map_err(|_| {
             ModuleInstallationError::AdmissionRevisionConflict(
                 "expected revision exceeds database integer range".into(),
             )
         })?;
-        if expected_revision <= 0 {
-            return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                "expected revision must be positive".into(),
-            ));
-        }
+        let resulting_revision = request.expected_revision.checked_add(1).ok_or_else(|| {
+            ModuleInstallationError::AdmissionRevisionConflict(
+                "resulting revision exceeds database integer range".into(),
+            )
+        })?;
+        let resulting_revision_i64 = i64::try_from(resulting_revision).map_err(|_| {
+            ModuleInstallationError::AdmissionRevisionConflict(
+                "resulting revision exceeds database integer range".into(),
+            )
+        })?;
+        let request_digest = admission_reverification_request_digest(&request)?;
         let transaction = self
             .db
             .begin()
@@ -3082,6 +3093,67 @@ impl SeaOrmArtifactInstallationStore {
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         configure_rls_scope(&transaction, &request.scope).await?;
         let backend = transaction.get_database_backend();
+        let (scope_kind, scope_tenant_key) = admission_reverification_scope(&request.scope)?;
+        if let Some(existing) = find_admission_reverification_receipt(
+            &transaction,
+            backend,
+            scope_kind,
+            &scope_tenant_key,
+            request.context.actor_id,
+            request.context.idempotency_key,
+        )
+        .await?
+        {
+            return replay_admission_reverification(
+                existing,
+                &request,
+                &request_digest,
+                resulting_revision,
+            );
+        }
+        let receipt_inserted = transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend,
+                admission_reverification_receipt_insert_sql(backend),
+                vec![
+                    scope_kind.into(),
+                    scope_tenant_key.clone().into(),
+                    uuid_value(request.context.actor_id, backend),
+                    uuid_value(request.context.idempotency_key, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
+                    request_digest.clone().into(),
+                    uuid_value(request.installation_id, backend),
+                    expected_revision.into(),
+                    resulting_revision_i64.into(),
+                    datetime_value(backend, &self.infrastructure.now()),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if receipt_inserted.rows_affected() != 1 {
+            let existing = find_admission_reverification_receipt(
+                &transaction,
+                backend,
+                scope_kind,
+                &scope_tenant_key,
+                request.context.actor_id,
+                request.context.idempotency_key,
+            )
+            .await?
+            .ok_or_else(|| {
+                ModuleInstallationError::Store(
+                    "admission reverification receipt disappeared after an idempotency conflict"
+                        .into(),
+                )
+            })?;
+            return replay_admission_reverification(
+                existing,
+                &request,
+                &request_digest,
+                resulting_revision,
+            );
+        }
         let evidence = serde_json::to_value(&request.evidence)
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let status = if request.evidence.admitted() {
@@ -3125,20 +3197,15 @@ impl SeaOrmArtifactInstallationStore {
                     .into(),
             ));
         }
-        let tenant_id = match &request.scope {
-            ModuleInstallationScope::Platform => None,
-            ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
-        };
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    tenant_id,
-                    None,
+                self.infrastructure.event_envelope_for_command(
+                    &request.context,
                     DomainEvent::ModuleArtifactReverified {
                         installation_id: request.installation_id,
                         status: status.as_str().to_string(),
-                        revision: request.expected_revision + 1,
+                        revision: resulting_revision,
                     },
                 ),
             )
@@ -3148,7 +3215,7 @@ impl SeaOrmArtifactInstallationStore {
             .commit()
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-        Ok(request.expected_revision + 1)
+        Ok(resulting_revision)
     }
 }
 
@@ -4884,6 +4951,165 @@ fn migration_checkpoint_request_digest(
     Ok(sha256_digest(&bytes))
 }
 
+fn validate_admission_reverification(
+    request: &ArtifactAdmissionReverification,
+) -> Result<(), ModuleInstallationError> {
+    let scope_tenant_id = match &request.scope {
+        ModuleInstallationScope::Platform => None,
+        ModuleInstallationScope::Tenant { tenant_id } if !tenant_id.is_nil() => Some(*tenant_id),
+        ModuleInstallationScope::Tenant { .. } => {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "admission reverification requires a valid scope and matching command context"
+                    .into(),
+            ));
+        }
+    };
+    if request.installation_id.is_nil()
+        || request.expected_revision == 0
+        || request.expected_revision >= i64::MAX as u64
+        || request.context.tenant_id != scope_tenant_id
+        || request.context.validate().is_err()
+    {
+        return Err(ModuleInstallationError::AdmissionRevisionConflict(
+            "admission reverification requires validated command evidence, a matching scope, and a positive revision".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn admission_reverification_request_digest(
+    request: &ArtifactAdmissionReverification,
+) -> Result<String, ModuleInstallationError> {
+    let bytes = serde_json::to_vec(request)
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    Ok(sha256_digest(&bytes))
+}
+
+fn admission_reverification_scope(
+    scope: &ModuleInstallationScope,
+) -> Result<(&'static str, String), ModuleInstallationError> {
+    match scope {
+        ModuleInstallationScope::Platform => Ok(("platform", "platform".to_string())),
+        ModuleInstallationScope::Tenant { tenant_id } if !tenant_id.is_nil() => {
+            Ok(("tenant", tenant_id.to_string()))
+        }
+        ModuleInstallationScope::Tenant { .. } => {
+            Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "admission reverification requires a valid tenant scope".into(),
+            ))
+        }
+    }
+}
+
+#[derive(Debug)]
+struct AdmissionReverificationReceipt {
+    trace_id: String,
+    correlation_id: Uuid,
+    request_digest: String,
+    installation_id: Uuid,
+    expected_revision: u64,
+    resulting_revision: u64,
+}
+
+async fn find_admission_reverification_receipt<C: ConnectionTrait>(
+    connection: &C,
+    backend: DbBackend,
+    scope_kind: &str,
+    scope_tenant_key: &str,
+    actor_id: Uuid,
+    idempotency_key: Uuid,
+) -> Result<Option<AdmissionReverificationReceipt>, ModuleInstallationError> {
+    let placeholders = match backend {
+        DbBackend::Postgres => ("$1", "$2", "$3", "$4"),
+        _ => ("?1", "?2", "?3", "?4"),
+    };
+    let row = connection
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT trace_id, correlation_id, request_digest, installation_id, expected_revision, resulting_revision \
+                 FROM module_artifact_admission_reverification_operations \
+                 WHERE scope_kind = {} AND scope_tenant_key = {} AND actor_id = {} AND idempotency_key = {}",
+                placeholders.0, placeholders.1, placeholders.2, placeholders.3,
+            ),
+            vec![
+                scope_kind.into(),
+                scope_tenant_key.to_owned().into(),
+                uuid_value(actor_id, backend),
+                uuid_value(idempotency_key, backend),
+            ],
+        ))
+        .await
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+    row.map(|row| {
+        let expected_revision: i64 = row
+            .try_get("", "expected_revision")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let resulting_revision: i64 = row
+            .try_get("", "resulting_revision")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        Ok(AdmissionReverificationReceipt {
+            trace_id: row
+                .try_get("", "trace_id")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+            correlation_id: required_uuid_from_row(&row, "correlation_id", backend)?,
+            request_digest: row
+                .try_get("", "request_digest")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+            installation_id: required_uuid_from_row(&row, "installation_id", backend)?,
+            expected_revision: u64::try_from(expected_revision).map_err(|_| {
+                ModuleInstallationError::Store(
+                    "admission reverification receipt expected revision is invalid".into(),
+                )
+            })?,
+            resulting_revision: u64::try_from(resulting_revision).map_err(|_| {
+                ModuleInstallationError::Store(
+                    "admission reverification receipt resulting revision is invalid".into(),
+                )
+            })?,
+        })
+    })
+    .transpose()
+}
+
+fn replay_admission_reverification(
+    receipt: AdmissionReverificationReceipt,
+    request: &ArtifactAdmissionReverification,
+    request_digest: &str,
+    resulting_revision: u64,
+) -> Result<u64, ModuleInstallationError> {
+    if receipt.trace_id != request.context.trace_id
+        || receipt.correlation_id != request.context.correlation_id
+        || receipt.request_digest != request_digest
+        || receipt.installation_id != request.installation_id
+        || receipt.expected_revision != request.expected_revision
+        || receipt.resulting_revision != resulting_revision
+    {
+        return Err(ModuleInstallationError::AdmissionRevisionConflict(
+            "admission reverification idempotency key was already used for a different request"
+                .into(),
+        ));
+    }
+    Ok(receipt.resulting_revision)
+}
+
+fn admission_reverification_receipt_insert_sql(backend: DbBackend) -> String {
+    let placeholders = match backend {
+        DbBackend::Postgres => (1..=11)
+            .map(|index| format!("${index}"))
+            .collect::<Vec<_>>(),
+        _ => (1..=11)
+            .map(|index| format!("?{index}"))
+            .collect::<Vec<_>>(),
+    };
+    format!(
+        "INSERT INTO module_artifact_admission_reverification_operations \
+         (scope_kind, scope_tenant_key, actor_id, idempotency_key, trace_id, correlation_id, request_digest, installation_id, expected_revision, resulting_revision, committed_at) \
+         VALUES ({}) ON CONFLICT DO NOTHING",
+        placeholders.join(", "),
+    )
+}
+
 fn validate_lifecycle_command(
     installation_id: Uuid,
     scope: &ModuleInstallationScope,
@@ -6086,18 +6312,33 @@ mod tests {
             evidence: trust_evidence('b'),
             verified_at: Utc::now(),
         };
+        let reverification = ArtifactAdmissionReverification {
+            installation_id: installed.installation_id,
+            scope: ModuleInstallationScope::Tenant { tenant_id },
+            expected_revision: 1,
+            evidence: evidence.clone(),
+            context: lifecycle_context(Some(tenant_id)),
+        };
         assert_eq!(
             store
-                .reverify_admission(ArtifactAdmissionReverification {
-                    installation_id: installed.installation_id,
-                    scope: ModuleInstallationScope::Tenant { tenant_id },
-                    expected_revision: 1,
-                    evidence: evidence.clone(),
-                })
+                .reverify_admission(reverification.clone())
                 .await
                 .expect("reverification"),
             2
         );
+        assert_eq!(
+            store
+                .reverify_admission(reverification.clone())
+                .await
+                .expect("exact reverification replay"),
+            2
+        );
+        let mut changed_trace_reverification = reverification.clone();
+        changed_trace_reverification.context.trace_id = "changed-reverification-trace".to_string();
+        assert!(matches!(
+            store.reverify_admission(changed_trace_reverification).await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
         let reverification_outbox_count = database
             .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
@@ -6112,6 +6353,70 @@ mod tests {
             i64::try_get(&reverification_outbox_count, "", "count")
                 .expect("reverification outbox count"),
             1
+        );
+        let reverification_receipt = database
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT actor_id, trace_id, correlation_id, idempotency_key, expected_revision, resulting_revision \
+                 FROM module_artifact_admission_reverification_operations"
+                    .to_string(),
+            ))
+            .await
+            .expect("reverification receipt query")
+            .expect("reverification receipt");
+        assert_eq!(
+            String::try_get(&reverification_receipt, "", "actor_id").expect("receipt actor"),
+            reverification.context.actor_id.to_string()
+        );
+        assert_eq!(
+            String::try_get(&reverification_receipt, "", "trace_id").expect("receipt trace"),
+            reverification.context.trace_id
+        );
+        assert_eq!(
+            String::try_get(&reverification_receipt, "", "correlation_id")
+                .expect("receipt correlation"),
+            reverification.context.correlation_id.to_string()
+        );
+        assert_eq!(
+            String::try_get(&reverification_receipt, "", "idempotency_key")
+                .expect("receipt idempotency"),
+            reverification.context.idempotency_key.to_string()
+        );
+        assert_eq!(
+            i64::try_get(&reverification_receipt, "", "expected_revision")
+                .expect("receipt expected revision"),
+            1
+        );
+        assert_eq!(
+            i64::try_get(&reverification_receipt, "", "resulting_revision")
+                .expect("receipt resulting revision"),
+            2
+        );
+        let reverification_event = database
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT payload FROM sys_events WHERE event_type = 'module.artifact.reverified'"
+                    .to_string(),
+            ))
+            .await
+            .expect("reverification event query")
+            .expect("reverification event");
+        let reverification_payload: Value = reverification_event
+            .try_get("", "payload")
+            .expect("reverification event payload");
+        let reverification_envelope: rustok_events::EventEnvelope =
+            serde_json::from_value(reverification_payload).expect("reverification event envelope");
+        assert_eq!(
+            reverification_envelope.actor_id,
+            Some(reverification.context.actor_id)
+        );
+        assert_eq!(
+            reverification_envelope.correlation_id,
+            reverification.context.correlation_id
+        );
+        assert_eq!(
+            reverification_envelope.trace_id.as_deref(),
+            Some(reverification.context.trace_id.as_str())
         );
         let checkpoint_request = ArtifactMigrationCheckpointRequest {
             installation_id: installed.installation_id,
@@ -6538,6 +6843,7 @@ mod tests {
                     },
                     expected_revision: 4,
                     evidence,
+                    context: lifecycle_context(Some(Uuid::new_v4())),
                 })
                 .await,
             Err(ModuleInstallationError::AdmissionRevisionConflict(_))

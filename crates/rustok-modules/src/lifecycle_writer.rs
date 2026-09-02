@@ -10,8 +10,8 @@ use crate::policy::{
     ModuleEffectivePolicyQuery, ModuleEffectivePolicyRuntimeInput,
 };
 use crate::recovery::{
-    failed_module_operation_recovery_plans, module_operation_recovery_plan,
-    retry_failed_post_hook_operation,
+    ModulePostHookRetryRequest, failed_module_operation_recovery_plans,
+    module_operation_recovery_plan, retry_failed_post_hook_operation,
 };
 use crate::{
     ArtifactInstallationResolver, ArtifactLifecycleExecutor, ArtifactSandboxPolicyResolver,
@@ -21,7 +21,7 @@ use crate::{
     ModuleExecutionDispatcher, ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
     ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecoveryError,
     ModuleOperationRecoveryPlan, ModuleOperationRequest, ModuleOperationStoreError,
-    ModulePolicyRevisionTransition, ModulePostHookRetryRequest, SeaOrmArtifactInstallationStore,
+    ModulePolicyRevisionTransition, SeaOrmArtifactInstallationStore,
     SeaOrmArtifactSandboxPolicyResolver, SeaOrmModuleArtifactSecurityResolver,
     SeaOrmModulePolicyRevisionConsumer, StaticTenantLifecycleSnapshot, StaticTenantLifecycleStore,
     StaticTenantLifecycleStoreError, TenantModuleOverride, TenantModuleSettingsRecord,
@@ -125,10 +125,7 @@ struct OverrideOperationRequest<'a> {
     module_slug: &'a str,
     enabled: bool,
     requested_override_enabled: Option<bool>,
-    requested_by: Option<String>,
-    trace_id: Option<String>,
-    correlation_id: Option<String>,
-    idempotency_key: Option<Uuid>,
+    context: &'a ModuleCommandContext,
     expected_revision: Option<u64>,
 }
 
@@ -267,10 +264,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             module_slug: &command.module_slug,
             enabled: command.enabled,
             requested_override_enabled: Some(command.enabled),
-            requested_by: Some(command.context.actor_id.to_string()),
-            trace_id: Some(command.context.trace_id.clone()),
-            correlation_id: Some(command.context.correlation_id.to_string()),
-            idempotency_key: Some(command.context.idempotency_key),
+            context: &command.context,
             expected_revision: Some(command.expected_revision),
         })
         .await
@@ -314,7 +308,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             )
         });
         execute_module_toggle(
-            &self.infrastructure,
             &self.db,
             &dispatcher,
             Some(ModuleEffectivePolicyTransitionCoordinator::new(
@@ -325,10 +318,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 tenant_id: request.tenant_id,
                 module_slug: request.module_slug.to_string(),
                 enabled: request.enabled,
-                requested_by: request.requested_by,
-                trace_id: request.trace_id,
-                correlation_id: request.correlation_id,
-                idempotency_key: request.idempotency_key,
+                context: request.context.clone(),
                 expected_revision: request.expected_revision,
                 static_lifecycle,
                 effective_enabled_modules,
@@ -443,9 +433,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             &dispatcher,
             ModulePostHookRetryRequest {
                 operation_id: command.operation_id,
-                requested_by: Some(command.context.actor_id.to_string()),
-                trace_id: Some(command.context.trace_id.clone()),
-                idempotency_key: command.context.idempotency_key,
+                context: command.context.clone(),
                 expected_revision: static_lifecycle.then_some(command.expected_revision),
                 current_override_enabled,
                 current_settings,
@@ -523,10 +511,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     module_slug: &plan.module_slug,
                     enabled: reverse_enabled,
                     requested_override_enabled: plan.previous_override_enabled,
-                    requested_by,
-                    trace_id: Some(command.context.trace_id.clone()),
-                    correlation_id: Some(command.context.correlation_id.to_string()),
-                    idempotency_key: Some(command.context.idempotency_key),
+                    context: &command.context,
                     expected_revision: Some(command.expected_revision),
                 })
                 .await;
@@ -544,10 +529,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             module_slug: &plan.module_slug,
             enabled: reverse_enabled,
             requested_override_enabled: plan.previous_override_enabled,
-            requested_by,
-            trace_id: Some(command.context.trace_id.clone()),
-            correlation_id: Some(command.context.correlation_id.to_string()),
-            idempotency_key: Some(command.context.idempotency_key),
+            context: &command.context,
             expected_revision: Some(command.expected_revision),
         })
         .await

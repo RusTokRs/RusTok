@@ -7,12 +7,12 @@ use crate::recovery::{
     apply_tenant_override_enabled, read_tenant_override_enabled, record_operation_override_state,
 };
 use crate::{
-    ControlPlaneInfrastructure, ModuleEffectivePolicyTransitionCoordinator,
-    ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationJournal,
-    ModuleOperationRecordOutcome, ModuleOperationRequest, ModuleOperationSnapshot,
-    ModuleOperationStatus, ModulePolicyRevisionTransition, ModuleToggleValidationError,
-    StaticTenantLifecycleStore, StaticTenantLifecycleStoreError, TenantModuleStateRecord,
-    TenantModuleStateStore, validate_module_toggle,
+    ModuleCommandContext, ModuleEffectivePolicyTransitionCoordinator, ModuleExecutionDispatcher,
+    ModuleLifecycleHookPhase, ModuleOperationJournal, ModuleOperationRecordOutcome,
+    ModuleOperationRequest, ModuleOperationSnapshot, ModuleOperationStatus,
+    ModulePolicyRevisionTransition, ModuleToggleValidationError, StaticTenantLifecycleStore,
+    StaticTenantLifecycleStoreError, TenantModuleStateRecord, TenantModuleStateStore,
+    validate_module_toggle,
 };
 
 #[derive(Clone, Debug)]
@@ -22,10 +22,9 @@ pub struct ModuleLifecycleToggleRequest {
     /// Lifecycle hook direction for this command. Recovery may restore an
     /// inherited override while still running the inverse hook phase.
     pub enabled: bool,
-    pub requested_by: Option<String>,
-    pub trace_id: Option<String>,
-    pub correlation_id: Option<String>,
-    pub idempotency_key: Option<uuid::Uuid>,
+    /// Authenticated request evidence retained by the lifecycle journal and
+    /// every derived outbox event.
+    pub context: ModuleCommandContext,
     /// Static native lifecycle commands must echo the owner-issued aggregate
     /// revision. Dynamic artifact lifecycle uses a separate aggregate and
     /// leaves this field absent.
@@ -98,15 +97,17 @@ pub enum ModuleLifecycleExecutionError {
 }
 
 pub async fn execute_module_toggle(
-    infrastructure: &ControlPlaneInfrastructure,
     db: &DatabaseConnection,
     dispatcher: &ModuleExecutionDispatcher<'_>,
     policy_transition_coordinator: Option<ModuleEffectivePolicyTransitionCoordinator>,
     request: ModuleLifecycleToggleRequest,
 ) -> Result<ModuleLifecycleToggleResult, ModuleLifecycleExecutionError> {
     let settings = request.current_settings.clone();
-    if request.idempotency_key == Some(uuid::Uuid::nil()) {
-        return Err(ModuleLifecycleExecutionError::InvalidIdempotencyKey);
+    if request.tenant_id.is_nil()
+        || request.context.tenant_id != Some(request.tenant_id)
+        || request.context.validate().is_err()
+    {
+        return Err(ModuleLifecycleExecutionError::InvalidCommandIdentity);
     }
     let previous_effective_enabled = request
         .effective_enabled_modules
@@ -116,21 +117,16 @@ pub async fn execute_module_toggle(
         module_slug: request.module_slug.clone(),
         requested_enabled: request.enabled,
         previous_effective_enabled,
-        requested_by: request.requested_by.clone(),
-        trace_id: request.trace_id.clone(),
-        correlation_id: request
-            .correlation_id
-            .clone()
-            .or_else(|| request.idempotency_key.map(|key| key.to_string()))
-            .unwrap_or_else(|| infrastructure.new_id().to_string()),
-        idempotency_key: request.idempotency_key,
+        requested_by: Some(request.context.actor_id.to_string()),
+        trace_id: Some(request.context.trace_id.clone()),
+        correlation_id: request.context.correlation_id.to_string(),
+        idempotency_key: Some(request.context.idempotency_key),
         expected_revision: request.expected_revision,
     };
-    if operation_request.idempotency_key.is_some()
-        && let Some(existing) =
-            ModuleOperationJournal::replay_idempotent_command(db, &operation_request)
-                .await
-                .map_err(map_idempotency_store_error)?
+    if let Some(existing) =
+        ModuleOperationJournal::replay_idempotent_command(db, &operation_request)
+            .await
+            .map_err(map_idempotency_store_error)?
     {
         return replay_lifecycle_operation(db, &operation_request, existing, settings).await;
     }
@@ -145,37 +141,28 @@ pub async fn execute_module_toggle(
             "publisher is required for an effective-policy transition".to_string(),
         ));
     }
-    let operation = if operation_request.idempotency_key.is_some() {
-        match ModuleOperationJournal::record_idempotent(db, operation_request.clone())
-            .await
-            .map_err(map_idempotency_store_error)?
-        {
-            ModuleOperationRecordOutcome::Recorded(operation) => operation,
-            ModuleOperationRecordOutcome::Replayed(operation) => {
-                let existing = ModuleOperationJournal::find(db, operation.id)
-                    .await
-                    .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?
-                    .ok_or_else(|| {
-                        ModuleLifecycleExecutionError::Persistence(
-                            "idempotent lifecycle operation disappeared".to_string(),
-                        )
-                    })?;
-                return replay_lifecycle_operation(db, &operation_request, existing, settings)
-                    .await;
-            }
+    let operation = match ModuleOperationJournal::record_idempotent(db, operation_request.clone())
+        .await
+        .map_err(map_idempotency_store_error)?
+    {
+        ModuleOperationRecordOutcome::Recorded(operation) => operation,
+        ModuleOperationRecordOutcome::Replayed(operation) => {
+            let existing = ModuleOperationJournal::find(db, operation.id)
+                .await
+                .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?
+                .ok_or_else(|| {
+                    ModuleLifecycleExecutionError::Persistence(
+                        "idempotent lifecycle operation disappeared".to_string(),
+                    )
+                })?;
+            return replay_lifecycle_operation(db, &operation_request, existing, settings).await;
         }
-    } else {
-        ModuleOperationJournal::record(db, operation_request.clone())
-            .await
-            .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?
     };
     let static_lifecycle = if request.static_lifecycle {
         let expected_revision = request
             .expected_revision
             .ok_or(ModuleLifecycleExecutionError::MissingExpectedRevision)?;
-        let idempotency_key = operation_request
-            .idempotency_key
-            .ok_or(ModuleLifecycleExecutionError::InvalidIdempotencyKey)?;
+        let idempotency_key = request.context.idempotency_key;
         if let Err(error) = StaticTenantLifecycleStore::claim(
             db,
             request.tenant_id,
@@ -342,6 +329,7 @@ pub async fn execute_module_toggle(
     let module_slug = request.module_slug.clone();
     let policy_transition = request.policy_transition.clone();
     let tenant_id = request.tenant_id;
+    let command_context = request.context.clone();
     let coordinator = policy_transition_coordinator;
     let state = match db
         .transaction::<_, Option<TenantModuleStateRecord>, ModuleLifecycleExecutionError>(
@@ -367,8 +355,7 @@ pub async fn execute_module_toggle(
                         coordinator
                             .publish_and_advance(
                                 transaction,
-                                tenant_id,
-                                None,
+                                &command_context,
                                 "module.lifecycle",
                                 &transition,
                             )
@@ -733,6 +720,16 @@ mod tests {
         database
     }
 
+    fn command_context(tenant_id: uuid::Uuid, idempotency_key: uuid::Uuid) -> ModuleCommandContext {
+        ModuleCommandContext {
+            actor_id: uuid::Uuid::new_v4(),
+            tenant_id: Some(tenant_id),
+            trace_id: "test:module-lifecycle".to_string(),
+            correlation_id: uuid::Uuid::new_v4(),
+            idempotency_key,
+        }
+    }
+
     #[tokio::test]
     async fn idempotent_no_op_toggle_replays_one_journaled_operation() {
         let database = journal_and_state_database().await;
@@ -745,10 +742,7 @@ mod tests {
             tenant_id,
             module_slug: "optional-test".to_string(),
             enabled: true,
-            requested_by: Some("operator".to_string()),
-            trace_id: Some("test:module-lifecycle".to_string()),
-            correlation_id: None,
-            idempotency_key: Some(idempotency_key),
+            context: command_context(tenant_id, idempotency_key),
             expected_revision: Some(0),
             static_lifecycle: true,
             effective_enabled_modules: HashSet::from(["optional-test".to_string()]),
@@ -759,24 +753,22 @@ mod tests {
             policy_transition: None,
         };
 
-        let first = execute_module_toggle(
-            &ControlPlaneInfrastructure::default(),
-            &database,
-            &dispatcher,
-            None,
-            request.clone(),
-        )
-        .await
-        .expect("first no-op command");
-        let replay = execute_module_toggle(
-            &ControlPlaneInfrastructure::default(),
-            &database,
-            &dispatcher,
-            None,
-            request,
-        )
-        .await
-        .expect("exact retry replays");
+        let first = execute_module_toggle(&database, &dispatcher, None, request.clone())
+            .await
+            .expect("first no-op command");
+        let replay = execute_module_toggle(&database, &dispatcher, None, request.clone())
+            .await
+            .expect("exact retry replays");
+
+        let mut changed_trace_request = request.clone();
+        changed_trace_request.context = ModuleCommandContext {
+            trace_id: "test:module-lifecycle:changed-trace".to_string(),
+            ..request.context.clone()
+        };
+        assert!(matches!(
+            execute_module_toggle(&database, &dispatcher, None, changed_trace_request).await,
+            Err(ModuleLifecycleExecutionError::IdempotencyConflict)
+        ));
 
         assert_eq!(first.operation_id, replay.operation_id);
         let row = database
@@ -798,21 +790,17 @@ mod tests {
         let registry = ModuleRegistry::new().register(OptionalModule);
         let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).expect("catalog");
         let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
+        let tenant_id = uuid::Uuid::new_v4();
 
-        let infrastructure = ControlPlaneInfrastructure::default();
         let result = execute_module_toggle(
-            &infrastructure,
             &database,
             &dispatcher,
             None,
             ModuleLifecycleToggleRequest {
-                tenant_id: uuid::Uuid::new_v4(),
+                tenant_id,
                 module_slug: "optional-test".to_string(),
                 enabled: true,
-                requested_by: Some("test".to_string()),
-                trace_id: None,
-                correlation_id: None,
-                idempotency_key: None,
+                context: command_context(tenant_id, uuid::Uuid::new_v4()),
                 expected_revision: None,
                 static_lifecycle: false,
                 effective_enabled_modules: HashSet::new(),

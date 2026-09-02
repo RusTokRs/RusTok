@@ -1,15 +1,66 @@
 use super::*;
 use rustok_modules::{
-    ModuleCommandContext, ModuleExternalPrebuiltStageCommand, ModuleExternalPrebuiltStageResult,
-    ModulePublicationArtifactOrigin, ModulePublishApprovalOverride,
-    ModulePublishArtifactAttachCommand, ModulePublishPlatformBuildStageCommand,
-    ModulePublishPlatformBuildStageResult, ModulePublishRequestChangesCommand,
-    ModulePublishRequestCreateCommand, ModulePublishRequestHoldCommand,
-    ModulePublishRequestPublicationCommand, ModulePublishRequestRejectCommand,
-    ModulePublishRequestResumeCommand,
+    ModuleAuthorSignatureEvidenceCommand, ModuleCommandContext, ModuleExternalPrebuiltStageCommand,
+    ModuleExternalPrebuiltStageResult, ModulePublicationArtifactOrigin,
+    ModulePublishApprovalOverride, ModulePublishArtifactAttachCommand,
+    ModulePublishPlatformBuildStageCommand, ModulePublishPlatformBuildStageResult,
+    ModulePublishRequestChangesCommand, ModulePublishRequestCreateCommand,
+    ModulePublishRequestHoldCommand, ModulePublishRequestPublicationCommand,
+    ModulePublishRequestRejectCommand, ModulePublishRequestResumeCommand,
 };
 
 impl RegistryGovernanceService {
+    pub async fn preview_author_signature_evidence(
+        &self,
+        request_id: &str,
+        authority: &RegistryAuthority,
+    ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
+        self.authorized_publish_request_status_snapshot(
+            request_id,
+            authority,
+            RegistryPublishRequestPermission::Manage,
+            "record author-signature evidence for",
+        )
+        .await
+    }
+
+    /// Records author-signature evidence through the platform-authenticated
+    /// mutation surface. The adapter performs an early request-management
+    /// check for response shaping; the owner rechecks the same authenticated
+    /// authority against the current locked binding before any replay or write.
+    pub async fn record_author_signature_evidence(
+        &self,
+        request_id: &str,
+        authority: &RegistryAuthority,
+        input: RegistryAuthorSignatureEvidenceInput,
+    ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
+        let request = self
+            .preview_author_signature_evidence(request_id, authority)
+            .await?;
+        let result = self
+            .publication_service()
+            .record_author_signature_evidence(ModuleAuthorSignatureEvidenceCommand {
+                request_id: request.request.id.clone(),
+                expected_revision: request.request.revision,
+                context: input.context,
+                actor_can_manage_modules: authority.can_manage_modules,
+                evidence_reference: input.evidence_reference,
+                signature_digest_sha256: input.signature_digest_sha256,
+                signer_identity: input.signer_identity,
+                policy_revision: input.policy_revision,
+                actor_principal: authority.principal.to_json_value(),
+            })
+            .await
+            .map_err(anyhow::Error::new)?;
+        self.publish_request_status_snapshot_for_authority(&request.request.id, Some(authority))
+            .await?
+            .ok_or_else(|| anyhow!(
+                "owner-recorded author-signature evidence request '{}' disappeared at revision {}",
+                request.request.id,
+                result.request_revision
+            ))
+    }
+
     pub async fn create_publish_request(
         &self,
         request: &RegistryPublishRequest,

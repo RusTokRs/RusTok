@@ -30,21 +30,21 @@ use uuid::Uuid;
 use crate::error::{Error, http_error};
 use crate::modules::{CatalogManifestModule, ManifestManager};
 use crate::services::marketplace_catalog::{
-    RegistryCatalogModule, RegistryCatalogResponse, RegistryExternalPrebuiltStageRequest,
-    RegistryExternalPrebuiltStageResponse, RegistryGovernanceAction, RegistryMutationResponse,
-    RegistryOwnerTransferRequest, RegistryPlatformBuildStageRequest,
-    RegistryPlatformBuildStageResponse, RegistryPublishDecisionRequest, RegistryPublishRequest,
-    RegistryPublishStatusFollowUpGate, RegistryPublishStatusResponse,
-    RegistryPublishStatusValidationStage, RegistryPublishValidationRequest,
-    RegistryRunnerClaimPayload, RegistryRunnerClaimRequest, RegistryRunnerClaimResponse,
-    RegistryRunnerCompletionRequest, RegistryRunnerHeartbeatRequest,
+    RegistryAuthorSignatureEvidenceRequest, RegistryCatalogModule, RegistryCatalogResponse,
+    RegistryExternalPrebuiltStageRequest, RegistryExternalPrebuiltStageResponse,
+    RegistryGovernanceAction, RegistryMutationResponse, RegistryOwnerTransferRequest,
+    RegistryPlatformBuildStageRequest, RegistryPlatformBuildStageResponse,
+    RegistryPublishDecisionRequest, RegistryPublishRequest, RegistryPublishStatusFollowUpGate,
+    RegistryPublishStatusResponse, RegistryPublishStatusValidationStage,
+    RegistryPublishValidationRequest, RegistryRunnerClaimPayload, RegistryRunnerClaimRequest,
+    RegistryRunnerClaimResponse, RegistryRunnerCompletionRequest, RegistryRunnerHeartbeatRequest,
     RegistryRunnerMutationResponse, RegistryValidationStageReportRequest, RegistryYankRequest,
     registry_catalog_from_modules, registry_catalog_module_path, registry_catalog_path,
     registry_owner_transfer_path, registry_publish_approve_path, registry_publish_artifact_path,
-    registry_publish_external_stage_path, registry_publish_hold_path, registry_publish_path,
-    registry_publish_platform_build_stage_path, registry_publish_reject_path,
-    registry_publish_request_changes_path, registry_publish_resume_path,
-    registry_publish_stage_report_path, registry_publish_status_path,
+    registry_publish_author_signature_path, registry_publish_external_stage_path,
+    registry_publish_hold_path, registry_publish_path, registry_publish_platform_build_stage_path,
+    registry_publish_reject_path, registry_publish_request_changes_path,
+    registry_publish_resume_path, registry_publish_stage_report_path, registry_publish_status_path,
     registry_publish_validate_path, registry_runner_claim_path, registry_runner_complete_path,
     registry_runner_fail_path, registry_runner_heartbeat_path, registry_yank_path,
     validate_registry_mutation_schema_version,
@@ -55,9 +55,9 @@ use crate::services::registry_governance::{
     REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
     REGISTRY_REQUEST_CHANGES_REASON_CODES, REGISTRY_RESUME_REASON_CODES,
     REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES, RegistryArtifactUpload,
-    RegistryExternalPrebuiltStageInput, RegistryFollowUpGateSnapshot,
-    RegistryGovernanceActionSnapshot, RegistryGovernanceError, RegistryGovernanceService,
-    RegistryPlatformBuildStageInput, RegistryValidationStageSnapshot,
+    RegistryAuthorSignatureEvidenceInput, RegistryExternalPrebuiltStageInput,
+    RegistryFollowUpGateSnapshot, RegistryGovernanceActionSnapshot, RegistryGovernanceError,
+    RegistryGovernanceService, RegistryPlatformBuildStageInput, RegistryValidationStageSnapshot,
 };
 use crate::services::registry_principal::RegistryAuthority;
 use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
@@ -665,6 +665,119 @@ async fn stage_platform_build(
                 .to_string(),
         ),
     }))
+}
+
+/// POST /v2/catalog/publish/{request_id}/author-signature - Record a context-bound author signature for the current artifact
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/publish/{request_id}/author-signature",
+    tag = "marketplace",
+    params(
+        ("request_id" = String, Path, description = "Registry publish request identifier")
+    ),
+    request_body = RegistryAuthorSignatureEvidenceRequest,
+    responses(
+        (
+            status = 200,
+            description = "Author signature evidence recorded or idempotently replayed for the current staged artifact",
+            body = RegistryMutationResponse
+        ),
+        (
+            status = 400,
+            description = "Author signature facts or command context are invalid"
+        ),
+        (
+            status = 403,
+            description = "Caller cannot manage this registry publish request"
+        ),
+        (
+            status = 404,
+            description = "Registry publish request was not found"
+        ),
+        (
+            status = 409,
+            description = "Idempotency key was reused with different signature facts"
+        )
+    )
+)]
+async fn record_author_signature_evidence(
+    State(ctx): State<ServerRuntimeContext>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+    auth_ext: Option<axum::Extension<AuthContextExtension>>,
+    Json(request): Json<RegistryAuthorSignatureEvidenceRequest>,
+) -> Result<impl IntoResponse, Error> {
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    if request.idempotency_key.is_nil() {
+        return Err(Error::BadRequest(
+            "Author signature evidence requires a non-nil idempotencyKey".to_string(),
+        ));
+    }
+    let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
+    let authority = authority_from_auth(&headers, auth, "Author signature evidence")?;
+    let command_context = auth
+        .map(|auth| registry_platform_command_context(auth, request.idempotency_key))
+        .ok_or_else(|| {
+            Error::Unauthorized("Author signature evidence requires authentication".into())
+        })?;
+    let governance = RegistryGovernanceService::new(ctx.db_clone());
+    if request.dry_run {
+        let snapshot = governance
+            .preview_author_signature_evidence(&request_id, &authority)
+            .await
+            .map_err(map_registry_governance_error)?;
+        return Ok((
+            StatusCode::OK,
+            Json(RegistryMutationResponse {
+                schema_version:
+                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+                action: "author_signature".to_string(),
+                dry_run: true,
+                accepted: true,
+                request_id: Some(snapshot.request.id.clone()),
+                status: Some("dry_run".to_string()),
+                slug: snapshot.request.slug,
+                version: snapshot.request.version,
+                warnings: Vec::new(),
+                errors: Vec::new(),
+                next_step: Some(
+                    "Re-run with dry_run=false to bind the signature to the current staged artifact."
+                        .to_string(),
+                ),
+            }),
+        ));
+    }
+    let snapshot = governance
+        .record_author_signature_evidence(
+            &request_id,
+            &authority,
+            RegistryAuthorSignatureEvidenceInput {
+                context: command_context,
+                evidence_reference: request.evidence_reference,
+                signature_digest_sha256: request.signature_digest_sha256,
+                signer_identity: request.signer_identity,
+                policy_revision: request.policy_revision,
+            },
+        )
+        .await
+        .map_err(map_registry_governance_error)?;
+    Ok((
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
+            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+            action: "author_signature".to_string(),
+            dry_run: false,
+            accepted: true,
+            request_id: Some(snapshot.request.id.clone()),
+            status: Some(snapshot.request.status),
+            slug: snapshot.request.slug,
+            version: snapshot.request.version,
+            warnings: snapshot.request.warnings,
+            errors: snapshot.request.errors,
+            next_step: publish_status_next_step(&request_id, snapshot.next_action.as_ref()),
+        }),
+    ))
 }
 
 fn external_prebuilt_source_evidence(
@@ -2079,6 +2192,10 @@ pub fn router() -> crate::routes::ServerRouter {
         .route(
             registry_publish_platform_build_stage_path(),
             post(stage_platform_build),
+        )
+        .route(
+            registry_publish_author_signature_path(),
+            post(record_author_signature_evidence),
         )
         .route(
             registry_publish_artifact_download_path(),

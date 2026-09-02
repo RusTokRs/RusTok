@@ -43,6 +43,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         crate::controllers::marketplace_registry::upload_publish_artifact,
         crate::controllers::marketplace_registry::stage_external_prebuilt,
         crate::controllers::marketplace_registry::stage_platform_build,
+        crate::controllers::marketplace_registry::record_author_signature_evidence,
         crate::controllers::marketplace_registry::validate_publish_request_step,
         crate::controllers::marketplace_registry::approve_publish_request,
         crate::controllers::marketplace_registry::reject_publish_request,
@@ -103,6 +104,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
             crate::services::marketplace_catalog::RegistryExternalPrebuiltStageResponse,
             crate::services::marketplace_catalog::RegistryPlatformBuildStageRequest,
             crate::services::marketplace_catalog::RegistryPlatformBuildStageResponse,
+            crate::services::marketplace_catalog::RegistryAuthorSignatureEvidenceRequest,
             crate::services::marketplace_catalog::RegistryPublishArtifactOrigin,
             crate::services::marketplace_catalog::RegistryPublishModuleRequest,
             crate::services::marketplace_catalog::RegistryPublishMarketplaceRequest,
@@ -280,6 +282,13 @@ mod tests {
                 .paths
                 .contains_key("/v2/catalog/publish/{request_id}/artifact"),
             "OpenAPI spec must include /v2/catalog/publish/{{request_id}}/artifact"
+        );
+        assert!(
+            openapi
+                .paths
+                .paths
+                .contains_key("/v2/catalog/publish/{request_id}/author-signature"),
+            "OpenAPI spec must include /v2/catalog/publish/{{request_id}}/author-signature"
         );
         assert!(
             openapi

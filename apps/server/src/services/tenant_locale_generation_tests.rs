@@ -89,7 +89,10 @@ async fn insert_locale(
 async fn replace_default_locale(db: &sea_orm::DatabaseConnection, tenant_id: Uuid, locale: &str) {
     tenants::Entity::update_many()
         .filter(tenants::Column::Id.eq(tenant_id))
-        .col_expr(tenants::Column::DefaultLocale, Expr::value(locale.to_string()))
+        .col_expr(
+            tenants::Column::DefaultLocale,
+            Expr::value(locale.to_string()),
+        )
         .exec(db)
         .await
         .expect("tenant default locale should update");

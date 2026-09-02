@@ -102,7 +102,7 @@ where
                 users::Entity::update_many()
                     .col_expr(
                         users::Column::UpdatedAt,
-                        Expr::col(users::Column::UpdatedAt).into(),
+                        Expr::col(users::Column::UpdatedAt),
                     )
                     .filter(users::Column::Id.eq(*user_id))
                     .filter(users::Column::TenantId.eq(*tenant_id))
@@ -112,7 +112,7 @@ where
             target
         }
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
     target.ok_or(Error::NotFound)
 }
 
@@ -222,7 +222,7 @@ where
             query().lock_exclusive().one(db).await.map_err(Into::into)
         }
         _ => unreachable!("unsupported SeaORM database backend"),
-}
+    }
 }
 
 #[cfg(test)]

@@ -36,6 +36,8 @@ const REGISTRY_PUBLISH_EXTERNAL_STAGE_PATH: &str =
     "/v2/catalog/publish/{request_id}/external-prebuilt-stage";
 const REGISTRY_PUBLISH_PLATFORM_BUILD_STAGE_PATH: &str =
     "/v2/catalog/publish/{request_id}/platform-build-stage";
+const REGISTRY_PUBLISH_AUTHOR_SIGNATURE_PATH: &str =
+    "/v2/catalog/publish/{request_id}/author-signature";
 const REGISTRY_PUBLISH_VALIDATE_PATH: &str = "/v2/catalog/publish/{request_id}/validate";
 const REGISTRY_PUBLISH_STAGE_REPORT_PATH: &str = "/v2/catalog/publish/{request_id}/stages";
 const REGISTRY_PUBLISH_APPROVE_PATH: &str = "/v2/catalog/publish/{request_id}/approve";
@@ -741,6 +743,28 @@ pub struct RegistryPlatformBuildStageResponse {
     pub next_step: Option<String>,
 }
 
+/// Authenticated evidence for an author's signature over the artifact that is
+/// currently attached to a registry publish request. The owner derives that
+/// artifact digest; the body supplies only immutable signature facts.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RegistryAuthorSignatureEvidenceRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub dry_run: bool,
+    #[serde(rename = "evidenceReference")]
+    pub evidence_reference: String,
+    #[serde(rename = "signatureDigestSha256")]
+    pub signature_digest_sha256: String,
+    #[serde(rename = "signerIdentity")]
+    pub signer_identity: String,
+    #[serde(rename = "policyRevision")]
+    pub policy_revision: String,
+    #[serde(rename = "idempotencyKey")]
+    pub idempotency_key: Uuid,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RegistryValidationStageReportRequest {
@@ -1063,6 +1087,10 @@ pub fn registry_publish_external_stage_path() -> &'static str {
 
 pub fn registry_publish_platform_build_stage_path() -> &'static str {
     REGISTRY_PUBLISH_PLATFORM_BUILD_STAGE_PATH
+}
+
+pub fn registry_publish_author_signature_path() -> &'static str {
+    REGISTRY_PUBLISH_AUTHOR_SIGNATURE_PATH
 }
 
 pub fn registry_publish_validate_path() -> &'static str {

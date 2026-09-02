@@ -338,3 +338,87 @@ pub struct UpgradeModuleVariables {
     #[serde(rename = "idempotencyKey")]
     pub idempotency_key: String,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub enum ModuleTransitionState {
+    #[serde(rename = "PREFLIGHTING")]
+    Preflighting,
+    #[serde(rename = "FENCED")]
+    Fenced,
+    #[serde(rename = "PRESTAGING")]
+    Prestaging,
+    #[serde(rename = "ACTIVATING")]
+    Activating,
+    #[serde(rename = "OBSERVING")]
+    Observing,
+    #[serde(rename = "ROLLBACK_TRIGGERED")]
+    RollbackTriggered,
+    #[serde(rename = "RECOVERED_TO_PREDECESSOR")]
+    RecoveredToPredecessor,
+    #[serde(rename = "CONVERGED")]
+    Converged,
+    #[serde(rename = "FAILED_CLOSED")]
+    FailedClosed,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ModuleTransitionCheckpoint {
+    #[serde(rename = "operationId")]
+    pub operation_id: String,
+    #[serde(rename = "moduleSlug")]
+    pub module_slug: String,
+    #[serde(rename = "tenantId")]
+    pub tenant_id: Option<String>,
+    #[serde(rename = "predecessorDigest")]
+    pub predecessor_digest: Option<String>,
+    #[serde(rename = "candidateDigest")]
+    pub candidate_digest: String,
+    pub state: ModuleTransitionState,
+    #[serde(rename = "stateDetails")]
+    pub state_details: Option<String>,
+    #[serde(rename = "securityEpoch")]
+    pub security_epoch: i64,
+    #[serde(rename = "recoveryAttemptCount")]
+    pub recovery_attempt_count: i32,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RetentionHold {
+    #[serde(rename = "holdId")]
+    pub hold_id: String,
+    #[serde(rename = "targetType")]
+    pub target_type: String,
+    #[serde(rename = "targetIdentity")]
+    pub target_identity: String,
+    pub kind: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+}
+
+#[derive(Deserialize)]
+pub struct ModuleTransitionCheckpointResponse {
+    #[serde(rename = "moduleTransitionCheckpoint")]
+    pub checkpoint: Option<ModuleTransitionCheckpoint>,
+}
+
+#[derive(Deserialize)]
+pub struct ModuleRetentionHoldsResponse {
+    #[serde(rename = "moduleRetentionHolds")]
+    pub holds: Vec<RetentionHold>,
+}
+
+#[derive(Deserialize)]
+pub struct TriggerModuleRecoveryResponse {
+    #[serde(rename = "triggerModuleRecovery")]
+    pub checkpoint: ModuleTransitionCheckpoint,
+}
+
+#[derive(Deserialize)]
+pub struct FinalizeModuleTransitionResponse {
+    #[serde(rename = "finalizeModuleTransition")]
+    pub checkpoint: ModuleTransitionCheckpoint,
+}

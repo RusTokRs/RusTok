@@ -34,6 +34,9 @@ pub struct AlloyReleaseStageCommand {
     pub artifact_digest: String,
     /// Tenant-scoped authenticated evidence preserved by the registry owner.
     pub context: ModuleCommandContext,
+    /// Authenticated host fact for `modules:manage`. The registry owner still
+    /// combines it with the current request and owner binding under lock.
+    pub actor_can_manage_modules: bool,
 }
 
 impl AlloyReleaseStageCommand {
@@ -136,6 +139,7 @@ mod tests {
             expected_publish_request_revision: 1,
             artifact_digest: format!("sha256:{}", "a".repeat(64)),
             context: alloy_release_command_context(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()),
+            actor_can_manage_modules: true,
         };
         assert!(command.validate().is_ok());
 
@@ -156,6 +160,7 @@ mod tests {
             expected_publish_request_revision: 1,
             artifact_digest: format!("sha256:{}", "a".repeat(64)),
             context: alloy_release_command_context(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()),
+            actor_can_manage_modules: true,
         };
         command.publish_request_id = "x".repeat(super::MAX_RELEASE_REQUEST_ID_LENGTH + 1);
         assert_eq!(command.validate(), Err(AlloyReleaseError::InvalidCommand));

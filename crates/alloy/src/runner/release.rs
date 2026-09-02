@@ -167,6 +167,7 @@ where
                 sandbox_policy_digest: smoke_evidence.policy_digest,
                 sandbox_capability_grants: smoke_evidence.capability_grants,
                 context: command.context.clone(),
+                actor_can_manage_modules: command.actor_can_manage_modules,
                 actor_principal: serde_json::json!({
                     "kind": "user",
                     "id": command.context.actor_id,
@@ -298,6 +299,7 @@ mod tests {
                 expected_publish_request_revision: 1,
                 artifact_digest: source_digest,
                 context: alloy_release_command_context(tenant_id, Uuid::new_v4(), Uuid::new_v4()),
+                actor_can_manage_modules: true,
             })
             .await
             .expect("stage imported fork");

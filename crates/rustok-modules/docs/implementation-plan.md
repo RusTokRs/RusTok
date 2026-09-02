@@ -21,6 +21,15 @@ boundary and the module-owned admin transport for backend write/build logic.
 
 ## Current verification evidence
 
+On 2026-09-01, the command-context sweep preserved the authenticated context
+through isolated build queued/completed events, admission reverification,
+artifact-node reconciliation, static-release-revocation-derived rollout events,
+effective-policy transition events, and post-hook retry recovery evidence. The
+focused owner tests, `cargo test --locked -p rustok-modules --lib` (272 passed),
+the module control-plane write-path verifier, `cargo metadata --locked --no-deps`,
+and `git diff --check` passed. This is scoped repository evidence; it does not
+claim a workspace-wide test run or retained deployment-supervisor evidence.
+
 On 2026-09-01, the validation-job enqueue owner path gained a durable exact-replay
 receipt. The platform-scoped command context, expected request revision, actor
 principal, and rejected-retry policy are bound to one idempotency key; an exact
@@ -94,28 +103,41 @@ Still outside the owner boundary:
   atomically persist state plus audit facts. Publication includes the release
   projection, localized metadata, owner binding or authorized rebind, optional
   approval-override evidence, and publish-request finalization in one
-  transaction. The owner also records append-only, subject-digest-bound
+  transaction. Initial binding and authorized rebind therefore exist only in
+  that final-publication transaction; a subsequent ownership change uses the
+  separate context-bound owner-transfer command, with no uncomposed direct
+  owner-bind write path. The owner also records append-only, subject-digest-bound
   publication evidence with a distinct author-signature, build-service,
   marketplace-approval, or platform-admission authority; recording one fact
   never implies another. A domain-separated evidence digest and database
   uniqueness constraint make duplicate concurrent delivery idempotent. A
   new evidence fact carries the observed positive request revision and advances
   that aggregate through the same transaction; an exact evidence replay returns
-  the currently locked revision without another transition. The platform
+  the currently locked revision without another transition. Author signatures
+  use the separate platform-context-bound `ModuleAuthorSignatureEvidenceCommand`:
+  the owner locks the request and current owner binding, rechecks the
+  authenticated `modules:manage` fact or the current requester/publisher/owner
+  principal before any idempotent replay or write, derives its current attached-artifact SHA-256
+  instead of accepting a transport-selected subject, persists the signature
+  digest in the same immutable publication-evidence row used by the final
+  publication gate (whose schema rejects an author-signature row without that
+  digest), and records a durable receipt containing the actor, trace,
+  correlation, signature digest, signer, policy revision, and resulting
+  evidence. The platform
   evidence producer carries the source revision into the build-service fact and
   then carries that result revision into platform admission.
-  marketplace approval cannot enter through the generic evidence command: the
+  marketplace approval cannot enter through a transport evidence command: the
   owner emits it only in the atomic final-publication transaction for the
   canonical staged artifact SHA-256. A build-service attestation also bypasses
-  that generic command: `ModuleBuildServiceAttestationCommand` verifies the
+  generic author-signature path: `ModuleBuildServiceAttestationCommand` verifies the
   complete build receipt, its declared `build_service` authority, and all
   digest-pinned OCI identities before it records the signature-manifest fact.
   Platform admission is likewise typed: `ModulePlatformAdmissionCommand`
   accepts only an admitted verification decision for the exact OCI manifest,
   binds its signature/SLSA/SBOM outcomes, signer, policy revisions, and
   immutable evidence-reference fingerprint, then records the platform fact.
-  Publication now fails closed unless an author signature is bound to the
-  staged artifact SHA-256 and a build-service attestation plus platform
+  Publication now fails closed unless an author signature and its immutable
+  signature digest are bound to the staged artifact SHA-256 and a build-service attestation plus platform
   admission share the exact OCI manifest recorded by the current build stage;
   marketplace approval is then
   created atomically with the final release transition. PostgreSQL locks the
@@ -294,14 +316,15 @@ Important intermediate limitations that must not be mistaken for the target:
   command responses map those owner-issued facts directly and never reload
   `tenant_modules` or `module_operations` server models after the command.
   The owner now applies one `module_static_tenant_lifecycle` aggregate to
-  static toggles, normalized settings, post-hook retry, and compensation:
-  every command is tenant-matched-context/revision bound, claims the
-  aggregate before work, advances its revision only in the durable state
-  transaction, and releases the claim on all terminal paths. Settings complete
-  an exact owner-operation receipt in that same transaction. A replay of a
-  terminal settings failure preserves its typed snapshot, disabled-module, or
-  revision conflict rather than collapsing into a generic host error, while
-  hook recovery retains its `module_operations` evidence;
+static toggles, normalized settings, post-hook retry, and compensation:
+every command is tenant-matched-context/revision bound, claims the
+aggregate before work, advances its revision only in the durable state
+transaction, and releases the claim on all terminal paths. Settings complete
+an exact owner-operation receipt in that same transaction. A replay of a
+terminal settings failure preserves its typed snapshot, disabled-module, or
+revision conflict rather than collapsing into a generic host error, while
+hook recovery retains its `module_operations` evidence with the retrying
+command's actor, trace, correlation, and idempotency identities;
 - artifact lifecycle dispatch requires a configured
   `ArtifactLifecycleExecutor`; production host wiring for that executor remains
   to be supplied;
@@ -368,7 +391,10 @@ authenticated user principals to the context actor UUID, and rejects changed
 expected revision, actor, trace, correlation, privilege, or evidence on replay.
 Alloy-authored staging is tenant-scoped: its HTTP and GraphQL adapters derive
 the context from authenticated tenant/user identity, request idempotency, and
-telemetry trace. Its immutable receipt binds the expected request revision,
+telemetry trace, then pass only the authenticated `modules:manage` fact to the
+registry owner. While holding the request and current owner-binding locks, the
+owner rechecks that fact or the durable requester/publisher/owner principal
+before an idempotent replay or write. Its immutable receipt binds the expected request revision,
 Alloy tenant/script, reviewed source and sandbox evidence (including the fixed
 publication-smoke scenario digest), and full context;
 the staged user principal must equal the context actor UUID, and any changed
@@ -444,14 +470,26 @@ traffic wiring remain the uncomposed boundary.
 Platform rollout and recovery commands carry one platform-scoped
 `ModuleCommandContext`. Their idempotency receipt persists actor, trace,
 correlation, and idempotency evidence, rejects a changed replay, and creates
-the requested/recovery outbox envelope from that exact context. Node-agent
-reports remain separately authenticated deployment observations rather than
-operator commands.
+the requested/recovery outbox envelope from that exact context. A release
+revocation retains that same context when it derives rollout-status events in
+the release-head transaction. Node-agent reports remain separately
+authenticated deployment observations rather than operator commands.
 
 The preceding static-distribution build-intent command uses the same
 platform-scoped context. Its durable receipt persists actor, trace,
 correlation, and idempotency evidence before the immutable build snapshot and
 its transactional outbox event are committed.
+
+Admission reverification is also an owner command: its scope-matched context,
+evidence digest, expected revision, and resulting revision are retained in a
+durable exact-replay receipt. The owner changes trust evidence and emits
+`module.artifact.reverified` only once for that receipt; agent and worker
+observations remain separate protocols.
+
+Tenant-scoped isolated module-build requests retain the same context in their
+immutable durable request and replay hash. Their `queued` and `completed`
+outbox envelopes are derived from that original context, so remote worker
+completion does not synthesize a second actor, trace, or correlation identity.
 
 `ModuleDesiredObservedState`, `ModuleReconciliationPhase`,
 `ModuleReconciliationEvidence`, and `ModuleReconciliationFailure` now form the
@@ -519,6 +557,9 @@ the same state transaction; a stale lifecycle cursor aborts the state mutation
 rather than advancing a divergent projection. A previously unseen tenant first
 initializes that cursor to the empty predecessor, so its first effective-policy
 transition is durable rather than failing as if a cursor row had been lost.
+The authenticated tenant command context remains intact through the lifecycle
+journal and the derived transition outbox event, preserving its actor,
+correlation, and trace identities rather than creating a second event root.
 
 `ArtifactRuntimeLifecycleExecutor` now requires a host-owned
 `ArtifactEffectivePolicyResolver` and re-resolves the canonical policy before

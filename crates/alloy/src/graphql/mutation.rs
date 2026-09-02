@@ -372,6 +372,9 @@ impl AlloyMutation {
                 auth.user_id,
                 input.idempotency_key,
             ),
+            // `require_release_admin` established the host permission; the
+            // registry owner rechecks it against current durable state.
+            actor_can_manage_modules: true,
         })
         .await
         .map_err(|error| async_graphql::Error::new(error.to_string()))?;

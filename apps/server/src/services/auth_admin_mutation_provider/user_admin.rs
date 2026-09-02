@@ -189,7 +189,7 @@ where
                 users::Entity::update_many()
                     .col_expr(
                         users::Column::UpdatedAt,
-                        Expr::col(users::Column::UpdatedAt).into(),
+                        Expr::col(users::Column::UpdatedAt),
                     )
                     .filter(users::Column::Id.eq(user.id))
                     .filter(users::Column::TenantId.eq(tenant_id))
@@ -200,7 +200,7 @@ where
             user
         }
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
 
     user.ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))
 }

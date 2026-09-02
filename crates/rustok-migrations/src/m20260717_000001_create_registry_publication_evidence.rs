@@ -48,6 +48,11 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(
+                        ColumnDef::new(RegistryPublicationEvidence::SignatureDigestSha256)
+                            .string_len(64)
+                            .null(),
+                    )
+                    .col(
                         ColumnDef::new(RegistryPublicationEvidence::EvidenceDigestSha256)
                             .string_len(64)
                             .not_null(),
@@ -72,6 +77,13 @@ impl MigrationTrait for Migration {
                             )
                             .to(RegistryPublishRequests::Table, RegistryPublishRequests::Id),
                     )
+                    .check(Check::named(
+                        "chk_registry_publication_evidence_author_signature_digest",
+                        Expr::cust(
+                            "(authority <> 'author_signature' OR signature_digest_sha256 IS NOT NULL) \
+                             AND (signature_digest_sha256 IS NULL OR length(signature_digest_sha256) = 64)",
+                        ),
+                    ))
                     .to_owned(),
             )
             .await?;
@@ -111,6 +123,7 @@ enum RegistryPublicationEvidence {
     EvidenceReference,
     IssuerIdentity,
     PolicyRevision,
+    SignatureDigestSha256,
     EvidenceDigestSha256,
     RecordedByPrincipal,
     CreatedAt,
@@ -120,4 +133,73 @@ enum RegistryPublicationEvidence {
 enum RegistryPublishRequests {
     Table,
     Id,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Migration;
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+
+    #[tokio::test]
+    async fn sqlite_schema_requires_a_complete_author_signature_digest() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        database
+            .execute_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE TABLE registry_publish_requests (id TEXT PRIMARY KEY); \
+                 INSERT INTO registry_publish_requests (id) VALUES ('request-1')"
+                    .to_string(),
+            ))
+            .await
+            .expect("migration prerequisite schema");
+
+        let manager = SchemaManager::new(&database);
+        Migration
+            .up(&manager)
+            .await
+            .expect("publication evidence migration");
+
+        for (id, signature_digest_sql) in [
+            ("missing-digest", "NULL"),
+            ("short-digest", "'not-a-sha256-digest'"),
+        ] {
+            let error = database
+                .execute_raw(Statement::from_string(
+                    DbBackend::Sqlite,
+                    format!(
+                        "INSERT INTO registry_publication_evidence \
+                         (id, request_id, authority, subject_digest_sha256, evidence_reference, \
+                          issuer_identity, policy_revision, signature_digest_sha256, evidence_digest_sha256, \
+                          recorded_by_principal) \
+                         VALUES ('{id}', 'request-1', 'author_signature', '{}', 'evidence://author', \
+                                 'author', 'policy', {signature_digest_sql}, '{}', '{{}}')",
+                        "a".repeat(64),
+                        "b".repeat(64),
+                    ),
+                ))
+                .await
+                .expect_err("an author signature without a complete digest must be rejected");
+            assert!(error.to_string().contains("CHECK"), "{error}");
+        }
+
+        database
+            .execute_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                format!(
+                    "INSERT INTO registry_publication_evidence \
+                     (id, request_id, authority, subject_digest_sha256, evidence_reference, \
+                      issuer_identity, policy_revision, signature_digest_sha256, evidence_digest_sha256, \
+                      recorded_by_principal) \
+                     VALUES ('build-attestation', 'request-1', 'build_service_attestation', '{}', \
+                             'evidence://build', 'build-service', 'policy', NULL, '{}', '{{}}')",
+                    "c".repeat(64),
+                    "d".repeat(64),
+                ),
+            ))
+            .await
+            .expect("non-author evidence may use its authority-specific payload contract");
+    }
 }

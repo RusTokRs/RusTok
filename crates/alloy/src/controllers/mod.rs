@@ -770,6 +770,9 @@ pub async fn stage_release(
                 auth.0.user_id,
                 request.idempotency_key,
             ),
+            // `release_auth` established the host permission; the registry
+            // owner rechecks it against the locked request and owner binding.
+            actor_can_manage_modules: true,
         })
         .await
         .map_err(release_error)?;

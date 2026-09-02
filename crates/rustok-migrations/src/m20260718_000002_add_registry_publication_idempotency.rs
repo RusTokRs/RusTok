@@ -81,6 +81,18 @@ impl MigrationTrait for Migration {
                 reuploaded_after_changes_requested BOOLEAN NOT NULL,\
                 committed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (request_id, idempotency_key)\
             );\
+            CREATE TABLE registry_author_signature_evidence_operations (\
+                operation_id UUID PRIMARY KEY, request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
+                idempotency_key UUID NOT NULL, expected_revision BIGINT NOT NULL, actor_id UUID NOT NULL,\
+                trace_id TEXT NOT NULL, correlation_id UUID NOT NULL, actor_principal JSONB NOT NULL,\
+                subject_digest_sha256 TEXT NOT NULL CHECK (length(subject_digest_sha256) = 64),\
+                evidence_reference TEXT NOT NULL,\
+                signature_digest_sha256 TEXT NOT NULL CHECK (length(signature_digest_sha256) = 64),\
+                signer_identity TEXT NOT NULL, policy_revision TEXT NOT NULL,\
+                evidence_id TEXT NOT NULL REFERENCES registry_publication_evidence(id),\
+                resulting_revision BIGINT NOT NULL, recorded BOOLEAN NOT NULL,\
+                committed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (request_id, idempotency_key)\
+            );\
             CREATE TABLE registry_validation_job_enqueue_operations (\
                 operation_id UUID PRIMARY KEY, request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
                 idempotency_key UUID NOT NULL, expected_revision BIGINT NOT NULL, actor_id UUID NOT NULL,\
@@ -172,6 +184,18 @@ impl MigrationTrait for Migration {
                 reuploaded_after_changes_requested INTEGER NOT NULL CHECK (reuploaded_after_changes_requested IN (0, 1)),\
                 committed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (request_id, idempotency_key)\
             );\
+            CREATE TABLE registry_author_signature_evidence_operations (\
+                operation_id TEXT PRIMARY KEY NOT NULL, request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
+                idempotency_key TEXT NOT NULL, expected_revision INTEGER NOT NULL, actor_id TEXT NOT NULL,\
+                trace_id TEXT NOT NULL, correlation_id TEXT NOT NULL, actor_principal JSON NOT NULL,\
+                subject_digest_sha256 TEXT NOT NULL CHECK (length(subject_digest_sha256) = 64),\
+                evidence_reference TEXT NOT NULL,\
+                signature_digest_sha256 TEXT NOT NULL CHECK (length(signature_digest_sha256) = 64),\
+                signer_identity TEXT NOT NULL, policy_revision TEXT NOT NULL,\
+                evidence_id TEXT NOT NULL REFERENCES registry_publication_evidence(id),\
+                resulting_revision INTEGER NOT NULL, recorded INTEGER NOT NULL CHECK (recorded IN (0, 1)),\
+                committed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (request_id, idempotency_key)\
+            );\
             CREATE TABLE registry_validation_job_enqueue_operations (\
                 operation_id TEXT PRIMARY KEY NOT NULL, request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
                 idempotency_key TEXT NOT NULL, expected_revision INTEGER NOT NULL, actor_id TEXT NOT NULL,\
@@ -225,6 +249,10 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared("DROP TABLE registry_publish_artifact_operations")
+            .await?;
+        manager
+            .get_connection()
+            .execute_unprepared("DROP TABLE registry_author_signature_evidence_operations")
             .await?;
         manager
             .get_connection()

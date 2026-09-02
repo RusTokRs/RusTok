@@ -36,7 +36,7 @@ mod marketplace;
 mod marketplace_content;
 mod mcp;
 mod migration_preflight;
-mod migrations;
+pub mod migrations;
 #[cfg(feature = "oci-distribution")]
 mod oci;
 #[cfg(feature = "oci-distribution")]
@@ -51,6 +51,7 @@ mod publish_validation;
 mod reconciliation;
 mod recovery;
 mod resolution;
+mod retention;
 mod runtime;
 mod runtime_handles;
 mod schedule_delivery;
@@ -61,11 +62,16 @@ mod security_state;
 mod settings;
 mod settings_guard;
 mod static_package;
+mod transition_coordinator;
+mod transition_store;
 mod trust;
 
 pub use conflict_fences::{ConflictFenceSet, ConflictKey, ConflictKeyKind};
 pub use migration_preflight::{
     MigrationPreflightInput, MigrationPreflightReceipt, UpdateMode, evaluate_migration_preflight,
+};
+pub use retention::{
+    RetentionError, RetentionHoldKind, RetentionHoldLedger, RetentionHoldRecord, RetentionTarget,
 };
 pub use security_epoch::{
     GlobalSecurityEpoch, SecurityEpochConflictError, SecurityEpochRecord, SecurityEpochRegistry,
@@ -74,6 +80,12 @@ pub use settings_guard::{
     SettingsCompatibilityGuard, SettingsGuardError, SettingsGuardState,
     validate_settings_intersection,
 };
+pub use transition_coordinator::{
+    ModuleTransitionCheckpoint, ModuleTransitionCoordinator, ModuleTransitionFinalizeCommand,
+    ModuleTransitionRecoveryCommand, ModuleTransitionState, StartTransitionInput,
+    TransitionCoordinatorError,
+};
+pub use transition_store::{RetentionHoldStore, TransitionCheckpointStore, TransitionStoreError};
 
 use async_trait::async_trait;
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleKind, RusToKModule};
@@ -293,20 +305,19 @@ pub use executor::{
 };
 pub use governance::{
     ALLOY_PUBLICATION_SMOKE_TEST_PATH, ModuleAlloyAuthoredStageCommand,
-    ModuleAlloyAuthoredStageResult, ModuleBuildServiceAttestationCommand,
-    ModuleExternalPrebuiltStageCommand, ModuleExternalPrebuiltStageResult,
-    ModuleExternalSourceEvidence, ModuleGovernanceAction, ModuleGovernanceActorContext,
-    ModuleGovernanceError, ModuleGovernanceErrorCategory, ModuleGovernanceEventPayload,
-    ModuleGovernanceEventSnapshot, ModuleGovernanceGateSnapshot, ModuleGovernanceLifecycleSnapshot,
-    ModuleGovernanceModerationPolicy, ModuleGovernanceOwnerSnapshot,
-    ModuleGovernanceOwnerTransition, ModuleGovernancePublishArtifactDownloadSnapshot,
-    ModuleGovernancePublishArtifactUploadSlot, ModuleGovernancePublishRequestNextAction,
-    ModuleGovernancePublishRequestStatusSnapshot, ModuleGovernanceReleaseSnapshot,
-    ModuleGovernanceRequestAuthorizationSnapshot, ModuleGovernanceRequestSnapshot,
-    ModuleGovernanceValidationStageSnapshot, ModuleOwnerBindCommand, ModuleOwnerTransferCommand,
-    ModulePlatformAdmissionCommand, ModulePlatformPublicationSource,
-    ModulePublicationArtifactOrigin, ModulePublicationEvidenceAuthority,
-    ModulePublicationEvidenceCommand, ModulePublicationEvidenceResult,
+    ModuleAlloyAuthoredStageResult, ModuleAuthorSignatureEvidenceCommand,
+    ModuleBuildServiceAttestationCommand, ModuleExternalPrebuiltStageCommand,
+    ModuleExternalPrebuiltStageResult, ModuleExternalSourceEvidence, ModuleGovernanceAction,
+    ModuleGovernanceActorContext, ModuleGovernanceError, ModuleGovernanceErrorCategory,
+    ModuleGovernanceEventPayload, ModuleGovernanceEventSnapshot, ModuleGovernanceGateSnapshot,
+    ModuleGovernanceLifecycleSnapshot, ModuleGovernanceModerationPolicy,
+    ModuleGovernanceOwnerSnapshot, ModuleGovernanceOwnerTransition,
+    ModuleGovernancePublishArtifactDownloadSnapshot, ModuleGovernancePublishArtifactUploadSlot,
+    ModuleGovernancePublishRequestNextAction, ModuleGovernancePublishRequestStatusSnapshot,
+    ModuleGovernanceReleaseSnapshot, ModuleGovernanceRequestAuthorizationSnapshot,
+    ModuleGovernanceRequestSnapshot, ModuleGovernanceValidationStageSnapshot,
+    ModuleOwnerTransferCommand, ModulePlatformAdmissionCommand, ModulePlatformPublicationSource,
+    ModulePublicationArtifactOrigin, ModulePublicationEvidenceResult,
     ModulePublishApprovalOverride, ModulePublishArtifactAttachCommand,
     ModulePublishArtifactAttachResult, ModulePublishPlatformBuildStageCommand,
     ModulePublishPlatformBuildStageResult, ModulePublishRequestChangesCommand,
@@ -425,9 +436,7 @@ pub use reconciliation::{
     ModuleDesiredObservedState, ModuleReconciliationEvidence, ModuleReconciliationFailure,
     ModuleReconciliationPhase,
 };
-pub use recovery::{
-    ModuleOperationRecoveryError, ModuleOperationRecoveryPlan, ModulePostHookRetryRequest,
-};
+pub use recovery::{ModuleOperationRecoveryError, ModuleOperationRecoveryPlan};
 pub use resolution::{
     ModuleResolutionCandidate, ModuleResolutionConflict, ModuleResolutionError,
     ModuleResolutionProvider, ModuleResolutionProviderKind, ModuleResolutionRequest,

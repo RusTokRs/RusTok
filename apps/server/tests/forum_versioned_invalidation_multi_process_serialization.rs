@@ -185,7 +185,7 @@ impl ForumProjectionOwnerRevisionSourcePort for DatabaseOwnerSource {
                     ))
                     .await
             }
-}
+        }
         .map_err(|_| owner_source_unavailable())?;
 
         rows.into_iter()

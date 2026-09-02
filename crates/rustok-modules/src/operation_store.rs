@@ -294,6 +294,7 @@ impl ModuleOperationJournal {
         if existing.module_slug != request.module_slug
             || existing.requested_enabled != request.requested_enabled
             || existing.requested_by != request.requested_by
+            || existing.trace_id != request.trace_id
             || existing.correlation_id.as_deref() != Some(request.correlation_id.as_str())
             || existing.expected_revision != request.expected_revision
         {

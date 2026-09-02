@@ -103,7 +103,7 @@ where
                 roles::Entity::update_many()
                     .col_expr(
                         roles::Column::UpdatedAt,
-                        Expr::col(roles::Column::UpdatedAt).into(),
+                        Expr::col(roles::Column::UpdatedAt),
                     )
                     .filter(roles::Column::Id.eq(role.id))
                     .exec(db)
@@ -113,7 +113,7 @@ where
             Ok(role)
         }
         _ => unreachable!("unsupported SeaORM database backend"),
-}
+    }
 }
 
 fn internal(error: sea_orm::DbErr) -> AuthAdminMutationError {

@@ -30,7 +30,7 @@ mod m20260718_000031_artifact_data_exports;
 mod m20260720_000032_artifact_binding_operation_rls;
 mod m20260722_000033_artifact_data_snapshots;
 mod m20260722_000034_static_promotions;
-mod m20260722_000035_static_distribution_rollouts;
+pub(crate) mod m20260722_000035_static_distribution_rollouts;
 mod m20260722_000036_artifact_security_state;
 mod m20260722_000037_policy_revision_cursors;
 mod m20260726_000038_artifact_data_object_deletions;
@@ -40,6 +40,8 @@ mod m20260727_000041_registry_release_artifact_contracts;
 pub(crate) mod m20260814_000042_artifact_node_reconciliation;
 mod m20260822_000043_artifact_ui_contribution_locks;
 pub(crate) mod m20260822_000044_module_build_execution_claims;
+pub(crate) mod m20260901_000045_artifact_admission_reverification_operations;
+pub(crate) mod m20260902_000046_module_transition_and_retention_tables;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -87,5 +89,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260814_000042_artifact_node_reconciliation::Migration),
         Box::new(m20260822_000043_artifact_ui_contribution_locks::Migration),
         Box::new(m20260822_000044_module_build_execution_claims::Migration),
+        Box::new(m20260901_000045_artifact_admission_reverification_operations::Migration),
+        Box::new(m20260902_000046_module_transition_and_retention_tables::Migration),
     ]
 }

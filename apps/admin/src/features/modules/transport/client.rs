@@ -631,3 +631,129 @@ pub async fn yank_registry_release(
     .await
     .map_err(|error| ApiError::Graphql(error.to_string()))
 }
+
+const TRANSITION_CHECKPOINT_QUERY: &str = r#"
+query GetTransitionCheckpoint($opId: UUID!) {
+    moduleTransitionCheckpoint(operationId: $opId) {
+        operationId
+        moduleSlug
+        tenantId
+        predecessorDigest
+        candidateDigest
+        state
+        stateDetails
+        securityEpoch
+        recoveryAttemptCount
+        createdAt
+        updatedAt
+    }
+}
+"#;
+
+const RETENTION_HOLDS_QUERY: &str = r#"
+query GetRetentionHolds {
+    moduleRetentionHolds {
+        holdId
+        targetType
+        targetIdentity
+        kind
+        createdAt
+    }
+}
+"#;
+
+const TRIGGER_RECOVERY_MUTATION: &str = r#"
+mutation TriggerRecovery($opId: UUID!, $reason: String!) {
+    triggerModuleRecovery(operationId: $opId, reason: $reason) {
+        operationId
+        moduleSlug
+        tenantId
+        predecessorDigest
+        candidateDigest
+        state
+        stateDetails
+        securityEpoch
+        recoveryAttemptCount
+        createdAt
+        updatedAt
+    }
+}
+"#;
+
+const FINALIZE_TRANSITION_MUTATION: &str = r#"
+mutation FinalizeTransition($opId: UUID!) {
+    finalizeModuleTransition(operationId: $opId) {
+        operationId
+        moduleSlug
+        tenantId
+        predecessorDigest
+        candidateDigest
+        state
+        stateDetails
+        securityEpoch
+        recoveryAttemptCount
+        createdAt
+        updatedAt
+    }
+}
+"#;
+
+pub async fn fetch_transition_checkpoint(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    operation_id: String,
+) -> Result<Option<ModuleTransitionCheckpoint>, ApiError> {
+    let response: ModuleTransitionCheckpointResponse = request(
+        TRANSITION_CHECKPOINT_QUERY,
+        serde_json::json!({ "opId": operation_id }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.checkpoint)
+}
+
+pub async fn fetch_retention_holds(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<Vec<RetentionHold>, ApiError> {
+    let response: ModuleRetentionHoldsResponse = request(
+        RETENTION_HOLDS_QUERY,
+        serde_json::json!({}),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.holds)
+}
+
+pub async fn trigger_module_recovery(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    operation_id: String,
+    reason: String,
+) -> Result<ModuleTransitionCheckpoint, ApiError> {
+    let response: TriggerModuleRecoveryResponse = request(
+        TRIGGER_RECOVERY_MUTATION,
+        serde_json::json!({ "opId": operation_id, "reason": reason }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.checkpoint)
+}
+
+pub async fn finalize_module_transition(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    operation_id: String,
+) -> Result<ModuleTransitionCheckpoint, ApiError> {
+    let response: FinalizeModuleTransitionResponse = request(
+        FINALIZE_TRANSITION_MUTATION,
+        serde_json::json!({ "opId": operation_id }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.checkpoint)
+}

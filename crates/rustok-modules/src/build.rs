@@ -567,9 +567,8 @@ impl SeaOrmModuleBuildService {
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(tenant_id),
-                    None,
+                self.infrastructure.event_envelope_for_command(
+                    &request.context,
                     DomainEvent::ModuleBuildQueued {
                         request_id: request.request_id,
                         tenant_id,
@@ -689,9 +688,8 @@ impl SeaOrmModuleBuildService {
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(result.tenant_id),
-                    None,
+                self.infrastructure.event_envelope_for_command(
+                    &request.context,
                     DomainEvent::ModuleBuildCompleted {
                         request_id: result.request_id,
                         tenant_id: result.tenant_id,
@@ -1465,7 +1463,7 @@ pub enum ModuleBuildProtocolError {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
     use rustok_sandbox::{LocalSandboxScenarioComparison, LocalSandboxScenarioResult};
@@ -1487,7 +1485,33 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Default)]
+    struct CapturingEventWriter {
+        events: Arc<Mutex<Vec<rustok_events::EventEnvelope>>>,
+    }
+
+    #[async_trait]
+    impl rustok_outbox::TransactionalEventWriter for CapturingEventWriter {
+        async fn write_event(
+            &self,
+            _transaction: &sea_orm::DatabaseTransaction,
+            envelope: rustok_events::EventEnvelope,
+        ) -> rustok_core::Result<()> {
+            self.events
+                .lock()
+                .expect("capturing event writer lock")
+                .push(envelope);
+            Ok(())
+        }
+    }
+
     async fn build_service() -> SeaOrmModuleBuildService {
+        build_service_with_event_writer(Arc::new(NoopEventWriter)).await
+    }
+
+    async fn build_service_with_event_writer(
+        event_writer: Arc<dyn rustok_outbox::TransactionalEventWriter>,
+    ) -> SeaOrmModuleBuildService {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("database");
@@ -1501,8 +1525,7 @@ mod tests {
             .expect("execution-claim schema");
         SeaOrmModuleBuildService::with_infrastructure(
             database,
-            ControlPlaneInfrastructure::default()
-                .with_transactional_event_writer(Arc::new(NoopEventWriter)),
+            ControlPlaneInfrastructure::default().with_transactional_event_writer(event_writer),
         )
     }
 
@@ -1647,6 +1670,45 @@ mod tests {
                 .revision,
             3
         );
+    }
+
+    #[tokio::test]
+    async fn build_events_retain_the_submitted_command_context() {
+        let event_writer = CapturingEventWriter::default();
+        let service = build_service_with_event_writer(Arc::new(event_writer.clone())).await;
+        let request = request();
+        let context = request.context.clone();
+        let tenant_id = context.tenant_id.expect("tenant");
+
+        service.submit(request.clone()).await.expect("submit");
+        let claimed = service
+            .claim_queued(tenant_id, request.request_id)
+            .await
+            .expect("claim queued request");
+        service
+            .record_result(&claimed.claim, cancelled_result(&claimed.request))
+            .await
+            .expect("record terminal result");
+
+        let mut changed_context_retry = request.clone();
+        changed_context_retry.context.trace_id = "trace-2".to_string();
+        assert!(matches!(
+            service.submit(changed_context_retry).await,
+            Err(ModuleBuildProtocolError::IdempotencyConflict)
+        ));
+
+        let events = event_writer
+            .events
+            .lock()
+            .expect("capturing event writer lock")
+            .clone();
+        assert_eq!(events.len(), 2);
+        for event in events {
+            assert_eq!(event.tenant_id, tenant_id);
+            assert_eq!(event.actor_id, Some(context.actor_id));
+            assert_eq!(event.correlation_id, context.correlation_id);
+            assert_eq!(event.trace_id.as_deref(), Some(context.trace_id.as_str()));
+        }
     }
 
     #[tokio::test]

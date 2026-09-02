@@ -34,6 +34,7 @@ pub mod storefront_principal_security;
 pub mod subscriptions;
 pub mod system;
 pub mod tenant_security;
+pub mod transition_lifecycle;
 pub mod types;
 
 pub use schema::{AppSchema, GraphqlSchemaDependencies, SharedGraphqlSchema, build_schema};

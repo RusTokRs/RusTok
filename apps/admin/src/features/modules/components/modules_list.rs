@@ -1,12 +1,13 @@
 use super::module_card::ModuleCard;
 use super::module_detail_panel::ModuleDetailPanel;
 use super::module_update_card::ModuleUpdateCard;
+use super::transition_control_card::TransitionControlCard;
 use crate::app::providers::enabled_modules::use_enabled_modules_context;
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleCompositionSnapshot, ModuleInfo,
     ModuleOperationRecoveryPlan, ModuleSettingField, TenantModule,
 };
-use crate::features::modules::transport;
+use crate::features::modules::transport::{self, ModuleTransitionCheckpoint, RetentionHold};
 #[cfg(target_arch = "wasm32")]
 use crate::shared::api as shared_api;
 use crate::shared::ui::ui_success_message as UiSuccessMessage;
@@ -459,6 +460,24 @@ pub fn ModulesList(
     let query = use_query_map();
     let enabled_modules = use_enabled_modules_context();
     let is_showcase_surface = admin_surface == "next-admin";
+
+    let (active_transition, _set_active_transition) =
+        signal::<Option<ModuleTransitionCheckpoint>>(None);
+    let (retention_holds, set_retention_holds) = signal::<Vec<RetentionHold>>(vec![]);
+
+    let refresh_retention_holds = move || {
+        let token_val = token.get();
+        let tenant_val = tenant.get();
+        spawn_local(async move {
+            if let Ok(holds) = transport::fetch_retention_holds(token_val, tenant_val).await {
+                set_retention_holds.set(holds);
+            }
+        });
+    };
+
+    Effect::new(move |_| {
+        refresh_retention_holds();
+    });
 
     let push_build_job = move |build: BuildJob| {
         set_active_build_state.set(Some(build.clone()));
@@ -2036,6 +2055,40 @@ pub fn ModulesList(
                 <Show when=move || selected_tab.get() == ModulesTab::Updates>
                     <div class="space-y-6">
                         <div class="rounded-xl border border-border bg-card p-6 shadow-sm"><div class="space-y-2"><h3 class="text-base font-semibold text-card-foreground">"Versioned updates"</h3><p class="text-sm text-muted-foreground">"Only modules with an explicit installed version and a newer registry version appear here."</p></div></div>
+
+                        {move || active_transition.get().map(|checkpoint| {
+                            let refresh = refresh_retention_holds;
+                            view! {
+                                <TransitionControlCard
+                                    checkpoint=checkpoint
+                                    retention_holds=retention_holds.get()
+                                    on_refresh=Callback::new(move |()| refresh())
+                                />
+                            }
+                        })}
+
+                        {move || if active_transition.get().is_none() && !retention_holds.get().is_empty() {
+                            Some(view! {
+                                <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
+                                    <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                                        "Platform Artifact Retention Holds (" {move || retention_holds.get().len()} ")"
+                                    </h4>
+                                    <div class="space-y-1.5 font-mono text-xs">
+                                        {move || retention_holds.get().into_iter().map(|hold| {
+                                            view! {
+                                                <div class="flex items-center justify-between border-b border-border/30 pb-1">
+                                                    <span class="text-foreground">{hold.target_type} ": " {hold.target_identity}</span>
+                                                    <span class="rounded bg-secondary px-2 py-0.5 text-secondary-foreground">{hold.kind}</span>
+                                                </div>
+                                            }
+                                        }).collect_view()}
+                                    </div>
+                                </div>
+                            })
+                        } else {
+                            None
+                        }}
+
                         <Show when=move || !update_candidates().is_empty() fallback=move || view! { <div class="rounded-xl border border-border bg-card p-6 shadow-sm"><p class="text-sm font-medium text-card-foreground">"No pinned module updates detected."</p><p class="mt-2 text-sm text-muted-foreground">"Path-based local modules follow the current repository state and therefore do not show a separate version upgrade action."</p></div> }>
                             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                 {move || update_candidates().into_iter().map(|(module, installed_module)| {

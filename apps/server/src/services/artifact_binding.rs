@@ -105,7 +105,7 @@ pub(crate) async fn dispatch_artifact_binding_operation(
         trace_id: request
             .as_ref()
             .map(|request| request.context.trace_id.clone())
-            .or_else(|| rustok_telemetry::current_trace_id()),
+            .or_else(rustok_telemetry::current_trace_id),
     };
     match request {
         Some(request) => {
