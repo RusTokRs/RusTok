@@ -541,3 +541,52 @@ fn capability_names_cannot_bypass_validation_through_deserialization() {
 
     assert!(parsed.is_err());
 }
+
+struct FailingExecutionObserver;
+
+#[async_trait]
+impl ExecutionObserver for FailingExecutionObserver {
+    async fn observe(&self, _record: &ExecutionRecord) -> SandboxResult<()> {
+        Err(SandboxError::InvalidRequest("observer storage unavailable".into()))
+    }
+}
+
+#[tokio::test]
+async fn successful_execution_is_not_reclassified_when_observer_fails() {
+    let mut registry = ExecutorRegistry::new();
+    registry
+        .register_in_process(RhaiFixtureExecutor)
+        .expect("register fixture executor");
+    let runtime = SandboxRuntime::new(registry, Arc::new(TestBroker))
+        .with_observer(Arc::new(FailingExecutionObserver));
+
+    let outcome = runtime
+        .execute(request(true))
+        .await
+        .expect("execution must succeed even when observer fails");
+
+    assert_eq!(outcome.output, json!({ "operation": "publish" }));
+}
+
+#[tokio::test]
+async fn execution_error_is_not_masked_when_observer_fails() {
+    let mut registry = ExecutorRegistry::new();
+    registry
+        .register_in_process(SecretFailExecutor)
+        .expect("register secret fail executor");
+    let runtime = SandboxRuntime::new(registry, Arc::new(TestBroker))
+        .with_observer(Arc::new(FailingExecutionObserver));
+
+    let error = runtime
+        .execute(request(true))
+        .await
+        .expect_err("execution must fail with original executor error");
+
+    match error {
+        SandboxError::Trap(message) => {
+            assert_eq!(message, "token=must-not-appear-in-audit");
+        }
+        other => panic!("expected SandboxError::Trap, got: {other:?}"),
+    }
+}
+

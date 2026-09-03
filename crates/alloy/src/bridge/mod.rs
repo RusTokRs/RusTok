@@ -72,10 +72,34 @@ mod tests {
             }
         );
         assert_eq!(
+            Bridge::capabilities_for_phase(ExecutionPhase::After),
+            PhaseCapabilities {
+                validation_helpers: false,
+                db_services: true,
+                external_services: false,
+            }
+        );
+        assert_eq!(
             Bridge::capabilities_for_phase(ExecutionPhase::OnCommit),
             PhaseCapabilities {
                 validation_helpers: false,
                 db_services: false,
+                external_services: true,
+            }
+        );
+        assert_eq!(
+            Bridge::capabilities_for_phase(ExecutionPhase::Manual),
+            PhaseCapabilities {
+                validation_helpers: true,
+                db_services: true,
+                external_services: true,
+            }
+        );
+        assert_eq!(
+            Bridge::capabilities_for_phase(ExecutionPhase::Scheduled),
+            PhaseCapabilities {
+                validation_helpers: true,
+                db_services: true,
                 external_services: true,
             }
         );

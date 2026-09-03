@@ -72,12 +72,13 @@ struct JwtConfig {
 pub async fn run() -> Result<()> {
     let config = load_config()?;
     let database_uri = resolve_database_uri(&config.database.uri);
+    let production = is_production_environment();
+    validate_database_deployment(&database_uri, production)?;
+    validate_https_deployment(production, hsts_enabled())?;
     let db = connect_database(&config.database, &database_uri).await?;
     migrate_database_if_enabled(&db, config.database.auto_migrate).await?;
     let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
         .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
-    let production = is_production_environment();
-    validate_https_deployment(production, hsts_enabled())?;
     let runtime_ctx = ServerRuntimeContext::new(db, rustok_settings.clone());
     let auth_config = crate::auth::auth_config_from_host_settings(
         config.auth.jwt.secret.clone(),
@@ -196,6 +197,33 @@ fn validate_auth_deployment(config: &crate::auth::AuthConfig, production: bool) 
                         .to_string(),
                 ));
             }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_database_deployment(database_uri: &str, production: bool) -> Result<()> {
+    if !production {
+        return Ok(());
+    }
+
+    let normalized = database_uri.trim().to_ascii_lowercase();
+    const FORBIDDEN_PROD_DATABASE_PATTERNS: &[&str] = &[
+        "rustok:rustok",
+        "postgres:postgres",
+        "admin:admin",
+        "root:root",
+        "sqlite:",
+        "localhost:5432/rustok_dev",
+        "127.0.0.1:5432/rustok_dev",
+    ];
+
+    for pattern in FORBIDDEN_PROD_DATABASE_PATTERNS {
+        if normalized.contains(pattern) {
+            return Err(Error::BadRequest(format!(
+                "Production database configuration must not use development credentials or local placeholders (`{pattern}`)"
+            )));
         }
     }
 
@@ -414,5 +442,40 @@ mod tests {
             .with_audience("rustok-production-admin");
         validate_auth_deployment(&config, true)
             .expect("explicit claims and a high-entropy secret satisfy production policy");
+    }
+
+    #[test]
+    fn production_rejects_default_dev_database_credentials() {
+        let error = super::validate_database_deployment(
+            "postgres://rustok:rustok@localhost:5432/rustok_dev",
+            true,
+        )
+        .expect_err("production must reject dev database defaults");
+        assert!(error.to_string().contains("development credentials"));
+    }
+
+    #[test]
+    fn production_rejects_sqlite_database() {
+        let error = super::validate_database_deployment("sqlite::memory:", true)
+            .expect_err("production must reject sqlite");
+        assert!(error.to_string().contains("development credentials"));
+    }
+
+    #[test]
+    fn production_accepts_secure_database_uri() {
+        super::validate_database_deployment(
+            "postgres://app_user:K8x#mP9$vL2@prod-db.internal:5432/rustok_prod",
+            true,
+        )
+        .expect("strong production credentials should pass");
+    }
+
+    #[test]
+    fn non_production_allows_dev_database_credentials() {
+        super::validate_database_deployment(
+            "postgres://rustok:rustok@localhost:5432/rustok_dev",
+            false,
+        )
+        .expect("development allows dev credentials");
     }
 }

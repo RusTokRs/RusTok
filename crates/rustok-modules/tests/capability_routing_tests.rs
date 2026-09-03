@@ -63,6 +63,46 @@ async fn test_http_capability_broker_validation() {
     );
     let res3 = broker.invoke(&invalid_call3, &grant).await;
     assert!(res3.is_err(), "Unsupported method should fail");
+
+    // SSRF: Localhost destination -> error
+    let ssrf_call1 = test_call(
+        "platform.http",
+        json!({ "method": "GET", "url": "https://localhost/v1/test" }),
+    );
+    let res_ssrf1 = broker.invoke(&ssrf_call1, &grant).await;
+    assert!(res_ssrf1.is_err(), "Localhost destination must be rejected");
+
+    // SSRF: 127.0.0.1 destination -> error
+    let ssrf_call2 = test_call(
+        "platform.http",
+        json!({ "method": "GET", "url": "https://127.0.0.1/v1/test" }),
+    );
+    let res_ssrf2 = broker.invoke(&ssrf_call2, &grant).await;
+    assert!(res_ssrf2.is_err(), "127.0.0.1 destination must be rejected");
+
+    // SSRF: Cloud metadata 169.254.169.254 -> error
+    let ssrf_call3 = test_call(
+        "platform.http",
+        json!({ "method": "GET", "url": "https://169.254.169.254/v1/test" }),
+    );
+    let res_ssrf3 = broker.invoke(&ssrf_call3, &grant).await;
+    assert!(res_ssrf3.is_err(), "Cloud metadata destination must be rejected");
+
+    // SSRF: Private network 10.0.0.1 -> error
+    let ssrf_call4 = test_call(
+        "platform.http",
+        json!({ "method": "GET", "url": "https://10.0.0.1/v1/test" }),
+    );
+    let res_ssrf4 = broker.invoke(&ssrf_call4, &grant).await;
+    assert!(res_ssrf4.is_err(), "Private IP destination must be rejected");
+
+    // SSRF: Internal .internal domain -> error
+    let ssrf_call5 = test_call(
+        "platform.http",
+        json!({ "method": "GET", "url": "https://service.internal/v1/test" }),
+    );
+    let res_ssrf5 = broker.invoke(&ssrf_call5, &grant).await;
+    assert!(res_ssrf5.is_err(), "Internal domain must be rejected");
 }
 
 #[tokio::test]

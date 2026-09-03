@@ -89,7 +89,7 @@ impl SandboxRuntime {
         let _permit = self.admission.admit(&request)?;
         let started_at = Utc::now();
         let context = request.context.clone();
-        self.observe(ExecutionRecord {
+        self.observe_best_effort(ExecutionRecord {
             execution_id: context.execution_id,
             subject: request.subject.clone(),
             context: context.clone(),
@@ -100,7 +100,7 @@ impl SandboxRuntime {
             metrics: None,
             error_code: None,
         })
-        .await?;
+        .await;
 
         let execution_timer = Instant::now();
         let queue_time_ms = elapsed_millis(queue_timer);
@@ -120,7 +120,7 @@ impl SandboxRuntime {
                 outcome.metrics.queue_time_ms = queue_time_ms;
                 outcome.metrics.duration_ms = elapsed_millis(execution_timer);
                 outcome.metrics.capability_calls = host.capability_calls();
-                self.observe(ExecutionRecord {
+                self.observe_best_effort(ExecutionRecord {
                     execution_id: context.execution_id,
                     subject: request.subject,
                     context: context.clone(),
@@ -131,7 +131,7 @@ impl SandboxRuntime {
                     metrics: Some(outcome.metrics.clone()),
                     error_code: None,
                 })
-                .await?;
+                .await;
                 Ok(outcome)
             }
             Err(error) => {
@@ -141,7 +141,7 @@ impl SandboxRuntime {
                     capability_calls: host.capability_calls(),
                     ..Default::default()
                 };
-                self.observe(ExecutionRecord {
+                self.observe_best_effort(ExecutionRecord {
                     execution_id: context.execution_id,
                     subject: request.subject,
                     context,
@@ -152,15 +152,27 @@ impl SandboxRuntime {
                     metrics: Some(metrics),
                     error_code: Some(error.code().to_string()),
                 })
-                .await?;
+                .await;
                 Err(error)
             }
         }
     }
 
-    async fn observe(&self, record: ExecutionRecord) -> SandboxResult<()> {
+    async fn observe_best_effort(&self, record: ExecutionRecord) {
         for observer in &self.observers {
-            observer.observe(&record).await?;
+            if let Err(error) = observer.observe(&record).await {
+                tracing::error!(
+                    execution_id = %record.execution_id,
+                    error = ?error,
+                    "sandbox execution observer failed"
+                );
+            }
+        }
+    }
+
+    pub async fn observe(&self, record: &ExecutionRecord) -> SandboxResult<()> {
+        for observer in &self.observers {
+            observer.observe(record).await?;
         }
         Ok(())
     }
