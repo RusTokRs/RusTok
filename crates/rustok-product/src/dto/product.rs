@@ -19,9 +19,10 @@ where
 }
 
 fn validate_tenant_locale(locale: &str) -> Result<(), ValidationError> {
-    TenantLocale::new(locale)
-        .map(|_| ())
-        .map_err(|_| ValidationError::new("tenant_locale"))
+    match TenantLocale::new(locale) {
+        Ok(canonical) if canonical.as_str() == locale => Ok(()),
+        _ => Err(ValidationError::new("tenant_locale")),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, Validate)]
@@ -223,6 +224,16 @@ mod tests {
             meta_description: None,
         };
         assert!(direct.validate().is_err());
+
+        let noncanonical_direct = ProductTranslationInput {
+            locale: "pt_br".to_string(),
+            title: "Title".to_string(),
+            handle: None,
+            description: None,
+            meta_title: None,
+            meta_description: None,
+        };
+        assert!(noncanonical_direct.validate().is_err());
     }
 
     #[test]
@@ -243,5 +254,12 @@ mod tests {
             "values": ["Small"]
         }));
         assert!(invalid.is_err());
+
+        let noncanonical_direct = ProductOptionTranslationInput {
+            locale: "zh_hant_tw".to_string(),
+            name: "Size".to_string(),
+            values: vec!["Small".to_string()],
+        };
+        assert!(noncanonical_direct.validate().is_err());
     }
 }
