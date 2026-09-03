@@ -73,7 +73,13 @@ This is the active cross-cutting implementation plan. As of 2026-09-02:
   Translation-side evidence verifies independent database pools converge on
   one checkpoint advance plus one typed conflict, and separate processes
   recover from provider outage through cursor sync and atomic full-rescan.
-  Isolated live Media deployment evidence remains provider-owned;
+  Repository-hosted PostgreSQL Media evidence additionally verifies independent
+  replicas sharing the owner tables, CAS apply/conflict, durable cursor
+  recovery, idempotent replay, and aggregate progress convergence: exact-head
+  run `33623651814` on `52e4ae005f13e9bf303431dc5066a943096eacc8`
+  and post-merge run `33635199181` on
+  `main@47f700ea638ea5bd0978f05db654c725d5164576` are green. This remains CI
+  evidence; isolated live Media deployment evidence remains provider-owned;
 - tenant-scoped jobs, immutable owner-provider item snapshots, proposal and
   approval persistence, and owner-application receipt persistence now exist.
   Job creation and item admission are idempotent and request-hash bound; item
@@ -200,8 +206,9 @@ This is the active cross-cutting implementation plan. As of 2026-09-02:
   Fly/GrapesJS bodies remain outside this pilot. Taxonomy-owned tags and Blog
   posts remain outside this pilot. Focused evidence includes Translation Memory
   retention run `33539223647`, Pages `page_metadata` run `33545157694`,
-  Navigation `navigation/menu` run `33549035590`, and Forum Category/Taxonomy
-  cutover run `33431200532`;
+  Navigation `navigation/menu` run `33549035590`, Forum Category/Taxonomy
+  cutover run `33431200532`, and Media `media/asset` PostgreSQL exact-head run
+  `33623651814` plus post-merge `main` run `33635199181`;
 - module-owned Leptos and Next admin workbenches expose six parity tabs for
   policy, target, inventory, progress, reviewed workflow, versioned glossaries,
   and Translation Memory. Both use URL-owned `glossary_id` and
@@ -383,7 +390,7 @@ and exclusion reason.
 | Forum | Category binding plus topic/reply copy | Forum Category canonical copy is not a Forum Translation target. The verified CAT-5 cutover moved canonical localized copy, routes, hierarchy and presentation to Taxonomy and retired `forum/category`, its change/progress runtime, and donor translation storage. Category Translation goes through `taxonomy/term`; topic/reply are UGC and require opt-in, moderation, revisions, and no author-content overwrite |
 | Product/catalog | product/variant/options, attributes, category/schema labels, SEO, image alt, localized Flex values | Dedicated catalog wave after per-locale CAS, owner extraction cleanup, SEO precedence, and removal of base/translation image-alt drift |
 | Taxonomy | term name/slug/description, including canonical Category copy consumed by Blog and Forum | Registered `taxonomy/term` pilot with exact-locale snapshots, resource/source/target CAS, shared durable receipts, and an append-only owner cursor. Aliases remain curated search/SEO semantics rather than automatic MT by default; Blog and Forum Category do not add a second provider or evidence gate |
-| Media | title/alt/caption | Provider registered for bounded exact discovery/read/validate/apply and tenant-scoped cursor repair with resource/source/target revisions, atomic receipt, and neutral owner event. Direct owner edits publish identical repair evidence; production enablement now waits on projection replay and multi-replica checkpoint recovery evidence |
+| Media | title/alt/caption | Provider registered for bounded exact discovery/read/validate/apply and tenant-scoped cursor repair with resource/source/target revisions, atomic receipt, and neutral owner event. Direct owner edits publish identical repair evidence. Repository-hosted PostgreSQL projection replay and multi-replica checkpoint evidence is retained as exact-head run `33623651814` and post-merge run `33635199181`; isolated/live deployment remains a separate provider-owned gate |
 | SEO | title/description/keywords/Open Graph copy | Decide precedence between owner-embedded SEO and explicit SEO override before registration; media identifiers are preserved |
 | Flex | schema copy and attached/standalone localized values | Expose only schema-declared localized leaves through exact operations; never expose arbitrary payload JSON |
 | Profiles/Comments/Groups | display copy, bios, comments, group title/summary/body | Treat personal/UGC fields as opt-in and policy-sensitive; preserve names by default and never rewrite immutable revisions |
@@ -1380,9 +1387,12 @@ Onboard bounded production surfaces whose semantics are already close to the
 target:
 
 1. Media title/alt/caption: provider registration, atomic apply, direct-write
-   event parity, and tenant-scoped change-cursor repair are present; run
-   projection replay and multi-replica checkpoint recovery evidence before
-   production inventory enablement.
+   event parity, and tenant-scoped change-cursor repair are present.
+   Repository-hosted PostgreSQL projection replay, concurrent replica behavior,
+   checkpoint recovery, idempotent replay, and aggregate progress evidence are
+   complete in exact-head run `33623651814` and post-merge run `33635199181`.
+   Retain isolated/live deployment and production-database rollout evidence as
+   the separate provider-owned gate.
 2. Taxonomy term name/slug/description: provider registration, exact
    resource/source/target CAS, shared durable receipts, and append-only
    owner-cursor repair are present; this provider is also the only Translation
@@ -1409,8 +1419,9 @@ target:
 
 Focused retained evidence currently includes Translation Memory retention
 `33539223647`, Pages `page_metadata` `33545157694`, Navigation
-`navigation/menu` `33549035590`, and Forum Category/Taxonomy cutover
-`33431200532`.
+`navigation/menu` `33549035590`, Forum Category/Taxonomy cutover
+`33431200532`, and Media `media/asset` PostgreSQL exact-head `33623651814` plus
+post-merge `main` `33635199181`.
 
 The conformance suite still contains non-production reference fixtures for
 long/structured content, Product/commerce, and a localized setting so the
@@ -1617,6 +1628,9 @@ Focused retained evidence as of 2026-09-02:
 - Pages `pages/page_metadata`: `33545157694`;
 - Navigation `navigation/menu`: `33549035590`;
 - Forum Category/Taxonomy cutover: `33431200532`;
+- Media `media/asset` PostgreSQL exact-head: `33623651814`;
+- Media `media/asset` PostgreSQL post-merge `main@47f700ea638ea5bd0978f05db654c725d5164576`:
+  `33635199181`;
 - Translation runtime composition exact PR head: `33608857569`;
 - Translation runtime composition post-merge `main@b16da9a8babe147b7ce75f871913b4bc4c34c506`:
   `33609559524`.
