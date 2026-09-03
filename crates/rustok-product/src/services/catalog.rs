@@ -4,6 +4,7 @@ mod commands;
 pub mod helpers;
 mod projection;
 mod queries;
+mod storefront_localization;
 mod tags;
 pub mod types;
 
@@ -39,6 +40,7 @@ use crate::ProductCatalogSchemaService;
 
 use super::write_transaction::ProductWriteTransaction;
 use helpers::*;
+use storefront_localization::localize_product_response;
 
 const PRODUCT_SCOPE_VALUE: &str = "product";
 
