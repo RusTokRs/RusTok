@@ -1,8 +1,10 @@
-//! Module settings schema validation and normalization.
+//! Module settings schema validation, normalization, and localization metadata.
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use thiserror::Error;
+
+const MAX_LOCALIZED_FIELD_ID_BYTES: usize = 128;
 
 /// Declarative schema for one module setting.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -31,6 +33,132 @@ pub struct ModuleSettingSpec {
     pub items: Option<Box<ModuleSettingSpec>>,
 }
 
+impl ModuleSettingSpec {
+    /// Validates owner-declared Translation metadata without changing the
+    /// settings schema's public Rust shape.
+    ///
+    /// `localized_fields` maps a stable owner field ID to a schema path.
+    /// `sensitive_paths` fences a schema node and all of its descendants from
+    /// localization. Localization is therefore explicit opt-in and can be
+    /// onboarded independently of legacy `ModuleSettingSpec` struct literals.
+    pub fn validate_localization_registry(
+        module_slug: &str,
+        schema: &HashMap<String, ModuleSettingSpec>,
+        localized_fields: &BTreeMap<String, String>,
+        sensitive_paths: &BTreeSet<String>,
+    ) -> Result<(), ModuleSettingsValidationError> {
+        validate_module_settings_schema(module_slug, schema)?;
+
+        for sensitive_path in sensitive_paths {
+            resolve_setting_spec(module_slug, schema, sensitive_path)?;
+        }
+
+        let mut claimed_paths = HashMap::<String, String>::new();
+        for (field_id, path) in localized_fields {
+            if field_id != field_id.trim() || !is_valid_setting_field_id(field_id) {
+                return Err(invalid_schema(
+                    module_slug,
+                    path,
+                    "localized field IDs must be canonical 1..128 byte stable tokens using ASCII letters, digits, '.', '_' or '-'",
+                ));
+            }
+
+            if let Some(existing_field_id) = claimed_paths.insert(path.clone(), field_id.clone()) {
+                return Err(invalid_schema(
+                    module_slug,
+                    path,
+                    format!(
+                        "localized path is already claimed by field ID '{existing_field_id}'"
+                    ),
+                ));
+            }
+
+            let spec = resolve_setting_spec(module_slug, schema, path)?;
+            if spec.value_type.trim() != "string" {
+                return Err(invalid_schema(
+                    module_slug,
+                    path,
+                    "localized settings must be string leaves",
+                ));
+            }
+            if !spec.options.is_empty() {
+                return Err(invalid_schema(
+                    module_slug,
+                    path,
+                    "localized settings cannot use options because enum/config values are not translatable copy",
+                ));
+            }
+            if let Some(sensitive_path) = sensitive_paths
+                .iter()
+                .find(|sensitive_path| path_is_at_or_below(path, sensitive_path))
+            {
+                return Err(invalid_schema(
+                    module_slug,
+                    path,
+                    format!(
+                        "localized setting is fenced by sensitive path '{sensitive_path}'"
+                    ),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Returns a deterministic `(field_id, schema_path)` inventory for the
+    /// owner-declared localized settings registry.
+    pub fn localized_field_paths(
+        module_slug: &str,
+        schema: &HashMap<String, ModuleSettingSpec>,
+        localized_fields: &BTreeMap<String, String>,
+        sensitive_paths: &BTreeSet<String>,
+    ) -> Result<Vec<(String, String)>, ModuleSettingsValidationError> {
+        Self::validate_localization_registry(
+            module_slug,
+            schema,
+            localized_fields,
+            sensitive_paths,
+        )?;
+        Ok(localized_fields
+            .iter()
+            .map(|(field_id, path)| (field_id.clone(), path.clone()))
+            .collect())
+    }
+
+    /// Extracts only owner-declared localized string values from normalized
+    /// settings, keyed by stable field ID.
+    ///
+    /// Missing optional leaves are omitted. Non-string values, enum/config
+    /// options, array-item paths, and sensitivity-fenced paths are rejected by
+    /// registry validation before any value can be exposed to Translation.
+    pub fn localized_value_snapshot(
+        module_slug: &str,
+        schema: &HashMap<String, ModuleSettingSpec>,
+        localized_fields: &BTreeMap<String, String>,
+        sensitive_paths: &BTreeSet<String>,
+        settings: serde_json::Value,
+    ) -> Result<BTreeMap<String, String>, ModuleSettingsValidationError> {
+        Self::validate_localization_registry(
+            module_slug,
+            schema,
+            localized_fields,
+            sensitive_paths,
+        )?;
+        let normalized = normalize_module_settings(module_slug, schema, settings)?;
+        let mut snapshot = BTreeMap::new();
+
+        for (field_id, path) in localized_fields {
+            if let Some(value) = setting_value_at_path(&normalized, path)
+                .and_then(serde_json::Value::as_str)
+            {
+                snapshot.insert(field_id.clone(), value.to_string());
+            }
+        }
+
+        Ok(snapshot)
+    }
+}
+
 /// Module-owned settings validation failures.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ModuleSettingsValidationError {
@@ -54,8 +182,19 @@ pub fn validate_module_settings_schema(
     module_slug: &str,
     schema: &HashMap<String, ModuleSettingSpec>,
 ) -> Result<(), ModuleSettingsValidationError> {
-    for (key, spec) in schema {
-        validate_setting_spec(module_slug, key, spec)?;
+    let mut keys = schema.keys().cloned().collect::<Vec<_>>();
+    keys.sort();
+    for key in keys {
+        if !is_valid_setting_key(&key) {
+            return Err(ModuleSettingsValidationError::InvalidKey {
+                module_slug: module_slug.to_string(),
+                key,
+            });
+        }
+        let spec = schema
+            .get(&key)
+            .expect("sorted settings key must exist in schema");
+        validate_setting_spec(module_slug, &key, spec)?;
     }
     Ok(())
 }
@@ -128,13 +267,6 @@ fn validate_setting_spec(
     key: &str,
     spec: &ModuleSettingSpec,
 ) -> Result<(), ModuleSettingsValidationError> {
-    if !is_valid_setting_key(key) {
-        return Err(ModuleSettingsValidationError::InvalidKey {
-            module_slug: module_slug.to_string(),
-            key: key.to_string(),
-        });
-    }
-
     let value_type = spec.value_type.trim();
     if !is_supported_setting_type(value_type) {
         return Err(invalid_schema(
@@ -260,8 +392,22 @@ fn validate_setting_spec(
                 "object_keys must match declared properties when both are provided",
             ));
         }
-        for (property_key, property_spec) in &spec.properties {
-            validate_setting_spec(module_slug, &format!("{key}.{property_key}"), property_spec)?;
+        for property_key in property_keys {
+            if !is_valid_setting_key(&property_key) {
+                return Err(ModuleSettingsValidationError::InvalidKey {
+                    module_slug: module_slug.to_string(),
+                    key: format!("{key}.{property_key}"),
+                });
+            }
+            let property_spec = spec
+                .properties
+                .get(&property_key)
+                .expect("sorted property key must exist in schema");
+            validate_setting_spec(
+                module_slug,
+                &format!("{key}.{property_key}"),
+                property_spec,
+            )?;
         }
         if let Some(default) = spec.default.as_ref().and_then(serde_json::Value::as_object) {
             for (property_key, property_value) in default {
@@ -458,6 +604,89 @@ fn validate_setting_value(
     Ok(())
 }
 
+fn resolve_setting_spec<'a>(
+    module_slug: &str,
+    schema: &'a HashMap<String, ModuleSettingSpec>,
+    path: &str,
+) -> Result<&'a ModuleSettingSpec, ModuleSettingsValidationError> {
+    if path != path.trim() || path.is_empty() {
+        return Err(invalid_schema(
+            module_slug,
+            path,
+            "settings metadata paths must be canonical non-empty dot-separated setting keys",
+        ));
+    }
+
+    let mut segments = path.split('.');
+    let root_key = segments
+        .next()
+        .expect("non-empty settings metadata path must have a root segment");
+    if !is_valid_setting_key(root_key) {
+        return Err(invalid_schema(
+            module_slug,
+            path,
+            "settings metadata paths must use valid setting-key segments",
+        ));
+    }
+
+    let mut spec = schema.get(root_key).ok_or_else(|| {
+        invalid_schema(
+            module_slug,
+            path,
+            format!("settings metadata path references unknown setting '{root_key}'"),
+        )
+    })?;
+
+    for segment in segments {
+        if !is_valid_setting_key(segment) {
+            return Err(invalid_schema(
+                module_slug,
+                path,
+                "settings metadata paths must use valid setting-key segments",
+            ));
+        }
+        if spec.value_type.trim() == "array" {
+            return Err(invalid_schema(
+                module_slug,
+                path,
+                "localized settings cannot be declared inside arrays without stable item identity",
+            ));
+        }
+        if spec.value_type.trim() != "object" {
+            return Err(invalid_schema(
+                module_slug,
+                path,
+                "settings metadata path cannot descend through a non-object setting",
+            ));
+        }
+        spec = spec.properties.get(segment).ok_or_else(|| {
+            invalid_schema(
+                module_slug,
+                path,
+                format!("settings metadata path references undeclared property '{segment}'"),
+            )
+        })?;
+    }
+
+    Ok(spec)
+}
+
+fn setting_value_at_path<'a>(
+    root: &'a serde_json::Value,
+    path: &str,
+) -> Option<&'a serde_json::Value> {
+    path.split('.').try_fold(root, |value, segment| {
+        value.as_object().and_then(|object| object.get(segment))
+    })
+}
+
+fn path_is_at_or_below(path: &str, ancestor: &str) -> bool {
+    path == ancestor
+        || path
+            .strip_prefix(ancestor)
+            .is_some_and(|suffix| suffix.starts_with('.'))
+}
+
 fn validate_length(
     module_slug: &str,
     key: &str,
@@ -515,6 +744,28 @@ fn is_valid_setting_key(value: &str) -> bool {
         })
 }
 
+fn is_valid_setting_field_id(value: &str) -> bool {
+    if value.is_empty() || value.len() > MAX_LOCALIZED_FIELD_ID_BYTES {
+        return false;
+    }
+
+    value
+        .as_bytes()
+        .first()
+        .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && value
+            .as_bytes()
+            .last()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && !value.contains("..")
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric()
+                || character == '.'
+                || character == '_'
+                || character == '-'
+        })
+}
+
 fn is_supported_setting_type(value_type: &str) -> bool {
     matches!(
         value_type,
@@ -562,5 +813,276 @@ fn invalid_value(
         module_slug: module_slug.to_string(),
         key: key.into(),
         reason: reason.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn string_spec() -> ModuleSettingSpec {
+        ModuleSettingSpec {
+            value_type: "string".to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn legacy_struct_literal_shape_is_unchanged() {
+        let _spec = ModuleSettingSpec {
+            value_type: "string".to_string(),
+            required: false,
+            default: None,
+            description: None,
+            min: None,
+            max: None,
+            options: Vec::new(),
+            object_keys: Vec::new(),
+            item_type: None,
+            properties: HashMap::new(),
+            items: None,
+        };
+    }
+
+    #[test]
+    fn nested_schema_validates_real_property_keys_not_diagnostic_paths() {
+        let schema = HashMap::from([(
+            "hero".to_string(),
+            ModuleSettingSpec {
+                value_type: "object".to_string(),
+                properties: HashMap::from([("title".to_string(), string_spec())]),
+                ..Default::default()
+            },
+        )]);
+
+        assert!(validate_module_settings_schema("storefront", &schema).is_ok());
+    }
+
+    #[test]
+    fn localized_registry_inventory_and_snapshot_are_stable() {
+        let schema = HashMap::from([(
+            "hero".to_string(),
+            ModuleSettingSpec {
+                value_type: "object".to_string(),
+                properties: HashMap::from([
+                    ("title".to_string(), string_spec()),
+                    ("url".to_string(), string_spec()),
+                ]),
+                ..Default::default()
+            },
+        )]);
+        let localized_fields = BTreeMap::from([(
+            "storefront.hero.title".to_string(),
+            "hero.title".to_string(),
+        )]);
+        let sensitive_paths = BTreeSet::new();
+
+        let fields = ModuleSettingSpec::localized_field_paths(
+            "storefront",
+            &schema,
+            &localized_fields,
+            &sensitive_paths,
+        )
+        .unwrap();
+        assert_eq!(
+            fields,
+            vec![(
+                "storefront.hero.title".to_string(),
+                "hero.title".to_string()
+            )]
+        );
+
+        let snapshot = ModuleSettingSpec::localized_value_snapshot(
+            "storefront",
+            &schema,
+            &localized_fields,
+            &sensitive_paths,
+            serde_json::json!({"hero": {"title": "Hello", "url": "/sale"}}),
+        )
+        .unwrap();
+        assert_eq!(
+            snapshot.get("storefront.hero.title").map(String::as_str),
+            Some("Hello")
+        );
+        assert_eq!(snapshot.len(), 1);
+    }
+
+    #[test]
+    fn sensitive_parent_blocks_localized_descendant() {
+        let schema = HashMap::from([(
+            "credentials".to_string(),
+            ModuleSettingSpec {
+                value_type: "object".to_string(),
+                properties: HashMap::from([("label".to_string(), string_spec())]),
+                ..Default::default()
+            },
+        )]);
+        let localized_fields = BTreeMap::from([(
+            "payments.credentials.label".to_string(),
+            "credentials.label".to_string(),
+        )]);
+        let sensitive_paths = BTreeSet::from(["credentials".to_string()]);
+
+        let error = ModuleSettingSpec::validate_localization_registry(
+            "payments",
+            &schema,
+            &localized_fields,
+            &sensitive_paths,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            ModuleSettingsValidationError::InvalidSchema { ref reason, .. }
+                if reason.contains("sensitive path")
+        ));
+    }
+
+    #[test]
+    fn localized_enum_is_rejected() {
+        let schema = HashMap::from([(
+            "mode".to_string(),
+            ModuleSettingSpec {
+                value_type: "string".to_string(),
+                options: vec![serde_json::json!("compact"), serde_json::json!("full")],
+                ..Default::default()
+            },
+        )]);
+        let localized_fields =
+            BTreeMap::from([("checkout.mode".to_string(), "mode".to_string())]);
+
+        let error = ModuleSettingSpec::validate_localization_registry(
+            "checkout",
+            &schema,
+            &localized_fields,
+            &BTreeSet::new(),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            ModuleSettingsValidationError::InvalidSchema { ref reason, .. }
+                if reason.contains("enum/config")
+        ));
+    }
+
+    #[test]
+    fn localized_non_string_is_rejected() {
+        let schema = HashMap::from([(
+            "count".to_string(),
+            ModuleSettingSpec {
+                value_type: "integer".to_string(),
+                ..Default::default()
+            },
+        )]);
+        let localized_fields =
+            BTreeMap::from([("storefront.count".to_string(), "count".to_string())]);
+
+        let error = ModuleSettingSpec::validate_localization_registry(
+            "storefront",
+            &schema,
+            &localized_fields,
+            &BTreeSet::new(),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            ModuleSettingsValidationError::InvalidSchema { ref reason, .. }
+                if reason.contains("string leaves")
+        ));
+    }
+
+    #[test]
+    fn localized_array_items_are_rejected_without_stable_item_identity() {
+        let schema = HashMap::from([(
+            "slides".to_string(),
+            ModuleSettingSpec {
+                value_type: "array".to_string(),
+                items: Some(Box::new(ModuleSettingSpec {
+                    value_type: "object".to_string(),
+                    properties: HashMap::from([("title".to_string(), string_spec())]),
+                    ..Default::default()
+                })),
+                ..Default::default()
+            },
+        )]);
+        let localized_fields = BTreeMap::from([(
+            "storefront.slide.title".to_string(),
+            "slides.title".to_string(),
+        )]);
+
+        let error = ModuleSettingSpec::validate_localization_registry(
+            "storefront",
+            &schema,
+            &localized_fields,
+            &BTreeSet::new(),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            ModuleSettingsValidationError::InvalidSchema { ref reason, .. }
+                if reason.contains("inside arrays")
+        ));
+    }
+
+    #[test]
+    fn duplicate_localized_paths_are_rejected() {
+        let schema = HashMap::from([("title".to_string(), string_spec())]);
+        let localized_fields = BTreeMap::from([
+            ("storefront.title.primary".to_string(), "title".to_string()),
+            ("storefront.title.secondary".to_string(), "title".to_string()),
+        ]);
+
+        let error = ModuleSettingSpec::validate_localization_registry(
+            "storefront",
+            &schema,
+            &localized_fields,
+            &BTreeSet::new(),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            ModuleSettingsValidationError::InvalidSchema { ref reason, .. }
+                if reason.contains("already claimed")
+        ));
+    }
+
+    #[test]
+    fn localized_field_id_must_be_canonical_and_bounded() {
+        let schema = HashMap::from([("title".to_string(), string_spec())]);
+
+        for field_id in [" bad", "bad..path", ".bad", "bad.", "bad/path"] {
+            let localized_fields =
+                BTreeMap::from([(field_id.to_string(), "title".to_string())]);
+            assert!(
+                ModuleSettingSpec::validate_localization_registry(
+                    "storefront",
+                    &schema,
+                    &localized_fields,
+                    &BTreeSet::new(),
+                )
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_localized_path_is_rejected() {
+        let schema = HashMap::from([("title".to_string(), string_spec())]);
+        let localized_fields = BTreeMap::from([(
+            "storefront.subtitle".to_string(),
+            "subtitle".to_string(),
+        )]);
+
+        let error = ModuleSettingSpec::validate_localization_registry(
+            "storefront",
+            &schema,
+            &localized_fields,
+            &BTreeSet::new(),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            ModuleSettingsValidationError::InvalidSchema { ref reason, .. }
+                if reason.contains("unknown setting")
+        ));
     }
 }
