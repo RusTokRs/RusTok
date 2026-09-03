@@ -53,6 +53,7 @@ mod publication_evidence;
 mod publish_validation;
 mod reconciliation;
 mod recovery;
+mod release_admission_journal;
 mod release_preparation;
 mod resolution;
 mod retention;
@@ -74,6 +75,9 @@ mod trust;
 pub use conflict_fences::{ConflictFenceSet, ConflictKey, ConflictKeyKind};
 pub use migration_preflight::{
     MigrationPreflightInput, MigrationPreflightReceipt, UpdateMode, evaluate_migration_preflight,
+};
+pub use release_admission_journal::{
+    ReleaseAdmissionIntentJournal, ReleaseAdmissionIntentRecord, ReleaseAdmissionJournalError,
 };
 pub use retention::{
     RetentionError, RetentionHoldKind, RetentionHoldLedger, RetentionHoldRecord, RetentionTarget,

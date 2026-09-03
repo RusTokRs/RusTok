@@ -7,8 +7,8 @@ use rustok_api::Permission;
 use rustok_core::ModuleRegistry;
 use rustok_telemetry::metrics;
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QuerySelect,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
+    QueryFilter, QuerySelect,
 };
 use std::time::Instant;
 use uuid::Uuid;
@@ -18,11 +18,12 @@ use crate::context::{AuthContext, TenantContext};
 use crate::error::Error as ServerError;
 use crate::graphql::artifact_lifecycle::map_artifact_tenant_lifecycle_error;
 use crate::graphql::types::{
-    ActivityItem, ActivityUser, ArtifactTenantLifecycle, ArtifactUiActionAudit,
-    ArtifactUiContribution, BuildJob, DashboardStats, InstalledModule, MarketplaceModule,
-    MarketplaceModuleVersion, MarketplaceRegistryFreshness, ModuleCompositionSnapshot,
-    ModuleOperationRecoveryPlan, ModuleRegistryItem, ModuleSettingField, Tenant, TenantModule,
-    User, UserConnection, UserEdge, UsersFilter,
+    ActivityItem, ActivityUser, ArtifactDataPurgePreview, ArtifactSettingsPurgePreview,
+    ArtifactTenantLifecycle, ArtifactUiActionAudit, ArtifactUiContribution, BuildJob,
+    DashboardStats, InstalledModule, MarketplaceModule, MarketplaceModuleVersion,
+    MarketplaceRegistryFreshness, ModuleCompositionSnapshot, ModuleOperationRecoveryPlan,
+    ModuleRegistryItem, ModuleSettingField, Tenant, TenantModule, User, UserConnection, UserEdge,
+    UsersFilter,
 };
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
@@ -458,6 +459,13 @@ pub(crate) async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<
     Ok(())
 }
 
+fn sql_uuid(val: Uuid, backend: sea_orm::DbBackend) -> sea_orm::Value {
+    match backend {
+        sea_orm::DbBackend::Postgres => sea_orm::Value::Uuid(Some(val)),
+        _ => val.to_string().into(),
+    }
+}
+
 fn map_artifact_ui_contribution_error(error: ServerError) -> FieldError {
     match error {
         ServerError::NotFound => {
@@ -865,6 +873,175 @@ impl RootQuery {
                 .map(ArtifactUiActionAudit::from)
                 .collect()
         })
+    }
+
+    /// Previews a dynamic artifact settings purge. Purge is permitted only if
+    /// the installation is uninstalled/retired and a protected recovery point exists.
+    async fn preview_tenant_artifact_settings_purge(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+    ) -> Result<ArtifactSettingsPurgePreview> {
+        ensure_modules_read_permission(ctx).await?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let backend = db.get_database_backend();
+
+        let placeholder = if backend == sea_orm::DbBackend::Postgres { "$1" } else { "?1" };
+        let tenant_placeholder = if backend == sea_orm::DbBackend::Postgres { "$2" } else { "?2" };
+        let query = format!(
+            "SELECT i.data_owner_id, i.settings_instance_id, a.status, \
+                    COALESCE(s.revision, 0) AS settings_revision \
+             FROM module_artifact_installations i \
+             LEFT JOIN module_artifact_admissions a ON a.installation_id = i.installation_id \
+             LEFT JOIN module_artifact_settings_instances s ON s.settings_instance_id = i.settings_instance_id \
+             WHERE i.installation_id = {placeholder} AND (i.tenant_id = {tenant_placeholder} OR i.scope_kind = 'platform')"
+        );
+        let row = db.query_one_raw(sea_orm::Statement::from_sql_and_values(
+            backend,
+            query,
+            vec![
+                sql_uuid(installation_id, backend),
+                sql_uuid(tenant.id, backend),
+            ],
+        ))
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?
+        .ok_or_else(|| <FieldError as GraphQLError>::not_found("Artifact installation not found in tenant scope"))?;
+
+        let data_owner_id: Uuid = match backend {
+            sea_orm::DbBackend::Postgres => row.try_get("", "data_owner_id").map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?,
+            _ => row.try_get::<String>("", "data_owner_id").map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?.parse().map_err(|e: uuid::Error| <FieldError as GraphQLError>::internal_error(&e.to_string()))?,
+        };
+        let settings_instance_id: Uuid = match backend {
+            sea_orm::DbBackend::Postgres => row.try_get("", "settings_instance_id").map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?,
+            _ => row.try_get::<String>("", "settings_instance_id").map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?.parse().map_err(|e: uuid::Error| <FieldError as GraphQLError>::internal_error(&e.to_string()))?,
+        };
+        let status: Option<String> = row.try_get("", "status").ok();
+        let settings_revision: i64 = row.try_get("", "settings_revision").unwrap_or(0);
+
+        let rp_query = format!(
+            "SELECT recovery_point_id FROM module_artifact_settings_recovery_points \
+             WHERE tenant_id = {placeholder} AND installation_id = {tenant_placeholder} \
+             ORDER BY retention_revision DESC LIMIT 1"
+        );
+        let rp_row = db.query_one_raw(sea_orm::Statement::from_sql_and_values(
+            backend,
+            rp_query,
+            vec![
+                sql_uuid(tenant.id, backend),
+                sql_uuid(installation_id, backend),
+            ],
+        ))
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        let recovery_point_id: Option<Uuid> = if let Some(row) = rp_row {
+            match backend {
+                sea_orm::DbBackend::Postgres => row.try_get("", "recovery_point_id").ok(),
+                _ => row.try_get::<String>("", "recovery_point_id").ok().and_then(|s| s.parse().ok()),
+            }
+        } else {
+            None
+        };
+
+        let has_recovery_point = recovery_point_id.is_some();
+        let is_retired = matches!(status.as_deref(), Some("inactive") | Some("rolled_back") | None);
+
+        let (can_purge, reason) = if !is_retired {
+            (false, "Artifact is active or installed. Purge is denied until the artifact is uninstalled/retired.".to_string())
+        } else if !has_recovery_point {
+            (false, "No protected recovery point exists. An encrypted recovery point must be created before purge.".to_string())
+        } else {
+            (true, "Installation is retired and recovery point verified. Settings purge is safe to apply.".to_string())
+        };
+
+        Ok(ArtifactSettingsPurgePreview {
+            installation_id,
+            data_owner_id,
+            settings_instance_id,
+            settings_revision,
+            has_recovery_point,
+            recovery_point_id,
+            can_purge,
+            reason,
+        })
+    }
+
+    /// Previews a structured artifact data purge. Purge is permitted only if
+    /// the namespace is uninstalled/retired and no active writes are in flight.
+    async fn preview_tenant_artifact_data_purge(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+    ) -> Result<ArtifactDataPurgePreview> {
+        ensure_modules_read_permission(ctx).await?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let backend = db.get_database_backend();
+
+        let placeholder = if backend == sea_orm::DbBackend::Postgres { "$1" } else { "?1" };
+        let tenant_placeholder = if backend == sea_orm::DbBackend::Postgres { "$2" } else { "?2" };
+
+        let query = format!(
+            "SELECT n.namespace_revision, a.status \
+             FROM module_artifact_data_namespaces n \
+             JOIN module_artifact_installations i ON i.slug = n.module_slug AND i.tenant_id = n.tenant_id \
+             LEFT JOIN module_artifact_admissions a ON a.installation_id = i.installation_id \
+             WHERE i.installation_id = {placeholder} AND n.tenant_id = {tenant_placeholder}"
+        );
+        let row = db.query_one_raw(sea_orm::Statement::from_sql_and_values(
+            backend,
+            query,
+            vec![
+                sql_uuid(installation_id, backend),
+                sql_uuid(tenant.id, backend),
+            ],
+        ))
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if let Some(row) = row {
+            let namespace_revision: i64 = row.try_get("", "namespace_revision").unwrap_or(0);
+            let status: Option<String> = row.try_get("", "status").ok();
+            let is_retired = matches!(status.as_deref(), Some("inactive") | Some("rolled_back") | None);
+
+            let count_query = format!(
+                "SELECT COUNT(*) AS count FROM module_artifact_data_records \
+                 WHERE tenant_id = {tenant_placeholder}"
+            );
+            let count_row = db.query_one_raw(sea_orm::Statement::from_sql_and_values(
+                backend,
+                count_query,
+                vec![sql_uuid(tenant.id, backend)],
+            ))
+            .await
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+            let records_to_purge: i64 = count_row.and_then(|r| r.try_get("", "count").ok()).unwrap_or(0);
+
+            let (can_purge, reason) = if !is_retired {
+                (false, "Artifact data purge denied: artifact is active or installed.".to_string())
+            } else {
+                (true, format!("Namespace is retired. {records_to_purge} records will be purged."))
+            };
+
+            Ok(ArtifactDataPurgePreview {
+                installation_id,
+                namespace_revision,
+                records_to_purge,
+                can_purge,
+                reason,
+            })
+        } else {
+            Ok(ArtifactDataPurgePreview {
+                installation_id,
+                namespace_revision: 0,
+                records_to_purge: 0,
+                can_purge: false,
+                reason: "No data namespace found for artifact installation in tenant scope".to_string(),
+            })
+        }
     }
 
     async fn installed_modules(

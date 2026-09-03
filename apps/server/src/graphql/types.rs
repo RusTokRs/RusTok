@@ -234,6 +234,63 @@ pub struct ArtifactRollback {
     pub target_revision: i64,
 }
 
+/// Preview evidence for an artifact settings purge.
+#[derive(SimpleObject, Clone)]
+pub struct ArtifactSettingsPurgePreview {
+    pub installation_id: Uuid,
+    pub data_owner_id: Uuid,
+    pub settings_instance_id: Uuid,
+    pub settings_revision: i64,
+    pub has_recovery_point: bool,
+    pub recovery_point_id: Option<Uuid>,
+    pub can_purge: bool,
+    pub reason: String,
+}
+
+/// Owner-issued receipt for a completed settings purge.
+#[derive(SimpleObject, Clone)]
+pub struct ArtifactSettingsPurgeReceipt {
+    pub purge_operation_id: Uuid,
+    pub recovery_point_id: Uuid,
+    pub tombstone_revision: i64,
+}
+
+/// Preview evidence for an artifact structured data purge.
+#[derive(SimpleObject, Clone)]
+pub struct ArtifactDataPurgePreview {
+    pub installation_id: Uuid,
+    pub namespace_revision: i64,
+    pub records_to_purge: i64,
+    pub can_purge: bool,
+    pub reason: String,
+}
+
+/// Owner-issued receipt for a completed structured data purge.
+#[derive(SimpleObject, Clone)]
+pub struct ArtifactDataPurgeReceipt {
+    pub namespace_revision: i64,
+    pub purged_records: i64,
+}
+
+/// Owner-issued receipt for a protected artifact settings recovery point.
+#[derive(SimpleObject, Clone)]
+pub struct ArtifactSettingsRecoveryPointReceipt {
+    pub recovery_point_id: Uuid,
+    pub settings_instance_id: Uuid,
+    pub settings_revision: i64,
+    pub retain_until: String,
+}
+
+/// Owner-issued receipt for restoring settings from a recovery point.
+#[derive(SimpleObject, Clone)]
+pub struct ArtifactSettingsRestoreReceipt {
+    pub restore_operation_id: Uuid,
+    pub recovery_point_id: Uuid,
+    pub new_settings_instance_id: Uuid,
+    pub target_installation_id: Option<Uuid>,
+}
+
+
 /// GraphQL adapter over the canonical host-safe artifact UI projection. The
 /// content remains its exact tagged JSON contract because its shape is chosen
 /// by the admitted contribution surface, not by a guest-provided GraphQL type.

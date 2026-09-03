@@ -21,6 +21,47 @@ boundary and the module-owned admin transport for backend write/build logic.
 
 ## Current verification evidence
 
+On 2026-09-03, Protected Artifact Settings Recovery Points, Separate Preview/Apply Purge Operations, and Retirement Fences were delivered per Section 4 of the Rollback Plan:
+- `apps/server/src/services/artifact_purge_recovery_host.rs` implemented `ServerArtifactSettingsRecoveryAuthorizer`, `ServerArtifactDataPurgeAuthorizer`, and `ServerArtifactSettingsRecoveryCipher` with AES/SHA-256 context-bound ciphertext encryption and 30-day retention policies.
+- `apps/server/src/graphql/types.rs` added `ArtifactSettingsPurgePreview`, `ArtifactSettingsPurgeReceipt`, `ArtifactDataPurgePreview`, `ArtifactDataPurgeReceipt`, `ArtifactSettingsRecoveryPointReceipt`, and `ArtifactSettingsRestoreReceipt`.
+- `apps/server/src/graphql/queries.rs` added `preview_tenant_artifact_settings_purge` and `preview_tenant_artifact_data_purge` with retired-state gating and recovery point presence checks.
+- `apps/server/src/graphql/mutations.rs` added `create_tenant_artifact_settings_recovery_point`, `purge_tenant_artifact_settings`, `restore_tenant_artifact_settings`, and `purge_tenant_artifact_data` strictly separated into distinct mutations that reject combined application and deny purge while active/serving ("reset-while-installed" protection).
+- `crates/rustok-modules/tests/artifact_purge_and_recovery_tests.rs` added comprehensive integration tests verifying:
+  - Active installations reject recovery point creation and purge with `RecoveryPrecondition`.
+  - Retiring the installation (inactive admission + uninstall evidence) allows recovery point creation.
+  - Purge generates monotonic tombstone revisions.
+  - Restore creates fresh non-serving settings instances.
+  - Data purge executes in its own scope and monotonic namespace revision without touching settings.
+- Verified by:
+  - `cargo test --locked -p rustok-modules --test artifact_purge_and_recovery_tests` (1 passed, 0 warnings).
+  - `cargo test --locked -p rustok-modules --lib artifact_settings_recovery` (3 passed, 0 warnings).
+  - `cargo check -p rustok-server --test module_graphql_native_parity` (passed, 0 errors).
+  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
+  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+
+On 2026-09-03, N/N+1 Settings Compatibility Guard and Transition-Gated Enable/Disable Coordination were delivered per Section 3 and Section 4 of the Rollback Plan:
+- `crates/rustok-modules/src/transition_store.rs` added `find_active_checkpoint_for_module` and `find_active_observing_checkpoint` to `TransitionCheckpointStore` to detect in-flight transitions and active observation windows.
+- `crates/rustok-modules/src/settings_guard.rs` added `from_observing_checkpoint` to construct an active `SettingsCompatibilityGuard` from an observing transition checkpoint.
+- `apps/server/src/services/module_lifecycle.rs` wired `SettingsCompatibilityGuard` into `update_module_settings`, enforcing that concurrent settings writes during an active observation window validate against both predecessor (N) and candidate (N+1) schemas, and wired `TransitionCheckpointStore::find_active_checkpoint_for_module` into `toggle_module`, locking enable/disable mutations while an active transition is in flight.
+- `crates/rustok-modules/src/installation.rs` wired active checkpoint checks into `set_artifact_tenant_enabled`, preventing concurrent tenant enable/disable changes during an executing release transition.
+- Verified by:
+  - `cargo test --locked -p rustok-modules --test migration_and_settings_safety_tests` (3 passed, 0 warnings).
+  - `cargo check -p rustok-server --test module_graphql_native_parity` (passed, 0 errors).
+  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
+  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+
+On 2026-09-03, Precondition Revalidation, Predecessor Retention Verification, Release-Admission Intent Journal, and Activation Checkpoint Integration were delivered per Section 3 and Section 5 of the Rollback Plan:
+- `crates/rustok-modules/src/transition_coordinator.rs` added `revalidate_mutation_preconditions` enforcing security epoch freshness and active predecessor retention holds (`RetentionHoldLedger`) before entering observation windows (`advance_to_activating_with_ledger`, `advance_to_activating_with_db`), preventing premature GC of predecessor bytes.
+- `crates/rustok-modules/src/release_admission_journal.rs` added `ReleaseAdmissionIntentJournal` to record immutable intent reservations before CAS mutation, commit installations, and scan stale/unfinished staging attempts (`scan_stale_unfinished_intents`).
+- `crates/rustok-modules/src/installation.rs` implemented real `unfinished_admissions` querying `module_artifact_admission_commands WHERE installation_id IS NULL`, closing the empty unfinished-admission recovery scan gap, and wired `activate_artifact` to derive conflict fences, place an `ActiveRolloutWindow` retention hold, and persist a `ModuleTransitionCheckpoint` in `ModuleTransitionState::Observing`.
+- Verified by:
+  - `cargo test --locked -p rustok-modules --test transition_coordinator_tests` (4 passed, 0 warnings).
+  - `cargo test --locked -p rustok-modules --test transition_and_retention_store_sqlite_tests` (3 passed, 0 warnings).
+  - `cargo test --locked -p rustok-modules --test transition_watchdog_tests` (3 passed, 0 warnings).
+  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
+  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+  - `cargo check -p rustok-server --test module_graphql_native_parity` (passed, 0 errors).
+
 On 2026-09-02, Release Preparation domain, `preparation_id`, tenant RLS isolation, and
 sanitized evidence projections were delivered per Section 3 of the Rollback Plan.
 `crates/rustok-modules` implemented `ReleasePreparation`, `ReleasePreparationState`, and

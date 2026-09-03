@@ -4,6 +4,7 @@ pub mod app_runtime;
 pub(crate) mod artifact_binding;
 pub mod artifact_delivery_tenants;
 pub mod artifact_mcp;
+pub mod artifact_purge_recovery_host;
 pub mod artifact_runtime;
 pub mod artifact_ui;
 pub mod auth_admin_mutation_provider;

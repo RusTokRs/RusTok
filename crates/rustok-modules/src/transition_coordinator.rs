@@ -17,8 +17,8 @@ use sea_orm::ConnectionTrait;
 
 use crate::{
     ConflictFenceSet, GlobalSecurityEpoch, MigrationPreflightReceipt, ModuleCommandContext,
-    RetentionHoldStore, SecurityEpochConflictError, SecurityEpochRegistry,
-    TransitionCheckpointStore, UpdateMode,
+    RetentionHoldLedger, RetentionHoldStore, RetentionTarget, SecurityEpochConflictError,
+    SecurityEpochRegistry, TransitionCheckpointStore, UpdateMode,
 };
 
 /// Lifecycle states of a durable module transition.
@@ -106,6 +106,10 @@ pub enum TransitionCoordinatorError {
     RecoveryLimitExhausted(String),
     #[error("Operation is already in terminal state `{0}`")]
     OperationAlreadyTerminal(String),
+    #[error("Predecessor retention hold missing for digest `{0}`: predecessor bytes must be protected from GC during transition")]
+    PredecessorRetentionMissing(String),
+    #[error("Conflict fence validation failed: {0}")]
+    ConflictFenceViolation(String),
 }
 
 /// Input for starting a governed module transition.
@@ -210,13 +214,43 @@ impl ModuleTransitionCoordinator {
         Ok(Self { checkpoint })
     }
 
+    /// Revalidates that the transition is active, the security epoch has not drifted,
+    /// and that any existing predecessor digest is actively protected by a retention hold.
+    pub fn revalidate_mutation_preconditions(
+        &self,
+        security_registry: &SecurityEpochRegistry,
+        retention_ledger: Option<&RetentionHoldLedger>,
+    ) -> Result<(), TransitionCoordinatorError> {
+        self.ensure_active()?;
+        security_registry.validate_epoch(self.checkpoint.security_epoch)?;
+
+        if let (Some(predecessor_digest), Some(ledger)) =
+            (&self.checkpoint.predecessor_digest, retention_ledger)
+        {
+            let target_source = RetentionTarget::SourceCasBlob {
+                digest: predecessor_digest.clone(),
+            };
+            let target_payload = RetentionTarget::AdmittedPayloadCas {
+                digest: predecessor_digest.clone(),
+            };
+            if ledger.active_holds_count(&target_source) == 0
+                && ledger.active_holds_count(&target_payload) == 0
+            {
+                return Err(TransitionCoordinatorError::PredecessorRetentionMissing(
+                    predecessor_digest.clone(),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
     /// Advances the transition to pre-staging candidate payload on standby node slots.
     pub fn advance_to_prestaging(
         &mut self,
         security_registry: &SecurityEpochRegistry,
     ) -> Result<(), TransitionCoordinatorError> {
-        self.ensure_active()?;
-        security_registry.validate_epoch(self.checkpoint.security_epoch)?;
+        self.revalidate_mutation_preconditions(security_registry, None)?;
 
         if self.checkpoint.state != ModuleTransitionState::Fenced {
             return Err(TransitionCoordinatorError::InvalidStateTransition {
@@ -237,8 +271,18 @@ impl ModuleTransitionCoordinator {
         security_registry: &SecurityEpochRegistry,
         observation_duration: Duration,
     ) -> Result<(), TransitionCoordinatorError> {
-        self.ensure_active()?;
-        security_registry.validate_epoch(self.checkpoint.security_epoch)?;
+        self.advance_to_activating_with_ledger(security_registry, None, observation_duration)
+    }
+
+    /// Advances the transition to activating candidate and entering observation window,
+    /// strictly verifying predecessor retention hold when a retention ledger is provided.
+    pub fn advance_to_activating_with_ledger(
+        &mut self,
+        security_registry: &SecurityEpochRegistry,
+        retention_ledger: Option<&RetentionHoldLedger>,
+        observation_duration: Duration,
+    ) -> Result<(), TransitionCoordinatorError> {
+        self.revalidate_mutation_preconditions(security_registry, retention_ledger)?;
 
         if self.checkpoint.state != ModuleTransitionState::PreStaging {
             return Err(TransitionCoordinatorError::InvalidStateTransition {
@@ -252,6 +296,19 @@ impl ModuleTransitionCoordinator {
         self.checkpoint.state = ModuleTransitionState::Observing { timeout_at };
         self.checkpoint.updated_at = Utc::now();
         Ok(())
+    }
+
+    /// Advances to activating by asynchronously querying the database for active retention holds.
+    pub async fn advance_to_activating_with_db<C: ConnectionTrait>(
+        &mut self,
+        db: &C,
+        security_registry: &SecurityEpochRegistry,
+        observation_duration: Duration,
+    ) -> Result<(), TransitionCoordinatorError> {
+        let ledger = RetentionHoldStore::load_active_ledger(db)
+            .await
+            .map_err(|e| TransitionCoordinatorError::PreflightFailed(e.to_string()))?;
+        self.advance_to_activating_with_ledger(security_registry, Some(&ledger), observation_duration)
     }
 
     /// Records an incident / failure signal and executes single-attempt recovery.
@@ -296,8 +353,7 @@ impl ModuleTransitionCoordinator {
         &mut self,
         security_registry: &SecurityEpochRegistry,
     ) -> Result<(), TransitionCoordinatorError> {
-        self.ensure_active()?;
-        security_registry.validate_epoch(self.checkpoint.security_epoch)?;
+        self.revalidate_mutation_preconditions(security_registry, None)?;
 
         match self.checkpoint.state {
             ModuleTransitionState::Observing { .. } => {
@@ -513,4 +569,62 @@ mod tests {
             coordinator.advance_to_activating(&registry, Duration::from_secs(60));
         assert!(activation_result.is_err());
     }
+
+    #[test]
+    fn test_predecessor_retention_hold_revalidation() {
+        let registry = SecurityEpochRegistry::new();
+        let input = StartTransitionInput {
+            operation_id: Uuid::new_v4(),
+            module_slug: "orders".to_string(),
+            tenant_id: None,
+            predecessor_digest: Some("sha256:predecessor_v1".to_string()),
+            candidate_digest: "sha256:candidate_v2".to_string(),
+            affected_nodes: vec!["node-1".to_string()],
+            preflight_receipt: dummy_preflight_receipt(true),
+            requested_mode: UpdateMode::Automatic,
+        };
+
+        let mut coordinator =
+            ModuleTransitionCoordinator::start_transition(input, &registry).unwrap();
+        coordinator.advance_to_prestaging(&registry).unwrap();
+
+        // 1. Attempt activation with an empty retention ledger -> MUST fail with PredecessorRetentionMissing
+        let mut empty_ledger = RetentionHoldLedger::new();
+        let err = coordinator
+            .advance_to_activating_with_ledger(
+                &registry,
+                Some(&empty_ledger),
+                Duration::from_secs(60),
+            )
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            TransitionCoordinatorError::PredecessorRetentionMissing(digest) if digest == "sha256:predecessor_v1"
+        ));
+
+        // 2. Place an active rollout retention hold protecting predecessor payload
+        empty_ledger.place_hold(
+            RetentionTarget::AdmittedPayloadCas {
+                digest: "sha256:predecessor_v1".to_string(),
+            },
+            crate::RetentionHoldKind::ActiveRolloutWindow {
+                operation_id: coordinator.checkpoint().operation_id,
+                expires_at: Utc::now() + chrono::Duration::seconds(300),
+            },
+        );
+
+        // 3. Activation must now succeed
+        coordinator
+            .advance_to_activating_with_ledger(
+                &registry,
+                Some(&empty_ledger),
+                Duration::from_secs(60),
+            )
+            .unwrap();
+        assert!(matches!(
+            coordinator.state(),
+            ModuleTransitionState::Observing { .. }
+        ));
+    }
 }
+

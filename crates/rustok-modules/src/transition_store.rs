@@ -198,6 +198,32 @@ impl TransitionCheckpointStore {
 
         Ok(checkpoints)
     }
+
+    /// Finds any active (non-terminal) checkpoint for a specific module slug and optional tenant.
+    pub async fn find_active_checkpoint_for_module<C: ConnectionTrait>(
+        db: &C,
+        module_slug: &str,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Option<ModuleTransitionCheckpoint>, TransitionStoreError> {
+        let active = Self::list_active_checkpoints(db).await?;
+        Ok(active.into_iter().find(|cp| {
+            cp.module_slug == module_slug && (tenant_id.is_none() || cp.tenant_id == tenant_id)
+        }))
+    }
+
+    /// Finds any active checkpoint currently under observation (`Observing` state) for a module.
+    pub async fn find_active_observing_checkpoint<C: ConnectionTrait>(
+        db: &C,
+        module_slug: &str,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Option<ModuleTransitionCheckpoint>, TransitionStoreError> {
+        let active = Self::list_active_checkpoints(db).await?;
+        Ok(active.into_iter().find(|cp| {
+            cp.module_slug == module_slug
+                && (tenant_id.is_none() || cp.tenant_id == tenant_id)
+                && matches!(cp.state, ModuleTransitionState::Observing { .. })
+        }))
+    }
 }
 
 // ============================================================================

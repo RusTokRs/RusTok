@@ -1,7 +1,8 @@
 use chrono::Utc;
 use rustok_modules::{
     MigrationPreflightReceipt, ModuleTransitionCoordinator, ModuleTransitionState,
-    SecurityEpochRegistry, StartTransitionInput, TransitionCoordinatorError, UpdateMode,
+    RetentionHoldKind, RetentionHoldLedger, RetentionTarget, SecurityEpochRegistry,
+    StartTransitionInput, TransitionCoordinatorError, UpdateMode,
 };
 use std::time::Duration;
 use uuid::Uuid;
@@ -144,3 +145,62 @@ fn test_destructive_preflight_strictly_denies_automatic_start() {
         Err(TransitionCoordinatorError::PreflightFailed(msg)) if msg.contains("Automatic update mode denied")
     ));
 }
+
+#[test]
+fn test_predecessor_retention_revalidation_enforcement() {
+    let security_registry = SecurityEpochRegistry::new();
+    let operation_id = Uuid::new_v4();
+
+    let input = StartTransitionInput {
+        operation_id,
+        module_slug: "customer".to_string(),
+        tenant_id: None,
+        predecessor_digest: Some("sha256:predecessor_safe".to_string()),
+        candidate_digest: "sha256:candidate_v2".to_string(),
+        affected_nodes: vec!["node-1".to_string()],
+        preflight_receipt: make_preflight(true),
+        requested_mode: UpdateMode::Automatic,
+    };
+
+    let mut coordinator =
+        ModuleTransitionCoordinator::start_transition(input, &security_registry).unwrap();
+    coordinator
+        .advance_to_prestaging(&security_registry)
+        .unwrap();
+
+    // With empty ledger, activation must fail closed because predecessor is unprotected from GC
+    let mut ledger = RetentionHoldLedger::new();
+    let denied = coordinator.advance_to_activating_with_ledger(
+        &security_registry,
+        Some(&ledger),
+        Duration::from_secs(60),
+    );
+    assert!(matches!(
+        denied,
+        Err(TransitionCoordinatorError::PredecessorRetentionMissing(digest)) if digest == "sha256:predecessor_safe"
+    ));
+
+    // After placing active rollout retention hold, activation succeeds
+    ledger.place_hold(
+        RetentionTarget::AdmittedPayloadCas {
+            digest: "sha256:predecessor_safe".to_string(),
+        },
+        RetentionHoldKind::ActiveRolloutWindow {
+            operation_id,
+            expires_at: Utc::now() + chrono::Duration::seconds(300),
+        },
+    );
+
+    coordinator
+        .advance_to_activating_with_ledger(
+            &security_registry,
+            Some(&ledger),
+            Duration::from_secs(60),
+        )
+        .expect("activation should succeed once predecessor retention hold is confirmed");
+    assert!(matches!(
+        coordinator.state(),
+        ModuleTransitionState::Observing { .. }
+    ));
+}
+

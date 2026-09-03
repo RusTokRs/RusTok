@@ -20,7 +20,8 @@ use crate::{
     ModuleStaticDistributionAuthorizer, ModuleStaticDistributionReleaseAuthorizer,
     ModuleStaticDistributionReleaseVerifier, ModuleStaticDistributionRolloutAuthorizer,
     ModuleStaticDistributionTopologyResolver, ModuleStaticDistributionWorkerAuthorizer,
-    ModuleStaticPromotionAuthorizer, SeaOrmArtifactBindingExecutionAuditReader,
+    ModuleStaticPromotionAuthorizer, ReleaseAdmissionIntentJournal,
+    SeaOrmArtifactBindingExecutionAuditReader,
     SeaOrmArtifactBindingIdempotencyStore, SeaOrmArtifactDataCapabilityBrokerResolver,
     SeaOrmArtifactDataExportService, SeaOrmArtifactDataObjectCapabilityBrokerResolver,
     SeaOrmArtifactDataObjectGcService, SeaOrmArtifactDataPurgeService,
@@ -323,6 +324,11 @@ impl ModuleControlPlane {
             self.db.clone(),
             self.infrastructure.clone(),
         )
+    }
+
+    /// Returns the durable release-admission intent journal for staging reservations and recovery.
+    pub fn release_admission_journal(&self) -> ReleaseAdmissionIntentJournal {
+        ReleaseAdmissionIntentJournal
     }
 
     /// Returns the platform security owner for immutable artifact release

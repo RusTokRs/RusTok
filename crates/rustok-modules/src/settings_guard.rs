@@ -78,6 +78,27 @@ impl SettingsCompatibilityGuard {
         }
     }
 
+    /// Constructs an active compatibility guard from a checkpoint if it is in Observing state.
+    pub fn from_observing_checkpoint(
+        checkpoint: &crate::ModuleTransitionCheckpoint,
+        predecessor_schema_digest: String,
+        candidate_schema_digest: String,
+    ) -> Option<Self> {
+        match checkpoint.state {
+            crate::ModuleTransitionState::Observing { .. } => Some(Self {
+                id: checkpoint.operation_id,
+                tenant_id: checkpoint.tenant_id,
+                module_slug: checkpoint.module_slug.clone(),
+                predecessor_schema_digest,
+                candidate_schema_digest,
+                rollback_window_id: checkpoint.operation_id,
+                installed_at: checkpoint.updated_at,
+                state: SettingsGuardState::Active,
+            }),
+            _ => None,
+        }
+    }
+
     /// Validates proposed settings against the guard.
     ///
     /// When `Active`, verifies that the settings value satisfies BOTH the

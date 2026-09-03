@@ -114,3 +114,57 @@ fn test_destructive_migration_strictly_denies_automatic_mode() {
     assert_eq!(receipt.denial_reasons.len(), 2);
     assert!(receipt.denial_reasons[0].contains("Drop table"));
 }
+
+#[test]
+fn test_settings_guard_from_observing_checkpoint() {
+    use chrono::{Duration, Utc};
+    use rustok_modules::{
+        ConflictFenceSet, GlobalSecurityEpoch, ModuleTransitionCheckpoint, ModuleTransitionState,
+    };
+
+    let operation_id = Uuid::new_v4();
+    let tenant_id = Some(Uuid::new_v4());
+
+    let observing_checkpoint = ModuleTransitionCheckpoint {
+        operation_id,
+        revision: 1,
+        module_slug: "customer".to_string(),
+        tenant_id,
+        predecessor_digest: Some("sha256:source_pred".to_string()),
+        candidate_digest: "sha256:cand_001".to_string(),
+        state: ModuleTransitionState::Observing {
+            timeout_at: Utc::now() + Duration::seconds(300),
+        },
+        security_epoch: GlobalSecurityEpoch::INITIAL,
+        fences: ConflictFenceSet::new(Vec::new()),
+        recovery_attempt_count: 0,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    let guard = SettingsCompatibilityGuard::from_observing_checkpoint(
+        &observing_checkpoint,
+        "sha256:schema_pred".to_string(),
+        "sha256:schema_cand".to_string(),
+    );
+    assert!(guard.is_some());
+    let guard = guard.unwrap();
+    assert_eq!(guard.rollback_window_id, operation_id);
+    assert_eq!(guard.module_slug, "customer");
+    assert_eq!(guard.state, rustok_modules::SettingsGuardState::Active);
+
+    // Converged checkpoint does not generate an active observing guard
+    let converged_checkpoint = ModuleTransitionCheckpoint {
+        state: ModuleTransitionState::Converged {
+            finalized_at: Utc::now(),
+        },
+        ..observing_checkpoint
+    };
+    let no_guard = SettingsCompatibilityGuard::from_observing_checkpoint(
+        &converged_checkpoint,
+        "sha256:schema_pred".to_string(),
+        "sha256:schema_cand".to_string(),
+    );
+    assert!(no_guard.is_none());
+}
+

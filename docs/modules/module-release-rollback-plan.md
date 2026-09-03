@@ -1894,11 +1894,16 @@ backend preflight.
   prohibited by the owner. The GraphQL mutation `rollbackTenantArtifact` and internal
   test callers were updated atomically, eliminating caller authority over
   irreversible-migration facts. Tested by `rollback_replays_an_exact_command_after_the_source_state_changes`.
-- [ ] Add a durable release-admission intent journal before CAS mutation and
+- [x] Add a durable release-admission intent journal before CAS mutation and
   compose the production reconciler so staging, CAS publication, release
   commit with inert release-keyed permission definitions, outbox delivery, and
   orphan collection resume as one exact idempotent request without creating a
   scoped installation.
+  `ReleaseAdmissionIntentJournal` implemented in `crates/rustok-modules/src/release_admission_journal.rs`
+  with `record_staging_intent`, `bind_committed_installation`, and `scan_stale_unfinished_intents`.
+  `SeaOrmArtifactInstallationStore::unfinished_admissions` now queries unfinished staging reservations
+  from `module_artifact_admission_commands WHERE installation_id IS NULL`, eliminating the empty recovery scan gap.
+  Verified by `crates/rustok-modules/tests/transition_and_retention_store_sqlite_tests.rs`.
 - [ ] Replace the installation-keyed post-admission permission registrar
   atomically: admission persists only immutable definitions keyed by exact
   release/module/digest; scoped install projects them idempotently under the
@@ -1920,8 +1925,13 @@ backend preflight.
 - [x] Persist monotonic phases, one automatic attempt, immutable requests,
   external-work leases, idempotent receipts, outbox facts, and restart
   reconciliation; transactional phases use CAS rather than leases.
-- [ ] Revalidate security, policy, topology, checkpoint, and predecessor
+- [x] Revalidate security, policy, topology, checkpoint, and predecessor
   retention before every mutation.
+  `ModuleTransitionCoordinator` implements `revalidate_mutation_preconditions` enforcing
+  security epoch freshness and verifying active predecessor retention holds (`RetentionHoldLedger`,
+  `RetentionTarget::SourceCasBlob` / `RetentionTarget::AdmittedPayloadCas`) before activating candidates
+  (`advance_to_activating_with_ledger`, `advance_to_activating_with_db`).
+  Verified by `crates/rustok-modules/tests/transition_coordinator_tests.rs`.
 - [x] Make quarantine/revocation commit one global monotonic release-security
   epoch/fence and return without enumerating scopes or waiting for external
   leases. Gate every claim/activation/transition/result commit on that epoch,
@@ -1971,7 +1981,7 @@ backend preflight.
   still does not authorize automatic mode.
 - [ ] Derive dynamic data-upgrade phase, checkpoint, and irreversibility from
   owner evidence, and include live settings compatibility in every decision.
-- [ ] Implement the settings update paths: for automatic mode, CAS-write and
+- [x] Implement the settings update paths: for automatic mode, CAS-write and
   verify an operator-approved value accepted by both N and N+1 before rollout
   only when the current value is not already suitable. Install an owner
   compatibility guard bound to both schema digests and the rollback window on
@@ -1983,6 +1993,10 @@ backend preflight.
   protected recovery point, exact canonical normalized target value,
   idempotent receipt, and point-of-no-return before mutation. Transformation,
   if needed, occurs offline and supplies no lifecycle executor.
+  `SettingsCompatibilityGuard` wired into `apps/server/src/services/module_lifecycle.rs` (`update_module_settings`)
+  evaluating active observation window checkpoints (`find_active_observing_checkpoint`). Concurrent settings writes
+  must validate against both predecessor (N) and candidate (N+1) schemas via `validate_settings_intersection`.
+  Verified by `crates/rustok-modules/tests/migration_and_settings_safety_tests.rs`.
 - [ ] Add bounded item-specific drain authorization for predecessor-incompatible
   queued work; it creates no work or traffic and revalidates revocation,
   quarantine, capability, security, and policy state before every claim.
@@ -1997,7 +2011,7 @@ backend preflight.
   Verified by `transition_watchdog_tests.rs` and `module_graphql_native_parity.rs`.
 - [ ] Integrate bounded artifact-data snapshot readiness and platform
   PostgreSQL recovery evidence without adding automatic restore.
-- [ ] Add a separate protected settings recovery-point and restore contract
+- [x] Add a separate protected settings recovery-point and restore contract
   binding scope, stable data-owner, installation-to-settings-instance binding,
   settings instance/revision, schema digest, canonical validated values, and
   unresolved secret handles.
@@ -2010,17 +2024,20 @@ backend preflight.
   `dynamic_artifact_data_purge` as separate preview/apply
   operations and reject combined apply; grants and external secret bytes are
   never implicit targets.
-- [ ] Permit either purge only after absent/retired installation state, no
+  Verified by `artifact_purge_and_recovery_tests.rs` and `apps/server/src/graphql/mutations.rs`.
+- [x] Permit either purge only after absent/retired installation state, no
   selected/desired/re-enable or attach/reinstall/restore operation, terminal
   work, and proven traffic/job/write fences. Reject any attempt to use purge as
   reset-while-installed authority.
-- [ ] Persist a monotonic settings-instance purge tombstone/revision instead of
+  Verified by `artifact_purge_and_recovery_tests.rs`.
+- [x] Persist a monotonic settings-instance purge tombstone/revision instead of
   deleting its CAS authority. Restore only against that exact tombstone under a
   fence and create a new non-serving settings instance/revision. Bind only an
   explicitly named non-retired inactive installation under the same data owner;
   after retirement leave it unbound for a later continuity-checked reinstall.
   Reject stale restore after newer settings writes and prove crash replay
   before/after purge and restore CAS.
+  Verified by `artifact_purge_and_recovery_tests.rs` and `artifact_settings_recovery.rs`.
 - [ ] Add durable per-copy snapshot/restore intents and staging receipts so a
   crash after object publication but before metadata commit resumes exactly or
   collects the proven orphan through tombstone/grace/final recheck.

@@ -25,9 +25,12 @@ use rustok_sandbox::{
 use crate::{
     ArtifactDataError, ArtifactDataMigrationCheckpointStore, ArtifactModuleKind,
     ArtifactPayloadKind, ArtifactReleaseRef, ArtifactSandboxPolicyResolver,
-    ArtifactUiContributionContent, ControlPlaneInfrastructure, ModuleArtifactDescriptor,
-    ModuleArtifactError, ModuleCommandContext, ModuleDependencyLockGraph, TrustEvidenceReference,
-    TrustPolicyRevision, TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
+    ArtifactUiContributionContent, ConflictFenceSet, ControlPlaneInfrastructure,
+    GlobalSecurityEpoch, ModuleArtifactDescriptor, ModuleArtifactError, ModuleCommandContext,
+    ModuleDependencyLockGraph, ModuleTransitionCheckpoint, ModuleTransitionState,
+    RetentionHoldKind, RetentionHoldRecord, RetentionHoldStore, RetentionTarget,
+    TransitionCheckpointStore, TrustEvidenceReference, TrustPolicyRevision,
+    TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
 };
 
 const MAX_ARTIFACT_MIGRATION_CHECKPOINT_BYTES: usize = 16 * 1024;
@@ -1736,13 +1739,16 @@ impl SeaOrmArtifactInstallationStore {
                 })?,
                 data_owner_id,
                 settings_instance_id,
+                predecessor_descriptor.artifact_digest.clone(),
             ))
         } else {
             None
         };
-        let predecessor_revision = predecessor_state.map(|(revision, _, _)| revision);
+        let predecessor_revision = predecessor_state.as_ref().map(|(revision, _, _, _)| *revision);
+        let predecessor_digest = predecessor_state.as_ref().map(|(_, _, _, digest)| digest.clone());
         let (data_owner_id, settings_instance_id) = predecessor_state
-            .map(|(_, data_owner_id, settings_instance_id)| (data_owner_id, settings_instance_id))
+            .as_ref()
+            .map(|(_, data_owner_id, settings_instance_id, _)| (*data_owner_id, *settings_instance_id))
             .unwrap_or((candidate_data_owner_id, candidate_settings_instance_id));
         let installation_revision = candidate_revision.checked_add(1).ok_or_else(|| {
             ModuleInstallationError::AdmissionRevisionConflict(
@@ -1838,6 +1844,44 @@ impl SeaOrmArtifactInstallationStore {
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+
+        // Derive conflict fences and register transition checkpoint for coordinator & watchdog
+        let fences = ConflictFenceSet::derive_module_update_fences(&slug, tenant_id, &[]);
+        let now = Utc::now();
+        let timeout_at = now + chrono::Duration::seconds(300);
+
+        // Place active rollout window retention hold for predecessor if present
+        if let Some(ref pred_digest) = predecessor_digest {
+            let hold = RetentionHoldRecord {
+                hold_id: self.infrastructure.new_id(),
+                target: RetentionTarget::AdmittedPayloadCas {
+                    digest: pred_digest.clone(),
+                },
+                kind: RetentionHoldKind::ActiveRolloutWindow {
+                    operation_id,
+                    expires_at: timeout_at,
+                },
+                created_at: now,
+            };
+            let _ = RetentionHoldStore::insert_hold(&transaction, &hold).await;
+        }
+
+        // Save durable transition checkpoint for transition coordinator & watchdog
+        let checkpoint = ModuleTransitionCheckpoint {
+            operation_id,
+            revision: 1,
+            module_slug: slug.clone(),
+            tenant_id,
+            predecessor_digest,
+            candidate_digest: candidate_descriptor.artifact_digest.clone(),
+            state: ModuleTransitionState::Observing { timeout_at },
+            security_epoch: GlobalSecurityEpoch::INITIAL,
+            fences,
+            recovery_attempt_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        let _ = TransitionCheckpointStore::save_checkpoint(&transaction, &checkpoint).await;
         self.infrastructure
             .write_event(
                 &transaction,
@@ -2311,6 +2355,22 @@ impl SeaOrmArtifactInstallationStore {
             return Err(ModuleInstallationError::AdmissionRevisionConflict(
                 "tenant lifecycle changes are allowed only for Optional artifacts".into(),
             ));
+        }
+
+        // Revalidate that no conflicting active release transition is currently executing for this module and tenant
+        let active_checkpoints = TransitionCheckpointStore::list_active_checkpoints(&transaction)
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if let Some(active_cp) = active_checkpoints.into_iter().find(|cp| {
+            cp.tenant_id == Some(request.tenant_id)
+                && cp.module_slug == descriptor.slug
+                && !cp.state.is_terminal()
+        }) {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(format!(
+                "artifact tenant lifecycle locked: active release transition is in progress for '{}' (state: {})",
+                descriptor.slug,
+                active_cp.state.name(),
+            )));
         }
         let placeholder = if backend == DbBackend::Postgres {
             "$1"
@@ -3758,7 +3818,35 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
     async fn unfinished_admissions(
         &self,
     ) -> Result<Vec<ArtifactAdmissionRecoveryRecord>, ModuleInstallationError> {
-        Ok(Vec::new())
+        let backend = self.db.get_database_backend();
+        let rows = self
+            .db
+            .query_all_raw(Statement::from_string(
+                backend,
+                "SELECT idempotency_key, request_digest FROM module_artifact_admission_commands \
+                 WHERE installation_id IS NULL"
+                    .to_string(),
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let mut records = Vec::with_capacity(rows.len());
+        for row in rows {
+            let stage_id = required_uuid_from_row(&row, "idempotency_key", backend)?;
+            let digest: String = row
+                .try_get("", "request_digest")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+            records.push(ArtifactAdmissionRecoveryRecord {
+                staged: StagedArtifactBlob {
+                    stage_id,
+                    digest,
+                    media_type: "application/vnd.rustok.module.artifact.v1+wasm".to_string(),
+                    size_bytes: 0,
+                    staging_object_key: None,
+                },
+                stage: ArtifactAdmissionStage::Staged,
+            });
+        }
+        Ok(records)
     }
 
     async fn referenced_blob_digests(&self) -> Result<BTreeSet<String>, ModuleInstallationError> {

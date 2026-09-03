@@ -1,10 +1,11 @@
 use chrono::{Duration, Utc};
 use rustok_modules::{
-    ConflictFenceSet, GlobalSecurityEpoch, ModuleTransitionCheckpoint, ModuleTransitionState,
-    RetentionHoldKind, RetentionHoldRecord, RetentionHoldStore, RetentionTarget,
-    TransitionCheckpointStore,
+    ConflictFenceSet, GlobalSecurityEpoch, ModuleCommandContext, ModuleInstallationScope,
+    ModuleTransitionCheckpoint, ModuleTransitionState, ReleaseAdmissionIntentJournal,
+    ReleaseAdmissionJournalError, RetentionHoldKind, RetentionHoldRecord, RetentionHoldStore,
+    RetentionTarget, TransitionCheckpointStore,
 };
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -183,3 +184,105 @@ async fn test_retention_holds_persistence_and_ledger_reconstruction() {
     assert!(reloaded_ledger.is_collection_allowed(&payload_target));
     assert!(!reloaded_ledger.is_collection_allowed(&recovery_point_target));
 }
+
+#[tokio::test]
+async fn test_release_admission_intent_journal_lifecycle_sqlite() {
+    let db = setup_db().await;
+    let actor_id = Uuid::new_v4();
+    let idempotency_key = Uuid::new_v4();
+    let correlation_id = Uuid::new_v4();
+    let tenant_id = Uuid::new_v4();
+    let scope = ModuleInstallationScope::Tenant { tenant_id };
+    let context = ModuleCommandContext {
+        actor_id,
+        tenant_id: Some(tenant_id),
+        idempotency_key,
+        trace_id: "trace-admission-001".to_string(),
+        correlation_id,
+    };
+    let request_digest = "sha256:payload_staged_digest_001";
+
+    // 1. Initial reservation before staging / CAS publication
+    let intent = ReleaseAdmissionIntentJournal::record_staging_intent(
+        &db,
+        &scope,
+        &context,
+        request_digest,
+    )
+    .await
+    .expect("recording initial staging intent must succeed");
+
+    assert_eq!(intent.actor_id, actor_id);
+    assert_eq!(intent.idempotency_key, idempotency_key);
+    assert_eq!(intent.request_digest, request_digest);
+    assert_eq!(intent.installation_id, None);
+
+    // 2. Exact idempotent retry returns the same record
+    let retry = ReleaseAdmissionIntentJournal::record_staging_intent(
+        &db,
+        &scope,
+        &context,
+        request_digest,
+    )
+    .await
+    .expect("idempotent retry must succeed");
+    assert_eq!(retry.idempotency_key, idempotency_key);
+    assert_eq!(retry.installation_id, None);
+
+    // 3. Conflicting request digest on the same idempotency key fails closed
+    let conflict = ReleaseAdmissionIntentJournal::record_staging_intent(
+        &db,
+        &scope,
+        &context,
+        "sha256:different_conflicting_digest",
+    )
+    .await;
+    assert!(matches!(
+        conflict,
+        Err(ReleaseAdmissionJournalError::Conflict(key, _)) if key == idempotency_key
+    ));
+
+    // 4. Stale/unfinished scan detects the intent (using zero duration to find in-flight intents)
+    let stale_intents = ReleaseAdmissionIntentJournal::scan_stale_unfinished_intents(
+        &db,
+        Duration::zero(),
+    )
+    .await
+    .expect("scanning unfinished intents should succeed");
+    assert_eq!(stale_intents.len(), 1);
+    assert_eq!(stale_intents[0].idempotency_key, idempotency_key);
+
+    // 5. Create admitted installation record to satisfy foreign key constraint
+    let installation_id = Uuid::new_v4();
+    db.execute_unprepared(&format!(
+        "INSERT INTO module_artifact_installations (\
+            installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, \
+            slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, \
+            data_owner_id, settings_instance_id, dependency_graph_revision, dependency_graph_digest, \
+            dependency_lock, installed_at\
+         ) VALUES ('{installation_id}', 'tenant', '{tenant_id}', 'local', 'orders', 'sha256:manifest', \
+            'orders', '1.0.0', 'wasm', 'wasi_p2', 'sha256:payload', 'run', '{{}}', \
+            '{actor_id}', '{actor_id}', 1, 'sha256:lock', '{{}}', '2026-09-03T00:00:00Z')"
+    ))
+    .await
+    .expect("inserting installation record must succeed");
+
+    let bound = ReleaseAdmissionIntentJournal::bind_committed_installation(
+        &db,
+        idempotency_key,
+        installation_id,
+    )
+    .await
+    .expect("binding committed installation should succeed");
+    assert!(bound);
+
+    // 6. Once committed, the intent is no longer reported as unfinished
+    let active_unfinished = ReleaseAdmissionIntentJournal::scan_stale_unfinished_intents(
+        &db,
+        Duration::zero(),
+    )
+    .await
+    .expect("scanning unfinished intents should succeed");
+    assert!(active_unfinished.is_empty());
+}
+

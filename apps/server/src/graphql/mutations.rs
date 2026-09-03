@@ -10,9 +10,20 @@ use crate::graphql::artifact_lifecycle::{
 };
 use crate::graphql::queries::ensure_modules_read_permission;
 use crate::graphql::types::{
-    ArtifactActivation, ArtifactDeactivation, ArtifactRollback,
-    ArtifactTenantLifecycle, ArtifactUninstall, BuildJob, CreateUserInput, DeleteUserPayload,
-    ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput, User,
+    ArtifactActivation, ArtifactDataPurgeReceipt, ArtifactDeactivation, ArtifactRollback,
+    ArtifactSettingsPurgeReceipt, ArtifactSettingsRecoveryPointReceipt,
+    ArtifactSettingsRestoreReceipt, ArtifactTenantLifecycle, ArtifactUninstall, BuildJob,
+    CreateUserInput, DeleteUserPayload, ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput,
+    User,
+};
+use crate::services::artifact_purge_recovery_host::{
+    ServerArtifactDataPurgeAuthorizer, ServerArtifactSettingsRecoveryAuthorizer,
+    ServerArtifactSettingsRecoveryCipher,
+};
+use rustok_modules::{
+    ArtifactDataError, ArtifactDataPurgeRequest, ArtifactDataScope, ArtifactSettingsPurgeRequest,
+    ArtifactSettingsRecoveryError, ArtifactSettingsRecoveryPointCreateRequest,
+    ArtifactSettingsRestoreRequest,
 };
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
@@ -678,6 +689,47 @@ fn map_artifact_ui_action_error(error: ServerError) -> FieldError {
     }
 }
 
+fn map_artifact_settings_recovery_error(err: ArtifactSettingsRecoveryError) -> FieldError {
+    match err {
+        ArtifactSettingsRecoveryError::PolicyDenied => {
+            <FieldError as GraphQLError>::permission_denied("Policy denied artifact settings recovery operation")
+        }
+        ArtifactSettingsRecoveryError::RecoveryUnavailable
+        | ArtifactSettingsRecoveryError::InstallationUnavailable
+        | ArtifactSettingsRecoveryError::SettingsUnavailable => {
+            <FieldError as GraphQLError>::not_found("Requested artifact recovery resource not found")
+        }
+        ArtifactSettingsRecoveryError::RecoveryPrecondition
+        | ArtifactSettingsRecoveryError::PurgePrecondition
+        | ArtifactSettingsRecoveryError::RestorePrecondition
+        | ArtifactSettingsRecoveryError::RetentionPrecondition
+        | ArtifactSettingsRecoveryError::RewrapPrecondition => {
+            <FieldError as GraphQLError>::bad_user_input(&format!("Recovery precondition failed: {err}"))
+        }
+        ArtifactSettingsRecoveryError::IdempotencyConflict => {
+            <FieldError as GraphQLError>::bad_user_input("Idempotency key conflict")
+        }
+        ArtifactSettingsRecoveryError::CiphertextIntegrity => {
+            <FieldError as GraphQLError>::bad_user_input("Ciphertext integrity verification failed")
+        }
+        other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
+    }
+}
+
+fn map_artifact_data_purge_error(err: ArtifactDataError) -> FieldError {
+    match err {
+        ArtifactDataError::PurgePrecondition => {
+            <FieldError as GraphQLError>::bad_user_input(
+                "Data purge precondition failed: namespace must be uninstalled/retired and reason non-empty",
+            )
+        }
+        ArtifactDataError::NamespacePurged => {
+            <FieldError as GraphQLError>::bad_user_input("Data namespace has already been purged")
+        }
+        other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
+    }
+}
+
 #[Object]
 impl RootMutation {
     async fn create_user(&self, ctx: &Context<'_>, input: CreateUserInput) -> Result<User> {
@@ -1194,6 +1246,183 @@ impl RootMutation {
         .await
         .map_err(map_artifact_ui_action_error)?;
         Ok(Json(output))
+    }
+
+    /// Materializes an encrypted settings recovery point for a retired installation.
+    /// The source installation must already be inactive/uninstalled.
+    async fn create_tenant_artifact_settings_recovery_point(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+        expected_installation_revision: i64,
+        expected_settings_revision: i64,
+        reason: String,
+        idempotency_key: Uuid,
+    ) -> Result<ArtifactSettingsRecoveryPointReceipt> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        if idempotency_key.is_nil() || expected_installation_revision < 0 || expected_settings_revision < 0 {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Recovery point creation requires non-nil idempotency key and non-negative revisions",
+            ));
+        }
+        let db = ctx.data::<DatabaseConnection>()?;
+        let control_plane = ModuleControlPlane::new(db.clone());
+        let service = control_plane.artifact_settings_recovery(
+            ServerArtifactSettingsRecoveryAuthorizer,
+            ServerArtifactSettingsRecoveryCipher,
+        );
+
+        let result = service
+            .create_recovery_point(ArtifactSettingsRecoveryPointCreateRequest {
+                tenant_id: tenant.id,
+                installation_id,
+                expected_installation_revision: expected_installation_revision as u64,
+                expected_settings_revision: expected_settings_revision as u64,
+                context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
+                reason,
+            })
+            .await
+            .map_err(map_artifact_settings_recovery_error)?;
+
+        Ok(ArtifactSettingsRecoveryPointReceipt {
+            recovery_point_id: result.recovery_point_id,
+            settings_instance_id: result.settings_instance_id,
+            settings_revision: result.settings_revision as i64,
+            retain_until: result.retain_until.to_rfc3339(),
+        })
+    }
+
+    /// Purges dynamic artifact settings for a retired installation. Requires an
+    /// existing recovery point and is denied if the artifact is active/installed.
+    async fn purge_tenant_artifact_settings(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+        recovery_point_id: Uuid,
+        expected_installation_revision: i64,
+        expected_settings_revision: i64,
+        reason: String,
+        idempotency_key: Uuid,
+    ) -> Result<ArtifactSettingsPurgeReceipt> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        if idempotency_key.is_nil() || expected_installation_revision < 0 || expected_settings_revision < 0 {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Settings purge requires non-nil idempotency key and non-negative revisions",
+            ));
+        }
+        let db = ctx.data::<DatabaseConnection>()?;
+        let control_plane = ModuleControlPlane::new(db.clone());
+        let service = control_plane.artifact_settings_recovery(
+            ServerArtifactSettingsRecoveryAuthorizer,
+            ServerArtifactSettingsRecoveryCipher,
+        );
+
+        let result = service
+            .purge(ArtifactSettingsPurgeRequest {
+                tenant_id: tenant.id,
+                installation_id,
+                recovery_point_id,
+                expected_installation_revision: expected_installation_revision as u64,
+                expected_settings_revision: expected_settings_revision as u64,
+                context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
+                reason,
+            })
+            .await
+            .map_err(map_artifact_settings_recovery_error)?;
+
+        Ok(ArtifactSettingsPurgeReceipt {
+            purge_operation_id: result.purge_operation_id,
+            recovery_point_id: result.recovery_point_id,
+            tombstone_revision: result.tombstone_revision as i64,
+        })
+    }
+
+    /// Restores settings from a recovery point into a fresh non-serving settings instance.
+    async fn restore_tenant_artifact_settings(
+        &self,
+        ctx: &Context<'_>,
+        recovery_point_id: Uuid,
+        target_installation_id: Option<Uuid>,
+        expected_target_installation_revision: Option<i64>,
+        reason: String,
+        idempotency_key: Uuid,
+    ) -> Result<ArtifactSettingsRestoreReceipt> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        if idempotency_key.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Settings restore requires a non-nil idempotency key",
+            ));
+        }
+        let db = ctx.data::<DatabaseConnection>()?;
+        let control_plane = ModuleControlPlane::new(db.clone());
+        let service = control_plane.artifact_settings_recovery(
+            ServerArtifactSettingsRecoveryAuthorizer,
+            ServerArtifactSettingsRecoveryCipher,
+        );
+
+        let result = service
+            .restore(ArtifactSettingsRestoreRequest {
+                tenant_id: tenant.id,
+                recovery_point_id,
+                target_installation_id,
+                expected_target_installation_revision: expected_target_installation_revision.map(|r| r as u64),
+                context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
+                reason,
+            })
+            .await
+            .map_err(map_artifact_settings_recovery_error)?;
+
+        Ok(ArtifactSettingsRestoreReceipt {
+            restore_operation_id: result.restore_operation_id,
+            recovery_point_id: result.recovery_point_id,
+            new_settings_instance_id: result.settings_instance_id,
+            target_installation_id: result.target_installation_id,
+        })
+    }
+
+    /// Purges structured data records for a retired artifact namespace.
+    /// Denied if the artifact is currently active or installed.
+    async fn purge_tenant_artifact_data(
+        &self,
+        ctx: &Context<'_>,
+        module_slug: String,
+        data_contract_revision: i64,
+        policy_revision: i64,
+        expected_namespace_revision: i64,
+        reason: String,
+        idempotency_key: Uuid,
+    ) -> Result<ArtifactDataPurgeReceipt> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        if idempotency_key.is_nil() || expected_namespace_revision < 0 || data_contract_revision < 0 || policy_revision < 0 {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Data purge requires non-nil idempotency key and non-negative revisions",
+            ));
+        }
+        let db = ctx.data::<DatabaseConnection>()?;
+        let control_plane = ModuleControlPlane::new(db.clone());
+        let service = control_plane.artifact_data_purge(ServerArtifactDataPurgeAuthorizer);
+
+        let scope = ArtifactDataScope {
+            tenant_id: tenant.id,
+            module_slug,
+            data_contract_revision: data_contract_revision as u64,
+            policy_revision: policy_revision as u64,
+        };
+
+        let result = service
+            .purge(ArtifactDataPurgeRequest {
+                scope,
+                expected_namespace_revision: expected_namespace_revision as u64,
+                context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
+                reason,
+            })
+            .await
+            .map_err(map_artifact_data_purge_error)?;
+
+        Ok(ArtifactDataPurgeReceipt {
+            namespace_revision: result.namespace_revision as i64,
+            purged_records: result.purged_records as i64,
+        })
     }
 
     async fn retry_failed_module_operation_post_hook(
