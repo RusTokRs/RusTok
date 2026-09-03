@@ -1,11 +1,28 @@
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use rustok_api::TenantLocale;
+use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
-use validator::Validate;
+use validator::{Validate, ValidationError};
 
 use super::{CreateVariantInput, VariantResponse};
 use crate::entities::product::ProductStatus;
+
+fn deserialize_tenant_locale<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = String::deserialize(deserializer)?;
+    TenantLocale::new(raw)
+        .map(TenantLocale::into_inner)
+        .map_err(serde::de::Error::custom)
+}
+
+fn validate_tenant_locale(locale: &str) -> Result<(), ValidationError> {
+    TenantLocale::new(locale)
+        .map(|_| ())
+        .map_err(|_| ValidationError::new("tenant_locale"))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, Validate)]
 pub struct CreateProductInput {
@@ -39,11 +56,8 @@ pub struct CreateProductInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct ProductTranslationInput {
-    #[validate(length(
-        min = 2,
-        max = 5,
-        message = "Locale must be 2-5 characters (e.g. 'en', 'en-US')"
-    ))]
+    #[serde(deserialize_with = "deserialize_tenant_locale")]
+    #[validate(custom(function = "validate_tenant_locale"))]
     pub locale: String,
     #[validate(length(min = 1, max = 255, message = "Title must be 1-255 characters"))]
     pub title: String,
@@ -146,11 +160,8 @@ pub struct ProductOptionTranslationResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct ProductOptionTranslationInput {
-    #[validate(length(
-        min = 2,
-        max = 5,
-        message = "Locale must be 2-5 characters (e.g. 'en', 'en-US')"
-    ))]
+    #[serde(deserialize_with = "deserialize_tenant_locale")]
+    #[validate(custom(function = "validate_tenant_locale"))]
     pub locale: String,
     #[validate(length(min = 1, max = 255, message = "Option name must be 1-255 characters"))]
     pub name: String,
@@ -170,4 +181,67 @@ pub struct PriceResponse {
     pub amount: Decimal,
     pub compare_at_amount: Option<Decimal>,
     pub on_sale: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ProductOptionTranslationInput, ProductTranslationInput};
+    use serde_json::json;
+    use validator::Validate;
+
+    #[test]
+    fn product_translation_input_uses_tenant_locale_contract() {
+        let input: ProductTranslationInput = serde_json::from_value(json!({
+            "locale": " pt_br ",
+            "title": "Title",
+            "handle": null,
+            "description": null,
+            "meta_title": null,
+            "meta_description": null
+        }))
+        .expect("canonical tenant locale");
+
+        assert_eq!(input.locale, "pt-BR");
+        assert!(input.validate().is_ok());
+
+        let invalid: Result<ProductTranslationInput, _> = serde_json::from_value(json!({
+            "locale": "und",
+            "title": "Title",
+            "handle": null,
+            "description": null,
+            "meta_title": null,
+            "meta_description": null
+        }));
+        assert!(invalid.is_err());
+
+        let direct = ProductTranslationInput {
+            locale: "und".to_string(),
+            title: "Title".to_string(),
+            handle: None,
+            description: None,
+            meta_title: None,
+            meta_description: None,
+        };
+        assert!(direct.validate().is_err());
+    }
+
+    #[test]
+    fn product_option_translation_input_uses_tenant_locale_contract() {
+        let input: ProductOptionTranslationInput = serde_json::from_value(json!({
+            "locale": "zh_hant_tw",
+            "name": "Size",
+            "values": ["Small"]
+        }))
+        .expect("canonical tenant locale");
+
+        assert_eq!(input.locale, "zh-Hant-TW");
+        assert!(input.validate().is_ok());
+
+        let invalid: Result<ProductOptionTranslationInput, _> = serde_json::from_value(json!({
+            "locale": "und",
+            "name": "Size",
+            "values": ["Small"]
+        }));
+        assert!(invalid.is_err());
+    }
 }

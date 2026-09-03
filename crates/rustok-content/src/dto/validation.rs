@@ -3,6 +3,7 @@
 /// Provides validation rules and custom validators for all content-related inputs.
 ///
 /// FIXED: Added i18n support for error messages
+use rustok_api::TenantLocale;
 use validator::ValidationError;
 
 /// Custom validator for kind
@@ -23,45 +24,14 @@ pub fn validate_kind(kind: &str) -> Result<(), ValidationError> {
     }
 }
 
-/// Custom validator for locale format (e.g., "en", "en-US", "ru-RU", "es-419")
+/// Validate a tenant-localized content locale through the platform locale contract.
 ///
-/// FIXED: More robust locale validation
+/// This intentionally shares the same accepted BCP47 subset and `und` rejection
+/// semantics as every other tenant/runtime locale boundary.
 pub fn validate_locale(locale: &str) -> Result<(), ValidationError> {
-    if locale.len() < 2 || locale.len() > 10 {
-        return Err(ValidationError::new("invalid_locale_length"));
-    }
-
-    // Check format: letters-letters or just letters
-    let parts: Vec<&str> = locale.split('-').collect();
-
-    match parts.len() {
-        1 => {
-            // Just language code (e.g., "en", "ru")
-            if parts[0].len() != 2 || !parts[0].chars().all(|c| c.is_ascii_alphabetic()) {
-                return Err(ValidationError::new("invalid_locale_format"));
-            }
-        }
-        2 => {
-            // Language-Region (e.g., "en-US", "zh-CN", "es-419")
-            if parts[0].len() != 2 || !parts[0].chars().all(|c| c.is_ascii_alphabetic()) {
-                return Err(ValidationError::new("invalid_locale_format"));
-            }
-
-            let region = parts[1];
-            let is_alpha_region =
-                region.len() == 2 && region.chars().all(|c| c.is_ascii_alphabetic());
-            let is_numeric_region = region.len() == 3 && region.chars().all(|c| c.is_ascii_digit());
-
-            if !(is_alpha_region || is_numeric_region) {
-                return Err(ValidationError::new("invalid_locale_format"));
-            }
-        }
-        _ => {
-            return Err(ValidationError::new("invalid_locale_format"));
-        }
-    }
-
-    Ok(())
+    TenantLocale::new(locale)
+        .map(|_| ())
+        .map_err(|_| ValidationError::new("invalid_locale_format"))
 }
 
 /// Custom validator for position (should be non-negative)
@@ -162,19 +132,21 @@ mod tests {
         assert!(validate_locale("zh-CN").is_ok());
         assert!(validate_locale("pt-BR").is_ok());
         assert!(validate_locale("es-419").is_ok());
+        assert!(validate_locale("zh-Hant-TW").is_ok());
+        assert!(validate_locale("pt_BR").is_ok());
+        assert!(validate_locale("en-US-extra").is_ok());
     }
 
     #[test]
     fn test_validate_locale_invalid() {
-        assert!(validate_locale("e").is_err()); // Too short
-        assert!(validate_locale("toolonglocale").is_err()); // Too long
-        assert!(validate_locale("en_US").is_err()); // Underscore not allowed
-        assert!(validate_locale("en123").is_err()); // Numbers in language part
-        assert!(validate_locale("en-").is_err()); // Missing country
-        assert!(validate_locale("-US").is_err()); // Missing language
-        assert!(validate_locale("en-1").is_err()); // Region too short
-        assert!(validate_locale("en-U1").is_err()); // Region must be all alpha or all digits
-        assert!(validate_locale("en-US-extra").is_err()); // Too many parts
+        assert!(validate_locale("e").is_err());
+        assert!(validate_locale("toolonglocale").is_err());
+        assert!(validate_locale("en123").is_err());
+        assert!(validate_locale("en-").is_err());
+        assert!(validate_locale("-US").is_err());
+        assert!(validate_locale("en-1").is_err());
+        assert!(validate_locale("en-U1").is_err());
+        assert!(validate_locale("und").is_err());
     }
 
     #[test]

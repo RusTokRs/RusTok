@@ -1,10 +1,27 @@
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use rustok_api::TenantLocale;
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 use uuid::Uuid;
-use validator::Validate;
+use validator::{Validate, ValidationError};
+
+fn deserialize_tenant_locale<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = String::deserialize(deserializer)?;
+    TenantLocale::new(&raw)
+        .map(TenantLocale::into_inner)
+        .map_err(|error| serde::de::Error::custom(error.to_string()))
+}
+
+fn validate_tenant_locale(locale: &str) -> Result<(), ValidationError> {
+    TenantLocale::new(locale)
+        .map(|_| ())
+        .map_err(|_| ValidationError::new("tenant_locale"))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateShippingOptionInput {
@@ -35,7 +52,8 @@ pub struct UpdateShippingOptionInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct ShippingOptionTranslationInput {
-    #[validate(length(min = 2, max = 5))]
+    #[serde(deserialize_with = "deserialize_tenant_locale")]
+    #[validate(custom(function = "validate_tenant_locale"))]
     pub locale: String,
     #[validate(length(min = 1, max = 120))]
     pub name: String,
@@ -174,4 +192,41 @@ pub struct FulfillmentItemResponse {
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn shipping_translation_deserialization_canonicalizes_tenant_locale() {
+        let input: ShippingOptionTranslationInput = serde_json::from_value(json!({
+            "locale": " zh_hant_tw ",
+            "name": "Express"
+        }))
+        .expect("valid tenant locale");
+
+        assert_eq!(input.locale, "zh-Hant-TW");
+    }
+
+    #[test]
+    fn shipping_translation_deserialization_rejects_storage_only_und() {
+        let result = serde_json::from_value::<ShippingOptionTranslationInput>(json!({
+            "locale": "und",
+            "name": "Express"
+        }));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn shipping_translation_validation_rejects_direct_und() {
+        let input = ShippingOptionTranslationInput {
+            locale: "und".to_string(),
+            name: "Express".to_string(),
+        };
+
+        assert!(input.validate().is_err());
+    }
 }
