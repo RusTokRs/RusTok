@@ -19,6 +19,7 @@ mod contracts;
 mod control_plane;
 mod data;
 pub mod data_copier;
+pub mod data_object_migration;
 mod data_snapshot;
 mod definition;
 mod dependency;
@@ -78,6 +79,10 @@ pub use conflict_fences::{ConflictFenceSet, ConflictKey, ConflictKeyKind};
 pub use data_copier::{
     ArtifactDataCopyError, ArtifactDataCrossRevisionCopier, CrossRevisionDataCopyReceipt,
     CrossRevisionDataCopyRequest,
+};
+pub use data_object_migration::{
+    ArtifactDataObjectMigrationError, ArtifactDataObjectMigrationReceipt,
+    ArtifactDataObjectMigrationRequest, ArtifactDataObjectMigrationService,
 };
 pub use migration_preflight::{
     MigrationPreflightInput, MigrationPreflightReceipt, UpdateMode, evaluate_migration_preflight,

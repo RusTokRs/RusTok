@@ -36,6 +36,8 @@ pub enum ArtifactDataCopyError {
     SourceNamespaceMissing(u64),
     #[error("Target namespace for revision {0} not found")]
     TargetNamespaceMissing(u64),
+    #[error("Source has {0} unmigrated live objects in module_artifact_data_objects; structured copier alone cannot authorize revision change")]
+    UnmigratedLiveObjects(u64),
     #[error("Storage error: {0}")]
     Storage(String),
 }
@@ -439,5 +441,52 @@ impl ArtifactDataCrossRevisionCopier {
             .map_err(storage_error)?;
 
         Ok(result.rows_affected())
+    }
+
+    /// Verifies that all live objects in the source contract revision have been migrated to the target contract revision.
+    /// Fails closed with `UnmigratedLiveObjects` if any source objects remain unmigrated.
+    pub async fn ensure_no_unmigrated_live_objects(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+        source_contract_revision: u64,
+        target_contract_revision: u64,
+    ) -> Result<(), ArtifactDataCopyError> {
+        let backend = self.db.get_database_backend();
+        let row = self
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT COUNT(*) AS count \
+                     FROM module_artifact_data_objects src \
+                     WHERE src.tenant_id = {} AND src.module_slug = {} AND src.data_contract_revision = {} \
+                       AND NOT EXISTS ( \
+                           SELECT 1 FROM module_artifact_data_objects tgt \
+                           WHERE tgt.tenant_id = src.tenant_id AND tgt.module_slug = src.module_slug \
+                             AND tgt.data_contract_revision = {} AND tgt.object_name = src.object_name \
+                             AND tgt.digest_sha256 = src.digest_sha256 \
+                       )",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                ),
+                vec![
+                    uuid_value(tenant_id, backend),
+                    module_slug.to_string().into(),
+                    revision_value(source_contract_revision)?,
+                    revision_value(target_contract_revision)?,
+                ],
+            ))
+            .await
+            .map_err(storage_error)?
+            .ok_or_else(|| ArtifactDataCopyError::Storage("query returned no row".to_string()))?;
+
+        let count: i64 = row.try_get("", "count").map_err(storage_error)?;
+        if count > 0 {
+            return Err(ArtifactDataCopyError::UnmigratedLiveObjects(count as u64));
+        }
+        Ok(())
     }
 }

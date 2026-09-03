@@ -1972,7 +1972,7 @@ backend preflight.
   receipt/checkpoint, and unknown-commit reconciliation; stale source or
   conflicting target stops without overwrite.
   Verified by `m20260903_000047_artifact_data_copy_operations.rs`, `data_copier.rs`, and `data_cross_revision_copier_tests.rs`.
-- [ ] Implement the maintenance-only broker-owned object migration for a
+- [x] Implement the maintenance-only broker-owned object migration for a
   persistence-revision change: freeze and digest-pin the exact source logical
   object inventory/bytes, reserve durable per-copy intents and idempotency
   identities, checkpoint verified target references, and accept only after an
@@ -1981,6 +1981,7 @@ backend preflight.
   exists, live objects deny the revision change; the structured-record copier
   alone is never full data-migration evidence, and a completed namespace copy
   still does not authorize automatic mode.
+  Verified by `m20260903_000048_artifact_data_object_copy_operations.rs`, `data_object_migration.rs`, `data_copier.rs`, and `data_object_migration_tests.rs`.
 - [ ] Derive dynamic data-upgrade phase, checkpoint, and irreversibility from
   owner evidence, and include live settings compatibility in every decision.
 - [x] Implement the settings update paths: for automatic mode, CAS-write and

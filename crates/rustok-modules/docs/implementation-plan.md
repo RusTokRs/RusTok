@@ -21,6 +21,24 @@ boundary and the module-owned admin transport for backend write/build logic.
 
 ## Current verification evidence
 
+On 2026-09-03, Maintenance-Only Broker-Owned Object Migration and Live Object Guard were delivered per Section 4 of the Rollback Plan:
+- `crates/rustok-modules/src/migrations/m20260903_000048_artifact_data_object_copy_operations.rs` added persistent table `module_artifact_data_object_copy_operations` with RLS tenant isolation to reserve per-copy intents (`status = 'intent'`) and reference checkpoints (`status = 'checkpointed'`).
+- `crates/rustok-modules/src/data_object_migration.rs` implemented `ArtifactDataObjectMigrationService`:
+  - Freezes and digest-pins exact source logical object inventory via SHA-256 `inventory_manifest_digest`.
+  - Performs per-object durable intent logging before referencing objects in target revision.
+  - Checkpoints verified target references in `module_artifact_data_objects` without duplicating storage blobs.
+  - Enforces conflict safety: conflicting target digests fail with `TargetObjectConflict` without overwriting data.
+  - Final acceptance gate: enforces exact match between target and source object count and manifest digest before returning `accepted: true`.
+  - Provides `reconcile_stale_intents` for crash-recovery.
+- `crates/rustok-modules/src/data_copier.rs` added `ensure_no_unmigrated_live_objects`, ensuring that when live objects exist in `module_artifact_data_objects`, structured-record copy alone cannot authorize revision change and fails closed with `UnmigratedLiveObjects(count)`.
+- `crates/rustok-modules/src/control_plane.rs` exposed `artifact_data_object_migration()` on `ModuleControlPlane`.
+- Verified by:
+  - `cargo test --locked -p rustok-modules --test data_object_migration_tests` (2 passed, 0 warnings).
+  - `cargo test --locked -p rustok-modules --test data_cross_revision_copier_tests` (2 passed, 0 warnings).
+  - `cargo check -p rustok-server --test module_graphql_native_parity` (passed, 0 errors).
+  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
+  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+
 On 2026-09-03, Bounded Item-Specific Queue Drain and Claim Security Revalidation were delivered per Section 4 of the Rollback Plan:
 - `crates/rustok-modules/src/event_delivery.rs` added pre-claim security revalidation: verifies that the target module release is not quarantined or revoked in `module_artifact_security_states` and that the installation is active without uninstallation evidence. Quarantined or revoked items are immediately dead-lettered with `revoked_or_quarantined` error code without claiming or executing work.
 - `crates/rustok-modules/src/schedule_delivery.rs` updated `load_admitted_descriptor` to exclude releases marked as `quarantined` or `revoked` in `module_artifact_security_states`, automatically cancelling schedule deliveries with `schedule_unavailable`.

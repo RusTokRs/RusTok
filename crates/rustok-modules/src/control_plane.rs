@@ -12,7 +12,8 @@ use crate::{
     ArtifactMcpCapabilityBrokerResolver, ArtifactMcpInvoker, ArtifactQueueDrainService,
     ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError, ArtifactSecretAuthorizer,
     ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer, ArtifactSecretValueConsumer,
-    ArtifactSettingsRecoveryAuthorizer, ArtifactSettingsRecoveryCipher, ControlPlaneInfrastructure,
+    ArtifactSettingsRecoveryAuthorizer, ArtifactSettingsRecoveryCipher,
+    ArtifactDataObjectMigrationService, ControlPlaneInfrastructure,
     ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeTopologyResolver,
     ModuleArtifactSecurityAuthorizer, ModuleDefinitionCatalog, ModuleDefinitionError,
     ModuleEffectivePolicy, ModuleEffectivePolicyChannelInput,
@@ -338,6 +339,11 @@ impl ModuleControlPlane {
     /// Returns the bounded drain service for predecessor-incompatible or decommissioned queues.
     pub fn queue_drain(&self) -> ArtifactQueueDrainService {
         ArtifactQueueDrainService::new(self.db.clone())
+    }
+
+    /// Returns the broker-owned object migration service for persistence revision changes.
+    pub fn artifact_data_object_migration(&self) -> ArtifactDataObjectMigrationService {
+        ArtifactDataObjectMigrationService::new(self.db.clone())
     }
 
     /// Returns the platform security owner for immutable artifact release
