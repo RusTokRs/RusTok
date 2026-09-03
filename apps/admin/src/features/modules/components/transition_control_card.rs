@@ -31,6 +31,7 @@ pub fn TransitionControlCard(
 
     let op_id = checkpoint.operation_id.clone();
     let is_observing = checkpoint.state == ModuleTransitionState::Observing;
+    let is_past_point_of_no_return = checkpoint.state == ModuleTransitionState::PointOfNoReturn;
     let is_recovering = checkpoint.state == ModuleTransitionState::RollbackTriggered;
     let is_failed = checkpoint.state == ModuleTransitionState::FailedClosed;
     let is_converged = checkpoint.state == ModuleTransitionState::Converged;
@@ -44,6 +45,9 @@ pub fn TransitionControlCard(
         ModuleTransitionState::RecoveredToPredecessor => {
             "bg-indigo-500/15 text-indigo-500 border-indigo-500/30"
         }
+        ModuleTransitionState::PointOfNoReturn => {
+            "bg-purple-500/15 text-purple-500 border-purple-500/30"
+        }
         ModuleTransitionState::FailedClosed | ModuleTransitionState::RollbackTriggered => {
             "bg-rose-500/15 text-rose-500 border-rose-500/30"
         }
@@ -56,6 +60,7 @@ pub fn TransitionControlCard(
         ModuleTransitionState::Prestaging => "Pre-Staging",
         ModuleTransitionState::Activating => "Activating",
         ModuleTransitionState::Observing => "Observing Window",
+        ModuleTransitionState::PointOfNoReturn => "Point of No Return (Irreversible)",
         ModuleTransitionState::RollbackTriggered => "Rollback Triggered",
         ModuleTransitionState::RecoveredToPredecessor => "Recovered to Predecessor",
         ModuleTransitionState::Converged => "Converged",
@@ -191,6 +196,18 @@ pub fn TransitionControlCard(
                 None
             }}
 
+            // Point of No Return Notice
+            {if is_past_point_of_no_return {
+                Some(view! {
+                    <div class="mb-4 rounded-lg border border-purple-500/20 bg-purple-500/10 p-3 text-xs text-purple-500">
+                        <span class="font-semibold">"Point of No Return Reached: "</span>
+                        "Destructive mutation, compensating action, or candidate-only settings active. Rollback window is closed and traffic/job/write fences are enforced."
+                    </div>
+                })
+            } else {
+                None
+            }}
+
             // Failed Closed Notice
             {if is_failed {
                 Some(view! {
@@ -253,7 +270,7 @@ pub fn TransitionControlCard(
             <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
                 <div class="flex items-center gap-2">
                     // Finalize Transition Button
-                    {if is_observing {
+                    {if is_observing || is_past_point_of_no_return {
                         Some(view! {
                             <button
                                 type="button"
@@ -271,7 +288,7 @@ pub fn TransitionControlCard(
 
                 <div class="flex items-center gap-2">
                     // Emergency Rollback Button
-                    {if (is_observing || is_recovering || !is_converged) && !recovery_limit_reached {
+                    {if (is_observing || is_recovering || !is_converged) && !recovery_limit_reached && !is_past_point_of_no_return {
                         Some(view! {
                             <button
                                 type="button"

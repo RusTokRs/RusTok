@@ -20,6 +20,7 @@ mod control_plane;
 mod data;
 pub mod data_copier;
 pub mod data_object_migration;
+pub mod data_upgrade;
 mod data_snapshot;
 mod definition;
 mod dependency;
@@ -83,6 +84,9 @@ pub use data_copier::{
 pub use data_object_migration::{
     ArtifactDataObjectMigrationError, ArtifactDataObjectMigrationReceipt,
     ArtifactDataObjectMigrationRequest, ArtifactDataObjectMigrationService,
+};
+pub use data_upgrade::{
+    DataUpgradeDecision, DataUpgradeEvidence, DataUpgradePhase, evaluate_data_upgrade_decision,
 };
 pub use migration_preflight::{
     MigrationPreflightInput, MigrationPreflightReceipt, UpdateMode, evaluate_migration_preflight,

@@ -21,6 +21,20 @@ boundary and the module-owned admin transport for backend write/build logic.
 
 ## Current verification evidence
 
+On 2026-09-03, Data-Upgrade Phase, Irreversibility, and Point-of-No-Return Fences were delivered per Section 4 of the Rollback Plan:
+- `crates/rustok-modules/src/data_upgrade.rs` implemented `evaluate_data_upgrade_decision`, deriving `DataUpgradePhase` (`Compatible`, `MaintenancePreCutover`, `PointOfNoReturn`, `Completed`) and irreversibility from owner evidence: `MigrationPreflightReceipt` (additive safety, cross-revision copy requirements), live settings schema intersection validity (`settings_intersection_valid`), unmigrated live object counts, and committed point-of-no-return state.
+- `crates/rustok-modules/src/conflict_fences.rs` added `Traffic` and `JobQueue` conflict key scopes and implemented `derive_point_of_no_return_fences`, combining ReleaseUnit, DataMigrationOwner (write), Traffic, JobQueue, Namespace, and Topology fences.
+- `crates/rustok-modules/src/transition_coordinator.rs` added `ModuleTransitionState::PointOfNoReturn`, `TransitionCoordinatorError::PastPointOfNoReturn`, and `commit_point_of_no_return`, enforcing point-of-no-return commitment with traffic/job/write fences before any irreversible, destructive, or compensating effects, and strictly forbidding subsequent rollback/recovery attempts.
+- Server (`apps/server/src/graphql/transition_lifecycle.rs`) and Admin UI (`apps/admin/src/features/modules/components/transition_control_card.rs`) updated with `PointOfNoReturn` parity, warning banners, and rollback button lock.
+- Verified by:
+  - `cargo test --locked -p rustok-modules --test point_of_no_return_and_irreversibility_tests` (2 passed, 0 warnings).
+  - `cargo test --locked -p rustok-modules --test transition_coordinator_tests` (4 passed, 0 warnings).
+  - `cargo test --locked -p rustok-modules --test conflict_fences_and_security_epoch_tests` (3 passed, 0 warnings).
+  - `cargo check -p rustok-admin` (passed, 0 errors).
+  - `cargo check -p rustok-server --test module_graphql_native_parity` (passed, 0 errors).
+  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
+  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+
 On 2026-09-03, Maintenance-Only Broker-Owned Object Migration and Live Object Guard were delivered per Section 4 of the Rollback Plan:
 - `crates/rustok-modules/src/migrations/m20260903_000048_artifact_data_object_copy_operations.rs` added persistent table `module_artifact_data_object_copy_operations` with RLS tenant isolation to reserve per-copy intents (`status = 'intent'`) and reference checkpoints (`status = 'checkpointed'`).
 - `crates/rustok-modules/src/data_object_migration.rs` implemented `ArtifactDataObjectMigrationService`:

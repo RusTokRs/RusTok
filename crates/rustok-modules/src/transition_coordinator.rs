@@ -35,6 +35,11 @@ pub enum ModuleTransitionState {
     Activating,
     /// Serving live traffic under active health observation.
     Observing { timeout_at: DateTime<Utc> },
+    /// Point of no return committed: irreversible migration, compensating, or candidate-only settings active. Rollback window is closed.
+    PointOfNoReturn {
+        reason: String,
+        committed_at: DateTime<Utc>,
+    },
     /// An incident was detected and automatic recovery was initiated.
     RollbackTriggered {
         reason: String,
@@ -68,6 +73,7 @@ impl ModuleTransitionState {
             Self::PreStaging => "prestaging",
             Self::Activating => "activating",
             Self::Observing { .. } => "observing",
+            Self::PointOfNoReturn { .. } => "point_of_no_return",
             Self::RollbackTriggered { .. } => "rollback_triggered",
             Self::RecoveredToPredecessor { .. } => "recovered_to_predecessor",
             Self::Converged { .. } => "converged",
@@ -112,6 +118,8 @@ pub enum TransitionCoordinatorError {
     PredecessorRetentionMissing(String),
     #[error("Conflict fence validation failed: {0}")]
     ConflictFenceViolation(String),
+    #[error("Past point of no return for operation `{0}`: {1}; rollback is forbidden")]
+    PastPointOfNoReturn(Uuid, String),
 }
 
 /// Input for starting a governed module transition.
@@ -330,6 +338,13 @@ impl ModuleTransitionCoordinator {
             ));
         }
 
+        if let ModuleTransitionState::PointOfNoReturn { ref reason, .. } = self.checkpoint.state {
+            return Err(TransitionCoordinatorError::PastPointOfNoReturn(
+                self.checkpoint.operation_id,
+                format!("Cannot trigger recovery past point of no return: {}", reason),
+            ));
+        }
+
         // Single-attempt recovery invariant enforcement
         if self.checkpoint.recovery_attempt_count >= 1 {
             let msg = format!(
@@ -354,7 +369,64 @@ impl ModuleTransitionCoordinator {
         Ok(())
     }
 
-    /// Finalizes the transition upon successful observation window completion.
+    /// Commits point-of-no-return and expands conflict fences to include full traffic, job, and write fences
+    /// before any compensating, non-transactional, destructive, or irreversible effect.
+    ///
+    /// Once committed, rollback is permanently forbidden and recovery attempts fail closed.
+    pub fn commit_point_of_no_return(
+        &mut self,
+        reason: String,
+        security_registry: &SecurityEpochRegistry,
+        affected_nodes: &[String],
+    ) -> Result<(), TransitionCoordinatorError> {
+        self.revalidate_mutation_preconditions(security_registry, None)?;
+
+        if self.checkpoint.state.is_terminal() {
+            return Err(TransitionCoordinatorError::OperationAlreadyTerminal(
+                self.checkpoint.state.name().to_string(),
+            ));
+        }
+
+        let fences = ConflictFenceSet::derive_point_of_no_return_fences(
+            &self.checkpoint.module_slug,
+            self.checkpoint.tenant_id,
+            affected_nodes,
+        );
+
+        self.checkpoint.revision += 1;
+        self.checkpoint.fences = fences;
+        self.checkpoint.state = ModuleTransitionState::PointOfNoReturn {
+            reason,
+            committed_at: Utc::now(),
+        };
+        self.checkpoint.updated_at = Utc::now();
+        Ok(())
+    }
+
+    /// Advances from PointOfNoReturn to Converged once the irreversible effect has completed.
+    pub fn advance_point_of_no_return_to_converged(
+        &mut self,
+        security_registry: &SecurityEpochRegistry,
+    ) -> Result<(), TransitionCoordinatorError> {
+        self.revalidate_mutation_preconditions(security_registry, None)?;
+
+        match self.checkpoint.state {
+            ModuleTransitionState::PointOfNoReturn { .. } => {
+                self.checkpoint.revision += 1;
+                self.checkpoint.state = ModuleTransitionState::Converged {
+                    finalized_at: Utc::now(),
+                };
+                self.checkpoint.updated_at = Utc::now();
+                Ok(())
+            }
+            _ => Err(TransitionCoordinatorError::InvalidStateTransition {
+                from: self.checkpoint.state.name().to_string(),
+                to: "converged".to_string(),
+            }),
+        }
+    }
+
+    /// Finalizes the transition upon successful observation window or point-of-no-return completion.
     pub fn finalize_convergence(
         &mut self,
         security_registry: &SecurityEpochRegistry,
@@ -362,7 +434,8 @@ impl ModuleTransitionCoordinator {
         self.revalidate_mutation_preconditions(security_registry, None)?;
 
         match self.checkpoint.state {
-            ModuleTransitionState::Observing { .. } => {
+            ModuleTransitionState::Observing { .. }
+            | ModuleTransitionState::PointOfNoReturn { .. } => {
                 self.checkpoint.revision += 1;
                 self.checkpoint.state = ModuleTransitionState::Converged {
                     finalized_at: Utc::now(),

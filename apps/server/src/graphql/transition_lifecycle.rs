@@ -13,6 +13,7 @@ pub enum ModuleTransitionStateGql {
     Prestaging,
     Activating,
     Observing,
+    PointOfNoReturn,
     RollbackTriggered,
     RecoveredToPredecessor,
     Converged,
@@ -44,6 +45,10 @@ impl From<ModuleTransitionCheckpoint> for ModuleTransitionCheckpointGql {
             ModuleTransitionState::Observing { timeout_at } => (
                 ModuleTransitionStateGql::Observing,
                 Some(format!("Timeout at {}", timeout_at.to_rfc3339())),
+            ),
+            ModuleTransitionState::PointOfNoReturn { reason, committed_at } => (
+                ModuleTransitionStateGql::PointOfNoReturn,
+                Some(format!("Committed at {}: {}", committed_at.to_rfc3339(), reason)),
             ),
             ModuleTransitionState::RollbackTriggered { reason, .. } => (
                 ModuleTransitionStateGql::RollbackTriggered,

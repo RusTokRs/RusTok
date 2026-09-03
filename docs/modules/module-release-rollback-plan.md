@@ -1982,8 +1982,9 @@ backend preflight.
   alone is never full data-migration evidence, and a completed namespace copy
   still does not authorize automatic mode.
   Verified by `m20260903_000048_artifact_data_object_copy_operations.rs`, `data_object_migration.rs`, `data_copier.rs`, and `data_object_migration_tests.rs`.
-- [ ] Derive dynamic data-upgrade phase, checkpoint, and irreversibility from
+- [x] Derive dynamic data-upgrade phase, checkpoint, and irreversibility from
   owner evidence, and include live settings compatibility in every decision.
+  Verified by `data_upgrade.rs`, `point_of_no_return_and_irreversibility_tests.rs`.
 - [x] Implement the settings update paths: for automatic mode, CAS-write and
   verify an operator-approved value accepted by both N and N+1 before rollout
   only when the current value is not already suitable. Install an owner
@@ -2004,8 +2005,9 @@ backend preflight.
   queued work; it creates no work or traffic and revalidates revocation,
   quarantine, capability, security, and policy state before every claim.
   Verified by `event_delivery.rs`, `schedule_delivery.rs`, `queue_drain.rs`, and `queue_drain_and_security_revalidation_tests.rs`.
-- [ ] Commit point-of-no-return and traffic/job/write fences before any
+- [x] Commit point-of-no-return and traffic/job/write fences before any
   compensating, non-transactional, destructive, or irreversible effect.
+  Verified by `conflict_fences.rs`, `transition_coordinator.rs`, `transition_control_card.rs`, and `point_of_no_return_and_irreversibility_tests.rs`.
 - [x] Implement explicit rollback-window closure and the finalization gate.
   `ModuleTransitionCoordinator::finalize_convergence` validates the security epoch
   and transitions state to `Converged`. The watchdog (`evaluate_transition_watchdog`),

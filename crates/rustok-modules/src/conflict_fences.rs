@@ -20,10 +20,14 @@ pub enum ConflictKeyKind {
     ReleaseUnit = 1,
     /// Database schema or DDL migration owner lock.
     DataMigrationOwner = 2,
+    /// Ingress traffic fence for a module.
+    Traffic = 3,
+    /// Background job and queue execution fence.
+    JobQueue = 4,
     /// Tenant-scoped module namespace or settings domain.
-    Namespace = 3,
+    Namespace = 5,
     /// Physical or logical node deployment slot.
-    Topology = 4,
+    Topology = 6,
 }
 
 /// Strongly-typed conflict key with enforced hierarchical ordering.
@@ -91,6 +95,24 @@ impl ConflictKey {
     /// Physical/logical node deployment slot fence.
     pub fn topology(node_id: &str) -> Self {
         Self::new(ConflictKeyKind::Topology, format!("topology:{}", node_id))
+    }
+
+    /// Ingress traffic fence for a module.
+    pub fn traffic(module_slug: &str, tenant_id: Option<Uuid>) -> Self {
+        let key = match tenant_id {
+            Some(tid) => format!("traffic:{}:{}", tid, module_slug),
+            None => format!("traffic:{}", module_slug),
+        };
+        Self::new(ConflictKeyKind::Traffic, key)
+    }
+
+    /// Background job and queue execution fence for a module.
+    pub fn job_queue(module_slug: &str, tenant_id: Option<Uuid>) -> Self {
+        let key = match tenant_id {
+            Some(tid) => format!("job_queue:{}:{}", tid, module_slug),
+            None => format!("job_queue:{}", module_slug),
+        };
+        Self::new(ConflictKeyKind::JobQueue, key)
     }
 }
 
@@ -174,6 +196,29 @@ impl ConflictFenceSet {
     /// Derives the canonical conflict fence set for tenant-level module disable or purge.
     pub fn derive_tenant_purge_fences(module_slug: &str, tenant_id: Uuid) -> Self {
         let keys = vec![ConflictKey::namespace(tenant_id, module_slug)];
+        Self::new(keys)
+    }
+
+    /// Derives point-of-no-return conflict fences (traffic, job, and write fences) before irreversible effects.
+    pub fn derive_point_of_no_return_fences(
+        module_slug: &str,
+        tenant_id: Option<Uuid>,
+        affected_nodes: &[String],
+    ) -> Self {
+        let mut keys = Vec::new();
+        keys.push(ConflictKey::release_unit(module_slug));
+        keys.push(ConflictKey::data_migration_owner(module_slug));
+        keys.push(ConflictKey::traffic(module_slug, tenant_id));
+        keys.push(ConflictKey::job_queue(module_slug, tenant_id));
+
+        if let Some(tid) = tenant_id {
+            keys.push(ConflictKey::namespace(tid, module_slug));
+        }
+
+        for node in affected_nodes {
+            keys.push(ConflictKey::topology(node));
+        }
+
         Self::new(keys)
     }
 }

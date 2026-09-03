@@ -351,6 +351,8 @@ pub enum ModuleTransitionState {
     Activating,
     #[serde(rename = "OBSERVING")]
     Observing,
+    #[serde(rename = "POINT_OF_NO_RETURN")]
+    PointOfNoReturn,
     #[serde(rename = "ROLLBACK_TRIGGERED")]
     RollbackTriggered,
     #[serde(rename = "RECOVERED_TO_PREDECESSOR")]
