@@ -255,7 +255,7 @@ impl PageBuilderArtifactService {
             DbBackend::Sqlite => page_query().one(&txn).await?,
             DbBackend::Postgres | DbBackend::MySql => page_query().lock_shared().one(&txn).await?,
             _ => unreachable!("unsupported SeaORM database backend"),
-};
+        };
 
         let is_published = page.is_some_and(|page| page.status == "published");
         let is_visible = is_published

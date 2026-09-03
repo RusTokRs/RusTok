@@ -253,7 +253,7 @@ fn installation_insert_sql(backend: DbBackend) -> Result<&'static str, PortError
             "rbac.artifact_permission_backend_unsupported",
             format!("artifact permission catalog does not support {backend:?}"),
         )),
-}
+    }
 }
 
 fn installation_select_sql(backend: DbBackend) -> Result<&'static str, PortError> {
@@ -268,7 +268,7 @@ fn installation_select_sql(backend: DbBackend) -> Result<&'static str, PortError
             "rbac.artifact_permission_backend_unsupported",
             format!("artifact permission catalog does not support {backend:?}"),
         )),
-}
+    }
 }
 
 fn definition_insert_sql(backend: DbBackend) -> Result<&'static str, PortError> {
@@ -283,7 +283,7 @@ fn definition_insert_sql(backend: DbBackend) -> Result<&'static str, PortError> 
             "rbac.artifact_permission_backend_unsupported",
             format!("artifact permission catalog does not support {backend:?}"),
         )),
-}
+    }
 }
 
 fn definition_select_sql(backend: DbBackend) -> Result<&'static str, PortError> {
@@ -298,7 +298,7 @@ fn definition_select_sql(backend: DbBackend) -> Result<&'static str, PortError> 
             "rbac.artifact_permission_backend_unsupported",
             format!("artifact permission catalog does not support {backend:?}"),
         )),
-}
+    }
 }
 
 fn translation_upsert_sql(backend: DbBackend) -> Result<&'static str, PortError> {
@@ -313,7 +313,7 @@ fn translation_upsert_sql(backend: DbBackend) -> Result<&'static str, PortError>
             "rbac.artifact_permission_backend_unsupported",
             format!("artifact permission catalog does not support {backend:?}"),
         )),
-}
+    }
 }
 
 #[cfg(test)]

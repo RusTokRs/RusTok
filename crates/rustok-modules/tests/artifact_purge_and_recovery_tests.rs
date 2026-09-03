@@ -13,8 +13,8 @@ use rustok_modules::{
     ArtifactSettingsRecoveryCollectionRequest, ArtifactSettingsRecoveryError,
     ArtifactSettingsRecoveryPointCreateRequest, ArtifactSettingsRecoveryRetention,
     ArtifactSettingsRecoveryRetentionUpdate, ArtifactSettingsRecoveryRetentionUpdateRequest,
-    ArtifactSettingsRecoveryRewrapRequest, ArtifactSettingsRestoreRequest, ModuleArtifactDescriptor,
-    ModuleCommandContext, ModulesModule, SeaOrmArtifactDataPurgeService,
+    ArtifactSettingsRecoveryRewrapRequest, ArtifactSettingsRestoreRequest,
+    ModuleArtifactDescriptor, ModuleCommandContext, ModulesModule, SeaOrmArtifactDataPurgeService,
     SeaOrmArtifactSettingsRecoveryService, canonical_schema_digest,
 };
 use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
@@ -62,7 +62,9 @@ impl ArtifactSettingsRecoveryAuthorizer for TestAuthorizer {
         request: &ArtifactSettingsPurgeRequest,
         recovery: &ArtifactSettingsRecoveryAuthorizationContext,
     ) -> Result<(), ArtifactSettingsRecoveryError> {
-        if request.reason.trim().is_empty() || recovery.recovery_point_id != request.recovery_point_id {
+        if request.reason.trim().is_empty()
+            || recovery.recovery_point_id != request.recovery_point_id
+        {
             return Err(ArtifactSettingsRecoveryError::PolicyDenied);
         }
         Ok(())
@@ -73,7 +75,9 @@ impl ArtifactSettingsRecoveryAuthorizer for TestAuthorizer {
         request: &ArtifactSettingsRestoreRequest,
         recovery: &ArtifactSettingsRecoveryAuthorizationContext,
     ) -> Result<(), ArtifactSettingsRecoveryError> {
-        if request.reason.trim().is_empty() || recovery.recovery_point_id != request.recovery_point_id {
+        if request.reason.trim().is_empty()
+            || recovery.recovery_point_id != request.recovery_point_id
+        {
             return Err(ArtifactSettingsRecoveryError::PolicyDenied);
         }
         Ok(())
@@ -248,7 +252,12 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
     });
     let schema_digest = canonical_schema_digest(&schema);
 
-    let desc = descriptor("theme_manager", "1.0.0", schema_digest.clone(), schema.clone());
+    let desc = descriptor(
+        "theme_manager",
+        "1.0.0",
+        schema_digest.clone(),
+        schema.clone(),
+    );
 
     // 1. Insert installation and settings instance
     database
@@ -303,11 +312,8 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         .await
         .expect("insert admission active");
 
-    let recovery_service = SeaOrmArtifactSettingsRecoveryService::new(
-        database.clone(),
-        TestAuthorizer,
-        TestCipher,
-    );
+    let recovery_service =
+        SeaOrmArtifactSettingsRecoveryService::new(database.clone(), TestAuthorizer, TestCipher);
 
     // 2. Attempting to create recovery point while installation is ACTIVE must fail with RecoveryPrecondition!
     let recovery_req = ArtifactSettingsRecoveryPointCreateRequest {
@@ -322,7 +328,10 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         .create_recovery_point(recovery_req.clone())
         .await
         .expect_err("active recovery point creation should fail");
-    assert_eq!(active_recovery_err, ArtifactSettingsRecoveryError::RecoveryPrecondition);
+    assert_eq!(
+        active_recovery_err,
+        ArtifactSettingsRecoveryError::RecoveryPrecondition
+    );
 
     // 3. Transition installation to retired: inactive admission and uninstall evidence
     database
@@ -412,10 +421,7 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         .await
         .expect("insert namespace");
 
-    let data_purge_service = SeaOrmArtifactDataPurgeService::new(
-        database.clone(),
-        TestAuthorizer,
-    );
+    let data_purge_service = SeaOrmArtifactDataPurgeService::new(database.clone(), TestAuthorizer);
 
     let data_purge_req = ArtifactDataPurgeRequest {
         scope: data_scope,

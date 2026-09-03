@@ -26,9 +26,7 @@ pub(in crate::services) async fn load_category_names_map(
 
     let bindings = blog_category_taxonomy_binding::Entity::find()
         .filter(blog_category_taxonomy_binding::Column::TenantId.eq(tenant_id))
-        .filter(
-            blog_category_taxonomy_binding::Column::BlogCategoryId.is_in(category_ids.clone()),
-        )
+        .filter(blog_category_taxonomy_binding::Column::BlogCategoryId.is_in(category_ids.clone()))
         .all(db)
         .await?;
     if bindings.len() != category_ids.len() {
@@ -85,14 +83,15 @@ pub(in crate::services) async fn load_category_names_map(
     category_ids
         .into_iter()
         .map(|blog_category_id| {
-            let taxonomy_category_id = binding_by_blog
-                .get(&blog_category_id)
-                .copied()
-                .ok_or_else(|| {
-                    BlogError::validation(format!(
-                        "Blog category {blog_category_id} has no Taxonomy binding"
-                    ))
-                })?;
+            let taxonomy_category_id =
+                binding_by_blog
+                    .get(&blog_category_id)
+                    .copied()
+                    .ok_or_else(|| {
+                        BlogError::validation(format!(
+                            "Blog category {blog_category_id} has no Taxonomy binding"
+                        ))
+                    })?;
             let canonical = canonical_by_id.get(&taxonomy_category_id).ok_or_else(|| {
                 BlogError::validation(format!(
                     "Blog category {blog_category_id} Taxonomy projection is missing"

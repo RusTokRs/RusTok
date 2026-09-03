@@ -32,7 +32,7 @@ async fn setup() -> DatabaseConnection {
         .await
         .expect("forum Taxonomy binding database should connect");
     let schema = SchemaManager::new(&db);
-        for migration in OutboxModule.migrations() {
+    for migration in OutboxModule.migrations() {
         migration
             .up(&schema)
             .await
@@ -46,7 +46,7 @@ async fn setup() -> DatabaseConnection {
     }
 
     let mut applied_forum_migrations = 0usize;
-        db.execute_unprepared(
+    db.execute_unprepared(
         "CREATE TABLE IF NOT EXISTS users (
             id TEXT NOT NULL PRIMARY KEY,
             tenant_id TEXT NOT NULL

@@ -1,6 +1,5 @@
-const MIGRATION: &str = include_str!(
-    "../src/migrations/m20260824_000031_retire_forum_category_legacy_storage.rs"
-);
+const MIGRATION: &str =
+    include_str!("../src/migrations/m20260824_000031_retire_forum_category_legacy_storage.rs");
 const REGISTRY: &str = include_str!("../src/migrations/mod.rs");
 
 #[test]
@@ -18,7 +17,10 @@ fn legacy_category_storage_retires_only_after_taxonomy_identity_cutover() {
         "ForumTranslationChanges::Table",
         "Intentionally irreversible",
     ] {
-        assert!(MIGRATION.contains(marker), "missing retirement marker: {marker}");
+        assert!(
+            MIGRATION.contains(marker),
+            "missing retirement marker: {marker}"
+        );
     }
 
     let aliases = MIGRATION
@@ -44,12 +46,11 @@ fn legacy_category_storage_retires_only_after_taxonomy_identity_cutover() {
         );
     }
 
-    assert!(REGISTRY.contains(
-        "mod m20260824_000031_retire_forum_category_legacy_storage;"
-    ));
-    assert!(REGISTRY.contains(
-        "Box::new(m20260824_000031_retire_forum_category_legacy_storage::Migration)"
-    ));
+    assert!(REGISTRY.contains("mod m20260824_000031_retire_forum_category_legacy_storage;"));
+    assert!(
+        REGISTRY
+            .contains("Box::new(m20260824_000031_retire_forum_category_legacy_storage::Migration)")
+    );
     assert!(REGISTRY.contains(
         "MigrationDependencyDescriptor::new(\n            \"m20260824_000031_retire_forum_category_legacy_storage\",\n            vec![\"m20260823_000030_backfill_forum_categories_to_taxonomy\"]"
     ));

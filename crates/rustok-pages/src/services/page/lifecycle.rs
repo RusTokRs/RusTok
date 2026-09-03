@@ -385,7 +385,7 @@ async fn load_bodies_for_publish(
         DbBackend::Sqlite => query().all(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().all(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-})
+    })
 }
 
 fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot {

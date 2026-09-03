@@ -75,7 +75,7 @@ impl ActiveModelBehavior for ActiveModel {
         let lock = super::comment_thread::Entity::update_many()
             .col_expr(
                 super::comment_thread::Column::UpdatedAt,
-                Expr::col(super::comment_thread::Column::UpdatedAt).into(),
+                Expr::col(super::comment_thread::Column::UpdatedAt),
             )
             .filter(super::comment_thread::Column::Id.eq(thread_id))
             .filter(super::comment_thread::Column::TenantId.eq(tenant_id))

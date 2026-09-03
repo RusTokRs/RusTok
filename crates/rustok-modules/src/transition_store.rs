@@ -167,17 +167,19 @@ impl TransitionCheckpointStore {
     pub async fn list_active_checkpoints<C: ConnectionTrait>(
         db: &C,
     ) -> Result<Vec<ModuleTransitionCheckpoint>, TransitionStoreError> {
-        let models = transition_checkpoint_entity::Entity::find()
-            .all(db)
-            .await?;
+        let models = transition_checkpoint_entity::Entity::find().all(db).await?;
         let mut checkpoints = Vec::new();
 
         for model in models {
-            let state: ModuleTransitionState = serde_json::from_value(model.state)
-                .map_err(|e| TransitionStoreError::CorruptData(format!("Invalid state JSON: {e}")))?;
+            let state: ModuleTransitionState =
+                serde_json::from_value(model.state).map_err(|e| {
+                    TransitionStoreError::CorruptData(format!("Invalid state JSON: {e}"))
+                })?;
             if !state.is_terminal() {
-                let fences: ConflictFenceSet = serde_json::from_value(model.fences)
-                    .map_err(|e| TransitionStoreError::CorruptData(format!("Invalid fences JSON: {e}")))?;
+                let fences: ConflictFenceSet =
+                    serde_json::from_value(model.fences).map_err(|e| {
+                        TransitionStoreError::CorruptData(format!("Invalid fences JSON: {e}"))
+                    })?;
 
                 checkpoints.push(ModuleTransitionCheckpoint {
                     operation_id: model.operation_id,

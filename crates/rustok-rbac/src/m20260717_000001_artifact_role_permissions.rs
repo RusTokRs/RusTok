@@ -24,7 +24,7 @@ impl MigrationTrait for Migration {
                     "artifact role permission migration does not support {backend:?}"
                 )));
             }
-};
+        };
 
         for statement in statements {
             manager

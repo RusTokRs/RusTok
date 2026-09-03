@@ -299,7 +299,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), DbErr> {
         backend => Err(DbErr::Migration(format!(
             "artifact permission canonicalization does not support {backend:?}"
         ))),
-}
+    }
 }
 
 async fn execute_all<C>(

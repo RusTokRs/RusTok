@@ -391,7 +391,7 @@ pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, 
                 vec![tenant.id.into(), effective_locale.clone().into()],
             ),
             _ => unreachable!("unsupported SeaORM database backend"),
-};
+        };
         let oauth_rows = db.query_all_raw(stmt).await.map_err(ServerFnError::new)?;
         let oauth_apps = oauth_rows
             .into_iter()

@@ -546,7 +546,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), ConsumerPoisonRece
         backend => Err(ConsumerPoisonReceiptError::Storage(format!(
             "consumer poison receipts do not support {backend:?}"
         ))),
-}
+    }
 }
 
 fn storage_error(error: impl std::fmt::Display) -> ConsumerPoisonReceiptError {

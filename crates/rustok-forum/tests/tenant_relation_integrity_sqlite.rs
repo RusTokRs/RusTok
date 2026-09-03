@@ -102,16 +102,32 @@ VALUES
     ({}, {}, 'tag', 'module', 'forum', 'tenant-a-tag', 1),
     ({}, {}, 'tag', 'module', 'forum', 'tenant-b-tag', 1);
 "#,
-            sql_uuid(category_a), sql_uuid(tenant_a),
-            sql_uuid(category_b), sql_uuid(tenant_b),
-            sql_uuid(topic_a), sql_uuid(tenant_a), sql_uuid(category_a),
-            sql_uuid(topic_a2), sql_uuid(tenant_a), sql_uuid(category_a),
-            sql_uuid(topic_b), sql_uuid(tenant_b), sql_uuid(category_b),
-            sql_uuid(reply_a), sql_uuid(tenant_a), sql_uuid(topic_a),
-            sql_uuid(reply_a2), sql_uuid(tenant_a), sql_uuid(topic_a2),
-            sql_uuid(reply_b), sql_uuid(tenant_b), sql_uuid(topic_b),
-            sql_uuid(term_a), sql_uuid(tenant_a),
-            sql_uuid(term_b), sql_uuid(tenant_b),
+            sql_uuid(category_a),
+            sql_uuid(tenant_a),
+            sql_uuid(category_b),
+            sql_uuid(tenant_b),
+            sql_uuid(topic_a),
+            sql_uuid(tenant_a),
+            sql_uuid(category_a),
+            sql_uuid(topic_a2),
+            sql_uuid(tenant_a),
+            sql_uuid(category_a),
+            sql_uuid(topic_b),
+            sql_uuid(tenant_b),
+            sql_uuid(category_b),
+            sql_uuid(reply_a),
+            sql_uuid(tenant_a),
+            sql_uuid(topic_a),
+            sql_uuid(reply_a2),
+            sql_uuid(tenant_a),
+            sql_uuid(topic_a2),
+            sql_uuid(reply_b),
+            sql_uuid(tenant_b),
+            sql_uuid(topic_b),
+            sql_uuid(term_a),
+            sql_uuid(tenant_a),
+            sql_uuid(term_b),
+            sql_uuid(tenant_b),
         ),
     )
     .await?;
@@ -120,56 +136,74 @@ VALUES
         (
             format!(
                 "INSERT INTO forum_topic_votes (topic_id, user_id, tenant_id, value) VALUES ({}, {}, {}, 1)",
-                sql_uuid(topic_a), sql_uuid(user_id), sql_uuid(tenant_b)
+                sql_uuid(topic_a),
+                sql_uuid(user_id),
+                sql_uuid(tenant_b)
             ),
             "cross-tenant topic vote",
         ),
         (
             format!(
                 "INSERT INTO forum_reply_votes (reply_id, user_id, tenant_id, value) VALUES ({}, {}, {}, 1)",
-                sql_uuid(reply_a), sql_uuid(user_id), sql_uuid(tenant_b)
+                sql_uuid(reply_a),
+                sql_uuid(user_id),
+                sql_uuid(tenant_b)
             ),
             "cross-tenant reply vote",
         ),
         (
             format!(
                 "INSERT INTO forum_category_subscriptions (category_id, user_id, tenant_id, updated_at) VALUES ({}, {}, {}, CURRENT_TIMESTAMP)",
-                sql_uuid(category_a), sql_uuid(user_id), sql_uuid(tenant_b)
+                sql_uuid(category_a),
+                sql_uuid(user_id),
+                sql_uuid(tenant_b)
             ),
             "cross-tenant category subscription",
         ),
         (
             format!(
                 "INSERT INTO forum_topic_subscriptions (topic_id, user_id, tenant_id, updated_at) VALUES ({}, {}, {}, CURRENT_TIMESTAMP)",
-                sql_uuid(topic_a), sql_uuid(user_id), sql_uuid(tenant_b)
+                sql_uuid(topic_a),
+                sql_uuid(user_id),
+                sql_uuid(tenant_b)
             ),
             "cross-tenant topic subscription",
         ),
         (
             format!(
                 "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id) VALUES ({}, {}, {})",
-                sql_uuid(topic_a), sql_uuid(tenant_b), sql_uuid(reply_b)
+                sql_uuid(topic_a),
+                sql_uuid(tenant_b),
+                sql_uuid(reply_b)
             ),
             "cross-tenant solution",
         ),
         (
             format!(
                 "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id) VALUES ({}, {}, {})",
-                sql_uuid(topic_a), sql_uuid(tenant_a), sql_uuid(reply_a2)
+                sql_uuid(topic_a),
+                sql_uuid(tenant_a),
+                sql_uuid(reply_a2)
             ),
             "solution reply from another topic",
         ),
         (
             format!(
                 "INSERT INTO forum_topic_tags (id, topic_id, term_id, tenant_id) VALUES ({}, {}, {}, {})",
-                sql_uuid(Uuid::new_v4()), sql_uuid(topic_a), sql_uuid(term_a), sql_uuid(tenant_b)
+                sql_uuid(Uuid::new_v4()),
+                sql_uuid(topic_a),
+                sql_uuid(term_a),
+                sql_uuid(tenant_b)
             ),
             "cross-tenant topic tag",
         ),
         (
             format!(
                 "INSERT INTO forum_topic_tags (id, topic_id, term_id, tenant_id) VALUES ({}, {}, {}, {})",
-                sql_uuid(Uuid::new_v4()), sql_uuid(topic_a), sql_uuid(term_b), sql_uuid(tenant_a)
+                sql_uuid(Uuid::new_v4()),
+                sql_uuid(topic_a),
+                sql_uuid(term_b),
+                sql_uuid(tenant_a)
             ),
             "cross-tenant taxonomy term",
         ),
@@ -194,12 +228,25 @@ VALUES ({}, {}, {});
 INSERT INTO forum_topic_tags (id, topic_id, term_id, tenant_id)
 VALUES ({}, {}, {}, {});
 "#,
-            sql_uuid(topic_a), sql_uuid(user_id), sql_uuid(tenant_a),
-            sql_uuid(reply_a), sql_uuid(user_id), sql_uuid(tenant_a),
-            sql_uuid(category_a), sql_uuid(user_id), sql_uuid(tenant_a),
-            sql_uuid(topic_a), sql_uuid(user_id), sql_uuid(tenant_a),
-            sql_uuid(topic_a), sql_uuid(tenant_a), sql_uuid(reply_a),
-            sql_uuid(Uuid::new_v4()), sql_uuid(topic_a), sql_uuid(term_a), sql_uuid(tenant_a),
+            sql_uuid(topic_a),
+            sql_uuid(user_id),
+            sql_uuid(tenant_a),
+            sql_uuid(reply_a),
+            sql_uuid(user_id),
+            sql_uuid(tenant_a),
+            sql_uuid(category_a),
+            sql_uuid(user_id),
+            sql_uuid(tenant_a),
+            sql_uuid(topic_a),
+            sql_uuid(user_id),
+            sql_uuid(tenant_a),
+            sql_uuid(topic_a),
+            sql_uuid(tenant_a),
+            sql_uuid(reply_a),
+            sql_uuid(Uuid::new_v4()),
+            sql_uuid(topic_a),
+            sql_uuid(term_a),
+            sql_uuid(tenant_a),
         ),
     )
     .await?;

@@ -260,7 +260,7 @@ async fn load_page_for_import(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-})
+    })
 }
 
 async fn ensure_route_in_tx(

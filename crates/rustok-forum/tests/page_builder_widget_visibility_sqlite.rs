@@ -103,9 +103,19 @@ async fn page_builder_owner_visibility_preserves_category_floor_tenant_and_topic
     for (top_id, t_id, cat_id, st) in [
         (public_topic, tenant_id, public_category, "open"),
         (private_topic, tenant_id, private_category, "open"),
-        (private_child_topic, tenant_id, private_child_category, "open"),
+        (
+            private_child_topic,
+            tenant_id,
+            private_child_category,
+            "open",
+        ),
         (closed_public_topic, tenant_id, public_category, "closed"),
-        (foreign_topic, foreign_tenant_id, foreign_private_category, "open"),
+        (
+            foreign_topic,
+            foreign_tenant_id,
+            foreign_private_category,
+            "open",
+        ),
     ] {
         db.execute_raw(Statement::from_sql_and_values(
             backend,

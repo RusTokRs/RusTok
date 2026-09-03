@@ -3309,9 +3309,7 @@ impl ValidateEvent for DomainEvent {
                 Ok(())
             }
             Self::ModuleGuestEventEmitted {
-                module_slug,
-                topic,
-                ..
+                module_slug, topic, ..
             } => {
                 validators::validate_not_empty("module_slug", module_slug)?;
                 validators::validate_not_empty("topic", topic)?;

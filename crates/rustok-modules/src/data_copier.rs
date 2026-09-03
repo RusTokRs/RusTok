@@ -28,7 +28,9 @@ pub enum ArtifactDataCopyError {
     TenantMismatch,
     #[error("Reason must not be empty")]
     EmptyReason,
-    #[error("Target key '{0}' already exists with different value; create-only copier refuses overwrite")]
+    #[error(
+        "Target key '{0}' already exists with different value; create-only copier refuses overwrite"
+    )]
     TargetKeyConflict(String),
     #[error("Source namespace for revision {0} not found")]
     SourceNamespaceMissing(u64),
@@ -311,8 +313,9 @@ impl ArtifactDataCrossRevisionCopier {
                 .map_err(storage_error)?;
 
             if let Some(target_row) = existing {
-                let existing_value_text: String =
-                    target_row.try_get("", "value_text").map_err(storage_error)?;
+                let existing_value_text: String = target_row
+                    .try_get("", "value_text")
+                    .map_err(storage_error)?;
                 if existing_value_text != *value_text {
                     return Err(ArtifactDataCopyError::TargetKeyConflict(data_key.clone()));
                 }

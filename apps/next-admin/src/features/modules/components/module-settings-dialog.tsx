@@ -22,7 +22,11 @@ interface ModuleSettingsDialogProps {
   expectedRevision: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaved: (moduleSlug: string, newSettings: string, newRevision: number) => void;
+  onSaved: (
+    moduleSlug: string,
+    newSettings: string,
+    newRevision: number
+  ) => void;
   apiOpts?: GqlOpts;
 }
 
@@ -87,11 +91,14 @@ export function ModuleSettingsDialog({
         idempotencyKey,
         apiOpts
       );
-      toast.success(`Settings updated for ${moduleSlug} (rev ${result.revision})`);
+      toast.success(
+        `Settings updated for ${moduleSlug} (rev ${result.revision})`
+      );
       onSaved(moduleSlug, result.settings, result.revision);
       onOpenChange(false);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to update settings';
+      const msg =
+        err instanceof Error ? err.message : 'Failed to update settings';
       toast.error(msg);
     } finally {
       setIsSaving(false);
@@ -102,23 +109,23 @@ export function ModuleSettingsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-lg'>
         <DialogHeader>
-          <div className='flex items-center justify-between gap-2 mr-6'>
+          <div className='mr-6 flex items-center justify-between gap-2'>
             <DialogTitle className='text-base'>
               Configure Settings: {moduleSlug}
             </DialogTitle>
-            <Badge variant='outline' className='text-xs font-mono'>
+            <Badge variant='outline' className='font-mono text-xs'>
               Rev #{expectedRevision}
             </Badge>
           </div>
           <DialogDescription className='text-xs'>
-            Modify tenant-scoped module configuration. Settings are validated and
-            saved atomically with CAS revision checks.
+            Modify tenant-scoped module configuration. Settings are validated
+            and saved atomically with CAS revision checks.
           </DialogDescription>
         </DialogHeader>
 
         <div className='space-y-3 py-2'>
           <div className='flex items-center justify-between'>
-            <label className='text-xs font-medium text-muted-foreground'>
+            <label className='text-muted-foreground text-xs font-medium'>
               Configuration JSON
             </label>
             <Button
@@ -144,7 +151,7 @@ export function ModuleSettingsDialog({
           />
 
           {jsonError && (
-            <p className='text-xs text-destructive font-medium'>{jsonError}</p>
+            <p className='text-destructive text-xs font-medium'>{jsonError}</p>
           )}
         </div>
 

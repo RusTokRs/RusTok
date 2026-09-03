@@ -4,7 +4,7 @@ use rustok_core::MigrationSource;
 use rustok_forum::ForumModule;
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{ConnectionTrait, ConnectOptions, Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -36,7 +36,7 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
     for migration in TaxonomyModule.migrations() {
         migration.up(&manager).await?;
     }
-        db.execute_unprepared(
+    db.execute_unprepared(
         "CREATE TABLE IF NOT EXISTS users (
             id TEXT NOT NULL PRIMARY KEY,
             tenant_id TEXT NOT NULL

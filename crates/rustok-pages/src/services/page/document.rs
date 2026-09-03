@@ -88,7 +88,7 @@ impl PageService {
                 body_query().lock_exclusive().one(&txn).await?
             }
             _ => unreachable!("unsupported SeaORM database backend"),
-};
+        };
         let actual_revision = page_document_revision(page_id, existing.as_ref());
         if input.expected_revision != actual_revision {
             return Err(document_revision_conflict(

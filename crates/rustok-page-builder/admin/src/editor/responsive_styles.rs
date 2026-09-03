@@ -52,27 +52,27 @@ pub fn ResponsiveStylePanel(runtime: AdminEditorRuntime) -> impl IntoView {
         Effect::new({
             let runtime = runtime.clone();
             move |_| {
-            let selected_id = runtime
-                .controller
-                .with(|controller| controller.ui().state.selection.component_id.clone());
-            let key = selected_id.as_ref().map(|selected_id| {
-                format!(
-                    "{}|{}|{}",
-                    selected_id,
-                    breakpoint_id.get(),
-                    style_property.get()
-                )
-            });
-            if observed_key.get_untracked() == key {
-                return;
+                let selected_id = runtime
+                    .controller
+                    .with(|controller| controller.ui().state.selection.component_id.clone());
+                let key = selected_id.as_ref().map(|selected_id| {
+                    format!(
+                        "{}|{}|{}",
+                        selected_id,
+                        breakpoint_id.get(),
+                        style_property.get()
+                    )
+                });
+                if observed_key.get_untracked() == key {
+                    return;
+                }
+                observed_key.set(key);
+                style_value.set(current_rule_value(
+                    &runtime,
+                    &breakpoint_id.get_untracked(),
+                    &style_property.get_untracked(),
+                ));
             }
-            observed_key.set(key);
-            style_value.set(current_rule_value(
-                &runtime,
-                &breakpoint_id.get_untracked(),
-                &style_property.get_untracked(),
-            ));
-        }
         });
     }
 

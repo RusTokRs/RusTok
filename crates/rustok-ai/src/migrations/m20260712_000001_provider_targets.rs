@@ -23,7 +23,7 @@ impl MigrationTrait for Migration {
                     "AI provider target migration does not support database backend {other:?}"
                 )));
             }
-};
+        };
         let rows = connection
             .query_all_raw(Statement::from_string(
                 backend,
@@ -61,7 +61,7 @@ impl MigrationTrait for Migration {
                     "AI provider target migration does not support database backend {other:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             connection.execute_unprepared(statement).await?;
         }

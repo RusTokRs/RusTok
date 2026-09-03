@@ -284,7 +284,10 @@ async fn seed_user_mention_event(
         source_locale: Set("en".to_string()),
         source_revision_id: Set(revision.revision_id),
         mentioned_user_id: Set(mentioned_user_id),
-        handle_snapshot: Set(format!("member_{}", &mentioned_user_id.simple().to_string()[..12])),
+        handle_snapshot: Set(format!(
+            "member_{}",
+            &mentioned_user_id.simple().to_string()[..12]
+        )),
         created_at: Set(Utc::now().into()),
     }
     .insert(db)

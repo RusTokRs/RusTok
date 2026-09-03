@@ -1,8 +1,8 @@
 use chrono::{Duration, Utc};
 use rustok_modules::{
-    evaluate_transition_watchdog, ConflictFenceSet, ModuleTransitionCheckpoint,
-    ModuleTransitionState, RetentionHoldKind, RetentionHoldRecord, RetentionHoldStore,
-    RetentionTarget, SecurityEpochRegistry, TransitionCheckpointStore,
+    ConflictFenceSet, ModuleTransitionCheckpoint, ModuleTransitionState, RetentionHoldKind,
+    RetentionHoldRecord, RetentionHoldStore, RetentionTarget, SecurityEpochRegistry,
+    TransitionCheckpointStore, evaluate_transition_watchdog,
 };
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;

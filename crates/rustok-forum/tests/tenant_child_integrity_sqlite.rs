@@ -178,13 +178,13 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
     )
     .await?;
     let manager = SchemaManager::new(&db);
-        for migration in OutboxModule.migrations() {
+    for migration in OutboxModule.migrations() {
         migration
             .up(&manager)
             .await
             .expect("outbox migration should apply");
     }
-        db.execute_unprepared(
+    db.execute_unprepared(
         "CREATE TABLE IF NOT EXISTS users (
             id TEXT NOT NULL PRIMARY KEY,
             tenant_id TEXT NOT NULL

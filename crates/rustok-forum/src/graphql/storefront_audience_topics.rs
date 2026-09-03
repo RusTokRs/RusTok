@@ -162,8 +162,6 @@ fn observe_storefront_topic_list_locale_resolution(items: &[TopicListItem]) {
     }
 }
 
-
-
 fn map_topic_list_item(topic: TopicListItem) -> GqlForumTopicListItem {
     GqlForumTopicListItem {
         id: topic.id,

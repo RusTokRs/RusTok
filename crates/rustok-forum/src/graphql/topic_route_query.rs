@@ -292,8 +292,6 @@ fn internal_error(message: &'static str) -> async_graphql::Error {
         .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR"))
 }
 
-
-
 fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
     ctx.data_opt::<RequestContext>()
         .and_then(|request| request.channel_slug.clone())

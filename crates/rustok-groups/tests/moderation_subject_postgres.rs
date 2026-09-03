@@ -121,7 +121,10 @@ fn application_context(
         fixture.tenant_id.to_string(),
         PortActor::service(MODERATION_ACTOR),
         "und",
-        format!("groups-moderation-postgres:{correlation_suffix}:{}", Uuid::new_v4()),
+        format!(
+            "groups-moderation-postgres:{correlation_suffix}:{}",
+            Uuid::new_v4()
+        ),
     )
     .with_causation_id(decision_id.to_string())
     .with_claim(moderation_scope_claim(&scope).expect("valid Groups moderation scope claim"))
@@ -166,7 +169,8 @@ async fn group_snapshot(db: &DatabaseConnection, fixture: MembershipFixture) -> 
         .expect("group snapshot query should succeed")
         .expect("group should exist");
     (
-        row.try_get("", "version").expect("group version should decode"),
+        row.try_get("", "version")
+            .expect("group version should decode"),
         row.try_get("", "member_count")
             .expect("member count should decode"),
     )
@@ -214,19 +218,25 @@ async fn assert_single_moderation_mutation(
         .await
         .expect("moderation enforcement query should succeed")
         .expect("moderation enforcement row should exist");
-    let source_kind: String = row.try_get("", "source_kind").expect("source kind should decode");
+    let source_kind: String = row
+        .try_get("", "source_kind")
+        .expect("source kind should decode");
     let stored_decision_id: Uuid = row
         .try_get("", "moderation_decision_id")
         .expect("moderation decision id should decode");
     let stored_decision_hash: String = row
         .try_get("", "moderation_decision_hash")
         .expect("moderation decision hash should decode");
-    let actor_kind: String = row.try_get("", "actor_kind").expect("actor kind should decode");
+    let actor_kind: String = row
+        .try_get("", "actor_kind")
+        .expect("actor kind should decode");
     let actor_id: String = row.try_get("", "actor_id").expect("actor id should decode");
     let enforcement_revision: i64 = row
         .try_get("", "revision")
         .expect("enforcement revision should decode");
-    let active: bool = row.try_get("", "active").expect("active marker should decode");
+    let active: bool = row
+        .try_get("", "active")
+        .expect("active marker should decode");
 
     assert_eq!(source_kind, "moderation_decision");
     assert_eq!(stored_decision_id, decision_id);

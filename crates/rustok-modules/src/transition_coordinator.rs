@@ -106,7 +106,9 @@ pub enum TransitionCoordinatorError {
     RecoveryLimitExhausted(String),
     #[error("Operation is already in terminal state `{0}`")]
     OperationAlreadyTerminal(String),
-    #[error("Predecessor retention hold missing for digest `{0}`: predecessor bytes must be protected from GC during transition")]
+    #[error(
+        "Predecessor retention hold missing for digest `{0}`: predecessor bytes must be protected from GC during transition"
+    )]
     PredecessorRetentionMissing(String),
     #[error("Conflict fence validation failed: {0}")]
     ConflictFenceViolation(String),
@@ -308,7 +310,11 @@ impl ModuleTransitionCoordinator {
         let ledger = RetentionHoldStore::load_active_ledger(db)
             .await
             .map_err(|e| TransitionCoordinatorError::PreflightFailed(e.to_string()))?;
-        self.advance_to_activating_with_ledger(security_registry, Some(&ledger), observation_duration)
+        self.advance_to_activating_with_ledger(
+            security_registry,
+            Some(&ledger),
+            observation_duration,
+        )
     }
 
     /// Records an incident / failure signal and executes single-attempt recovery.
@@ -627,4 +633,3 @@ mod tests {
         ));
     }
 }
-

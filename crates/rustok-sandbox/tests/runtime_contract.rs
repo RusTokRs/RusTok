@@ -547,7 +547,9 @@ struct FailingExecutionObserver;
 #[async_trait]
 impl ExecutionObserver for FailingExecutionObserver {
     async fn observe(&self, _record: &ExecutionRecord) -> SandboxResult<()> {
-        Err(SandboxError::InvalidRequest("observer storage unavailable".into()))
+        Err(SandboxError::InvalidRequest(
+            "observer storage unavailable".into(),
+        ))
     }
 }
 
@@ -589,4 +591,3 @@ async fn execution_error_is_not_masked_when_observer_fails() {
         other => panic!("expected SandboxError::Trap, got: {other:?}"),
     }
 }
-

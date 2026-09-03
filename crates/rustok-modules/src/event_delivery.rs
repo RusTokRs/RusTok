@@ -802,7 +802,8 @@ impl SeaOrmArtifactEventDeliveryQueue {
         if let Some(row) = validity {
             let is_revoked: bool = row.try_get("", "is_revoked").map_err(storage_error)?;
             let is_uninstalled: bool = row.try_get("", "is_uninstalled").map_err(storage_error)?;
-            let admission_status: String = row.try_get("", "admission_status").map_err(storage_error)?;
+            let admission_status: String =
+                row.try_get("", "admission_status").map_err(storage_error)?;
 
             if is_revoked {
                 transaction

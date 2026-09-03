@@ -190,7 +190,7 @@ async fn setup_db() -> DatabaseConnection {
             .await
             .expect("taxonomy migration should apply");
     }
-        db.execute_unprepared(
+    db.execute_unprepared(
         "CREATE TABLE IF NOT EXISTS users (
             id TEXT NOT NULL PRIMARY KEY,
             tenant_id TEXT NOT NULL
@@ -290,7 +290,10 @@ async fn scalar_string(db: &DatabaseConnection, sql: String) -> String {
 async fn topic_reply_count(db: &DatabaseConnection, topic_id: Uuid) -> i64 {
     scalar_i64(
         db,
-        format!("SELECT reply_count AS value FROM forum_topics WHERE id = {}", sql_uuid(topic_id)),
+        format!(
+            "SELECT reply_count AS value FROM forum_topics WHERE id = {}",
+            sql_uuid(topic_id)
+        ),
     )
     .await
 }
@@ -298,7 +301,10 @@ async fn topic_reply_count(db: &DatabaseConnection, topic_id: Uuid) -> i64 {
 async fn category_topic_count(db: &DatabaseConnection, category_id: Uuid) -> i64 {
     scalar_i64(
         db,
-        format!("SELECT topic_count AS value FROM forum_categories WHERE id = {}", sql_uuid(category_id)),
+        format!(
+            "SELECT topic_count AS value FROM forum_categories WHERE id = {}",
+            sql_uuid(category_id)
+        ),
     )
     .await
 }
@@ -306,7 +312,10 @@ async fn category_topic_count(db: &DatabaseConnection, category_id: Uuid) -> i64
 async fn category_reply_count(db: &DatabaseConnection, category_id: Uuid) -> i64 {
     scalar_i64(
         db,
-        format!("SELECT reply_count AS value FROM forum_categories WHERE id = {}", sql_uuid(category_id)),
+        format!(
+            "SELECT reply_count AS value FROM forum_categories WHERE id = {}",
+            sql_uuid(category_id)
+        ),
     )
     .await
 }
@@ -322,7 +331,10 @@ async fn event_count(db: &DatabaseConnection, event_type: &str) -> i64 {
 async fn reply_status(db: &DatabaseConnection, reply_id: Uuid) -> String {
     scalar_string(
         db,
-        format!("SELECT status AS value FROM forum_replies WHERE id = {}", sql_uuid(reply_id)),
+        format!(
+            "SELECT status AS value FROM forum_replies WHERE id = {}",
+            sql_uuid(reply_id)
+        ),
     )
     .await
 }
@@ -330,7 +342,10 @@ async fn reply_status(db: &DatabaseConnection, reply_id: Uuid) -> String {
 async fn topic_status(db: &DatabaseConnection, topic_id: Uuid) -> String {
     scalar_string(
         db,
-        format!("SELECT status AS value FROM forum_topics WHERE id = {}", sql_uuid(topic_id)),
+        format!(
+            "SELECT status AS value FROM forum_topics WHERE id = {}",
+            sql_uuid(topic_id)
+        ),
     )
     .await
 }
@@ -338,7 +353,10 @@ async fn topic_status(db: &DatabaseConnection, topic_id: Uuid) -> String {
 async fn reply_body(db: &DatabaseConnection, reply_id: Uuid) -> String {
     scalar_string(
         db,
-        format!("SELECT body AS value FROM forum_reply_bodies WHERE reply_id = {}", sql_uuid(reply_id)),
+        format!(
+            "SELECT body AS value FROM forum_reply_bodies WHERE reply_id = {}",
+            sql_uuid(reply_id)
+        ),
     )
     .await
 }
@@ -357,7 +375,10 @@ async fn topic_title(db: &DatabaseConnection, topic_id: Uuid) -> String {
 async fn topic_body(db: &DatabaseConnection, topic_id: Uuid) -> String {
     scalar_string(
         db,
-        format!("SELECT body AS value FROM forum_topic_translations WHERE topic_id = {}", sql_uuid(topic_id)),
+        format!(
+            "SELECT body AS value FROM forum_topic_translations WHERE topic_id = {}",
+            sql_uuid(topic_id)
+        ),
     )
     .await
 }

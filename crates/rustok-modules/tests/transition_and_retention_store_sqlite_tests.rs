@@ -203,14 +203,10 @@ async fn test_release_admission_intent_journal_lifecycle_sqlite() {
     let request_digest = "sha256:payload_staged_digest_001";
 
     // 1. Initial reservation before staging / CAS publication
-    let intent = ReleaseAdmissionIntentJournal::record_staging_intent(
-        &db,
-        &scope,
-        &context,
-        request_digest,
-    )
-    .await
-    .expect("recording initial staging intent must succeed");
+    let intent =
+        ReleaseAdmissionIntentJournal::record_staging_intent(&db, &scope, &context, request_digest)
+            .await
+            .expect("recording initial staging intent must succeed");
 
     assert_eq!(intent.actor_id, actor_id);
     assert_eq!(intent.idempotency_key, idempotency_key);
@@ -218,14 +214,10 @@ async fn test_release_admission_intent_journal_lifecycle_sqlite() {
     assert_eq!(intent.installation_id, None);
 
     // 2. Exact idempotent retry returns the same record
-    let retry = ReleaseAdmissionIntentJournal::record_staging_intent(
-        &db,
-        &scope,
-        &context,
-        request_digest,
-    )
-    .await
-    .expect("idempotent retry must succeed");
+    let retry =
+        ReleaseAdmissionIntentJournal::record_staging_intent(&db, &scope, &context, request_digest)
+            .await
+            .expect("idempotent retry must succeed");
     assert_eq!(retry.idempotency_key, idempotency_key);
     assert_eq!(retry.installation_id, None);
 
@@ -243,12 +235,10 @@ async fn test_release_admission_intent_journal_lifecycle_sqlite() {
     ));
 
     // 4. Stale/unfinished scan detects the intent (using zero duration to find in-flight intents)
-    let stale_intents = ReleaseAdmissionIntentJournal::scan_stale_unfinished_intents(
-        &db,
-        Duration::zero(),
-    )
-    .await
-    .expect("scanning unfinished intents should succeed");
+    let stale_intents =
+        ReleaseAdmissionIntentJournal::scan_stale_unfinished_intents(&db, Duration::zero())
+            .await
+            .expect("scanning unfinished intents should succeed");
     assert_eq!(stale_intents.len(), 1);
     assert_eq!(stale_intents[0].idempotency_key, idempotency_key);
 
@@ -277,12 +267,9 @@ async fn test_release_admission_intent_journal_lifecycle_sqlite() {
     assert!(bound);
 
     // 6. Once committed, the intent is no longer reported as unfinished
-    let active_unfinished = ReleaseAdmissionIntentJournal::scan_stale_unfinished_intents(
-        &db,
-        Duration::zero(),
-    )
-    .await
-    .expect("scanning unfinished intents should succeed");
+    let active_unfinished =
+        ReleaseAdmissionIntentJournal::scan_stale_unfinished_intents(&db, Duration::zero())
+            .await
+            .expect("scanning unfinished intents should succeed");
     assert!(active_unfinished.is_empty());
 }
-

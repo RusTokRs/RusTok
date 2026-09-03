@@ -23,12 +23,16 @@ pub enum ReleasePreparationError {
     InvalidStateTransition { from: String, to: String },
     #[error("Release preparation `{0}` is already in a terminal state")]
     AlreadyTerminal(Uuid),
-    #[error("Tenant `{target_tenant}` is unauthorized to access private preparation `{preparation_id}` of another tenant")]
+    #[error(
+        "Tenant `{target_tenant}` is unauthorized to access private preparation `{preparation_id}` of another tenant"
+    )]
     UnauthorizedTenant {
         preparation_id: Uuid,
         target_tenant: Uuid,
     },
-    #[error("Transition operation derivation requires an active admitted preparation, but preparation `{0}` is in state `{1}`")]
+    #[error(
+        "Transition operation derivation requires an active admitted preparation, but preparation `{0}` is in state `{1}`"
+    )]
     NotAdmitted(Uuid, String),
 }
 
@@ -287,7 +291,9 @@ impl ReleasePreparation {
 
     fn ensure_active(&self) -> Result<(), ReleasePreparationError> {
         if self.state.is_terminal() {
-            Err(ReleasePreparationError::AlreadyTerminal(self.preparation_id))
+            Err(ReleasePreparationError::AlreadyTerminal(
+                self.preparation_id,
+            ))
         } else {
             Ok(())
         }

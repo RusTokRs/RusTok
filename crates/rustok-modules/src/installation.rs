@@ -1744,11 +1744,17 @@ impl SeaOrmArtifactInstallationStore {
         } else {
             None
         };
-        let predecessor_revision = predecessor_state.as_ref().map(|(revision, _, _, _)| *revision);
-        let predecessor_digest = predecessor_state.as_ref().map(|(_, _, _, digest)| digest.clone());
+        let predecessor_revision = predecessor_state
+            .as_ref()
+            .map(|(revision, _, _, _)| *revision);
+        let predecessor_digest = predecessor_state
+            .as_ref()
+            .map(|(_, _, _, digest)| digest.clone());
         let (data_owner_id, settings_instance_id) = predecessor_state
             .as_ref()
-            .map(|(_, data_owner_id, settings_instance_id, _)| (*data_owner_id, *settings_instance_id))
+            .map(|(_, data_owner_id, settings_instance_id, _)| {
+                (*data_owner_id, *settings_instance_id)
+            })
             .unwrap_or((candidate_data_owner_id, candidate_settings_instance_id));
         let installation_revision = candidate_revision.checked_add(1).ok_or_else(|| {
             ModuleInstallationError::AdmissionRevisionConflict(
@@ -7492,9 +7498,7 @@ mod tests {
             .await
             .expect("set irreversible migration flag");
 
-        let irreversible_attempt = store
-            .rollback_artifact(request.clone())
-            .await;
+        let irreversible_attempt = store.rollback_artifact(request.clone()).await;
 
         assert!(matches!(
             irreversible_attempt,

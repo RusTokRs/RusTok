@@ -130,7 +130,9 @@ fn decode_count(row: &QueryResult, column: &str) -> Result<u64, ConsumerPoisonRe
 }
 
 fn invalid_summary(reason: &'static str) -> ConsumerPoisonReceiptError {
-    ConsumerPoisonReceiptError::Storage(format!("invalid consumer poison receipt summary: {reason}"))
+    ConsumerPoisonReceiptError::Storage(format!(
+        "invalid consumer poison receipt summary: {reason}"
+    ))
 }
 
 fn validate_consumer_group(consumer_group: &str) -> Result<(), ConsumerPoisonReceiptError> {
@@ -168,7 +170,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), ConsumerPoisonRece
         backend => Err(ConsumerPoisonReceiptError::Storage(format!(
             "consumer poison inspection does not support {backend:?}"
         ))),
-}
+    }
 }
 
 fn summary_sql(backend: DbBackend) -> &'static str {

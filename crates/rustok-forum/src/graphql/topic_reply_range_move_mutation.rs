@@ -32,15 +32,8 @@ impl ForumTopicReplyRangeMoveMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
 
-        execute_move_forum_topic_reply_range(
-            db,
-            event_bus,
-            tenant_id,
-            auth,
-            source_topic_id,
-            input,
-        )
-        .await
+        execute_move_forum_topic_reply_range(db, event_bus, tenant_id, auth, source_topic_id, input)
+            .await
     }
 }
 

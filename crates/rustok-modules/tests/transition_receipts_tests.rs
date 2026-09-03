@@ -55,7 +55,11 @@ fn test_confirmation_receipt_binding_and_validation() {
         2,
     );
 
-    assert!(valid_confirmation.validate_matches_preview(&preview).is_ok());
+    assert!(
+        valid_confirmation
+            .validate_matches_preview(&preview)
+            .is_ok()
+    );
 
     let invalid_confirmation = TransitionConfirmationReceipt::new(
         op_id,
@@ -234,8 +238,5 @@ fn test_rollback_receipt_predecessor_and_reversibility_invariants() {
     )
     .unwrap_err();
 
-    assert_eq!(
-        err_empty,
-        TransitionReceiptError::InvalidPredecessorDigest
-    );
+    assert_eq!(err_empty, TransitionReceiptError::InvalidPredecessorDigest);
 }

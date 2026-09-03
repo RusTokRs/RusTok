@@ -957,8 +957,6 @@ where
         .collect())
 }
 
-
-
 fn is_public_request(ctx: &Context<'_>) -> bool {
     ctx.data_opt::<AuthContext>().is_none()
 }

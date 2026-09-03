@@ -953,13 +953,7 @@ pub fn json_field_exists(
     use sea_orm::sea_query::Expr;
 
     let column = Expr::expr(column.into());
-    let expr = Expr::cust_with_exprs(
-        "$1 ? $2",
-        [
-            column,
-            Expr::val(key.to_string()),
-        ],
-    );
+    let expr = Expr::cust_with_exprs("$1 ? $2", [column, Expr::val(key.to_string())]);
 
     sea_orm::Condition::all().add(expr)
 }
@@ -972,13 +966,7 @@ pub fn json_field_extract(
     use sea_orm::sea_query::Expr;
 
     let column = Expr::expr(column.into());
-    Expr::cust_with_exprs(
-        "$1->>$2",
-        [
-            column,
-            Expr::val(key.to_string()),
-        ],
-    )
+    Expr::cust_with_exprs("$1->>$2", [column, Expr::val(key.to_string())])
 }
 
 /// Builds a SQL condition equivalent to `metadata @> '{"key": value}'::jsonb`.
@@ -993,13 +981,7 @@ pub fn json_field_contains(
     let payload = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
     let column = Expr::expr(column.into());
 
-    let expr = Expr::cust_with_exprs(
-        "$1 @> $2::jsonb",
-        [
-            column,
-            Expr::val(payload),
-        ],
-    );
+    let expr = Expr::cust_with_exprs("$1 @> $2::jsonb", [column, Expr::val(payload)]);
 
     sea_orm::Condition::all().add(expr)
 }

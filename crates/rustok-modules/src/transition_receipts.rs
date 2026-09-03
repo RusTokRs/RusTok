@@ -17,13 +17,19 @@ use crate::{ConflictFenceSet, UpdateMode};
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum TransitionReceiptError {
-    #[error("Confirmation receipt preview digest `{received}` does not match preview digest `{expected}`")]
+    #[error(
+        "Confirmation receipt preview digest `{received}` does not match preview digest `{expected}`"
+    )]
     PreviewDigestMismatch { expected: String, received: String },
-    #[error("Maintenance mode requires an explicit operator confirmation receipt before apply can proceed")]
+    #[error(
+        "Maintenance mode requires an explicit operator confirmation receipt before apply can proceed"
+    )]
     ConfirmationRequired,
     #[error("Apply receipt requires a valid, non-empty candidate digest")]
     CandidateDigestRequired,
-    #[error("Cannot cancel transition `{0}`: operation has already passed the point of no return (`{1}`)")]
+    #[error(
+        "Cannot cancel transition `{0}`: operation has already passed the point of no return (`{1}`)"
+    )]
     PastPointOfNoReturn(Uuid, String),
     #[error("Rollback prohibited: {0}")]
     RollbackProhibited(String),

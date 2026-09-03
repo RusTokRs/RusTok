@@ -735,10 +735,7 @@ pub(crate) fn map_message(message: ChatMessage) -> AiResult<Message> {
             if content.is_empty() {
                 content.push(AssistantContent::text(""));
             }
-            Message::Assistant {
-                id: None,
-                content,
-            }
+            Message::Assistant { id: None, content }
         }
     })
 }

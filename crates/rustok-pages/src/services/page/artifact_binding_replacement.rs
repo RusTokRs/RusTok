@@ -282,7 +282,7 @@ async fn load_rebuild_operation_in_tx(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-}
+    }
     .ok_or_else(|| replacement_target_invalid("selected rebuild receipt is unavailable"))
 }
 
@@ -301,7 +301,7 @@ async fn load_rebuild_source_in_tx(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-}
+    }
     .ok_or_else(|| replacement_target_invalid("selected rebuild provenance is unavailable"))
 }
 
@@ -321,7 +321,7 @@ async fn load_binding_for_update_in_tx(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-})
+    })
 }
 
 async fn ensure_missing_binding_recovery_in_tx(
@@ -344,7 +344,7 @@ async fn ensure_missing_binding_recovery_in_tx(
             source_artifact_query().lock_shared().one(txn).await?
         }
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
     if source_artifact.is_some() {
         return Err(replacement_current_conflict(
             "current locale binding is unavailable while the retained source artifact still exists",
@@ -361,7 +361,7 @@ async fn ensure_missing_binding_recovery_in_tx(
         DbBackend::Sqlite => body_query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => body_query().lock_shared().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-}
+    }
     .ok_or_else(|| {
         replacement_current_conflict(
             "retained source page body is unavailable for missing-binding recovery",
@@ -382,7 +382,7 @@ async fn ensure_missing_binding_recovery_in_tx(
         DbBackend::Sqlite => publish_query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => publish_query().lock_shared().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-}
+    }
     .ok_or_else(|| {
         replacement_current_conflict(
             "retained source publish operation is unavailable for missing-binding recovery",
@@ -456,7 +456,7 @@ async fn resolve_missing_binding_recovery_anchor_in_tx(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
     let Some(rollback) = rollback else {
         return Ok(publish.result_version);
     };
@@ -548,7 +548,7 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
         DbBackend::Sqlite => query().all(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
     if operations.len() != version_gap {
         return Err(replacement_current_conflict(
             "recovery activation anchor version is stale: current version gap is not fully explained by prior artifact activations from the selected publish",
@@ -713,7 +713,7 @@ async fn recovery_artifact_if_present_in_tx(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-})
+    })
 }
 
 async fn load_replacement_artifact_in_tx(
@@ -733,7 +733,7 @@ async fn load_replacement_artifact_in_tx(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-}
+    }
     .ok_or_else(|| replacement_target_invalid("rebuilt replacement artifact is unavailable"))
 }
 
@@ -756,7 +756,7 @@ async fn find_operation_in_tx(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-})
+    })
 }
 
 async fn find_operation_for_rebuild_in_tx(
@@ -778,7 +778,7 @@ async fn find_operation_for_rebuild_in_tx(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-})
+    })
 }
 
 fn ensure_same_request(

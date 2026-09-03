@@ -1,6 +1,5 @@
 use sea_orm::{
-    Condition, DatabaseConnection, DbBackend, FromQueryResult, Statement,
-    sea_query::Expr,
+    Condition, DatabaseConnection, DbBackend, FromQueryResult, Statement, sea_query::Expr,
 };
 use std::collections::HashMap;
 use uuid::Uuid;

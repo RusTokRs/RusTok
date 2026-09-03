@@ -260,7 +260,10 @@ impl ConnectionTrait for ProductWriteTransaction {
         self.transaction.execute_unprepared(sql).await
     }
 
-    async fn query_one<S: sea_orm::StatementBuilder>(&self, stmt: &S) -> Result<Option<QueryResult>, DbErr> {
+    async fn query_one<S: sea_orm::StatementBuilder>(
+        &self,
+        stmt: &S,
+    ) -> Result<Option<QueryResult>, DbErr> {
         self.transaction.query_one(stmt).await
     }
 
@@ -268,7 +271,10 @@ impl ConnectionTrait for ProductWriteTransaction {
         self.transaction.query_one_raw(stmt).await
     }
 
-    async fn query_all<S: sea_orm::StatementBuilder>(&self, stmt: &S) -> Result<Vec<QueryResult>, DbErr> {
+    async fn query_all<S: sea_orm::StatementBuilder>(
+        &self,
+        stmt: &S,
+    ) -> Result<Vec<QueryResult>, DbErr> {
         self.transaction.query_all(stmt).await
     }
 

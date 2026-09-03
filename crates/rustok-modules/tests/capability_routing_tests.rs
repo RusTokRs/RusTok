@@ -1,12 +1,12 @@
-use std::time::Duration;
 use sea_orm::{Database, DatabaseConnection};
 use serde_json::json;
+use std::time::Duration;
 use uuid::Uuid;
 
 use rustok_modules::{
-    ArtifactCapabilityExecution, ArtifactEventCapabilityBroker, ArtifactHttpCapabilityBroker,
-    SeaOrmArtifactEventCapabilityBrokerResolver, SeaOrmArtifactHttpCapabilityBrokerResolver,
-    ArtifactCapabilityBrokerResolver,
+    ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactEventCapabilityBroker,
+    ArtifactHttpCapabilityBroker, SeaOrmArtifactEventCapabilityBrokerResolver,
+    SeaOrmArtifactHttpCapabilityBrokerResolver,
 };
 use rustok_sandbox::{
     CapabilityBroker, CapabilityCall, CapabilityCallContext, CapabilityGrant, CapabilityName,
@@ -20,7 +20,8 @@ fn test_call(capability: &str, input: serde_json::Value) -> CapabilityCall {
             installation_id: Uuid::new_v4(),
             slug: "test_module".to_string(),
             version: "1.0.0".to_string(),
-            digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111".to_string(),
+            digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+                .to_string(),
         },
         context: CapabilityCallContext {
             phase: ExecutionPhase::Manual,
@@ -47,7 +48,10 @@ async fn test_http_capability_broker_validation() {
     };
 
     // Missing method -> error
-    let invalid_call = test_call("platform.http", json!({ "url": "https://api.example.com/v1/test" }));
+    let invalid_call = test_call(
+        "platform.http",
+        json!({ "url": "https://api.example.com/v1/test" }),
+    );
     let res = broker.invoke(&invalid_call, &grant).await;
     assert!(res.is_err(), "Call missing method should fail");
 
@@ -86,7 +90,10 @@ async fn test_http_capability_broker_validation() {
         json!({ "method": "GET", "url": "https://169.254.169.254/v1/test" }),
     );
     let res_ssrf3 = broker.invoke(&ssrf_call3, &grant).await;
-    assert!(res_ssrf3.is_err(), "Cloud metadata destination must be rejected");
+    assert!(
+        res_ssrf3.is_err(),
+        "Cloud metadata destination must be rejected"
+    );
 
     // SSRF: Private network 10.0.0.1 -> error
     let ssrf_call4 = test_call(
@@ -94,7 +101,10 @@ async fn test_http_capability_broker_validation() {
         json!({ "method": "GET", "url": "https://10.0.0.1/v1/test" }),
     );
     let res_ssrf4 = broker.invoke(&ssrf_call4, &grant).await;
-    assert!(res_ssrf4.is_err(), "Private IP destination must be rejected");
+    assert!(
+        res_ssrf4.is_err(),
+        "Private IP destination must be rejected"
+    );
 
     // SSRF: Internal .internal domain -> error
     let ssrf_call5 = test_call(
@@ -145,7 +155,8 @@ async fn test_capability_resolvers_fail_closed_on_unadmitted_execution() {
         tenant_id: Uuid::new_v4(),
         slug: "uninstalled_module".to_string(),
         version: "1.0.0".to_string(),
-        digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+        digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            .to_string(),
     };
 
     let http_cap = CapabilityName::new("platform.http").expect("cap");
@@ -153,10 +164,30 @@ async fn test_capability_resolvers_fail_closed_on_unadmitted_execution() {
     let data_cap = CapabilityName::new("platform.data").expect("cap");
 
     // Mismatched capability name fails closed
-    assert!(http_resolver.resolve_broker(&execution, &data_cap).await.is_err());
-    assert!(events_resolver.resolve_broker(&execution, &data_cap).await.is_err());
+    assert!(
+        http_resolver
+            .resolve_broker(&execution, &data_cap)
+            .await
+            .is_err()
+    );
+    assert!(
+        events_resolver
+            .resolve_broker(&execution, &data_cap)
+            .await
+            .is_err()
+    );
 
     // Uninstalled execution fails closed
-    assert!(http_resolver.resolve_broker(&execution, &http_cap).await.is_err());
-    assert!(events_resolver.resolve_broker(&execution, &events_cap).await.is_err());
+    assert!(
+        http_resolver
+            .resolve_broker(&execution, &http_cap)
+            .await
+            .is_err()
+    );
+    assert!(
+        events_resolver
+            .resolve_broker(&execution, &events_cap)
+            .await
+            .is_err()
+    );
 }

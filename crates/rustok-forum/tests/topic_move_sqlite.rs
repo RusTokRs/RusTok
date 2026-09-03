@@ -263,14 +263,15 @@ async fn topic_move_is_atomic_idempotent_and_append_only() -> TestResult<()> {
         ))
         .await
         .is_err());
-    assert!(db
-        .execute_raw(Statement::from_sql_and_values(
+    assert!(
+        db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "DELETE FROM forum_topic_move_operations WHERE tenant_id = ? AND operation_id = ?",
             vec![tenant_id.into(), operation_id.into()],
         ))
         .await
-        .is_err());
+        .is_err()
+    );
 
     assert_eq!(move_operation_count(&db, tenant_id).await?, 1);
     assert_semantic_event(&db, tenant_id, &moved).await?;
@@ -513,6 +514,9 @@ async fn projection_targets(
 }
 
 async fn scalar_i64(db: &DatabaseConnection, statement: Statement) -> TestResult<i64> {
-    let row: QueryResult = db.query_one_raw(statement).await?.ok_or("scalar row missing")?;
+    let row: QueryResult = db
+        .query_one_raw(statement)
+        .await?
+        .ok_or("scalar row missing")?;
     Ok(row.try_get("", "value")?)
 }

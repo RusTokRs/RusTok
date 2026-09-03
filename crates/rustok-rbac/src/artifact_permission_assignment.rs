@@ -307,7 +307,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), ArtifactPermission
         backend => Err(ArtifactPermissionAssignmentError::Database(format!(
             "artifact permission assignment does not support {backend:?}"
         ))),
-}
+    }
 }
 
 async fn find_operation(

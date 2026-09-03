@@ -6,7 +6,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use reqwest::{Client, Method};
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use url::Url;
 
 use rustok_sandbox::{
@@ -15,8 +15,8 @@ use rustok_sandbox::{
 };
 
 use crate::artifact_capability_router::{
-    resolve_granted_artifact_capability, ArtifactCapabilityBrokerResolver,
-    ArtifactCapabilityExecution,
+    ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution,
+    resolve_granted_artifact_capability,
 };
 
 pub const DEFAULT_MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024; // 10 MB
@@ -96,7 +96,9 @@ async fn validate_target_address(url: &Url, capability: &CapabilityName) -> Sand
     if is_disallowed_hostname(host) {
         return Err(SandboxError::HostCapability {
             capability: capability.clone(),
-            message: format!("HTTP destination host `{host}` is disallowed (local/internal hostname)"),
+            message: format!(
+                "HTTP destination host `{host}` is disallowed (local/internal hostname)"
+            ),
         });
     }
 
@@ -104,7 +106,9 @@ async fn validate_target_address(url: &Url, capability: &CapabilityName) -> Sand
         if is_disallowed_ip(ip) {
             return Err(SandboxError::HostCapability {
                 capability: capability.clone(),
-                message: format!("HTTP destination IP `{ip}` is disallowed (private/loopback/metadata)"),
+                message: format!(
+                    "HTTP destination IP `{ip}` is disallowed (private/loopback/metadata)"
+                ),
             });
         }
         return Ok(());
@@ -150,9 +154,8 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
             .and_then(Value::as_str)
             .ok_or_else(|| SandboxError::InvalidRequest("HTTP url is required".into()))?;
 
-        let parsed_url = Url::parse(url_str).map_err(|err| {
-            SandboxError::InvalidRequest(format!("HTTP url is invalid: {err}"))
-        })?;
+        let parsed_url = Url::parse(url_str)
+            .map_err(|err| SandboxError::InvalidRequest(format!("HTTP url is invalid: {err}")))?;
 
         validate_target_address(&parsed_url, &call.capability).await?;
 
@@ -189,12 +192,14 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
             }
         }
 
-        let response = request_builder.send().await.map_err(|err| {
-            SandboxError::HostCapability {
-                capability: call.capability.clone(),
-                message: format!("HTTP request failed: {err}"),
-            }
-        })?;
+        let response =
+            request_builder
+                .send()
+                .await
+                .map_err(|err| SandboxError::HostCapability {
+                    capability: call.capability.clone(),
+                    message: format!("HTTP request failed: {err}"),
+                })?;
 
         let status = response.status().as_u16();
 
@@ -219,12 +224,13 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
             }
         }
 
-        let bytes = response.bytes().await.map_err(|err| {
-            SandboxError::HostCapability {
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|err| SandboxError::HostCapability {
                 capability: call.capability.clone(),
                 message: format!("reading HTTP response body failed: {err}"),
-            }
-        })?;
+            })?;
 
         if bytes.len() > self.max_response_bytes {
             return Err(SandboxError::HostCapability {

@@ -16,7 +16,7 @@ impl MigrationTrait for Migration {
                     "AI agent control-plane migration does not support database backend {other:?}"
                 )));
             }
-};
+        };
         for statement in [
             format!(
                 "CREATE TABLE ai_agent_principals (\

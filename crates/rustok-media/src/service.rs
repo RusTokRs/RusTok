@@ -1,9 +1,9 @@
 use chrono::Utc;
 use object_store::{ObjectStoreExt, path::Path};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction,
-    DbBackend, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, DbBackend,
+    EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -1558,9 +1558,7 @@ impl MediaService {
             .filter(AssetCol::Id.eq(media_id));
         let asset = match backend {
             DbBackend::Sqlite => asset_query.one(transaction).await?,
-            _ => {
-                asset_query.lock_exclusive().one(transaction).await?
-            }
+            _ => asset_query.lock_exclusive().one(transaction).await?,
         }
         .filter(|asset| asset.lifecycle_state == AssetState::Active.as_str())
         .ok_or(MediaError::NotFound(media_id))?;
@@ -1577,9 +1575,7 @@ impl MediaService {
         };
         let locked_translations = match backend {
             DbBackend::Sqlite => locale_query().all(transaction).await?,
-            _ => {
-                locale_query().lock_exclusive().all(transaction).await?
-            }
+            _ => locale_query().lock_exclusive().all(transaction).await?,
         };
 
         let source = locked_translations

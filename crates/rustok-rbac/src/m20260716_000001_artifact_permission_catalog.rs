@@ -22,7 +22,7 @@ impl MigrationTrait for Migration {
                     "artifact permission catalog migration does not support {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

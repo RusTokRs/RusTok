@@ -765,12 +765,10 @@ export async function listTenantModules(
 export async function getModuleCompositionSnapshot(
   opts: GqlOpts = {}
 ): Promise<{ revision: number }> {
-  const data = await graphqlRequest<undefined, ModuleCompositionSnapshotResponse>(
-    MODULE_COMPOSITION_SNAPSHOT_QUERY,
+  const data = await graphqlRequest<
     undefined,
-    opts.token,
-    opts.tenantSlug
-  );
+    ModuleCompositionSnapshotResponse
+  >(MODULE_COMPOSITION_SNAPSHOT_QUERY, undefined, opts.token, opts.tenantSlug);
   return data.moduleCompositionSnapshot;
 }
 
@@ -946,10 +944,16 @@ export async function installModule(
   expectedRevision?: number,
   idempotencyKey?: string
 ): Promise<BuildJob> {
-  const rev = expectedRevision ?? (await getModuleCompositionSnapshot(opts)).revision;
+  const rev =
+    expectedRevision ?? (await getModuleCompositionSnapshot(opts)).revision;
   const key = idempotencyKey ?? crypto.randomUUID();
   const data = await graphqlRequest<
-    { slug: string; version: string; expectedRevision: number; idempotencyKey: string },
+    {
+      slug: string;
+      version: string;
+      expectedRevision: number;
+      idempotencyKey: string;
+    },
     InstallModuleResponse
   >(
     INSTALL_MODULE_MUTATION,
@@ -967,7 +971,8 @@ export async function uninstallModule(
   expectedRevision?: number,
   idempotencyKey?: string
 ): Promise<BuildJob> {
-  const rev = expectedRevision ?? (await getModuleCompositionSnapshot(opts)).revision;
+  const rev =
+    expectedRevision ?? (await getModuleCompositionSnapshot(opts)).revision;
   const key = idempotencyKey ?? crypto.randomUUID();
   const data = await graphqlRequest<
     { slug: string; expectedRevision: number; idempotencyKey: string },
@@ -989,10 +994,16 @@ export async function upgradeModule(
   expectedRevision?: number,
   idempotencyKey?: string
 ): Promise<BuildJob> {
-  const rev = expectedRevision ?? (await getModuleCompositionSnapshot(opts)).revision;
+  const rev =
+    expectedRevision ?? (await getModuleCompositionSnapshot(opts)).revision;
   const key = idempotencyKey ?? crypto.randomUUID();
   const data = await graphqlRequest<
-    { slug: string; version: string; expectedRevision: number; idempotencyKey: string },
+    {
+      slug: string;
+      version: string;
+      expectedRevision: number;
+      idempotencyKey: string;
+    },
     UpgradeModuleResponse
   >(
     UPGRADE_MODULE_MUTATION,

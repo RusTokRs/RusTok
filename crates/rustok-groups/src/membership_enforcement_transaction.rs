@@ -66,7 +66,7 @@ pub(crate) async fn reserve_group_write_for_update(
                 .await?;
         }
         _ => unreachable!("unsupported SeaORM database backend"),
-}
+    }
     Ok(())
 }
 
@@ -124,7 +124,7 @@ pub(crate) async fn lock_membership_enforcement_target_by_id_for_update(
                 .await?
         }
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
     let Some(locked_membership) = locked_membership else {
         return Ok(None);
     };
@@ -152,7 +152,7 @@ pub(crate) async fn lock_membership_enforcement_target_by_id_for_update(
                 .await?
         }
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
 
     Ok(Some(LockedMembershipEnforcementTarget {
         group: group_model,
@@ -195,7 +195,7 @@ pub(crate) async fn resolve_group_membership_enforcement_for_update(
                 .await?
         }
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
 
     if let Some(membership) = membership {
         match transaction.get_database_backend() {
@@ -213,7 +213,7 @@ pub(crate) async fn resolve_group_membership_enforcement_for_update(
                     .await?;
             }
             _ => unreachable!("unsupported SeaORM database backend"),
-}
+        }
     }
 
     resolve_group_membership_enforcement(transaction, tenant_id, group_id, user_id, evaluated_at)

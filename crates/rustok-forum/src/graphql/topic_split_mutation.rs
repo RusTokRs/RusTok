@@ -32,15 +32,8 @@ impl ForumTopicSplitMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
 
-        execute_split_forum_topic_replies(
-            db,
-            event_bus,
-            tenant_id,
-            auth,
-            source_topic_id,
-            input,
-        )
-        .await
+        execute_split_forum_topic_replies(db, event_bus, tenant_id, auth, source_topic_id, input)
+            .await
     }
 }
 

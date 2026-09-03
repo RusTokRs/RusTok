@@ -13,9 +13,7 @@ use sea_orm::{
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
 
-use crate::entities::{
-    blog_category, blog_category_taxonomy_binding, blog_category_translation,
-};
+use crate::entities::{blog_category, blog_category_taxonomy_binding, blog_category_translation};
 
 const BLOG_SCOPE_VALUE: &str = "blog";
 const TAXONOMY_ROUTE_KEY_MAX_BYTES: usize = 120;
@@ -169,9 +167,10 @@ async fn ensure_category_translations_and_routes(
                 )));
             }
             None => {
-                if let Some(id_owner) = taxonomy_term_translation::Entity::find_by_id(translation.id)
-                    .one(txn)
-                    .await?
+                if let Some(id_owner) =
+                    taxonomy_term_translation::Entity::find_by_id(translation.id)
+                        .one(txn)
+                        .await?
                 {
                     return Err(DbErr::Migration(format!(
                         "Blog Category Taxonomy backfill blocked: translation UUID {} is already used by Taxonomy term {}",

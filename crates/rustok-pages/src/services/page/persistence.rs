@@ -28,7 +28,7 @@ impl PageService {
             DbBackend::Sqlite => query().one(txn).await?,
             DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
             _ => unreachable!("unsupported SeaORM database backend"),
-};
+        };
         page.ok_or_else(|| PagesError::page_not_found(page_id))
     }
 

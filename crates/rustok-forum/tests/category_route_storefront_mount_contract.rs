@@ -126,11 +126,7 @@ fn topic_mount_and_seo_boundaries_remain_outside_this_slice() {
             "missing compatibility marker: {marker}"
         );
     }
-    for forbidden in [
-        "hreflang",
-        "schema.org",
-        "StatusCode::GONE",
-    ] {
+    for forbidden in ["hreflang", "schema.org", "StatusCode::GONE"] {
         assert!(
             !host.contains(forbidden),
             "host contains out-of-scope marker: {forbidden}"
