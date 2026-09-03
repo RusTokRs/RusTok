@@ -9,11 +9,10 @@ use sea_orm::{
 use uuid::Uuid;
 
 use rustok_api::{
-    PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match, normalize_locale_tag,
+    PLATFORM_FALLBACK_LOCALE, TenantLocale, build_locale_candidates, locale_tags_match,
+    normalize_locale_tag,
 };
-use rustok_content::{
-    available_locales_from, entities::node::ContentStatus, normalize_locale_code,
-};
+use rustok_content::{available_locales_from, entities::node::ContentStatus};
 use rustok_events::DomainEvent;
 use rustok_page_builder::{PAGE_BUILDER_DOCUMENT_FORMAT, validate_page_builder_document};
 
@@ -67,7 +66,9 @@ pub(super) fn normalize_page_body_input(
 }
 
 pub(super) fn normalize_locale(locale: &str) -> PagesResult<String> {
-    normalize_locale_code(locale).ok_or_else(|| PagesError::validation("Invalid locale"))
+    TenantLocale::new(locale)
+        .map(TenantLocale::into_inner)
+        .map_err(|_| PagesError::validation("Invalid locale"))
 }
 
 pub(super) fn normalize_slug(value: &str) -> PagesResult<String> {
@@ -485,6 +486,15 @@ mod tests {
         assert_eq!(normalize_slug(" Дом ").expect("unicode slug"), "дом");
         assert_eq!(normalize_slug("首页").expect("CJK slug"), "首页");
         assert!(normalize_slug("---").is_err());
+    }
+
+    #[test]
+    fn page_locale_uses_tenant_locale_contract() {
+        assert_eq!(
+            normalize_locale(" pt_br ").expect("valid tenant locale"),
+            "pt-BR"
+        );
+        assert!(normalize_locale("und").is_err());
     }
 
     #[test]
