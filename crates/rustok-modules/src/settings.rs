@@ -63,9 +63,7 @@ impl ModuleSettingSpec {
                 ));
             }
 
-            if let Some(existing_field_id) =
-                claimed_paths.insert(path.clone(), field_id.clone())
-            {
+            if let Some(existing_field_id) = claimed_paths.insert(path.clone(), field_id.clone()) {
                 return Err(invalid_schema(
                     module_slug,
                     path,
