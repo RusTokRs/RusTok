@@ -18,9 +18,10 @@ where
 }
 
 fn validate_tenant_locale(locale: &str) -> Result<(), ValidationError> {
-    TenantLocale::new(locale)
-        .map(|_| ())
-        .map_err(|_| ValidationError::new("tenant_locale"))
+    match TenantLocale::new(locale) {
+        Ok(canonical) if canonical.as_str() == locale => Ok(()),
+        _ => Err(ValidationError::new("tenant_locale")),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
@@ -89,7 +90,7 @@ pub struct CreateFulfillmentItemInput {
     pub metadata: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FulfillmentItemQuantityInput {
     pub fulfillment_item_id: Uuid,
     #[validate(range(min = 1))]
@@ -224,6 +225,16 @@ mod tests {
     fn shipping_translation_validation_rejects_direct_und() {
         let input = ShippingOptionTranslationInput {
             locale: "und".to_string(),
+            name: "Express".to_string(),
+        };
+
+        assert!(input.validate().is_err());
+    }
+
+    #[test]
+    fn shipping_translation_validation_rejects_noncanonical_direct_locale() {
+        let input = ShippingOptionTranslationInput {
+            locale: "zh_hant_tw".to_string(),
             name: "Express".to_string(),
         };
 
