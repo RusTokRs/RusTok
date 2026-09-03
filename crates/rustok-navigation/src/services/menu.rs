@@ -9,7 +9,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource, TenantLocale, normalize_locale_tag};
+use rustok_api::{Action, Resource, RuntimeLocale, TenantLocale};
 use rustok_core::{
     SecurityContext,
     error::{ErrorKind, RichError},
@@ -674,7 +674,9 @@ fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
 }
 
 fn normalize_effective_locale(locale: &str) -> NavigationResult<String> {
-    normalize_locale_tag(locale).ok_or_else(|| NavigationError::validation("Invalid menu locale"))
+    RuntimeLocale::new(locale)
+        .map(RuntimeLocale::into_inner)
+        .map_err(|_| NavigationError::validation("Invalid menu locale"))
 }
 
 fn build_menu_tree(
@@ -771,6 +773,15 @@ mod tests {
             menu_location_from_storage(menu_location_to_storage(&MenuLocation::Footer)),
             Ok(MenuLocation::Footer)
         ));
+    }
+
+    #[test]
+    fn menu_effective_locale_uses_runtime_locale_contract() {
+        assert_eq!(
+            normalize_effective_locale("pt_br").expect("valid runtime locale"),
+            "pt-BR"
+        );
+        assert!(normalize_effective_locale("und").is_err());
     }
 
     #[test]
