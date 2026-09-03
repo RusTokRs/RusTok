@@ -176,6 +176,7 @@ impl ReplyService {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) mod ugc_translation_apply {
     pub(crate) use crate::services::{ReplyService, TopicService};
 
