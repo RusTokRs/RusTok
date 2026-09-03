@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "scope": "translation_event_consumer_lag_prerequisite",
+  "status": "source_prerequisite_only",
+  "reviewed_main": "51d2147bd920c7c580c0eee47f376035e8d8b77a",
+  "reviewed_main_tree": "d35f48df95c12644dbe6cac439e15d06476bc515",
+  "source_facts": {
+    "translation_workflow_events_published_transactionally": true,
+    "translation_specific_durable_inbound_consumer_present": false,
+    "translation_consumer_group_named": false,
+    "translation_consumer_topic_named": false,
+    "broker_position_observer_available": true,
+    "shared_runtime_lag_metrics_available": true,
+    "module_checkpoint_age_is_consumer_lag": false,
+    "opaque_provider_cursor_is_consumer_lag": false
+  },
+  "required_runtime_contract": {
+    "reuse_configured_iggy_transport": true,
+    "persistent_consumer_group": true,
+    "explicit_topic": true,
+    "all_partition_snapshot": true,
+    "committed_group_offsets": true,
+    "partition_high_watermark": true,
+    "incomplete_snapshot_fails_closed": true,
+    "publish_shared_position_metrics": true,
+    "lag_aggregations": [
+      "total",
+      "max"
+    ]
+  },
+  "forbidden_substitutes": [
+    "translation provider checkpoint age",
+    "translation target opaque cursor",
+    "event timestamp age",
+    "single-partition observation presented as complete"
+  ],
+  "runtime_evidence": [],
+  "validation": {
+    "author_tests_run": false,
+    "author_verifier_run": false,
+    "author_cargo_run": false,
+    "author_format_run": false,
+    "author_ci_run": false,
+    "runtime_consumer_proven": false,
+    "external_iggy_proven": false,
+    "consumer_lag_proven": false
+  }
+}
