@@ -12,7 +12,9 @@ import {
   CardTitle
 } from '@/shared/ui/shadcn/card';
 
-import type { MarketplaceModule } from '@/shared/api/modules';
+import type { GqlOpts, MarketplaceModule } from '@/shared/api/modules';
+import { MetadataChecklistView } from './detail/metadata-checklist-view';
+import { GovernanceForm } from './detail/governance-form';
 
 function humanizeToken(value: string): string {
   return value
@@ -51,6 +53,8 @@ interface ModuleDetailPanelProps {
   module: MarketplaceModule | null;
   loading: boolean;
   onClose: () => void;
+  apiOpts?: GqlOpts;
+  onRefresh?: () => void;
 }
 
 export function ModuleDetailPanel({
@@ -58,7 +62,9 @@ export function ModuleDetailPanel({
   slug,
   module,
   loading,
-  onClose
+  onClose,
+  apiOpts = {},
+  onRefresh
 }: ModuleDetailPanelProps) {
   const versionTrail = module?.versions.slice(0, 5) ?? [];
   const checksum = shortChecksum(module?.checksumSha256);
@@ -227,6 +233,7 @@ export function ModuleDetailPanel({
               </div>
             </div>
 
+            {/* Version History */}
             <div className='bg-background/70 rounded-lg border p-4'>
               <div className='flex items-center gap-2'>
                 <p className='text-muted-foreground text-xs tracking-wide uppercase'>
@@ -275,6 +282,16 @@ export function ModuleDetailPanel({
                 </p>
               )}
             </div>
+
+            {/* Registry Readiness Metadata Checklist */}
+            <MetadataChecklistView module={module} />
+
+            {/* Governance & Moderation Actions */}
+            <GovernanceForm
+              module={module}
+              apiOpts={apiOpts}
+              onSuccess={onRefresh}
+            />
           </>
         ) : (
           <p className='text-muted-foreground text-sm'>

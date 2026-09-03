@@ -570,7 +570,6 @@ pub struct ArtifactRollbackRequest {
     pub context: ModuleCommandContext,
     pub reason: String,
     pub target_capability_grant_revision: u64,
-    pub migration_rollback_mode: ArtifactMigrationRollbackMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -2784,9 +2783,6 @@ impl SeaOrmArtifactInstallationStore {
             let stored_grant_revision: Option<i64> = existing
                 .try_get("", "target_capability_grant_revision")
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-            let stored_mode: Option<String> = existing
-                .try_get("", "migration_rollback_mode")
-                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
             let source_revision: Option<i64> = existing
                 .try_get("", "source_revision")
                 .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
@@ -2800,7 +2796,6 @@ impl SeaOrmArtifactInstallationStore {
                 || correlation_id != request.context.correlation_id
                 || reason != request.reason
                 || stored_grant_revision != Some(target_capability_grant_revision)
-                || stored_mode.as_deref() != Some(request.migration_rollback_mode.as_str())
             {
                 return Err(ModuleInstallationError::AdmissionRevisionConflict(
                     "idempotency key was already used for a different rollback command".into(),
@@ -2894,15 +2889,12 @@ impl SeaOrmArtifactInstallationStore {
                     != 0
             }
         };
-        if matches!(
-            request.migration_rollback_mode,
+        let effective_migration_rollback_mode = if has_irreversible_migration {
             ArtifactMigrationRollbackMode::Prohibited
-        ) || (has_irreversible_migration
-            && !matches!(
-                request.migration_rollback_mode,
-                ArtifactMigrationRollbackMode::Compensating
-            ))
-        {
+        } else {
+            ArtifactMigrationRollbackMode::Reversible
+        };
+        if effective_migration_rollback_mode == ArtifactMigrationRollbackMode::Prohibited {
             return Err(ModuleInstallationError::AdmissionRevisionConflict(
                 "rollback is prohibited by the recorded data-migration policy".into(),
             ));
@@ -3003,7 +2995,7 @@ impl SeaOrmArtifactInstallationStore {
                 request.reason.clone().into(),
                 uuid_value(request.context.idempotency_key, backend),
                 target_capability_grant_revision.into(),
-                request.migration_rollback_mode.as_str().into(),
+                effective_migration_rollback_mode.as_str().into(),
                 source_revision.into(),
                 target_revision.into(),
             ],
@@ -7154,7 +7146,6 @@ mod tests {
                     context: lifecycle_context(None),
                     reason: "restore colliding predecessor navigation".to_string(),
                     target_capability_grant_revision: 1,
-                    migration_rollback_mode: ArtifactMigrationRollbackMode::Reversible,
                 })
                 .await,
             Err(ModuleInstallationError::AdmissionRevisionConflict(reason))
@@ -7402,8 +7393,37 @@ mod tests {
             context: lifecycle_context(None),
             reason: "restore predecessor after failed upgrade".to_string(),
             target_capability_grant_revision: 7,
-            migration_rollback_mode: ArtifactMigrationRollbackMode::Reversible,
         };
+        // 1. Verify that irreversible migration prohibits rollback:
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_artifact_installations SET has_irreversible_migration = 1 WHERE installation_id = ?1".to_string(),
+                vec![successor.installation_id.to_string().into()],
+            ))
+            .await
+            .expect("set irreversible migration flag");
+
+        let irreversible_attempt = store
+            .rollback_artifact(request.clone())
+            .await;
+
+        assert!(matches!(
+            irreversible_attempt,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(reason))
+                if reason == "rollback is prohibited by the recorded data-migration policy"
+        ));
+
+        // 2. Clear irreversible migration flag and verify rollback succeeds:
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_artifact_installations SET has_irreversible_migration = 0 WHERE installation_id = ?1".to_string(),
+                vec![successor.installation_id.to_string().into()],
+            ))
+            .await
+            .expect("clear irreversible migration flag");
+
         let result = store
             .rollback_artifact(request.clone())
             .await

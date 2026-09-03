@@ -137,6 +137,10 @@ pub async fn compose_artifact_binding_executor(
         .map_err(|error| Error::Message(format!("invalid artifact secret capability: {error}")))?;
     let mcp_capability = CapabilityName::new("platform.mcp")
         .map_err(|error| Error::Message(format!("invalid artifact MCP capability: {error}")))?;
+    let http_capability = CapabilityName::new("platform.http")
+        .map_err(|error| Error::Message(format!("invalid artifact HTTP capability: {error}")))?;
+    let events_capability = CapabilityName::new("platform.events")
+        .map_err(|error| Error::Message(format!("invalid artifact events capability: {error}")))?;
     let registry = ctx
         .shared_get::<ModuleRegistry>()
         .ok_or_else(|| Error::Message("module registry is not initialized".to_string()))?;
@@ -175,6 +179,18 @@ pub async fn compose_artifact_binding_executor(
             router.route(
                 mcp_capability,
                 Arc::new(control_plane.artifact_mcp_capability(mcp_invoker)),
+            )
+        })
+        .and_then(|router| {
+            router.route(
+                http_capability,
+                Arc::new(control_plane.artifact_http_capability()),
+            )
+        })
+        .and_then(|router| {
+            router.route(
+                events_capability,
+                Arc::new(control_plane.artifact_events_capability()),
             )
         })
         .map_err(|error| Error::Message(format!("artifact capability route failed: {error}")))?;

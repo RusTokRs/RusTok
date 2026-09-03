@@ -25,8 +25,10 @@ use crate::{
     SeaOrmArtifactDataExportService, SeaOrmArtifactDataObjectCapabilityBrokerResolver,
     SeaOrmArtifactDataObjectGcService, SeaOrmArtifactDataPurgeService,
     SeaOrmArtifactDataSnapshotCollectionService, SeaOrmArtifactDataSnapshotRetentionService,
-    SeaOrmArtifactDataSnapshotService, SeaOrmArtifactEventSubscriptionProjector,
-    SeaOrmArtifactExecutionObserver, SeaOrmArtifactInstallationStore, SeaOrmArtifactNodeReadiness,
+    SeaOrmArtifactDataSnapshotService, SeaOrmArtifactEventCapabilityBrokerResolver,
+    SeaOrmArtifactEventSubscriptionProjector,
+    SeaOrmArtifactExecutionObserver, SeaOrmArtifactHttpCapabilityBrokerResolver,
+    SeaOrmArtifactInstallationStore, SeaOrmArtifactNodeReadiness,
     SeaOrmArtifactSandboxPolicyResolver, SeaOrmArtifactScheduleDeliveryQueue,
     SeaOrmArtifactSecretCapabilityBrokerResolver, SeaOrmArtifactSecretHandlePolicy,
     SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
@@ -393,6 +395,29 @@ impl ModuleControlPlane {
             storage,
             self.infrastructure.clone(),
             quota_policy,
+        )
+    }
+
+    /// Returns the owner-scoped outbound HTTP capability resolver for exact
+    /// admitted artifact executions under `platform.http`.
+    pub fn artifact_http_capability(&self) -> SeaOrmArtifactHttpCapabilityBrokerResolver {
+        SeaOrmArtifactHttpCapabilityBrokerResolver::new(self.db.clone())
+    }
+
+    /// Returns the owner-scoped outbound HTTP capability resolver with custom request timeout.
+    pub fn artifact_http_capability_with_timeout(
+        &self,
+        timeout: std::time::Duration,
+    ) -> SeaOrmArtifactHttpCapabilityBrokerResolver {
+        SeaOrmArtifactHttpCapabilityBrokerResolver::with_timeout(self.db.clone(), timeout)
+    }
+
+    /// Returns the owner-scoped domain event publisher capability resolver for
+    /// exact admitted artifact executions under `platform.events`.
+    pub fn artifact_events_capability(&self) -> SeaOrmArtifactEventCapabilityBrokerResolver {
+        SeaOrmArtifactEventCapabilityBrokerResolver::with_infrastructure(
+            self.db.clone(),
+            self.infrastructure.clone(),
         )
     }
 

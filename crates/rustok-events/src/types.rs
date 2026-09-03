@@ -952,6 +952,13 @@ pub enum DomainEvent {
         previous_revision: Option<String>,
         next_revision: String,
     },
+    /// Dynamic guest-emitted event published from an admitted sandbox execution
+    /// under the `platform.events` capability.
+    ModuleGuestEventEmitted {
+        module_slug: String,
+        topic: String,
+        payload: serde_json::Value,
+    },
     LocaleEnabled {
         tenant_id: Uuid,
         locale: String,
@@ -1267,6 +1274,7 @@ impl DomainEvent {
             Self::ModuleEffectivePolicyRevisionChanged { .. } => {
                 "module.effective_policy_revision_changed"
             }
+            Self::ModuleGuestEventEmitted { .. } => "module.guest.event_emitted",
             Self::LocaleEnabled { .. } => "locale.enabled",
             Self::LocaleDisabled { .. } => "locale.disabled",
             Self::PlatformSettingsChanged { .. } => "platform_settings.changed",
@@ -1449,6 +1457,7 @@ impl DomainEvent {
             Self::ModuleArtifactNodeReconciliationStatusChanged { .. } => 1,
             Self::ModuleArtifactSecurityStateChanged { .. } => 1,
             Self::ModuleEffectivePolicyRevisionChanged { .. } => 1,
+            Self::ModuleGuestEventEmitted { .. } => 1,
             Self::LocaleEnabled { .. } => 1,
             Self::LocaleDisabled { .. } => 1,
             Self::PlatformSettingsChanged { .. } => 1,
@@ -3297,6 +3306,15 @@ impl ValidateEvent for DomainEvent {
                         "predecessor and successor must differ".to_string(),
                     ));
                 }
+                Ok(())
+            }
+            Self::ModuleGuestEventEmitted {
+                module_slug,
+                topic,
+                ..
+            } => {
+                validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_not_empty("topic", topic)?;
                 Ok(())
             }
             Self::LocaleEnabled { tenant_id, locale }

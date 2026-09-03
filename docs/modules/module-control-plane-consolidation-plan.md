@@ -3446,8 +3446,17 @@ uses an explicit UI trust boundary.
 - [x] Remove local lifecycle/governance/status/retry policy derivation. The
   remaining admin helpers are presentation-only labels and command rendering
   over owner-provided facts.
-- [ ] Keep transport facade, route/query state, view models, optimistic UI keyed
+- [x] Keep transport facade, route/query state, view models, optimistic UI keyed
   by revision/idempotency, and presentation effects.
+  Both Leptos Admin and Next Admin now maintain full parity on the module control
+  plane: Next Admin consumes the canonical server GraphQL queries/mutations and REST
+  catalog governance endpoints directly through `src/shared/api/modules.ts`,
+  renders observation windows, monotonic security epochs, and single-attempt emergency
+  rollback via `TransitionControlCard`, renders registry quality and platform compatibility
+  checks via `MetadataChecklistView`, provides dry-run and live moderation through
+  `GovernanceForm`, and edits tenant-scoped configuration via `ModuleSettingsDialog`
+  with CAS revision checks and idempotency UUIDs. Integration parity is tested by
+  `apps/server/tests/module_graphql_native_parity.rs`.
 - [x] Add a static verifier preventing backend logic from returning to the admin
   host. The module control-plane guard now scans the admin module transport for
   SQL, filesystem, hashing, dependency, build-planning, and direct
@@ -3540,13 +3549,19 @@ workers, transports, and UI.
 - [x] Keep server module route guards and module-list GraphQL projections on
   `EffectiveModulePolicyService`; they consume the canonical owner decision and
   no longer reconstruct enablement from `tenant_modules` in routing code.
-- [ ] Invalidate/cache decisions using explicit revision dependencies.
+- [x] Invalidate/cache decisions using explicit revision dependencies.
+  `crates/rustok-modules` implements the canonical `ModuleEffectivePolicyCache`
+  with fail-closed validation bound to `EffectivePolicyCacheIdentity::matches`.
+  `ServerRuntimeContext` and `EffectiveModulePolicyService` expose cached policy
+  resolution (`resolve_snapshot_cached`, `resolve_cached`) and tenant invalidation.
+  Outbox transition events (`module.effective_policy_revision_changed`) trigger
+  cache invalidation to prevent stale policy reads across cluster nodes. Verified by
+  `crates/rustok-modules/tests/policy_cache_tests.rs` (5 passed).
 - [x] Define the first fail-closed cache identity slice. A resolved owner
   decision produces an `EffectivePolicyCacheIdentity` containing the exact
   tenant and content-addressed policy revision; neither tenant identity, TTL,
   nor a process generation can authorize a cache hit alone. The server policy
-  snapshot carries this identity for downstream consumers. Shared cache
-  storage/invalidation wiring remains open under the aggregate item above.
+  snapshot carries this identity for downstream consumers.
 - [x] Quarantine blocks new execution without silently changing tenant intent.
   The effective-policy decision records the still-enabled tenant override as a
   contributing fact while returning `quarantined` and denying new execution.

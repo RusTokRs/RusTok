@@ -158,6 +158,16 @@ impl ServerRuntimeContext {
             .and_then(|value| value.downcast_ref::<T>())
             .map(map)
     }
+
+    pub fn effective_policy_cache(&self) -> rustok_modules::ModuleEffectivePolicyCache {
+        if let Some(cache) = self.shared_get::<rustok_modules::ModuleEffectivePolicyCache>() {
+            cache
+        } else {
+            let cache = rustok_modules::ModuleEffectivePolicyCache::new();
+            self.shared_insert(cache.clone());
+            cache
+        }
+    }
 }
 
 #[derive(Clone)]

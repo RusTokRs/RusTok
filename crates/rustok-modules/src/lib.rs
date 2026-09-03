@@ -10,6 +10,8 @@ mod artifact_settings_recovery;
 mod authoring;
 mod binding_idempotency;
 mod build;
+mod capability_events;
+mod capability_http;
 mod build_surface;
 mod composition;
 mod conflict_fences;
@@ -43,6 +45,7 @@ mod oci;
 mod oci_transport;
 mod operation_store;
 mod policy;
+mod policy_cache;
 mod policy_revision_consumer;
 mod policy_transition_event;
 mod promotion;
@@ -50,6 +53,7 @@ mod publication_evidence;
 mod publish_validation;
 mod reconciliation;
 mod recovery;
+mod release_preparation;
 mod resolution;
 mod retention;
 mod runtime;
@@ -63,6 +67,7 @@ mod settings;
 mod settings_guard;
 mod static_package;
 mod transition_coordinator;
+mod transition_receipts;
 mod transition_store;
 mod trust;
 
@@ -81,9 +86,13 @@ pub use settings_guard::{
     validate_settings_intersection,
 };
 pub use transition_coordinator::{
-    ModuleTransitionCheckpoint, ModuleTransitionCoordinator, ModuleTransitionFinalizeCommand,
-    ModuleTransitionRecoveryCommand, ModuleTransitionState, StartTransitionInput,
-    TransitionCoordinatorError,
+    evaluate_transition_watchdog, ModuleTransitionCheckpoint, ModuleTransitionCoordinator,
+    ModuleTransitionFinalizeCommand, ModuleTransitionRecoveryCommand, ModuleTransitionState,
+    StartTransitionInput, TransitionCoordinatorError,
+};
+pub use transition_receipts::{
+    TransitionApplyReceipt, TransitionCancellationReceipt, TransitionConfirmationReceipt,
+    TransitionPreviewReceipt, TransitionReceiptError, TransitionRollbackReceipt,
 };
 pub use transition_store::{RetentionHoldStore, TransitionCheckpointStore, TransitionStoreError};
 
@@ -111,6 +120,16 @@ pub use artifact_capability_router::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityBrokerResolverRouter,
     ArtifactCapabilityExecution, ResolvingArtifactCapabilityBroker,
     resolve_granted_artifact_capability,
+};
+pub use capability_events::{
+    ArtifactEventCapabilityBroker, SeaOrmArtifactEventCapabilityBrokerResolver,
+};
+pub use capability_http::{
+    ArtifactHttpCapabilityBroker, SeaOrmArtifactHttpCapabilityBrokerResolver,
+};
+pub use release_preparation::{
+    ReleasePreparation, ReleasePreparationError, ReleasePreparationState,
+    SanitizedPreparationEvidence,
 };
 pub use artifact_cas::StorageArtifactBlobStore;
 pub use artifact_node_reconciliation::{
@@ -408,6 +427,7 @@ pub use policy::{
     ModulePolicyRevisionGate, ModulePolicyRevisionGateError, ModulePolicyRevisionTransition,
     ModuleToggleValidationError, TenantModuleOverride, validate_module_toggle,
 };
+pub use policy_cache::ModuleEffectivePolicyCache;
 pub use policy_revision_consumer::{
     ModulePolicyRevisionConsumerError, SeaOrmModulePolicyRevisionConsumer,
 };

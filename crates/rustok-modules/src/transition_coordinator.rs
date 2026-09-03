@@ -13,9 +13,12 @@ use std::time::Duration;
 use thiserror::Error;
 use uuid::Uuid;
 
+use sea_orm::ConnectionTrait;
+
 use crate::{
     ConflictFenceSet, GlobalSecurityEpoch, MigrationPreflightReceipt, ModuleCommandContext,
-    SecurityEpochConflictError, SecurityEpochRegistry, UpdateMode,
+    RetentionHoldStore, SecurityEpochConflictError, SecurityEpochRegistry,
+    TransitionCheckpointStore, UpdateMode,
 };
 
 /// Lifecycle states of a durable module transition.
@@ -222,6 +225,7 @@ impl ModuleTransitionCoordinator {
             });
         }
 
+        self.checkpoint.revision += 1;
         self.checkpoint.state = ModuleTransitionState::PreStaging;
         self.checkpoint.updated_at = Utc::now();
         Ok(())
@@ -244,6 +248,7 @@ impl ModuleTransitionCoordinator {
         }
 
         let timeout_at = Utc::now() + observation_duration;
+        self.checkpoint.revision += 1;
         self.checkpoint.state = ModuleTransitionState::Observing { timeout_at };
         self.checkpoint.updated_at = Utc::now();
         Ok(())
@@ -268,6 +273,7 @@ impl ModuleTransitionCoordinator {
                 "Automatic recovery already attempted ({}); failing closed to prevent oscillation: {}",
                 self.checkpoint.recovery_attempt_count, reason
             );
+            self.checkpoint.revision += 1;
             self.checkpoint.state = ModuleTransitionState::FailedClosed {
                 failure_reason: msg.clone(),
             };
@@ -275,6 +281,7 @@ impl ModuleTransitionCoordinator {
             return Err(TransitionCoordinatorError::RecoveryLimitExhausted(msg));
         }
 
+        self.checkpoint.revision += 1;
         self.checkpoint.recovery_attempt_count += 1;
         self.checkpoint.state = ModuleTransitionState::RecoveredToPredecessor {
             failure_reason: reason,
@@ -294,6 +301,7 @@ impl ModuleTransitionCoordinator {
 
         match self.checkpoint.state {
             ModuleTransitionState::Observing { .. } => {
+                self.checkpoint.revision += 1;
                 self.checkpoint.state = ModuleTransitionState::Converged {
                     finalized_at: Utc::now(),
                 };
@@ -316,6 +324,66 @@ impl ModuleTransitionCoordinator {
             Ok(())
         }
     }
+}
+
+/// Evaluates all active transition observation windows against deadlines and security epochs.
+///
+/// Automatically finalizes convergence when observation deadline expires without issues,
+/// releases temporary `ActiveRolloutWindow` retention holds, and triggers single-attempt
+/// recovery if a security epoch preemption or invalidation is observed.
+pub async fn evaluate_transition_watchdog<C: ConnectionTrait>(
+    db: &C,
+    security_registry: &SecurityEpochRegistry,
+) -> Result<Vec<ModuleTransitionCheckpoint>, TransitionCoordinatorError> {
+    let active_checkpoints = TransitionCheckpointStore::list_active_checkpoints(db)
+        .await
+        .map_err(|e| TransitionCoordinatorError::PreflightFailed(e.to_string()))?;
+
+    let mut updated = Vec::new();
+    let now = Utc::now();
+
+    for checkpoint in active_checkpoints {
+        let mut coordinator = ModuleTransitionCoordinator::new(checkpoint);
+        let mut changed = false;
+
+        // 1. Check for stale security epoch preemption
+        if let Err(_epoch_err) =
+            security_registry.validate_epoch(coordinator.checkpoint().security_epoch)
+        {
+            let msg = format!(
+                "Security epoch preemption: Epoch {:?} is stale (current: {:?})",
+                coordinator.checkpoint().security_epoch,
+                security_registry.current_epoch()
+            );
+            // Try single-attempt recovery or fail-closed
+            let _ = coordinator.record_recovery_trigger(msg);
+            changed = true;
+        } else {
+            // 2. Check for observation timeout expiration
+            if let ModuleTransitionState::Observing { timeout_at } = coordinator.state() {
+                if now >= *timeout_at {
+                    if coordinator.finalize_convergence(security_registry).is_ok() {
+                        changed = true;
+                        // Release GC retention holds associated with this rollout
+                        let _ = RetentionHoldStore::release_holds_for_operation(
+                            db,
+                            coordinator.checkpoint().operation_id,
+                        )
+                        .await;
+                    }
+                }
+            }
+        }
+
+        if changed {
+            TransitionCheckpointStore::save_checkpoint(db, coordinator.checkpoint())
+                .await
+                .map_err(|e| TransitionCoordinatorError::PreflightFailed(e.to_string()))?;
+            updated.push(coordinator.checkpoint().clone());
+        }
+    }
+
+    Ok(updated)
 }
 
 #[cfg(test)]

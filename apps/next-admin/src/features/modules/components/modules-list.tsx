@@ -43,14 +43,20 @@ import {
   getActiveBuild,
   getBuildHistory,
   getMarketplaceModule,
+  getTransitionCheckpoint,
   installModule,
+  listActiveModuleTransitions,
   listMarketplaceModules,
   listMarketplaceRegistryFreshness,
+  listRetentionHolds,
+  listTenantModules,
   type BuildJob,
   type InstalledModule,
   type MarketplaceModule,
   type MarketplaceRegistryFreshness,
   type ModuleInfo,
+  type ModuleTransitionCheckpoint,
+  type RetentionHold,
   toggleModule,
   uninstallModule,
   upgradeModule
@@ -58,6 +64,8 @@ import {
 import { ModuleDetailPanel } from './module-detail-panel';
 import { ModuleCard } from './module-card';
 import { ModuleUpdateCard } from './module-update-card';
+import { TransitionControlCard } from './transition-control-card';
+import { ModuleSettingsDialog } from './module-settings-dialog';
 
 interface ModulesListProps {
   adminSurface: 'leptos-admin' | 'next-admin';
@@ -210,6 +218,18 @@ export function ModulesList({
   const [selectedModuleDetail, setSelectedModuleDetail] =
     useState<MarketplaceModule | null>(null);
   const [moduleDetailLoading, setModuleDetailLoading] = useState(false);
+  const [activeTransition, setActiveTransition] =
+    useState<ModuleTransitionCheckpoint | null>(null);
+  const [retentionHolds, setRetentionHolds] = useState<RetentionHold[]>([]);
+  const [tenantSettingsMap, setTenantSettingsMap] = useState<
+    Map<string, { settings: string; revision: number }>
+  >(new Map());
+  const [settingsDialog, setSettingsDialog] = useState<{
+    open: boolean;
+    slug: string;
+    settings: string;
+    revision: number;
+  }>({ open: false, slug: '', settings: '{}', revision: 0 });
   const [catalogFilterDraft, setCatalogFilterDraft] = useState(DEFAULT_FILTERS);
   const [appliedCatalogFilters, setAppliedCatalogFilters] =
     useState(DEFAULT_FILTERS);
@@ -342,6 +362,69 @@ export function ModulesList({
       cancelled = true;
     };
   }, [apiOpts, selectedModuleSlug]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRetentionAndSettings() {
+      try {
+        const holds = await listRetentionHolds(apiOpts);
+        if (!cancelled) setRetentionHolds(holds);
+      } catch {
+        // non-blocking
+      }
+      try {
+        const tenantMods = await listTenantModules(apiOpts);
+        if (!cancelled) {
+          const map = new Map<string, { settings: string; revision: number }>();
+          tenantMods.forEach((tm) => {
+            map.set(tm.moduleSlug, { settings: tm.settings, revision: tm.revision });
+          });
+          setTenantSettingsMap(map);
+        }
+      } catch {
+        // non-blocking
+      }
+    }
+    void loadRetentionAndSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiOpts]);
+
+  const opIdFromUrl =
+    searchParams.get('op_id') ?? searchParams.get('operation_id');
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTransitions() {
+      try {
+        if (opIdFromUrl) {
+          const cp = await getTransitionCheckpoint(opIdFromUrl, apiOpts);
+          if (!cancelled && cp) {
+            setActiveTransition(cp);
+            return;
+          }
+        }
+        const activeList = await listActiveModuleTransitions(apiOpts);
+        if (!cancelled) {
+          if (activeList.length > 0) {
+            setActiveTransition(activeList[0]);
+          } else if (!opIdFromUrl) {
+            setActiveTransition(null);
+          }
+        }
+      } catch {
+        // non-blocking
+      }
+    }
+    void loadTransitions();
+    const intervalId = window.setInterval(() => {
+      void loadTransitions();
+    }, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [opIdFromUrl, apiOpts]);
 
   const refreshMarketplaceCatalog = async (
     nextFilters: CatalogFilters,
@@ -986,6 +1069,35 @@ export function ModulesList({
           module={selectedModuleDetail}
           loading={moduleDetailLoading}
           onClose={handleCloseDetail}
+          apiOpts={apiOpts}
+          onRefresh={refreshOrchestrationState}
+        />
+      )}
+
+      {settingsDialog.open && (
+        <ModuleSettingsDialog
+          moduleSlug={settingsDialog.slug}
+          initialSettings={settingsDialog.settings}
+          expectedRevision={settingsDialog.revision}
+          open={settingsDialog.open}
+          onOpenChange={(open) =>
+            setSettingsDialog((prev) => ({ ...prev, open }))
+          }
+          onSaved={(slug, newSettings, newRevision) => {
+            setTenantSettingsMap((prev) => {
+              const next = new Map(prev);
+              next.set(slug, { settings: newSettings, revision: newRevision });
+              return next;
+            });
+            setModules((prev) =>
+              prev.map((m) =>
+                m.moduleSlug === slug
+                  ? { ...m, lifecycleRevision: newRevision }
+                  : m
+              )
+            );
+          }}
+          apiOpts={apiOpts}
         />
       )}
 
@@ -1077,6 +1189,16 @@ export function ModulesList({
                   platformVersion={installedMap.get(module.moduleSlug)?.version}
                   recommendedVersion={module.version}
                   onInspect={handleInspect}
+                  onConfigureSettings={(slug) => {
+                    const existing = tenantSettingsMap.get(slug);
+                    setSettingsDialog({
+                      open: true,
+                      slug,
+                      settings: existing?.settings ?? '{}',
+                      revision:
+                        existing?.revision ?? module.lifecycleRevision ?? 0
+                    });
+                  }}
                 />
               ))}
             </div>
@@ -1108,6 +1230,16 @@ export function ModulesList({
                     onToggle={handleToggle}
                     onInspect={handleInspect}
                     onUninstall={handleUninstall}
+                    onConfigureSettings={(slug) => {
+                      const existing = tenantSettingsMap.get(slug);
+                      setSettingsDialog({
+                        open: true,
+                        slug,
+                        settings: existing?.settings ?? '{}',
+                        revision:
+                          existing?.revision ?? module.lifecycleRevision ?? 0
+                      });
+                    }}
                   />
                 ))}
               </div>
@@ -1227,6 +1359,50 @@ export function ModulesList({
               </CardDescription>
             </CardHeader>
           </Card>
+
+          {activeTransition && (
+            <TransitionControlCard
+              checkpoint={activeTransition}
+              retentionHolds={retentionHolds}
+              onRefresh={async () => {
+                try {
+                  const cp = await getTransitionCheckpoint(
+                    activeTransition.operationId,
+                    apiOpts
+                  );
+                  setActiveTransition(cp);
+                  const holds = await listRetentionHolds(apiOpts);
+                  setRetentionHolds(holds);
+                } catch {
+                  // ignore
+                }
+              }}
+              apiOpts={apiOpts}
+            />
+          )}
+
+          {!activeTransition && retentionHolds.length > 0 && (
+            <Card>
+              <CardHeader className='pb-3'>
+                <CardTitle className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+                  Active Platform Retention Holds ({retentionHolds.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className='space-y-2 font-mono text-xs'>
+                {retentionHolds.map((hold) => (
+                  <div
+                    key={hold.holdId}
+                    className='flex items-center justify-between border-b pb-1 last:border-b-0'
+                  >
+                    <span className='text-foreground'>
+                      {hold.targetType}: {hold.targetIdentity}
+                    </span>
+                    <Badge variant='secondary'>{hold.kind}</Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {updateCandidates.length > 0 ? (
             <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>

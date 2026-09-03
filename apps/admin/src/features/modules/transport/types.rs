@@ -422,3 +422,9 @@ pub struct FinalizeModuleTransitionResponse {
     #[serde(rename = "finalizeModuleTransition")]
     pub checkpoint: ModuleTransitionCheckpoint,
 }
+
+#[derive(Deserialize)]
+pub struct ActiveModuleTransitionsResponse {
+    #[serde(rename = "activeModuleTransitions")]
+    pub active_transitions: Vec<ModuleTransitionCheckpoint>,
+}

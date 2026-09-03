@@ -48,6 +48,7 @@ interface ModuleCardProps {
   onInstall?: (slug: string, version: string) => void;
   onInspect?: (slug: string) => void;
   onUninstall?: (slug: string) => void;
+  onConfigureSettings?: (slug: string) => void;
 }
 
 export function ModuleCard({
@@ -62,7 +63,8 @@ export function ModuleCard({
   onToggle,
   onInstall,
   onInspect,
-  onUninstall
+  onUninstall,
+  onConfigureSettings
 }: ModuleCardProps) {
   const t = useTranslations('modules');
   const isCore = module.kind === 'core';
@@ -219,14 +221,26 @@ export function ModuleCard({
         </div>
 
         <div className='flex items-center justify-between gap-3 border-t pt-3'>
-          <Button
-            variant='ghost'
-            size='sm'
-            disabled={platformLoading}
-            onClick={() => onInspect?.(module.moduleSlug)}
-          >
-            Details
-          </Button>
+          <div className='flex items-center gap-1.5'>
+            <Button
+              variant='ghost'
+              size='sm'
+              disabled={platformLoading}
+              onClick={() => onInspect?.(module.moduleSlug)}
+            >
+              Details
+            </Button>
+            {onConfigureSettings && (platformInstalled || isCore) && (
+              <Button
+                variant='outline'
+                size='sm'
+                disabled={platformLoading}
+                onClick={() => onConfigureSettings(module.moduleSlug)}
+              >
+                Settings
+              </Button>
+            )}
+          </div>
           {isCore ? (
             <Badge variant='secondary' className='text-xs'>
               {t('always_on')}

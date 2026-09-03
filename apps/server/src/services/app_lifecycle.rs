@@ -229,6 +229,18 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
         tracing::info!("SEO bulk worker disabled by runtime.background_workers config");
     }
 
+    if settings.runtime.runs_background_workers()
+        && !runtime_ctx.shared_contains::<crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle>()
+    {
+        runtime_ctx.shared_insert(
+            crate::services::module_transition_watchdog::spawn_module_transition_watchdog_handle(
+                runtime_ctx.db_clone(),
+                5_000,
+                stop_rx.clone(),
+            ),
+        );
+    }
+
     Ok(())
 }
 

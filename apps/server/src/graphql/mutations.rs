@@ -10,7 +10,7 @@ use crate::graphql::artifact_lifecycle::{
 };
 use crate::graphql::queries::ensure_modules_read_permission;
 use crate::graphql::types::{
-    ArtifactActivation, ArtifactDeactivation, ArtifactMigrationRollbackMode, ArtifactRollback,
+    ArtifactActivation, ArtifactDeactivation, ArtifactRollback,
     ArtifactTenantLifecycle, ArtifactUninstall, BuildJob, CreateUserInput, DeleteUserPayload,
     ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput, User,
 };
@@ -48,7 +48,6 @@ use rustok_build::{BuildEventPublicationContext, BuildEventScope, EventBusBuildE
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions, UserRole};
 use rustok_modules::{
     ArtifactActivationRequest, ArtifactDeactivationRequest,
-    ArtifactMigrationRollbackMode as InstallationArtifactMigrationRollbackMode,
     ArtifactRollbackRequest, ArtifactTenantDisableRequest, ArtifactTenantEnableRequest,
     ArtifactUninstallRequest, ModuleCommandContext, ModuleCompositionError, ModuleControlPlane,
     ModuleInstallationScope,
@@ -418,22 +417,6 @@ pub(crate) fn module_command_context(
         trace_id,
         correlation_id: idempotency_key,
         idempotency_key,
-    }
-}
-
-fn artifact_migration_rollback_mode(
-    mode: ArtifactMigrationRollbackMode,
-) -> InstallationArtifactMigrationRollbackMode {
-    match mode {
-        ArtifactMigrationRollbackMode::Reversible => {
-            InstallationArtifactMigrationRollbackMode::Reversible
-        }
-        ArtifactMigrationRollbackMode::Compensating => {
-            InstallationArtifactMigrationRollbackMode::Compensating
-        }
-        ArtifactMigrationRollbackMode::Prohibited => {
-            InstallationArtifactMigrationRollbackMode::Prohibited
-        }
     }
 }
 
@@ -1133,7 +1116,6 @@ impl RootMutation {
         reason: String,
         idempotency_key: Uuid,
         target_capability_grant_revision: i64,
-        migration_rollback_mode: ArtifactMigrationRollbackMode,
     ) -> Result<ArtifactRollback> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
         let expected_revision = artifact_lifecycle_expected_revision(
@@ -1163,7 +1145,6 @@ impl RootMutation {
                 context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
                 reason,
                 target_capability_grant_revision,
-                migration_rollback_mode: artifact_migration_rollback_mode(migration_rollback_mode),
             })
             .await
             .map_err(map_artifact_installation_lifecycle_error)?;

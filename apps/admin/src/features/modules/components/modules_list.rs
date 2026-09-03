@@ -461,14 +461,29 @@ pub fn ModulesList(
     let enabled_modules = use_enabled_modules_context();
     let is_showcase_surface = admin_surface == "next-admin";
 
-    let (active_transition, _set_active_transition) =
+    let (active_transition, set_active_transition) =
         signal::<Option<ModuleTransitionCheckpoint>>(None);
     let (retention_holds, set_retention_holds) = signal::<Vec<RetentionHold>>(vec![]);
 
-    let refresh_retention_holds = move || {
+    let refresh_transition_state = move || {
         let token_val = token.get();
         let tenant_val = tenant.get();
+        let query_map = query.get();
+        let op_id_opt = query_map.get("op_id").or_else(|| query_map.get("operation_id"));
+
         spawn_local(async move {
+            if let Some(op_id) = op_id_opt {
+                if let Ok(Some(cp)) =
+                    transport::fetch_transition_checkpoint(token_val.clone(), tenant_val.clone(), op_id).await
+                {
+                    set_active_transition.set(Some(cp));
+                }
+            } else if let Ok(active) =
+                transport::fetch_active_transitions(token_val.clone(), tenant_val.clone()).await
+            {
+                set_active_transition.set(active.into_iter().next());
+            }
+
             if let Ok(holds) = transport::fetch_retention_holds(token_val, tenant_val).await {
                 set_retention_holds.set(holds);
             }
@@ -476,7 +491,7 @@ pub fn ModulesList(
     };
 
     Effect::new(move |_| {
-        refresh_retention_holds();
+        refresh_transition_state();
     });
 
     let push_build_job = move |build: BuildJob| {
@@ -2057,7 +2072,7 @@ pub fn ModulesList(
                         <div class="rounded-xl border border-border bg-card p-6 shadow-sm"><div class="space-y-2"><h3 class="text-base font-semibold text-card-foreground">"Versioned updates"</h3><p class="text-sm text-muted-foreground">"Only modules with an explicit installed version and a newer registry version appear here."</p></div></div>
 
                         {move || active_transition.get().map(|checkpoint| {
-                            let refresh = refresh_retention_holds;
+                            let refresh = refresh_transition_state;
                             view! {
                                 <TransitionControlCard
                                     checkpoint=checkpoint

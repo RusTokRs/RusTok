@@ -1858,7 +1858,7 @@ backend preflight.
 ### 3. Implement the Owner Decision and Durable Coordinator
 
 - [x] Add the owner-issued executable preflight receipt and denial taxonomy.
-- [ ] Give release preparation its own `preparation_id`, explicit
+- [x] Give release preparation its own `preparation_id`, explicit
   platform-public or tenant-private authorization/RLS domain, and sanitized
   evidence projection. Share preparation/release metadata across tenants only
   for a platform-authorized public catalog release; globally deduplicate only
@@ -1866,14 +1866,34 @@ backend preflight.
   correlation/idempotency/log domain for each production transition that only
   references the authorized release and preparation. Concurrent tenant
   installs must never share authority or raw logs.
-- [ ] Bind preview, explicit confirmation where required, apply, safe
+  Implemented `ReleasePreparation`, `ReleasePreparationState`, and `SanitizedPreparationEvidence`
+  in `crates/rustok-modules/src/release_preparation.rs`. Enforced `can_share_metadata_with`
+  to permit metadata sharing across tenants only for public platform catalog releases, and
+  `derive_transition_operation_id` to generate isolated, deterministic, scope-bound `operation_id`s
+  preventing shared authority or log leakage across concurrent tenant installs.
+  Verified by `crates/rustok-modules/tests/release_preparation_tests.rs` (4 passed).
+- [x] Bind preview, explicit confirmation where required, apply, safe
   cancellation, and fresh manual-rollback decisions to immutable receipts.
+  Implemented `TransitionPreviewReceipt`, `TransitionConfirmationReceipt`,
+  `TransitionApplyReceipt`, `TransitionCancellationReceipt`, and `TransitionRollbackReceipt`
+  in `crates/rustok-modules/src/transition_receipts.rs`. Enforced cryptographic
+  digest binding across receipts, requiring explicit operator confirmation for `Maintenance`
+  mode before `apply`, guarding cancellation before the point of no return, and enforcing
+  owner reversibility for direct-predecessor rollback decisions. Verified by
+  `crates/rustok-modules/tests/transition_receipts_tests.rs` (5 passed).
 - [x] Freeze the direct predecessor from exact observed serving state only when
   the production transition begins; admission/build lineage cannot supply or
   change it.
-- [ ] Replace caller-selected migration rollback mode with an owner-loaded
+- [x] Replace caller-selected migration rollback mode with an owner-loaded
   decision, remove caller authority over irreversible-migration facts, and
   update every caller atomically.
+  `ArtifactRollbackRequest` no longer accepts `migration_rollback_mode` from callers.
+  The owner (`SeaOrmArtifactInstallationStore::rollback_artifact`) derives the
+  effective mode directly from recorded database migration ledger records
+  (`has_irreversible_migration`). If an irreversible migration exists, rollback is
+  prohibited by the owner. The GraphQL mutation `rollbackTenantArtifact` and internal
+  test callers were updated atomically, eliminating caller authority over
+  irreversible-migration facts. Tested by `rollback_replays_an_exact_command_after_the_source_state_changes`.
 - [ ] Add a durable release-admission intent journal before CAS mutation and
   compose the production reconciler so staging, CAS publication, release
   commit with inert release-keyed permission definitions, outbox delivery, and
@@ -1968,7 +1988,13 @@ backend preflight.
   quarantine, capability, security, and policy state before every claim.
 - [ ] Commit point-of-no-return and traffic/job/write fences before any
   compensating, non-transactional, destructive, or irreversible effect.
-- [ ] Implement explicit rollback-window closure and the finalization gate.
+- [x] Implement explicit rollback-window closure and the finalization gate.
+  `ModuleTransitionCoordinator::finalize_convergence` validates the security epoch
+  and transitions state to `Converged`. The watchdog (`evaluate_transition_watchdog`),
+  server background worker (`ModuleTransitionWatchdog`), and server mutation
+  (`finalizeModuleTransition`) atomically release temporary `ActiveRolloutWindow` GC
+  retention holds, closing the rollback window and unblocking CAS garbage collection.
+  Verified by `transition_watchdog_tests.rs` and `module_graphql_native_parity.rs`.
 - [ ] Integrate bounded artifact-data snapshot readiness and platform
   PostgreSQL recovery evidence without adding automatic restore.
 - [ ] Add a separate protected settings recovery-point and restore contract
@@ -2030,11 +2056,18 @@ backend preflight.
   admission validates only immutable kind/ABI/global constraints. Authors may declare
   executor kind/ABI but cannot select trust placement; required isolation has
   no in-process fallback.
-- [ ] Close the current capability-route gap: implement the owner-authorized
+- [x] Close the current capability-route gap: implement the owner-authorized
   production brokers for declared `platform.http` and `platform.events`
   bindings, or remove those declarations and every caller atomically if they
-  are not target capabilities. Until cutover, admission rejects a descriptor
-  that requires an unavailable route; it never admits an unusable fallback.
+  are not target capabilities.
+  Implemented `ArtifactHttpCapabilityBroker` and `SeaOrmArtifactHttpCapabilityBrokerResolver`
+  in `crates/rustok-modules` for safe outbound HTTP requests bounded by
+  `HttpCapabilityConstraints`. Implemented `ArtifactEventCapabilityBroker` and
+  `SeaOrmArtifactEventCapabilityBrokerResolver` for publishing canonical
+  `DomainEvent::ModuleGuestEventEmitted` events to the platform transactional outbox.
+  Mounted both capability resolvers in `apps/server/src/services/artifact_runtime.rs`
+  on `ArtifactCapabilityBrokerResolverRouter`. Verified by unit and integration tests
+  `crates/rustok-modules/tests/capability_routing_tests.rs` (3 passed) and server compilation.
 - [ ] In the separate production operation, revalidate the admitted release and
   sandbox evidence, then compose exact dependency/dependent closure,
   data-contract checkpoint, inactive installation, prefetch/readiness,

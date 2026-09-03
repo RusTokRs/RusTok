@@ -21,6 +21,69 @@ boundary and the module-owned admin transport for backend write/build logic.
 
 ## Current verification evidence
 
+On 2026-09-02, Release Preparation domain, `preparation_id`, tenant RLS isolation, and
+sanitized evidence projections were delivered per Section 3 of the Rollback Plan.
+`crates/rustok-modules` implemented `ReleasePreparation`, `ReleasePreparationState`, and
+`SanitizedPreparationEvidence` in `crates/rustok-modules/src/release_preparation.rs`.
+Enforced `can_share_metadata_with` (sharing metadata only for public platform catalog releases)
+and `derive_transition_operation_id` for isolated transition execution. Verified by
+`crates/rustok-modules/tests/release_preparation_tests.rs` (4 passed) and full server compilation.
+
+On 2026-09-02, the Capability-Route Gap was closed per Section 5 of the Rollback Plan.
+`crates/rustok-modules` implemented `ArtifactHttpCapabilityBroker` and
+`SeaOrmArtifactHttpCapabilityBrokerResolver` for `platform.http` and `ArtifactEventCapabilityBroker`
+and `SeaOrmArtifactEventCapabilityBrokerResolver` for `platform.events` with canonical
+`DomainEvent::ModuleGuestEventEmitted` published to the platform outbox. `apps/server` mounted both
+routes in `artifact_runtime.rs` on `ArtifactCapabilityBrokerResolverRouter`. Verified by
+`crates/rustok-modules/tests/capability_routing_tests.rs` (3 passed) and full server compilation.
+
+On 2026-09-02, the fail-closed `ModuleEffectivePolicyCache` and revision-dependent
+caching were delivered. `crates/rustok-modules` implements `ModuleEffectivePolicyCache`
+validating each cache lookup against `EffectivePolicyCacheIdentity::matches` with
+explicit invalidation APIs (`invalidate_tenant`, `invalidate_if_stale`, `apply_transition_event`).
+`apps/server` integrated the cache into `ServerRuntimeContext` and `EffectiveModulePolicyService`
+via `resolve_snapshot_cached` and `resolve_cached`. All 5 tests in
+`crates/rustok-modules/tests/policy_cache_tests.rs` passed with 0 warnings. Server checks,
+Next Admin typecheck/lint, the write-path verifier, and UI i18n parity all passed.
+
+On 2026-09-02, caller-selected migration rollback mode was removed from
+`ArtifactRollbackRequest` and `apps/server` GraphQL mutation `rollbackTenantArtifact`,
+fulfilling Gap #3 and Section 3 of the Rollback Plan. The owner
+(`SeaOrmArtifactInstallationStore::rollback_artifact`) now derives the effective
+migration mode directly from recorded database ledger records (`has_irreversible_migration`)
+and fails closed when rollback is prohibited. Focused test
+`rollback_replays_an_exact_command_after_the_source_state_changes` passed with 0 warnings.
+TypeScript typecheck (`npm --prefix apps/next-admin run typecheck`), ESLint
+(`npm --prefix apps/next-admin run lint`), the write-path verifier, UI i18n parity, and
+server tests all passed.
+
+On 2026-09-02, the autonomous transition watchdog and global transition query
+contracts were delivered. `rustok-modules` gained `evaluate_transition_watchdog`,
+automatic convergence on expired observation deadlines, and automatic pruning of
+`ActiveRolloutWindow` GC retention holds. `apps/server` mounted the background
+`ModuleTransitionWatchdog` service tied to graceful `StopHandle` cancellation and
+exposed the `activeModuleTransitions` GraphQL query. Both Next Admin and Leptos
+Admin wired continuous polling of active transitions so `TransitionControlCard`
+mounts automatically without manual URL parameters. Focused watchdog tests in
+`crates/rustok-modules/tests/transition_watchdog_tests.rs` (3 passed), server parity
+check (`cargo check -p rustok-server --test module_graphql_native_parity`), Next Admin
+typecheck/lint, Leptos Admin check (`cargo check -p rustok-admin --lib`), the write-path
+verifier, and UI i18n parity all passed.
+
+On 2026-09-02, Next Admin completed full transport and presentation parity with
+Leptos Admin for the module control plane. The Next Admin frontend now directly
+consumes canonical GraphQL queries/mutations and REST catalog governance endpoints,
+mounts `TransitionControlCard` with observation windows and emergency rollback,
+mounts `MetadataChecklistView` and `GovernanceForm`, and edits tenant settings via
+`ModuleSettingsDialog` with CAS revision checks. Parity integration test
+`apps/server/tests/module_graphql_native_parity.rs` verifies checkpoints, recovery,
+convergence finalization, and retention holds against the server schema.
+TypeScript typecheck (`npm --prefix apps/next-admin run typecheck`), ESLint
+(`npm --prefix apps/next-admin run lint`), the write-path verifier
+(`node scripts/verify/verify-module-control-plane-write-path.mjs`), UI i18n parity
+(`npm run verify:i18n:ui`), and Rust checks (`cargo check -p rustok-modules --lib`
+and `cargo check -p rustok-server --test module_graphql_native_parity`) all passed.
+
 On 2026-09-01, the command-context sweep preserved the authenticated context
 through isolated build queued/completed events, admission reverification,
 artifact-node reconciliation, static-release-revocation-derived rollout events,

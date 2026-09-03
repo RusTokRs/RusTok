@@ -650,6 +650,24 @@ query GetTransitionCheckpoint($opId: UUID!) {
 }
 "#;
 
+const ACTIVE_MODULE_TRANSITIONS_QUERY: &str = r#"
+query ActiveModuleTransitions {
+    activeModuleTransitions {
+        operationId
+        moduleSlug
+        tenantId
+        predecessorDigest
+        candidateDigest
+        state
+        stateDetails
+        securityEpoch
+        recoveryAttemptCount
+        createdAt
+        updatedAt
+    }
+}
+"#;
+
 const RETENTION_HOLDS_QUERY: &str = r#"
 query GetRetentionHolds {
     moduleRetentionHolds {
@@ -756,4 +774,18 @@ pub async fn finalize_module_transition(
     )
     .await?;
     Ok(response.checkpoint)
+}
+
+pub async fn fetch_active_transitions(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<Vec<ModuleTransitionCheckpoint>, ApiError> {
+    let response: ActiveModuleTransitionsResponse = request(
+        ACTIVE_MODULE_TRANSITIONS_QUERY,
+        serde_json::json!({}),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.active_transitions)
 }

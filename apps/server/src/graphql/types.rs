@@ -234,16 +234,6 @@ pub struct ArtifactRollback {
     pub target_revision: i64,
 }
 
-/// Migration policy the owner must validate before it can select the retained
-/// direct predecessor. The input is transport metadata, never artifact code.
-#[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
-#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
-pub enum ArtifactMigrationRollbackMode {
-    Reversible,
-    Compensating,
-    Prohibited,
-}
-
 /// GraphQL adapter over the canonical host-safe artifact UI projection. The
 /// content remains its exact tagged JSON contract because its shape is chosen
 /// by the admitted contribution surface, not by a guest-provided GraphQL type.

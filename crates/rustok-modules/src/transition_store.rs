@@ -84,31 +84,6 @@ pub mod retention_hold_entity {
     impl ActiveModelBehavior for ActiveModel {}
 }
 
-pub mod transition_operation_entity {
-    use super::*;
-
-    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
-    #[sea_orm(table_name = "module_transition_operations")]
-    pub struct Model {
-        #[sea_orm(primary_key, auto_increment = false)]
-        pub idempotency_key: Uuid,
-        pub operation_kind: String,
-        pub request_digest: String,
-        pub actor_id: Uuid,
-        pub tenant_id: Option<Uuid>,
-        pub trace_id: String,
-        pub correlation_id: Uuid,
-        pub operation_id: Uuid,
-        pub resulting_revision: i64,
-        pub created_at: DateTime<Utc>,
-    }
-
-    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-    pub enum Relation {}
-
-    impl ActiveModelBehavior for ActiveModel {}
-}
-
 // ============================================================================
 // Transition Checkpoint Store
 // ============================================================================
@@ -186,6 +161,42 @@ impl TransitionCheckpointStore {
             created_at: model.created_at,
             updated_at: model.updated_at,
         }))
+    }
+
+    /// Lists all active (non-terminal) module transition checkpoints.
+    pub async fn list_active_checkpoints<C: ConnectionTrait>(
+        db: &C,
+    ) -> Result<Vec<ModuleTransitionCheckpoint>, TransitionStoreError> {
+        let models = transition_checkpoint_entity::Entity::find()
+            .all(db)
+            .await?;
+        let mut checkpoints = Vec::new();
+
+        for model in models {
+            let state: ModuleTransitionState = serde_json::from_value(model.state)
+                .map_err(|e| TransitionStoreError::CorruptData(format!("Invalid state JSON: {e}")))?;
+            if !state.is_terminal() {
+                let fences: ConflictFenceSet = serde_json::from_value(model.fences)
+                    .map_err(|e| TransitionStoreError::CorruptData(format!("Invalid fences JSON: {e}")))?;
+
+                checkpoints.push(ModuleTransitionCheckpoint {
+                    operation_id: model.operation_id,
+                    revision: model.revision.max(0) as u64,
+                    module_slug: model.module_slug,
+                    tenant_id: model.tenant_id,
+                    predecessor_digest: model.predecessor_digest,
+                    candidate_digest: model.candidate_digest,
+                    state,
+                    security_epoch: GlobalSecurityEpoch(model.security_epoch as u64),
+                    fences,
+                    recovery_attempt_count: model.recovery_attempt_count.max(0) as u32,
+                    created_at: model.created_at,
+                    updated_at: model.updated_at,
+                });
+            }
+        }
+
+        Ok(checkpoints)
     }
 }
 
@@ -282,5 +293,26 @@ impl RetentionHoldStore {
             ledger.place_hold(r.target, r.kind);
         }
         Ok(ledger)
+    }
+
+    /// Releases all active rollout window holds for a given transition operation.
+    pub async fn release_holds_for_operation<C: ConnectionTrait>(
+        db: &C,
+        operation_id: Uuid,
+    ) -> Result<u64, TransitionStoreError> {
+        let active = Self::list_active_holds(db).await?;
+        let mut released_count = 0;
+        for record in active {
+            let matches_op = match &record.kind {
+                RetentionHoldKind::ActiveRolloutWindow {
+                    operation_id: op, ..
+                } => *op == operation_id,
+                _ => false,
+            };
+            if matches_op && Self::delete_hold(db, record.hold_id).await? {
+                released_count += 1;
+            }
+        }
+        Ok(released_count)
     }
 }

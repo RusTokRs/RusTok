@@ -3,8 +3,9 @@ use crate::services::platform_composition::{PlatformCompositionError, PlatformCo
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
     EffectivePolicyCacheIdentity, ModuleControlPlane, ModuleEffectivePolicy,
-    ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyMaintenanceInput,
-    ModuleLifecycleDbWriterError, TenantModuleOverrideSnapshot,
+    ModuleEffectivePolicyCache, ModuleEffectivePolicyChannelInput,
+    ModuleEffectivePolicyMaintenanceInput, ModuleLifecycleDbWriterError,
+    TenantModuleOverrideSnapshot,
 };
 use sea_orm::{DatabaseConnection, DbErr};
 use std::collections::BTreeMap;
@@ -61,6 +62,48 @@ impl EffectiveModulePolicyService {
         Self::resolve(db, registry, tenant_id)
             .await
             .map(ModuleEffectivePolicy::into_enabled_modules)
+    }
+
+    /// Resolves the effective policy snapshot through the revision-bound cache.
+    /// If a fresh cache entry exists, it is returned immediately; otherwise, the
+    /// canonical policy is computed from the database, inserted into the cache, and returned.
+    pub async fn resolve_snapshot_cached(
+        db: &DatabaseConnection,
+        registry: &ModuleRegistry,
+        tenant_id: uuid::Uuid,
+        cache: &ModuleEffectivePolicyCache,
+    ) -> Result<EffectiveModulePolicySnapshot, PlatformCompositionError> {
+        if let Some((policy, cache_identity)) = cache.get_latest(tenant_id) {
+            let manifest = PlatformCompositionService::active_manifest(db).await?;
+            return Ok(EffectiveModulePolicySnapshot {
+                policy,
+                cache_identity,
+                default_enabled_modules: manifest.settings.default_enabled,
+            });
+        }
+        let snapshot = Self::resolve_snapshot(db, registry, tenant_id).await?;
+        let _ = cache.insert(tenant_id, snapshot.policy.clone());
+        Ok(snapshot)
+    }
+
+    /// Resolves the effective policy through the revision-bound cache.
+    pub async fn resolve_cached(
+        db: &DatabaseConnection,
+        registry: &ModuleRegistry,
+        tenant_id: uuid::Uuid,
+        cache: &ModuleEffectivePolicyCache,
+    ) -> Result<ModuleEffectivePolicy, PlatformCompositionError> {
+        Self::resolve_snapshot_cached(db, registry, tenant_id, cache)
+            .await
+            .map(|snapshot| snapshot.policy)
+    }
+
+    /// Explicitly invalidates the cached policy for a tenant.
+    pub fn invalidate_tenant(
+        cache: &ModuleEffectivePolicyCache,
+        tenant_id: uuid::Uuid,
+    ) -> bool {
+        cache.invalidate_tenant(tenant_id)
     }
 
     /// Resolves module availability from a channel-owner snapshot. Channel
