@@ -112,8 +112,6 @@ pub async fn fetch_search(
     .await
 }
 
-
-
 fn is_explicit_forum_category_scope(filters: &SearchPreviewFilters) -> bool {
     !filters.category_ids.is_empty()
         && filters.source_modules.len() == 1

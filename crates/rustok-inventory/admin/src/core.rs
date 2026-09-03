@@ -3,7 +3,6 @@ use crate::model::{
     InventoryReservationWriteResult, InventoryVariant,
 };
 
-
 #[derive(Clone, Debug)]
 pub(crate) struct InventoryProductsRequest {
     pub tenant_id: String,
@@ -12,14 +11,12 @@ pub(crate) struct InventoryProductsRequest {
     pub status: Option<String>,
 }
 
-
 #[derive(Clone, Debug)]
 pub(crate) struct InventoryProductRequest {
     pub tenant_id: String,
     pub id: String,
     pub locale: Option<String>,
 }
-
 
 #[derive(Clone, Debug)]
 pub(crate) struct InventorySetQuantityRequest {
@@ -115,7 +112,6 @@ pub(crate) struct InventorySummary {
     pub out_of_stock: usize,
     pub healthy: usize,
 }
-
 
 #[cfg(any(feature = "ssr", test))]
 pub(crate) fn normalize_status_filter(value: Option<String>) -> Option<String> {
@@ -294,7 +290,6 @@ fn parse_non_negative_quantity(value: &str, label: &str) -> Result<i32, String> 
 
     Ok(quantity)
 }
-
 
 pub(crate) fn summarize_inventory(variants: &[InventoryVariant]) -> InventorySummary {
     let health_counts = summarize_inventory_health_counts(variants);
@@ -584,8 +579,6 @@ mod tests {
             "optimistic refresh must trust the module-owned write result instead of recomputing quantity > 0"
         );
     }
-
-
 
     #[test]
     fn summary_keeps_low_stock_out_of_stock_and_backorder_disjoint() {

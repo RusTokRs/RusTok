@@ -204,7 +204,7 @@ async fn find_previous_publish_target_in_tx(
         DbBackend::Sqlite => query().all(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
     for operation in operations {
         verify_publish_operation_for_rollback(&operation)?;
         if operation.artifact_set_hash == current_artifact_set_hash {
@@ -248,12 +248,12 @@ async fn find_current_publish_cursor_in_tx(
         DbBackend::Sqlite => publish_query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => publish_query().lock_shared().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
     let latest_rollback = match txn.get_database_backend() {
         DbBackend::Sqlite => rollback_query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => rollback_query().lock_shared().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
 
     let cursor = match (latest_publish, latest_rollback) {
         (Some(publish), Some(rollback)) if rollback.result_version > publish.result_version => {
@@ -308,7 +308,7 @@ async fn find_publish_operation_by_id_in_tx(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-}
+    }
     .ok_or_else(|| {
         PagesError::rollback_target_unavailable(format!(
             "rollback activation references unavailable publish operation `{operation_id}`"
@@ -332,7 +332,7 @@ async fn find_rollback_operation_in_tx(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-})
+    })
 }
 
 async fn insert_rollback_operation_in_tx(

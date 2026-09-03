@@ -138,7 +138,9 @@ impl ServerArtifactSettingsRecoveryCipher {
     ) -> Result<Vec<u8>, ArtifactSettingsRecoveryError> {
         let mut hasher = Sha256::new();
         let context_bytes = canonical_json_bytes(context).map_err(|e| {
-            ArtifactSettingsRecoveryError::Storage(format!("failed to serialize cipher context: {e}"))
+            ArtifactSettingsRecoveryError::Storage(format!(
+                "failed to serialize cipher context: {e}"
+            ))
         })?;
         hasher.update(context_bytes);
         hasher.update(settings);

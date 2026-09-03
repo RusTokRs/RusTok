@@ -673,4 +673,3 @@ async fn reply_branch_fork_rejects_non_topological_source_positions_atomically()
     );
     Ok(())
 }
-

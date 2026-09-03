@@ -1,5 +1,7 @@
 use rustok_core::{SecurityContext, UserRole};
-use rustok_forum::{CategoryService, CreateCategoryInput, ForumError, UpdateCategoryTopicPolicyInput};
+use rustok_forum::{
+    CategoryService, CreateCategoryInput, ForumError, UpdateCategoryTopicPolicyInput,
+};
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use uuid::Uuid;
 
@@ -55,12 +57,18 @@ pub async fn exercise_category_topic_policy(db: &DatabaseConnection) -> TestResu
             "INSERT INTO forum_topics \
              (id, tenant_id, category_id, status, is_pinned, is_locked, reply_count) \
              VALUES (?, ?, ?, 'open', FALSE, FALSE, 0)",
-            [blocked_topic_id.into(), tenant_id.into(), category_id.into()],
+            [
+                blocked_topic_id.into(),
+                tenant_id.into(),
+                category_id.into(),
+            ],
         ))
         .await;
     let error = blocked.expect_err("disabled category accepted a topic insert");
     let error_message = format!("{error:?}");
-    if !error_message.contains("does not allow topic creation") && !error.to_string().contains("does not allow topic creation") {
+    if !error_message.contains("does not allow topic creation")
+        && !error.to_string().contains("does not allow topic creation")
+    {
         return Err(test_error(format!(
             "unexpected category topic policy error: {error_message}"
         )));
@@ -102,7 +110,11 @@ pub async fn exercise_category_topic_policy(db: &DatabaseConnection) -> TestResu
         "INSERT INTO forum_topics \
          (id, tenant_id, category_id, status, is_pinned, is_locked, reply_count) \
          VALUES (?, ?, ?, 'open', FALSE, FALSE, 0)",
-        [allowed_topic_id.into(), tenant_id.into(), category_id.into()],
+        [
+            allowed_topic_id.into(),
+            tenant_id.into(),
+            category_id.into(),
+        ],
     ))
     .await?;
 

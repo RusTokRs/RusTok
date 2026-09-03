@@ -43,7 +43,7 @@ impl MigrationTrait for Migration {
                     "marketplace listing event provenance migration does not support {other:?}"
                 )));
             }
-}
+        }
 
         let rows = connection
             .query_all_raw(Statement::from_string(

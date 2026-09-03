@@ -133,10 +133,10 @@ pub(crate) fn resolve_tenant_scope(
     requested_tenant_id: Option<uuid::Uuid>,
 ) -> async_graphql::Result<uuid::Uuid> {
     match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(async_graphql::Error::new("Permission denied: tenant scope mismatch")
-                .extend_with(|_, ext| ext.set("code", "FORBIDDEN")))
-        }
+        Some(requested_tenant_id) if requested_tenant_id != tenant.id => Err(
+            async_graphql::Error::new("Permission denied: tenant scope mismatch")
+                .extend_with(|_, ext| ext.set("code", "FORBIDDEN")),
+        ),
         Some(requested_tenant_id) => Ok(requested_tenant_id),
         None => Ok(tenant.id),
     }

@@ -274,7 +274,9 @@ pub fn classify_operations(
         }
 
         if !is_safe {
-            reasons.push(reason.unwrap_or_else(|| format!("Operation is not additive-safe: {:?}", op)));
+            reasons.push(
+                reason.unwrap_or_else(|| format!("Operation is not additive-safe: {:?}", op)),
+            );
         }
     }
 

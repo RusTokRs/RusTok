@@ -522,7 +522,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), SchemaLeaseError> 
         backend => Err(SchemaLeaseError::Storage(format!(
             "Index schema leases do not support {backend:?}"
         ))),
-}
+    }
 }
 
 fn storage_error(error: impl std::fmt::Display) -> SchemaLeaseError {

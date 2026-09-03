@@ -2,8 +2,7 @@ import { GraphqlError, graphqlRequest } from './graphql';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
 
-type SeoTargetCapabilityKind =
-  'AUTHORING' | 'ROUTING' | 'BULK' | 'SITEMAPS';
+type SeoTargetCapabilityKind = 'AUTHORING' | 'ROUTING' | 'BULK' | 'SITEMAPS';
 
 type SeoBulkJobStatusValue =
   'queued' | 'running' | 'completed' | 'partial' | 'failed';

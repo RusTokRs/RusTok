@@ -1,15 +1,15 @@
 use uuid::Uuid;
 
 use rustok_modules::{
-    ModuleInstallationScope, OciArtifactReference, ReleasePreparation,
-    ReleasePreparationError,
+    ModuleInstallationScope, OciArtifactReference, ReleasePreparation, ReleasePreparationError,
 };
 
 fn sample_reference() -> OciArtifactReference {
     OciArtifactReference {
         registry: "registry.example.com".to_string(),
         repository: "modules/analytics".to_string(),
-        digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+        digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            .to_string(),
     }
 }
 
@@ -39,7 +39,8 @@ fn test_release_preparation_lifecycle_transitions() {
     assert_eq!(prep.state.name(), "publishing");
 
     // Finalize admitted
-    let digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+    let digest =
+        "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
     assert!(prep.finalize_admitted(digest).is_ok());
     assert_eq!(prep.state.name(), "admitted");
     assert!(prep.state.is_terminal());
@@ -58,7 +59,9 @@ fn test_tenant_authorization_and_metadata_isolation() {
     // 1. Private Tenant Preparation: owned by Tenant A
     let private_prep = ReleasePreparation::new(
         Uuid::new_v4(),
-        ModuleInstallationScope::Tenant { tenant_id: tenant_a },
+        ModuleInstallationScope::Tenant {
+            tenant_id: tenant_a,
+        },
         sample_reference(),
         false,
     );
@@ -103,7 +106,10 @@ fn test_sanitized_evidence_projection() {
 
     let evidence = prep.sanitized_evidence();
     assert_eq!(evidence.preparation_id, prep_id);
-    assert_eq!(evidence.scope, ModuleInstallationScope::Tenant { tenant_id });
+    assert_eq!(
+        evidence.scope,
+        ModuleInstallationScope::Tenant { tenant_id }
+    );
     assert_eq!(evidence.state_name, "received");
     assert_eq!(evidence.artifact_digest, sample_reference().digest);
     assert!(!evidence.is_public_catalog);
@@ -133,7 +139,9 @@ fn test_isolated_transition_operation_id_derivation() {
     public_prep.advance_to_validating().expect("validating");
     public_prep.advance_to_publishing().expect("publishing");
     public_prep
-        .finalize_admitted("sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string())
+        .finalize_admitted(
+            "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string(),
+        )
         .expect("finalize");
 
     // Derive operation_ids for Tenant A and Tenant B
@@ -156,15 +164,25 @@ fn test_isolated_transition_operation_id_derivation() {
     // Tenant-private preparation rejects unauthorized tenant
     let mut private_prep = ReleasePreparation::new(
         Uuid::new_v4(),
-        ModuleInstallationScope::Tenant { tenant_id: tenant_a },
+        ModuleInstallationScope::Tenant {
+            tenant_id: tenant_a,
+        },
         sample_reference(),
         false,
     );
-    private_prep.advance_to_verifying().expect("verifying private");
-    private_prep.advance_to_validating().expect("validating private");
-    private_prep.advance_to_publishing().expect("publishing private");
     private_prep
-        .finalize_admitted("sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string())
+        .advance_to_verifying()
+        .expect("verifying private");
+    private_prep
+        .advance_to_validating()
+        .expect("validating private");
+    private_prep
+        .advance_to_publishing()
+        .expect("publishing private");
+    private_prep
+        .finalize_admitted(
+            "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string(),
+        )
         .expect("finalize private");
 
     let err = private_prep

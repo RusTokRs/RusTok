@@ -274,8 +274,6 @@ impl ForumStorefrontReadStateMutation {
     }
 }
 
-
-
 fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
 }

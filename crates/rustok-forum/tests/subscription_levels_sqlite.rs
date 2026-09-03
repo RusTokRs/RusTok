@@ -10,8 +10,8 @@ use rustok_forum::{
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
-    ConnectionTrait,
-    ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
+    QueryFilter, QueryOrder,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -30,7 +30,7 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
         .await
         .expect("forum subscription sqlite database should connect");
     let schema = SchemaManager::new(&db);
-        for migration in OutboxModule.migrations() {
+    for migration in OutboxModule.migrations() {
         migration
             .up(&schema)
             .await
@@ -42,7 +42,7 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
             .await
             .expect("taxonomy migration should apply");
     }
-        db.execute_unprepared(
+    db.execute_unprepared(
         "CREATE TABLE IF NOT EXISTS users (
             id TEXT NOT NULL PRIMARY KEY,
             tenant_id TEXT NOT NULL
@@ -254,10 +254,12 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
     let mute_event = events
         .iter()
         .find(|event| {
-            let target_match = event.payload["target_id"].as_str()
+            let target_match = event.payload["target_id"]
+                .as_str()
                 .map(|val| val == topic.id.to_string() || val == topic.id.simple().to_string())
                 .unwrap_or(false);
-            let user_match = event.payload["user_id"].as_str()
+            let user_match = event.payload["user_id"]
+                .as_str()
                 .map(|val| val == author_id.to_string() || val == author_id.simple().to_string())
                 .unwrap_or(false);
             target_match && user_match && event.payload["level"].as_str() == Some("muted")

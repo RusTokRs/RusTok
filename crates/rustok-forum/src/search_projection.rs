@@ -538,18 +538,16 @@ impl ForumSearchProjectionSource {
                 if category.is_none() {
                     return Ok(Vec::new());
                 }
-                let binding = forum_category_taxonomy_binding::Entity::find_by_id((
-                    tenant_id,
-                    entity_id,
-                ))
-                .one(&self.db)
-                .await
-                .map_err(Error::Database)?
-                .ok_or_else(|| {
-                    Error::External(format!(
-                        "Forum Search category {entity_id} has no Taxonomy Category binding"
-                    ))
-                })?;
+                let binding =
+                    forum_category_taxonomy_binding::Entity::find_by_id((tenant_id, entity_id))
+                        .one(&self.db)
+                        .await
+                        .map_err(Error::Database)?
+                        .ok_or_else(|| {
+                            Error::External(format!(
+                                "Forum Search category {entity_id} has no Taxonomy Category binding"
+                            ))
+                        })?;
                 let mut projections = TaxonomyOwnerCategoryReader::new(self.db.clone())
                     .load_scoped_categories(
                         tenant_id,

@@ -887,8 +887,16 @@ impl RootQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let backend = db.get_database_backend();
 
-        let placeholder = if backend == sea_orm::DbBackend::Postgres { "$1" } else { "?1" };
-        let tenant_placeholder = if backend == sea_orm::DbBackend::Postgres { "$2" } else { "?2" };
+        let placeholder = if backend == sea_orm::DbBackend::Postgres {
+            "$1"
+        } else {
+            "?1"
+        };
+        let tenant_placeholder = if backend == sea_orm::DbBackend::Postgres {
+            "$2"
+        } else {
+            "?2"
+        };
         let query = format!(
             "SELECT i.data_owner_id, i.settings_instance_id, a.status, \
                     COALESCE(s.revision, 0) AS settings_revision \
@@ -897,25 +905,46 @@ impl RootQuery {
              LEFT JOIN module_artifact_settings_instances s ON s.settings_instance_id = i.settings_instance_id \
              WHERE i.installation_id = {placeholder} AND (i.tenant_id = {tenant_placeholder} OR i.scope_kind = 'platform')"
         );
-        let row = db.query_one_raw(sea_orm::Statement::from_sql_and_values(
-            backend,
-            query,
-            vec![
-                sql_uuid(installation_id, backend),
-                sql_uuid(tenant.id, backend),
-            ],
-        ))
-        .await
-        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?
-        .ok_or_else(|| <FieldError as GraphQLError>::not_found("Artifact installation not found in tenant scope"))?;
+        let row = db
+            .query_one_raw(sea_orm::Statement::from_sql_and_values(
+                backend,
+                query,
+                vec![
+                    sql_uuid(installation_id, backend),
+                    sql_uuid(tenant.id, backend),
+                ],
+            ))
+            .await
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?
+            .ok_or_else(|| {
+                <FieldError as GraphQLError>::not_found(
+                    "Artifact installation not found in tenant scope",
+                )
+            })?;
 
         let data_owner_id: Uuid = match backend {
-            sea_orm::DbBackend::Postgres => row.try_get("", "data_owner_id").map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?,
-            _ => row.try_get::<String>("", "data_owner_id").map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?.parse().map_err(|e: uuid::Error| <FieldError as GraphQLError>::internal_error(&e.to_string()))?,
+            sea_orm::DbBackend::Postgres => row
+                .try_get("", "data_owner_id")
+                .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?,
+            _ => row
+                .try_get::<String>("", "data_owner_id")
+                .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?
+                .parse()
+                .map_err(|e: uuid::Error| {
+                    <FieldError as GraphQLError>::internal_error(&e.to_string())
+                })?,
         };
         let settings_instance_id: Uuid = match backend {
-            sea_orm::DbBackend::Postgres => row.try_get("", "settings_instance_id").map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?,
-            _ => row.try_get::<String>("", "settings_instance_id").map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?.parse().map_err(|e: uuid::Error| <FieldError as GraphQLError>::internal_error(&e.to_string()))?,
+            sea_orm::DbBackend::Postgres => row
+                .try_get("", "settings_instance_id")
+                .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?,
+            _ => row
+                .try_get::<String>("", "settings_instance_id")
+                .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?
+                .parse()
+                .map_err(|e: uuid::Error| {
+                    <FieldError as GraphQLError>::internal_error(&e.to_string())
+                })?,
         };
         let status: Option<String> = row.try_get("", "status").ok();
         let settings_revision: i64 = row.try_get("", "settings_revision").unwrap_or(0);
@@ -925,28 +954,35 @@ impl RootQuery {
              WHERE tenant_id = {placeholder} AND installation_id = {tenant_placeholder} \
              ORDER BY retention_revision DESC LIMIT 1"
         );
-        let rp_row = db.query_one_raw(sea_orm::Statement::from_sql_and_values(
-            backend,
-            rp_query,
-            vec![
-                sql_uuid(tenant.id, backend),
-                sql_uuid(installation_id, backend),
-            ],
-        ))
-        .await
-        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+        let rp_row = db
+            .query_one_raw(sea_orm::Statement::from_sql_and_values(
+                backend,
+                rp_query,
+                vec![
+                    sql_uuid(tenant.id, backend),
+                    sql_uuid(installation_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
         let recovery_point_id: Option<Uuid> = if let Some(row) = rp_row {
             match backend {
                 sea_orm::DbBackend::Postgres => row.try_get("", "recovery_point_id").ok(),
-                _ => row.try_get::<String>("", "recovery_point_id").ok().and_then(|s| s.parse().ok()),
+                _ => row
+                    .try_get::<String>("", "recovery_point_id")
+                    .ok()
+                    .and_then(|s| s.parse().ok()),
             }
         } else {
             None
         };
 
         let has_recovery_point = recovery_point_id.is_some();
-        let is_retired = matches!(status.as_deref(), Some("inactive") | Some("rolled_back") | None);
+        let is_retired = matches!(
+            status.as_deref(),
+            Some("inactive") | Some("rolled_back") | None
+        );
 
         let (can_purge, reason) = if !is_retired {
             (false, "Artifact is active or installed. Purge is denied until the artifact is uninstalled/retired.".to_string())
@@ -980,8 +1016,16 @@ impl RootQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let backend = db.get_database_backend();
 
-        let placeholder = if backend == sea_orm::DbBackend::Postgres { "$1" } else { "?1" };
-        let tenant_placeholder = if backend == sea_orm::DbBackend::Postgres { "$2" } else { "?2" };
+        let placeholder = if backend == sea_orm::DbBackend::Postgres {
+            "$1"
+        } else {
+            "?1"
+        };
+        let tenant_placeholder = if backend == sea_orm::DbBackend::Postgres {
+            "$2"
+        } else {
+            "?2"
+        };
 
         let query = format!(
             "SELECT n.namespace_revision, a.status \
@@ -990,40 +1034,53 @@ impl RootQuery {
              LEFT JOIN module_artifact_admissions a ON a.installation_id = i.installation_id \
              WHERE i.installation_id = {placeholder} AND n.tenant_id = {tenant_placeholder}"
         );
-        let row = db.query_one_raw(sea_orm::Statement::from_sql_and_values(
-            backend,
-            query,
-            vec![
-                sql_uuid(installation_id, backend),
-                sql_uuid(tenant.id, backend),
-            ],
-        ))
-        .await
-        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+        let row = db
+            .query_one_raw(sea_orm::Statement::from_sql_and_values(
+                backend,
+                query,
+                vec![
+                    sql_uuid(installation_id, backend),
+                    sql_uuid(tenant.id, backend),
+                ],
+            ))
+            .await
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
         if let Some(row) = row {
             let namespace_revision: i64 = row.try_get("", "namespace_revision").unwrap_or(0);
             let status: Option<String> = row.try_get("", "status").ok();
-            let is_retired = matches!(status.as_deref(), Some("inactive") | Some("rolled_back") | None);
+            let is_retired = matches!(
+                status.as_deref(),
+                Some("inactive") | Some("rolled_back") | None
+            );
 
             let count_query = format!(
                 "SELECT COUNT(*) AS count FROM module_artifact_data_records \
                  WHERE tenant_id = {tenant_placeholder}"
             );
-            let count_row = db.query_one_raw(sea_orm::Statement::from_sql_and_values(
-                backend,
-                count_query,
-                vec![sql_uuid(tenant.id, backend)],
-            ))
-            .await
-            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+            let count_row = db
+                .query_one_raw(sea_orm::Statement::from_sql_and_values(
+                    backend,
+                    count_query,
+                    vec![sql_uuid(tenant.id, backend)],
+                ))
+                .await
+                .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
-            let records_to_purge: i64 = count_row.and_then(|r| r.try_get("", "count").ok()).unwrap_or(0);
+            let records_to_purge: i64 = count_row
+                .and_then(|r| r.try_get("", "count").ok())
+                .unwrap_or(0);
 
             let (can_purge, reason) = if !is_retired {
-                (false, "Artifact data purge denied: artifact is active or installed.".to_string())
+                (
+                    false,
+                    "Artifact data purge denied: artifact is active or installed.".to_string(),
+                )
             } else {
-                (true, format!("Namespace is retired. {records_to_purge} records will be purged."))
+                (
+                    true,
+                    format!("Namespace is retired. {records_to_purge} records will be purged."),
+                )
             };
 
             Ok(ArtifactDataPurgePreview {
@@ -1039,7 +1096,8 @@ impl RootQuery {
                 namespace_revision: 0,
                 records_to_purge: 0,
                 can_purge: false,
-                reason: "No data namespace found for artifact installation in tenant scope".to_string(),
+                reason: "No data namespace found for artifact installation in tenant scope"
+                    .to_string(),
             })
         }
     }
@@ -1623,10 +1681,9 @@ impl RootQuery {
         ctx: &Context<'_>,
     ) -> Result<Vec<crate::graphql::transition_lifecycle::ModuleTransitionCheckpointGql>> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let checkpoints =
-            rustok_modules::TransitionCheckpointStore::list_active_checkpoints(db)
-                .await
-                .map_err(crate::graphql::transition_lifecycle::map_transition_store_error)?;
+        let checkpoints = rustok_modules::TransitionCheckpointStore::list_active_checkpoints(db)
+            .await
+            .map_err(crate::graphql::transition_lifecycle::map_transition_store_error)?;
         Ok(checkpoints.into_iter().map(Into::into).collect())
     }
 

@@ -23,7 +23,7 @@ impl MigrationTrait for Migration {
                     "AI approval batch migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             connection.execute_unprepared(statement).await?;
         }

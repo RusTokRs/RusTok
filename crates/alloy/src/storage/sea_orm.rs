@@ -12,14 +12,13 @@ use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
     AlloyImportedDraftCommand, AlloyImportedDraftResult, EventType, HttpMethod, ReviewCommand,
     ReviewDecision, ReviewStatus, RhaiWorkspace, RustComponentCandidate,
-    RustComponentCandidateBuild,
-    RustComponentCandidateBuildError, RustComponentCandidateCommand, RustComponentCandidateError,
-    RustComponentCandidateReview, RustComponentCandidateReviewCommand, RustComponentWorkspace,
-    Script, ScriptDeletionCommand, ScriptDeletionError, ScriptEvidenceRetentionCommand,
-    ScriptEvidenceRetentionError, ScriptEvidenceRetentionState, ScriptId, ScriptSourceRevision,
-    ScriptStatus, ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion,
-    TestRunLease, TestRunStatus, deleted_evidence_retention, validate_candidate_parent_release,
-    validate_transition,
+    RustComponentCandidateBuild, RustComponentCandidateBuildError, RustComponentCandidateCommand,
+    RustComponentCandidateError, RustComponentCandidateReview, RustComponentCandidateReviewCommand,
+    RustComponentWorkspace, Script, ScriptDeletionCommand, ScriptDeletionError,
+    ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionError, ScriptEvidenceRetentionState,
+    ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestCommand, TestRun,
+    TestRunClaim, TestRunCompletion, TestRunLease, TestRunStatus, deleted_evidence_retention,
+    validate_candidate_parent_release, validate_transition,
 };
 use crate::storage::{ScriptPage, ScriptQuery, ScriptRegistry};
 use rustok_core::RetentionPolicy;

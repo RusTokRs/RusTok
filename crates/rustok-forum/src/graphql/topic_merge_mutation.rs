@@ -32,15 +32,7 @@ impl ForumTopicMergeMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
 
-        execute_merge_forum_topic(
-            db,
-            event_bus,
-            tenant_id,
-            auth,
-            target_topic_id,
-            input,
-        )
-        .await
+        execute_merge_forum_topic(db, event_bus, tenant_id, auth, target_topic_id, input).await
     }
 
     async fn merge_forum_topic_resolving_solution(
@@ -370,7 +362,8 @@ mod tests {
         ));
 
         assert_eq!(
-            crate::graphql::resolve_tenant_scope(&tenant, None).expect("routed tenant must resolve"),
+            crate::graphql::resolve_tenant_scope(&tenant, None)
+                .expect("routed tenant must resolve"),
             tenant_id
         );
         let mismatch = crate::graphql::resolve_tenant_scope(&tenant, Some(Uuid::new_v4()))

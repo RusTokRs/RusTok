@@ -469,12 +469,18 @@ pub fn ModulesList(
         let token_val = token.get();
         let tenant_val = tenant.get();
         let query_map = query.get();
-        let op_id_opt = query_map.get("op_id").or_else(|| query_map.get("operation_id"));
+        let op_id_opt = query_map
+            .get("op_id")
+            .or_else(|| query_map.get("operation_id"));
 
         spawn_local(async move {
             if let Some(op_id) = op_id_opt {
-                if let Ok(Some(cp)) =
-                    transport::fetch_transition_checkpoint(token_val.clone(), tenant_val.clone(), op_id).await
+                if let Ok(Some(cp)) = transport::fetch_transition_checkpoint(
+                    token_val.clone(),
+                    tenant_val.clone(),
+                    op_id,
+                )
+                .await
                 {
                     set_active_transition.set(Some(cp));
                 }

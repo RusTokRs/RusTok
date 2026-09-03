@@ -29,7 +29,11 @@ interface GovernanceFormProps {
   onSuccess?: () => void;
 }
 
-export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFormProps) {
+export function GovernanceForm({
+  module,
+  apiOpts = {},
+  onSuccess
+}: GovernanceFormProps) {
   const [dryRun, setDryRun] = useState(true);
   const [reasonCode, setReasonCode] = useState('');
   const [reason, setReason] = useState('');
@@ -58,7 +62,11 @@ export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFo
       let res: RegistryMutationResult;
       switch (action) {
         case 'validate':
-          res = await validateRegistryPublishRequest(requestId, dryRun, apiOpts);
+          res = await validateRegistryPublishRequest(
+            requestId,
+            dryRun,
+            apiOpts
+          );
           break;
         case 'approve':
           res = await approveRegistryPublishRequest(
@@ -85,7 +93,9 @@ export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFo
           break;
         case 'request_changes':
           if (!reason || !reasonCode) {
-            toast.error('Reason and Reason Code are required to request changes');
+            toast.error(
+              'Reason and Reason Code are required to request changes'
+            );
             setIsSubmitting(false);
             return;
           }
@@ -127,7 +137,9 @@ export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFo
           break;
         case 'owner_transfer':
           if (!newOwnerUserId.trim() || !reason || !reasonCode) {
-            toast.error('New Owner User ID, Reason, and Reason Code are required');
+            toast.error(
+              'New Owner User ID, Reason, and Reason Code are required'
+            );
             setIsSubmitting(false);
             return;
           }
@@ -173,7 +185,8 @@ export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFo
         );
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Governance action failed';
+      const msg =
+        err instanceof Error ? err.message : 'Governance action failed';
       toast.error(msg);
     } finally {
       setIsSubmitting(false);
@@ -181,11 +194,11 @@ export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFo
   };
 
   return (
-    <div className='rounded-lg border bg-background/80 p-4 space-y-4'>
+    <div className='bg-background/80 space-y-4 rounded-lg border p-4'>
       <div className='flex flex-wrap items-center justify-between gap-3 border-b pb-3'>
         <div className='flex items-center gap-2'>
-          <IconShield className='h-4 w-4 text-primary' />
-          <h4 className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+          <IconShield className='text-primary h-4 w-4' />
+          <h4 className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
             Registry Governance & Moderation
           </h4>
         </div>
@@ -197,7 +210,7 @@ export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFo
           />
           <label
             htmlFor='gov-dry-run'
-            className='text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer'
+            className='cursor-pointer text-xs leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
           >
             Dry run preview
           </label>
@@ -206,7 +219,7 @@ export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFo
 
       <div className='grid gap-3 sm:grid-cols-2'>
         <div className='space-y-1.5'>
-          <label className='text-xs font-medium text-muted-foreground'>
+          <label className='text-muted-foreground text-xs font-medium'>
             New Owner User ID (UUID)
           </label>
           <Input
@@ -218,7 +231,7 @@ export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFo
         </div>
 
         <div className='space-y-1.5'>
-          <label className='text-xs font-medium text-muted-foreground'>
+          <label className='text-muted-foreground text-xs font-medium'>
             Reason Code
           </label>
           <Input
@@ -230,7 +243,7 @@ export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFo
         </div>
 
         <div className='space-y-1.5 sm:col-span-2'>
-          <label className='text-xs font-medium text-muted-foreground'>
+          <label className='text-muted-foreground text-xs font-medium'>
             Detailed Reason / Reviewer Notes
           </label>
           <Textarea
@@ -258,7 +271,7 @@ export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFo
           size='sm'
           disabled={isSubmitting}
           onClick={() => handleAction('approve')}
-          className='text-xs bg-emerald-600 hover:bg-emerald-500'
+          className='bg-emerald-600 text-xs hover:bg-emerald-500'
         >
           Approve
         </Button>
@@ -316,14 +329,16 @@ export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFo
           onClick={() => handleAction('yank')}
           className='text-xs'
         >
-          {confirmAction === 'yank' ? 'Confirm Yank?' : `Yank v${activeRelease}`}
+          {confirmAction === 'yank'
+            ? 'Confirm Yank?'
+            : `Yank v${activeRelease}`}
         </Button>
       </div>
 
       {result && (
-        <div className='rounded-md border bg-background p-3 text-xs space-y-2 mt-3'>
+        <div className='bg-background mt-3 space-y-2 rounded-md border p-3 text-xs'>
           <div className='flex items-center justify-between'>
-            <span className='font-semibold text-foreground'>
+            <span className='text-foreground font-semibold'>
               Action: {result.action} {result.dry_run ? '(dry-run)' : ''}
             </span>
             <Badge variant={result.accepted ? 'default' : 'destructive'}>
@@ -332,14 +347,14 @@ export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFo
           </div>
           {result.next_step && (
             <p className='text-muted-foreground'>
-              <span className='font-medium text-foreground'>Next step: </span>
+              <span className='text-foreground font-medium'>Next step: </span>
               {result.next_step}
             </p>
           )}
           {result.warnings.length > 0 && (
             <div className='text-amber-600 dark:text-amber-400'>
               <p className='font-medium'>Warnings:</p>
-              <ul className='list-disc pl-4 space-y-0.5'>
+              <ul className='list-disc space-y-0.5 pl-4'>
                 {result.warnings.map((w, idx) => (
                   <li key={idx}>{w}</li>
                 ))}
@@ -349,7 +364,7 @@ export function GovernanceForm({ module, apiOpts = {}, onSuccess }: GovernanceFo
           {result.errors.length > 0 && (
             <div className='text-destructive'>
               <p className='font-medium'>Errors:</p>
-              <ul className='list-disc pl-4 space-y-0.5'>
+              <ul className='list-disc space-y-0.5 pl-4'>
                 {result.errors.map((e, idx) => (
                   <li key={idx}>{e}</li>
                 ))}

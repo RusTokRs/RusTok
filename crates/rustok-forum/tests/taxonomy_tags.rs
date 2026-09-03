@@ -32,11 +32,7 @@ async fn setup_forum_test_db() -> DatabaseConnection {
         .expect("failed to connect forum sqlite database")
 }
 
-async fn setup() -> (
-    DatabaseConnection,
-    TransactionalEventBus,
-    Uuid,
-) {
+async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
     let db = setup_forum_test_db().await;
     let schema = SchemaManager::new(&db);
     for migration in OutboxModule.migrations() {

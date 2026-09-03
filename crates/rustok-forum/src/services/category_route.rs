@@ -6,9 +6,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::{
-    forum_category, forum_category_lifecycle, forum_category_taxonomy_binding,
-};
+use crate::entities::{forum_category, forum_category_lifecycle, forum_category_taxonomy_binding};
 use crate::error::{ForumError, ForumResult};
 
 pub const MAX_FORUM_CATEGORY_ROUTE_LOCALE_LEN: usize = 64;

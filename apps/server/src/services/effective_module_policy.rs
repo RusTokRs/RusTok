@@ -99,10 +99,7 @@ impl EffectiveModulePolicyService {
     }
 
     /// Explicitly invalidates the cached policy for a tenant.
-    pub fn invalidate_tenant(
-        cache: &ModuleEffectivePolicyCache,
-        tenant_id: uuid::Uuid,
-    ) -> bool {
+    pub fn invalidate_tenant(cache: &ModuleEffectivePolicyCache, tenant_id: uuid::Uuid) -> bool {
         cache.invalidate_tenant(tenant_id)
     }
 

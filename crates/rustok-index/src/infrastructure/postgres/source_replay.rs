@@ -271,7 +271,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexReplayFailure
                 "checkpoint_backend_unsupported",
             ))
         }
-}
+    }
 }
 
 fn checkpoint_storage_failure(

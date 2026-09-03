@@ -10,9 +10,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{
-    ArtifactAdmissionStage, ModuleCommandContext, ModuleInstallationScope,
-};
+use crate::{ArtifactAdmissionStage, ModuleCommandContext, ModuleInstallationScope};
 
 #[derive(Debug, Error)]
 pub enum ReleaseAdmissionJournalError {
@@ -106,9 +104,7 @@ impl ReleaseAdmissionIntentJournal {
         let backend = db.get_database_backend();
         let (scope_kind, scope_tenant_key) = match scope {
             ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
-            ModuleInstallationScope::Tenant { tenant_id } => {
-                ("tenant", tenant_id.to_string())
-            }
+            ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
         };
         let now = Utc::now();
 
@@ -148,7 +144,11 @@ impl ReleaseAdmissionIntentJournal {
                 _ => row
                     .try_get::<Option<String>>("", "installation_id")
                     .map_err(|e| ReleaseAdmissionJournalError::Store(e.to_string()))?
-                    .map(|s| s.parse().map_err(|e: uuid::Error| ReleaseAdmissionJournalError::Store(e.to_string())))
+                    .map(|s| {
+                        s.parse().map_err(|e: uuid::Error| {
+                            ReleaseAdmissionJournalError::Store(e.to_string())
+                        })
+                    })
                     .transpose()?,
             };
             let committed_at = parse_datetime_column(&row, "committed_at", backend)?;
@@ -156,7 +156,8 @@ impl ReleaseAdmissionIntentJournal {
             if stored_digest != request_digest {
                 return Err(ReleaseAdmissionJournalError::Conflict(
                     context.idempotency_key,
-                    "Idempotency key was already used for a different admission request".to_string(),
+                    "Idempotency key was already used for a different admission request"
+                        .to_string(),
                 ));
             }
 
@@ -182,8 +183,14 @@ impl ReleaseAdmissionIntentJournal {
 
         // 2. Insert new reservation
         let insert_placeholders = match backend {
-            DbBackend::Postgres => (1..=8).map(|i| format!("${i}")).collect::<Vec<_>>().join(", "),
-            _ => (1..=8).map(|i| format!("?{i}")).collect::<Vec<_>>().join(", "),
+            DbBackend::Postgres => (1..=8)
+                .map(|i| format!("${i}"))
+                .collect::<Vec<_>>()
+                .join(", "),
+            _ => (1..=8)
+                .map(|i| format!("?{i}"))
+                .collect::<Vec<_>>()
+                .join(", "),
         };
         db.execute_raw(Statement::from_sql_and_values(
             backend,
@@ -266,7 +273,11 @@ impl ReleaseAdmissionIntentJournal {
                             trace_id, correlation_id, request_digest, committed_at \
                      FROM module_artifact_admission_commands \
                      WHERE installation_id IS NULL AND committed_at <= {}",
-                    if backend == DbBackend::Postgres { "$1" } else { "?1" }
+                    if backend == DbBackend::Postgres {
+                        "$1"
+                    } else {
+                        "?1"
+                    }
                 ),
                 vec![datetime_value(backend, &threshold)],
             ))

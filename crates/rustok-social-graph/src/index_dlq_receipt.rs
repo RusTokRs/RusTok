@@ -505,7 +505,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), SocialGraphIndexDl
         backend => Err(SocialGraphIndexDlqReceiptError::Storage(format!(
             "Social Graph Index DLQ receipts do not support {backend:?}"
         ))),
-}
+    }
 }
 
 fn storage_error(error: impl std::fmt::Display) -> SocialGraphIndexDlqReceiptError {

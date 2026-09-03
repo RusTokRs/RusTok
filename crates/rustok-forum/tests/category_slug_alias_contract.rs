@@ -1,8 +1,7 @@
 const ROUTE: &str = include_str!("../src/services/category_route.rs");
 const CATEGORY_OWNER: &str = include_str!("../src/services/category_projection_owner.rs");
 const CATEGORY_TAXONOMY_SYNC: &str = include_str!("../src/services/category_taxonomy_sync.rs");
-const TAXONOMY_ROUTE_SYNC: &str =
-    include_str!("../../rustok-taxonomy/src/module_term_lookup.rs");
+const TAXONOMY_ROUTE_SYNC: &str = include_str!("../../rustok-taxonomy/src/module_term_lookup.rs");
 const MIGRATION: &str =
     include_str!("../src/migrations/m20260806_000026_add_forum_category_route_aliases.rs");
 const MIGRATIONS_MOD: &str = include_str!("../src/migrations/mod.rs");

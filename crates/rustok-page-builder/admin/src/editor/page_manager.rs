@@ -82,43 +82,43 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         Effect::new({
             let runtime = runtime.clone();
             move |_| {
-            let key = runtime.controller.with(|controller| {
-                controller.active_page_summary().map(|summary| {
-                    format!(
-                        "{}:{}:{}",
-                        summary.index,
-                        summary.id.clone().unwrap_or_default(),
-                        controller.editor().revision().project_hash.hex(),
-                    )
-                })
-            });
-            if observed_page.get_untracked() == key {
-                return;
+                let key = runtime.controller.with(|controller| {
+                    controller.active_page_summary().map(|summary| {
+                        format!(
+                            "{}:{}:{}",
+                            summary.index,
+                            summary.id.clone().unwrap_or_default(),
+                            controller.editor().revision().project_hash.hex(),
+                        )
+                    })
+                });
+                if observed_page.get_untracked() == key {
+                    return;
+                }
+                observed_page.set(key);
+                let snapshot = runtime.controller.with(|controller| {
+                    let summary = controller.active_page_summary()?;
+                    let page = controller
+                        .editor()
+                        .document()
+                        .project
+                        .pages
+                        .get(summary.index)?;
+                    Some((summary, PageMetadata::from_page(page)))
+                });
+                if let Some((summary, metadata)) = snapshot {
+                    page_name.set(summary.name);
+                    page_id.set(summary.id.unwrap_or_default());
+                    seo_title.set(metadata.title.unwrap_or_default());
+                    seo_description.set(metadata.description.unwrap_or_default());
+                    slug.set(metadata.slug.unwrap_or_default());
+                    canonical_url.set(metadata.canonical_url.unwrap_or_default());
+                    open_graph_title.set(metadata.open_graph_title.unwrap_or_default());
+                    open_graph_description.set(metadata.open_graph_description.unwrap_or_default());
+                    open_graph_image.set(metadata.open_graph_image.unwrap_or_default());
+                    no_index.set(metadata.no_index);
+                }
             }
-            observed_page.set(key);
-            let snapshot = runtime.controller.with(|controller| {
-                let summary = controller.active_page_summary()?;
-                let page = controller
-                    .editor()
-                    .document()
-                    .project
-                    .pages
-                    .get(summary.index)?;
-                Some((summary, PageMetadata::from_page(page)))
-            });
-            if let Some((summary, metadata)) = snapshot {
-                page_name.set(summary.name);
-                page_id.set(summary.id.unwrap_or_default());
-                seo_title.set(metadata.title.unwrap_or_default());
-                seo_description.set(metadata.description.unwrap_or_default());
-                slug.set(metadata.slug.unwrap_or_default());
-                canonical_url.set(metadata.canonical_url.unwrap_or_default());
-                open_graph_title.set(metadata.open_graph_title.unwrap_or_default());
-                open_graph_description.set(metadata.open_graph_description.unwrap_or_default());
-                open_graph_image.set(metadata.open_graph_image.unwrap_or_default());
-                no_index.set(metadata.no_index);
-            }
-        }
         });
     }
 

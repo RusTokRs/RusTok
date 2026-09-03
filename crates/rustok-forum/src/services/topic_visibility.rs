@@ -180,16 +180,19 @@ pub(crate) fn apply_storefront_visibility(
     scope: &ForumTopicVisibilityScope,
     hidden_category_ids: &[Uuid],
 ) -> Select<forum_topic::Entity> {
-    let unrestricted = forum_topic::Column::Id
-        .not_in_subquery(all_topic_channel_access_subquery(tenant_id));
-    let channel_condition = match scope.channel_slug() {
-        Some(channel_slug) => Condition::any().add(unrestricted).add(
-            forum_topic::Column::Id.in_subquery(
-                matching_topic_channel_access_subquery(tenant_id, channel_slug),
-            ),
-        ),
-        None => Condition::all().add(unrestricted),
-    };
+    let unrestricted =
+        forum_topic::Column::Id.not_in_subquery(all_topic_channel_access_subquery(tenant_id));
+    let channel_condition =
+        match scope.channel_slug() {
+            Some(channel_slug) => {
+                Condition::any()
+                    .add(unrestricted)
+                    .add(forum_topic::Column::Id.in_subquery(
+                        matching_topic_channel_access_subquery(tenant_id, channel_slug),
+                    ))
+            }
+            None => Condition::all().add(unrestricted),
+        };
 
     let mut select = select
         .filter(forum_topic::Column::Status.eq(TopicStatus::Open))

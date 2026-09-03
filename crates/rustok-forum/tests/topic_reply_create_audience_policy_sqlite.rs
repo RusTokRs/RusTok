@@ -12,9 +12,8 @@ use rustok_forum::{
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
-    ConnectionTrait,
-    ActiveModelTrait, ActiveValue::Set, ConnectOptions, Database, DatabaseConnection, EntityTrait,
-    IntoActiveModel, PaginatorTrait,
+    ActiveModelTrait, ActiveValue::Set, ConnectOptions, ConnectionTrait, Database,
+    DatabaseConnection, EntityTrait, IntoActiveModel, PaginatorTrait,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -33,7 +32,7 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus) {
         .await
         .expect("forum topic reply-create audience sqlite database should connect");
     let schema = SchemaManager::new(&db);
-        for migration in OutboxModule.migrations() {
+    for migration in OutboxModule.migrations() {
         migration
             .up(&schema)
             .await
@@ -45,7 +44,7 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus) {
             .await
             .expect("taxonomy migration should apply");
     }
-        db.execute_unprepared(
+    db.execute_unprepared(
         "CREATE TABLE IF NOT EXISTS users (
             id TEXT NOT NULL PRIMARY KEY,
             tenant_id TEXT NOT NULL

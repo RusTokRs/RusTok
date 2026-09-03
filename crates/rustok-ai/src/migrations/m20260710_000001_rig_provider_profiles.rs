@@ -48,7 +48,7 @@ impl MigrationTrait for Migration {
                     "AI Rig provider migration does not support database backend {other:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             connection.execute_unprepared(statement).await?;
         }

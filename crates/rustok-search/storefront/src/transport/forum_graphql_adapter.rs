@@ -17,7 +17,6 @@ struct SearchPreviewVariables {
     input: SearchPreviewInput,
 }
 
-
 #[derive(Debug, Clone, Serialize)]
 struct SearchPreviewInput {
     query: String,
@@ -74,7 +73,6 @@ pub async fn fetch_search(
 
     Ok(response.forum_storefront_search)
 }
-
 
 fn search_preview_input(
     query: String,

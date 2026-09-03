@@ -84,7 +84,11 @@ async fn test_module_graphql_schema_contract_parity() {
         "opId": op_id.to_string()
     })));
     let response = schema.execute(request).await;
-    assert!(response.errors.is_empty(), "GraphQL errors: {:?}", response.errors);
+    assert!(
+        response.errors.is_empty(),
+        "GraphQL errors: {:?}",
+        response.errors
+    );
 
     let data = response.data.into_json().expect("valid JSON");
     let cp = &data["moduleTransitionCheckpoint"];
@@ -111,7 +115,11 @@ async fn test_module_graphql_schema_contract_parity() {
         "reason": "Synthetic regression detected in canary"
     })));
     let response = schema.execute(request).await;
-    assert!(response.errors.is_empty(), "GraphQL errors: {:?}", response.errors);
+    assert!(
+        response.errors.is_empty(),
+        "GraphQL errors: {:?}",
+        response.errors
+    );
 
     let data = response.data.into_json().expect("valid JSON");
     let recovered = &data["triggerModuleRecovery"];
@@ -127,11 +135,16 @@ async fn test_module_graphql_schema_contract_parity() {
             }
         }
     "#;
-    let request = Request::new(finalize_mutation).variables(Variables::from_json(serde_json::json!({
-        "opId": op_id.to_string()
-    })));
+    let request =
+        Request::new(finalize_mutation).variables(Variables::from_json(serde_json::json!({
+            "opId": op_id.to_string()
+        })));
     let response = schema.execute(request).await;
-    assert!(response.errors.is_empty(), "GraphQL errors: {:?}", response.errors);
+    assert!(
+        response.errors.is_empty(),
+        "GraphQL errors: {:?}",
+        response.errors
+    );
 
     let data = response.data.into_json().expect("valid JSON");
     assert_eq!(data["finalizeModuleTransition"]["state"], "CONVERGED");
@@ -172,7 +185,11 @@ async fn test_retention_holds_parity() {
         }
     "#;
     let response = schema.execute(Request::new(query)).await;
-    assert!(response.errors.is_empty(), "GraphQL errors: {:?}", response.errors);
+    assert!(
+        response.errors.is_empty(),
+        "GraphQL errors: {:?}",
+        response.errors
+    );
 
     let data = response.data.into_json().expect("valid JSON");
     let holds = data["moduleRetentionHolds"].as_array().expect("array");
@@ -244,7 +261,11 @@ async fn test_active_module_transitions_query() {
         }
     "#;
     let response = schema.execute(Request::new(query)).await;
-    assert!(response.errors.is_empty(), "GraphQL errors: {:?}", response.errors);
+    assert!(
+        response.errors.is_empty(),
+        "GraphQL errors: {:?}",
+        response.errors
+    );
 
     let data = response.data.into_json().expect("valid JSON");
     let active_list = data["activeModuleTransitions"].as_array().expect("array");

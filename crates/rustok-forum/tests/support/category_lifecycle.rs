@@ -195,9 +195,7 @@ async fn topic_count(db: &DatabaseConnection, topic_id: Uuid) -> TestResult<i64>
     use rustok_forum::entities::forum_topic;
     use sea_orm::{EntityTrait, PaginatorTrait};
 
-    let count = forum_topic::Entity::find_by_id(topic_id)
-        .count(db)
-        .await?;
+    let count = forum_topic::Entity::find_by_id(topic_id).count(db).await?;
     Ok(count as i64)
 }
 

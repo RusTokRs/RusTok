@@ -212,10 +212,7 @@ impl PaymentProviderEventJournal {
                     provider_event::Column::EventMetadata,
                     Expr::value(Some(normalized.event_metadata.clone())),
                 )
-                .col_expr(
-                    provider_event::Column::UpdatedAt,
-                    Expr::current_timestamp(),
-                )
+                .col_expr(provider_event::Column::UpdatedAt, Expr::current_timestamp())
                 .filter(provider_event::Column::TenantId.eq(existing.tenant_id))
                 .filter(provider_event::Column::Id.eq(existing.id))
                 .filter(provider_event::Column::EventType.is_null())
@@ -328,10 +325,7 @@ impl PaymentProviderEventJournal {
                 provider_event::Column::ProcessedAt,
                 Expr::value(Option::<DateTime<FixedOffset>>::None),
             )
-            .col_expr(
-                provider_event::Column::UpdatedAt,
-                Expr::current_timestamp(),
-            )
+            .col_expr(provider_event::Column::UpdatedAt, Expr::current_timestamp())
             .filter(provider_event::Column::TenantId.eq(tenant_id))
             .filter(provider_event::Column::Id.eq(event_id))
             .filter(claimable)
@@ -385,10 +379,7 @@ impl PaymentProviderEventJournal {
                 provider_event::Column::ProcessedAt,
                 Expr::value(Option::<DateTime<FixedOffset>>::None),
             )
-            .col_expr(
-                provider_event::Column::UpdatedAt,
-                Expr::current_timestamp(),
-            )
+            .col_expr(provider_event::Column::UpdatedAt, Expr::current_timestamp())
             .filter(provider_event::Column::TenantId.eq(tenant_id))
             .filter(provider_event::Column::Id.eq(event_id))
             .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_DEAD_LETTER))
@@ -428,10 +419,7 @@ impl PaymentProviderEventJournal {
                 provider_event::Column::EventMetadata,
                 Expr::value(Some(normalized.event_metadata)),
             )
-            .col_expr(
-                provider_event::Column::UpdatedAt,
-                Expr::current_timestamp(),
-            )
+            .col_expr(provider_event::Column::UpdatedAt, Expr::current_timestamp())
             .filter(provider_event::Column::TenantId.eq(input.tenant_id))
             .filter(provider_event::Column::Id.eq(input.event_id))
             .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_PROCESSING))
@@ -494,10 +482,7 @@ impl PaymentProviderEventJournal {
                 Expr::value(Option::<String>::None),
             )
             .col_expr(provider_event::Column::ProcessedAt, Expr::value(Some(now)))
-            .col_expr(
-                provider_event::Column::UpdatedAt,
-                Expr::current_timestamp(),
-            )
+            .col_expr(provider_event::Column::UpdatedAt, Expr::current_timestamp())
             .filter(provider_event::Column::TenantId.eq(input.tenant_id))
             .filter(provider_event::Column::Id.eq(input.event_id))
             .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_PROCESSING))
@@ -559,10 +544,7 @@ impl PaymentProviderEventJournal {
                 provider_event::Column::ProcessedAt,
                 Expr::value(processed_at),
             )
-            .col_expr(
-                provider_event::Column::UpdatedAt,
-                Expr::current_timestamp(),
-            )
+            .col_expr(provider_event::Column::UpdatedAt, Expr::current_timestamp())
             .filter(provider_event::Column::TenantId.eq(input.tenant_id))
             .filter(provider_event::Column::Id.eq(input.event_id))
             .filter(provider_event::Column::Status.eq(PROVIDER_EVENT_PROCESSING))

@@ -147,7 +147,7 @@ impl SecondaryIndexSpec {
             (backend, _) => Err(SecondaryIndexError::UnsupportedBackend(format!(
                 "{backend:?}"
             ))),
-}
+        }
     }
 
     fn reindex_statement(&self, backend: DbBackend) -> Result<String, SecondaryIndexError> {
@@ -158,7 +158,7 @@ impl SecondaryIndexSpec {
             backend => Err(SecondaryIndexError::UnsupportedBackend(format!(
                 "{backend:?}"
             ))),
-}
+        }
     }
 
     fn drop_statement(&self, backend: DbBackend) -> Result<String, SecondaryIndexError> {
@@ -169,7 +169,7 @@ impl SecondaryIndexSpec {
             backend => Err(SecondaryIndexError::UnsupportedBackend(format!(
                 "{backend:?}"
             ))),
-}
+        }
     }
 
     fn comment_statement(&self) -> String {
@@ -803,7 +803,7 @@ impl PostgresSecondaryIndexManager {
             (backend, Some(_)) => Err(SecondaryIndexError::UnsupportedBackend(format!(
                 "{backend:?}"
             ))),
-}
+        }
     }
 
     async fn assert_current(
@@ -1013,7 +1013,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), SecondaryIndexErro
         backend => Err(SecondaryIndexError::UnsupportedBackend(format!(
             "{backend:?}"
         ))),
-}
+    }
 }
 
 fn storage_error(error: impl std::fmt::Display) -> SecondaryIndexError {

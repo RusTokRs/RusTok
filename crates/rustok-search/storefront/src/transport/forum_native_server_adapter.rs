@@ -16,7 +16,6 @@ pub async fn fetch_search(
         .map_err(ApiError::from)
 }
 
-
 #[server(prefix = "/api/fn", endpoint = "search/forum-storefront-search")]
 async fn forum_storefront_search_native(
     query: String,
@@ -38,7 +37,6 @@ async fn forum_storefront_search_native(
     )
     .await
 }
-
 
 async fn execute_forum_storefront_search_native(
     query: String,

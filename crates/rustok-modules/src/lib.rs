@@ -10,15 +10,16 @@ mod artifact_settings_recovery;
 mod authoring;
 mod binding_idempotency;
 mod build;
+mod build_surface;
 mod capability_events;
 mod capability_http;
-mod build_surface;
 mod composition;
 mod conflict_fences;
 mod contracts;
 mod control_plane;
-pub mod data_copier;
 mod data;
+pub mod data_copier;
+pub mod data_object_migration;
 mod data_snapshot;
 mod definition;
 mod dependency;
@@ -79,6 +80,10 @@ pub use data_copier::{
     ArtifactDataCopyError, ArtifactDataCrossRevisionCopier, CrossRevisionDataCopyReceipt,
     CrossRevisionDataCopyRequest,
 };
+pub use data_object_migration::{
+    ArtifactDataObjectMigrationError, ArtifactDataObjectMigrationReceipt,
+    ArtifactDataObjectMigrationRequest, ArtifactDataObjectMigrationService,
+};
 pub use migration_preflight::{
     MigrationPreflightInput, MigrationPreflightReceipt, UpdateMode, evaluate_migration_preflight,
 };
@@ -100,9 +105,9 @@ pub use settings_guard::{
     validate_settings_intersection,
 };
 pub use transition_coordinator::{
-    evaluate_transition_watchdog, ModuleTransitionCheckpoint, ModuleTransitionCoordinator,
-    ModuleTransitionFinalizeCommand, ModuleTransitionRecoveryCommand, ModuleTransitionState,
-    StartTransitionInput, TransitionCoordinatorError,
+    ModuleTransitionCheckpoint, ModuleTransitionCoordinator, ModuleTransitionFinalizeCommand,
+    ModuleTransitionRecoveryCommand, ModuleTransitionState, StartTransitionInput,
+    TransitionCoordinatorError, evaluate_transition_watchdog,
 };
 pub use transition_receipts::{
     TransitionApplyReceipt, TransitionCancellationReceipt, TransitionConfirmationReceipt,
@@ -134,16 +139,6 @@ pub use artifact_capability_router::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityBrokerResolverRouter,
     ArtifactCapabilityExecution, ResolvingArtifactCapabilityBroker,
     resolve_granted_artifact_capability,
-};
-pub use capability_events::{
-    ArtifactEventCapabilityBroker, SeaOrmArtifactEventCapabilityBrokerResolver,
-};
-pub use capability_http::{
-    ArtifactHttpCapabilityBroker, SeaOrmArtifactHttpCapabilityBrokerResolver,
-};
-pub use release_preparation::{
-    ReleasePreparation, ReleasePreparationError, ReleasePreparationState,
-    SanitizedPreparationEvidence,
 };
 pub use artifact_cas::StorageArtifactBlobStore;
 pub use artifact_node_reconciliation::{
@@ -207,6 +202,12 @@ pub use build_surface::{
     PlatformAdminBuildSurfaceContract, PlatformBuildSurfaceContract,
     PlatformBuildSurfaceValidationError, PlatformStorefrontBuildSurfaceContract,
     validate_platform_build_surface_contract,
+};
+pub use capability_events::{
+    ArtifactEventCapabilityBroker, SeaOrmArtifactEventCapabilityBrokerResolver,
+};
+pub use capability_http::{
+    ArtifactHttpCapabilityBroker, SeaOrmArtifactHttpCapabilityBrokerResolver,
 };
 pub use composition::{
     ACTIVE_MODULE_COMPOSITION_ID, ModuleCompositionBuildAdmission,
@@ -471,6 +472,10 @@ pub use reconciliation::{
     ModuleReconciliationPhase,
 };
 pub use recovery::{ModuleOperationRecoveryError, ModuleOperationRecoveryPlan};
+pub use release_preparation::{
+    ReleasePreparation, ReleasePreparationError, ReleasePreparationState,
+    SanitizedPreparationEvidence,
+};
 pub use resolution::{
     ModuleResolutionCandidate, ModuleResolutionConflict, ModuleResolutionError,
     ModuleResolutionProvider, ModuleResolutionProviderKind, ModuleResolutionRequest,

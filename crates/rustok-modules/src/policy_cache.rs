@@ -59,10 +59,18 @@ impl ModuleEffectivePolicyCache {
     pub fn get_with_metadata(
         &self,
         tenant_id: Uuid,
-    ) -> Option<(ModuleEffectivePolicy, EffectivePolicyCacheIdentity, DateTime<Utc>)> {
+    ) -> Option<(
+        ModuleEffectivePolicy,
+        EffectivePolicyCacheIdentity,
+        DateTime<Utc>,
+    )> {
         let entries = self.entries.read().ok()?;
         let entry = entries.get(&tenant_id)?;
-        Some((entry.policy.clone(), entry.identity.clone(), entry.cached_at))
+        Some((
+            entry.policy.clone(),
+            entry.identity.clone(),
+            entry.cached_at,
+        ))
     }
 
     /// Inserts a newly resolved effective policy into the cache, bound to its

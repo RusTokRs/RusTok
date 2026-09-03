@@ -103,7 +103,7 @@ impl ForumProjectionInbox {
                     "Forum projection inbox does not support database backend {other:?}"
                 )));
             }
-};
+        };
         let envelope_json = serde_json::to_value(envelope)?;
         self.db
             .execute_raw(Statement::from_sql_and_values(

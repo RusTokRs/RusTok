@@ -236,7 +236,9 @@ pub fn require_graphql_auth<'a>(
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
 
     if !crate::has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(<FieldError as GraphQLError>::permission_denied(denied_message));
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            denied_message,
+        ));
     }
 
     Ok(auth)

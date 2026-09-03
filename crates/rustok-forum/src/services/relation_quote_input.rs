@@ -197,7 +197,7 @@ async fn lock_active_source_in_tx(
             .await?
             .is_some()
         }
-};
+    };
     if !found {
         return Err(deleted_error);
     }

@@ -311,7 +311,7 @@ async fn ensure_builder_publish_enabled_in_tx(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
     let enabled = module.as_ref().is_none_or(|module| {
         is_builder_enabled(&module.settings) && is_builder_publish_enabled(&module.settings)
     });
@@ -337,7 +337,7 @@ async fn ensure_candidates_allowed_in_tx(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-};
+    };
     let Some(model) = model else {
         return Ok(());
     };
@@ -421,7 +421,7 @@ async fn load_bodies_for_reviewed_publish(
         DbBackend::Sqlite => query().all(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().all(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-})
+    })
 }
 
 async fn find_publish_operation_in_tx(
@@ -440,7 +440,7 @@ async fn find_publish_operation_in_tx(
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-})
+    })
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -6,8 +6,8 @@ use rustok_forum::{
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::{TaxonomyModule, entities::taxonomy_term_translation};
 use sea_orm::{
-    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
-    EntityTrait, QueryFilter,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
+    QueryFilter,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -15,7 +15,8 @@ use uuid::Uuid;
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[tokio::test]
-async fn taxonomy_route_registry_rejects_writes_when_legacy_route_state_is_stale() -> TestResult<()> {
+async fn taxonomy_route_registry_rejects_writes_when_legacy_route_state_is_stale() -> TestResult<()>
+{
     let db = setup().await?;
     let tenant_id = Uuid::new_v4();
     let service = CategoryService::new(db.clone());
@@ -89,7 +90,10 @@ async fn taxonomy_route_registry_rejects_writes_when_legacy_route_state_is_stale
     let routes = ForumCategoryRouteService::new(db);
     let canonical = routes.resolve(tenant_id, "en", "help", None).await?;
     assert_eq!(canonical.canonical.category_id, owner);
-    assert_eq!(canonical.disposition, ForumCategoryRouteDisposition::Canonical);
+    assert_eq!(
+        canonical.disposition,
+        ForumCategoryRouteDisposition::Canonical
+    );
 
     let alias = routes.resolve(tenant_id, "en", "support", None).await?;
     assert_eq!(alias.canonical.category_id, owner);

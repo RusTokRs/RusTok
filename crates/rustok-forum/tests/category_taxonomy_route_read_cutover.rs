@@ -6,9 +6,7 @@ use rustok_forum::{
 };
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
-};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -96,11 +94,12 @@ async fn category_routes_read_taxonomy_after_legacy_route_copy_is_removed() -> T
     let alias = routes.resolve(tenant_id, "en", "support", None).await?;
     assert_eq!(alias.disposition, ForumCategoryRouteDisposition::Redirect);
     assert_eq!(alias.canonical.path, "/en/forum/c/help");
-    assert!(alias.alias_id.is_some(), "Taxonomy alias identity must survive cutover");
+    assert!(
+        alias.alias_id.is_some(),
+        "Taxonomy alias identity must survive cutover"
+    );
 
-    let fallback_match = routes
-        .resolve(tenant_id, "fr", "help", Some("en"))
-        .await?;
+    let fallback_match = routes.resolve(tenant_id, "fr", "help", Some("en")).await?;
     assert_eq!(
         fallback_match.disposition,
         ForumCategoryRouteDisposition::Redirect
@@ -124,8 +123,6 @@ async fn category_routes_read_taxonomy_after_legacy_route_copy_is_removed() -> T
 
     Ok(())
 }
-
-
 
 fn admin() -> SecurityContext {
     SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()))

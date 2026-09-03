@@ -934,8 +934,6 @@ impl ForumContentMutation {
     }
 }
 
-
-
 async fn load_author_profile(
     ctx: &Context<'_>,
     db: &DatabaseConnection,

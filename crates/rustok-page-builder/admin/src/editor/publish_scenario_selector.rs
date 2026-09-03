@@ -24,29 +24,31 @@ pub fn PublishScenarioSelectorPanel(
                 selected_scenario.set(None);
                 return;
             };
-        let stored = match load_publish_scenario_selection(&sync_page_id, &baseline.baseline_hash) {
-            Ok(stored) => stored,
-            Err(error) => {
-                sync_runtime.fail(error.to_string());
-                None
-            }
-        };
-        let selected = match baseline.scenarios.as_slice() {
-            [scenario] => {
-                if let Err(error) = save_publish_scenario_selection(
-                    &sync_page_id,
-                    &baseline.baseline_hash,
-                    Some(&scenario.id),
-                ) {
-                    sync_runtime.fail(error.to_string());
+            let stored =
+                match load_publish_scenario_selection(&sync_page_id, &baseline.baseline_hash) {
+                    Ok(stored) => stored,
+                    Err(error) => {
+                        sync_runtime.fail(error.to_string());
+                        None
+                    }
+                };
+            let selected = match baseline.scenarios.as_slice() {
+                [scenario] => {
+                    if let Err(error) = save_publish_scenario_selection(
+                        &sync_page_id,
+                        &baseline.baseline_hash,
+                        Some(&scenario.id),
+                    ) {
+                        sync_runtime.fail(error.to_string());
+                    }
+                    Some(scenario.id.clone())
                 }
-                Some(scenario.id.clone())
-            }
-            scenarios if scenarios.len() > 1 => stored
-                .filter(|scenario_id| scenarios.iter().any(|scenario| scenario.id == *scenario_id)),
-            _ => None,
-        };
-        selected_scenario.set(selected);
+                scenarios if scenarios.len() > 1 => stored.filter(|scenario_id| {
+                    scenarios.iter().any(|scenario| scenario.id == *scenario_id)
+                }),
+                _ => None,
+            };
+            selected_scenario.set(selected);
         });
     }
 

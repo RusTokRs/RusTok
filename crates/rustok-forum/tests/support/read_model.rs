@@ -217,7 +217,8 @@ async fn seed_topics(
     for index in 0..count {
         let topic_id = Uuid::new_v4();
         let translation_id = Uuid::new_v4();
-        let topic_time = (base_time + chrono::Duration::milliseconds(index as i64 * 10)).to_rfc3339();
+        let topic_time =
+            (base_time + chrono::Duration::milliseconds(index as i64 * 10)).to_rfc3339();
         db.execute_unprepared(&format!(
             "INSERT INTO forum_topics
                 (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count, created_at, updated_at)

@@ -169,4 +169,3 @@ fn test_settings_guard_from_observing_checkpoint() {
     );
     assert!(no_guard.is_none());
 }
-

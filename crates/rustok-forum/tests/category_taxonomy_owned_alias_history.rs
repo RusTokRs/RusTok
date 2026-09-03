@@ -75,12 +75,13 @@ async fn category_slug_history_survives_without_forum_alias_storage() -> TestRes
 
     let routes = ForumCategoryRouteService::new(db);
 
-    let canonical = routes
-        .resolve(tenant_id, "en", "assistance", None)
-        .await?;
+    let canonical = routes.resolve(tenant_id, "en", "assistance", None).await?;
     assert_eq!(canonical.canonical.category_id, category.id);
     assert_eq!(canonical.canonical.slug, "assistance");
-    assert_eq!(canonical.disposition, ForumCategoryRouteDisposition::Canonical);
+    assert_eq!(
+        canonical.disposition,
+        ForumCategoryRouteDisposition::Canonical
+    );
     assert_eq!(canonical.alias_id, None);
 
     let first_alias = routes.resolve(tenant_id, "en", "support", None).await?;

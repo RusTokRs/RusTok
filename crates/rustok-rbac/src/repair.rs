@@ -566,7 +566,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), RbacSystemRoleRepa
     match backend {
         DbBackend::Postgres | DbBackend::Sqlite => Ok(()),
         DbBackend::MySql | _ => Err(RbacSystemRoleRepairError::UnsupportedBackend("unsupported")),
-}
+    }
 }
 
 fn built_in_roles() -> [UserRole; 4] {

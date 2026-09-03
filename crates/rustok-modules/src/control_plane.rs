@@ -5,15 +5,15 @@ use rustok_core::ModuleRegistry;
 use rustok_secrets::SecretResolverRegistry;
 
 use crate::{
-    ArtifactDataExportAuthorizer, ArtifactDataPurgeAuthorizer, ArtifactDataQuotaPolicy,
-    ArtifactDataSnapshotAuthorizer, ArtifactDataSnapshotCollectionAuthorizer,
-    ArtifactDataSnapshotRetentionAuthorizer, ArtifactEventDeliveryConfig,
-    ArtifactEventDeliveryError, ArtifactLifecycleExecutor, ArtifactMcpCapabilityBrokerResolver,
-    ArtifactMcpInvoker, ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError,
-    ArtifactSecretAuthorizer, ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer,
-    ArtifactSecretValueConsumer, ArtifactSettingsRecoveryAuthorizer,
-    ArtifactSettingsRecoveryCipher, ArtifactDataCrossRevisionCopier, ArtifactQueueDrainService,
-    ControlPlaneInfrastructure,
+    ArtifactDataCrossRevisionCopier, ArtifactDataExportAuthorizer, ArtifactDataPurgeAuthorizer,
+    ArtifactDataQuotaPolicy, ArtifactDataSnapshotAuthorizer,
+    ArtifactDataSnapshotCollectionAuthorizer, ArtifactDataSnapshotRetentionAuthorizer,
+    ArtifactEventDeliveryConfig, ArtifactEventDeliveryError, ArtifactLifecycleExecutor,
+    ArtifactMcpCapabilityBrokerResolver, ArtifactMcpInvoker, ArtifactQueueDrainService,
+    ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError, ArtifactSecretAuthorizer,
+    ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer, ArtifactSecretValueConsumer,
+    ArtifactSettingsRecoveryAuthorizer, ArtifactSettingsRecoveryCipher,
+    ArtifactDataObjectMigrationService, ControlPlaneInfrastructure,
     ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeTopologyResolver,
     ModuleArtifactSecurityAuthorizer, ModuleDefinitionCatalog, ModuleDefinitionError,
     ModuleEffectivePolicy, ModuleEffectivePolicyChannelInput,
@@ -22,13 +22,12 @@ use crate::{
     ModuleStaticDistributionReleaseVerifier, ModuleStaticDistributionRolloutAuthorizer,
     ModuleStaticDistributionTopologyResolver, ModuleStaticDistributionWorkerAuthorizer,
     ModuleStaticPromotionAuthorizer, ReleaseAdmissionIntentJournal,
-    SeaOrmArtifactBindingExecutionAuditReader,
-    SeaOrmArtifactBindingIdempotencyStore, SeaOrmArtifactDataCapabilityBrokerResolver,
-    SeaOrmArtifactDataExportService, SeaOrmArtifactDataObjectCapabilityBrokerResolver,
-    SeaOrmArtifactDataObjectGcService, SeaOrmArtifactDataPurgeService,
-    SeaOrmArtifactDataSnapshotCollectionService, SeaOrmArtifactDataSnapshotRetentionService,
-    SeaOrmArtifactDataSnapshotService, SeaOrmArtifactEventCapabilityBrokerResolver,
-    SeaOrmArtifactEventSubscriptionProjector,
+    SeaOrmArtifactBindingExecutionAuditReader, SeaOrmArtifactBindingIdempotencyStore,
+    SeaOrmArtifactDataCapabilityBrokerResolver, SeaOrmArtifactDataExportService,
+    SeaOrmArtifactDataObjectCapabilityBrokerResolver, SeaOrmArtifactDataObjectGcService,
+    SeaOrmArtifactDataPurgeService, SeaOrmArtifactDataSnapshotCollectionService,
+    SeaOrmArtifactDataSnapshotRetentionService, SeaOrmArtifactDataSnapshotService,
+    SeaOrmArtifactEventCapabilityBrokerResolver, SeaOrmArtifactEventSubscriptionProjector,
     SeaOrmArtifactExecutionObserver, SeaOrmArtifactHttpCapabilityBrokerResolver,
     SeaOrmArtifactInstallationStore, SeaOrmArtifactNodeReadiness,
     SeaOrmArtifactSandboxPolicyResolver, SeaOrmArtifactScheduleDeliveryQueue,
@@ -340,6 +339,11 @@ impl ModuleControlPlane {
     /// Returns the bounded drain service for predecessor-incompatible or decommissioned queues.
     pub fn queue_drain(&self) -> ArtifactQueueDrainService {
         ArtifactQueueDrainService::new(self.db.clone())
+    }
+
+    /// Returns the broker-owned object migration service for persistence revision changes.
+    pub fn artifact_data_object_migration(&self) -> ArtifactDataObjectMigrationService {
+        ArtifactDataObjectMigrationService::new(self.db.clone())
     }
 
     /// Returns the platform security owner for immutable artifact release

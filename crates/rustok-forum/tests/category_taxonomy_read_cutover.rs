@@ -1,8 +1,5 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
-use rustok_forum::{
-    CategoryService, CreateCategoryInput, ForumModule,
-    entities::forum_category,
-};
+use rustok_forum::{CategoryService, CreateCategoryInput, ForumModule, entities::forum_category};
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{

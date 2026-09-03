@@ -149,7 +149,9 @@ impl HttpCapabilityConstraints {
         if scheme != "https" && !(self.allow_plain_http && scheme == "http") {
             return Err(SandboxError::CapabilityConstraintDenied {
                 capability: call.capability.clone(),
-                reason: format!("HTTP url scheme `{scheme}` is not allowed (only https is permitted)"),
+                reason: format!(
+                    "HTTP url scheme `{scheme}` is not allowed (only https is permitted)"
+                ),
             });
         }
         if !url.username().is_empty() || url.password().is_some() {
@@ -1870,13 +1872,21 @@ mod tests {
             allow_plain_http: false,
         };
 
-        let mut http_call = call("invoke", json!({
-            "method": "GET",
-            "url": "http://api.example.com/v1/resource"
-        }));
+        let mut http_call = call(
+            "invoke",
+            json!({
+                "method": "GET",
+                "url": "http://api.example.com/v1/resource"
+            }),
+        );
         http_call.capability = CapabilityName::new("platform.http").expect("cap");
-        let err = constraints.validate(&http_call).expect_err("plain http must be rejected by default");
-        assert!(matches!(err, SandboxError::CapabilityConstraintDenied { .. }));
+        let err = constraints
+            .validate(&http_call)
+            .expect_err("plain http must be rejected by default");
+        assert!(matches!(
+            err,
+            SandboxError::CapabilityConstraintDenied { .. }
+        ));
 
         // With https -> passes
         http_call.input = json!({
@@ -1890,8 +1900,13 @@ mod tests {
             "method": "GET",
             "url": "https://user:pass@api.example.com/v1/resource"
         });
-        let err = constraints.validate(&http_call).expect_err("embedded userinfo credentials must be rejected");
-        assert!(matches!(err, SandboxError::CapabilityConstraintDenied { .. }));
+        let err = constraints
+            .validate(&http_call)
+            .expect_err("embedded userinfo credentials must be rejected");
+        assert!(matches!(
+            err,
+            SandboxError::CapabilityConstraintDenied { .. }
+        ));
     }
 
     #[test]
@@ -1903,10 +1918,13 @@ mod tests {
             allow_plain_http: true,
         };
 
-        let mut http_call = call("invoke", json!({
-            "method": "GET",
-            "url": "http://api.example.com/v1/resource"
-        }));
+        let mut http_call = call(
+            "invoke",
+            json!({
+                "method": "GET",
+                "url": "http://api.example.com/v1/resource"
+            }),
+        );
         http_call.capability = CapabilityName::new("platform.http").expect("cap");
         assert!(constraints.validate(&http_call).is_ok());
 
@@ -1915,7 +1933,12 @@ mod tests {
             "method": "GET",
             "url": "ftp://api.example.com/v1/resource"
         });
-        let err = constraints.validate(&http_call).expect_err("ftp scheme must be rejected");
-        assert!(matches!(err, SandboxError::CapabilityConstraintDenied { .. }));
+        let err = constraints
+            .validate(&http_call)
+            .expect_err("ftp scheme must be rejected");
+        assert!(matches!(
+            err,
+            SandboxError::CapabilityConstraintDenied { .. }
+        ));
     }
 }

@@ -208,7 +208,6 @@ pub fn editing_post_id_if_editing_mode(editing_post_id: Option<String>) -> Optio
     }
 }
 
-
 pub fn edit_action_label(is_editing: bool, editing_label: String, edit_label: String) -> String {
     if is_editing {
         editing_label

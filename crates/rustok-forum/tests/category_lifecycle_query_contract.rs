@@ -16,8 +16,7 @@ fn function_source(name: &str) -> &str {
 
 #[test]
 fn category_pagination_filters_archived_rows_in_sql_without_preloading_ids() {
-    let list_source =
-        function_source("list_paginated_with_locale_fallback_and_hidden_categories");
+    let list_source = function_source("list_paginated_with_locale_fallback_and_hidden_categories");
 
     assert!(
         list_source.contains("not_in_subquery(archived_category_ids_subquery(tenant_id))"),

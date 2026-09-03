@@ -290,7 +290,6 @@ pub struct ArtifactSettingsRestoreReceipt {
     pub target_installation_id: Option<Uuid>,
 }
 
-
 /// GraphQL adapter over the canonical host-safe artifact UI projection. The
 /// content remains its exact tagged JSON contract because its shape is chosen
 /// by the admitted contribution surface, not by a guest-provided GraphQL type.

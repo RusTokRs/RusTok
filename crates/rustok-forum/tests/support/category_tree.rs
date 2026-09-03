@@ -272,7 +272,11 @@ async fn seed_oversized_tree(db: &DatabaseConnection, tenant_id: Uuid) -> TestRe
             "INSERT INTO forum_categories \
                 (id, tenant_id, position, moderated, topic_count, reply_count) \
              VALUES (?, ?, ?, FALSE, 0, 0)",
-            [category_id.into(), tenant_id.into(), (position as i32).into()],
+            [
+                category_id.into(),
+                tenant_id.into(),
+                (position as i32).into(),
+            ],
         ))
         .await?;
     }
@@ -353,8 +357,6 @@ async fn seed_category(
         .await?;
     Ok(category.id)
 }
-
-
 
 fn assert_validation_contains<T>(result: Result<T, ForumError>, expected: &str) -> TestResult<()> {
     match result {

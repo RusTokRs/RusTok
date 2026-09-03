@@ -16,18 +16,13 @@ use crate::graphql::types::{
     CreateUserInput, DeleteUserPayload, ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput,
     User,
 };
+use crate::models::_entities::users::Column as UsersColumn;
+use crate::models::users;
+use crate::modules::ManifestError;
 use crate::services::artifact_purge_recovery_host::{
     ServerArtifactDataPurgeAuthorizer, ServerArtifactSettingsRecoveryAuthorizer,
     ServerArtifactSettingsRecoveryCipher,
 };
-use rustok_modules::{
-    ArtifactDataError, ArtifactDataPurgeRequest, ArtifactDataScope, ArtifactSettingsPurgeRequest,
-    ArtifactSettingsRecoveryError, ArtifactSettingsRecoveryPointCreateRequest,
-    ArtifactSettingsRestoreRequest,
-};
-use crate::models::_entities::users::Column as UsersColumn;
-use crate::models::users;
-use crate::modules::ManifestError;
 use crate::services::artifact_ui::execute_artifact_ui_action as execute_artifact_ui_action_service;
 #[cfg(test)]
 use crate::services::auth_lifecycle::AuthLifecycleError;
@@ -58,10 +53,14 @@ use rustok_auth::{
 use rustok_build::{BuildEventPublicationContext, BuildEventScope, EventBusBuildEventPublisher};
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions, UserRole};
 use rustok_modules::{
-    ArtifactActivationRequest, ArtifactDeactivationRequest,
-    ArtifactRollbackRequest, ArtifactTenantDisableRequest, ArtifactTenantEnableRequest,
-    ArtifactUninstallRequest, ModuleCommandContext, ModuleCompositionError, ModuleControlPlane,
-    ModuleInstallationScope,
+    ArtifactActivationRequest, ArtifactDeactivationRequest, ArtifactRollbackRequest,
+    ArtifactTenantDisableRequest, ArtifactTenantEnableRequest, ArtifactUninstallRequest,
+    ModuleCommandContext, ModuleCompositionError, ModuleControlPlane, ModuleInstallationScope,
+};
+use rustok_modules::{
+    ArtifactDataError, ArtifactDataPurgeRequest, ArtifactDataScope, ArtifactSettingsPurgeRequest,
+    ArtifactSettingsRecoveryError, ArtifactSettingsRecoveryPointCreateRequest,
+    ArtifactSettingsRestoreRequest,
 };
 use rustok_rbac::{RbacControlPlanePrincipal, require_direct_control_plane_user};
 use std::sync::Arc;
@@ -692,19 +691,25 @@ fn map_artifact_ui_action_error(error: ServerError) -> FieldError {
 fn map_artifact_settings_recovery_error(err: ArtifactSettingsRecoveryError) -> FieldError {
     match err {
         ArtifactSettingsRecoveryError::PolicyDenied => {
-            <FieldError as GraphQLError>::permission_denied("Policy denied artifact settings recovery operation")
+            <FieldError as GraphQLError>::permission_denied(
+                "Policy denied artifact settings recovery operation",
+            )
         }
         ArtifactSettingsRecoveryError::RecoveryUnavailable
         | ArtifactSettingsRecoveryError::InstallationUnavailable
         | ArtifactSettingsRecoveryError::SettingsUnavailable => {
-            <FieldError as GraphQLError>::not_found("Requested artifact recovery resource not found")
+            <FieldError as GraphQLError>::not_found(
+                "Requested artifact recovery resource not found",
+            )
         }
         ArtifactSettingsRecoveryError::RecoveryPrecondition
         | ArtifactSettingsRecoveryError::PurgePrecondition
         | ArtifactSettingsRecoveryError::RestorePrecondition
         | ArtifactSettingsRecoveryError::RetentionPrecondition
         | ArtifactSettingsRecoveryError::RewrapPrecondition => {
-            <FieldError as GraphQLError>::bad_user_input(&format!("Recovery precondition failed: {err}"))
+            <FieldError as GraphQLError>::bad_user_input(&format!(
+                "Recovery precondition failed: {err}"
+            ))
         }
         ArtifactSettingsRecoveryError::IdempotencyConflict => {
             <FieldError as GraphQLError>::bad_user_input("Idempotency key conflict")
@@ -718,11 +723,9 @@ fn map_artifact_settings_recovery_error(err: ArtifactSettingsRecoveryError) -> F
 
 fn map_artifact_data_purge_error(err: ArtifactDataError) -> FieldError {
     match err {
-        ArtifactDataError::PurgePrecondition => {
-            <FieldError as GraphQLError>::bad_user_input(
-                "Data purge precondition failed: namespace must be uninstalled/retired and reason non-empty",
-            )
-        }
+        ArtifactDataError::PurgePrecondition => <FieldError as GraphQLError>::bad_user_input(
+            "Data purge precondition failed: namespace must be uninstalled/retired and reason non-empty",
+        ),
         ArtifactDataError::NamespacePurged => {
             <FieldError as GraphQLError>::bad_user_input("Data namespace has already been purged")
         }
@@ -1260,7 +1263,10 @@ impl RootMutation {
         idempotency_key: Uuid,
     ) -> Result<ArtifactSettingsRecoveryPointReceipt> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
-        if idempotency_key.is_nil() || expected_installation_revision < 0 || expected_settings_revision < 0 {
+        if idempotency_key.is_nil()
+            || expected_installation_revision < 0
+            || expected_settings_revision < 0
+        {
             return Err(<FieldError as GraphQLError>::bad_user_input(
                 "Recovery point creation requires non-nil idempotency key and non-negative revisions",
             ));
@@ -1305,7 +1311,10 @@ impl RootMutation {
         idempotency_key: Uuid,
     ) -> Result<ArtifactSettingsPurgeReceipt> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
-        if idempotency_key.is_nil() || expected_installation_revision < 0 || expected_settings_revision < 0 {
+        if idempotency_key.is_nil()
+            || expected_installation_revision < 0
+            || expected_settings_revision < 0
+        {
             return Err(<FieldError as GraphQLError>::bad_user_input(
                 "Settings purge requires non-nil idempotency key and non-negative revisions",
             ));
@@ -1365,7 +1374,8 @@ impl RootMutation {
                 tenant_id: tenant.id,
                 recovery_point_id,
                 target_installation_id,
-                expected_target_installation_revision: expected_target_installation_revision.map(|r| r as u64),
+                expected_target_installation_revision: expected_target_installation_revision
+                    .map(|r| r as u64),
                 context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
                 reason,
             })
@@ -1393,7 +1403,11 @@ impl RootMutation {
         idempotency_key: Uuid,
     ) -> Result<ArtifactDataPurgeReceipt> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
-        if idempotency_key.is_nil() || expected_namespace_revision < 0 || data_contract_revision < 0 || policy_revision < 0 {
+        if idempotency_key.is_nil()
+            || expected_namespace_revision < 0
+            || data_contract_revision < 0
+            || policy_revision < 0
+        {
             return Err(<FieldError as GraphQLError>::bad_user_input(
                 "Data purge requires non-nil idempotency key and non-negative revisions",
             ));

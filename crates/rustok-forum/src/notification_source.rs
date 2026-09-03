@@ -13,9 +13,7 @@ use rustok_notifications_api::{
     NotificationTargetRef, NotificationTargetRoute, NotificationTemplateData,
     NotificationTemplateKey, NotificationTypeKey, ResolveNotificationAudienceRequest,
 };
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::Deserialize;
 use uuid::Uuid;
 

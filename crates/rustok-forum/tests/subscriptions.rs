@@ -7,8 +7,7 @@ use rustok_forum::{
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{
-    ConnectionTrait,ConnectOptions, Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -27,11 +26,7 @@ async fn setup_forum_test_db() -> DatabaseConnection {
         .expect("failed to connect forum sqlite database")
 }
 
-async fn setup() -> (
-    DatabaseConnection,
-    TransactionalEventBus,
-    Uuid,
-) {
+async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
     let db = setup_forum_test_db().await;
     let schema = SchemaManager::new(&db);
     for migration in OutboxModule.migrations() {

@@ -85,7 +85,7 @@ impl ActiveModelBehavior for ActiveModel {
         // the denormalized count. Service create/delete paths call this inside
         // their surrounding database transaction.
         let lock = Entity::update_many()
-            .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt).into())
+            .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt))
             .filter(Column::Id.eq(thread_id))
             .filter(Column::TenantId.eq(tenant_id))
             .exec(db)
@@ -158,7 +158,7 @@ where
     let identity_row = identity_lock::Entity::update_many()
         .col_expr(
             identity_lock::Column::CreatedAt,
-            Expr::col(identity_lock::Column::CreatedAt).into(),
+            Expr::col(identity_lock::Column::CreatedAt),
         )
         .filter(identity_lock::Column::TenantId.eq(tenant_id))
         .filter(identity_lock::Column::TargetType.eq(target_type.clone()))

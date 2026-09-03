@@ -377,7 +377,10 @@ export function ModulesList({
         if (!cancelled) {
           const map = new Map<string, { settings: string; revision: number }>();
           tenantMods.forEach((tm) => {
-            map.set(tm.moduleSlug, { settings: tm.settings, revision: tm.revision });
+            map.set(tm.moduleSlug, {
+              settings: tm.settings,
+              revision: tm.revision
+            });
           });
           setTenantSettingsMap(map);
         }
@@ -1384,7 +1387,7 @@ export function ModulesList({
           {!activeTransition && retentionHolds.length > 0 && (
             <Card>
               <CardHeader className='pb-3'>
-                <CardTitle className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+                <CardTitle className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
                   Active Platform Retention Holds ({retentionHolds.length})
                 </CardTitle>
               </CardHeader>

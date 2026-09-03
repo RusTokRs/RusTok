@@ -1155,7 +1155,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexReconciliatio
         backend => Err(IndexReconciliationRunError::Storage(format!(
             "Index reconciliation does not support {backend:?}"
         ))),
-}
+    }
 }
 
 fn storage_error(error: impl std::fmt::Display) -> IndexReconciliationRunError {

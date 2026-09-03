@@ -566,7 +566,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), MutationStorageErr
         backend => Err(MutationStorageError::Storage(format!(
             "Index mutation storage does not support {backend:?}"
         ))),
-}
+    }
 }
 
 fn storage_error(error: impl std::fmt::Display) -> MutationStorageError {

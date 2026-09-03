@@ -203,4 +203,3 @@ fn test_predecessor_retention_revalidation_enforcement() {
         ModuleTransitionState::Observing { .. }
     ));
 }
-

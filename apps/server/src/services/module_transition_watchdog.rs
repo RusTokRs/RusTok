@@ -1,10 +1,10 @@
+use sea_orm::DatabaseConnection;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
-use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
-use rustok_modules::{evaluate_transition_watchdog, SecurityEpochRegistry};
+use rustok_modules::{SecurityEpochRegistry, evaluate_transition_watchdog};
 
 static MODULE_TRANSITION_WATCHDOG_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
@@ -24,9 +24,7 @@ pub fn spawn_module_transition_watchdog_handle(
 
     info!(
         worker = "module_transition_watchdog",
-        instance_id,
-        poll_interval_ms,
-        "Starting module transition watchdog background worker"
+        instance_id, poll_interval_ms, "Starting module transition watchdog background worker"
     );
 
     let join_handle = tokio::spawn(async move {

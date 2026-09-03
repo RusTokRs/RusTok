@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use sea_orm::{DatabaseConnection, TransactionTrait};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use rustok_events::DomainEvent;
 use rustok_sandbox::{
@@ -10,11 +10,11 @@ use rustok_sandbox::{
     SandboxError, SandboxResult,
 };
 
-use crate::artifact_capability_router::{
-    resolve_granted_artifact_capability, ArtifactCapabilityBrokerResolver,
-    ArtifactCapabilityExecution,
-};
 use crate::ControlPlaneInfrastructure;
+use crate::artifact_capability_router::{
+    ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution,
+    resolve_granted_artifact_capability,
+};
 
 /// Production broker for the `platform.events` sandbox capability.
 ///
@@ -68,15 +68,19 @@ impl CapabilityBroker for ArtifactEventCapabilityBroker {
             payload,
         };
 
-        let envelope = self.infrastructure.event_envelope(tenant_id, None, domain_event);
+        let envelope = self
+            .infrastructure
+            .event_envelope(tenant_id, None, domain_event);
         let event_id = envelope.id;
 
-        let transaction = self.db.begin().await.map_err(|err| {
-            SandboxError::HostCapability {
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|err| SandboxError::HostCapability {
                 capability: call.capability.clone(),
                 message: format!("failed to begin event transaction: {err}"),
-            }
-        })?;
+            })?;
 
         self.infrastructure
             .write_event(&transaction, envelope)
@@ -86,12 +90,13 @@ impl CapabilityBroker for ArtifactEventCapabilityBroker {
                 message: format!("failed to write event to outbox: {err}"),
             })?;
 
-        transaction.commit().await.map_err(|err| {
-            SandboxError::HostCapability {
+        transaction
+            .commit()
+            .await
+            .map_err(|err| SandboxError::HostCapability {
                 capability: call.capability.clone(),
                 message: format!("failed to commit event transaction: {err}"),
-            }
-        })?;
+            })?;
 
         Ok(CapabilityResponse {
             output: json!({

@@ -5,9 +5,7 @@ use rustok_forum::{
 };
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::{TaxonomyModule, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
-use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
-};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 

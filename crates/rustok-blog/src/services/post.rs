@@ -1402,14 +1402,16 @@ fn apply_public_post_channel_filter(
     tenant_id: Uuid,
     channel_slug: Option<&str>,
 ) -> Select<blog_post::Entity> {
-    let unrestricted = blog_post::Column::Id
-        .not_in_subquery(all_blog_post_channel_visibility_subquery(tenant_id));
+    let unrestricted =
+        blog_post::Column::Id.not_in_subquery(all_blog_post_channel_visibility_subquery(tenant_id));
     let condition = match normalize_public_channel_slug(channel_slug) {
-        Some(channel_slug) => Condition::any().add(unrestricted).add(
-            blog_post::Column::Id.in_subquery(
-                matching_blog_post_channel_visibility_subquery(tenant_id, &channel_slug),
-            ),
-        ),
+        Some(channel_slug) => {
+            Condition::any()
+                .add(unrestricted)
+                .add(blog_post::Column::Id.in_subquery(
+                    matching_blog_post_channel_visibility_subquery(tenant_id, &channel_slug),
+                ))
+        }
         None => Condition::all().add(unrestricted),
     };
 

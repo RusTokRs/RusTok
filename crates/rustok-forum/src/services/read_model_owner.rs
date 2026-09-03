@@ -10,9 +10,9 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySe
 use uuid::Uuid;
 
 use crate::dto::{
-    CategoryCursorPage, CategoryCursorQuery, CategoryReadModel, ReplyCursorPage, ReplyCursorQuery,
-    TopicCursorPage, TopicCursorQuery, TopicUnreadCursorPage, TopicUnreadCursorQuery,
-    TopicUnreadSummaryReadModel, MAX_FORUM_CATEGORY_TREE_NODES, bounded_forum_read_limit,
+    CategoryCursorPage, CategoryCursorQuery, CategoryReadModel, MAX_FORUM_CATEGORY_TREE_NODES,
+    ReplyCursorPage, ReplyCursorQuery, TopicCursorPage, TopicCursorQuery, TopicUnreadCursorPage,
+    TopicUnreadCursorQuery, TopicUnreadSummaryReadModel, bounded_forum_read_limit,
 };
 use crate::entities::{forum_category, forum_category_taxonomy_binding};
 use crate::error::{ForumError, ForumResult};
@@ -124,12 +124,14 @@ impl ForumReadModelService {
                     category.id
                 ))
             })?;
-            let canonical = projection_by_taxonomy_id.remove(&taxonomy_id).ok_or_else(|| {
-                ForumError::Validation(format!(
-                    "Forum category {} Taxonomy Category {taxonomy_id} projection is missing",
-                    category.id
-                ))
-            })?;
+            let canonical = projection_by_taxonomy_id
+                .remove(&taxonomy_id)
+                .ok_or_else(|| {
+                    ForumError::Validation(format!(
+                        "Forum category {} Taxonomy Category {taxonomy_id} projection is missing",
+                        category.id
+                    ))
+                })?;
             let parent_id = canonical
                 .parent_id
                 .map(|taxonomy_parent_id| {
@@ -188,10 +190,7 @@ impl ForumReadModelService {
                 moderated: row.owner.moderated,
                 topic_count: row.owner.topic_count,
                 reply_count: row.owner.reply_count,
-                is_subscribed: subscriptions
-                    .get(&row.owner.id)
-                    .copied()
-                    .unwrap_or(false),
+                is_subscribed: subscriptions.get(&row.owner.id).copied().unwrap_or(false),
             })
             .collect();
 

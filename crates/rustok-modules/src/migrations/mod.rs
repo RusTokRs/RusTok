@@ -43,6 +43,7 @@ pub(crate) mod m20260822_000044_module_build_execution_claims;
 pub(crate) mod m20260901_000045_artifact_admission_reverification_operations;
 pub(crate) mod m20260902_000046_module_transition_and_retention_tables;
 pub(crate) mod m20260903_000047_artifact_data_copy_operations;
+pub(crate) mod m20260903_000048_artifact_data_object_copy_operations;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -93,5 +94,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260901_000045_artifact_admission_reverification_operations::Migration),
         Box::new(m20260902_000046_module_transition_and_retention_tables::Migration),
         Box::new(m20260903_000047_artifact_data_copy_operations::Migration),
+        Box::new(m20260903_000048_artifact_data_object_copy_operations::Migration),
     ]
 }

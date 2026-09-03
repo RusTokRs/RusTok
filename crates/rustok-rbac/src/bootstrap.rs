@@ -478,7 +478,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), RbacRoleAssignment
     match backend {
         DbBackend::Postgres | DbBackend::Sqlite => Ok(()),
         DbBackend::MySql | _ => Err(RbacRoleAssignmentError::UnsupportedBackend("unsupported")),
-}
+    }
 }
 
 fn stale_role_permission_ids(

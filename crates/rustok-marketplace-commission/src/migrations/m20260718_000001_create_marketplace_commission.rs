@@ -17,8 +17,16 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(MarketplaceCommissionRules::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(MarketplaceCommissionRules::RuleKey).uuid().not_null())
+                    .col(
+                        ColumnDef::new(MarketplaceCommissionRules::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceCommissionRules::RuleKey)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(MarketplaceCommissionRules::Version)
                             .integer()
@@ -47,7 +55,10 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(MarketplaceCommissionRules::EffectiveUntil).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(MarketplaceCommissionRules::EffectiveUntil)
+                            .timestamp_with_time_zone(),
+                    )
                     .col(
                         ColumnDef::new(MarketplaceCommissionRules::Status)
                             .string_len(32)
@@ -291,7 +302,10 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .col(ColumnDef::new(MarketplaceCommissionReceipts::CompletedAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(MarketplaceCommissionReceipts::CompletedAt)
+                            .timestamp_with_time_zone(),
+                    )
                     .to_owned(),
             )
             .await?;

@@ -635,6 +635,9 @@ async fn resolution_audit_count(db: &DatabaseConnection, tenant_id: Uuid) -> Tes
 }
 
 async fn scalar_i64(db: &DatabaseConnection, statement: Statement) -> TestResult<i64> {
-    let row: QueryResult = db.query_one_raw(statement).await?.ok_or("scalar row missing")?;
+    let row: QueryResult = db
+        .query_one_raw(statement)
+        .await?
+        .ok_or("scalar row missing")?;
     Ok(row.try_get("", "value")?)
 }

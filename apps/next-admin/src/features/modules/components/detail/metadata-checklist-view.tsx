@@ -74,7 +74,8 @@ export function MetadataChecklistView({ module }: MetadataChecklistViewProps) {
         state: 'warn',
         priority: 'recommended',
         summary: 'Unsigned',
-        detail: 'Checksum is present, but package is not cryptographically signed.'
+        detail:
+          'Checksum is present, but package is not cryptographically signed.'
       });
     } else {
       items.push({
@@ -140,21 +141,29 @@ export function MetadataChecklistView({ module }: MetadataChecklistViewProps) {
   const recommendedGaps = checklist.filter(
     (item) => item.priority === 'recommended' && item.state === 'warn'
   ).length;
-  const readySignals = checklist.filter((item) => item.state === 'ready').length;
+  const readySignals = checklist.filter(
+    (item) => item.state === 'ready'
+  ).length;
 
   return (
-    <div className='rounded-lg border bg-background/80 p-4 space-y-3'>
+    <div className='bg-background/80 space-y-3 rounded-lg border p-4'>
       <div className='flex flex-wrap items-center gap-2'>
-        <p className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+        <p className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
           Registry Readiness Checklist
         </p>
-        <Badge variant={requiredGaps > 0 ? 'destructive' : 'default'} className='text-xs'>
+        <Badge
+          variant={requiredGaps > 0 ? 'destructive' : 'default'}
+          className='text-xs'
+        >
           {requiredGaps > 0
             ? `${requiredGaps} required issue(s)`
             : 'No required metadata gaps'}
         </Badge>
         {recommendedGaps > 0 && (
-          <Badge variant='outline' className='text-xs text-amber-600 border-amber-500/40'>
+          <Badge
+            variant='outline'
+            className='border-amber-500/40 text-xs text-amber-600'
+          >
             {recommendedGaps} recommended gap(s)
           </Badge>
         )}
@@ -179,9 +188,12 @@ export function MetadataChecklistView({ module }: MetadataChecklistViewProps) {
                 : 'border-border bg-background';
 
           return (
-            <div key={item.label} className={`rounded-lg border p-3 text-xs ${panelBorder}`}>
-              <div className='flex items-center justify-between gap-2 mb-1'>
-                <p className='font-semibold text-foreground'>{item.label}</p>
+            <div
+              key={item.label}
+              className={`rounded-lg border p-3 text-xs ${panelBorder}`}
+            >
+              <div className='mb-1 flex items-center justify-between gap-2'>
+                <p className='text-foreground font-semibold'>{item.label}</p>
                 <Badge variant={badgeVariant} className='text-[10px]'>
                   {item.summary}
                 </Badge>

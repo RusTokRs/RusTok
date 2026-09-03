@@ -140,7 +140,7 @@ export function TransitionControlCard({
             </div>
             <CardDescription className='text-xs'>
               Operation ID:{' '}
-              <span className='font-mono font-medium text-foreground'>
+              <span className='text-foreground font-mono font-medium'>
                 {checkpoint.operationId}
               </span>
             </CardDescription>
@@ -159,21 +159,21 @@ export function TransitionControlCard({
 
       <CardContent className='space-y-4'>
         {/* Predecessor vs Candidate digests */}
-        <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 text-xs'>
-          <div className='space-y-1 rounded-md border p-2.5 bg-background/50'>
-            <span className='font-medium text-muted-foreground'>
+        <div className='grid grid-cols-1 gap-3 text-xs sm:grid-cols-2'>
+          <div className='bg-background/50 space-y-1 rounded-md border p-2.5'>
+            <span className='text-muted-foreground font-medium'>
               Direct Predecessor (Standby N):
             </span>
-            <div className='font-mono break-all text-foreground'>
+            <div className='text-foreground font-mono break-all'>
               {shortDigest(checkpoint.predecessorDigest)}
             </div>
           </div>
 
-          <div className='space-y-1 rounded-md border p-2.5 bg-background/50'>
-            <span className='font-medium text-muted-foreground'>
+          <div className='bg-background/50 space-y-1 rounded-md border p-2.5'>
+            <span className='text-muted-foreground font-medium'>
               Candidate Artifact (N+1):
             </span>
-            <div className='font-mono break-all text-foreground'>
+            <div className='text-foreground font-mono break-all'>
               {shortDigest(checkpoint.candidateDigest)}
             </div>
           </div>
@@ -190,7 +190,7 @@ export function TransitionControlCard({
         {/* Anti-Flapping Warning */}
         {recoveryLimitReached && !isConverged && (
           <div className='flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400'>
-            <IconAlertTriangle className='h-4 w-4 shrink-0 mt-0.5' />
+            <IconAlertTriangle className='mt-0.5 h-4 w-4 shrink-0' />
             <div>
               <span className='font-semibold'>Zero-Flapping Invariant: </span>
               Single automatic recovery attempt already executed. Automated
@@ -201,8 +201,8 @@ export function TransitionControlCard({
 
         {/* Failed Closed Containment Notice */}
         {isFailed && (
-          <div className='flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive'>
-            <IconShieldLock className='h-4 w-4 shrink-0 mt-0.5' />
+          <div className='border-destructive/30 bg-destructive/10 text-destructive flex items-start gap-2 rounded-md border p-3 text-xs'>
+            <IconShieldLock className='mt-0.5 h-4 w-4 shrink-0' />
             <div>
               <span className='font-semibold'>
                 Permanent Containment (Failed Closed):{' '}
@@ -215,7 +215,7 @@ export function TransitionControlCard({
 
         {/* Action Error Message */}
         {actionError && (
-          <div className='rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive'>
+          <div className='border-destructive/30 bg-destructive/10 text-destructive rounded-md border p-3 text-xs'>
             {actionError}
           </div>
         )}
@@ -224,7 +224,7 @@ export function TransitionControlCard({
         <div className='border-t pt-3'>
           <button
             type='button'
-            className='inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground'
+            className='text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-xs font-medium'
             onClick={() => setShowHolds((prev) => !prev)}
           >
             {showHolds ? (
@@ -236,7 +236,7 @@ export function TransitionControlCard({
           </button>
 
           {showHolds && (
-            <div className='mt-2.5 rounded-md border bg-background/50 p-3 text-xs'>
+            <div className='bg-background/50 mt-2.5 rounded-md border p-3 text-xs'>
               {retentionHolds.length === 0 ? (
                 <p className='text-muted-foreground'>
                   No active GC retention holds.
@@ -297,12 +297,12 @@ export function TransitionControlCard({
 
         {/* Rollback Confirmation Form */}
         {showRollbackPrompt && (
-          <div className='rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-3'>
+          <div className='border-destructive/30 bg-destructive/5 space-y-3 rounded-md border p-3'>
             <div className='space-y-1'>
-              <h4 className='text-xs font-semibold text-destructive'>
+              <h4 className='text-destructive text-xs font-semibold'>
                 Confirm Single-Attempt Rollback
               </h4>
-              <p className='text-[11px] text-muted-foreground'>
+              <p className='text-muted-foreground text-[11px]'>
                 This will immediately demote candidate N+1, return traffic to
                 direct predecessor N, and advance the security epoch.
               </p>
