@@ -10,7 +10,7 @@ use rustok_marketplace_ledger::{
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    sea_query::Expr,
+    sea_query::{Expr, ExprTrait},
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -201,7 +201,7 @@ impl MarketplaceFinancialOperationJournal {
             )
             .col_expr(
                 marketplace_financial_operation::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::current_timestamp(),
             )
             .filter(marketplace_financial_operation::Column::TenantId.eq(tenant_id))
             .filter(

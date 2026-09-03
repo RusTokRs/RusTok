@@ -22,6 +22,7 @@ fn test_end_to_end_additive_migration_preflight_and_settings_guard() {
         migration_reasons: vec![],
         settings_guard_installed: true,
         has_irreversible_external_effects: false,
+        requires_cross_revision_data_copy: false,
     };
 
     let receipt = evaluate_migration_preflight(preflight_input);
@@ -107,6 +108,7 @@ fn test_destructive_migration_strictly_denies_automatic_mode() {
         ],
         settings_guard_installed: false,
         has_irreversible_external_effects: false,
+        requires_cross_revision_data_copy: false,
     };
 
     let receipt = evaluate_migration_preflight(preflight_input);

@@ -214,7 +214,7 @@ impl PaymentProviderEventJournal {
                 )
                 .col_expr(
                     provider_event::Column::UpdatedAt,
-                    Expr::current_timestamp().into(),
+                    Expr::current_timestamp(),
                 )
                 .filter(provider_event::Column::TenantId.eq(existing.tenant_id))
                 .filter(provider_event::Column::Id.eq(existing.id))
@@ -330,7 +330,7 @@ impl PaymentProviderEventJournal {
             )
             .col_expr(
                 provider_event::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::current_timestamp(),
             )
             .filter(provider_event::Column::TenantId.eq(tenant_id))
             .filter(provider_event::Column::Id.eq(event_id))
@@ -387,7 +387,7 @@ impl PaymentProviderEventJournal {
             )
             .col_expr(
                 provider_event::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::current_timestamp(),
             )
             .filter(provider_event::Column::TenantId.eq(tenant_id))
             .filter(provider_event::Column::Id.eq(event_id))
@@ -430,7 +430,7 @@ impl PaymentProviderEventJournal {
             )
             .col_expr(
                 provider_event::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::current_timestamp(),
             )
             .filter(provider_event::Column::TenantId.eq(input.tenant_id))
             .filter(provider_event::Column::Id.eq(input.event_id))
@@ -496,7 +496,7 @@ impl PaymentProviderEventJournal {
             .col_expr(provider_event::Column::ProcessedAt, Expr::value(Some(now)))
             .col_expr(
                 provider_event::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::current_timestamp(),
             )
             .filter(provider_event::Column::TenantId.eq(input.tenant_id))
             .filter(provider_event::Column::Id.eq(input.event_id))
@@ -561,7 +561,7 @@ impl PaymentProviderEventJournal {
             )
             .col_expr(
                 provider_event::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::current_timestamp(),
             )
             .filter(provider_event::Column::TenantId.eq(input.tenant_id))
             .filter(provider_event::Column::Id.eq(input.event_id))

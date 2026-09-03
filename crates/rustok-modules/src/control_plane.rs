@@ -12,7 +12,8 @@ use crate::{
     ArtifactMcpInvoker, ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError,
     ArtifactSecretAuthorizer, ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer,
     ArtifactSecretValueConsumer, ArtifactSettingsRecoveryAuthorizer,
-    ArtifactSettingsRecoveryCipher, ControlPlaneInfrastructure,
+    ArtifactSettingsRecoveryCipher, ArtifactDataCrossRevisionCopier, ArtifactQueueDrainService,
+    ControlPlaneInfrastructure,
     ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeTopologyResolver,
     ModuleArtifactSecurityAuthorizer, ModuleDefinitionCatalog, ModuleDefinitionError,
     ModuleEffectivePolicy, ModuleEffectivePolicyChannelInput,
@@ -329,6 +330,16 @@ impl ModuleControlPlane {
     /// Returns the durable release-admission intent journal for staging reservations and recovery.
     pub fn release_admission_journal(&self) -> ReleaseAdmissionIntentJournal {
         ReleaseAdmissionIntentJournal
+    }
+
+    /// Returns the crash-safe cross-revision artifact data copier for maintenance-only data evolution.
+    pub fn artifact_data_copier(&self) -> ArtifactDataCrossRevisionCopier {
+        ArtifactDataCrossRevisionCopier::new(self.db.clone())
+    }
+
+    /// Returns the bounded drain service for predecessor-incompatible or decommissioned queues.
+    pub fn queue_drain(&self) -> ArtifactQueueDrainService {
+        ArtifactQueueDrainService::new(self.db.clone())
     }
 
     /// Returns the platform security owner for immutable artifact release

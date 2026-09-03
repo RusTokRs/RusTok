@@ -17,6 +17,7 @@ mod composition;
 mod conflict_fences;
 mod contracts;
 mod control_plane;
+pub mod data_copier;
 mod data;
 mod data_snapshot;
 mod definition;
@@ -51,6 +52,7 @@ mod policy_transition_event;
 mod promotion;
 mod publication_evidence;
 mod publish_validation;
+pub mod queue_drain;
 mod reconciliation;
 mod recovery;
 mod release_admission_journal;
@@ -73,8 +75,16 @@ mod transition_store;
 mod trust;
 
 pub use conflict_fences::{ConflictFenceSet, ConflictKey, ConflictKeyKind};
+pub use data_copier::{
+    ArtifactDataCopyError, ArtifactDataCrossRevisionCopier, CrossRevisionDataCopyReceipt,
+    CrossRevisionDataCopyRequest,
+};
 pub use migration_preflight::{
     MigrationPreflightInput, MigrationPreflightReceipt, UpdateMode, evaluate_migration_preflight,
+};
+pub use queue_drain::{
+    ArtifactQueueDrainError, ArtifactQueueDrainReceipt, ArtifactQueueDrainRequest,
+    ArtifactQueueDrainService,
 };
 pub use release_admission_journal::{
     ReleaseAdmissionIntentJournal, ReleaseAdmissionIntentRecord, ReleaseAdmissionJournalError,

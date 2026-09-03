@@ -46,6 +46,7 @@ pub struct MigrationPreflightInput {
     pub migration_reasons: Vec<String>,
     pub settings_guard_installed: bool,
     pub has_irreversible_external_effects: bool,
+    pub requires_cross_revision_data_copy: bool,
 }
 
 /// Evaluates migration safety and computes the canonical update mode.
@@ -59,6 +60,13 @@ pub fn evaluate_migration_preflight(input: MigrationPreflightInput) -> Migration
     if input.has_irreversible_external_effects {
         denial_reasons.push(
             "Release contains uncompensated or irreversible external side effects".to_string(),
+        );
+    }
+
+    if input.requires_cross_revision_data_copy {
+        denial_reasons.push(
+            "Cross-revision dynamic data-contract evolution is classified as maintenance-only"
+                .to_string(),
         );
     }
 
@@ -98,6 +106,7 @@ mod tests {
             migration_reasons: vec![],
             settings_guard_installed: true,
             has_irreversible_external_effects: false,
+            requires_cross_revision_data_copy: false,
         };
 
         let receipt = evaluate_migration_preflight(input);
@@ -117,6 +126,7 @@ mod tests {
             migration_reasons: vec!["Dropped column legacy_code".to_string()],
             settings_guard_installed: true,
             has_irreversible_external_effects: false,
+            requires_cross_revision_data_copy: false,
         };
 
         let receipt = evaluate_migration_preflight(input);
@@ -137,6 +147,7 @@ mod tests {
             migration_reasons: vec![],
             settings_guard_installed: true,
             has_irreversible_external_effects: true,
+            requires_cross_revision_data_copy: false,
         };
 
         let receipt = evaluate_migration_preflight(input);
@@ -146,6 +157,31 @@ mod tests {
                 .denial_reasons
                 .iter()
                 .any(|r| r.contains("irreversible"))
+        );
+    }
+
+    #[test]
+    fn test_cross_revision_data_copy_fails_to_maintenance() {
+        let input = MigrationPreflightInput {
+            operation_id: Uuid::new_v4(),
+            module_slug: "order".to_string(),
+            source_schema_digest: "sha256:source".to_string(),
+            target_schema_digest: "sha256:target".to_string(),
+            migration_plan_digest: "sha256:plan".to_string(),
+            is_additive_safe: true,
+            migration_reasons: vec![],
+            settings_guard_installed: true,
+            has_irreversible_external_effects: false,
+            requires_cross_revision_data_copy: true,
+        };
+
+        let receipt = evaluate_migration_preflight(input);
+        assert_eq!(receipt.mode, UpdateMode::Maintenance);
+        assert!(
+            receipt
+                .denial_reasons
+                .iter()
+                .any(|r| r.contains("Cross-revision"))
         );
     }
 }

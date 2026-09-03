@@ -253,7 +253,7 @@ impl ReturnCompletionOperationJournal {
             )
             .col_expr(
                 return_completion_operation::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::current_timestamp(),
             )
             .filter(return_completion_operation::Column::TenantId.eq(tenant_id))
             .filter(return_completion_operation::Column::Id.eq(operation_id))
@@ -287,7 +287,7 @@ impl ReturnCompletionOperationJournal {
             )
             .col_expr(
                 return_completion_operation::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::current_timestamp(),
             )
             .filter(return_completion_operation::Column::TenantId.eq(input.tenant_id))
             .filter(return_completion_operation::Column::Id.eq(input.operation_id))
@@ -412,7 +412,7 @@ impl ReturnCompletionOperationJournal {
             )
             .col_expr(
                 return_completion_operation::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::current_timestamp(),
             )
             .filter(return_completion_operation::Column::TenantId.eq(tenant_id))
             .filter(return_completion_operation::Column::Id.eq(operation_id))
@@ -467,7 +467,7 @@ impl ReturnCompletionOperationJournal {
             )
             .col_expr(
                 return_completion_operation::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::current_timestamp(),
             )
             .filter(return_completion_operation::Column::TenantId.eq(tenant_id))
             .filter(return_completion_operation::Column::Id.eq(operation_id))

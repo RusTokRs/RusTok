@@ -14,7 +14,7 @@ use rustok_payment::{
     PaymentProviderProcessedEventObserver, PaymentProviderWebhookResult, PaymentService,
 };
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+    ColumnTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect,
     sea_query::{Expr, SimpleExpr},
 };
@@ -468,6 +468,9 @@ fn marketplace_extension_filter(backend: DatabaseBackend) -> SimpleExpr {
         }
         DatabaseBackend::MySql => {
             Expr::cust("CAST(event_metadata AS CHAR) LIKE '%marketplace_reversal%'")
+        }
+        _ => {
+            Expr::cust("CAST(event_metadata AS TEXT) LIKE '%marketplace_reversal%'")
         }
     }
 }

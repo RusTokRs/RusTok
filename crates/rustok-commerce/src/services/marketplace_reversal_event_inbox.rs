@@ -14,7 +14,8 @@ use rustok_marketplace_ledger::{
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, sea_query::Expr,
+    QueryOrder, QuerySelect, Set,
+    sea_query::{Expr, ExprTrait},
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

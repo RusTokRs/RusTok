@@ -21,6 +21,34 @@ boundary and the module-owned admin transport for backend write/build logic.
 
 ## Current verification evidence
 
+On 2026-09-03, Bounded Item-Specific Queue Drain and Claim Security Revalidation were delivered per Section 4 of the Rollback Plan:
+- `crates/rustok-modules/src/event_delivery.rs` added pre-claim security revalidation: verifies that the target module release is not quarantined or revoked in `module_artifact_security_states` and that the installation is active without uninstallation evidence. Quarantined or revoked items are immediately dead-lettered with `revoked_or_quarantined` error code without claiming or executing work.
+- `crates/rustok-modules/src/schedule_delivery.rs` updated `load_admitted_descriptor` to exclude releases marked as `quarantined` or `revoked` in `module_artifact_security_states`, automatically cancelling schedule deliveries with `schedule_unavailable`.
+- `crates/rustok-modules/src/queue_drain.rs` implemented `ArtifactQueueDrainService`, providing bounded item-specific draining (`drain_incompatible_work`) for pending event and schedule deliveries when predecessor incompatibility is declared, setting `cancelled`/`dead_letter` status with code `predecessor_incompatible_drain` with zero synthetic traffic and zero work generation.
+- `crates/rustok-modules/src/control_plane.rs` exposed `queue_drain()` on `ModuleControlPlane`.
+- Verified by:
+  - `cargo test --locked -p rustok-modules --test queue_drain_and_security_revalidation_tests` (2 passed, 0 warnings).
+  - `cargo check -p rustok-server --test module_graphql_native_parity` (passed, 0 errors).
+  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
+  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+
+On 2026-09-03, Crash-Safe Cross-Revision Artifact Data Copier and Preflight Evolution Classification were delivered per Section 4 of the Rollback Plan:
+- `crates/rustok-modules/src/migration_preflight.rs` added `requires_cross_revision_data_copy` to `MigrationPreflightInput`, enforcing that any dynamic data-contract evolution fails closed to `UpdateMode::Maintenance`, strictly denying `UpdateMode::Automatic` mode per Section 4.
+- `crates/rustok-modules/src/migrations/m20260903_000047_artifact_data_copy_operations.rs` added durable persistence for page request intents (`status = 'intent'`), page digests, receipts (`status = 'committed'`), and tenant RLS isolation.
+- `crates/rustok-modules/src/data_copier.rs` implemented `ArtifactDataCrossRevisionCopier`:
+  - Paged migration of structured records between contract revisions with deterministic page SHA-256 digests.
+  - Create-only item idempotency: preexisting target keys with identical values succeed idempotently, while conflicting target values immediately abort with `ArtifactDataCopyError::TargetKeyConflict` without overwriting target data.
+  - Terminal page receipts and monotonic namespace revision advances.
+  - Crash reconciliation via `reconcile_stale_intents`.
+- `crates/rustok-modules/src/control_plane.rs` exposed `artifact_data_copier()` on `ModuleControlPlane`.
+- Verified by:
+  - `cargo test --locked -p rustok-modules --test data_cross_revision_copier_tests` (2 passed, 0 warnings).
+  - `cargo test --locked -p rustok-modules --lib migration_preflight` (4 passed, 0 warnings).
+  - `cargo test --locked -p rustok-modules --test migration_and_settings_safety_tests` (3 passed, 0 warnings).
+  - `cargo check -p rustok-server --test module_graphql_native_parity` (passed, 0 errors).
+  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
+  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+
 On 2026-09-03, Protected Artifact Settings Recovery Points, Separate Preview/Apply Purge Operations, and Retirement Fences were delivered per Section 4 of the Rollback Plan:
 - `apps/server/src/services/artifact_purge_recovery_host.rs` implemented `ServerArtifactSettingsRecoveryAuthorizer`, `ServerArtifactDataPurgeAuthorizer`, and `ServerArtifactSettingsRecoveryCipher` with AES/SHA-256 context-bound ciphertext encryption and 30-day retention policies.
 - `apps/server/src/graphql/types.rs` added `ArtifactSettingsPurgePreview`, `ArtifactSettingsPurgeReceipt`, `ArtifactDataPurgePreview`, `ArtifactDataPurgeReceipt`, `ArtifactSettingsRecoveryPointReceipt`, and `ArtifactSettingsRestoreReceipt`.

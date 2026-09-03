@@ -87,7 +87,7 @@ requireMarkers("crates/rustok-migrations/tests/support/backfill_fixtures.rs", [
   "pub async fn apply_setup",
   "execute_unprepared(&fixture.setup_sql)",
   "pub async fn assert_results",
-  "query_all(Statement::from_string(",
+  "query_all_raw(Statement::from_string(",
   "assertion must return exactly one row",
   'rows[0].try_get("", "passed")',
   "assertion must return boolean column `passed`",

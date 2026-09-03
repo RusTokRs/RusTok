@@ -143,7 +143,7 @@ impl PaymentProviderOperationJournal {
             )
             .col_expr(
                 provider_operation::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::current_timestamp(),
             )
             .filter(provider_operation::Column::Id.eq(id))
             .filter(

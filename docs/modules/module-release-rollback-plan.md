@@ -1962,14 +1962,16 @@ backend preflight.
 - [ ] Support transactional additive expansion and resumable idempotent
   backfills whose every checkpoint preserves the single canonical
   representation, with uncertain-outcome recovery.
-- [ ] Classify the current create-only cross-revision artifact-data copier as
+- [x] Classify the current create-only cross-revision artifact-data copier as
   maintenance-only. Do not claim automatic dynamic data-contract evolution
   until one canonical namespace is proven safe for all N/N+1 writes and return
   to N without dual read/write or reverse-copy behavior.
-- [ ] Make the maintenance-only copier crash-safe with a durable page request
+  Verified by `migration_preflight.rs` and `data_cross_revision_copier_tests.rs`.
+- [x] Make the maintenance-only copier crash-safe with a durable page request
   digest/intent before writes, create-only item idempotency, terminal page
   receipt/checkpoint, and unknown-commit reconciliation; stale source or
   conflicting target stops without overwrite.
+  Verified by `m20260903_000047_artifact_data_copy_operations.rs`, `data_copier.rs`, and `data_cross_revision_copier_tests.rs`.
 - [ ] Implement the maintenance-only broker-owned object migration for a
   persistence-revision change: freeze and digest-pin the exact source logical
   object inventory/bytes, reserve durable per-copy intents and idempotency
@@ -1997,9 +1999,10 @@ backend preflight.
   evaluating active observation window checkpoints (`find_active_observing_checkpoint`). Concurrent settings writes
   must validate against both predecessor (N) and candidate (N+1) schemas via `validate_settings_intersection`.
   Verified by `crates/rustok-modules/tests/migration_and_settings_safety_tests.rs`.
-- [ ] Add bounded item-specific drain authorization for predecessor-incompatible
+- [x] Add bounded item-specific drain authorization for predecessor-incompatible
   queued work; it creates no work or traffic and revalidates revocation,
   quarantine, capability, security, and policy state before every claim.
+  Verified by `event_delivery.rs`, `schedule_delivery.rs`, `queue_drain.rs`, and `queue_drain_and_security_revalidation_tests.rs`.
 - [ ] Commit point-of-no-return and traffic/job/write fences before any
   compensating, non-transactional, destructive, or irreversible effect.
 - [x] Implement explicit rollback-window closure and the finalization gate.

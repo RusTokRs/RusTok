@@ -8,13 +8,29 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 const failures = [];
-const runtimeOnly = process.argv.slice(2).includes("--runtime-only");
-for (const argument of process.argv.slice(2)) {
-  if (argument !== "--runtime-only") failures.push(`unknown argument ${argument}`);
+let rootDir = repoRoot;
+const argv = process.argv.slice(2);
+let runtimeOnly = false;
+for (let index = 0; index < argv.length; index += 1) {
+  const argument = argv[index];
+  if (argument === "--runtime-only") {
+    runtimeOnly = true;
+  } else if (argument === "--root") {
+    const value = argv[index + 1];
+    if (!value) {
+      failures.push("--root requires a value");
+    } else {
+      rootDir = path.resolve(value);
+      runtimeOnly = true;
+    }
+    index += 1;
+  } else {
+    failures.push(`unknown argument ${argument}`);
+  }
 }
 
 function read(relativePath) {
-  const file = path.join(repoRoot, relativePath);
+  const file = path.join(rootDir, relativePath);
   if (!fs.existsSync(file)) {
     failures.push(`${relativePath}: required file is missing`);
     return "";
@@ -153,8 +169,7 @@ for (const subprocessFile of [
 }
 
 if (!runtimeOnly) {
-  requireMarkers(".github/workflows/hardening-gates.yml", [
-    "Verify worker runtime backpressure policy",
+  requireMarkers(".github/workflows/worker-runtime-infrastructure.yml", [
     "verify-worker-runtime-policy.mjs",
   ]);
 }
@@ -167,7 +182,7 @@ for (const temporaryWorkflow of [
   ".github/workflows/one-off-kill-cancelled-build-processes.yml",
   ".github/workflows/one-off-pin-release-actions.yml",
 ]) {
-  if (fs.existsSync(path.join(repoRoot, temporaryWorkflow))) {
+  if (fs.existsSync(path.join(rootDir, temporaryWorkflow))) {
     failures.push(`${temporaryWorkflow}: temporary privileged workflow must not remain`);
   }
 }

@@ -290,7 +290,7 @@ impl MarketplaceSellerService {
                         )
                         .col_expr(
                             seller::Column::UpdatedAt,
-                            sea_orm::sea_query::Expr::current_timestamp().into(),
+                            sea_orm::sea_query::Expr::current_timestamp(),
                         )
                         .filter(seller::Column::TenantId.eq(tenant_id))
                         .filter(seller::Column::Id.eq(seller_id))
@@ -565,7 +565,7 @@ impl MarketplaceSellerService {
                         )
                         .col_expr(
                             seller::Column::UpdatedAt,
-                            sea_orm::sea_query::Expr::current_timestamp().into(),
+                            sea_orm::sea_query::Expr::current_timestamp(),
                         )
                         .filter(seller::Column::TenantId.eq(tenant_id))
                         .filter(seller::Column::Id.eq(seller_id))

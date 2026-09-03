@@ -430,7 +430,7 @@ impl ReturnCompletionOrchestrationService {
             )
             .col_expr(
                 return_completion_command::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::current_timestamp(),
             )
             .filter(return_completion_command::Column::TenantId.eq(tenant_id))
             .filter(return_completion_command::Column::Id.eq(command_id))

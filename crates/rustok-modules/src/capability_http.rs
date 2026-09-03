@@ -198,16 +198,18 @@ impl CapabilityBroker for ArtifactHttpCapabilityBroker {
 
         let status = response.status().as_u16();
 
-        if let Some(content_length) = response.content_length() {
-            if content_length > self.max_response_bytes as u64 {
-                return Err(SandboxError::HostCapability {
-                    capability: call.capability.clone(),
-                    message: format!(
-                        "HTTP response content length ({content_length} bytes) exceeds limit of {} bytes",
-                        self.max_response_bytes
-                    ),
-                });
-            }
+        if response
+            .content_length()
+            .is_some_and(|len| len > self.max_response_bytes as u64)
+        {
+            let content_length = response.content_length().unwrap_or_default();
+            return Err(SandboxError::HostCapability {
+                capability: call.capability.clone(),
+                message: format!(
+                    "HTTP response content length ({content_length} bytes) exceeds limit of {} bytes",
+                    self.max_response_bytes
+                ),
+            });
         }
 
         let mut response_headers = HashMap::new();

@@ -356,7 +356,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                 )
                 .col_expr(
                     inventory_level::Column::UpdatedAt,
-                    Expr::current_timestamp().into(),
+                    Expr::current_timestamp(),
                 )
                 .filter(inventory_level::Column::Id.eq(level.id));
             if !allows_backorder {
@@ -560,7 +560,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             )
             .col_expr(
                 inventory_level::Column::UpdatedAt,
-                Expr::current_timestamp().into(),
+                Expr::current_timestamp(),
             )
             .filter(inventory_level::Column::InventoryItemId.eq(item.id))
             .filter(inventory_level::Column::LocationId.eq(reservation.location_id))
