@@ -356,7 +356,7 @@ impl TranslationTargetProvider for StaticSettingsTranslationTargetProvider {
         context: PortContext,
         request: TranslationPatchRequest,
     ) -> Result<TranslationPatchValidation, PortError> {
-        validate_translation_read_context(&context)?;
+        validate_translation_apply_context(&context)?;
         authorize(&context, Action::Update)?;
         request
             .validate()
@@ -546,6 +546,14 @@ impl TranslationTargetProvider for StaticSettingsTranslationTargetProvider {
             .map(parse_change_cursor)
             .transpose()?;
         let (through, after) = match parsed {
+            Some((through, after)) if through == after => {
+                let current = self
+                    .global_highwater(tenant_id, &registries)
+                    .await?
+                    .unwrap_or(after)
+                    .max(after);
+                (current, after)
+            }
             Some(cursor) => cursor,
             None => (self.global_highwater(tenant_id, &registries).await?.unwrap_or(0), 0),
         };
@@ -596,10 +604,10 @@ impl TranslationTargetProvider for StaticSettingsTranslationTargetProvider {
             changes.truncate(usize::from(request.limit));
         }
         let last_seq = changes.last().map(|(change_seq, _)| *change_seq);
-        let next_cursor = last_seq
-            .filter(|last_seq| *last_seq < through)
-            .map(|last_seq| change_cursor(through, last_seq))
-            .transpose()?;
+        let next_cursor = Some(match last_seq {
+            Some(last_seq) if last_seq < through => change_cursor(through, last_seq)?,
+            _ => change_cursor(through, through)?,
+        });
 
         Ok(TranslationTargetChangePage {
             changes: changes.into_iter().map(|(_, change)| change).collect(),
@@ -1023,6 +1031,8 @@ mod tests {
     fn bounded_change_cursor_round_trips() {
         let cursor = change_cursor(42, 17).expect("cursor");
         assert_eq!(parse_change_cursor(&cursor).unwrap(), (42, 17));
+        let tail = change_cursor(42, 42).expect("tail cursor");
+        assert_eq!(parse_change_cursor(&tail).unwrap(), (42, 42));
         assert!(parse_change_cursor(&OpaqueCursor::new("42").unwrap()).is_err());
     }
 
