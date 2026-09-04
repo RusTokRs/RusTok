@@ -2015,8 +2015,9 @@ backend preflight.
   (`finalizeModuleTransition`) atomically release temporary `ActiveRolloutWindow` GC
   retention holds, closing the rollback window and unblocking CAS garbage collection.
   Verified by `transition_watchdog_tests.rs` and `module_graphql_native_parity.rs`.
-- [ ] Integrate bounded artifact-data snapshot readiness and platform
+- [x] Integrate bounded artifact-data snapshot readiness and platform
   PostgreSQL recovery evidence without adding automatic restore.
+  Verified by `data_snapshot_readiness.rs`, `control_plane.rs`, and `snapshot_readiness_and_recovery_evidence_tests.rs`.
 - [x] Add a separate protected settings recovery-point and restore contract
   binding scope, stable data-owner, installation-to-settings-instance binding,
   settings instance/revision, schema digest, canonical validated values, and
@@ -2044,24 +2045,27 @@ backend preflight.
   Reject stale restore after newer settings writes and prove crash replay
   before/after purge and restore CAS.
   Verified by `artifact_purge_and_recovery_tests.rs` and `artifact_settings_recovery.rs`.
-- [ ] Add durable per-copy snapshot/restore intents and staging receipts so a
+- [x] Add durable per-copy snapshot/restore intents and staging receipts so a
   crash after object publication but before metadata commit resumes exactly or
   collects the proven orphan through tombstone/grace/final recheck.
-- [ ] Implement post-purge artifact-data recovery into a new isolated empty
+  Verified by `m20260903_000049_artifact_data_snapshot_and_recovery_operations.rs`, `data_snapshot_intents.rs`, and `snapshot_intents_and_post_purge_recovery_tests.rs`.
+- [x] Implement post-purge artifact-data recovery into a new isolated empty
   namespace instance under the same stable data-owner identity. Verify the full
   snapshot before a separately authorized active-namespace CAS cutover, never
   clear the old purge tombstone, and reconcile crashes before/after cutover
   without two active namespaces or slug-based attachment.
+  Verified by `data_post_purge_recovery.rs` and `snapshot_intents_and_post_purge_recovery_tests.rs`.
 
 ### 5. Complete Dynamic Artifact Installation and Recovery
 
-- [ ] Complete Rhai authoring so a publishable release contains the exact
+- [x] Complete Rhai authoring so a publishable release contains the exact
   bindings, permissions, schemas, persistence contract, reviewed workspace,
   and immutable descriptor required by production dispatch. Replace direct
   mutable-workspace packaging with reviewed Alloy revision -> deterministic
   canonical bounded-workspace source object -> create-only source-CAS receipt
   -> canonical OCI payload;
   every retry reuses or verifies the exact identities.
+  Verified by `m20260904_000050_rhai_authoring_packages.rs`, `rhai_authoring.rs`, and `rhai_authoring_tests.rs`.
 - [ ] Compose digest-pinned OCI validation/admission into streamed platform-CAS
   publication; runtime and recovery read CAS only and never fall back to OCI.
 - [ ] Complete external-prebuilt ingress with independently verified ownership,

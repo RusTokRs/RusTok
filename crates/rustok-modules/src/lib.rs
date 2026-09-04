@@ -20,6 +20,9 @@ mod control_plane;
 mod data;
 pub mod data_copier;
 pub mod data_object_migration;
+pub mod data_post_purge_recovery;
+pub mod data_snapshot_intents;
+pub mod data_snapshot_readiness;
 pub mod data_upgrade;
 mod data_snapshot;
 mod definition;
@@ -59,6 +62,7 @@ mod reconciliation;
 mod recovery;
 mod release_admission_journal;
 mod release_preparation;
+pub mod rhai_authoring;
 mod resolution;
 mod retention;
 mod runtime;
@@ -85,6 +89,19 @@ pub use data_object_migration::{
     ArtifactDataObjectMigrationError, ArtifactDataObjectMigrationReceipt,
     ArtifactDataObjectMigrationRequest, ArtifactDataObjectMigrationService,
 };
+pub use data_post_purge_recovery::{
+    ArtifactDataPostPurgeRecoveryService, PostPurgeRecoveryCutoverReceipt, PostPurgeRecoveryError,
+    PrepareRecoveryRequest, StagedRecoveryReceipt,
+};
+pub use data_snapshot_intents::{
+    ArtifactDataSnapshotIntentService, ReconciledSnapshotIntentsReceipt, SnapshotCopyIntent,
+    SnapshotCopyKind, SnapshotIntentError,
+};
+pub use data_snapshot_readiness::{
+    ArtifactDataRecoveryReadinessAttestation, ArtifactDataRecoveryReadinessService,
+    ArtifactDataSnapshotReadiness, PlatformPostgresRecoveryEvidence, PostgresRecoveryEvidenceError,
+    RecoveryReadinessError, SnapshotReadinessError,
+};
 pub use data_upgrade::{
     DataUpgradeDecision, DataUpgradeEvidence, DataUpgradePhase, evaluate_data_upgrade_decision,
 };
@@ -97,6 +114,10 @@ pub use queue_drain::{
 };
 pub use release_admission_journal::{
     ReleaseAdmissionIntentJournal, ReleaseAdmissionIntentRecord, ReleaseAdmissionJournalError,
+};
+pub use rhai_authoring::{
+    RhaiAuthoringError, RhaiAuthoringPackageCommand, RhaiAuthoringPublishableRelease,
+    RhaiAuthoringService, RhaiOciPayload, RhaiSourceCasReceipt,
 };
 pub use retention::{
     RetentionError, RetentionHoldKind, RetentionHoldLedger, RetentionHoldRecord, RetentionTarget,

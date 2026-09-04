@@ -21,6 +21,53 @@ boundary and the module-owned admin transport for backend write/build logic.
 
 ## Current verification evidence
 
+On 2026-09-04, Rhai Authoring Pipeline and Immutable Release Packaging were delivered per Section 5 of the Rollback Plan:
+- `crates/rustok-modules/src/migrations/m20260904_000050_rhai_authoring_packages.rs` created persistent table `module_artifact_rhai_authoring_packages` with RLS tenant isolation.
+- `crates/rustok-modules/src/rhai_authoring.rs` implemented `RhaiAuthoringService`:
+  - Enforces deterministic packaging from reviewed Alloy revision identity (`alloy_script_id`, `alloy_revision`, `review_decision_id`, `review_digest`).
+  - Serializes `RhaiWorkspace` into canonical bytes (`canonical_bytes()`) and computes SHA-256 `source_digest`.
+  - Implements create-only source-CAS publication (`RhaiSourceCasReceipt`) into `ArtifactBlobStore`.
+  - Constructs and validates finalized `ModuleArtifactDescriptor` with exact runtime bindings (`ModuleRuntimeBinding`), permissions (`ArtifactPermissionDescriptor`), schemas (`ArtifactSchemaDocument`), and persistence contract (`ArtifactPersistenceContract`).
+  - Generates canonical `RhaiOciPayload` descriptor and persists the authoring package.
+  - Guarantees strict idempotency on retries (`IdempotencyConflict` on content mutation).
+- `crates/rustok-modules/src/control_plane.rs` exposed `rhai_authoring()` on `ModuleControlPlane`.
+- Verified by:
+  - `cargo test --locked -p rustok-modules --test rhai_authoring_tests` (2 passed, 0 warnings).
+  - `cargo test --locked -p rustok-modules --test snapshot_intents_and_post_purge_recovery_tests` (2 passed, 0 warnings).
+  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
+  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+
+On 2026-09-03, Durable Snapshot/Restore Intents, Staging Receipts, and Post-Purge Data Recovery were delivered per Section 4 of the Rollback Plan:
+- `crates/rustok-modules/src/migrations/m20260903_000049_artifact_data_snapshot_and_recovery_operations.rs` created persistent tables `module_artifact_data_snapshot_copy_intents` and `module_artifact_data_namespace_recovery_operations` with RLS tenant isolation.
+- `crates/rustok-modules/src/data_snapshot_intents.rs` implemented `ArtifactDataSnapshotIntentService`:
+  - Enforces durable per-copy intent logging (`status = 'intent'`) before storage publication.
+  - Issues staging receipt (`status = 'staging'`) after object upload.
+  - Finalizes intent commit (`status = 'committed'`) upon metadata transaction completion.
+  - Provides `reconcile_stale_intents` for crash recovery: resumes commits when parent snapshot is ready, or safely collects and deletes proven orphan objects after grace expiry (`status = 'collected'`).
+- `crates/rustok-modules/src/data_post_purge_recovery.rs` implemented `ArtifactDataPostPurgeRecoveryService`:
+  - `prepare_recovery`: verifies the existing purge tombstone (`purged_at IS NOT NULL`) and ready snapshot, creating an isolated staging recovery operation (`status = 'staging'`).
+  - `verify_staged_recovery`: verifies full snapshot digests and restored counts, promoting to `status = 'verified'`.
+  - `execute_cas_cutover`: executes an atomic CAS cutover advancing the active namespace revision (`tombstone_rev + 1`, `purged_at = NULL` for the new revision) while preserving the historical purge operation records in `module_artifact_data_purge_operations` completely intact ("never clear the old purge tombstone").
+- `crates/rustok-modules/src/control_plane.rs` exposed `artifact_data_snapshot_intents()` and `artifact_data_post_purge_recovery()` on `ModuleControlPlane`.
+- Verified by:
+  - `cargo test --locked -p rustok-modules --test snapshot_intents_and_post_purge_recovery_tests` (2 passed, 0 warnings).
+  - `cargo test --locked -p rustok-modules --test snapshot_readiness_and_recovery_evidence_tests` (2 passed, 0 warnings).
+  - `cargo test --locked -p rustok-modules --test artifact_purge_and_recovery_tests` (1 passed, 0 warnings).
+  - `cargo check -p rustok-server --test module_graphql_native_parity` (passed, 0 errors).
+  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
+  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+
+On 2026-09-03, Bounded Artifact-Data Snapshot Readiness and Platform PostgreSQL Recovery Evidence were delivered per Section 4 of the Rollback Plan:
+- `crates/rustok-modules/src/data_snapshot_readiness.rs` implemented `ArtifactDataRecoveryReadinessService`:
+  - `evaluate_snapshot_readiness`: evaluates whether a valid, ready snapshot with a SHA-256 manifest exists within operational SLA (`max_age`) and unexpired retention (`retain_until > now()`). Staging or unready snapshots are rejected.
+  - `evaluate_platform_recovery_evidence`: evaluates and attests database platform recovery capabilities (PostgreSQL WAL LSN checkpoint and replication mode, or SQLite page state) with cryptographic SHA-256 evidence digests.
+  - `attest_recovery_readiness`: generates combined `ArtifactDataRecoveryReadinessAttestation`. Enforces the platform architectural invariant `automatic_restore_authorized = false`, proving readiness without granting automatic restore authority.
+- `crates/rustok-modules/src/control_plane.rs` exposed `artifact_data_recovery_readiness()` on `ModuleControlPlane`.
+- Verified by:
+  - `cargo test --locked -p rustok-modules --test snapshot_readiness_and_recovery_evidence_tests` (2 passed, 0 warnings).
+  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
+  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+
 On 2026-09-03, Data-Upgrade Phase, Irreversibility, and Point-of-No-Return Fences were delivered per Section 4 of the Rollback Plan:
 - `crates/rustok-modules/src/data_upgrade.rs` implemented `evaluate_data_upgrade_decision`, deriving `DataUpgradePhase` (`Compatible`, `MaintenancePreCutover`, `PointOfNoReturn`, `Completed`) and irreversibility from owner evidence: `MigrationPreflightReceipt` (additive safety, cross-revision copy requirements), live settings schema intersection validity (`settings_intersection_valid`), unmigrated live object counts, and committed point-of-no-return state.
 - `crates/rustok-modules/src/conflict_fences.rs` added `Traffic` and `JobQueue` conflict key scopes and implemented `derive_point_of_no_return_fences`, combining ReleaseUnit, DataMigrationOwner (write), Traffic, JobQueue, Namespace, and Topology fences.

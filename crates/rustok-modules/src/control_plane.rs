@@ -13,7 +13,10 @@ use crate::{
     ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError, ArtifactSecretAuthorizer,
     ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer, ArtifactSecretValueConsumer,
     ArtifactSettingsRecoveryAuthorizer, ArtifactSettingsRecoveryCipher,
-    ArtifactDataObjectMigrationService, ControlPlaneInfrastructure,
+    ArtifactDataObjectMigrationService, ArtifactDataRecoveryReadinessService,
+    ArtifactDataSnapshotIntentService, ArtifactDataPostPurgeRecoveryService,
+    ArtifactBlobStore, RhaiAuthoringService,
+    ControlPlaneInfrastructure,
     ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeTopologyResolver,
     ModuleArtifactSecurityAuthorizer, ModuleDefinitionCatalog, ModuleDefinitionError,
     ModuleEffectivePolicy, ModuleEffectivePolicyChannelInput,
@@ -344,6 +347,28 @@ impl ModuleControlPlane {
     /// Returns the broker-owned object migration service for persistence revision changes.
     pub fn artifact_data_object_migration(&self) -> ArtifactDataObjectMigrationService {
         ArtifactDataObjectMigrationService::new(self.db.clone())
+    }
+
+    /// Returns the recovery readiness evaluation and attestation service for bounded snapshot readiness
+    /// and platform PostgreSQL recovery evidence.
+    pub fn artifact_data_recovery_readiness(&self) -> ArtifactDataRecoveryReadinessService {
+        ArtifactDataRecoveryReadinessService::new(self.db.clone())
+    }
+
+    /// Returns the durable per-copy snapshot/restore intent and staging receipt service.
+    pub fn artifact_data_snapshot_intents(&self) -> ArtifactDataSnapshotIntentService {
+        ArtifactDataSnapshotIntentService::new(self.db.clone())
+    }
+
+    /// Returns the post-purge artifact data recovery service for isolated staging and verified CAS cutover.
+    pub fn artifact_data_post_purge_recovery(&self) -> ArtifactDataPostPurgeRecoveryService {
+        ArtifactDataPostPurgeRecoveryService::new(self.db.clone())
+    }
+
+    /// Returns the Rhai authoring service for packaging reviewed Alloy revisions into
+    /// immutable publishable releases with deterministic source-CAS receipts.
+    pub fn rhai_authoring(&self, blob_store: Arc<dyn ArtifactBlobStore>) -> RhaiAuthoringService {
+        RhaiAuthoringService::new(self.db.clone(), blob_store)
     }
 
     /// Returns the platform security owner for immutable artifact release
