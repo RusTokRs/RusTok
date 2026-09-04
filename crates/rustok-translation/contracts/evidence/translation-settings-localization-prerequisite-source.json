@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "scope": "translation_settings_localization_prerequisite",
+  "status": "source_prerequisite_only",
+  "reviewed_main": "bd732fbf80c9169af2d86888a7c44cfc5b9486e8",
+  "reviewed_main_tree": "f80eaf1a64bd1367630cb841129024a86b9f5f92",
+  "source_facts": {
+    "localized_field_registry_present": true,
+    "stable_field_ids_present": true,
+    "localized_string_leaf_validation_present": true,
+    "sensitive_path_fences_present": true,
+    "deterministic_source_value_snapshot_present": true,
+    "parallel_exact_locale_storage_present": false,
+    "localized_row_revision_cas_present": false,
+    "settings_owner_idempotency_receipt_present": false,
+    "settings_translation_change_cursor_or_event_present": false,
+    "settings_translation_provider_registered": false
+  },
+  "required_next_owner_contract": {
+    "named_settings_owner": true,
+    "tenant_module_field_locale_identity": true,
+    "canonical_tenant_locale": true,
+    "exact_locale_reads_without_runtime_fallback": true,
+    "base_settings_revision_cas": true,
+    "localized_row_revision_cas": true,
+    "idempotent_owner_apply_receipt": true,
+    "content_free_change_evidence": true,
+    "sensitive_fields_never_persisted_as_localized_copy": true,
+    "translation_provider_registration_only_after_owner_contract": true
+  },
+  "forbidden_shortcuts": [
+    "store translated settings back into the language-neutral settings JSON",
+    "treat rendered fallback as exact locale coverage",
+    "localize secret or sensitivity-fenced paths",
+    "register a Translation provider before owner CAS and idempotency exist",
+    "invent a generic settings event without an owner transaction boundary"
+  ],
+  "validation": {
+    "author_tests_run": false,
+    "author_verifier_run": false,
+    "author_cargo_run": false,
+    "author_format_run": false,
+    "author_ci_run": false,
+    "localized_storage_proven": false,
+    "owner_apply_proven": false,
+    "translation_provider_proven": false
+  }
+}
