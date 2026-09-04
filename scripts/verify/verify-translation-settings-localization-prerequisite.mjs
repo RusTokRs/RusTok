@@ -173,12 +173,14 @@ for (const forbidden of [
 
 for (const marker of [
   'name = "rustok-modules-translation"',
+  'hex.workspace = true',
   'rustok-modules = { workspace = true, default-features = false }',
   'rustok-translation-targets.workspace = true',
+  'sha2.workspace = true',
 ]) requireText(
   sources.adapterCargo,
   marker,
-  `${paths.adapterCargo}: isolated owner Translation adapter crate`,
+  `${paths.adapterCargo}: isolated owner Translation adapter crate with local revision hashing`,
 );
 for (const forbidden of ['sea-orm', 'rustok-translation.workspace']) forbidText(
   sources.adapterCargo,
@@ -190,6 +192,7 @@ for (const marker of [
   'pub const STATIC_SETTINGS_TRANSLATION_OWNER_SLUG: &str = "modules";',
   'pub const STATIC_SETTINGS_TRANSLATION_RESOURCE_KIND: &str = "static_settings";',
   'pub struct StaticSettingsTranslationIdentity',
+  'pub struct StaticSettingsTranslationRevisions',
   'pub fn from_registry(',
   'registry.module_slug()',
   '.localized_fields()',
@@ -205,10 +208,24 @@ for (const marker of [
   'ai_export_allowed: false',
   'max_characters: None',
   'preserves_whitespace: false',
+  'const RESOURCE_REVISION_PREFIX: &str = "settings-owner-v1";',
+  'const SOURCE_REVISION_PREFIX: &str = "settings-source-v1";',
+  'const TARGET_REVISION_PREFIX: &str = "settings-target-v1";',
+  'pub fn revisions_for_snapshot(',
+  'snapshot.owner_revision == 0',
+  'fields.sort_by(|left, right| left.field_id.cmp(&right.field_id))',
+  'hash_part(&mut source_hasher, snapshot.source_locale.as_bytes())',
+  'hash_part(&mut source_hasher, field.source_value.as_bytes())',
+  'let has_exact_target = fields.iter().any(|field| field.target_revision.is_some())',
+  'hash_part(&mut target_hasher, snapshot.target_locale.as_bytes())',
+  'hash_part(&mut target_hasher, revision.to_string().as_bytes())',
+  'None => hash_part(&mut target_hasher, b"missing")',
+  'target_owner_revision > snapshot.owner_revision',
+  'digest_revision(TARGET_REVISION_PREFIX, target_hasher)',
 ]) requireText(
   sources.adapter,
   marker,
-  `${paths.adapter}: stable identity and conservative descriptor mapping`,
+  `${paths.adapter}: stable identity, descriptors, and opaque revision mapping`,
 );
 for (const forbidden of [
   'DatabaseConnection',
@@ -222,7 +239,7 @@ for (const forbidden of [
 ]) forbidText(
   sources.adapter,
   forbidden,
-  `${paths.adapter}: descriptor layer must stay persistence-free and unregistered`,
+  `${paths.adapter}: revision layer must stay persistence-free and unregistered`,
 );
 
 for (const marker of [
@@ -272,11 +289,11 @@ for (const marker of [
   `${paths.migrationRegistry}: Settings migration registration`,
 );
 
-if (evidence.schema_version !== 7) {
-  failures.push(`${paths.evidence}: schema_version must be 7`);
+if (evidence.schema_version !== 8) {
+  failures.push(`${paths.evidence}: schema_version must be 8`);
 }
-if (evidence.status !== 'provider_descriptor_source_ready') {
-  failures.push(`${paths.evidence}: status must be provider_descriptor_source_ready`);
+if (evidence.status !== 'provider_revision_source_ready') {
+  failures.push(`${paths.evidence}: status must be provider_revision_source_ready`);
 }
 
 for (const [key, expected] of Object.entries({
@@ -304,6 +321,14 @@ for (const [key, expected] of Object.entries({
   provider_descriptor_tenant_private_classification: true,
   provider_descriptor_ai_export_default_denied: true,
   provider_descriptor_owner_validation_remains_authoritative: true,
+  provider_resource_revision_maps_shared_owner_clock: true,
+  provider_source_revision_digest_present: true,
+  provider_source_revision_stable_across_target_only_writes: true,
+  provider_target_revision_digest_present: true,
+  provider_target_revision_none_without_exact_rows: true,
+  provider_target_revision_uses_per_field_revisions: true,
+  provider_target_revision_digest_is_order_independent: true,
+  provider_revision_mapping_rejects_inconsistent_snapshot: true,
   settings_translation_provider_registered: false,
 })) {
   if (evidence.source_facts?.[key] !== expected) {
@@ -312,7 +337,6 @@ for (const [key, expected] of Object.entries({
 }
 
 for (const key of [
-  'provider_revision_mapping',
   'provider_validate_apply_adapter',
   'translation_provider_registration',
 ]) {
@@ -330,6 +354,7 @@ for (const [key, expected] of Object.entries({
   exact_progress_source_proven: true,
   provider_identity_source_proven: true,
   provider_descriptor_source_proven: true,
+  provider_revision_source_proven: true,
   runtime_database_execution_proven: false,
   translation_provider_proven: false,
 })) {
@@ -339,19 +364,19 @@ for (const [key, expected] of Object.entries({
 }
 
 for (const marker of [
-  'conservative field descriptors source-ready',
-  '`StaticSettingsTranslationIdentity::field_descriptors`',
-  'profile: `LocalizedScalar`',
-  'classification: `TenantPrivate`',
-  '`ai_export_allowed = false`',
-  '`max_characters = None` is not permission to skip validation',
-  'registry membership alone does not create a progress unit',
-  'Why revision mapping remains separate',
-  'collapse independent target-row revisions into an invented aggregate revision',
+  'opaque revision mapping source-ready',
+  '`StaticSettingsTranslationIdentity::revisions_for_snapshot`',
+  '`resource_revision` is `settings-owner-v1:<owner_revision>`',
+  'target-only localized write therefore advances `resource_revision` but leaves `source_revision` unchanged',
+  '`target_revision` is `None` while none of the current source fields has an exact target row',
+  'either its positive owner target-row revision or an explicit `missing` marker',
+  'does **not** replace the per-field revisions',
+  'Fields are sorted before digesting',
+  'target digest as a substitute for row CAS',
 ]) requireText(
   sources.handoff,
   marker,
-  `${paths.handoff}: Settings descriptor handoff`,
+  `${paths.handoff}: Settings revision handoff`,
 );
 
 if (failures.length > 0) {
@@ -361,5 +386,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Settings owner prerequisites, stable identities, and conservative field descriptors are source-ready; revision mapping, validate/apply mapping, and registration remain open',
+  '✔ Settings owner prerequisites, stable identities/descriptors, and opaque revision mapping are source-ready; validate/apply mapping and registration remain open',
 );
