@@ -19,8 +19,9 @@ const paths = {
   localizedOwner: 'crates/rustok-modules/src/static_settings_localization.rs',
   localizedMigration:
     'crates/rustok-modules/src/migrations/m20260904_000051_static_localized_settings.rs',
+  changeMigration:
+    'crates/rustok-modules/src/migrations/m20260904_000052_static_settings_change_cursor.rs',
   migrationRegistry: 'crates/rustok-modules/src/migrations/mod.rs',
-  modulesLib: 'crates/rustok-modules/src/lib.rs',
   evidence:
     'crates/rustok-translation/contracts/evidence/translation-settings-localization-prerequisite-source.json',
   handoff:
@@ -45,7 +46,7 @@ for (const marker of [
 ]) requireText(
   sources.centralPlan,
   marker,
-  `${paths.centralPlan}: Settings P0 gate remains open until change evidence/provider work`,
+  `${paths.centralPlan}: broad Settings onboarding remains open until source-locale/provider work`,
 );
 
 for (const marker of [
@@ -78,7 +79,7 @@ for (const marker of [
 ]) requireText(
   sources.lifecycle,
   marker,
-  `${paths.lifecycle}: pre-existing static owner CAS/idempotency must stay explicit`,
+  `${paths.lifecycle}: static owner transaction/revision prerequisite`,
 );
 
 for (const marker of [
@@ -127,29 +128,57 @@ for (const marker of [
 );
 
 for (const marker of [
-  'mod m20260904_000051_static_localized_settings;',
-  'Box::new(m20260904_000051_static_localized_settings::Migration)',
+  'CREATE TABLE module_static_settings_changes',
+  'change_seq BIGSERIAL PRIMARY KEY',
+  "change_kind TEXT NOT NULL CHECK (change_kind IN ('base_projection', 'localized_target'))",
+  'UNIQUE (tenant_id, module_slug, owner_revision)',
+  'idx_module_static_settings_changes_scope',
+  '(tenant_id, module_slug, change_seq)',
+  'ENABLE ROW LEVEL SECURITY',
+  'module_static_settings_changes_scope',
+  'rustok_log_static_settings_base_projection',
+  'AFTER UPDATE OF settings ON tenant_modules',
+  'lifecycle.revision + 1',
+  'lifecycle.active_idempotency_key IS NOT NULL',
+  'rustok_log_static_settings_localized_target',
+  'AFTER UPDATE OF value, revision, owner_revision ON module_static_localized_settings',
+  'NEW.owner_revision',
+  'NEW.revision',
+  'INSERT OR IGNORE INTO module_static_settings_changes',
 ]) requireText(
-  sources.migrationRegistry,
+  sources.changeMigration,
   marker,
-  `${paths.migrationRegistry}: migration registration`,
+  `${paths.changeMigration}: content-free transactional repair cursor`,
+);
+
+for (const forbidden of [
+  'NEW.value,',
+  'OLD.value,',
+  'source_text',
+  'translated_text',
+  'payload_json',
+]) forbidText(
+  sources.changeMigration,
+  forbidden,
+  `${paths.changeMigration}: change evidence must remain content-free`,
 );
 
 for (const marker of [
-  'mod static_settings_localization;',
-  'StaticSettingsLocalizationRegistry',
-  'StaticSettingsLocalizationService',
+  'mod m20260904_000051_static_localized_settings;',
+  'Box::new(m20260904_000051_static_localized_settings::Migration)',
+  'mod m20260904_000052_static_settings_change_cursor;',
+  'Box::new(m20260904_000052_static_settings_change_cursor::Migration)',
 ]) requireText(
-  sources.modulesLib,
+  sources.migrationRegistry,
   marker,
-  `${paths.modulesLib}: owner API exposure`,
+  `${paths.migrationRegistry}: Settings migration registration`,
 );
 
-if (evidence.schema_version !== 2) {
-  failures.push(`${paths.evidence}: schema_version must be 2`);
+if (evidence.schema_version !== 3) {
+  failures.push(`${paths.evidence}: schema_version must be 3`);
 }
-if (evidence.status !== 'owner_exact_locale_source_ready') {
-  failures.push(`${paths.evidence}: status must be owner_exact_locale_source_ready`);
+if (evidence.status !== 'owner_change_cursor_source_ready') {
+  failures.push(`${paths.evidence}: status must be owner_change_cursor_source_ready`);
 }
 
 for (const [key, expected] of Object.entries({
@@ -166,7 +195,11 @@ for (const [key, expected] of Object.entries({
   localized_apply_shares_static_owner_revision_present: true,
   localized_apply_idempotency_receipt_present: true,
   canonical_tenant_locale_enforced: true,
-  settings_translation_change_cursor_or_event_present: false,
+  settings_translation_change_cursor_or_event_present: true,
+  content_free_transactional_change_evidence_present: true,
+  base_projection_change_evidence_present: true,
+  localized_target_change_evidence_present: true,
+  bounded_monotonic_change_sequence_present: true,
   settings_translation_provider_registered: false,
   authoritative_source_locale_policy_present: false,
 })) {
@@ -176,10 +209,10 @@ for (const [key, expected] of Object.entries({
 }
 
 for (const key of [
-  'content_free_transactional_change_evidence',
   'authoritative_source_locale_policy',
-  'translation_provider_registration_after_change_evidence',
+  'translation_provider_registration_after_source_locale_policy',
   'provider_exact_locale_progress',
+  'provider_bounded_change_reader',
 ]) {
   if (evidence.remaining_owner_contract?.[key] !== true) {
     failures.push(`${paths.evidence}: remaining_owner_contract.${key} must be true`);
@@ -189,6 +222,7 @@ for (const key of [
 for (const [key, expected] of Object.entries({
   localized_storage_source_proven: true,
   localized_owner_apply_source_proven: true,
+  change_cursor_source_proven: true,
   runtime_database_execution_proven: false,
   translation_provider_proven: false,
 })) {
@@ -198,17 +232,19 @@ for (const [key, expected] of Object.entries({
 }
 
 for (const marker of [
-  'Correction to the previous prerequisite',
-  'already uses the shared `StaticTenantLifecycleStore` expected-revision CAS',
-  '`module_static_localized_settings` stores localized copy outside',
-  '`read_exact` requires canonical `TenantLocale` and never performs runtime fallback',
-  '`apply_exact` requires both expected static owner revision and expected target-row revision',
-  'define transactional content-free Settings localization change evidence',
+  'transactional repair cursor source-ready',
+  '`module_static_settings_changes`',
+  '`change_seq` is an append-only database sequence',
+  '`base_projection` rows invalidate the Settings source projection',
+  '`localized_target` rows identify only stable field ID',
+  'same database transaction as the owner write',
+  'initial static override materialization may conservatively emit `base_projection` evidence',
   'define the authoritative source-locale policy',
+  'bounded owner change reader over `change_seq`',
 ]) requireText(
   sources.handoff,
   marker,
-  `${paths.handoff}: corrected and advanced Settings handoff`,
+  `${paths.handoff}: Settings repair-cursor handoff`,
 );
 
 if (failures.length > 0) {
@@ -218,5 +254,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Settings exact-locale owner storage/read/apply source contract is present; change evidence, source-locale policy and provider onboarding remain open',
+  '✔ Settings exact-locale owner storage/apply and content-free transactional repair cursor are source-ready; source-locale policy and provider onboarding remain open',
 );
