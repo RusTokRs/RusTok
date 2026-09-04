@@ -65,7 +65,7 @@ jobs:
         if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
         shell: bash
         run: |
-          cargo metadata --format-version 1 --no-deps >/dev/null
+          cargo check -p rustok-modules-translation
           if git diff --quiet -- Cargo.lock; then
             echo "updated=false" >> "$GITHUB_OUTPUT"
             exit 0
