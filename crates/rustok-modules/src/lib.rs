@@ -76,6 +76,7 @@ mod settings;
 mod settings_guard;
 mod static_package;
 mod static_settings_localization;
+mod static_settings_source_locale;
 mod transition_coordinator;
 mod transition_receipts;
 mod transition_store;
@@ -345,7 +346,7 @@ pub use distribution_rollout::{
     ModuleStaticDistributionRolloutRequest, ModuleStaticDistributionRolloutStatus,
     ModuleStaticDistributionRolloutWorkIdentity, ModuleStaticDistributionTopologyResolver,
     ModuleStaticDistributionTopologySnapshot, ModuleStaticDistributionTransitionKind,
-    SeaOrmModuleStaticDistributionRolloutService, module_static_distribution_topology_digest,
+    SeaOrmModuleStaticDistributionRolloutService, module_static_distribution_rollout_digest,
 };
 pub use event_delivery::{
     ARTIFACT_EVENT_DELIVERY_WORKER, ArtifactEventDeliveryCompletion, ArtifactEventDeliveryConfig,
@@ -551,6 +552,11 @@ pub use static_settings_localization::{
     StaticLocalizedSettingApplyCommand, StaticLocalizedSettingRecord,
     StaticSettingsLocalizedSourceSnapshot, StaticSettingsLocalizationError,
     StaticSettingsLocalizationRegistry, StaticSettingsLocalizationService,
+};
+pub use static_settings_source_locale::{
+    StaticSettingsAuthoritativeSourceSnapshot, StaticSettingsSourceLocaleAssignCommand,
+    StaticSettingsSourceLocaleError, StaticSettingsSourceLocaleRecord,
+    StaticSettingsSourceLocaleService,
 };
 pub use static_package::{
     StaticModuleCatalogContract, StaticModuleCatalogValidationError,
