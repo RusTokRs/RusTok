@@ -1,8 +1,8 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "scope": "translation_settings_localization_prerequisite",
-  "status": "owner_reader_progress_source_ready",
-  "base_main": "4b8da7e78fc6c4c4db7c5921b3007fee94e979ef",
+  "status": "provider_identity_source_ready",
+  "base_main": "132a2b09026f5e305a9c2d5ec06328c2658e1e37",
   "source_facts": {
     "localized_field_registry_present": true,
     "stable_field_ids_present": true,
@@ -37,10 +37,15 @@
     "exact_locale_snapshot_stability_guard_present": true,
     "exact_locale_progress_counts_exact_rows_only": true,
     "exact_locale_progress_ignores_runtime_fallback": true,
+    "provider_resource_identity_mapping_present": true,
+    "provider_field_identity_mapping_present": true,
+    "provider_identity_reverse_mapping_fail_closed": true,
+    "provider_identity_adapter_uses_owner_public_contract_only": true,
+    "provider_identity_adapter_has_no_persistence_access": true,
     "settings_translation_provider_registered": false
   },
   "remaining_owner_contract": {
-    "provider_identity_mapping": true,
+    "provider_field_descriptor_mapping": true,
     "provider_validate_apply_adapter": true,
     "translation_provider_registration": true
   },
@@ -54,8 +59,9 @@
     "infer source locale from the current tenant default or runtime fallback",
     "bind source locale to the current shared owner revision so target-only applies invalidate it",
     "let newly committed changes extend a repair scan after its high-water mark is captured",
-    "read Settings owner tables directly from the Translation provider",
-    "register a Translation provider before identity mapping and validate/apply adapter semantics exist"
+    "read Settings owner tables directly from the Translation adapter",
+    "invent field requiredness, AI-export policy, or aggregate target revision in the identity-only slice",
+    "register a Translation provider before field descriptors and validate/apply revision semantics are proven"
   ],
   "validation": {
     "author_tests_run": false,
@@ -69,6 +75,7 @@
     "source_locale_owner_source_proven": true,
     "bounded_reader_source_proven": true,
     "exact_progress_source_proven": true,
+    "provider_identity_source_proven": true,
     "runtime_database_execution_proven": false,
     "translation_provider_proven": false
   }

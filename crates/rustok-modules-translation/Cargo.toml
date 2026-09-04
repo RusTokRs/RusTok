@@ -1,0 +1,12 @@
+[package]
+name = "rustok-modules-translation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Translation target adapter contracts for static module Settings"
+
+[dependencies]
+rustok-modules = { workspace = true, default-features = false }
+rustok-translation-targets.workspace = true
+thiserror.workspace = true
