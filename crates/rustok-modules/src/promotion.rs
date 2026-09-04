@@ -414,6 +414,8 @@ pub enum ModuleStaticPromotionError {
     ReleaseNotFound,
     #[error("only active platform-built releases can request static promotion")]
     ReleaseNotEligible,
+    #[error("external prebuilt releases cannot enter native promotion")]
+    ExternalPrebuiltCannotBePromoted,
     #[error("published release does not retain exact platform build evidence")]
     BuildEvidenceMissing,
     #[error("promotion command does not match the immutable platform build evidence")]
@@ -452,6 +454,21 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
     } else {
         ""
     };
+    let external = connection
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT release_digest FROM module_external_prebuilt_ingress WHERE release_digest = {}",
+                placeholder(backend, 1),
+            ),
+            vec![release_id.to_owned().into()],
+        ))
+        .await
+        .map_err(store_error)?;
+    if external.is_some() {
+        return Err(ModuleStaticPromotionError::ExternalPrebuiltCannotBePromoted);
+    }
+
     let release = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend,
@@ -464,8 +481,14 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
             vec![release_id.to_owned().into()],
         ))
         .await
-        .map_err(store_error)?
-        .ok_or(ModuleStaticPromotionError::ReleaseNotFound)?;
+        .map_err(store_error)?;
+
+    let release = match release {
+        Some(row) => row,
+        None => {
+            return Err(ModuleStaticPromotionError::ReleaseNotFound);
+        }
+    };
     let publish_request_id: Option<String> =
         release.try_get("", "request_id").map_err(store_error)?;
     let module_slug: String = release.try_get("", "slug").map_err(store_error)?;
@@ -476,6 +499,9 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
     let artifact_origin: String = release
         .try_get("", "artifact_origin")
         .map_err(store_error)?;
+    if artifact_origin == "external_prebuilt" {
+        return Err(ModuleStaticPromotionError::ExternalPrebuiltCannotBePromoted);
+    }
     let checksum: Option<String> = release
         .try_get("", "checksum_sha256")
         .map_err(store_error)?;

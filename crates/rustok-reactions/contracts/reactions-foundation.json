@@ -61,7 +61,6 @@
     "rustok-media",
     "rustok-groups",
     "rustok-commerce",
-    "async-graphql",
     "axum",
     "leptos"
   ],

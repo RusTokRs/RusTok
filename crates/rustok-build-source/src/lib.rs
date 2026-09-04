@@ -139,7 +139,12 @@ impl CasArchiveStore {
     ) -> Result<CasArchiveReceipt, CasArchiveError> {
         let digest_hex = validate_identity(source_reference, source_digest)?;
         validate_destination(destination)?;
-        let archive_path = self.root.join(format!("{digest_hex}.tar"));
+        let direct_path = self.root.join(digest_hex);
+        let archive_path = if direct_path.exists() {
+            direct_path
+        } else {
+            self.root.join(format!("{digest_hex}.tar"))
+        };
         let archive_metadata = fs::symlink_metadata(&archive_path)
             .map_err(|error| CasArchiveError::Unavailable(error.to_string()))?;
         if archive_metadata.file_type().is_symlink() || !archive_metadata.is_file() {
@@ -204,10 +209,15 @@ impl CasArchivePublisher {
             return Err(CasArchiveError::DigestMismatch);
         }
 
-        let destination = self.root.join(format!("{digest_hex}.tar"));
-        if path_entry_exists(&destination)? {
-            return validate_published_archive(&destination, expected_digest, limits, false);
-        }
+        let direct_path = self.root.join(digest_hex);
+        let tar_path = self.root.join(format!("{digest_hex}.tar"));
+        let destination = if path_entry_exists(&direct_path)? {
+            return validate_published_archive(&direct_path, expected_digest, limits, false);
+        } else if path_entry_exists(&tar_path)? {
+            return validate_published_archive(&tar_path, expected_digest, limits, false);
+        } else {
+            direct_path
+        };
 
         let (temporary_path, mut temporary) = create_upload_file(&self.root)?;
         let copied = copy_and_hash_archive(archive_path, &mut temporary, limits.max_archive_bytes);
@@ -230,6 +240,7 @@ impl CasArchivePublisher {
 
         match fs::hard_link(&temporary_path, &destination) {
             Ok(()) => {
+                let _ = fs::hard_link(&destination, &tar_path);
                 fs::remove_file(&temporary_path).map_err(io_error)?;
                 Ok(CasArchivePublishReceipt {
                     source_digest: inspection.source_digest,

@@ -27,10 +27,10 @@ requireText(
 );
 requireText(
   serverCargo,
-  'mod-forum     = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum", "rustok-distribution/mod-forum"]',
+  'mod-forum     = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-forum", "rustok-distribution/mod-forum"]',
   "Forum server feature must remain independent from Moderation owner selection",
 );
-const defaultFeatures = serverCargo.match(/default = \[([\s\S]*?)\]\nredis-cache =/u)?.[1];
+const defaultFeatures = serverCargo.match(/default = \[([\s\S]*?)\]\r?\nredis-cache =/u)?.[1];
 if (!defaultFeatures) {
   throw new Error("server default feature block could not be located");
 }

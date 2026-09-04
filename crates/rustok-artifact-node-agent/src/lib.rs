@@ -19,5 +19,10 @@ pub use agent::{
 };
 pub use config::ArtifactNodeAgentConfig;
 pub use materializer::StorageArtifactNodeMaterializer;
-pub use slot_supervisor::{DeploymentSlot, SlotState, SlotSupervisor, SlotSupervisorError};
+pub use slot_supervisor::{
+    DeploymentSlot, FencedWorkerGenerationCoordinator, HttpSsrSwitchingCoordinator,
+    PostSwitchRecoveryReceipt, PreSwitchFailureReceipt, SlotState, SlotSupervisor,
+    SlotSupervisorError, TrafficSwitchReceipt, WorkerFenceReceipt, WorkerHandoffReceipt,
+    WorkerRollbackReceipt,
+};
 pub use watchdog::{NodeWatchdog, WatchdogConfig, WatchdogRecoveryReceipt, WatchdogStatus};

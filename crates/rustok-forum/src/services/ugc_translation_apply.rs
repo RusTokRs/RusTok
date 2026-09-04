@@ -25,7 +25,7 @@ pub(crate) struct ForumUgcTranslationApplyResult {
     pub target_revision: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ApplyExactForumTopicTranslationInput {
     pub source_locale: TenantLocale,
     pub target_locale: TenantLocale,
@@ -36,7 +36,7 @@ pub(crate) struct ApplyExactForumTopicTranslationInput {
     pub expected_target_revision: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ApplyExactForumReplyTranslationInput {
     pub source_locale: TenantLocale,
     pub target_locale: TenantLocale,
@@ -417,7 +417,7 @@ async fn lock_subject_and_revision_in_tx(
                     vec![tenant_id.into(), subject_id.into()],
                 ))
                 .await?;
-            if reserve.rows_affected != 1 {
+            if reserve.rows_affected() != 1 {
                 return Err(ForumUgcTranslationApplyError::RevisionUnavailable);
             }
 

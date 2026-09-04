@@ -275,14 +275,28 @@ where
             options.lock_ttl_secs.max(1),
         )
         .await?;
-    let bootstrap_import = ports
+    let bootstrap_import = match ports
         .import_base_distribution(
             &database.runtime,
             &plan,
             options.bootstrap_public_key_base64.as_deref(),
         )
-        .await?;
-    ports.apply_remaining_schema(&database.runtime).await?;
+        .await
+    {
+        Ok(import) => import,
+        Err(error) => {
+            let _ = ports
+                .set_state(&database.runtime, session.id, InstallState::FreshInstallCleaned)
+                .await;
+            return Err(error);
+        }
+    };
+    if let Err(error) = ports.apply_remaining_schema(&database.runtime).await {
+        let _ = ports
+            .set_state(&database.runtime, session.id, InstallState::FreshInstallCleaned)
+            .await;
+        return Err(error);
+    }
 
     let preflight = record_success(
         ports,
@@ -352,7 +366,17 @@ where
     session = ports
         .set_state(&database.runtime, session.id, InstallState::SchemaApplied)
         .await?;
-    let seed_outcome = ports.apply_seed(&database.runtime, &plan).await?;
+
+    // --- Post-Schema Durable Boundary: Failures require recovery rather than fresh-install cleanup ---
+    let seed_outcome = match ports.apply_seed(&database.runtime, &plan).await {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let _ = ports
+                .set_state(&database.runtime, session.id, InstallState::RecoveryRequired)
+                .await;
+            return Err(error);
+        }
+    };
     session = ports
         .set_tenant_id(&database.runtime, session.id, seed_outcome.tenant_id)
         .await?;
@@ -376,11 +400,27 @@ where
     session = ports
         .set_state(&database.runtime, session.id, InstallState::SeedApplied)
         .await?;
-    let password = crate::resolve_local_secret_value(&plan.admin.password, "admin password")
-        .map_err(|error| InstallExecutionError::new(error.to_string()))?;
-    let admin_outcome = ports
+    let password = match crate::resolve_local_secret_value(&plan.admin.password, "admin password") {
+        Ok(pw) => pw,
+        Err(error) => {
+            let _ = ports
+                .set_state(&database.runtime, session.id, InstallState::RecoveryRequired)
+                .await;
+            return Err(InstallExecutionError::new(error.to_string()));
+        }
+    };
+    let admin_outcome = match ports
         .provision_admin(&database.runtime, &plan, seed_outcome.tenant_id, &password)
-        .await?;
+        .await
+    {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let _ = ports
+                .set_state(&database.runtime, session.id, InstallState::RecoveryRequired)
+                .await;
+            return Err(error);
+        }
+    };
     let admin = record_success(
         ports,
         &database.runtime,
@@ -403,19 +443,38 @@ where
             InstallState::AdminProvisioned,
         )
         .await?;
-    let output = crate::execute_distribution_deployment(
+    let session_id = session.id;
+    let output = match crate::execute_distribution_deployment(
         ports,
         &database.runtime,
         &plan,
         session,
         seed_outcome.tenant_id,
     )
-    .await?;
+    .await
+    {
+        Ok(out) => out,
+        Err(error) => {
+            let _ = ports
+                .set_state(&database.runtime, session_id, InstallState::RecoveryRequired)
+                .await;
+            return Err(error);
+        }
+    };
     session = output.session;
     let deployment_receipt = output.receipt;
-    let verify_outcome = ports
+    let verify_outcome = match ports
         .verify_installation(&database.runtime, &plan, seed_outcome.tenant_id)
-        .await?;
+        .await
+    {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let _ = ports
+                .set_state(&database.runtime, session.id, InstallState::RecoveryRequired)
+                .await;
+            return Err(error);
+        }
+    };
     let verify = record_success(
         ports,
         &database.runtime,
@@ -433,7 +492,7 @@ where
     session = ports
         .set_state(&database.runtime, session.id, InstallState::Verified)
         .await?;
-    let finalize = record_success(
+    let finalize = match record_success(
         ports,
         &database.runtime,
         &session,
@@ -445,7 +504,16 @@ where
             "tenant_slug": verify_outcome.tenant_slug
         }),
     )
-    .await?;
+    .await
+    {
+        Ok(fin) => fin,
+        Err(error) => {
+            let _ = ports
+                .set_state(&database.runtime, session.id, InstallState::RecoveryRequired)
+                .await;
+            return Err(error);
+        }
+    };
     session = ports
         .set_state(&database.runtime, session.id, InstallState::Completed)
         .await?;

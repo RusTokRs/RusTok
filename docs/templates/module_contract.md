@@ -145,6 +145,20 @@ Briefly: what the current plan is focused on.
 
 Briefly: what is already stabilized and what invariants the module already maintains.
 
+## Release and Data Rollback Readiness
+
+- Runtime kind: `<Core | Optional | Extension>`
+- Rollback unit: `<Component | Family | Platform>`
+- Data boundary owner: `<tables / CAS blobs / data boundary: none>`
+- Native migrations: `<list or none>`
+- Supported migration policy: `<AdditiveOnly | ExpandContract | MaintenanceOnly | none>`
+- Predecessor standby strategy: `<Standby DB + Slot | Hot-Standby Slot | CAS Hold Blob | none>`
+- Rollback eligibility: `<AutomaticSingleAttempt | DeniedMaintenanceOnly>`
+- N/N+1 compatibility: `<Read / Write / Config / Intermediate-checkpoint notes>`
+- External side effects & fences: `<outbox idempotency / carrier dispatch / none>`
+- Uncertain-outcome recovery: `<durable checkpoints / coordinator / none>`
+- Responsible module owner: `<Module Owner / Platform Team>`
+
 ## Stages
 
 ### 1. Nearest slice
@@ -169,7 +183,7 @@ Additional sections are allowed:
 - `## Priorities`
 - `## Readiness criteria`
 
-But `## Scope of work`, `## Current state`, `## Stages`, `## Verification` and `## Update rules` must be present as a minimum standard.
+But `## Scope of work`, `## Current state`, `## Release and Data Rollback Readiness`, `## Stages`, `## Verification` and `## Update rules` must be present as a minimum standard.
 
 ## 5. `rustok-module.toml`
 

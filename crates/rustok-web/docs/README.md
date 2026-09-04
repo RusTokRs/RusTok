@@ -18,6 +18,8 @@ Current entry points:
 - `HttpError`, `HttpResult` and `ErrorBody` for HTTP boundary errors.
 - `port_error_to_http_error(error)` for preserving typed module-port status semantics while
   redacting infrastructure failure details.
+- `BrowserAssetRegistry`, `ReleaseQualifiedAsset`, and `ReleaseAssetSet` for serving
+  immutable, content-addressed browser assets with strict 404s and dual N/N+1 retention.
 
 Use `json_response` in server or module HTTP adapters. Keep response formatting
 inside this shared boundary.

@@ -72,10 +72,7 @@ async fn forum_with_moderation_materializes_topic_and_reply_adapters() {
             .expect("selected Moderation owner must publish a materialized subject registry");
 
     assert_eq!(subjects.len(), 2);
-    assert!(subjects.contains(
-        "forum",
-        rustok_moderation::ModerationSubjectKind::ForumTopic
-    ));
+    assert!(subjects.contains("forum", rustok_moderation::ModerationSubjectKind::ForumTopic));
     assert!(subjects.contains("forum", rustok_moderation::ModerationSubjectKind::ForumPost));
 }
 

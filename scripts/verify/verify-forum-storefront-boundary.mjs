@@ -123,7 +123,9 @@ if (existsSync(files.removedApi)) {
   fail(`${files.removedApi}: removed api.rs must stay absent; transport/graphql_adapter.rs owns the read contract`);
 }
 assertNotContains(lib, "mod api;", `${files.lib}: lib must not wire the removed api module`);
-assertContains(lib, "pub use ui::leptos::ForumView", `${files.lib}: lib must only wire and re-export ForumView`);
+if (!lib.includes("pub use ui::leptos::ForumView") && !lib.includes("pub use ui::ForumView")) {
+  fail(`${files.lib}: lib must only wire and re-export ForumView`);
+}
 assertContains(plan, "verify-forum-storefront-boundary.mjs", `${files.plan}: local plan must mention storefront fast boundary guardrail`);
 assertContains(plan, "shared `RichTextHtml`", `${files.plan}: local plan must record the shared read-only richtext boundary`);
 assertContains(registry, "verify-forum-storefront-boundary.mjs", `${files.registry}: central readiness board must mention storefront fast boundary guardrail`);

@@ -10,6 +10,20 @@
 - Static and runtime evidence: `crates/rustok-rbac/contracts/evidence/rbac-contract-test-static-matrix.json` and `crates/rustok-rbac/contracts/evidence/rbac-provider-runtime-order-smoke.json`.
 - Evidence: `scripts/verify/verify-rbac-admin-boundary.mjs` locks the admin boundary guardrail.
 
+## Release and Data Rollback Readiness
+
+- Runtime kind: `Core`
+- Rollback unit: `Component`
+- Data boundary owner: `roles`, `permissions`, `role_permissions`, `user_roles`, `rbac_invalidation_generations`, `rbac_artifact_release_permission_definitions`, `rbac_artifact_release_permission_translations`, `rbac_artifact_permission_installations`, `rbac_artifact_permission_definitions`, `rbac_artifact_permission_translations`, `rbac_artifact_role_permissions`, `rbac_artifact_role_permission_operations`
+- Native migrations: 5 canonical migrations (`m20260714_900001`, `m20260714_900002`, `m20260716_000001`, `m20260717_000001`, `m20260803_000001`)
+- Supported migration policy: `AdditiveOnly`
+- Predecessor standby strategy: `Standby DB + Slot`
+- Rollback eligibility: `AutomaticSingleAttempt`
+- N/N+1 compatibility: Additive definitions and projections; inert release definitions keyed by `(release_digest, module_slug, permission_key)`; scoped install projects under `(scope, installation_id)`. Unchanged authorization fingerprint retains continuity; fingerprint diff requires explicit operator approval; display text changes are excluded from fingerprint and remain non-breaking.
+- External side effects & fences: Monotonic RBAC epoch binding; outbox event publication (`RBAC_EVENT_ROLE_PERMISSIONS_ASSIGNED`) commits in owner transaction; removed grants become dormant; rollback never restores revoked grants.
+- Uncertain-outcome recovery: Crash-safe idempotent projections; transaction rollback restores canonical schema.
+- Responsible module owner: Platform RBAC Owner
+
 ## Source of truth
 
 This is the canonical live RBAC implementation plan. It records source state, open
@@ -257,6 +271,10 @@ close the component.
 - [ ] Exercise provider, consumer, and degraded paths in a composed host.
 - [ ] Prove the RBAC evaluator remains the only decision engine.
 - [ ] Complete native operator parity before FFA promotion.
+
+## Verification
+
+- Contract tests cover every public use case.
 
 ## Verification commands
 

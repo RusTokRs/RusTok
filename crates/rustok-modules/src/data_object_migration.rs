@@ -420,7 +420,7 @@ impl ArtifactDataObjectMigrationService {
         if target_manifest != inventory_manifest_digest {
             return Err(ArtifactDataObjectMigrationError::ManifestMismatch {
                 source_manifest: inventory_manifest_digest,
-                target_manifest: target_manifest,
+                target_manifest,
             });
         }
 

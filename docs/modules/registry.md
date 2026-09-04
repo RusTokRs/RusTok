@@ -365,7 +365,7 @@ Synchronization with `modules.toml`: updated per manifest composition as of 2026
 | `marketplace` | `rustok-marketplace` | `marketplace_seller`, `marketplace_listing`, `marketplace_allocation`, `marketplace_commission`, `marketplace_ledger`, `marketplace_payout` | Marketplace Family orchestration root over seller, listing, allocation, commission, ledger, and payout owner ports; owns no marketplace persistence |
 | `moderation` | `rustok-moderation` | — | Moderation policies, review decisions, and owner enforcement workflows |
 | `blog` | `rustok-blog` | `content`, `comments`, `taxonomy`, `outbox` | Blog domain, posts, Category bindings, tags, transport/UI; canonical Category localized copy and Translation are Taxonomy-owned through the same-ID binding, while Blog retains Blog-specific membership/settings and post/editorial ownership |
-| `forum` | `rustok-forum` | `content`, `taxonomy`, `page_builder` | Forum domain, topics, replies, moderation, transport/UI and page-builder widget consumer fallback contract |
+| `forum` | `rustok-forum` | `content`, `taxonomy` | Forum domain, topics, replies, moderation, transport/UI and page-builder widget consumer fallback contract |
 | `notifications` | `rustok-notifications` | `outbox` | Notification preferences, delivery scheduling, and outbox-backed delivery lifecycle |
 | `comments` | `rustok-comments` | — | Generic comments domain |
 | `pages` | `rustok-pages` | `content`, `page_builder`, `outbox` | Pages and page-builder surfaces; tenant module settings are read through the public `TenantService::find_tenant_module` contract; FBA consumer metadata synchronized with `crates/rustok-page-builder/contracts/page-builder-fba-registry.json`; Navigation owns menus. Registered `pages/page_metadata` Translation target applies exact title, review-only slug, and optional SEO metadata through owner CAS, durable receipt replay, existing Pages events, and a content-free cursor; Fly/GrapesJS bodies remain outside the pilot |
@@ -461,6 +461,25 @@ This board defines the canonical transition class, data ownership boundary, pred
 | `rustok-mcp` | `Stateless` | MCP protocol tools/prompts | Hot-Standby Slot | `AutomaticSingleAttempt` | Tool manifest rollback |
 | `rustok-ai` | `Stateless` | Model routing & system prompts | Hot-Standby Slot | `AutomaticSingleAttempt` | Context-length & provider fallback |
 | `alloy` | `BrokeredData` | Rhai scripts & OCI packages | CAS Hold Blob | `AutomaticSingleAttempt` | Immutable sandbox hashes, source CAS |
+| `content` | `Stateless` | `data boundary: none` | Hot-Standby Slot | `AutomaticSingleAttempt` | Rich-text invariants, locale-bound rendering |
+| `profiles` | `StatefulSchema` | `user_profiles`, `profile_follows` | Standby DB + Slot | `AutomaticSingleAttempt` | Public profile views, follow graph isolation |
+| `social_graph` | `StatefulSchema` | `social_relationships`, `social_blocks` | Standby DB + Slot | `AutomaticSingleAttempt` | Block invariants, relationship graph continuity |
+| `reactions` | `StatefulSchema` | `reactions`, `reaction_aggregates` | Standby DB + Slot | `AutomaticSingleAttempt` | Source-owned authorization, aggregate projection |
+| `groups` | `StatefulSchema` | `groups`, `group_memberships`, `group_invitations` | Standby DB + Slot | `AutomaticSingleAttempt` | Membership policies, invitation lifecycle |
+| `region` | `StatefulSchema` | `regions`, `countries`, `currencies`, `tax_rates` | Standby DB + Slot | `AutomaticSingleAttempt` | Currency precision, region code uniqueness |
+| `commerce` | `Stateless` | `data boundary: none` | Hot-Standby Slot | `AutomaticSingleAttempt` | Orchestration root, delegates persistence to domain owners |
+| `marketplace_seller` | `StatefulSchema` | `marketplace_sellers`, `seller_profiles` | Standby DB + Slot | `AutomaticSingleAttempt` | Onboarding lifecycle, idempotent seller identity |
+| `marketplace_listing` | `StatefulSchema` | `marketplace_listings`, `listing_terms` | Standby DB + Slot | `AutomaticSingleAttempt` | Immutable commercial-term versions, moderation |
+| `marketplace_allocation` | `StatefulSchema` | `marketplace_allocations` | Standby DB + Slot | `AutomaticSingleAttempt` | Deterministic allocation rules, order line integrity |
+| `marketplace_commission` | `StatefulSchema` | `marketplace_commissions`, `commission_rules` | Standby DB + Slot | `AutomaticSingleAttempt` | Calculation idempotency, commission schedule locks |
+| `marketplace_ledger` | `Irreversible` | `marketplace_ledger_entries`, `balances` | Standby DB + Slot | `DeniedMaintenanceOnly` | Financial records immutable, append-only double-entry |
+| `marketplace_payout` | `Irreversible` | `marketplace_payouts`, `payout_schedules` | Standby DB + Slot | `DeniedMaintenanceOnly` | External settlement transfer irrevocable |
+| `marketplace` | `Stateless` | `data boundary: none` | Hot-Standby Slot | `AutomaticSingleAttempt` | Family orchestration root, zero direct persistence |
+| `moderation` | `StatefulSchema` | `moderation_cases`, `moderation_decisions` | Standby DB + Slot | `AutomaticSingleAttempt` | Review decision state machine, audit log preservation |
+| `notifications` | `StatefulSchema` | `notification_preferences`, `notification_logs` | Standby DB + Slot | `AutomaticSingleAttempt` | Delivery channel idempotency, preference bounds |
+| `navigation` | `StatefulSchema` | `navigation_menus`, `navigation_items` | Standby DB + Slot | `AutomaticSingleAttempt` | Menu tree cycle checks, channel-scoped routes |
+| `translation` | `StatefulSchema` | `translation_jobs`, `translation_memories`, `glossaries` | Standby DB + Slot | `AutomaticSingleAttempt` | CAS-guarded inventory, approved-only translation memory |
+| `workflow` | `StatefulSchema` | `workflows`, `workflow_executions`, `webhook_endpoints` | Standby DB + Slot | `AutomaticSingleAttempt` | Execution idempotency, webhook signature verification |
 
 ## Important Rules
 

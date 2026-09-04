@@ -32,9 +32,10 @@ pub mod tenant_rbac;
 pub mod write_path_feedback;
 
 pub use artifact_permissions::{
-    ArtifactPermissionLocalization, ArtifactPermissionRegistration,
-    ArtifactPermissionRegistrationPort, ArtifactPermissionRegistrationRequest,
-    ArtifactPermissionScope,
+    ArtifactPermissionContinuityReceipt, ArtifactPermissionDiff, ArtifactPermissionLocalization,
+    ArtifactPermissionRegistration, ArtifactPermissionRegistrationPort, ArtifactPermissionScope,
+    PermissionContinuityEvaluationRequest, ReleasePermissionAdmissionRequest,
+    ScopedPermissionProjectionRequest, compute_canonical_authorization_fingerprint,
 };
 pub use artifact_ui::{
     ArtifactBindingExecutionAuditEntry, ArtifactUiActionConfirmation, ArtifactUiContributionView,

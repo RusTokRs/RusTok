@@ -51,12 +51,13 @@ localized content is scrubbed before writable target-locale state is exposed,
 and unchanged Taxonomy tag attachments are preserved. Full mounted save/reload
 evidence and the broader product/runtime gates listed below remain open. The
 native Forum storefront check, whole-host Next typecheck,
-and the updated ownership verifier/self-test pass; its WASM check still stops in the existing
+and the updated ownership verifiers pass.
+Manifest dependencies between `modules.toml`, `rustok-module.toml`,
+`RusToKModule::dependencies()` and `docs/modules/registry.md` are aligned to
+`["content", "taxonomy"]`, and `cargo xtask module validate forum` passes.
+The WASM storefront check still stops in the pre-existing
 `Resource::new_blocking`/non-`Send` GraphQL future and missing direct `web_sys`
 dependency path, outside the richtext renderer.
-`cargo xtask module validate forum` still stops before module checks because
-`modules.toml` declares `page_builder` while `rustok-module.toml` does not; this
-pre-existing manifest mismatch is not a richtext or authoring failure.
 
 ## FFA/FBA status
 
@@ -198,8 +199,7 @@ provider factory with exact active-state, visibility and current-revision
 authorization plus a bounded single-`like` v1 catalog. Blog now supplies the
 second real producer through the same neutral SPI using Blog-owned publication,
 channel visibility and owner version, with a Blog+Reactions composition profile
-in source. Optional owner selection, host materialization and executable source
-evidence are source-ready. A bounded manifest-composed GraphQL read/write
+in source. Optional owner selection, host materialization and executable source evidence for all three optional profiles are source-ready; retained execution evidence remains pending. A bounded manifest-composed GraphQL read/write
 transport over the neutral Reactions ports and the separate module-owned
 `rustok-reactions-storefront` reaction controls are source-ready. Forum exposes
 generic visibility-gated `forumStorefrontTopicCurrentRevision` and
@@ -275,8 +275,8 @@ is deferred to the final production-validation phase.
 | `FORUM-11` | `done` | Subscription levels and participation policy. |
 | `FORUM-12` | `in_progress` | Mention/quote relations and notification source exist. Runtime execution, profile/block privacy, moderator audience and final Notifications evidence remain. |
 | `FORUM-13` | `in_progress` | Optional Media presentation policy exists. Add typed category-cover owner command, transports, UI and runtime evidence; Media keeps lifecycle ownership. |
-| `FORUM-14` | `planned` | Forum attachment relations over Media-owned sessions/assets; no upload or asset lifecycle in Forum. |
-| `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`. Finish member-card composition, privacy/block behavior, Forum-stat enrichment and no-N+1 evidence. |
+| `FORUM-14` | `in_progress` | Forum attachment relations over Media-owned sessions/assets; FORUM-14A content-revision relation admission is source-ready (`attachment_relation.rs`), while binary lifecycle remains Media-owned. |
+| `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`; FORUM-15A through 15E provide member-card owner service, user stats, GraphQL/native transport, and privacy-aware storefront UI composition. Retain live runtime evidence. |
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
 | `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply host UI composition and Rust Playwright browser-evidence source are ready. Retain the browser execution plus event-digest, owner/event/repair/Forum+Blog/GraphQL/UI/runtime evidence and release lockfile verification; Forum votes remain separate and no reaction ownership moves into Forum. |
@@ -294,8 +294,8 @@ is deferred to the final production-validation phase.
 | `FORUM-30` | `planned` | Complete Forum admin by composing Forum and shared owners. |
 | `FORUM-31` | `planned` | Complete Forum storefront by composing Profiles, Media, Reactions, Notifications and Search. |
 | `FORUM-32` | `in_progress` | Generated Forum Fly blocks/renderers/property contracts, Forum-owned preview service/HTTP/native transport, provider-neutral Pages host composition and owner-backed schema/validation property editing are source-ready. Retained runtime/browser evidence and observed Page Builder Wave evidence remain. |
-| `FORUM-33` | `in_progress` | Bounded snapshot-consistent owner counter and accepted-solution reconciliation with independent keyset cursors, strict operator GraphQL/owner admission and baseline platform telemetry are source-ready. Retain SQLite/PostgreSQL execution evidence and add subscriptions/mentions/attachments/permitted shared-owner reconciliation plus remaining metrics. Multi-page scans use page-local snapshots; repair remains blocked on dry-run/audit/idempotent job state and CLI integration awaits a synchronized dependency/lock update. |
-| `FORUM-34` | `planned` | Forum import/export adapter and NodeBB mapping over a shared runner. |
+| `FORUM-33` | `in_progress` | Bounded snapshot-consistent owner counter and accepted-solution reconciliation with independent keyset cursors, strict operator GraphQL/owner admission and baseline platform telemetry are source-ready, with mention and subscription reconciliation slices implemented. Retain SQLite/PostgreSQL execution evidence; write repair remains blocked on dry-run/audit/idempotent job state and CLI integration awaits a synchronized dependency/lock update. |
+| `FORUM-34` | `in_progress` | Forum import/export adapter and NodeBB mapping; FORUM-34A through 34Q (export inventory/planner/reader/mapping, import inspection/relation-prep/resolution/tombstone/write) are source-ready, awaiting shared migration runner integration. |
 | `NOTIFY-00` | `in_progress` | Neutral API/runtime composition and Forum providers exist; executable distribution evidence remains. |
 | `NOTIFY-01` | `in_progress` | Persistence/source inbox exist; final commands, migrations, retention and reconciliation remain. |
 | `NOTIFY-02` | `planned` | Preferences, quiet hours and digests. |
@@ -319,7 +319,22 @@ is deferred to the final production-validation phase.
 Media owns upload, blobs, MIME, dimensions, renditions, quarantine, deletion,
 delivery and reconciliation. Forum stores only typed tenant-scoped relations,
 Forum usage/order/caption and source revision. Text-only Forum remains available
-when Media is disabled.
+when Media is disabled. Media keeps lifecycle ownership.
+
+#### Delivered in `FORUM-13A`
+
+- Category icon writes normalize to bounded lowercase kebab-case semantic keys at the database write boundary; CSS classes, markup, URLs and paths fail closed.
+- Category colors remain restricted to safe bounded hexadecimal values.
+- `CategoryCoverMediaCandidate` is a transport-neutral validation input containing only media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor`.
+- Cover candidate policy rejects foreign tenants, unsupported image MIME, size or dimension violations, descriptor mismatch and non-direct-public delivery.
+- Category presentation rejects Media persistence/storage access and arbitrary category image URL/path fields.
+
+#### Delivered in `FORUM-13B`
+
+- `resolve_category_cover_for_write` resolves Media metadata only through Media public-image owner admission, validates the candidate and returns stable `FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE` when the optional Media owner is not composed.
+- `hydrate_category_cover_for_read` degrades to an absent descriptor only in the explicit Media-disabled profile.
+- Not-found, timeout, storage and other Media provider failures remain typed `ForumError::CapabilityFailure` values with source code and retryability.
+- Media keeps lifecycle ownership.
 
 ### `FORUM-15`/`FORUM-27`: Profiles
 
@@ -347,11 +362,10 @@ recipient-context port rather than inventing profile or authority storage.
 
 Forum registers only the neutral provider factory and depends only on the API
 crate through an explicit path. It does not depend on the Reactions owner and
-does not add Reactions to Forum module dependencies. The optional
-`mod-reactions` feature selects the owner independently in the
-distribution/server, remains outside defaults, and materializes the Forum
-provider only after host audience and recipient-context facts exist. This is the
-optional owner selection and host materialization boundary.
+does not add Reactions to Forum module dependencies. The optional `mod-reactions`
+feature selects the owner independently in the distribution/server, remains outside
+defaults, and materializes the Forum provider only after host audience and
+recipient-context facts exist. This is the Optional owner selection and host materialization boundary.
 
 The Reactions-disabled Forum composition remains valid: Forum commands and reads
 continue without owner storage or a materialized reaction registry. Reactions

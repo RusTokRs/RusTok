@@ -5,7 +5,7 @@ impl MentionRelationService {
     /// The bridge deliberately reuses the established relation persistence
     /// path so source locking, persisted-body fingerprint validation, replay
     /// detection and relation revision writes stay single-owned. Import callers
-    /// provide the historical actor explicitly; no operator SecurityContext is
+    /// provide the historical actor explicitly; no operator security context is
     /// consulted or substituted for the source author.
     pub(crate) async fn persist_import_admitted_in_tx(
         &self,

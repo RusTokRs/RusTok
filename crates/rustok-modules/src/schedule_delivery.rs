@@ -775,6 +775,10 @@ async fn load_admitted_descriptor<C: ConnectionTrait>(
         DbBackend::Postgres => "COALESCE(lifecycle.enabled, TRUE) = TRUE",
         _ => "COALESCE(lifecycle.enabled, 1) = 1",
     };
+    let true_val = match backend {
+        DbBackend::Postgres => "TRUE",
+        _ => "1",
+    };
     let row = connection.query_one_raw(Statement::from_sql_and_values(backend, format!(
         "SELECT CAST(installation.descriptor AS TEXT) AS descriptor \
          FROM module_artifact_installations installation \
@@ -782,6 +786,7 @@ async fn load_admitted_descriptor<C: ConnectionTrait>(
          LEFT JOIN module_artifact_tenant_lifecycle lifecycle ON lifecycle.installation_id = installation.installation_id AND lifecycle.tenant_id = {} \
          WHERE installation.installation_id = {} AND admission.status = 'active' \
            AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall WHERE uninstall.installation_id = installation.installation_id) \
+           AND NOT EXISTS (SELECT 1 FROM module_artifact_work_generations wg WHERE wg.installation_id = installation.installation_id AND wg.retired = {true_val}) \
            AND NOT EXISTS (SELECT 1 FROM module_artifact_security_states sec WHERE sec.module_slug = installation.slug AND sec.module_version = installation.version AND sec.status IN ('quarantined', 'revoked')) \
            AND {enabled} \
            AND ((installation.scope_kind = 'tenant' AND installation.tenant_id = {}) \

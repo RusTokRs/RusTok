@@ -39,11 +39,7 @@ async fn forum_without_reactions_keeps_forum_host_composition_available() {
     assert!(extensions.contains::<rustok_forum::SharedForumNotificationRecipientContextPort>());
 }
 
-#[cfg(all(
-    feature = "mod-reactions",
-    not(feature = "mod-forum"),
-    not(feature = "mod-blog")
-))]
+#[cfg(all(feature = "mod-reactions", not(feature = "mod-forum")))]
 #[tokio::test]
 async fn reactions_without_forum_materializes_an_empty_subject_registry() {
     let registry = ModuleRegistry::new()
