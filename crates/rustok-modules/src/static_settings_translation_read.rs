@@ -184,6 +184,15 @@ impl StaticSettingsTranslationReadService {
             registry.module_slug(),
         )
         .await?;
+        match (request.after_seq, current_high_water) {
+            (Some(after_seq), Some(current)) if after_seq > current => {
+                return Err(StaticSettingsTranslationReadError::InvalidCursorBounds);
+            }
+            (Some(after_seq), None) if after_seq > 0 => {
+                return Err(StaticSettingsTranslationReadError::InvalidCursorBounds);
+            }
+            _ => {}
+        }
         if let Some(requested) = request.through_seq {
             match current_high_water {
                 Some(current) if requested <= current => {}
@@ -227,9 +236,11 @@ impl StaticSettingsTranslationReadService {
         if has_more {
             changes.truncate(usize::from(request.limit));
         }
-        let next_after_seq = has_more
-            .then(|| changes.last().map(|change| change.change_seq))
-            .flatten();
+        let next_after_seq = if has_more {
+            changes.last().map(|change| change.change_seq)
+        } else {
+            None
+        };
 
         Ok(StaticSettingsChangePage {
             changes,
