@@ -14,10 +14,12 @@ const failures = [];
 const paths = {
   centralPlan: 'docs/modules/translation-implementation-plan.md',
   localPlan: 'crates/rustok-translation/docs/implementation-plan.md',
+  modulesLib: 'crates/rustok-modules/src/lib.rs',
   settings: 'crates/rustok-modules/src/settings.rs',
   lifecycle: 'crates/rustok-modules/src/lifecycle_writer.rs',
   localizedOwner: 'crates/rustok-modules/src/static_settings_localization.rs',
   sourceLocaleOwner: 'crates/rustok-modules/src/static_settings_source_locale.rs',
+  translationRead: 'crates/rustok-modules/src/static_settings_translation_read.rs',
   localizedMigration:
     'crates/rustok-modules/src/migrations/m20260904_000051_static_localized_settings.rs',
   changeMigration:
@@ -59,6 +61,12 @@ for (const marker of [
   sources.localPlan,
   marker,
   `${paths.localPlan}: broad Settings completion must remain open`,
+);
+
+requireText(
+  sources.modulesLib,
+  'pub mod static_settings_translation_read;',
+  `${paths.modulesLib}: Settings Translation read model must be public owner API`,
 );
 
 for (const marker of [
@@ -154,6 +162,46 @@ for (const forbidden of [
 );
 
 for (const marker of [
+  'pub const MAX_STATIC_SETTINGS_CHANGE_PAGE_SIZE: u16 = 200;',
+  'pub struct StaticSettingsChangeReadRequest',
+  'pub struct StaticSettingsChangePage',
+  'pub struct StaticSettingsExactLocaleSnapshot',
+  'pub struct StaticSettingsExactLocaleProgress',
+  'pub struct StaticSettingsTranslationReadService',
+  'pub async fn read_changes(',
+  'pub async fn exact_locale_snapshot(',
+  'through_seq',
+  'after_seq',
+  'load_high_watermark(',
+  'change_seq > $3 AND change_seq <= $4',
+  'ORDER BY change_seq ASC LIMIT $5',
+  'StaticSettingsSourceLocaleService::new(self.db.clone())',
+  '.authoritative_source_snapshot(tenant_id, registry)',
+  'StaticTenantLifecycleStore::snapshot(',
+  'owner_before.revision != authoritative.source.owner_revision',
+  'owner_after.revision != owner_before.revision',
+  'module_static_localized_settings',
+  'exact_target_value: exact.map(|row| row.value.clone())',
+  'filter(|field| field.exact_target_value.is_some())',
+]) requireText(
+  sources.translationRead,
+  marker,
+  `${paths.translationRead}: bounded owner reader and exact-locale progress`,
+);
+
+for (const forbidden of [
+  'RuntimeLocale',
+  'fallback_chain',
+  'tenant_default_locale',
+  'rustok_translation::',
+  'TranslationTargetProvider',
+]) forbidText(
+  sources.translationRead,
+  forbidden,
+  `${paths.translationRead}: read model must stay owner-local and fallback-free`,
+);
+
+for (const marker of [
   'CREATE TABLE module_static_localized_settings',
   'PRIMARY KEY (tenant_id, module_slug, field_id, locale)',
   'revision BIGINT NOT NULL CHECK (revision > 0)',
@@ -225,11 +273,11 @@ for (const marker of [
   `${paths.migrationRegistry}: Settings migration registration`,
 );
 
-if (evidence.schema_version !== 4) {
-  failures.push(`${paths.evidence}: schema_version must be 4`);
+if (evidence.schema_version !== 5) {
+  failures.push(`${paths.evidence}: schema_version must be 5`);
 }
-if (evidence.status !== 'owner_source_locale_source_ready') {
-  failures.push(`${paths.evidence}: status must be owner_source_locale_source_ready`);
+if (evidence.status !== 'owner_reader_progress_source_ready') {
+  failures.push(`${paths.evidence}: status must be owner_reader_progress_source_ready`);
 }
 
 for (const [key, expected] of Object.entries({
@@ -258,6 +306,14 @@ for (const [key, expected] of Object.entries({
   base_settings_writes_invalidate_source_locale_provenance: true,
   legacy_without_source_locale_provenance_fails_closed: true,
   source_locale_assignment_emits_repair_evidence: true,
+  bounded_owner_change_reader_present: true,
+  bounded_change_reader_freezes_high_watermark: true,
+  bounded_change_reader_uses_keyset_cursor: true,
+  exact_locale_owner_snapshot_present: true,
+  exact_locale_snapshot_rejects_source_target_equality: true,
+  exact_locale_snapshot_stability_guard_present: true,
+  exact_locale_progress_counts_exact_rows_only: true,
+  exact_locale_progress_ignores_runtime_fallback: true,
   settings_translation_provider_registered: false,
 })) {
   if (evidence.source_facts?.[key] !== expected) {
@@ -266,8 +322,8 @@ for (const [key, expected] of Object.entries({
 }
 
 for (const key of [
-  'provider_bounded_change_reader',
-  'provider_exact_locale_progress',
+  'provider_identity_mapping',
+  'provider_validate_apply_adapter',
   'translation_provider_registration',
 ]) {
   if (evidence.remaining_owner_contract?.[key] !== true) {
@@ -280,6 +336,8 @@ for (const [key, expected] of Object.entries({
   localized_owner_apply_source_proven: true,
   change_cursor_source_proven: true,
   source_locale_owner_source_proven: true,
+  bounded_reader_source_proven: true,
+  exact_progress_source_proven: true,
   runtime_database_execution_proven: false,
   translation_provider_proven: false,
 })) {
@@ -289,21 +347,20 @@ for (const [key, expected] of Object.entries({
 }
 
 for (const marker of [
-  'explicit source-locale provenance source-ready',
-  '`module_static_settings_source_locales`',
-  '`StaticSettingsSourceLocaleService::assign_source_locale`',
-  'source locale is **not** bound to the current shared owner revision',
-  'latest `base_projection` change revision',
-  'target-only localized apply',
-  'later base Settings write',
-  '`StaticSettingsSourceLocaleService::authoritative_source_snapshot`',
-  'Legacy Settings with no provenance',
-  'bounded owner change reader',
-  'exact-locale progress counts',
+  'bounded owner reader, and exact progress source-ready',
+  '`StaticSettingsTranslationReadService::read_changes`',
+  '`through_seq` high-water mark',
+  'cannot extend an in-progress repair scan',
+  '`StaticSettingsTranslationReadService::exact_locale_snapshot`',
+  'exact target rows for one canonical target locale',
+  'checked before and after the exact-target read',
+  '`progress()` counts coverage only when an exact target row exists',
+  'Rendered fallback, tenant defaults and negotiated runtime locales are never consulted',
+  'provider identity-apply-registration open',
 ]) requireText(
   sources.handoff,
   marker,
-  `${paths.handoff}: Settings source-locale handoff`,
+  `${paths.handoff}: Settings bounded-reader/progress handoff`,
 );
 
 if (failures.length > 0) {
@@ -313,5 +370,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Settings exact-locale owner storage/apply, repair cursor, and explicit base-projection source-locale provenance are source-ready; provider reader/progress/registration remain open',
+  '✔ Settings owner storage/apply, repair cursor, source-locale provenance, bounded reader, and exact progress are source-ready; provider identity/apply/registration remain open',
 );
