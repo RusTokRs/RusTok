@@ -29,4 +29,7 @@ pub mod models;
 pub mod modules;
 pub mod routes;
 pub mod services;
+pub mod static_settings_localization_registry;
+#[cfg(feature = "mod-translation")]
+pub mod static_settings_translation_target;
 pub mod views;
