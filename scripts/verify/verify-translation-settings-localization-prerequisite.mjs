@@ -17,10 +17,13 @@ const paths = {
   settings: 'crates/rustok-modules/src/settings.rs',
   lifecycle: 'crates/rustok-modules/src/lifecycle_writer.rs',
   localizedOwner: 'crates/rustok-modules/src/static_settings_localization.rs',
+  sourceLocaleOwner: 'crates/rustok-modules/src/static_settings_source_locale.rs',
   localizedMigration:
     'crates/rustok-modules/src/migrations/m20260904_000051_static_localized_settings.rs',
   changeMigration:
     'crates/rustok-modules/src/migrations/m20260904_000052_static_settings_change_cursor.rs',
+  sourceLocaleMigration:
+    'crates/rustok-modules/src/migrations/m20260904_000053_static_settings_source_locale.rs',
   migrationRegistry: 'crates/rustok-modules/src/migrations/mod.rs',
   evidence:
     'crates/rustok-translation/contracts/evidence/translation-settings-localization-prerequisite-source.json',
@@ -46,7 +49,7 @@ for (const marker of [
 ]) requireText(
   sources.centralPlan,
   marker,
-  `${paths.centralPlan}: broad Settings onboarding remains open until source-locale/provider work`,
+  `${paths.centralPlan}: broad Settings provider onboarding remains open`,
 );
 
 for (const marker of [
@@ -111,7 +114,43 @@ for (const forbidden of [
 ]) forbidText(
   sources.localizedOwner,
   forbidden,
-  `${paths.localizedOwner}: owner store must not become a Translation/fallback adapter`,
+  `${paths.localizedOwner}: exact owner must not become a Translation/fallback adapter`,
+);
+
+for (const marker of [
+  'pub struct StaticSettingsSourceLocaleRecord',
+  'pub struct StaticSettingsSourceLocaleAssignCommand',
+  'pub struct StaticSettingsAuthoritativeSourceSnapshot',
+  'pub struct StaticSettingsSourceLocaleService',
+  'pub async fn read_source_locale(',
+  'pub async fn authoritative_source_snapshot(',
+  'pub async fn assign_source_locale(',
+  'TenantLocale::new(locale)',
+  'base_projection_revision',
+  'load_latest_base_projection_revision(',
+  "change_kind = 'base_projection'",
+  'StaticTenantLifecycleStore::claim(',
+  'StaticTenantLifecycleStore::advance(',
+  'idempotency::admit(',
+  'idempotency::complete(',
+  'module_static_settings_source_locales',
+  'module_static_settings_changes',
+]) requireText(
+  sources.sourceLocaleOwner,
+  marker,
+  `${paths.sourceLocaleOwner}: explicit source-locale owner contract`,
+);
+
+for (const forbidden of [
+  'RuntimeLocale',
+  'fallback_chain',
+  'tenant_default_locale',
+  'TranslationTarget',
+  'TranslationProvider',
+]) forbidText(
+  sources.sourceLocaleOwner,
+  forbidden,
+  `${paths.sourceLocaleOwner}: source locale must not be inferred or become a provider adapter`,
 );
 
 for (const marker of [
@@ -142,9 +181,6 @@ for (const marker of [
   'lifecycle.active_idempotency_key IS NOT NULL',
   'rustok_log_static_settings_localized_target',
   'AFTER UPDATE OF value, revision, owner_revision ON module_static_localized_settings',
-  'NEW.owner_revision',
-  'NEW.revision',
-  'INSERT OR IGNORE INTO module_static_settings_changes',
 ]) requireText(
   sources.changeMigration,
   marker,
@@ -164,21 +200,36 @@ for (const forbidden of [
 );
 
 for (const marker of [
+  'CREATE TABLE module_static_settings_source_locales',
+  'locale TEXT NOT NULL CHECK (length(locale) BETWEEN 2 AND 32)',
+  'base_projection_revision BIGINT NOT NULL CHECK (base_projection_revision > 0)',
+  'PRIMARY KEY (tenant_id, module_slug)',
+  'ENABLE ROW LEVEL SECURITY',
+  'module_static_settings_source_locales_scope',
+]) requireText(
+  sources.sourceLocaleMigration,
+  marker,
+  `${paths.sourceLocaleMigration}: source-locale provenance storage`,
+);
+
+for (const marker of [
   'mod m20260904_000051_static_localized_settings;',
   'Box::new(m20260904_000051_static_localized_settings::Migration)',
   'mod m20260904_000052_static_settings_change_cursor;',
   'Box::new(m20260904_000052_static_settings_change_cursor::Migration)',
+  'mod m20260904_000053_static_settings_source_locale;',
+  'Box::new(m20260904_000053_static_settings_source_locale::Migration)',
 ]) requireText(
   sources.migrationRegistry,
   marker,
   `${paths.migrationRegistry}: Settings migration registration`,
 );
 
-if (evidence.schema_version !== 3) {
-  failures.push(`${paths.evidence}: schema_version must be 3`);
+if (evidence.schema_version !== 4) {
+  failures.push(`${paths.evidence}: schema_version must be 4`);
 }
-if (evidence.status !== 'owner_change_cursor_source_ready') {
-  failures.push(`${paths.evidence}: status must be owner_change_cursor_source_ready`);
+if (evidence.status !== 'owner_source_locale_source_ready') {
+  failures.push(`${paths.evidence}: status must be owner_source_locale_source_ready`);
 }
 
 for (const [key, expected] of Object.entries({
@@ -200,8 +251,14 @@ for (const [key, expected] of Object.entries({
   base_projection_change_evidence_present: true,
   localized_target_change_evidence_present: true,
   bounded_monotonic_change_sequence_present: true,
+  authoritative_source_locale_policy_present: true,
+  explicit_source_locale_assignment_present: true,
+  source_locale_bound_to_latest_base_projection_present: true,
+  target_only_writes_preserve_source_locale_provenance: true,
+  base_settings_writes_invalidate_source_locale_provenance: true,
+  legacy_without_source_locale_provenance_fails_closed: true,
+  source_locale_assignment_emits_repair_evidence: true,
   settings_translation_provider_registered: false,
-  authoritative_source_locale_policy_present: false,
 })) {
   if (evidence.source_facts?.[key] !== expected) {
     failures.push(`${paths.evidence}: source_facts.${key} must be ${expected}`);
@@ -209,10 +266,9 @@ for (const [key, expected] of Object.entries({
 }
 
 for (const key of [
-  'authoritative_source_locale_policy',
-  'translation_provider_registration_after_source_locale_policy',
-  'provider_exact_locale_progress',
   'provider_bounded_change_reader',
+  'provider_exact_locale_progress',
+  'translation_provider_registration',
 ]) {
   if (evidence.remaining_owner_contract?.[key] !== true) {
     failures.push(`${paths.evidence}: remaining_owner_contract.${key} must be true`);
@@ -223,6 +279,7 @@ for (const [key, expected] of Object.entries({
   localized_storage_source_proven: true,
   localized_owner_apply_source_proven: true,
   change_cursor_source_proven: true,
+  source_locale_owner_source_proven: true,
   runtime_database_execution_proven: false,
   translation_provider_proven: false,
 })) {
@@ -232,19 +289,21 @@ for (const [key, expected] of Object.entries({
 }
 
 for (const marker of [
-  'transactional repair cursor source-ready',
-  '`module_static_settings_changes`',
-  '`change_seq` is an append-only database sequence',
-  '`base_projection` rows invalidate the Settings source projection',
-  '`localized_target` rows identify only stable field ID',
-  'same database transaction as the owner write',
-  'initial static override materialization may conservatively emit `base_projection` evidence',
-  'define the authoritative source-locale policy',
-  'bounded owner change reader over `change_seq`',
+  'explicit source-locale provenance source-ready',
+  '`module_static_settings_source_locales`',
+  '`StaticSettingsSourceLocaleService::assign_source_locale`',
+  'source locale is **not** bound to the current shared owner revision',
+  'latest `base_projection` change revision',
+  'target-only localized apply',
+  'later base Settings write',
+  '`StaticSettingsSourceLocaleService::authoritative_source_snapshot`',
+  'Legacy Settings with no provenance',
+  'bounded owner change reader',
+  'exact-locale progress counts',
 ]) requireText(
   sources.handoff,
   marker,
-  `${paths.handoff}: Settings repair-cursor handoff`,
+  `${paths.handoff}: Settings source-locale handoff`,
 );
 
 if (failures.length > 0) {
@@ -254,5 +313,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Settings exact-locale owner storage/apply and content-free transactional repair cursor are source-ready; source-locale policy and provider onboarding remain open',
+  '✔ Settings exact-locale owner storage/apply, repair cursor, and explicit base-projection source-locale provenance are source-ready; provider reader/progress/registration remain open',
 );
