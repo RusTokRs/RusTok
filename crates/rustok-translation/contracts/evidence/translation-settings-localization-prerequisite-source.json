@@ -1,8 +1,8 @@
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "scope": "translation_settings_localization_prerequisite",
-  "status": "provider_revision_source_ready",
-  "base_main": "808d86f6146406dbe61cb266a37978d538326b96",
+  "status": "provider_apply_map_source_ready",
+  "base_main": "44874370cc3313a7bf77c8cf76182b75801858ec",
   "source_facts": {
     "localized_field_registry_present": true,
     "stable_field_ids_present": true,
@@ -55,10 +55,19 @@
     "provider_target_revision_uses_per_field_revisions": true,
     "provider_target_revision_digest_is_order_independent": true,
     "provider_revision_mapping_rejects_inconsistent_snapshot": true,
+    "provider_patch_validation_against_owner_snapshot": true,
+    "provider_patch_checks_identity_locales_and_revisions": true,
+    "provider_patch_checks_per_field_source_hash": true,
+    "provider_apply_plan_uses_per_field_target_cas": true,
+    "provider_apply_plan_sequences_shared_owner_revision": true,
+    "provider_apply_plan_uses_deterministic_field_order": true,
+    "provider_apply_plan_derives_unique_step_idempotency": true,
+    "provider_apply_plan_preserves_actor_trace_correlation": true,
+    "provider_apply_plan_requires_matching_tenant_context": true,
+    "provider_apply_plan_performs_no_persistence_writes": true,
     "settings_translation_provider_registered": false
   },
   "remaining_owner_contract": {
-    "provider_validate_apply_adapter": true,
     "translation_provider_registration": true
   },
   "forbidden_shortcuts": [
@@ -75,9 +84,10 @@
     "treat max_characters None as permission to bypass owner min/max validation",
     "enable AI export for tenant-private Settings without an explicit owner metadata policy",
     "treat the target digest as a replacement for per-field target CAS",
-    "hash target values into the target revision when target row revisions already provide the owner clock",
-    "tie source revision to shared owner revision so target-only writes invalidate source copy",
-    "register a Translation provider before validate/apply semantics are proven"
+    "reuse one owner idempotency key for multiple field apply payloads",
+    "apply multi-field patches without sequencing the shared owner revision",
+    "prepare owner commands for a tenant context that does not match the exact snapshot",
+    "treat pure apply planning as evidence that runtime provider execution is registered"
   ],
   "validation": {
     "author_tests_run": false,
@@ -94,6 +104,7 @@
     "provider_identity_source_proven": true,
     "provider_descriptor_source_proven": true,
     "provider_revision_source_proven": true,
+    "provider_validate_apply_source_proven": true,
     "runtime_database_execution_proven": false,
     "translation_provider_proven": false
   }
