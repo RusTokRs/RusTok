@@ -174,7 +174,7 @@ for (const forbidden of [
 for (const marker of [
   'name = "rustok-modules-translation"',
   'hex.workspace = true',
-  'rustok-modules = { workspace = true, default-features = false }',
+  'rustok-modules = { path = "../rustok-modules", default-features = false }',
   'rustok-translation-targets.workspace = true',
   'sha2.workspace = true',
   'uuid.workspace = true',
