@@ -7,6 +7,6 @@ license.workspace = true
 description = "Translation target adapter contracts for static module Settings"
 
 [dependencies]
-rustok-modules.workspace = true
+rustok-modules = { workspace = true, default-features = false }
 rustok-translation-targets.workspace = true
 thiserror.workspace = true
