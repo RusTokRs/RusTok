@@ -1,8 +1,8 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "scope": "translation_settings_localization_prerequisite",
-  "status": "owner_source_locale_source_ready",
-  "base_main": "3d06cc4b4fa79fe7135ee4e7e02f9a6de5eb1074",
+  "status": "owner_reader_progress_source_ready",
+  "base_main": "4b8da7e78fc6c4c4db7c5921b3007fee94e979ef",
   "source_facts": {
     "localized_field_registry_present": true,
     "stable_field_ids_present": true,
@@ -29,11 +29,19 @@
     "base_settings_writes_invalidate_source_locale_provenance": true,
     "legacy_without_source_locale_provenance_fails_closed": true,
     "source_locale_assignment_emits_repair_evidence": true,
+    "bounded_owner_change_reader_present": true,
+    "bounded_change_reader_freezes_high_watermark": true,
+    "bounded_change_reader_uses_keyset_cursor": true,
+    "exact_locale_owner_snapshot_present": true,
+    "exact_locale_snapshot_rejects_source_target_equality": true,
+    "exact_locale_snapshot_stability_guard_present": true,
+    "exact_locale_progress_counts_exact_rows_only": true,
+    "exact_locale_progress_ignores_runtime_fallback": true,
     "settings_translation_provider_registered": false
   },
   "remaining_owner_contract": {
-    "provider_bounded_change_reader": true,
-    "provider_exact_locale_progress": true,
+    "provider_identity_mapping": true,
+    "provider_validate_apply_adapter": true,
     "translation_provider_registration": true
   },
   "forbidden_shortcuts": [
@@ -45,7 +53,9 @@
     "derive repair order from timestamps instead of the durable change sequence",
     "infer source locale from the current tenant default or runtime fallback",
     "bind source locale to the current shared owner revision so target-only applies invalidate it",
-    "register a Translation provider before bounded reader and exact progress contracts exist"
+    "let newly committed changes extend a repair scan after its high-water mark is captured",
+    "read Settings owner tables directly from the Translation provider",
+    "register a Translation provider before identity mapping and validate/apply adapter semantics exist"
   ],
   "validation": {
     "author_tests_run": false,
@@ -57,6 +67,8 @@
     "localized_owner_apply_source_proven": true,
     "change_cursor_source_proven": true,
     "source_locale_owner_source_proven": true,
+    "bounded_reader_source_proven": true,
+    "exact_progress_source_proven": true,
     "runtime_database_execution_proven": false,
     "translation_provider_proven": false
   }
