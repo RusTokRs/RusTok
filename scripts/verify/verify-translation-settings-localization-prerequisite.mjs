@@ -188,7 +188,7 @@ for (const forbidden of [
 
 for (const marker of [
   'name = "rustok-modules-translation"',
-  'rustok-modules.workspace = true',
+  'rustok-modules = { workspace = true, default-features = false }',
   'rustok-translation-targets.workspace = true',
 ]) requireText(
   sources.identityCargo,
