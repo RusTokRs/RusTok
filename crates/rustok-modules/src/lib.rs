@@ -346,7 +346,7 @@ pub use distribution_rollout::{
     ModuleStaticDistributionRolloutRequest, ModuleStaticDistributionRolloutStatus,
     ModuleStaticDistributionRolloutWorkIdentity, ModuleStaticDistributionTopologyResolver,
     ModuleStaticDistributionTopologySnapshot, ModuleStaticDistributionTransitionKind,
-    SeaOrmModuleStaticDistributionRolloutService, module_static_distribution_rollout_digest,
+    SeaOrmModuleStaticDistributionRolloutService, module_static_distribution_topology_digest,
 };
 pub use event_delivery::{
     ARTIFACT_EVENT_DELIVERY_WORKER, ArtifactEventDeliveryCompletion, ArtifactEventDeliveryConfig,
