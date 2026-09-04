@@ -90,7 +90,7 @@ pub struct CreateFulfillmentItemInput {
     pub metadata: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct FulfillmentItemQuantityInput {
     pub fulfillment_item_id: Uuid,
     #[validate(range(min = 1))]
