@@ -54,20 +54,23 @@ pub fn resolve_static_settings_localization_registry(
         None => StaticSettingsLocalizationPackageMetadata::default(),
     };
 
-    resolve_package_settings_localization_registry(module_slug, package_contract, metadata)
-        .map_err(|error| ManifestError::InvalidModuleSettingSchema {
+    resolve_package_settings_localization_registry(module_slug, package_contract, metadata).map_err(
+        |error| ManifestError::InvalidModuleSettingSchema {
             slug: module_slug.to_string(),
             key: "settings_localization".to_string(),
             reason: error.to_string(),
-        })
+        },
+    )
 }
 
 fn resolve_package_settings_localization_registry(
     module_slug: &str,
     package_contract: rustok_modules::StaticModulePackageContract,
     metadata: StaticSettingsLocalizationPackageMetadata,
-) -> Result<rustok_modules::StaticSettingsLocalizationRegistry, rustok_modules::StaticSettingsLocalizationError>
-{
+) -> Result<
+    rustok_modules::StaticSettingsLocalizationRegistry,
+    rustok_modules::StaticSettingsLocalizationError,
+> {
     rustok_modules::StaticSettingsLocalizationRegistry::new(
         module_slug,
         package_contract.settings_schema,
@@ -160,10 +163,7 @@ sensitive_paths = ["secret"]
     #[test]
     fn package_metadata_cannot_localize_a_sensitive_path() {
         let metadata = StaticSettingsLocalizationPackageMetadata {
-            localized_fields: BTreeMap::from([(
-                "checkout.title".to_string(),
-                "title".to_string(),
-            )]),
+            localized_fields: BTreeMap::from([("checkout.title".to_string(), "title".to_string())]),
             sensitive_paths: BTreeSet::from(["title".to_string()]),
         };
 

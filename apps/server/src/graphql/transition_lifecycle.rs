@@ -46,9 +46,16 @@ impl From<ModuleTransitionCheckpoint> for ModuleTransitionCheckpointGql {
                 ModuleTransitionStateGql::Observing,
                 Some(format!("Timeout at {}", timeout_at.to_rfc3339())),
             ),
-            ModuleTransitionState::PointOfNoReturn { reason, committed_at } => (
+            ModuleTransitionState::PointOfNoReturn {
+                reason,
+                committed_at,
+            } => (
                 ModuleTransitionStateGql::PointOfNoReturn,
-                Some(format!("Committed at {}: {}", committed_at.to_rfc3339(), reason)),
+                Some(format!(
+                    "Committed at {}: {}",
+                    committed_at.to_rfc3339(),
+                    reason
+                )),
             ),
             ModuleTransitionState::RollbackTriggered { reason, .. } => (
                 ModuleTransitionStateGql::RollbackTriggered,
