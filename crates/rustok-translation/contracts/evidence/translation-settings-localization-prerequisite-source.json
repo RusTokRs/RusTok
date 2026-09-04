@@ -1,8 +1,8 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "scope": "translation_settings_localization_prerequisite",
-  "status": "provider_identity_source_ready",
-  "base_main": "132a2b09026f5e305a9c2d5ec06328c2658e1e37",
+  "status": "provider_descriptor_source_ready",
+  "base_main": "1ea468d3541e961a76dccffb5877f8eb82d3fdbb",
   "source_facts": {
     "localized_field_registry_present": true,
     "stable_field_ids_present": true,
@@ -42,10 +42,15 @@
     "provider_identity_reverse_mapping_fail_closed": true,
     "provider_identity_adapter_uses_owner_public_contract_only": true,
     "provider_identity_adapter_has_no_persistence_access": true,
+    "provider_field_descriptor_mapping_present": true,
+    "provider_present_source_units_required": true,
+    "provider_descriptor_tenant_private_classification": true,
+    "provider_descriptor_ai_export_default_denied": true,
+    "provider_descriptor_owner_validation_remains_authoritative": true,
     "settings_translation_provider_registered": false
   },
   "remaining_owner_contract": {
-    "provider_field_descriptor_mapping": true,
+    "provider_revision_mapping": true,
     "provider_validate_apply_adapter": true,
     "translation_provider_registration": true
   },
@@ -60,8 +65,10 @@
     "bind source locale to the current shared owner revision so target-only applies invalidate it",
     "let newly committed changes extend a repair scan after its high-water mark is captured",
     "read Settings owner tables directly from the Translation adapter",
-    "invent field requiredness, AI-export policy, or aggregate target revision in the identity-only slice",
-    "register a Translation provider before field descriptors and validate/apply revision semantics are proven"
+    "treat max_characters None as permission to bypass owner min/max validation",
+    "enable AI export for tenant-private Settings without an explicit owner metadata policy",
+    "collapse independent field target revisions into an invented aggregate revision",
+    "register a Translation provider before revision and validate/apply semantics are proven"
   ],
   "validation": {
     "author_tests_run": false,
@@ -76,6 +83,7 @@
     "bounded_reader_source_proven": true,
     "exact_progress_source_proven": true,
     "provider_identity_source_proven": true,
+    "provider_descriptor_source_proven": true,
     "runtime_database_execution_proven": false,
     "translation_provider_proven": false
   }
