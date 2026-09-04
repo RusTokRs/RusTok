@@ -55,12 +55,12 @@ for (const marker of [
   `${paths.centralPlan}: broad Settings provider onboarding remains open`,
 );
 for (const marker of [
-  'Remaining ownership drift, settings, additional',
-  'provider onboarding',
+  'Never query or mutate owner tables from this module.',
+  'Never count runtime fallback as an exact translation.',
 ]) requireText(
   sources.localPlan,
   marker,
-  `${paths.localPlan}: broad Settings completion must remain open`,
+  `${paths.localPlan}: Translation owner/fallback boundaries must remain explicit`,
 );
 
 for (const marker of [
@@ -373,11 +373,11 @@ for (const marker of [
   'neutral validate/apply command mapping source-ready',
   '`StaticSettingsTranslationIdentity::validate_patch_against_snapshot`',
   '`StaticSettingsTranslationIdentity::prepare_apply_plan`',
-  'patch fields are sorted by stable `FieldKey`',
+  'Patch fields are sorted by stable `FieldKey`',
   'each following command expects the previous command to have advanced the owner revision by exactly one',
   'one durable receipt per field payload',
   'different fields in that operation cannot collide',
-  'does **not** execute the prepared commands',
+  'still **does not** execute the prepared commands',
   'Only the runtime registration/execution slice remains',
 ]) requireText(
   sources.handoff,
