@@ -8,47 +8,57 @@ last_reviewed: 2026-09-04
 
 # Translation Settings localization prerequisite
 
-Status: **exact-locale owner storage/apply source-ready / change evidence and provider onboarding open**
+Status: **exact-locale owner storage/apply plus transactional repair cursor source-ready / source-locale policy and provider onboarding open**
 
-Base reviewed before this slice: `main@0cd5e9d37dc41334f20c2b347d946ee0055d0199`.
+Base reviewed before this slice: `main@7678e1ee9a7208a8e19663732ebaef93184494e4`.
 
-## Correction to the previous prerequisite
+## Existing owner foundation
 
-PR #3830 correctly identified that #3825 supplied only typed localization metadata and source-value snapshots, but it was too conservative about the existing static Settings write boundary. `ModuleLifecycleDbWriter::update_static_normalized_settings` already uses the shared `StaticTenantLifecycleStore` expected-revision CAS and durable `owner_operation_receipts` idempotency in the same owner transaction as the base `tenant_modules.settings` write.
+PR #3831 established the exact-locale Settings owner boundary on top of the pre-existing static lifecycle aggregate:
 
-That existing lifecycle CAS is reused here; it is not duplicated or replaced.
+- language-neutral Settings remain in `tenant_modules.settings`;
+- localized copy lives separately in `module_static_localized_settings` under tenant/module/stable-field/canonical-locale identity;
+- exact reads never substitute runtime fallback;
+- target-row revision CAS and the shared `StaticTenantLifecycleStore` owner revision guard stale writes;
+- owner apply is replayable through the durable operation-receipt ledger;
+- #3825 localization metadata and sensitivity fences remain the admission boundary for fields that may enter localized storage.
 
 ## What this slice adds
 
-Static module Settings now have a separate exact-locale persistence boundary in `rustok-modules`:
+Static Settings now have durable, content-free repair evidence in `module_static_settings_changes`.
 
-- `module_static_localized_settings` stores localized copy outside the language-neutral `tenant_modules.settings` JSON under `(tenant_id, module_slug, field_id, locale)`;
-- PostgreSQL storage is tenant-RLS scoped, while SQLite uses the same logical identity for focused tests and development;
-- `StaticSettingsLocalizationRegistry` reuses #3825 owner metadata and sensitivity fences, so only declared localized string leaves can reach this path;
-- target values retain schema string-length constraints and a hard bounded UTF-8 payload ceiling;
-- `source_snapshot` returns deterministic owner-declared source values together with the shared static owner revision and fails closed if that owner revision changes during the read;
-- `read_exact` requires canonical `TenantLocale` and never performs runtime fallback;
-- `apply_exact` requires both expected static owner revision and expected target-row revision;
-- localized apply claims and advances the same `StaticTenantLifecycleStore` aggregate used by base settings/lifecycle writes, so base settings and localized copy cannot cross stale revisions;
-- the exact target row and owner revision advance commit together;
-- apply uses the shared durable `owner_operation_receipts` contract, binding actor/idempotency/request identity and storing the terminal response in the owner transaction;
-- `und` and non-canonical runtime locale spellings are rejected before persistence.
+The cursor contract is intentionally owner-local and transport-neutral:
 
-The new storage does not write translations back into base Settings JSON and does not introduce fallback reads.
+- `change_seq` is an append-only database sequence, not an event timestamp or translated-content hash;
+- every row is tenant/module scoped and contains no source or translated value;
+- `base_projection` rows invalidate the Settings source projection while recording only the next shared owner revision;
+- `localized_target` rows identify only stable field ID, canonical locale, shared owner revision and target-row revision;
+- one `(tenant_id, module_slug, owner_revision)` change is admitted, matching the single shared static owner mutation boundary;
+- the `(tenant_id, module_slug, change_seq)` index provides bounded keyset repair without deriving ordering from opaque timestamps;
+- PostgreSQL keeps the journal tenant-RLS scoped;
+- SQLite retains the same logical sequence and trigger semantics for focused local verification.
+
+The journal is emitted by database triggers inside the same database transaction as the owner write:
+
+- source/base projection evidence is produced only while the tenant/module static lifecycle aggregate carries an active owner claim; the row records `current_revision + 1`, which is the revision the same transaction must advance to before commit;
+- exact localized target insert/update evidence uses the `owner_revision` and target `revision` already written by the localized owner transaction;
+- if owner CAS, localized persistence, receipt completion, or transaction commit fails, the corresponding change row rolls back with it.
+
+An initial static override materialization may conservatively emit `base_projection` evidence even when its Settings JSON remains the empty base object. That is safe over-invalidation: repair performs a re-read and never fabricates exact-locale coverage.
 
 ## Why the Settings Translation gate remains open
 
-This slice deliberately stops before provider registration. Two owner/provider prerequisites remain material:
+The transactional repair prerequisite is now source-ready, but provider registration still waits on two explicit boundaries:
 
-1. define transactional content-free Settings localization change evidence or a bounded repair cursor so Translation inventory/progress can recover after missed notifications;
-2. define the authoritative source-locale policy for static Settings copy before a provider can expose exact source/target contracts.
+1. define the authoritative source-locale policy for tenant-module localized Settings copy; `und`, runtime fallback and guessed tenant defaults cannot silently become an authoring source;
+2. wire the eventual Settings provider to a bounded owner change reader over `change_seq` and prove exact-locale progress/inventory semantics through `rustok-translation-targets`.
 
-Only after those are explicit should a Settings Translation target register exact inventory, validation, apply and progress through `rustok-translation-targets`.
+The provider should consume this journal as repair evidence; it must not expose the physical table or let Translation write it directly.
 
 ## Forbidden shortcuts
 
-Do not store localized values in the base settings JSON, count rendered fallback as exact coverage, localize secret/sensitivity-fenced paths, bypass the shared static lifecycle revision, invent a generic settings event outside an owner transaction, or register a provider without source-locale and repair semantics.
+Do not store localized values in the base settings JSON, count rendered fallback as exact coverage, localize secret/sensitivity-fenced paths, bypass the shared static lifecycle revision, include source/target text in the change journal, infer repair ordering from timestamps, or register a provider before source-locale semantics are explicit.
 
 ## Scope
 
-This slice changes only the Settings owner persistence foundation plus this Translation handoff/evidence. It does not register a Translation provider, add runtime fallback, change module enablement semantics, touch artifact Settings persistence, or overlap Forum UGC onboarding.
+This slice adds only the Settings owner repair journal, migration wiring, and synchronized source evidence. It does not register a Translation provider, select a source locale, add runtime fallback, change module enablement semantics, touch artifact Settings persistence, or overlap Forum UGC onboarding.
