@@ -1,0 +1,71 @@
+name: Translation Settings Package Registry Prerequisite
+
+on:
+  pull_request:
+    paths:
+      - "apps/server/src/lib.rs"
+      - "apps/server/src/static_settings_localization_registry.rs"
+      - "crates/rustok-modules-translation/Cargo.toml"
+      - "crates/rustok-translation/contracts/evidence/translation-settings-localization-prerequisite-source.json"
+      - "crates/rustok-translation/docs/translation-settings-localization-prerequisite.md"
+      - "scripts/verify/verify-translation-settings-localization-prerequisite.mjs"
+      - "scripts/verify/verify-translation-settings-package-registry-prerequisite.mjs"
+      - ".github/workflows/translation-settings-package-registry-prerequisite.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/server/src/lib.rs"
+      - "apps/server/src/static_settings_localization_registry.rs"
+      - "crates/rustok-modules-translation/Cargo.toml"
+      - "crates/rustok-translation/contracts/evidence/translation-settings-localization-prerequisite-source.json"
+      - "crates/rustok-translation/docs/translation-settings-localization-prerequisite.md"
+      - "scripts/verify/verify-translation-settings-localization-prerequisite.mjs"
+      - "scripts/verify/verify-translation-settings-package-registry-prerequisite.mjs"
+      - ".github/workflows/translation-settings-package-registry-prerequisite.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: translation-settings-package-registry-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  prerequisite:
+    name: Settings package registry source and focused tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Require exact checked-out SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: translation-settings-package-registry
+      - name: Verify accumulated Settings Translation prerequisites
+        run: node scripts/verify/verify-translation-settings-localization-prerequisite.mjs
+      - name: Verify package registry prerequisite
+        run: node scripts/verify/verify-translation-settings-package-registry-prerequisite.mjs
+      - name: Check server formatting
+        run: cargo fmt -p rustok-server -- --check
+      - name: Run focused package registry tests
+        run: cargo test --locked -p rustok-server --lib --no-default-features static_settings_localization_registry -- --nocapture
