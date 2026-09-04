@@ -8,66 +8,68 @@ last_reviewed: 2026-09-04
 
 # Translation Settings localization prerequisite
 
-Status: **exact-locale owner storage/apply, transactional repair cursor, explicit source-locale provenance, bounded owner reader, and exact progress source-ready / provider identity-apply-registration open**
+Status: **owner persistence/read/source/progress plus stable provider resource+field identity source-ready / field descriptors, mutation adapter, and registration open**
 
-Base reviewed before this slice: `main@4b8da7e78fc6c4c4db7c5921b3007fee94e979ef`.
+Base reviewed before this slice: `main@132a2b09026f5e305a9c2d5ec06328c2658e1e37`.
 
 ## Existing owner foundation
 
 The Settings owner boundary remains layered outside Translation:
 
 - #3825 typed stable localized field IDs, string-leaf eligibility and sensitivity fences;
-- #3831 parallel exact-locale storage in `module_static_localized_settings`, exact reads, target-row CAS, shared `StaticTenantLifecycleStore` owner CAS, and replay-safe owner apply;
-- #3832 content-free transactional repair evidence in `module_static_settings_changes`, ordered by durable `change_seq`;
-- #3833 explicit canonical source-locale provenance in `module_static_settings_source_locales`, bound to the latest `base_projection` revision rather than every shared owner revision.
+- #3831 parallel exact-locale storage, exact reads, target-row CAS, shared owner CAS, and replay-safe exact apply;
+- #3832 content-free `change_seq` repair evidence;
+- #3833 explicit source-locale provenance bound to the latest `base_projection` revision;
+- #3834 bounded owner change reads plus stable exact-locale snapshot/progress facts.
 
-Language-neutral Settings remain in `tenant_modules.settings`. Localized copy, repair evidence and locale provenance remain owner data. Runtime fallback is not exact coverage.
+Language-neutral Settings stay in `tenant_modules.settings`. Localized copy, repair evidence, source-locale provenance, and exact progress stay owner data. Runtime fallback is not exact coverage.
 
-## What this slice adds: bounded owner reader
+## What this slice adds: stable provider identity
 
-`StaticSettingsTranslationReadService::read_changes` exposes the repair journal without exposing its table to Translation.
+`rustok-modules-translation` is a small owner-adapter crate between `rustok-modules` and the neutral `rustok-translation-targets` SPI. It intentionally has no database dependency, performs no owner persistence reads, implements no `TranslationTargetProvider`, and registers nothing at runtime.
 
-The reader is intentionally bounded and keyset-based:
+`StaticSettingsTranslationIdentity::from_registry` maps one already validated `StaticSettingsLocalizationRegistry` to exactly one neutral resource identity:
 
-- `limit` is constrained to `1..=200`;
-- `after_seq` is an exclusive keyset cursor over durable `change_seq`;
-- the first page captures the current inclusive `through_seq` high-water mark;
-- every continuation reuses that exact `through_seq`;
-- rows committed after the high-water mark cannot extend an in-progress repair scan;
-- future/invalid upper bounds fail closed;
-- records preserve only content-free change identity, owner revision and optional exact-target revision;
-- stored localized change locales are revalidated as canonical `TenantLocale` data before being returned.
+- owner slug: `modules`;
+- resource kind: `static_settings`;
+- resource ID: the canonical static module slug;
+- no subresource identity.
 
-This gives the eventual Translation adapter a finite owner repair window without direct SQL, timestamp ordering, or an ever-moving tail.
+The only Translation field identities are the registry's stable localized field IDs. Because the registry stores them in a `BTreeMap`, the adapter exposes a deterministic sorted field-key inventory. It does not derive identities from schema paths, display labels, timestamps, JSON positions, or translated values.
 
-## Exact-locale snapshot and progress
+Reverse mapping is fail-closed. `module_slug_from_identity` rejects a foreign owner slug, foreign resource kind, any subresource identity, or a resource ID that is not a valid static module slug. `contains_field` additionally requires exact resource identity plus an admitted stable field key before a future read/mutation adapter may resolve the field.
 
-`StaticSettingsTranslationReadService::exact_locale_snapshot` combines:
+## Why field descriptors remain separate
 
-1. `StaticSettingsSourceLocaleService::authoritative_source_snapshot` for deterministic source copy plus explicit source-locale provenance;
-2. the exact target rows for one canonical target locale;
-3. the current owner change-sequence high-water mark.
+This slice intentionally does not invent semantic metadata that the current owner registry does not yet expose through a provider contract. In particular it does not guess:
 
-The shared static owner revision is checked before and after the exact-target read. An active mutation, source/target race, or revision movement fails closed instead of returning mixed facts.
+- required-vs-optional Translation units from path shape;
+- AI-export permission for tenant-private Settings copy;
+- protected-token or whitespace policy;
+- one aggregate target revision for a resource whose exact values are stored in independently revisioned field rows.
 
-The snapshot includes only owner-declared localized fields that currently contain source copy. Missing optional source leaves therefore do not become phantom Translation work units. `progress()` counts coverage only when an exact target row exists for that field and target locale. Rendered fallback, tenant defaults and negotiated runtime locales are never consulted.
+The next bounded slice should map owner schema semantics into neutral `TranslationFieldDescriptor` values and define the resource/source/target revision encoding used by validate/apply. Only after those semantics are explicit should a full provider be registered.
 
-The owner progress contract exposes `source_units`, `exact_units`, `missing_units`, `complete`, and the owner `change_seq` high-water mark. Translation can later map these facts into its neutral progress contract without reading Settings persistence directly.
+## Bounded reader and exact progress remain authoritative
 
-## Why provider registration still remains open
+`StaticSettingsTranslationReadService::read_changes` remains the only owner repair reader. It freezes one inclusive `through_seq` high-water mark and drains by exclusive `after_seq`, so later commits cannot extend an in-progress scan.
 
-The persistence/read prerequisites are now source-ready, but the adapter still needs three bounded pieces before registration:
+`StaticSettingsTranslationReadService::exact_locale_snapshot` remains the exact source/target read boundary. It combines explicit source-locale provenance with exact target rows under a stable shared owner revision. `progress()` counts exact rows only; rendered fallback, tenant defaults, and negotiated runtime locales are never consulted.
 
-1. map one static module Settings resource plus stable field IDs into `rustok-translation-targets` identities and descriptors;
-2. map neutral validate/apply requests onto the existing owner exact-read/apply services, preserving source/target/owner CAS and idempotency;
-3. register the provider only after those identity and mutation mappings are proven.
+## Remaining provider work
 
-The provider must consume the owner contracts. It must not infer source locale, read owner tables directly, treat fallback as exact coverage, or bypass owner CAS/idempotency.
+Three bounded pieces remain before Settings can be registered as a Translation target:
+
+1. map owner field semantics to neutral field descriptors and pin revision encoding;
+2. map neutral validate/apply requests to the existing exact owner services while preserving owner CAS, per-field target CAS, source revision checks, and idempotency;
+3. register the provider only after those mappings are source-proven.
+
+The adapter must consume public owner contracts. It must never read owner tables directly or bypass source-locale provenance, exact-row semantics, owner CAS, or operation receipts.
 
 ## Forbidden shortcuts
 
-Do not store localized values in base Settings JSON, count rendered fallback as exact coverage, localize sensitivity-fenced paths, include content in the change journal, infer repair order from timestamps, infer authoring locale from tenant defaults, bind source locale to every shared-owner revision, allow new writes to extend a captured repair window, or register a provider that reaches into owner persistence directly.
+Do not store localized values in base Settings JSON, count fallback as exact coverage, localize sensitivity-fenced paths, put content in repair evidence, infer source locale, use timestamps for repair order, invent provider field semantics in an identity-only layer, collapse independent field target revisions without an explicit contract, or register a provider that reaches into owner persistence directly.
 
 ## Scope
 
-This slice adds only the public Settings Translation owner read model plus synchronized source evidence. It does not register a Translation provider, define runtime fallback, change existing Settings command inputs, change migrations, touch artifact Settings persistence, or overlap Forum UGC onboarding.
+This slice adds only the standalone Settings Translation identity adapter crate plus synchronized source evidence. It does not change migrations, owner persistence, runtime fallback, Settings command inputs, field descriptor semantics, validate/apply behavior, or provider registration.
