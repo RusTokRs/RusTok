@@ -8,9 +8,9 @@ last_reviewed: 2026-09-04
 
 # Translation Settings localization prerequisite
 
-Status: **owner persistence/read/source/progress, stable provider identity, and conservative field descriptors source-ready / revision mapping, mutation adapter, and registration open**
+Status: **owner persistence/read/source/progress, stable provider identity, conservative field descriptors, and opaque revision mapping source-ready / validate-apply adapter and registration open**
 
-Base reviewed before this slice: `main@1ea468d3541e961a76dccffb5877f8eb82d3fdbb`.
+Base reviewed before this slice: `main@808d86f6146406dbe61cb266a37978d538326b96`.
 
 ## Existing owner foundation
 
@@ -21,39 +21,67 @@ The Settings owner boundary remains layered outside Translation:
 - #3832 content-free `change_seq` repair evidence;
 - #3833 explicit source-locale provenance bound to the latest `base_projection` revision;
 - #3834 bounded owner change reads plus stable exact-locale snapshot/progress facts;
-- #3835 stable neutral resource and field identities in the persistence-free `rustok-modules-translation` adapter crate.
+- #3835 stable neutral resource and field identities in the persistence-free `rustok-modules-translation` adapter crate;
+- #3836 conservative `LocalizedScalar` / `TenantPrivate` field descriptors with required exact source-present units and AI export default-denied.
 
-Language-neutral Settings stay in `tenant_modules.settings`. Localized copy, repair evidence, source-locale provenance, and exact progress stay owner data. Runtime fallback is not exact coverage.
+Language-neutral Settings stay in `tenant_modules.settings`. Localized copy, repair evidence, source-locale provenance, exact progress, and per-field target revisions stay owner data. Runtime fallback is not exact coverage.
 
-## What this slice adds: conservative field descriptors
+## What this slice adds: explicit opaque revision mapping
 
-`StaticSettingsTranslationIdentity::field_descriptors` and `descriptor_for_field` map only owner-admitted stable field IDs to neutral `TranslationFieldDescriptor` values. The adapter still has no persistence dependency, implements no `TranslationTargetProvider`, and registers nothing at runtime.
+`StaticSettingsTranslationIdentity::revisions_for_snapshot` maps one already stable `StaticSettingsExactLocaleSnapshot` into the neutral resource/source/target revision contract. The adapter still has no database dependency, implements no `TranslationTargetProvider`, and registers nothing at runtime.
 
-The descriptor policy is intentionally conservative and aligned with the exact owner progress contract:
+### Resource revision
 
-- profile: `LocalizedScalar`;
-- strategy: `Translate`;
-- classification: `TenantPrivate`;
-- `required = true` for every field that actually appears in the authoritative source snapshot;
-- `ai_export_allowed = false` unless a future explicit owner metadata contract opts a field in;
-- `max_characters = None` because the owner schema validator and exact apply boundary remain authoritative for concrete min/max constraints;
-- `preserves_whitespace = false`; no protected-token or whitespace promise is invented by this slice.
+`resource_revision` is `settings-owner-v1:<owner_revision>` and therefore follows the shared static owner revision exactly. Any base Settings write, source-locale assignment, or exact localized target write that advances the owner aggregate also advances the neutral resource revision.
 
-The important distinction is that registry membership alone does not create a progress unit. `StaticSettingsTranslationReadService::exact_locale_snapshot` includes only owner-declared fields that currently contain source copy. Once a source field is present, exact target copy is required for that resource to be complete, which matches the existing owner `progress()` semantics.
+This is the coarse resource CAS clock. It does not replace per-field target CAS.
 
-`max_characters = None` is not permission to skip validation. A future provider adapter must still call the existing owner validate/apply boundary, which enforces the underlying Settings schema. Likewise `TenantPrivate` plus `ai_export_allowed = false` prevents provider onboarding from silently making tenant Settings copy eligible for AI export.
+### Source revision
 
-## Stable identity remains authoritative
+`source_revision` is a deterministic SHA-256 digest over length-framed canonical source facts:
 
-The neutral Settings identity remains exactly one resource per static module:
+- revision namespace/version;
+- static module slug;
+- canonical source locale;
+- sorted current source field IDs;
+- each current source field value.
 
-- owner slug: `modules`;
-- resource kind: `static_settings`;
-- resource ID: canonical static module slug;
-- no subresource identity;
-- field keys: the registry's deterministic stable localized field IDs.
+It deliberately does **not** include the shared owner revision. A target-only localized write therefore advances `resource_revision` but leaves `source_revision` unchanged when source copy is unchanged. A base source-copy change changes the source digest even if the localized target rows are untouched.
 
-`module_slug_from_identity` rejects foreign owner/kind/subresource identities, and `contains_field` requires exact resource identity plus an admitted field key before later read/mutation mapping may resolve it.
+The digest is an opaque neutral precondition, not persisted owner state.
+
+### Target revision
+
+`target_revision` is `None` while none of the current source fields has an exact target row. Once any exact target exists, the adapter returns a deterministic SHA-256 digest over:
+
+- revision namespace/version;
+- static module slug;
+- canonical target locale;
+- sorted current source field IDs;
+- for each field, either its positive owner target-row revision or an explicit `missing` marker.
+
+Target values are not hashed into this revision because the owner exact write contract already advances each target-row revision when target copy changes. The digest therefore represents the current aggregate target precondition without fabricating a new numeric owner revision.
+
+Critically, this digest does **not** replace the per-field revisions carried by `StaticSettingsExactLocaleField`. A future apply adapter must first compare the neutral aggregate precondition, then use each field's actual `target_revision` as the `expected_target_revision` passed to owner `apply_exact`.
+
+### Fail-closed snapshot checks
+
+Before producing revisions, the adapter rejects:
+
+- a snapshot whose module slug does not match the neutral resource identity;
+- zero shared owner revision;
+- duplicate or owner-unadmitted source fields;
+- target value/revision/target-owner-revision triples that are only partially populated;
+- zero target revisions;
+- target-owner revisions newer than the enclosing stable owner snapshot.
+
+Fields are sorted before digesting, so revision values do not depend on snapshot row order.
+
+## Descriptor and identity policy remain authoritative
+
+The neutral Settings identity remains one resource per static module: owner `modules`, kind `static_settings`, canonical module slug resource ID, no subresource. Field keys remain the registry's stable localized field IDs.
+
+Descriptors remain `LocalizedScalar`, `Translate`, `TenantPrivate`, required for source-present units, AI export default-denied, with owner schema validation still authoritative. `max_characters = None` is not relaxed validation.
 
 ## Bounded reader and exact progress remain authoritative
 
@@ -61,33 +89,19 @@ The neutral Settings identity remains exactly one resource per static module:
 
 `StaticSettingsTranslationReadService::exact_locale_snapshot` remains the exact source/target read boundary. It combines explicit source-locale provenance with exact target rows under a stable shared owner revision. `progress()` counts exact rows only; rendered fallback, tenant defaults, and negotiated runtime locales are never consulted.
 
-## Why revision mapping remains separate
-
-Exact localized Settings are stored in independently revisioned field rows while all writes also advance one shared static owner revision. The neutral target SPI exposes resource/source/target opaque revisions, so the adapter must define an explicit encoding rather than collapsing field revisions by accident.
-
-The next bounded slice must pin:
-
-1. the neutral resource revision derived from the shared owner revision;
-2. the source revision tied to authoritative source-locale/base-projection provenance;
-3. the target revision representation for a set of independent exact field rows;
-4. how stale source, stale owner, missing target, and per-field target CAS are surfaced during validate/apply.
-
-Only after that revision contract is source-proven should neutral validate/apply methods delegate to the existing owner exact apply service and provider registration become possible.
-
 ## Remaining provider work
 
-Three bounded pieces remain before Settings can be registered as a Translation target:
+Two bounded pieces remain before Settings can be registered as a Translation target:
 
-1. pin neutral resource/source/target revision encoding without inventing aggregate state;
-2. map neutral validate/apply requests to the existing exact owner services while preserving owner CAS, per-field target CAS, source revision checks, and idempotency;
-3. register the provider only after those mappings are source-proven.
+1. map neutral `read_resource`, `validate_patch`, and `apply_patch` semantics onto the existing exact owner services while checking the new resource/source/target revision preconditions and preserving per-field target CAS, shared owner CAS, owner schema validation, and idempotency;
+2. register the provider only after that adapter mapping is source-proven.
 
-The adapter must consume public owner contracts. It must never read owner tables directly or bypass source-locale provenance, exact-row semantics, owner CAS, schema validation, or operation receipts.
+The mutation adapter must not treat the target digest as a substitute for row CAS. Multi-field apply must deliberately advance the shared owner revision between field writes and preserve one replay-safe provider operation contract rather than bypassing owner receipts.
 
 ## Forbidden shortcuts
 
-Do not store localized values in base Settings JSON, count fallback as exact coverage, localize sensitivity-fenced paths, put content in repair evidence, infer source locale, use timestamps for repair order, treat `max_characters = None` as relaxed owner validation, enable AI export without explicit owner metadata, collapse independent target-row revisions into an invented aggregate revision, or register a provider that reaches into owner persistence directly.
+Do not store localized values in base Settings JSON, count fallback as exact coverage, localize sensitivity-fenced paths, put content in repair evidence, infer source locale, use timestamps for repair order, tie source revision to every target-only owner revision, hash target values instead of owner target-row revisions, treat aggregate target digest as a replacement for per-field CAS, weaken owner schema validation, enable AI export without explicit owner metadata, or register a provider that reaches into owner persistence directly.
 
 ## Scope
 
-This slice changes only the persistence-free Settings Translation adapter descriptor policy plus synchronized source evidence/handoff/verifier. It does not change migrations, owner persistence, runtime fallback, Settings command inputs, revision encoding, validate/apply behavior, or provider registration.
+This slice changes only the persistence-free Settings Translation adapter revision encoding plus its small hashing dependencies and synchronized source evidence/handoff/verifier. It does not change migrations, owner persistence, runtime fallback, Settings command inputs, validate/apply behavior, or provider registration.
