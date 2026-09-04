@@ -1,0 +1,319 @@
+name: Temporary Settings Translation Cursor Patch
+
+on:
+  push:
+    branches:
+      - feat/settings-translation-target-provider-20260904
+    paths:
+      - .github/workflows/settings-translation-cursor-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.repository == 'RusTokRs/RusTok'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feat/settings-translation-target-provider-20260904
+          fetch-depth: 0
+      - name: Patch bounded scan and tail cursors
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("apps/server/src/static_settings_translation_target.rs")
+          text = path.read_text()
+
+          anchor = '''const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
+
+#[derive(Clone)]'''
+          replacement = '''const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ChangeCursor {
+    Scan { through: u64, after: u64 },
+    Tail { after: u64 },
+}
+
+#[derive(Clone)]'''
+          assert text.count(anchor) == 1, "change cursor enum anchor drifted"
+          text = text.replace(anchor, replacement)
+
+          old_read = '''        let parsed = request
+            .after
+            .as_ref()
+            .map(parse_change_cursor)
+            .transpose()?;
+        let (through, after) = match parsed {
+            Some(cursor) => cursor,
+            None => (self.global_highwater(tenant_id, &registries).await?.unwrap_or(0), 0),
+        };
+        if through == 0 {
+            return Ok(TranslationTargetChangePage {
+                changes: Vec::new(),
+                next_cursor: None,
+            });
+        }
+
+        let service = StaticSettingsTranslationReadService::new(self.db.clone());
+        let mut changes = Vec::<(u64, TranslationTargetChange)>::new();
+        for registry in &registries {
+            let Some(current_highwater) = self.module_highwater(tenant_id, registry).await? else {
+                continue;
+            };
+            let bound = through.min(current_highwater);
+            if after >= bound {
+                continue;
+            }
+            let page = service
+                .read_changes(
+                    registry,
+                    StaticSettingsChangeReadRequest {
+                        tenant_id,
+                        after_seq: (after > 0).then_some(after),
+                        through_seq: Some(bound),
+                        limit: request.limit,
+                    },
+                )
+                .await
+                .map_err(translation_read_error_to_port_error)?;
+            let identity = StaticSettingsTranslationIdentity::from_registry(registry)
+                .map_err(adapter_error_to_port_error)?;
+            for change in page.changes {
+                changes.push((
+                    change.change_seq,
+                    TranslationTargetChange {
+                        identity: identity.resource().clone(),
+                        resource_revision: resource_revision_from_owner(change.owner_revision)?,
+                        lifecycle: TranslationResourceLifecycle::Active,
+                    },
+                ));
+            }
+        }
+        changes.sort_by_key(|(change_seq, _)| *change_seq);
+        if changes.len() > usize::from(request.limit) {
+            changes.truncate(usize::from(request.limit));
+        }
+        let last_seq = changes.last().map(|(change_seq, _)| *change_seq);
+        let next_cursor = last_seq
+            .filter(|last_seq| *last_seq < through)
+            .map(|last_seq| change_cursor(through, last_seq))
+            .transpose()?;
+'''
+          new_read = '''        let parsed = request
+            .after
+            .as_ref()
+            .map(parse_change_cursor)
+            .transpose()?;
+        let (through, after) = match parsed {
+            Some(ChangeCursor::Scan { through, after }) => (through, after),
+            Some(ChangeCursor::Tail { after }) => (
+                self.global_highwater(tenant_id, &registries)
+                    .await?
+                    .unwrap_or(after),
+                after,
+            ),
+            None => (
+                self.global_highwater(tenant_id, &registries)
+                    .await?
+                    .unwrap_or(0),
+                0,
+            ),
+        };
+        if through <= after {
+            return Ok(TranslationTargetChangePage {
+                changes: Vec::new(),
+                next_cursor: (after > 0)
+                    .then(|| tail_change_cursor(after))
+                    .transpose()?,
+            });
+        }
+
+        let service = StaticSettingsTranslationReadService::new(self.db.clone());
+        let mut changes = Vec::<(u64, TranslationTargetChange)>::new();
+        let mut owner_has_more = false;
+        for registry in &registries {
+            let Some(current_highwater) = self.module_highwater(tenant_id, registry).await? else {
+                continue;
+            };
+            let bound = through.min(current_highwater);
+            if after >= bound {
+                continue;
+            }
+            let page = service
+                .read_changes(
+                    registry,
+                    StaticSettingsChangeReadRequest {
+                        tenant_id,
+                        after_seq: (after > 0).then_some(after),
+                        through_seq: Some(bound),
+                        limit: request.limit,
+                    },
+                )
+                .await
+                .map_err(translation_read_error_to_port_error)?;
+            owner_has_more |= page.next_after_seq.is_some();
+            let identity = StaticSettingsTranslationIdentity::from_registry(registry)
+                .map_err(adapter_error_to_port_error)?;
+            for change in page.changes {
+                changes.push((
+                    change.change_seq,
+                    TranslationTargetChange {
+                        identity: identity.resource().clone(),
+                        resource_revision: resource_revision_from_owner(change.owner_revision)?,
+                        lifecycle: TranslationResourceLifecycle::Active,
+                    },
+                ));
+            }
+        }
+        changes.sort_by_key(|(change_seq, _)| *change_seq);
+        let has_more = owner_has_more || changes.len() > usize::from(request.limit);
+        if changes.len() > usize::from(request.limit) {
+            changes.truncate(usize::from(request.limit));
+        }
+        let last_seq = changes.last().map(|(change_seq, _)| *change_seq);
+        let next_cursor = match (has_more, last_seq) {
+            (true, Some(last_seq)) => Some(scan_change_cursor(through, last_seq)?),
+            (false, Some(last_seq)) => Some(tail_change_cursor(last_seq)?),
+            (false, None) if after > 0 => Some(tail_change_cursor(after)?),
+            (true, None) => {
+                return Err(PortError::invariant_violation(
+                    "settings.translation_change_cursor_invalid",
+                    "Settings change journal reported more rows without returning a continuation row",
+                ));
+            }
+            _ => None,
+        };
+'''
+          assert text.count(old_read) == 1, "read_changes block drifted"
+          text = text.replace(old_read, new_read)
+
+          old_helpers = '''fn change_cursor(through: u64, after: u64) -> Result<OpaqueCursor, PortError> {
+    OpaqueCursor::new(format!("{CHANGE_CURSOR_VERSION}:{through}:{after}")).map_err(|error| {
+        PortError::invariant_violation(
+            "settings.translation_change_cursor_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn parse_change_cursor(cursor: &OpaqueCursor) -> Result<(u64, u64), PortError> {
+    let mut parts = cursor.as_str().split(':');
+    let version = parts.next();
+    let through = parts.next().and_then(|value| value.parse::<u64>().ok());
+    let after = parts.next().and_then(|value| value.parse::<u64>().ok());
+    if version != Some(CHANGE_CURSOR_VERSION)
+        || parts.next().is_some()
+        || through.is_none()
+        || after.is_none()
+    {
+        return Err(PortError::validation(
+            "settings.translation_change_cursor_invalid",
+            "Settings translation change cursor is invalid",
+        ));
+    }
+    let through = through.unwrap_or_default();
+    let after = after.unwrap_or_default();
+    if through == 0 || after == 0 || after > through {
+        return Err(PortError::validation(
+            "settings.translation_change_cursor_invalid",
+            "Settings translation change cursor bounds are invalid",
+        ));
+    }
+    Ok((through, after))
+}
+'''
+          new_helpers = '''fn scan_change_cursor(through: u64, after: u64) -> Result<OpaqueCursor, PortError> {
+    OpaqueCursor::new(format!("{CHANGE_CURSOR_VERSION}:s:{through}:{after}")).map_err(|error| {
+        PortError::invariant_violation(
+            "settings.translation_change_cursor_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn tail_change_cursor(after: u64) -> Result<OpaqueCursor, PortError> {
+    OpaqueCursor::new(format!("{CHANGE_CURSOR_VERSION}:t:{after}")).map_err(|error| {
+        PortError::invariant_violation(
+            "settings.translation_change_cursor_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn parse_change_cursor(cursor: &OpaqueCursor) -> Result<ChangeCursor, PortError> {
+    let parts = cursor.as_str().split(':').collect::<Vec<_>>();
+    let parsed = match parts.as_slice() {
+        [version, "s", through, after] if *version == CHANGE_CURSOR_VERSION => {
+            let through = through.parse::<u64>().ok();
+            let after = after.parse::<u64>().ok();
+            match (through, after) {
+                (Some(through), Some(after)) if through > 0 && after > 0 && after <= through => {
+                    Some(ChangeCursor::Scan { through, after })
+                }
+                _ => None,
+            }
+        }
+        [version, "t", after] if *version == CHANGE_CURSOR_VERSION => after
+            .parse::<u64>()
+            .ok()
+            .filter(|after| *after > 0)
+            .map(|after| ChangeCursor::Tail { after }),
+        _ => None,
+    };
+    parsed.ok_or_else(|| {
+        PortError::validation(
+            "settings.translation_change_cursor_invalid",
+            "Settings translation change cursor is invalid",
+        )
+    })
+}
+'''
+          assert text.count(old_helpers) == 1, "change cursor helper block drifted"
+          text = text.replace(old_helpers, new_helpers)
+
+          old_test = '''    #[test]
+    fn bounded_change_cursor_round_trips() {
+        let cursor = change_cursor(42, 17).expect("cursor");
+        assert_eq!(parse_change_cursor(&cursor).unwrap(), (42, 17));
+        assert!(parse_change_cursor(&OpaqueCursor::new("42").unwrap()).is_err());
+    }
+'''
+          new_test = '''    #[test]
+    fn bounded_change_cursor_round_trips() {
+        let scan = scan_change_cursor(42, 17).expect("scan cursor");
+        assert_eq!(
+            parse_change_cursor(&scan).unwrap(),
+            ChangeCursor::Scan {
+                through: 42,
+                after: 17,
+            }
+        );
+        let tail = tail_change_cursor(17).expect("tail cursor");
+        assert_eq!(
+            parse_change_cursor(&tail).unwrap(),
+            ChangeCursor::Tail { after: 17 }
+        );
+        assert!(parse_change_cursor(&OpaqueCursor::new("42").unwrap()).is_err());
+        assert!(parse_change_cursor(&OpaqueCursor::new("v1:s:17:42").unwrap()).is_err());
+    }
+'''
+          assert text.count(old_test) == 1, "change cursor test block drifted"
+          text = text.replace(old_test, new_test)
+
+          path.write_text(text)
+      - name: Verify patch scope
+        run: |
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 1
+          test "$(git diff --name-only)" = "apps/server/src/static_settings_translation_target.rs"
+      - name: Commit cursor fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/server/src/static_settings_translation_target.rs
+          git commit -m "fix(translation): preserve settings change tail cursor"
+          git push origin HEAD:feat/settings-translation-target-provider-20260904
