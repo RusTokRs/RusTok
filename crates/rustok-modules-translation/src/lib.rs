@@ -2,15 +2,17 @@
 //! Translation target SPI.
 //!
 //! This crate deliberately contains no persistence access and does not register
-//! a `TranslationTargetProvider`. It maps only stable owner identities already
-//! admitted by `StaticSettingsLocalizationRegistry`. Read/apply behavior stays
-//! behind `rustok-modules` owner services until the remaining adapter contract
-//! is proven.
+//! a `TranslationTargetProvider`. It maps stable owner identities and a
+//! conservative field-descriptor policy already admitted by
+//! `StaticSettingsLocalizationRegistry`. Read/apply behavior stays behind
+//! `rustok-modules` owner services until the remaining adapter contract is
+//! proven.
 
 use rustok_modules::{StaticSettingsLocalizationRegistry, is_valid_static_module_slug};
 use rustok_translation_targets::{
-    FieldKey, OwnerSlug, ResourceId, ResourceKind, TranslationResourceIdentity,
-    TranslationTargetContractError,
+    FieldKey, OwnerSlug, ResourceId, ResourceKind, TranslationDataClassification,
+    TranslationFieldDescriptor, TranslationResourceIdentity, TranslationStrategy,
+    TranslationTargetContractError, TranslationValueProfile,
 };
 use thiserror::Error;
 
@@ -55,6 +57,48 @@ impl StaticSettingsTranslationIdentity {
         &self.field_keys
     }
 
+    /// Returns the neutral descriptor policy for every owner-admitted field.
+    ///
+    /// A descriptor becomes a Translation unit only when the owner source
+    /// snapshot actually contains that field. At that point exact target copy
+    /// is required for completeness, matching the owner progress contract.
+    /// Settings copy is tenant-private and explicitly localizable, but AI export
+    /// stays denied until a future owner metadata contract opts a field in.
+    /// Owner validation remains authoritative for concrete min/max constraints,
+    /// so this adapter does not fabricate a weaker or rounded character limit.
+    pub fn field_descriptors(&self) -> Vec<TranslationFieldDescriptor> {
+        self.field_keys
+            .iter()
+            .cloned()
+            .map(|key| TranslationFieldDescriptor {
+                key,
+                profile: TranslationValueProfile::LocalizedScalar,
+                strategy: TranslationStrategy::Translate,
+                classification: TranslationDataClassification::TenantPrivate,
+                required: true,
+                ai_export_allowed: false,
+                max_characters: None,
+                preserves_whitespace: false,
+            })
+            .collect()
+    }
+
+    pub fn descriptor_for_field(&self, field: &FieldKey) -> Option<TranslationFieldDescriptor> {
+        self.field_keys
+            .binary_search(field)
+            .ok()
+            .map(|index| TranslationFieldDescriptor {
+                key: self.field_keys[index].clone(),
+                profile: TranslationValueProfile::LocalizedScalar,
+                strategy: TranslationStrategy::Translate,
+                classification: TranslationDataClassification::TenantPrivate,
+                required: true,
+                ai_export_allowed: false,
+                max_characters: None,
+                preserves_whitespace: false,
+            })
+    }
+
     /// Resolves a neutral target identity back to its owner module slug while
     /// rejecting foreign owners, resource kinds, and subresource identities.
     pub fn module_slug_from_identity(
@@ -94,7 +138,10 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet, HashMap};
 
     use rustok_modules::ModuleSettingSpec;
-    use rustok_translation_targets::{FieldKey, OwnerSlug, ResourceId, ResourceKind};
+    use rustok_translation_targets::{
+        FieldKey, OwnerSlug, ResourceId, ResourceKind, TranslationDataClassification,
+        TranslationStrategy, TranslationValueProfile,
+    };
 
     use super::*;
 
@@ -111,6 +158,7 @@ mod tests {
                             ModuleSettingSpec {
                                 value_type: "string".to_string(),
                                 required: true,
+                                max: Some(80.0),
                                 ..Default::default()
                             },
                         ),
@@ -155,6 +203,36 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["storefront.hero.subtitle", "storefront.hero.title"]
         );
+    }
+
+    #[test]
+    fn descriptors_require_exact_present_copy_and_deny_ai_export_by_default() {
+        let identity = StaticSettingsTranslationIdentity::from_registry(&registry()).unwrap();
+        let descriptors = identity.field_descriptors();
+        assert_eq!(descriptors.len(), 2);
+        for descriptor in descriptors {
+            assert_eq!(descriptor.profile, TranslationValueProfile::LocalizedScalar);
+            assert_eq!(descriptor.strategy, TranslationStrategy::Translate);
+            assert_eq!(
+                descriptor.classification,
+                TranslationDataClassification::TenantPrivate
+            );
+            assert!(descriptor.required);
+            assert!(!descriptor.ai_export_allowed);
+            assert_eq!(descriptor.max_characters, None);
+            assert!(!descriptor.preserves_whitespace);
+        }
+    }
+
+    #[test]
+    fn descriptor_lookup_rejects_unadmitted_field() {
+        let identity = StaticSettingsTranslationIdentity::from_registry(&registry()).unwrap();
+        assert!(identity
+            .descriptor_for_field(&FieldKey::new("storefront.hero.title").unwrap())
+            .is_some());
+        assert!(identity
+            .descriptor_for_field(&FieldKey::new("storefront.hero.missing").unwrap())
+            .is_none());
     }
 
     #[test]
