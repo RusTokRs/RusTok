@@ -1,8 +1,8 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "scope": "translation_settings_localization_prerequisite",
-  "status": "owner_change_cursor_source_ready",
-  "base_main": "7678e1ee9a7208a8e19663732ebaef93184494e4",
+  "status": "owner_source_locale_source_ready",
+  "base_main": "3d06cc4b4fa79fe7135ee4e7e02f9a6de5eb1074",
   "source_facts": {
     "localized_field_registry_present": true,
     "stable_field_ids_present": true,
@@ -22,14 +22,19 @@
     "base_projection_change_evidence_present": true,
     "localized_target_change_evidence_present": true,
     "bounded_monotonic_change_sequence_present": true,
-    "settings_translation_provider_registered": false,
-    "authoritative_source_locale_policy_present": false
+    "authoritative_source_locale_policy_present": true,
+    "explicit_source_locale_assignment_present": true,
+    "source_locale_bound_to_latest_base_projection_present": true,
+    "target_only_writes_preserve_source_locale_provenance": true,
+    "base_settings_writes_invalidate_source_locale_provenance": true,
+    "legacy_without_source_locale_provenance_fails_closed": true,
+    "source_locale_assignment_emits_repair_evidence": true,
+    "settings_translation_provider_registered": false
   },
   "remaining_owner_contract": {
-    "authoritative_source_locale_policy": true,
-    "translation_provider_registration_after_source_locale_policy": true,
+    "provider_bounded_change_reader": true,
     "provider_exact_locale_progress": true,
-    "provider_bounded_change_reader": true
+    "translation_provider_registration": true
   },
   "forbidden_shortcuts": [
     "store translated settings back into the language-neutral settings JSON",
@@ -38,7 +43,9 @@
     "bypass the shared static lifecycle revision when applying localized copy",
     "put source or translated values into change evidence",
     "derive repair order from timestamps instead of the durable change sequence",
-    "register a Translation provider before source locale policy is defined"
+    "infer source locale from the current tenant default or runtime fallback",
+    "bind source locale to the current shared owner revision so target-only applies invalidate it",
+    "register a Translation provider before bounded reader and exact progress contracts exist"
   ],
   "validation": {
     "author_tests_run": false,
@@ -49,6 +56,7 @@
     "localized_storage_source_proven": true,
     "localized_owner_apply_source_proven": true,
     "change_cursor_source_proven": true,
+    "source_locale_owner_source_proven": true,
     "runtime_database_execution_proven": false,
     "translation_provider_proven": false
   }
