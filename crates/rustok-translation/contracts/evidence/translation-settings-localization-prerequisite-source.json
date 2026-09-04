@@ -1,39 +1,39 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "scope": "translation_settings_localization_prerequisite",
-  "status": "source_prerequisite_only",
-  "reviewed_main": "bd732fbf80c9169af2d86888a7c44cfc5b9486e8",
-  "reviewed_main_tree": "f80eaf1a64bd1367630cb841129024a86b9f5f92",
+  "status": "owner_exact_locale_source_ready",
+  "base_main": "0cd5e9d37dc41334f20c2b347d946ee0055d0199",
   "source_facts": {
     "localized_field_registry_present": true,
     "stable_field_ids_present": true,
     "localized_string_leaf_validation_present": true,
     "sensitive_path_fences_present": true,
     "deterministic_source_value_snapshot_present": true,
-    "parallel_exact_locale_storage_present": false,
-    "localized_row_revision_cas_present": false,
-    "settings_owner_idempotency_receipt_present": false,
+    "static_owner_lifecycle_revision_cas_present": true,
+    "static_owner_settings_idempotency_receipt_present": true,
+    "parallel_exact_locale_storage_present": true,
+    "localized_row_revision_cas_present": true,
+    "localized_exact_read_without_fallback_present": true,
+    "localized_apply_shares_static_owner_revision_present": true,
+    "localized_apply_idempotency_receipt_present": true,
+    "canonical_tenant_locale_enforced": true,
     "settings_translation_change_cursor_or_event_present": false,
-    "settings_translation_provider_registered": false
+    "settings_translation_provider_registered": false,
+    "authoritative_source_locale_policy_present": false
   },
-  "required_next_owner_contract": {
-    "named_settings_owner": true,
-    "tenant_module_field_locale_identity": true,
-    "canonical_tenant_locale": true,
-    "exact_locale_reads_without_runtime_fallback": true,
-    "base_settings_revision_cas": true,
-    "localized_row_revision_cas": true,
-    "idempotent_owner_apply_receipt": true,
-    "content_free_change_evidence": true,
-    "sensitive_fields_never_persisted_as_localized_copy": true,
-    "translation_provider_registration_only_after_owner_contract": true
+  "remaining_owner_contract": {
+    "content_free_transactional_change_evidence": true,
+    "authoritative_source_locale_policy": true,
+    "translation_provider_registration_after_change_evidence": true,
+    "provider_exact_locale_progress": true
   },
   "forbidden_shortcuts": [
     "store translated settings back into the language-neutral settings JSON",
     "treat rendered fallback as exact locale coverage",
     "localize secret or sensitivity-fenced paths",
-    "register a Translation provider before owner CAS and idempotency exist",
-    "invent a generic settings event without an owner transaction boundary"
+    "bypass the shared static lifecycle revision when applying localized copy",
+    "invent a generic settings event without an owner transaction boundary",
+    "register a Translation provider before source locale and change repair are defined"
   ],
   "validation": {
     "author_tests_run": false,
@@ -41,8 +41,9 @@
     "author_cargo_run": false,
     "author_format_run": false,
     "author_ci_run": false,
-    "localized_storage_proven": false,
-    "owner_apply_proven": false,
+    "localized_storage_source_proven": true,
+    "localized_owner_apply_source_proven": true,
+    "runtime_database_execution_proven": false,
     "translation_provider_proven": false
   }
 }
