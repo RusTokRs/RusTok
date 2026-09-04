@@ -75,6 +75,7 @@ mod security_state;
 mod settings;
 mod settings_guard;
 mod static_package;
+mod static_settings_localization;
 mod transition_coordinator;
 mod transition_receipts;
 mod transition_store;
@@ -545,6 +546,11 @@ pub use security_state::{
 pub use settings::{
     ModuleSettingSpec, ModuleSettingsValidationError, normalize_module_settings,
     validate_module_settings_schema,
+};
+pub use static_settings_localization::{
+    StaticLocalizedSettingApplyCommand, StaticLocalizedSettingRecord,
+    StaticSettingsLocalizedSourceSnapshot, StaticSettingsLocalizationError,
+    StaticSettingsLocalizationRegistry, StaticSettingsLocalizationService,
 };
 pub use static_package::{
     StaticModuleCatalogContract, StaticModuleCatalogValidationError,

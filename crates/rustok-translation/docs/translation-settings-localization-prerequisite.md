@@ -8,46 +8,47 @@ last_reviewed: 2026-09-04
 
 # Translation Settings localization prerequisite
 
-Status: **typed metadata complete / owner persistence and provider onboarding open**
+Status: **exact-locale owner storage/apply source-ready / change evidence and provider onboarding open**
 
-Reviewed against `main@bd732fbf80c9169af2d86888a7c44cfc5b9486e8` (tree `f80eaf1a64bd1367630cb841129024a86b9f5f92`).
+Base reviewed before this slice: `main@0cd5e9d37dc41334f20c2b347d946ee0055d0199`.
 
-## What current main already proves
+## Correction to the previous prerequisite
 
-PR #3825 established the first Settings localization prerequisite in `rustok-modules` without changing the public `ModuleSettingSpec` Rust shape:
+PR #3830 correctly identified that #3825 supplied only typed localization metadata and source-value snapshots, but it was too conservative about the existing static Settings write boundary. `ModuleLifecycleDbWriter::update_static_normalized_settings` already uses the shared `StaticTenantLifecycleStore` expected-revision CAS and durable `owner_operation_receipts` idempotency in the same owner transaction as the base `tenant_modules.settings` write.
 
-- owners can declare stable localized field IDs mapped to schema paths;
-- only string leaves are eligible;
-- enum/options and array-item targets fail closed;
-- owner-declared sensitive paths fence that node and every descendant;
-- localized field inventory is deterministic;
-- normalized language-neutral settings can produce a deterministic source-value snapshot keyed by stable field ID.
+That existing lifecycle CAS is reused here; it is not duplicated or replaced.
 
-This is enough to classify and discover candidate copy. It is not an exact-locale Settings owner yet.
+## What this slice adds
 
-## Why the Settings gate remains open
+Static module Settings now have a separate exact-locale persistence boundary in `rustok-modules`:
 
-Current source does not provide parallel tenant/module/field/locale persistence for localized values, a revisioned exact-locale row contract, owner apply idempotency receipts, or transactional change evidence suitable for durable Translation cursor repair. No Settings Translation provider should be registered until those owner guarantees exist.
+- `module_static_localized_settings` stores localized copy outside the language-neutral `tenant_modules.settings` JSON under `(tenant_id, module_slug, field_id, locale)`;
+- PostgreSQL storage is tenant-RLS scoped, while SQLite uses the same logical identity for focused tests and development;
+- `StaticSettingsLocalizationRegistry` reuses #3825 owner metadata and sensitivity fences, so only declared localized string leaves can reach this path;
+- target values retain schema string-length constraints and a hard bounded UTF-8 payload ceiling;
+- `source_snapshot` returns deterministic owner-declared source values together with the shared static owner revision and fails closed if that owner revision changes during the read;
+- `read_exact` requires canonical `TenantLocale` and never performs runtime fallback;
+- `apply_exact` requires both expected static owner revision and expected target-row revision;
+- localized apply claims and advances the same `StaticTenantLifecycleStore` aggregate used by base settings/lifecycle writes, so base settings and localized copy cannot cross stale revisions;
+- the exact target row and owner revision advance commit together;
+- apply uses the shared durable `owner_operation_receipts` contract, binding actor/idempotency/request identity and storing the terminal response in the owner transaction;
+- `und` and non-canonical runtime locale spellings are rejected before persistence.
 
-The central Translation P0 Settings exit condition therefore remains materially open even though its older wording understates the metadata work already merged.
+The new storage does not write translations back into base Settings JSON and does not introduce fallback reads.
 
-## Required next owner slice
+## Why the Settings Translation gate remains open
 
-Implement the persistence boundary in the Settings owner before Translation provider wiring:
+This slice deliberately stops before provider registration. Two owner/provider prerequisites remain material:
 
-1. assign one canonical Settings owner for tenant-module localized copy;
-2. store localized values outside the language-neutral settings JSON under a tenant/module/stable-field/`TenantLocale` identity;
-3. expose exact-locale reads that never substitute runtime fallback;
-4. bind writes to expected language-neutral settings revision and expected target-row revision;
-5. make apply idempotent with a durable owner receipt so unknown outcomes can be replayed safely;
-6. emit content-free transactional change evidence or a bounded owner cursor after the owner mutation commits;
-7. keep sensitivity-fenced fields structurally impossible to persist through this localized path;
-8. register a Translation target only after the owner read/validate/apply/progress contract can prove those invariants.
+1. define transactional content-free Settings localization change evidence or a bounded repair cursor so Translation inventory/progress can recover after missed notifications;
+2. define the authoritative source-locale policy for static Settings copy before a provider can expose exact source/target contracts.
+
+Only after those are explicit should a Settings Translation target register exact inventory, validation, apply and progress through `rustok-translation-targets`.
 
 ## Forbidden shortcuts
 
-Do not store translated values back into the base settings JSON, count rendered fallback as exact coverage, localize secret/sensitivity-fenced paths, register a provider before CAS/idempotency exists, or invent a generic settings event without a real owner transaction boundary.
+Do not store localized values in the base settings JSON, count rendered fallback as exact coverage, localize secret/sensitivity-fenced paths, bypass the shared static lifecycle revision, invent a generic settings event outside an owner transaction, or register a provider without source-locale and repair semantics.
 
-## Scope of this prerequisite
+## Scope
 
-This handoff records the verified boundary after #3825 and adds a source verifier. It does not add migrations, persistence, owner events, runtime fallback, Translation provider registration, or UI. It intentionally stays disjoint from the Forum UGC onboarding track and from the artifact control-plane work that is concurrently changing other `rustok-modules` files.
+This slice changes only the Settings owner persistence foundation plus this Translation handoff/evidence. It does not register a Translation provider, add runtime fallback, change module enablement semantics, touch artifact Settings persistence, or overlap Forum UGC onboarding.
