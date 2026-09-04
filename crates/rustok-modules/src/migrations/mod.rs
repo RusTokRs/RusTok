@@ -47,6 +47,7 @@ pub(crate) mod m20260903_000048_artifact_data_object_copy_operations;
 pub(crate) mod m20260903_000049_artifact_data_snapshot_and_recovery_operations;
 pub(crate) mod m20260904_000050_rhai_authoring_packages;
 pub(crate) mod m20260904_000051_static_localized_settings;
+pub(crate) mod m20260904_000052_static_settings_change_cursor;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -101,5 +102,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260903_000049_artifact_data_snapshot_and_recovery_operations::Migration),
         Box::new(m20260904_000050_rhai_authoring_packages::Migration),
         Box::new(m20260904_000051_static_localized_settings::Migration),
+        Box::new(m20260904_000052_static_settings_change_cursor::Migration),
     ]
 }
