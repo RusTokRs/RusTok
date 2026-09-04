@@ -1,10 +1,10 @@
 //! Explicit authoring-locale provenance for static module Settings.
 //!
 //! A source locale is never inferred from runtime fallback or a tenant default
-//! at read time. Instead, an owner command binds one canonical `TenantLocale`
-//! to the exact static Settings owner revision. Any later Settings or localized
-//! owner mutation advances that shared revision and therefore makes the prior
-//! source-locale assignment stale until it is explicitly reaffirmed.
+//! at read time. An owner command binds one canonical `TenantLocale` to the
+//! latest content-free `base_projection` revision. Target-only localized writes
+//! may advance the shared owner revision without invalidating that provenance;
+//! the next base Settings write does invalidate it until explicitly reaffirmed.
 
 use rustok_api::{PortError, TenantLocale};
 use rustok_outbox::idempotency::{self, Admission};
@@ -29,7 +29,10 @@ pub struct StaticSettingsSourceLocaleRecord {
     pub tenant_id: Uuid,
     pub module_slug: String,
     pub locale: String,
-    pub owner_revision: u64,
+    /// Owner revision of the content-free `base_projection` change that this
+    /// locale assignment describes. It is intentionally not the current shared
+    /// owner revision because target-only applies advance that clock too.
+    pub base_projection_revision: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,7 +66,7 @@ pub enum StaticSettingsSourceLocaleError {
     #[error("static Settings source locale is not assigned for `{0}`")]
     SourceLocaleUnassigned(String),
     #[error(
-        "static Settings source locale for `{module_slug}` belongs to owner revision {recorded}, current revision is {current}"
+        "static Settings source locale for `{module_slug}` belongs to base projection revision {recorded}, latest base projection revision is {current}"
     )]
     SourceLocaleStale {
         module_slug: String,
@@ -103,7 +106,7 @@ impl StaticSettingsSourceLocaleService {
     }
 
     /// Returns the persisted provenance row without pretending that a stale
-    /// assignment is authoritative for the current owner revision.
+    /// assignment is authoritative for the latest base projection.
     pub async fn read_source_locale(
         &self,
         tenant_id: Uuid,
@@ -114,12 +117,7 @@ impl StaticSettingsSourceLocaleService {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(|error| database_error(error.to_string()))?;
-        let record = load_source_locale(
-            &transaction,
-            tenant_id,
-            registry.module_slug(),
-        )
-        .await?;
+        let record = load_source_locale(&transaction, tenant_id, registry.module_slug()).await?;
         if let Some(record) = &record {
             ensure_stored_locale_is_canonical(&record.locale)?;
         }
@@ -127,9 +125,10 @@ impl StaticSettingsSourceLocaleService {
         Ok(record)
     }
 
-    /// Returns localizable Settings copy only when one explicit source locale
-    /// is bound to the same stable owner revision as the source snapshot.
-    /// Legacy rows and Settings changed after the assignment fail closed.
+    /// Returns localizable Settings copy only when an explicit source locale is
+    /// bound to the latest base projection. The shared owner revision still
+    /// guards snapshot stability and future apply CAS, but target-only writes do
+    /// not make source-locale provenance stale.
     pub async fn authoritative_source_snapshot(
         &self,
         tenant_id: Uuid,
@@ -161,23 +160,31 @@ impl StaticSettingsSourceLocaleService {
             return Err(StaticSettingsSourceLocaleError::SourceSnapshotUnstable);
         }
 
-        let record = load_source_locale(
+        let record = load_source_locale(&transaction, tenant_id, registry.module_slug())
+            .await?
+            .ok_or_else(|| {
+                StaticSettingsSourceLocaleError::SourceLocaleUnassigned(
+                    registry.module_slug().to_string(),
+                )
+            })?;
+        ensure_stored_locale_is_canonical(&record.locale)?;
+        let latest_base_projection_revision = load_latest_base_projection_revision(
             &transaction,
             tenant_id,
             registry.module_slug(),
         )
         .await?
         .ok_or_else(|| {
-            StaticSettingsSourceLocaleError::SourceLocaleUnassigned(
-                registry.module_slug().to_string(),
+            StaticSettingsSourceLocaleError::InconsistentState(
+                "source-locale provenance exists without base-projection change evidence"
+                    .to_string(),
             )
         })?;
-        ensure_stored_locale_is_canonical(&record.locale)?;
-        if record.owner_revision != source.owner_revision {
+        if record.base_projection_revision != latest_base_projection_revision {
             return Err(StaticSettingsSourceLocaleError::SourceLocaleStale {
                 module_slug: registry.module_slug().to_string(),
-                recorded: record.owner_revision,
-                current: source.owner_revision,
+                recorded: record.base_projection_revision,
+                current: latest_base_projection_revision,
             });
         }
 
@@ -201,8 +208,12 @@ impl StaticSettingsSourceLocaleService {
         })
     }
 
-    /// Explicitly binds one canonical source locale to the next shared static
-    /// Settings owner revision. The command is CAS-guarded and replay-safe.
+    /// Explicitly assigns one canonical source locale. The assignment itself is
+    /// a source-projection invalidation, so it records a content-free
+    /// `base_projection` change at the next shared owner revision in the same
+    /// transaction. Later target-only applies leave that base-projection clock
+    /// untouched; a later base Settings write advances it and makes the locale
+    /// assignment stale.
     pub async fn assign_source_locale(
         &self,
         registry: &StaticSettingsLocalizationRegistry,
@@ -329,7 +340,7 @@ impl StaticSettingsSourceLocaleService {
                 tenant_id: command.tenant_id,
                 module_slug: registry.module_slug().to_string(),
                 locale: locale.clone(),
-                owner_revision: next_owner_revision,
+                base_projection_revision: next_owner_revision,
             };
             idempotency::complete(&transaction, lease, &record)
                 .await
@@ -370,11 +381,11 @@ async fn load_source_locale<C: ConnectionTrait>(
             backend,
             match backend {
                 DbBackend::Postgres => {
-                    "SELECT locale, owner_revision FROM module_static_settings_source_locales \
+                    "SELECT locale, base_projection_revision FROM module_static_settings_source_locales \
                      WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
                 }
                 _ => {
-                    "SELECT locale, owner_revision FROM module_static_settings_source_locales \
+                    "SELECT locale, base_projection_revision FROM module_static_settings_source_locales \
                      WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
                 }
             },
@@ -387,9 +398,38 @@ async fn load_source_locale<C: ConnectionTrait>(
                 tenant_id,
                 module_slug: module_slug.to_string(),
                 locale: row.try_get("", "locale").map_err(database_error)?,
-                owner_revision: positive_revision(&row, "owner_revision")?,
+                base_projection_revision: positive_revision(&row, "base_projection_revision")?,
             })
         })
+        .transpose()
+}
+
+async fn load_latest_base_projection_revision<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    module_slug: &str,
+) -> Result<Option<u64>, StaticSettingsSourceLocaleError> {
+    let backend = connection.get_database_backend();
+    connection
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            match backend {
+                DbBackend::Postgres => {
+                    "SELECT owner_revision FROM module_static_settings_changes \
+                     WHERE tenant_id = $1 AND module_slug = $2 AND change_kind = 'base_projection' \
+                     ORDER BY change_seq DESC LIMIT 1"
+                }
+                _ => {
+                    "SELECT owner_revision FROM module_static_settings_changes \
+                     WHERE tenant_id = ?1 AND module_slug = ?2 AND change_kind = 'base_projection' \
+                     ORDER BY change_seq DESC LIMIT 1"
+                }
+            },
+            vec![tenant_id.into(), module_slug.into()],
+        ))
+        .await
+        .map_err(database_error)?
+        .map(|row| positive_revision(&row, "owner_revision"))
         .transpose()
 }
 
@@ -398,7 +438,7 @@ async fn persist_source_locale<C: ConnectionTrait>(
     tenant_id: Uuid,
     module_slug: &str,
     locale: &str,
-    owner_revision: u64,
+    base_projection_revision: u64,
 ) -> Result<(), StaticSettingsSourceLocaleError> {
     let backend = connection.get_database_backend();
     connection
@@ -407,24 +447,24 @@ async fn persist_source_locale<C: ConnectionTrait>(
             match backend {
                 DbBackend::Postgres => {
                     "INSERT INTO module_static_settings_source_locales \
-                     (tenant_id, module_slug, locale, owner_revision, created_at, updated_at) \
+                     (tenant_id, module_slug, locale, base_projection_revision, created_at, updated_at) \
                      VALUES ($1, $2, $3, $4, NOW(), NOW()) \
                      ON CONFLICT (tenant_id, module_slug) DO UPDATE SET \
-                     locale = EXCLUDED.locale, owner_revision = EXCLUDED.owner_revision, updated_at = NOW()"
+                     locale = EXCLUDED.locale, base_projection_revision = EXCLUDED.base_projection_revision, updated_at = NOW()"
                 }
                 _ => {
                     "INSERT INTO module_static_settings_source_locales \
-                     (tenant_id, module_slug, locale, owner_revision, created_at, updated_at) \
+                     (tenant_id, module_slug, locale, base_projection_revision, created_at, updated_at) \
                      VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) \
                      ON CONFLICT (tenant_id, module_slug) DO UPDATE SET \
-                     locale = excluded.locale, owner_revision = excluded.owner_revision, updated_at = CURRENT_TIMESTAMP"
+                     locale = excluded.locale, base_projection_revision = excluded.base_projection_revision, updated_at = CURRENT_TIMESTAMP"
                 }
             },
             vec![
                 tenant_id.into(),
                 module_slug.into(),
                 locale.into(),
-                revision_value(owner_revision)?,
+                revision_value(base_projection_revision)?,
             ],
         ))
         .await
