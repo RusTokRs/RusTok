@@ -12,6 +12,7 @@ rustok-modules = { workspace = true, default-features = false }
 rustok-translation-targets.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
-uuid.workspace = true
+rustok-api.workspace = true

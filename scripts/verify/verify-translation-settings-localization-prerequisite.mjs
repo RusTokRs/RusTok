@@ -177,10 +177,11 @@ for (const marker of [
   'rustok-modules = { workspace = true, default-features = false }',
   'rustok-translation-targets.workspace = true',
   'sha2.workspace = true',
+  'uuid.workspace = true',
 ]) requireText(
   sources.adapterCargo,
   marker,
-  `${paths.adapterCargo}: isolated owner Translation adapter crate with local revision hashing`,
+  `${paths.adapterCargo}: isolated owner Translation adapter dependencies`,
 );
 for (const forbidden of ['sea-orm', 'rustok-translation.workspace']) forbidText(
   sources.adapterCargo,
@@ -193,39 +194,38 @@ for (const marker of [
   'pub const STATIC_SETTINGS_TRANSLATION_RESOURCE_KIND: &str = "static_settings";',
   'pub struct StaticSettingsTranslationIdentity',
   'pub struct StaticSettingsTranslationRevisions',
-  'pub fn from_registry(',
-  'registry.module_slug()',
-  '.localized_fields()',
-  'subresource_id: None',
-  'pub fn module_slug_from_identity(',
-  'pub fn contains_field(',
+  'pub struct StaticSettingsTranslationApplyPlan',
+  'pub enum StaticSettingsTranslationPrepareResult',
+  'const APPLY_STEP_IDEMPOTENCY_PREFIX: &str = "settings-apply-step-v1";',
   'pub fn field_descriptors(&self)',
-  'pub fn descriptor_for_field(',
-  'profile: TranslationValueProfile::LocalizedScalar',
-  'strategy: TranslationStrategy::Translate',
   'classification: TranslationDataClassification::TenantPrivate',
-  'required: true',
   'ai_export_allowed: false',
-  'max_characters: None',
-  'preserves_whitespace: false',
-  'const RESOURCE_REVISION_PREFIX: &str = "settings-owner-v1";',
-  'const SOURCE_REVISION_PREFIX: &str = "settings-source-v1";',
-  'const TARGET_REVISION_PREFIX: &str = "settings-target-v1";',
   'pub fn revisions_for_snapshot(',
-  'snapshot.owner_revision == 0',
-  'fields.sort_by(|left, right| left.field_id.cmp(&right.field_id))',
-  'hash_part(&mut source_hasher, snapshot.source_locale.as_bytes())',
-  'hash_part(&mut source_hasher, field.source_value.as_bytes())',
-  'let has_exact_target = fields.iter().any(|field| field.target_revision.is_some())',
-  'hash_part(&mut target_hasher, snapshot.target_locale.as_bytes())',
-  'hash_part(&mut target_hasher, revision.to_string().as_bytes())',
-  'None => hash_part(&mut target_hasher, b"missing")',
-  'target_owner_revision > snapshot.owner_revision',
-  'digest_revision(TARGET_REVISION_PREFIX, target_hasher)',
+  'pub fn validate_patch_against_snapshot(',
+  'request.validate()?;',
+  'resource_identity_conflict',
+  'source_locale_conflict',
+  'target_locale_conflict',
+  'resource_revision_conflict',
+  'source_revision_conflict',
+  'target_revision_conflict',
+  'source_hash_conflict',
+  'field_not_supported',
+  'field_hash(&field.source_value)',
+  'pub fn prepare_apply_plan(',
+  'context.validate().map_err',
+  'context.tenant_id != Some(snapshot.tenant_id)',
+  'patches.sort_by(|left, right| left.key.cmp(&right.key))',
+  'expected_target_revision: field.target_revision.unwrap_or(0)',
+  'expected_owner_revision = expected_owner_revision.checked_add(1)',
+  'derive_step_idempotency_key(',
+  'bytes[6] = (bytes[6] & 0x0f) | 0x50;',
+  'bytes[8] = (bytes[8] & 0x3f) | 0x80;',
+  'Uuid::from_bytes(bytes)',
 ]) requireText(
   sources.adapter,
   marker,
-  `${paths.adapter}: stable identity, descriptors, and opaque revision mapping`,
+  `${paths.adapter}: pure Settings patch validation and deterministic owner apply mapping`,
 );
 for (const forbidden of [
   'DatabaseConnection',
@@ -239,7 +239,7 @@ for (const forbidden of [
 ]) forbidText(
   sources.adapter,
   forbidden,
-  `${paths.adapter}: revision layer must stay persistence-free and unregistered`,
+  `${paths.adapter}: apply mapping must stay persistence-free and unregistered`,
 );
 
 for (const marker of [
@@ -289,11 +289,11 @@ for (const marker of [
   `${paths.migrationRegistry}: Settings migration registration`,
 );
 
-if (evidence.schema_version !== 8) {
-  failures.push(`${paths.evidence}: schema_version must be 8`);
+if (evidence.schema_version !== 9) {
+  failures.push(`${paths.evidence}: schema_version must be 9`);
 }
-if (evidence.status !== 'provider_revision_source_ready') {
-  failures.push(`${paths.evidence}: status must be provider_revision_source_ready`);
+if (evidence.status !== 'provider_apply_map_source_ready') {
+  failures.push(`${paths.evidence}: status must be provider_apply_map_source_ready`);
 }
 
 for (const [key, expected] of Object.entries({
@@ -317,18 +317,23 @@ for (const [key, expected] of Object.entries({
   provider_identity_reverse_mapping_fail_closed: true,
   provider_identity_adapter_has_no_persistence_access: true,
   provider_field_descriptor_mapping_present: true,
-  provider_present_source_units_required: true,
-  provider_descriptor_tenant_private_classification: true,
   provider_descriptor_ai_export_default_denied: true,
-  provider_descriptor_owner_validation_remains_authoritative: true,
   provider_resource_revision_maps_shared_owner_clock: true,
   provider_source_revision_digest_present: true,
   provider_source_revision_stable_across_target_only_writes: true,
   provider_target_revision_digest_present: true,
-  provider_target_revision_none_without_exact_rows: true,
   provider_target_revision_uses_per_field_revisions: true,
-  provider_target_revision_digest_is_order_independent: true,
   provider_revision_mapping_rejects_inconsistent_snapshot: true,
+  provider_patch_validation_against_owner_snapshot: true,
+  provider_patch_checks_identity_locales_and_revisions: true,
+  provider_patch_checks_per_field_source_hash: true,
+  provider_apply_plan_uses_per_field_target_cas: true,
+  provider_apply_plan_sequences_shared_owner_revision: true,
+  provider_apply_plan_uses_deterministic_field_order: true,
+  provider_apply_plan_derives_unique_step_idempotency: true,
+  provider_apply_plan_preserves_actor_trace_correlation: true,
+  provider_apply_plan_requires_matching_tenant_context: true,
+  provider_apply_plan_performs_no_persistence_writes: true,
   settings_translation_provider_registered: false,
 })) {
   if (evidence.source_facts?.[key] !== expected) {
@@ -336,13 +341,13 @@ for (const [key, expected] of Object.entries({
   }
 }
 
-for (const key of [
-  'provider_validate_apply_adapter',
-  'translation_provider_registration',
-]) {
-  if (evidence.remaining_owner_contract?.[key] !== true) {
-    failures.push(`${paths.evidence}: remaining_owner_contract.${key} must be true`);
-  }
+if (evidence.remaining_owner_contract?.translation_provider_registration !== true) {
+  failures.push(
+    `${paths.evidence}: remaining_owner_contract.translation_provider_registration must be true`,
+  );
+}
+if (Object.keys(evidence.remaining_owner_contract ?? {}).length !== 1) {
+  failures.push(`${paths.evidence}: runtime provider registration must be the only remaining owner contract`);
 }
 
 for (const [key, expected] of Object.entries({
@@ -355,6 +360,7 @@ for (const [key, expected] of Object.entries({
   provider_identity_source_proven: true,
   provider_descriptor_source_proven: true,
   provider_revision_source_proven: true,
+  provider_validate_apply_source_proven: true,
   runtime_database_execution_proven: false,
   translation_provider_proven: false,
 })) {
@@ -364,19 +370,19 @@ for (const [key, expected] of Object.entries({
 }
 
 for (const marker of [
-  'opaque revision mapping source-ready',
-  '`StaticSettingsTranslationIdentity::revisions_for_snapshot`',
-  '`resource_revision` is `settings-owner-v1:<owner_revision>`',
-  'target-only localized write therefore advances `resource_revision` but leaves `source_revision` unchanged',
-  '`target_revision` is `None` while none of the current source fields has an exact target row',
-  'either its positive owner target-row revision or an explicit `missing` marker',
-  'does **not** replace the per-field revisions',
-  'Fields are sorted before digesting',
-  'target digest as a substitute for row CAS',
+  'neutral validate/apply command mapping source-ready',
+  '`StaticSettingsTranslationIdentity::validate_patch_against_snapshot`',
+  '`StaticSettingsTranslationIdentity::prepare_apply_plan`',
+  'patch fields are sorted by stable `FieldKey`',
+  'each following command expects the previous command to have advanced the owner revision by exactly one',
+  'one durable receipt per field payload',
+  'different fields in that operation cannot collide',
+  'does **not** execute the prepared commands',
+  'Only the runtime registration/execution slice remains',
 ]) requireText(
   sources.handoff,
   marker,
-  `${paths.handoff}: Settings revision handoff`,
+  `${paths.handoff}: Settings validate/apply mapping handoff`,
 );
 
 if (failures.length > 0) {
@@ -386,5 +392,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Settings owner prerequisites, stable identities/descriptors, and opaque revision mapping are source-ready; validate/apply mapping and registration remain open',
+  '✔ Settings owner prerequisites plus identity/descriptor/revision/validate-apply mapping are source-ready; runtime provider execution and registration remain open',
 );
