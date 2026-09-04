@@ -2,7 +2,7 @@
   "schema_version": 9,
   "scope": "translation_settings_localization_prerequisite",
   "status": "provider_apply_map_source_ready",
-  "base_main": "44874370cc3313a7bf77c8cf76182b75801858ec",
+  "base_main": "66e9eedded8910c884328c0a4132d8944ac0c650",
   "source_facts": {
     "localized_field_registry_present": true,
     "stable_field_ids_present": true,
@@ -65,6 +65,9 @@
     "provider_apply_plan_preserves_actor_trace_correlation": true,
     "provider_apply_plan_requires_matching_tenant_context": true,
     "provider_apply_plan_performs_no_persistence_writes": true,
+    "provider_package_registry_resolver_present": true,
+    "provider_package_registry_uses_owner_contract": true,
+    "provider_package_registry_keeps_translation_manifest_blind": true,
     "settings_translation_provider_registered": false
   },
   "remaining_owner_contract": {
@@ -81,6 +84,7 @@
     "bind source locale to the current shared owner revision so target-only applies invalidate it",
     "let newly committed changes extend a repair scan after its high-water mark is captured",
     "read Settings owner tables directly from the Translation adapter",
+    "parse rustok-module.toml directly from the Translation adapter",
     "treat max_characters None as permission to bypass owner min/max validation",
     "enable AI export for tenant-private Settings without an explicit owner metadata policy",
     "treat the target digest as a replacement for per-field target CAS",
@@ -105,6 +109,7 @@
     "provider_descriptor_source_proven": true,
     "provider_revision_source_proven": true,
     "provider_validate_apply_source_proven": true,
+    "provider_package_registry_source_proven": true,
     "runtime_database_execution_proven": false,
     "translation_provider_proven": false
   }

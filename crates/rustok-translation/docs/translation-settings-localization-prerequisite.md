@@ -8,9 +8,9 @@ last_reviewed: 2026-09-04
 
 # Translation Settings localization prerequisite
 
-Status: **owner persistence/read/source/progress, stable identity/descriptors/revisions, and neutral validate/apply command mapping source-ready / runtime provider registration open**
+Status: **owner persistence/read/source/progress, stable identity/descriptors/revisions, neutral validate/apply command mapping source-ready, and authoritative package registry resolution source-ready / runtime provider registration open**
 
-Base reviewed before this slice: `main@44874370cc3313a7bf77c8cf76182b75801858ec`.
+Base reviewed before this slice: `main@66e9eedded8910c884328c0a4132d8944ac0c650`.
 
 ## Existing owner foundation
 
@@ -23,80 +23,71 @@ The Settings owner boundary remains layered outside Translation:
 - #3834 bounded owner change reads plus stable exact-locale snapshot/progress facts;
 - #3835 stable neutral resource and field identities;
 - #3836 conservative field descriptors;
-- #3837 opaque resource/source/target revision mapping while retaining per-field target revisions.
+- #3837 opaque resource/source/target revision mapping;
+- the immediately preceding slice added neutral patch validation plus deterministic owner CAS/idempotency apply planning.
 
 Language-neutral Settings stay in `tenant_modules.settings`. Localized copy, source-locale provenance, repair evidence, exact progress, owner revisions, and row target revisions remain owner data. Runtime fallback is not exact coverage.
 
-## What this slice adds: neutral validate/apply mapping
+## Previously proven: neutral validate/apply mapping
 
-`rustok-modules-translation` still contains no database access and still does not register a `TranslationTargetProvider`. This slice proves the pure mapping needed before runtime execution may be wired.
+`StaticSettingsTranslationIdentity::validate_patch_against_snapshot` validates one neutral `TranslationPatchRequest` against a stable `StaticSettingsExactLocaleSnapshot` without performing a write. It checks resource identity, source/target locales, opaque revisions, owner-admitted fields, and per-field source hashes.
 
-### Patch validation
+`StaticSettingsTranslationIdentity::prepare_apply_plan` converts an accepted neutral patch into deterministic `StaticLocalizedSettingApplyCommand` values. Patch fields are sorted by stable `FieldKey`; the first command uses the stable snapshot owner revision; each following command expects the previous command to have advanced the owner revision by exactly one; and every command retains that field's current target-row CAS revision.
 
-`StaticSettingsTranslationIdentity::validate_patch_against_snapshot` validates one neutral `TranslationPatchRequest` against a stable `StaticSettingsExactLocaleSnapshot`.
+One provider patch may update multiple Settings fields, but owner `apply_exact` stores one durable receipt per field payload. The mapper therefore derives a stable per-step idempotency UUID. Replay of the same prepared operation reuses the same step IDs while different fields in that operation cannot collide.
 
-It checks:
+The adapter still **does not** execute the prepared commands and still contains no Settings persistence access.
 
-- the neutral patch contract itself, including non-empty fields, unique field keys, proposal identity, and approval receipt identity;
-- exact resource identity;
-- exact source and target locale equality with the owner snapshot;
-- opaque resource/source/target revision preconditions from #3837;
-- every patched field is a current source-present owner-admitted field;
-- every patched field carries the current SHA-256 source hash.
+## What this slice adds: authoritative package registry resolution
 
-Expected drift is returned as structured `TranslationPatchValidation` issues such as `resource_revision_conflict`, `source_revision_conflict`, `target_revision_conflict`, `source_hash_conflict`, or `field_not_supported`. No owner command is prepared when validation is rejected.
+Runtime registration needs a `StaticSettingsLocalizationRegistry` for an arbitrary static module slug. That registry cannot be hardcoded in Translation, and Translation must not parse another owner's `rustok-module.toml` or reach into Settings persistence.
 
-Owner value/schema validation is intentionally not duplicated here. Concrete min/max and other localized-value rules still belong to `StaticSettingsLocalizationService::apply_exact`.
+The server now exposes `resolve_static_settings_localization_registry(module_slug)` from `static_settings_localization_registry`.
 
-### Deterministic owner apply plan
+The host resolver:
 
-`StaticSettingsTranslationIdentity::prepare_apply_plan` converts an accepted neutral patch into `StaticLocalizedSettingApplyCommand` values without executing them.
+1. asks `ManifestManager::module_settings_schema` for the resolved static Settings schema;
+2. materializes the existing owner-owned `StaticModulePackageContract` with that schema, preserving the established package/schema boundary;
+3. resolves the installed/builtin static package location inside the server manifest boundary;
+4. reads only the optional `[settings_localization]` package metadata slice;
+5. passes the package contract's owner-typed schema plus `localized_fields` and `sensitive_paths` into `StaticSettingsLocalizationRegistry::new`;
+6. returns the fully validated authoritative registry.
 
-The plan is deterministic:
+Keeping `localized_fields` and `sensitive_paths` adjacent to, rather than embedded in, `ModuleSettingSpec` preserves the source-compatibility decision from #3825. The owner registry constructor remains the validation authority for stable field IDs, module slug validity, string-leaf eligibility, schema paths, duplicate claims, and sensitivity fences.
 
-1. patch fields are sorted by stable `FieldKey`;
-2. the first command uses the stable snapshot's shared owner revision;
-3. each following command expects the previous command to have advanced the owner revision by exactly one;
-4. each command uses that field's current exact `target_revision`, or `0` when no exact target row exists;
-5. the plan exposes the final expected owner revision after all steps.
+A package can declare metadata in the backward-compatible form:
 
-This preserves both levels of CAS: the aggregate target digest is checked before planning, while each owner write still carries its actual per-field target-row revision and sequential shared owner revision.
+```toml
+[settings_localization]
+localized_fields = { "checkout.title" = "title" }
+sensitive_paths = ["secret"]
+```
 
-### Per-step idempotency
+The existing full package deserializer ignores unknown fields, so this metadata slice does not widen the legacy `ModulePackageManifest` or `ModuleSettingSpec` Rust shapes. Translation never sees the package path or TOML parser.
 
-One provider patch may update multiple Settings fields, but owner `apply_exact` stores one durable receipt per field payload. Reusing the same owner idempotency UUID for different field/value payloads would therefore be incorrect.
+For a valid module with no localization metadata, the host returns an empty owner registry, matching the existing empty-schema/non-localized behavior. Invalid slugs, unknown metadata paths, non-string localized leaves, duplicate paths, and sensitivity-fenced localized paths fail closed in the owner registry constructor.
 
-The mapper derives a deterministic non-nil UUID per sorted field step from:
-
-- a versioned namespace;
-- the caller's base owner operation UUID;
-- module slug;
-- exact target locale;
-- field key;
-- deterministic step index.
-
-Actor identity, tenant, trace ID, and correlation ID are preserved. The mapper rejects a command context whose tenant does not equal the exact owner snapshot tenant.
-
-The derived key intentionally makes replay of the same prepared provider operation produce the same owner step keys, while different fields in that operation cannot collide with one another.
+Focused tests prove both a valid package metadata slice and rejection when a declared localized path is sensitivity-fenced.
 
 ## What is still not proven
 
-This slice does **not** execute the prepared commands. Runtime provider wiring must still prove the orchestration around those commands, including failure/replay behavior if a multi-field sequence is interrupted after some owner steps have committed.
+This slice does not register or execute a `TranslationTargetProvider`. It only makes the authoritative registry available to runtime composition without violating ownership boundaries.
 
-That registration slice must also expose the read/list/progress/change capabilities from existing owner contracts and register the provider through the neutral target registry. It must not add direct Settings SQL to Translation.
+The future runtime provider must still expose list/read/progress/change/apply behavior through existing owner services, perform replay-safe multi-field execution, and register through the neutral target registry. It must not add direct Settings SQL or package-manifest parsing to Translation.
 
 ## Remaining provider work
 
 Only the runtime registration/execution slice remains:
 
-1. implement the actual Settings `TranslationTargetProvider` using public owner services and these proven identity/descriptor/revision/validation/apply-plan contracts;
-2. define replay-safe provider-level orchestration for multi-field execution without bypassing the per-field owner receipts;
-3. register the provider only after that runtime mapping is source-proven.
+1. implement the Settings `TranslationTargetProvider` using `resolve_static_settings_localization_registry` plus the already-proven owner read/source/progress contracts;
+2. map list/read/progress/change calls without runtime fallback or direct owner-table access;
+3. execute the proven deterministic apply plan with replay-safe orchestration around per-field owner receipts;
+4. register the provider through the neutral target registry only after those runtime mappings are source-proven.
 
 ## Forbidden shortcuts
 
-Do not store localized values in base Settings JSON, count fallback as exact coverage, localize sensitivity-fenced paths, read Settings tables directly from the Translation adapter, bypass shared owner CAS, replace per-field target CAS with the aggregate digest, reuse one owner idempotency key for multiple field payloads, apply fields in caller-supplied nondeterministic order, prepare commands for a mismatched tenant context, weaken owner schema validation, or treat pure command planning as runtime execution evidence.
+Do not store localized values in base Settings JSON, count fallback as exact coverage, localize sensitivity-fenced paths, read Settings tables directly from the Translation adapter, parse `rustok-module.toml` directly from Translation, bypass shared owner CAS, replace per-field target CAS with the aggregate digest, reuse one owner idempotency key for multiple field payloads, apply fields in caller-supplied nondeterministic order, prepare commands for a mismatched tenant context, weaken owner schema validation, or treat package registry resolution as runtime provider execution evidence.
 
 ## Scope
 
-This slice changes only the persistence-free Settings Translation adapter's neutral validation/apply command mapping plus synchronized source evidence/handoff/verifier and the small UUID dependency needed for deterministic owner step keys. It does not change migrations, owner persistence, fallback, provider runtime execution, or provider registration.
+This slice adds only the server-owned `[settings_localization]` metadata resolver, the owner package/schema handoff into `StaticSettingsLocalizationRegistry`, focused unit coverage, and synchronized source evidence/handoff. It does not change existing package structs, migrations, Settings persistence, fallback, Translation provider execution, or provider registration.

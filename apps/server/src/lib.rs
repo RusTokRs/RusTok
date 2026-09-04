@@ -29,4 +29,5 @@ pub mod models;
 pub mod modules;
 pub mod routes;
 pub mod services;
+pub mod static_settings_localization_registry;
 pub mod views;
