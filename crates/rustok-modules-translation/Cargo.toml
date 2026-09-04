@@ -10,6 +10,3 @@ description = "Translation target adapter contracts for static module Settings"
 rustok-modules.workspace = true
 rustok-translation-targets.workspace = true
 thiserror.workspace = true
-
-[dev-dependencies]
-serde_json.workspace = true
