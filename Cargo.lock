@@ -15939,7 +15939,7 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "tonic",
  "uuid",
- "wasmparser 0.256.0",
+ "wasmparser 0.257.1",
  "wit-parser 0.257.1",
 ]
 
@@ -21636,10 +21636,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60bd825ffedc6cba8a642924ba7ae424afbc47811cffbcb7b92031ec24e59b4c"
 dependencies = [
  "bitflags 2.13.1",
- "hashbrown 0.17.1",
  "indexmap 2.14.0",
  "semver",
- "serde",
 ]
 
 [[package]]
@@ -21649,8 +21647,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d92fc335fb6d48f46bda1d8b26b69e28320c15ac3272208333833d6e217e2b4a"
 dependencies = [
  "bitflags 2.13.1",
+ "hashbrown 0.17.1",
  "indexmap 2.14.0",
  "semver",
+ "serde",
 ]
 
 [[package]]

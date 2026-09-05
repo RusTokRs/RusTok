@@ -204,7 +204,7 @@ jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 rand = "0.10.1"
 password-hash = "0.6"
 sha2 = "0.11"
-wasmparser = "0.256"
+wasmparser = "0.257"
 wit-parser = "0.257"
 wit-bindgen = "0.60.0"
 oci-distribution = "0.11.0"
