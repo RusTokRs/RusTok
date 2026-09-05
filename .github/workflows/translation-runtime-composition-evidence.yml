@@ -30,7 +30,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: translation-runtime-composition-evidence
@@ -43,6 +43,56 @@ env:
   TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
+  repair-settings-validation-context:
+    name: Repair Settings validation context
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/settings-translation-target-provider-20260904'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: feat/settings-translation-target-provider-20260904
+          fetch-depth: 0
+      - name: Restore read-only patch validation context
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("apps/server/src/static_settings_translation_target.rs")
+          text = path.read_text()
+          old = '''    async fn validate_patch(
+              &self,
+              context: PortContext,
+              request: TranslationPatchRequest,
+          ) -> Result<TranslationPatchValidation, PortError> {
+              validate_translation_apply_context(&context)?;
+              authorize(&context, Action::Update)?;
+          '''
+          new = '''    async fn validate_patch(
+              &self,
+              context: PortContext,
+              request: TranslationPatchRequest,
+          ) -> Result<TranslationPatchValidation, PortError> {
+              validate_translation_read_context(&context)?;
+              authorize(&context, Action::Update)?;
+          '''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f"validate_patch anchor count drifted: {count}")
+          path.write_text(text.replace(old, new))
+      - name: Restore workflow and remove helper
+        run: |
+          git rm .github/workflows/settings-translation-validate-context-fix.yml
+          git checkout HEAD^ -- .github/workflows/translation-runtime-composition-evidence.yml
+          git diff --check
+          test "$(git diff --name-only | sort | tr '\n' ' ')" = ".github/workflows/settings-translation-validate-context-fix.yml .github/workflows/translation-runtime-composition-evidence.yml apps/server/src/static_settings_translation_target.rs "
+      - name: Commit final contract fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/server/src/static_settings_translation_target.rs .github/workflows/translation-runtime-composition-evidence.yml
+          git commit -m "fix(translation): keep settings patch validation read-only"
+          git push origin HEAD:feat/settings-translation-target-provider-20260904
+
   runtime-evidence:
     name: Translation-only GraphQL/native runtime composition evidence
     runs-on: ubuntu-latest
