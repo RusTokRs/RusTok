@@ -445,7 +445,14 @@ where
     );
     match tokio::time::timeout(timeout, future).await {
         Ok(Ok(value)) => Ok(value),
-        Ok(Err(_)) | Err(_) => Err(rustok_core::Error::Cache(timeout_message)),
+        Ok(Err(error)) => {
+            if error.to_string().to_lowercase().contains("timed out") {
+                Err(rustok_core::Error::Cache(timeout_message))
+            } else {
+                Err(error)
+            }
+        }
+        Err(_) => Err(rustok_core::Error::Cache(timeout_message)),
     }
 }
 

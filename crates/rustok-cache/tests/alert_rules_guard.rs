@@ -136,7 +136,9 @@ fn permanent_gate_executes_expiry_eviction_and_concurrent_local_cas() {
         );
     }
 
-    assert!(workflow.contains("cargo test -p rustok-cache --test atomic_cas\n"));
+    assert!(workflow
+        .lines()
+        .any(|line| line.trim() == "cargo test -p rustok-cache --test atomic_cas"));
     assert!(!workflow.contains(
         "cargo test -p rustok-cache --test atomic_cas concurrent_local_compare_and_set_has_exactly_one_winner"
     ));
