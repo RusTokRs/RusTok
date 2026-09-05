@@ -3,14 +3,14 @@ id: doc://crates/rustok-translation/docs/translation-settings-localization-prere
 kind: implementation_handoff
 language: en
 status: in_progress
-last_reviewed: 2026-09-04
+last_reviewed: 2026-09-05
 ---
 
 # Translation Settings localization prerequisite
 
-Status: **owner persistence/read/source/progress, stable identity/descriptors/revisions, and neutral validate/apply command mapping source-ready / runtime provider registration open**
+Status: **owner persistence/read/source/progress, stable identity/descriptors/revisions, neutral validate/apply mapping, and runtime provider registration/execution source-proven**
 
-Base reviewed before this slice: `main@44874370cc3313a7bf77c8cf76182b75801858ec`.
+Base reviewed after runtime completion: `main@534ea65984c5aca3884c4a86363bcd95a207081c`.
 
 ## Existing owner foundation
 
@@ -27,9 +27,9 @@ The Settings owner boundary remains layered outside Translation:
 
 Language-neutral Settings stay in `tenant_modules.settings`. Localized copy, source-locale provenance, repair evidence, exact progress, owner revisions, and row target revisions remain owner data. Runtime fallback is not exact coverage.
 
-## What this slice adds: neutral validate/apply mapping
+## Neutral validate/apply mapping
 
-`rustok-modules-translation` still contains no database access and still does not register a `TranslationTargetProvider`. This slice proves the pure mapping needed before runtime execution may be wired.
+`rustok-modules-translation` contains no database access and does not own Settings persistence. It provides the pure mapping used by the registered runtime provider.
 
 ### Patch validation
 
@@ -79,24 +79,44 @@ Actor identity, tenant, trace ID, and correlation ID are preserved. The mapper r
 
 The derived key intentionally makes replay of the same prepared provider operation produce the same owner step keys, while different fields in that operation cannot collide with one another.
 
-## What is still not proven
+## Runtime provider completion
 
-This slice does **not** execute the prepared commands. Runtime provider wiring must still prove the orchestration around those commands, including failure/replay behavior if a multi-field sequence is interrupted after some owner steps have committed.
+PR #3840 registers the Settings target through the neutral Translation target registry and completes the runtime execution slice without adding direct Settings SQL to Translation.
 
-That registration slice must also expose the read/list/progress/change capabilities from existing owner contracts and register the provider through the neutral target registry. It must not add direct Settings SQL to Translation.
+The server-owned `StaticSettingsTranslationTargetProvider` now:
 
-## Remaining provider work
+- resolves admitted package-localization metadata through the host Settings localization registry;
+- exposes `list_resources`, exact `read_resource`, aggregate `read_progress`, bounded `read_changes`, `validate_patch`, and `apply_patch` through public owner services;
+- preserves the neutral owner/resource identity contract `modules/static_settings`;
+- enforces `settings:read` and `settings:update` authorization floors at the provider boundary;
+- validates exact source/target locale and revision/source-hash preconditions through the persistence-free adapter before owner execution;
+- wraps multi-field execution in provider-level durable idempotency while retaining deterministic per-field owner receipts;
+- fails closed when an interrupted multi-field sequence has advanced owner state, requiring a fresh read/proposal instead of bypassing shared or per-field CAS;
+- uses one opaque change-cursor contract for both progress checkpoints and subsequent change polling, with a stable high-water tail checkpoint encoded in the same cursor domain accepted by `read_changes`.
 
-Only the runtime registration/execution slice remains:
+Runtime registration is asserted by server composition tests; the provider remains a consumer of owner contracts rather than a second Settings persistence implementation.
 
-1. implement the actual Settings `TranslationTargetProvider` using public owner services and these proven identity/descriptor/revision/validation/apply-plan contracts;
-2. define replay-safe provider-level orchestration for multi-field execution without bypassing the per-field owner receipts;
-3. register the provider only after that runtime mapping is source-proven.
+## Validation evidence
+
+The runtime-provider slice was squash-merged by #3840 as `main@534ea65984c5aca3884c4a86363bcd95a207081c` from exact feature head `92cda03363dc40c1f2cac35f5b464078a82e1022`.
+
+Focused evidence on that exact head:
+
+- Translation Runtime Composition Evidence `33952057144`: successful, including exact-SHA checkout, Translation boundary verification, Translation-only GraphQL `StorageRuntime` composition evidence, and authenticated production application-router native evidence;
+- Migration harness approval `33952055814`: successful.
+
+Repository Ruleset Contract `33952055715` failed before evaluating #3840 because its base `main@258b96f63626442ab2ccb5669cccad2446f17f14` failed the repository source-policy self-test. Recovery PR #3842 restored the source ruleset payload as `c44dc21bc9bf29d6039e9cbf18baa999e25f87a4`. That repository-governance incident is not a Settings runtime-provider failure and does not reopen this prerequisite.
+
+## Remaining work outside this prerequisite
+
+No Settings `TranslationTargetProvider` implementation or registration work remains in this handoff.
+
+Any broader Translation rollout evidence that depends on a live production environment, repository administration, or future product policy belongs to those owning plans. Future Settings Translation changes must continue to use the public owner services and neutral target registry rather than reopening direct persistence ownership in Translation.
 
 ## Forbidden shortcuts
 
-Do not store localized values in base Settings JSON, count fallback as exact coverage, localize sensitivity-fenced paths, read Settings tables directly from the Translation adapter, bypass shared owner CAS, replace per-field target CAS with the aggregate digest, reuse one owner idempotency key for multiple field payloads, apply fields in caller-supplied nondeterministic order, prepare commands for a mismatched tenant context, weaken owner schema validation, or treat pure command planning as runtime execution evidence.
+Do not store localized values in base Settings JSON, count fallback as exact coverage, localize sensitivity-fenced paths, read Settings tables directly from the Translation adapter/provider, bypass shared owner CAS, replace per-field target CAS with the aggregate digest, reuse one owner idempotency key for multiple field payloads, apply fields in caller-supplied nondeterministic order, prepare commands for a mismatched tenant context, weaken owner schema validation, or treat fallback as source/target coverage.
 
 ## Scope
 
-This slice changes only the persistence-free Settings Translation adapter's neutral validation/apply command mapping plus synchronized source evidence/handoff/verifier and the small UUID dependency needed for deterministic owner step keys. It does not change migrations, owner persistence, fallback, provider runtime execution, or provider registration.
+This handoff records the completed Settings localization prerequisite chain through the registered runtime provider. It covers the owner contracts, persistence-free neutral identity/descriptor/revision/validation/apply mapping, runtime list/read/progress/change/validate/apply orchestration, and focused evidence described above. It does not move Settings persistence into Translation, change owner migrations or fallback semantics, or claim unrelated live-environment/repository-administration evidence.
