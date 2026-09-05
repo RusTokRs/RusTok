@@ -210,9 +210,7 @@ impl ReplyService {
         let target = forum_reply_body::Entity::find()
             .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
             .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
-            .filter(
-                forum_reply_body::Column::Locale.eq(input.target_locale.as_str()),
-            )
+            .filter(forum_reply_body::Column::Locale.eq(input.target_locale.as_str()))
             .one(txn)
             .await?;
 
