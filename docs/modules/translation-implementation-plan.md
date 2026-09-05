@@ -36,7 +36,7 @@ operations, not request-locale selection.
 
 ## Planning status
 
-This is the active cross-cutting implementation plan. As of 2026-09-02:
+This is the active cross-cutting implementation plan. As of 2026-09-05:
 
 - the dependency boundary for machine translation now exists:
   `rustok-translation` owns `MachineTranslationPort`, `rustok-ai` owns
@@ -175,21 +175,21 @@ This is the active cross-cutting implementation plan. As of 2026-09-02:
 - `rustok-translation-targets` defines the neutral provider/resource/field,
   exact-locale, revision, validation, apply, progress, change-cursor, and
   interchange contracts;
-- Media, Taxonomy, Navigation menu, and Pages metadata are registered owner
-  providers. Media's exact-locale CAS apply, stable receipt, append-only tenant
-  cursor, and content-free owner event are transactional; every other Media
-  translation write emits the same repair evidence. Its aggregate progress
-  counts only exact target-row values for source-eligible active assets inside a
-  stable cursor window. Translated-asset deletion and failure emit
-  deleted/unavailable cursor evidence, so lifecycle changes cannot leave
-  projection freshness falsely current. Taxonomy's `taxonomy/term` provider
-  exposes exact `name`, review-only `slug`, and optional `description`, applies
-  target-locale resource/source/target CAS, uses the shared owner receipt
-  ledger, and records an append-only owner change cursor. Taxonomy does not
-  claim a global owner-event contract. Blog Category copy follows that
-  canonical Taxonomy provider through the same-ID Blog-to-Taxonomy Category
-  binding. Forum Category copy also follows the canonical Taxonomy provider
-  through the same-ID Forum-to-Taxonomy Category binding. The former
+- Media, Taxonomy, Navigation menu, Pages metadata, and Settings static fields
+  are registered owner providers. Media's exact-locale CAS apply, stable
+  receipt, append-only tenant cursor, and content-free owner event are
+  transactional; every other Media translation write emits the same repair
+  evidence. Its aggregate progress counts only exact target-row values for
+  source-eligible active assets inside a stable cursor window. Translated-asset
+  deletion and failure emit deleted/unavailable cursor evidence, so lifecycle
+  changes cannot leave projection freshness falsely current. Taxonomy's
+  `taxonomy/term` provider exposes exact `name`, review-only `slug`, and optional
+  `description`, applies target-locale resource/source/target CAS, uses the
+  shared owner receipt ledger, and records an append-only owner change cursor.
+  Taxonomy does not claim a global owner-event contract. Blog Category copy
+  follows that canonical Taxonomy provider through the same-ID Blog-to-Taxonomy
+  Category binding. Forum Category copy also follows the canonical Taxonomy
+  provider through the same-ID Forum-to-Taxonomy Category binding. The former
   `blog/category` provider, Blog change cursor/journal, and Blog-local Category
   translation storage were retired by TAXONOMY-CAT-8..12; the duplicate Forum
   `forum/category` provider, change cursor/progress runtime, and donor
@@ -203,12 +203,20 @@ This is the active cross-cutting implementation plan. As of 2026-09-02:
   optional `meta_title`, and optional `meta_description`. It applies through
   `PageService` with page resource/source/target CAS, the shared receipt ledger,
   a content-free owner cursor, and the existing `NodeUpdated` owner event.
-  Fly/GrapesJS bodies remain outside this pilot. Taxonomy-owned tags and Blog
-  posts remain outside this pilot. Focused evidence includes Translation Memory
-  retention run `33539223647`, Pages `page_metadata` run `33545157694`,
-  Navigation `navigation/menu` run `33549035590`, Forum Category/Taxonomy
-  cutover run `33431200532`, and Media `media/asset` PostgreSQL exact-head run
-  `33623651814` plus post-merge `main` run `33635199181`;
+  Settings registers `modules/static_settings` through the server-owned
+  provider, exposes only owner-admitted localized package fields, reads exact
+  source/target snapshots, progress, and bounded changes through public Settings
+  owner services, and applies deterministic CAS-guarded owner commands with
+  provider-level replay safety. Translation neither reads Settings persistence
+  nor parses manifest storage as a second owner. Fly/GrapesJS bodies remain
+  outside this pilot. Taxonomy-owned tags and Blog posts remain outside this
+  pilot. Focused evidence includes Translation Memory retention run
+  `33539223647`, Pages `page_metadata` run `33545157694`, Navigation
+  `navigation/menu` run `33549035590`, Forum Category/Taxonomy cutover run
+  `33431200532`, Media `media/asset` PostgreSQL exact-head run `33623651814`
+  plus post-merge `main` run `33635199181`, and Settings
+  `modules/static_settings` runtime composition `33952057144` plus migration
+  approval `33952055814`;
 - module-owned Leptos and Next admin workbenches expose six parity tabs for
   policy, target, inventory, progress, reviewed workflow, versioned glossaries,
   and Translation Memory. Both use URL-owned `glossary_id` and
@@ -221,8 +229,8 @@ This is the active cross-cutting implementation plan. As of 2026-09-02:
 - the current multilingual storage and runtime locale foundations are
   substantial. Baseline verifier repair, runtime/storage locale typing, tenant
   locale-policy ownership, the readiness registry, and the neutral target SPI
-  are implemented in `main`. Remaining ownership drift, settings, additional
-  provider onboarding, production-database multi-replica evidence, and live
+  are implemented in `main`. Remaining ownership drift, additional provider
+  onboarding, production-database multi-replica evidence, and live
   external-provider AI evidence still require work before a broad all-platform
   completion claim.
 
@@ -325,12 +333,12 @@ Four related planes must remain distinct:
 | Locale type boundary | Completed at the platform contract: runtime/tenant and stored-provenance locale types share one canonical normalizer with distinct `und` rules | Migrate remaining package-local DTOs/validators before onboarding those owners |
 | Tenant locale ownership | Completed: `rustok-tenant` owns revisioned enabled/default/fallback policy and invariants | Keep admin/runtime callers on the owner port; do not restore direct SQL |
 | Source language | Many not-yet-onboarded resources do not identify an authoritative source locale | Provider must return an exact selected source locale; `und` cannot be a source for AI or memory |
-| Revision safety | Media, Taxonomy, Navigation menu, and Pages metadata expose resource/source/target CAS; other candidate owners remain mixed | Normalize provider-visible opaque revisions before each additional onboarding |
+| Revision safety | Media, Taxonomy, Navigation menu, Pages metadata, and Settings static fields expose provider-visible resource/source/target revision or equivalent owner-CAS evidence; other candidate owners remain mixed | Normalize provider-visible opaque revisions before each additional onboarding |
 | Idempotency | Registered pilot owner applies have durable replay receipts; not every candidate owner write is idempotent | Require idempotency keys and replay receipts before onboarding |
 | Owner events | Registered owners expose their documented event/change-cursor repair contracts; there is deliberately no invented universal owner event | Each new provider must supply transactional owner change evidence or a bounded repair cursor |
 | Baseline verification | Completed for the Translation baseline and focused runtime evidence | Keep multilingual and Translation verifiers green on every affected change |
 | Owner identity | Pages/Navigation, Content/SEO, and Product/Commerce Foundation still contain ownership drift or duplicate schema evidence; Blog Category/Taxonomy and Forum Category/Taxonomy ownership are resolved | Assign exactly one owner and remove superseded schema/entity paths before target registration; do not reintroduce a Blog- or Forum-local Category Translation owner |
-| Settings | Host/platform and tenant-module settings are unversioned JSON without localized-leaf semantics | Assign owners, add typed localization metadata, parallel localized storage, revisions, and events |
+| Settings | Completed for the onboarded tenant-module static-settings path: stable localized field IDs, sensitivity metadata, owner-local exact-locale storage and source provenance, revisions, bounded changes/progress, replay-safe apply, and registered `modules/static_settings` provider are source/runtime proven | Keep arbitrary config, secrets, URLs, enums, IDs, provider identifiers, executable templates, and untyped JSON excluded; any different settings owner must repeat the same typed owner cutover rather than scan JSON |
 | Richtext | Blog, Forum, and Comments use canonical owner profiles, while UI parity and obsolete shared-helper/migration cleanup remain open | Translate only validated canonical document segments; do not wait for editor-host parity or reintroduce a format/version branch |
 | Page Builder | Fly translation state is project-local and not a platform target provider | Add a Page Builder owner adapter with lossless segment identity and revision checks |
 | Flex exact-locale behavior | Some attached and standalone paths seed or read through fallback/default locale | Add exact read/apply operations and finish the parallel localized-record cutover before onboarding |
@@ -351,7 +359,7 @@ surfaces; it does not replace the storage audit.
 ### Current P0 cleanup ledger
 
 The following repository facts were confirmed during the 2026-07-26 planning
-audit and updated for the 2026-09-02 Translation evidence reconciliation. They
+audit and updated for the 2026-09-05 Translation evidence reconciliation. They
 are explicit preparation work, not implementation details to defer until after
 the module exists.
 
@@ -362,9 +370,9 @@ the module exists.
 | Establish tenant locale ownership | Completed: `rustok-tenant` owns revisioned policy read/replace, CAS, durable idempotency receipts, canonical/default/fallback/cycle invariants, and server middleware consumes the port | Add the admin transport over the same owner service without restoring direct SQL |
 | Remove locale DTO drift | Media now converts translation writes to canonical `TenantLocale`; Content, Product, Shipping, and other candidate owners still apply different length/case rules | Every translatable owner accepts the canonical locale type instead of package-local five- or ten-character validators or whole-tag lowercasing |
 | Resolve owner/schema drift | Blog Category/Taxonomy is completed through TAXONOMY-CAT-12: same-ID Taxonomy Category owns canonical localized copy, the separate `blog/category` provider is retired, and Blog donor translation storage/journal are removed. Forum Category/Taxonomy is completed through the verified CAT-5 cutover: same-ID Taxonomy Category owns canonical localized copy, routes, hierarchy and presentation; the duplicate `forum/category` provider and donor translation storage are retired. Product/Commerce Foundation, Pages/Navigation, and Content/SEO still have separate drift to resolve | Keep the Blog and Forum Category ownership guards green; for remaining surfaces, registry/docs/migrations/entities identify one physical and semantic owner and superseded internal paths are deleted atomically |
-| Make owner writes safe | Media, Taxonomy, Navigation menu, and Pages metadata have registered exact-locale providers. All use owner CAS, durable receipt replay, and append-only owner change cursors where their owner contract defines one; Media also emits its neutral owner event, Navigation applies its full menu locale aggregate without inventing a generic event, and Pages applies localized metadata through its existing `NodeUpdated` owner event. Blog and Forum Category copy are handled through the Taxonomy provider and neither consumer has a duplicate Category provider. Product, Shipping, and other candidates still have full-set or unguarded writes | Each remaining onboarded owner provides atomic one-locale/field apply with source and target revisions, idempotency conflict detection, owner validation, durable owner change evidence, and bounded repair |
+| Make owner writes safe | Media, Taxonomy, Navigation menu, Pages metadata, and Settings static fields have registered exact-locale providers. They use owner CAS and durable replay evidence; registered owners expose the documented transactional event or bounded change-cursor repair contract rather than an invented universal event. Settings applies deterministic per-field owner commands behind provider-level replay protection and exposes bounded owner changes/progress without direct Translation SQL. Blog and Forum Category copy are handled through the Taxonomy provider and neither consumer has a duplicate Category provider. Product, Shipping, and other candidates still have full-set or unguarded writes | Each remaining onboarded owner provides atomic one-locale/field apply with source and target revisions, idempotency conflict detection, owner validation, durable owner change evidence, and bounded repair |
 | Correct Flex exact semantics | Attached and standalone authoring reject invalid locales and prepare from an exact target-locale row; presentation fallback remains isolated to explicit read resolution | Add provider-facing exact source/target APIs, owner-local revision-safe apply, and field-policy exposure limited to schema-declared `is_localized` leaves |
-| Type localized settings | [`ModuleSettingSpec`](../../crates/rustok-modules/src/settings.rs) and host settings writes have no localized-leaf, sensitivity, or revision contract | A named owner exposes stable field IDs, `localized` and field-policy metadata, parallel localized rows, CAS, events, and secret-safe validation |
+| Type localized settings | Completed for Modules static settings: stable localized field IDs/string-leaf eligibility and sensitivity fences, owner-local exact-locale rows and reads, shared plus per-field CAS with replay-safe exact apply, source-locale provenance, bounded change/progress reads, neutral identity/descriptors/revisions, and the registered `modules/static_settings` runtime provider are implemented | Keep owner metadata/storage/CAS/change contracts and provider composition evidence green; onboard any different settings owner only through equivalent typed owner gates |
 | Finish semantic string classification | Product image alt text has base/translation drift; Search linguistic dictionaries, channel policy names, and transactional tax/order prose need explicit classification | Every candidate is classified as identifier, technical, secret, code-owned message, tenant-localized copy, immutable snapshot, search-linguistic data, or excluded with owner/reason |
 | Prepare structured AI execution | The cross-module port and content-free execution/attempt/accounting schema exist. Registration is request-hash idempotent; execution leases, cancellation receipts, tenant budget reservation/concurrency, immutable provider price/concurrency policy, exact task descriptors, durable provider slots, actual per-attempt token/cost evidence, atomic queued/terminal settlement, and accounting-aware expired-lease recovery are implemented. AES-256-GCM transient-result storage keeps content out of the generic ledger; successful attempt, encrypted handoff, slot release, budget settlement, and terminal execution commit together. Tenant-scoped replay authenticates identity/digests/size, supports retained-key rotation, records replay counts, and expires without reopening or re-billing execution. Tenant operators can provision accounting policies through GraphQL/native contracts, the result keyring is deployment-owned, and the AI scheduler reconciles cancellations/leases and removes expired handoffs before claims. The private executor validates exact policy/schema identity, selects preferred then deterministic eligible providers, performs real structured inference/fallback, records typed content-free failures, enforces deadlines, and observes durable cancellation. The production distribution bridge publishes the owner-neutral lazy runtime factory, and the separate chat task service is not used. | Collect live external-provider accounting, outage, restart, fallback, cancellation, and expiry evidence; retain production-database multi-replica evidence separately |
 
@@ -397,7 +405,7 @@ and exclusion reason.
 | Shipping/Region/Inventory/Fulfillment/Pricing | presentation names and descriptions | Commerce-support wave after each owner has transactional per-locale apply; identifiers and calculations are preserved |
 | Cart/Order/Payment/Ledger | locale-attributed transaction snapshots | Never retroactively mutate transaction facts; use an optional derived presentation projection if a business case is approved |
 | Marketplace/Tenant | seller presentation and storefront display name | Separate legal identity from translatable presentation; retain source attribution on compliance/event prose |
-| Settings | explicitly declared tenant business copy | Onboard only typed localized leaves after the settings ownership cutover; config, secrets, URLs, enums, IDs, and template keys are excluded |
+| Settings | explicitly declared tenant-module business copy | Registered `modules/static_settings` exposes only owner-admitted typed localized leaves with stable field identity, sensitivity fences, exact owner rows/source provenance, revisions, bounded changes/progress, and replay-safe apply. Config, secrets, URLs, enums, IDs, provider identifiers, executable templates, and arbitrary JSON remain excluded; other settings owners must not infer localization from JSON |
 | Alloy/RBAC/Channel/Workflow/MCP/AI control planes | inline display copy after neutral-key cutover | Blocked until each owner has stable neutral keys and parallel localized storage |
 | Search dictionaries | synonyms, stop words, and query rules | Owned by `rustok-search`, not translation memory/glossary; manage with explicit locale semantics |
 | Static UI/system catalogs | module/host message bundles and future Fluent catalogs | Separate signed/versioned artifact track; not hot-edited tenant business data |
@@ -942,30 +950,43 @@ The existing `product_copy` task remains product copy generation. It is not a
 generic translation-memory or machine-translation path and must not duplicate
 the `machine_translation` adapter.
 
-## Settings preparation
+## Settings owner/provider contract
 
-“Translate settings” must not mean recursively translating every JSON string.
+“Translate settings” does not mean recursively translating every JSON string.
+The first owner-qualified Settings target is now implemented as
+`modules/static_settings`.
 
-Before a settings provider is implemented:
+For this target:
 
-1. Assign canonical ownership for platform settings and tenant-module settings;
-   host `SettingsService` cannot remain the translation write owner.
-2. Extend the settings schema with explicit localized-value semantics, value
-   profile, constraints, and stable field identity.
-3. Keep nonlocalized configuration in the base settings JSON.
-4. Store localized setting values in owner-local parallel locale rows, not
-   inline locale maps.
-5. Add an opaque revision/CAS contract, idempotent apply, transactional event,
-   and exact-locale reads.
-6. Reject localization metadata on secrets, URLs, provider identifiers,
-   executable templates without token policy, and arbitrary `json`/`any`
-   values.
-7. Require stable keys for localized array items; positional array indices are
-   not translation unit identities.
+1. Modules static settings are the canonical owner boundary; Translation never
+   becomes the write owner and does not query Settings persistence directly.
+2. Localization metadata declares stable field IDs, string-leaf eligibility,
+   localized semantics, field constraints, and sensitivity fences before a
+   value can enter Translation.
+3. Nonlocalized configuration remains in the language-neutral base settings
+   JSON; exact localized values live in owner-local parallel locale rows rather
+   than inline locale maps.
+4. Source-locale provenance is explicit and bound to the current base
+   projection revision; exact source and target reads do not count fallback.
+5. Shared owner revision and per-field target revision CAS guard exact apply;
+   durable owner receipts plus provider-level replay protection make multi-field
+   execution deterministic and fail closed after interrupted partial progress.
+6. Bounded owner change reads and stable progress facts publish content-free
+   repair evidence; progress tail checkpoints use the same opaque cursor domain
+   as subsequent `read_changes` calls.
+7. The registered server-owned provider resolves admitted localization metadata,
+   exposes list/read/progress/change/validate/apply through public owner services,
+   and keeps Translation dependency-neutral from Settings storage details.
+8. Secrets, URLs, provider identifiers, enums, IDs, executable templates without
+   token policy, and arbitrary `json`/`any` values remain ineligible. Any future
+   localized collection item must have a stable owner key; positional array
+   indices are not translation unit identities.
 
 Manifest setting descriptions, option labels, navigation labels, and form copy
 belong to the static catalog plane. Tenant setting values belong to the owner
-data plane. The two must not share a storage fallback.
+data plane. The two must not share a storage fallback. Different settings
+owners must repeat the typed owner cutover rather than inheriting eligibility
+from `modules/static_settings`.
 
 ## Commerce classification
 
@@ -1239,7 +1260,8 @@ risk, and required data-policy review rather than from module count alone.
   reassignment plan per surface.
 - [ ] Create a machine-readable translatable-surface inventory with every
   candidate classified `ready`, `blocked`, or `excluded` and an owner/reason.
-- [ ] Decide the settings ownership/localized-leaf storage contract.
+- [x] Decide and implement the first Settings ownership/localized-leaf storage
+  contract for Modules static settings, registered as `modules/static_settings`.
 - [ ] Decide the backend-to-backend AI task port and remove the dormant
   hard-coded translation task policy.
 - [ ] Define data classification, retention, export, AI egress, and quota
@@ -1308,7 +1330,8 @@ risk, and required data-policy review rather than from module count alone.
 - [ ] Every candidate in the surface inventory is ready or explicitly excluded
   with an accepted owner reason.
 - [ ] Open multilingual storage gaps are closed for onboarded owners.
-- [ ] Settings localized values use owner-local parallel storage.
+- [ ] Every onboarded Settings owner uses owner-local parallel localized
+  storage; `modules/static_settings` already satisfies this gate for its owner.
 - [ ] Richtext, Fly/Page Builder, Flex, template, and SEO field semantics are
   covered without flattening.
 - [ ] Static UI/system catalog progress is either implemented through its
@@ -1339,7 +1362,9 @@ Deliverables:
   would make exact provider results inconsistent;
 - [x] specify atomic per-locale owner apply, CAS, idempotency, and owner-event
   evidence;
-- [ ] design settings-localized storage and the remaining live AI evidence gate;
+- [x] design and implement the first Settings localized-storage/provider
+  contract for `modules/static_settings`;
+- [ ] collect the remaining live AI evidence gate;
 - [x] commit executable reference provider fixtures and negative fixtures in
   `rustok-translation-targets/tests/reference_provider_conformance.rs`, covering
   exact-locale discovery, CAS apply, replay, stale revisions, and
@@ -1359,10 +1384,10 @@ Deliverables:
   manifest, migrations, permissions, workers, FBA evidence, and synchronized
   readiness records;
 - [x] implement provider-level exact-locale coverage and opaque-cursor
-  freshness, with Media, Taxonomy, Navigation menu, and Pages metadata
-  registered aggregates and Translation-side fact validation. Blog Category
-  copy is consumed through the canonical Taxonomy provider rather than a
-  duplicate Blog provider;
+  freshness, with Media, Taxonomy, Navigation menu, Pages metadata, and Settings
+  `modules/static_settings` registered aggregates and Translation-side fact
+  validation. Blog Category copy is consumed through the canonical Taxonomy
+  provider rather than a duplicate Blog provider;
 - [x] complete required-target-locale policies and deterministic Phase 1 QA;
   job completion, safe blocked-item retry, rebuildable job workflow progress,
   jobs, items, proposals, assignments, cancellation, receipts, durable apply
@@ -1416,18 +1441,27 @@ target:
    body content remains a separate Page Builder target; retain PostgreSQL
    migration, concurrent apply, and cursor-recovery evidence before production
    inventory enablement.
+6. Settings static fields: `modules/static_settings` is registered through the
+   server-owned provider over typed owner-admitted package fields. Owner-local
+   exact rows/source provenance, stable identities/descriptors/revisions,
+   aggregate progress, bounded change cursor, validation, and deterministic
+   replay-safe apply are implemented without Translation-side Settings SQL.
+   Focused exact-head runtime composition `33952057144` and migration approval
+   `33952055814` are green. Arbitrary settings JSON remains outside the target.
 
 Focused retained evidence currently includes Translation Memory retention
 `33539223647`, Pages `page_metadata` `33545157694`, Navigation
 `navigation/menu` `33549035590`, Forum Category/Taxonomy cutover
-`33431200532`, and Media `media/asset` PostgreSQL exact-head `33623651814` plus
-post-merge `main` `33635199181`.
+`33431200532`, Media `media/asset` PostgreSQL exact-head `33623651814` plus
+post-merge `main` `33635199181`, and Settings `modules/static_settings` runtime
+composition `33952057144` plus migration approval `33952055814`.
 
 The conformance suite still contains non-production reference fixtures for
-long/structured content, Product/commerce, and a localized setting so the
-contract is not biased toward simple text. Do not enable Page Builder bodies,
-arbitrary Flex JSON, bulk AI, Product full-list replacement, or settings JSON
-scanning in this phase.
+long/structured content and Product/commerce so the contract is not biased
+toward simple text. Do not enable Page Builder bodies, arbitrary Flex JSON,
+bulk AI, Product full-list replacement, or arbitrary settings JSON scanning in
+this phase; the registered Settings pilot is limited to owner-admitted typed
+fields.
 
 Done when enabled pilot providers pass Gate B and share no duplicated provider,
 progress, apply, normalization, or fallback logic.
@@ -1527,8 +1561,8 @@ Onboard:
 - Fly/Page Builder localized properties through stable component/property
   identities;
 - Flex schema copy and localized values through field-definition semantics;
-- one explicitly localized tenant-module setting, then other settings owners
-  only after their typed localized-leaf cutover;
+- extend beyond the registered `modules/static_settings` pilot only through
+  additional owner-specific typed localized-leaf cutovers;
 - import/export formats for the enabled structured profiles.
 
 Done when every structured format has lossless segment/reassembly fixtures and
@@ -1622,7 +1656,7 @@ Baseline repository gates:
 - FFA/FBA and module-specific provider conformance verifiers;
 - `git diff --check`.
 
-Focused retained evidence as of 2026-09-02:
+Focused retained evidence as of 2026-09-05:
 
 - Translation Memory retention: `33539223647`;
 - Pages `pages/page_metadata`: `33545157694`;
@@ -1631,6 +1665,9 @@ Focused retained evidence as of 2026-09-02:
 - Media `media/asset` PostgreSQL exact-head: `33623651814`;
 - Media `media/asset` PostgreSQL post-merge `main@47f700ea638ea5bd0978f05db654c725d5164576`:
   `33635199181`;
+- Settings `modules/static_settings` runtime composition exact head:
+  `33952057144`;
+- Settings migration approval: `33952055814`;
 - Translation runtime composition exact PR head: `33608857569`;
 - Translation runtime composition post-merge `main@b16da9a8babe147b7ce75f871913b4bc4c34c506`:
   `33609559524`.
