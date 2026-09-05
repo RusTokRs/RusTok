@@ -74,7 +74,10 @@ pub use health::{
 pub use i18n::{Locale, extract_locale_from_header, translate};
 pub use id::{generate_id, parse_id};
 pub use metrics::{Counter, Gauge, Histogram, MetricSnapshot, MetricValue, MetricsRegistry, Timer};
-pub use migrations::{MigrationDependencyDescriptor, ModuleMigration};
+pub use migrations::{
+    MigrationDependencyDescriptor, MigrationPhaseConstraint, MigrationSafetyClass,
+    MigrationSafetyMetadata, ModuleMigration,
+};
 pub use module::{
     MigrationSource, ModuleContext, ModuleEventListenerContext, ModuleEventListenerRegistry,
     ModuleKind, ModuleRuntimeExtensions, RusToKModule,

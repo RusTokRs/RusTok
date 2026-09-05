@@ -89,7 +89,7 @@ for (const fragment of [
 
 if (
   featureLine(serverCargo, "mod-reactions") !==
-  'mod-reactions = ["dep:rustok-reactions", "rustok-distribution/mod-reactions"]'
+  'mod-reactions = ["dep:rustok-reactions", "rustok-reactions/graphql", "rustok-distribution/mod-reactions"]'
 ) {
   fail("server mod-reactions feature must select the owner and distribution feature");
 }

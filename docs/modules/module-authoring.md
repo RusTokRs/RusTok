@@ -85,6 +85,25 @@ an FFA/FBA gate is mandatory:
 If an already completed functional slice does not pass this gate, the next change set first
 brings it to FBA-ready boundary evidence and only then extends functionality.
 
+## Release and Data Rollback Readiness Gate
+
+Every platform module (Core, Optional, or Capability extension) must declare its release, rollback, and data boundary readiness.
+A stateless module or one without persistent tables must record an explicit `data boundary: none`.
+This removes ambiguity between "reviewed and not applicable" and "not reviewed."
+
+Before any module PR is merged:
+1. Provide the canonical `## Release and Data Rollback Readiness` block in `docs/implementation-plan.md` specifying:
+   - `Runtime kind`: Core | Optional | Extension
+   - `Rollback unit`: Component | Family | Platform
+   - `Data boundary owner`: Persistent table names, CAS blob namespace, or explicit `data boundary: none`
+   - `Native migrations`: Declared migrations with safety metadata or `none`
+   - `Supported migration policy`: `AdditiveOnly` | `ExpandContract` | `MaintenanceOnly` | `none`
+   - `Predecessor standby strategy`: `Standby DB + Slot` | `Hot-Standby Slot` | `CAS Hold Blob` | `none`
+   - `Rollback eligibility`: `AutomaticSingleAttempt` | `DeniedMaintenanceOnly`
+   - `Recovery invariants`: Monotonic epoch, idempotency receipts, zero-flapping
+2. Add a synchronized row to the compact central readiness board in [`docs/modules/registry.md`](./registry.md#module-release-rollback-and-transition-readiness-board).
+3. If the module declares native migrations, extend them with exact safety metadata via `MigrationSource::migration_safety_metadata`.
+
 ### Structural Minimum for an FBA Increment
 
 For FBA translation, the same standard applies as in the unified plan

@@ -236,20 +236,7 @@ pub struct RetentionHoldStore;
 
 impl RetentionHoldStore {
     fn target_identity_key(target: &RetentionTarget) -> (&'static str, String) {
-        match target {
-            RetentionTarget::SourceCasBlob { digest } => ("source_cas", digest.clone()),
-            RetentionTarget::AdmittedPayloadCas { digest } => ("payload_cas", digest.clone()),
-            RetentionTarget::NodeSlot {
-                node_id,
-                slot_digest,
-            } => ("node_slot", format!("{node_id}:{slot_digest}")),
-            RetentionTarget::RecoveryPoint { snapshot_id } => {
-                ("recovery_point", snapshot_id.to_string())
-            }
-            RetentionTarget::DiagnosticLog { operation_id } => {
-                ("diagnostic_log", operation_id.to_string())
-            }
-        }
+        target.identity_key()
     }
 
     /// Persists a new retention hold record to the database.

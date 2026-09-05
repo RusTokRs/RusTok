@@ -6,11 +6,10 @@ use async_trait::async_trait;
 use sea_orm::DatabaseConnection;
 use sea_orm_migration::MigrationTrait;
 
-use crate::migrations::MigrationDependencyDescriptor;
-use serde_json::Value;
-
 use crate::events::EventHandler;
+use crate::migrations::{MigrationDependencyDescriptor, MigrationSafetyMetadata};
 use rustok_api::Permission;
+use serde_json::Value;
 
 pub struct ModuleContext<'a> {
     pub db: &'a DatabaseConnection,
@@ -22,6 +21,10 @@ pub trait MigrationSource: Send + Sync {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>>;
 
     fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
+        Vec::new()
+    }
+
+    fn migration_safety_metadata(&self) -> Vec<MigrationSafetyMetadata> {
         Vec::new()
     }
 }

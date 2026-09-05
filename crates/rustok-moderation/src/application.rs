@@ -1,7 +1,8 @@
 use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseTransaction, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    sea_query::{Expr, ExprTrait},
 };
 use uuid::Uuid;
 
@@ -133,10 +134,7 @@ impl ModerationService {
             )
             .col_expr(
                 moderation_application_operation::Column::AttemptCount,
-                sea_orm::sea_query::ExprTrait::add(
-                    Expr::col(moderation_application_operation::Column::AttemptCount),
-                    1,
-                ),
+                Expr::col(moderation_application_operation::Column::AttemptCount).add(1),
             )
             .col_expr(
                 moderation_application_operation::Column::LeaseToken,

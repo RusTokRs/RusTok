@@ -15,7 +15,8 @@ use uuid::Uuid;
 
 use rustok_api::{
     ArtifactPermissionRegistration, ArtifactPermissionRegistrationPort,
-    ArtifactPermissionRegistrationRequest, ArtifactPermissionScope,
+    ArtifactPermissionScope, ReleasePermissionAdmissionRequest,
+    ScopedPermissionProjectionRequest,
 };
 use rustok_events::DomainEvent;
 use rustok_sandbox::{
@@ -472,6 +473,58 @@ pub trait DurableArtifactBlobStore: ArtifactBlobStore {
     /// The reconciler compares this set with committed control-plane references.
     async fn published_digests(&self) -> Result<Vec<String>, ModuleInstallationError>;
     async fn delete(&self, digest: &str) -> Result<(), ModuleInstallationError>;
+}
+
+#[async_trait]
+impl<B: ArtifactBlobStore + ?Sized> ArtifactBlobStore for Arc<B> {
+    async fn put_verified(
+        &self,
+        digest: &str,
+        bytes: &[u8],
+    ) -> Result<(), ModuleInstallationError> {
+        (**self).put_verified(digest, bytes).await
+    }
+
+    async fn get_verified(&self, digest: &str) -> Result<Vec<u8>, ModuleInstallationError> {
+        (**self).get_verified(digest).await
+    }
+}
+
+#[async_trait]
+impl<B: DurableArtifactBlobStore + ?Sized> DurableArtifactBlobStore for Arc<B> {
+    async fn stage(
+        &self,
+        expected_digest: &str,
+        expected_media_type: &str,
+        bytes: &[u8],
+    ) -> Result<StagedArtifactBlob, ModuleInstallationError> {
+        (**self).stage(expected_digest, expected_media_type, bytes).await
+    }
+
+    async fn stage_file(
+        &self,
+        expected_digest: &str,
+        expected_media_type: &str,
+        source: &std::path::Path,
+    ) -> Result<StagedArtifactBlob, ModuleInstallationError> {
+        (**self).stage_file(expected_digest, expected_media_type, source).await
+    }
+
+    async fn publish(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError> {
+        (**self).publish(staged).await
+    }
+
+    async fn discard(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError> {
+        (**self).discard(staged).await
+    }
+
+    async fn published_digests(&self) -> Result<Vec<String>, ModuleInstallationError> {
+        (**self).published_digests().await
+    }
+
+    async fn delete(&self, digest: &str) -> Result<(), ModuleInstallationError> {
+        (**self).delete(digest).await
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -4887,9 +4940,7 @@ where
             },
         };
         self.permission_registrar
-            .register_admitted_permissions(ArtifactPermissionRegistrationRequest {
-                installation_id,
-                scope,
+            .admit_release_permissions(ReleasePermissionAdmissionRequest {
                 module_slug: descriptor.slug.clone(),
                 release_digest: descriptor.artifact_digest.clone(),
                 permissions: descriptor
@@ -4900,6 +4951,21 @@ where
                         localizations: permission.localizations.clone(),
                     })
                     .collect(),
+            })
+            .await
+            .map_err(|error| {
+                ModuleInstallationError::PermissionRegistration(format!(
+                    "{}: {}",
+                    error.code, error.message
+                ))
+            })?;
+
+        self.permission_registrar
+            .project_scoped_permissions(ScopedPermissionProjectionRequest {
+                scope,
+                installation_id,
+                module_slug: descriptor.slug.clone(),
+                release_digest: descriptor.artifact_digest.clone(),
             })
             .await
             .map_err(|error| {
@@ -5612,27 +5678,81 @@ mod tests {
 
     #[async_trait]
     impl ArtifactPermissionRegistrationPort for AllowArtifactPermissionRegistrar {
-        async fn register_admitted_permissions(
+        async fn admit_release_permissions(
             &self,
-            _request: ArtifactPermissionRegistrationRequest,
+            _request: ReleasePermissionAdmissionRequest,
         ) -> Result<(), rustok_api::PortError> {
             Ok(())
+        }
+
+        async fn project_scoped_permissions(
+            &self,
+            _request: ScopedPermissionProjectionRequest,
+        ) -> Result<(), rustok_api::PortError> {
+            Ok(())
+        }
+
+        async fn evaluate_permission_continuity(
+            &self,
+            request: rustok_api::PermissionContinuityEvaluationRequest,
+        ) -> Result<rustok_api::ArtifactPermissionContinuityReceipt, rustok_api::PortError> {
+            let fingerprint = rustok_api::compute_canonical_authorization_fingerprint(
+                &request.candidate_permissions,
+            );
+            Ok(rustok_api::ArtifactPermissionContinuityReceipt {
+                scope: request.scope,
+                predecessor_release_digest: request.predecessor_release_digest,
+                candidate_release_digest: request.candidate_release_digest,
+                authorization_fingerprint: fingerprint,
+                rbac_epoch: request.expected_rbac_epoch,
+                diff: rustok_api::ArtifactPermissionDiff::default(),
+                approved: true,
+                receipt_digest: "sha256:mock".to_string(),
+            })
         }
     }
 
     #[derive(Clone, Default)]
-    struct RecordingArtifactPermissionRegistrar(
-        Arc<Mutex<Vec<ArtifactPermissionRegistrationRequest>>>,
-    );
+    struct RecordingArtifactPermissionRegistrar {
+        admissions: Arc<Mutex<Vec<ReleasePermissionAdmissionRequest>>>,
+        projections: Arc<Mutex<Vec<ScopedPermissionProjectionRequest>>>,
+    }
 
     #[async_trait]
     impl ArtifactPermissionRegistrationPort for RecordingArtifactPermissionRegistrar {
-        async fn register_admitted_permissions(
+        async fn admit_release_permissions(
             &self,
-            request: ArtifactPermissionRegistrationRequest,
+            request: ReleasePermissionAdmissionRequest,
         ) -> Result<(), rustok_api::PortError> {
-            self.0.lock().expect("registrar lock").push(request);
+            self.admissions.lock().expect("registrar lock").push(request);
             Ok(())
+        }
+
+        async fn project_scoped_permissions(
+            &self,
+            request: ScopedPermissionProjectionRequest,
+        ) -> Result<(), rustok_api::PortError> {
+            self.projections.lock().expect("registrar lock").push(request);
+            Ok(())
+        }
+
+        async fn evaluate_permission_continuity(
+            &self,
+            request: rustok_api::PermissionContinuityEvaluationRequest,
+        ) -> Result<rustok_api::ArtifactPermissionContinuityReceipt, rustok_api::PortError> {
+            let fingerprint = rustok_api::compute_canonical_authorization_fingerprint(
+                &request.candidate_permissions,
+            );
+            Ok(rustok_api::ArtifactPermissionContinuityReceipt {
+                scope: request.scope,
+                predecessor_release_digest: request.predecessor_release_digest,
+                candidate_release_digest: request.candidate_release_digest,
+                authorization_fingerprint: fingerprint,
+                rbac_epoch: request.expected_rbac_epoch,
+                diff: rustok_api::ArtifactPermissionDiff::default(),
+                approved: true,
+                receipt_digest: "sha256:mock".to_string(),
+            })
         }
     }
 
@@ -6036,14 +6156,17 @@ mod tests {
             ))
             .await
             .expect("admission");
-        let registrations = registrar.0.lock().expect("registrar lock");
-        assert_eq!(registrations.len(), 1);
-        assert_eq!(registrations[0].installation_id, result.installation_id);
-        assert_eq!(registrations[0].permissions.len(), 1);
+        let admissions = registrar.admissions.lock().expect("registrar lock");
+        assert_eq!(admissions.len(), 1);
+        assert_eq!(admissions[0].module_slug, "sample_module");
+        assert_eq!(admissions[0].permissions.len(), 1);
         assert_eq!(
-            registrations[0].permissions[0].key,
+            admissions[0].permissions[0].key,
             "sample_module.events.handle"
         );
+        let projections = registrar.projections.lock().expect("registrar lock");
+        assert_eq!(projections.len(), 1);
+        assert_eq!(projections[0].installation_id, result.installation_id);
     }
 
     #[tokio::test]

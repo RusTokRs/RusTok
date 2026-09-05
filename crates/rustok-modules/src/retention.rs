@@ -29,6 +29,15 @@ pub enum RetentionHoldKind {
     LegalHold { reference: String },
 }
 
+/// State classification of an artifact-data object in tenant storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactObjectState {
+    Live,
+    Staging,
+    LogicallyDeleted,
+}
+
 /// Strongly-typed asset targets protected by the retention ledger.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "target_type", content = "identity")]
@@ -37,15 +46,121 @@ pub enum RetentionTarget {
     SourceCasBlob { digest: String },
     /// Admitted executable WASM/Rhai payload in object storage.
     AdmittedPayloadCas { digest: String },
+    /// OCI manifest in registry CAS.
+    OciManifest { digest: String },
+    /// OCI layer blob in registry CAS.
+    OciLayer { digest: String },
+    /// OCI referrer artifact binding.
+    OciReferrer {
+        digest: String,
+        subject_digest: String,
+    },
+    /// Build attempt working workspace or intermediate output.
+    BuildAttempt { attempt_id: Uuid },
+    /// Platform native/compiled executable in platform CAS.
+    PlatformExecutableCas { digest: String },
+    /// Live, staging, or logically-deleted artifact-data object.
+    ArtifactDataObject {
+        object_id: Uuid,
+        namespace_instance_id: Uuid,
+        state: ArtifactObjectState,
+    },
+    /// Snapshot or backup restore copy.
+    SnapshotRestoreCopy { copy_id: Uuid },
+    /// Encrypted settings recovery point with KMS key and schema descriptor root.
+    EncryptedSettingsRecoveryPoint {
+        recovery_point_id: Uuid,
+        kms_key_version: String,
+        schema_root_digest: String,
+    },
+    /// Release-qualified browser asset.
+    BrowserAsset {
+        release_id: String,
+        logical_path: String,
+        content_digest: String,
+    },
     /// Node-local execution slot on a host.
     NodeSlot {
         node_id: String,
+        slot_digest: String,
+    },
+    /// Operations tool package in platform distribution.
+    OperationsToolPackage { package_digest: String },
+    /// Local operations tool predecessor slot on a host.
+    OperationsToolPredecessorSlot {
+        host_id: String,
         slot_digest: String,
     },
     /// Database backup or point-in-time recovery point.
     RecoveryPoint { snapshot_id: Uuid },
     /// Diagnostic trace, telemetry, or failure log.
     DiagnosticLog { operation_id: Uuid },
+}
+
+impl RetentionTarget {
+    /// Returns canonical `(target_type, target_identity)` for store persistence and GraphQL projection.
+    pub fn identity_key(&self) -> (&'static str, String) {
+        match self {
+            RetentionTarget::SourceCasBlob { digest } => ("source_cas", digest.clone()),
+            RetentionTarget::AdmittedPayloadCas { digest } => ("payload_cas", digest.clone()),
+            RetentionTarget::OciManifest { digest } => ("oci_manifest", digest.clone()),
+            RetentionTarget::OciLayer { digest } => ("oci_layer", digest.clone()),
+            RetentionTarget::OciReferrer {
+                digest,
+                subject_digest,
+            } => ("oci_referrer", format!("{subject_digest}:{digest}")),
+            RetentionTarget::BuildAttempt { attempt_id } => {
+                ("build_attempt", attempt_id.to_string())
+            }
+            RetentionTarget::PlatformExecutableCas { digest } => {
+                ("executable_cas", digest.clone())
+            }
+            RetentionTarget::ArtifactDataObject {
+                object_id,
+                namespace_instance_id,
+                state,
+            } => (
+                "artifact_data_object",
+                format!("{namespace_instance_id}:{object_id}:{state:?}"),
+            ),
+            RetentionTarget::SnapshotRestoreCopy { copy_id } => {
+                ("snapshot_copy", copy_id.to_string())
+            }
+            RetentionTarget::EncryptedSettingsRecoveryPoint {
+                recovery_point_id,
+                kms_key_version,
+                schema_root_digest,
+            } => (
+                "settings_recovery_point",
+                format!("{recovery_point_id}:{kms_key_version}:{schema_root_digest}"),
+            ),
+            RetentionTarget::BrowserAsset {
+                release_id,
+                logical_path,
+                content_digest,
+            } => (
+                "browser_asset",
+                format!("{release_id}:{logical_path}:{content_digest}"),
+            ),
+            RetentionTarget::NodeSlot {
+                node_id,
+                slot_digest,
+            } => ("node_slot", format!("{node_id}:{slot_digest}")),
+            RetentionTarget::OperationsToolPackage { package_digest } => {
+                ("operations_tool_package", package_digest.clone())
+            }
+            RetentionTarget::OperationsToolPredecessorSlot {
+                host_id,
+                slot_digest,
+            } => ("operations_tool_slot", format!("{host_id}:{slot_digest}")),
+            RetentionTarget::RecoveryPoint { snapshot_id } => {
+                ("recovery_point", snapshot_id.to_string())
+            }
+            RetentionTarget::DiagnosticLog { operation_id } => {
+                ("diagnostic_log", operation_id.to_string())
+            }
+        }
+    }
 }
 
 /// Durable record of an individual active retention hold.

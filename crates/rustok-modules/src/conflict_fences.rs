@@ -76,6 +76,14 @@ impl ConflictKey {
         )
     }
 
+    /// Fleet-level operations-tool exclusion fence.
+    pub fn fleet_operations_tool() -> Self {
+        Self::new(
+            ConflictKeyKind::ReleaseUnit,
+            "fleet:operations_tool",
+        )
+    }
+
     /// Database schema migration owner fence for a module.
     pub fn data_migration_owner(module_slug: &str) -> Self {
         Self::new(
@@ -220,6 +228,11 @@ impl ConflictFenceSet {
         }
 
         Self::new(keys)
+    }
+
+    /// Derives the canonical fleet exclusion fence set for operations-tool maintenance.
+    pub fn derive_operations_tool_maintenance_fences() -> Self {
+        Self::new(vec![ConflictKey::fleet_operations_tool()])
     }
 }
 

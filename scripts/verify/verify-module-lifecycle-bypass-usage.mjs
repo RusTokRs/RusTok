@@ -3,16 +3,28 @@ import { execFileSync } from 'node:child_process';
 
 const symbol = 'upsert_flag_without_lifecycle_for_migrations_only(';
 
-function runRg(args) {
+function runSearch(symbol, paths) {
   try {
-    return execFileSync('rg', args, { encoding: 'utf8' }).trim();
+    return execFileSync('rg', ['--line-number', '--no-heading', '--fixed-strings', symbol, ...paths], {
+      encoding: 'utf8',
+    }).trim();
   } catch (error) {
     if (error.status === 1) return '';
+    if (error.code === 'ENOENT') {
+      try {
+        return execFileSync('git', ['grep', '-n', '-F', symbol, '--', ...paths], {
+          encoding: 'utf8',
+        }).trim();
+      } catch (gitError) {
+        if (gitError.status === 1) return '';
+        throw gitError;
+      }
+    }
     throw error;
   }
 }
 
-const output = runRg(['--line-number', '--no-heading', '--fixed-strings', symbol, 'apps', 'crates']);
+const output = runSearch(symbol, ['apps', 'crates']);
 const lines = output ? output.split('\n').filter(Boolean) : [];
 const violations = lines;
 

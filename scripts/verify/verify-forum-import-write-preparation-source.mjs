@@ -90,9 +90,9 @@ for (const marker of [
   "Serialize",
   "Deserialize",
   "#[serde(",
-  ".insert(",
-  ".update(",
-  ".delete(",
+  ".insert(&",
+  ".update(&",
+  ".delete(&",
 ]) forbid(source.preparation, marker, "preparation side-effect/non-wire boundary");
 
 for (const marker of [

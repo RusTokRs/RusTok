@@ -67,8 +67,7 @@ mod revision_tests {
             STOREFRONT_FORUM_REPLY_CURRENT_REVISION_QUERY,
         ] {
             assert!(query.contains("CurrentRevision"));
-            assert!(!query.contains("reactionSnapshot"));
-            assert!(!query.contains("applyReaction"));
+            assert!(!query.to_lowercase().contains("reaction"));
             assert!(!query.contains("actorId"));
         }
     }

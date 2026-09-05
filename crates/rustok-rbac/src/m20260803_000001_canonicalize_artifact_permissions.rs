@@ -125,14 +125,20 @@ where
         backend,
         match backend {
             DbBackend::Postgres => &[
+                "CREATE TABLE IF NOT EXISTS rbac_artifact_release_permission_definitions (id UUID PRIMARY KEY, release_digest TEXT NOT NULL, module_slug TEXT NOT NULL, permission_key TEXT NOT NULL, registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (release_digest, permission_key))",
+                "CREATE TABLE IF NOT EXISTS rbac_artifact_release_permission_translations (id UUID PRIMARY KEY, release_permission_id UUID NOT NULL REFERENCES rbac_artifact_release_permission_definitions (id) ON DELETE CASCADE, locale VARCHAR(32) NOT NULL, label TEXT NOT NULL, description TEXT NOT NULL, registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (release_permission_id, locale))",
                 "CREATE OR REPLACE FUNCTION rustok_reject_artifact_permission_installation_update() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'artifact permission installation identities are immutable'; END; $$",
                 "CREATE TRIGGER rbac_artifact_permission_installations_immutable BEFORE UPDATE ON rbac_artifact_permission_installations FOR EACH ROW EXECUTE FUNCTION rustok_reject_artifact_permission_installation_update()",
                 "CREATE OR REPLACE FUNCTION rustok_reject_artifact_permission_definition_update() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'artifact permission definitions are immutable'; END; $$",
                 "CREATE TRIGGER rbac_artifact_permission_definitions_immutable BEFORE UPDATE ON rbac_artifact_permission_definitions FOR EACH ROW EXECUTE FUNCTION rustok_reject_artifact_permission_definition_update()",
+                "CREATE TRIGGER rbac_artifact_release_permission_definitions_immutable BEFORE UPDATE ON rbac_artifact_release_permission_definitions FOR EACH ROW EXECUTE FUNCTION rustok_reject_artifact_permission_definition_update()",
             ],
             DbBackend::Sqlite => &[
+                "CREATE TABLE IF NOT EXISTS rbac_artifact_release_permission_definitions (id TEXT PRIMARY KEY, release_digest TEXT NOT NULL, module_slug TEXT NOT NULL, permission_key TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (release_digest, permission_key))",
+                "CREATE TABLE IF NOT EXISTS rbac_artifact_release_permission_translations (id TEXT PRIMARY KEY, release_permission_id TEXT NOT NULL REFERENCES rbac_artifact_release_permission_definitions (id) ON DELETE CASCADE, locale VARCHAR(32) NOT NULL, label TEXT NOT NULL, description TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (release_permission_id, locale))",
                 "CREATE TRIGGER rbac_artifact_permission_installations_immutable BEFORE UPDATE ON rbac_artifact_permission_installations BEGIN SELECT RAISE(ABORT, 'artifact permission installation identities are immutable'); END",
                 "CREATE TRIGGER rbac_artifact_permission_definitions_immutable BEFORE UPDATE ON rbac_artifact_permission_definitions BEGIN SELECT RAISE(ABORT, 'artifact permission definitions are immutable'); END",
+                "CREATE TRIGGER rbac_artifact_release_permission_definitions_immutable BEFORE UPDATE ON rbac_artifact_release_permission_definitions BEGIN SELECT RAISE(ABORT, 'artifact release permission definitions are immutable'); END",
             ],
             _ => unreachable!(),
         },
@@ -258,6 +264,9 @@ where
         backend,
         match backend {
             DbBackend::Postgres => &[
+                "DROP TRIGGER IF EXISTS rbac_artifact_release_permission_definitions_immutable ON rbac_artifact_release_permission_definitions",
+                "DROP TABLE IF EXISTS rbac_artifact_release_permission_translations",
+                "DROP TABLE IF EXISTS rbac_artifact_release_permission_definitions",
                 "DROP TRIGGER rbac_artifact_permission_definitions_immutable ON rbac_artifact_permission_definitions",
                 "DROP TRIGGER rbac_artifact_permission_installations_immutable ON rbac_artifact_permission_installations",
                 "DROP TABLE rbac_artifact_permission_translations",
@@ -268,6 +277,9 @@ where
                 "DROP FUNCTION rustok_reject_artifact_permission_installation_update()",
             ],
             DbBackend::Sqlite => &[
+                "DROP TRIGGER IF EXISTS rbac_artifact_release_permission_definitions_immutable",
+                "DROP TABLE IF EXISTS rbac_artifact_release_permission_translations",
+                "DROP TABLE IF EXISTS rbac_artifact_release_permission_definitions",
                 "DROP TRIGGER rbac_artifact_permission_definitions_immutable",
                 "DROP TRIGGER rbac_artifact_permission_installations_immutable",
                 "DROP TABLE rbac_artifact_permission_translations",

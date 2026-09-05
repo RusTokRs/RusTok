@@ -130,7 +130,7 @@ for (const marker of [
   "no tests, Cargo commands",
 ]) need(source.packet, marker, "FORUM-34I packet");
 
-const queryCalls = source.inventory.split(".query_all(").length - 1;
+const queryCalls = source.inventory.split(".query_all_raw(").length - 1;
 if (queryCalls !== 1) {
   throw new Error(`export inventory: expected one query execution path, found ${queryCalls}`);
 }

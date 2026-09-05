@@ -18,6 +18,8 @@ function writeFixture(root, relativePath, content) {
 function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-forum-presentation-"));
   const contract = `
+pub use rustok_media::MediaPublicImageReadPort;
+// Media decides whether the requested asset is an active, ready public image
 pub const CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE_CODE: &str =
   "FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE";
 pub struct CategoryCoverMediaCandidate {
@@ -31,13 +33,15 @@ pub struct CategoryCoverMediaCandidate {
 }
 pub fn normalize_category_icon_key() {}
 pub fn validate() { should_emit_to_public_metadata(); }
-pub async fn resolve_category_cover_for_write(media_port: Option<&Port>) {
-  media_port.ok_or_else(category_cover_media_capability_unavailable);
+pub async fn resolve_category_cover_for_write(media_port: Option<&dyn MediaPublicImageReadPort>) {
+  let media_port = media_port.ok_or_else(category_cover_media_capability_unavailable);
+  media_port.get_public_image_asset();
   map_category_cover_media_port_error();
   ${options.swallowMediaFailure ? "map_category_cover_media_port_error().ok();" : ""}
 }
-pub async fn hydrate_category_cover_for_read(media_port: Option<&Port>) {
+pub async fn hydrate_category_cover_for_read(media_port: Option<&dyn MediaPublicImageReadPort>) {
   let Some(media_port) = media_port else { return Ok(None); };
+  media_port.get_public_image_asset();
   map_category_cover_media_port_error();
 }
 // Quarantine/deletion state is not currently published
@@ -68,7 +72,7 @@ ${options.arbitraryUrl ? "cover_url: String" : ""}
   writeFixture(
     root,
     "crates/rustok-forum/docs/implementation-plan.md",
-    "Delivered in `FORUM-13A`\nDelivered in `FORUM-13B`\nremaining quarantine/deletion owner state\n",
+    "Delivered in `FORUM-13A`\nDelivered in `FORUM-13B`\nMedia keeps lifecycle ownership.\nremaining quarantine/deletion owner state\n",
   );
   writeFixture(
     root,

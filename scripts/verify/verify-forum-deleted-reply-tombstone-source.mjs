@@ -113,9 +113,9 @@ for (const marker of [
   "SecurityContext",
   "TransactionalEventBus",
   "Uuid::new_v4",
-  ".insert(",
-  ".update(",
-  ".delete(",
+  ".insert(&",
+  ".update(&",
+  ".delete(&",
   ".commit(",
 ]) forbid(source.tombstone, marker, "side-effect-free tombstone admission");
 

@@ -206,3 +206,153 @@ fn normalize_caption(
     }
     Ok(Some(caption))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_request() -> ForumAttachmentRelationAdmissionRequest {
+        ForumAttachmentRelationAdmissionRequest {
+            tenant_id: Uuid::new_v4(),
+            target: ForumContentTarget::topic(Uuid::new_v4()),
+            source_revision: 1,
+            locale: "en".to_string(),
+            attachments: vec![
+                ForumAttachmentRelationInput {
+                    media_id: Uuid::new_v4(),
+                    usage: ForumAttachmentUsage::Inline,
+                    position: 0,
+                    caption: Some(" First caption ".to_string()),
+                },
+                ForumAttachmentRelationInput {
+                    media_id: Uuid::new_v4(),
+                    usage: ForumAttachmentUsage::Attachment,
+                    position: 1,
+                    caption: None,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn preparer_admits_valid_batch() {
+        let preparer = ForumAttachmentRelationPreparer;
+        let request = valid_request();
+        let batch = preparer.prepare(request).expect("batch should be admitted");
+
+        assert_eq!(batch.attachments().len(), 2);
+        assert_eq!(batch.source().source_revision(), 1);
+        assert_eq!(batch.source().locale(), "en");
+        assert_eq!(batch.attachments()[0].position, 0);
+        assert_eq!(batch.attachments()[0].caption.as_deref(), Some("First caption"));
+        assert_eq!(batch.attachments()[1].position, 1);
+        assert_eq!(batch.attachments()[1].caption, None);
+        assert!(!batch.is_empty());
+    }
+
+    #[test]
+    fn preparer_rejects_nil_tenant() {
+        let preparer = ForumAttachmentRelationPreparer;
+        let mut request = valid_request();
+        request.tenant_id = Uuid::nil();
+        assert_eq!(
+            preparer.prepare(request).unwrap_err(),
+            ForumAttachmentRelationAdmissionError::NilTenant
+        );
+    }
+
+    #[test]
+    fn preparer_rejects_nil_target() {
+        let preparer = ForumAttachmentRelationPreparer;
+        let mut request = valid_request();
+        request.target = ForumContentTarget::topic(Uuid::nil());
+        assert_eq!(
+            preparer.prepare(request).unwrap_err(),
+            ForumAttachmentRelationAdmissionError::NilTarget
+        );
+    }
+
+    #[test]
+    fn preparer_rejects_zero_source_revision() {
+        let preparer = ForumAttachmentRelationPreparer;
+        let mut request = valid_request();
+        request.source_revision = 0;
+        assert_eq!(
+            preparer.prepare(request).unwrap_err(),
+            ForumAttachmentRelationAdmissionError::InvalidSourceRevision
+        );
+    }
+
+    #[test]
+    fn preparer_rejects_invalid_locale() {
+        let preparer = ForumAttachmentRelationPreparer;
+        let mut request = valid_request();
+        request.locale = "".to_string();
+        assert_eq!(
+            preparer.prepare(request).unwrap_err(),
+            ForumAttachmentRelationAdmissionError::InvalidLocale
+        );
+    }
+
+    #[test]
+    fn preparer_rejects_nil_media_id() {
+        let preparer = ForumAttachmentRelationPreparer;
+        let mut request = valid_request();
+        request.attachments[0].media_id = Uuid::nil();
+        assert_eq!(
+            preparer.prepare(request).unwrap_err(),
+            ForumAttachmentRelationAdmissionError::NilMediaId { position: 0 }
+        );
+    }
+
+    #[test]
+    fn preparer_rejects_duplicate_position() {
+        let preparer = ForumAttachmentRelationPreparer;
+        let mut request = valid_request();
+        request.attachments[1].position = 0;
+        assert_eq!(
+            preparer.prepare(request).unwrap_err(),
+            ForumAttachmentRelationAdmissionError::DuplicatePosition { position: 0 }
+        );
+    }
+
+    #[test]
+    fn preparer_rejects_non_contiguous_positions() {
+        let preparer = ForumAttachmentRelationPreparer;
+        let mut request = valid_request();
+        request.attachments[1].position = 2;
+        assert_eq!(
+            preparer.prepare(request).unwrap_err(),
+            ForumAttachmentRelationAdmissionError::NonContiguousPositions
+        );
+    }
+
+    #[test]
+    fn preparer_rejects_caption_with_control_characters() {
+        let preparer = ForumAttachmentRelationPreparer;
+        let mut request = valid_request();
+        request.attachments[0].caption = Some("bad\x07caption".to_string());
+        assert_eq!(
+            preparer.prepare(request).unwrap_err(),
+            ForumAttachmentRelationAdmissionError::CaptionContainsControl { position: 0 }
+        );
+    }
+
+    #[test]
+    fn preparer_rejects_batch_exceeding_maximum() {
+        let preparer = ForumAttachmentRelationPreparer;
+        let mut request = valid_request();
+        request.attachments = (0..=MAX_FORUM_ATTACHMENTS_PER_REVISION)
+            .map(|i| ForumAttachmentRelationInput {
+                media_id: Uuid::new_v4(),
+                usage: ForumAttachmentUsage::Attachment,
+                position: i as u16,
+                caption: None,
+            })
+            .collect();
+        assert!(matches!(
+            preparer.prepare(request).unwrap_err(),
+            ForumAttachmentRelationAdmissionError::BatchTooLarge { .. }
+        ));
+    }
+}

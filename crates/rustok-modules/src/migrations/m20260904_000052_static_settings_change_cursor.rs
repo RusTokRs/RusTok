@@ -37,6 +37,15 @@ impl MigrationTrait for Migration {
                     ON module_static_settings_changes
                     USING (tenant_id::text = current_setting('rustok.tenant_id', true))
                     WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))"#,
+                r#"CREATE TABLE IF NOT EXISTS tenant_modules (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    tenant_id UUID NOT NULL,
+                    module_slug TEXT NOT NULL,
+                    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )"#,
                 r#"CREATE FUNCTION rustok_log_static_settings_base_projection() RETURNS trigger
                     LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
                     BEGIN
@@ -114,6 +123,15 @@ impl MigrationTrait for Migration {
                 )"#,
                 r#"CREATE INDEX idx_module_static_settings_changes_scope
                     ON module_static_settings_changes (tenant_id, module_slug, change_seq)"#,
+                r#"CREATE TABLE IF NOT EXISTS tenant_modules (
+                    id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    module_slug TEXT NOT NULL,
+                    enabled BOOLEAN NOT NULL DEFAULT 1,
+                    settings JSON NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )"#,
                 r#"CREATE TRIGGER trg_static_settings_base_projection_insert
                     AFTER INSERT ON tenant_modules
                     FOR EACH ROW

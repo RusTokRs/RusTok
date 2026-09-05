@@ -71,7 +71,7 @@ fn resolve_local_secret_ref(
     label: &str,
 ) -> Result<String, SecretResolutionError> {
     match normalize(&reference.backend).as_str() {
-        "env" => std::env::var(&reference.key).map_err(|_| {
+        "env" | "environment" => std::env::var(&reference.key).map_err(|_| {
             SecretResolutionError::new(format!("{label} env secret `{}` is not set", reference.key))
         }),
         "file" | "mounted_file" | "mounted-file" => read_secret_file(&reference.key, label),

@@ -10,6 +10,20 @@ must not become server Cargo dependencies through this crate.
 The cross-component sequence and completion rules are defined by the
 [canonical module-platform plan](../../../docs/modules/module-control-plane-consolidation-plan.md).
 
+## Release and Data Rollback Readiness
+
+- Runtime kind: `Core`
+- Rollback unit: `Platform`
+- Data boundary owner: `module_transition_checkpoints`, `module_retention_holds`, `module_artifact_admission_commands`, `module_artifact_rhai_authoring_packages`, `module_executor_readiness_receipts`, `module_source_object_receipts`, `module_source_object_retention_holds`, `module_operations_tool_releases`, `module_operations_tool_maintenance_operations`, `module_operations_tool_assignments`
+- Native migrations: `m20260903_000047_artifact_data_copy_operations`, `m20260903_000048_artifact_data_object_copy_operations`, `m20260904_000050_rhai_authoring_packages`, `m20260904_000051_static_localized_settings`, `m20260904_000052_static_settings_change_cursor`, `m20260904_000053_static_settings_source_locale`, `m20260904_000051_admitted_oci_releases`, `m20260904_000052_module_source_objects`, `m20260904_000053_module_operations_tool`
+- Supported migration policy: `AdditiveOnly`
+- Predecessor standby strategy: `Standby DB + CAS Holds`
+- Rollback eligibility: `AutomaticSingleAttempt`
+- N/N+1 compatibility: Durable intent journal before CAS mutations; CAS-protected receipts; inert release definitions keyed by `(release_digest, module_slug, permission_key)`; scoped install projects under `(scope, installation_id)`. Bounded migration plan digest verification.
+- External side effects & fences: Monotonic release-security epoch fence; owner operation locks (`derive_canonical_conflict_keys`, `fleet_operations_tool`); queue drain before disable/uninstall; delayed work rejected for retired generations.
+- Uncertain-outcome recovery: `DataBackfillCoordinator` with intermediate page checkpoints and payload digests; uncertain-outcome reconciliation before cursor advance; `ReleaseAdmissionIntentJournal` recovery scan; single-attempt predecessor recovery for operations tools.
+- Responsible module owner: Platform Foundation Team
+
 ## Current state
 
 The owner boundary has a standalone dependency profile: `rustok-modules` does
@@ -20,6 +34,30 @@ module control plane. The repository verifier checks both this dependency
 boundary and the module-owned admin transport for backend write/build logic.
 
 ## Current verification evidence
+
+On 2026-09-04, Separately Signed Operations-Tool Release and Maintenance Operation Ledger were delivered per Section 1 (Item 1782) of the Rollback Plan:
+- `crates/rustok-modules/src/migrations/m20260904_000053_module_operations_tool.rs` created persistent tables:
+  - `module_operations_tool_releases`: Ed25519-signed release metadata (`package_digest`, `controller_digest`, `reconciler_digest`, `agent_digest`, `protocol_revision`, `signer_key_digest`).
+  - `module_operations_tool_maintenance_operations`: canonical operation ledger with bounded predecessor recovery (`recovery_attempts <= 1`).
+  - `module_operations_tool_assignments`: per-host desired/observed component assignments with idempotent status convergence.
+- `crates/rustok-modules/src/operations_tool.rs` implemented `OperationsToolService`, `OperationsToolRelease`, `OperationsToolProtocolMatrix`, `VerifiedOperationsToolRelease`:
+  - Strict Ed25519 signature verification over canonical JSON bytes.
+  - Signer public key digest pinning and expiration interval checks.
+  - Protocol matrix compatibility verification against control-plane protocol.
+  - `start_maintenance` acquiring fleet-level exclusion fence (`ConflictKey::fleet_operations_tool()`) and generating host component assignments (`controller`, `reconciler`, `agent`).
+  - Idempotent supervisor reports from host executors with automatic operation convergence.
+  - `authorize_predecessor_recovery` verifying predecessor release preflight and atomically re-pointing desired digests to predecessor with bounded recovery enforcement (`recovery_attempts <= 1`).
+- Verified by:
+  - `cargo test --locked -p rustok-modules --test operations_tool_tests` (5 passed, 0 warnings).
+
+On 2026-09-04, Media-Neutral `SourceObjectStore` and CAS Cutover were delivered per Section 1 (Item 1804–1811) of the Rollback Plan:
+- `crates/rustok-modules/src/migrations/m20260904_000052_module_source_objects.rs` created tables `module_source_object_receipts` (with RLS tenant isolation) and `module_source_object_retention_holds`.
+- `crates/rustok-modules/src/source_object.rs` implemented `SourceObjectStore` with media-neutral digest-addressed blob layout (`<cas_root>/<digest_hex>`), idempotent preparation receipts, and retention holds.
+- `crates/rustok-build-source` updated to read and inspect media-neutral archives directly.
+- Verified by:
+  - `cargo test --locked -p rustok-modules --test source_object_store_tests` (4 passed, 0 warnings).
+  - `cargo test --locked -p rustok-build-source` (7 passed, 0 warnings).
+  - `node scripts/verify/verify-module-source-archive.mjs` (passed).
 
 On 2026-09-04, Rhai Authoring Pipeline and Immutable Release Packaging were delivered per Section 5 of the Rollback Plan:
 - `crates/rustok-modules/src/migrations/m20260904_000050_rhai_authoring_packages.rs` created persistent table `module_artifact_rhai_authoring_packages` with RLS tenant isolation.

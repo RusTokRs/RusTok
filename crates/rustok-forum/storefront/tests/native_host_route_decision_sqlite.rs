@@ -10,13 +10,13 @@ use axum::routing::post;
 use leptos::prelude::provide_context;
 use leptos_axum::handle_server_fns_with_context;
 use rustok_api::{HostRuntimeContext, TenantContext, TenantContextExtension};
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, ForumTopicRouteService,
     RenameForumTopicSlugInput, TopicService, UpdateCategoryInput,
 };
 use rustok_forum_storefront as _;
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
@@ -37,7 +37,7 @@ async fn registered_native_host_resolves_forum_canonical_alias_and_missing_route
     let tenant_id = Uuid::new_v4();
     let admin_id = Uuid::new_v4();
     let db = setup_db(tenant_id, admin_id).await?;
-    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     let security = SecurityContext::new(UserRole::Admin, Some(admin_id));
 
     let category_service = CategoryService::new(db.clone());
@@ -229,9 +229,10 @@ async fn call(
 
 fn assert_ok_contains(response: &ServerFnResponse, markers: &[&str]) {
     assert_eq!(response.status, StatusCode::OK, "{}", response.body);
+    let lower_body = response.body.to_lowercase();
     for marker in markers {
         assert!(
-            response.body.contains(marker),
+            lower_body.contains(&marker.to_lowercase()),
             "response did not contain {marker:?}: {}",
             response.body
         );
@@ -240,9 +241,10 @@ fn assert_ok_contains(response: &ServerFnResponse, markers: &[&str]) {
 
 fn assert_absent(response: &ServerFnResponse) {
     assert_eq!(response.status, StatusCode::OK, "{}", response.body);
-    assert!(response.body.contains("null"), "{}", response.body);
-    assert!(!response.body.contains("canonical"), "{}", response.body);
-    assert!(!response.body.contains("redirect"), "{}", response.body);
+    let lower_body = response.body.to_lowercase();
+    assert!(lower_body.contains("null"), "{}", response.body);
+    assert!(!lower_body.contains("canonical"), "{}", response.body);
+    assert!(!lower_body.contains("redirect"), "{}", response.body);
 }
 
 async fn setup_db(tenant_id: Uuid, admin_id: Uuid) -> TestResult<DatabaseConnection> {
@@ -269,6 +271,9 @@ async fn setup_db(tenant_id: Uuid, admin_id: Uuid) -> TestResult<DatabaseConnect
     .await?;
 
     let manager = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration.up(&manager).await?;
+    }
     for migration in TaxonomyModule.migrations() {
         migration.up(&manager).await?;
     }

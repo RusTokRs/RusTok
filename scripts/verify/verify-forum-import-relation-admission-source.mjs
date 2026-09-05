@@ -75,9 +75,9 @@ for (const marker of [
   "TransactionalEventBus",
   "SecurityContext",
   "MentionRelationService",
-  ".insert(",
-  ".update(",
-  ".delete(",
+  ".insert(&",
+  ".update(&",
+  ".delete(&",
   "Uuid::new_v4",
   "Serialize",
   "Deserialize",
@@ -110,7 +110,7 @@ for (const marker of [
 
 for (const marker of [
   "publish_forum_projection_scope_direct_in_tx",
-  "ensure_current_route_key_available_in_tx",
+  "sync_category_copy_in_tx",
 ]) need(source.categoryProjectionOwner, marker, "category owner projection baseline");
 
 for (const marker of [

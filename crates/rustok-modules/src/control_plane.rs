@@ -15,7 +15,9 @@ use crate::{
     ArtifactSettingsRecoveryAuthorizer, ArtifactSettingsRecoveryCipher,
     ArtifactDataObjectMigrationService, ArtifactDataRecoveryReadinessService,
     ArtifactDataSnapshotIntentService, ArtifactDataPostPurgeRecoveryService,
-    ArtifactBlobStore, RhaiAuthoringService,
+    ArtifactBlobStore, ArtifactRegistry, DurableArtifactBlobStore,
+    RhaiAuthoringService, OciReleaseAdmissionService, ExternalPrebuiltIngressService,
+    ExecutorReadinessService, DynamicLifecycleService,
     ControlPlaneInfrastructure,
     ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeTopologyResolver,
     ModuleArtifactSecurityAuthorizer, ModuleDefinitionCatalog, ModuleDefinitionError,
@@ -369,6 +371,53 @@ impl ModuleControlPlane {
     /// immutable publishable releases with deterministic source-CAS receipts.
     pub fn rhai_authoring(&self, blob_store: Arc<dyn ArtifactBlobStore>) -> RhaiAuthoringService {
         RhaiAuthoringService::new(self.db.clone(), blob_store)
+    }
+
+    /// Returns the OCI release admission service for admitting digest-pinned OCI packages
+    /// into platform CAS with durable admission intent journaling.
+    pub fn oci_release_admission(
+        &self,
+        blobs: Arc<dyn DurableArtifactBlobStore>,
+        registry: Arc<dyn ArtifactRegistry>,
+    ) -> OciReleaseAdmissionService {
+        OciReleaseAdmissionService::new(self.db.clone(), blobs, registry)
+            .with_infrastructure(self.infrastructure.clone())
+    }
+
+    /// Returns the external prebuilt ingress service for admitting dynamic external packages
+    /// with independently verified ownership, lineage, signature, SBOM, provenance,
+    /// ABI/capability, and policy evidence.
+    pub fn external_prebuilt_ingress(
+        &self,
+        blobs: Arc<dyn DurableArtifactBlobStore>,
+        registry: Arc<dyn ArtifactRegistry>,
+    ) -> ExternalPrebuiltIngressService {
+        ExternalPrebuiltIngressService::new(self.db.clone(), blobs, registry)
+            .with_infrastructure(self.infrastructure.clone())
+    }
+
+    /// Returns the executor readiness service for authenticated prefetch, verified
+    /// caching, owner-selected placement enforcement, and smoke readiness evaluation
+    /// across executor pools and generations.
+    pub fn executor_readiness(
+        &self,
+        blobs: Arc<dyn ArtifactBlobStore>,
+    ) -> ExecutorReadinessService {
+        ExecutorReadinessService::new(self.db.clone(), blobs)
+            .with_infrastructure(self.infrastructure.clone())
+    }
+
+    /// Returns the dynamic lifecycle service for distinct lifecycle semantics
+    /// (install, enable, update, disable, remove, uninstall, rollback, data_purge,
+    /// settings_purge), atomic uninstall with work generation, and publisher continuity.
+    pub fn dynamic_lifecycle(&self) -> DynamicLifecycleService {
+        DynamicLifecycleService::new(self.db.clone())
+    }
+
+    /// Returns the unified operator service for release projections, preview generation,
+    /// status reporting, and diagnostic support bundle retrieval.
+    pub fn operator(&self) -> crate::operator::ModuleOperatorService {
+        crate::operator::ModuleOperatorService::new(self.db.clone())
     }
 
     /// Returns the platform security owner for immutable artifact release

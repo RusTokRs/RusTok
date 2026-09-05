@@ -58,9 +58,9 @@ for (const marker of [
   'Remaining ownership drift, settings, additional',
   'provider onboarding',
 ]) requireText(
-  sources.localPlan,
+  sources.centralPlan,
   marker,
-  `${paths.localPlan}: broad Settings completion must remain open`,
+  `${paths.centralPlan}: broad Settings completion must remain open`,
 );
 
 for (const marker of [

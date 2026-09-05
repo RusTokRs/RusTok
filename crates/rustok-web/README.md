@@ -10,6 +10,7 @@ adapters.
 - Provide shared HTTP error envelopes and response mapping.
 - Keep Axum controller adapters consistent.
 - Host reusable web-boundary helpers that are not domain logic.
+- Serve release-qualified content-addressed browser assets with immutable caching, strong ETag validation, strict 404s, and dual N/N+1 retention.
 
 ## Entry Points
 
@@ -18,6 +19,9 @@ adapters.
 - `ErrorBody`
 - `port_error_to_http_error`
 - `json_response`
+- `BrowserAssetRegistry`
+- `ReleaseQualifiedAsset`
+- `ReleaseAssetSet`
 
 ## Interactions
 

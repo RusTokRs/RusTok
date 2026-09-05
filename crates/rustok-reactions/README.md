@@ -42,8 +42,8 @@ existence, current revision, visibility, lifecycle and reaction policy. Profiles
 owns actor presentation. Reputation, achievements and Notifications are
 separate capabilities.
 
-The Reactions owner never reads Forum, Blog, Comments, Profiles, Media, Groups
-or Commerce private tables.
+The Reactions owner never reads producer-private tables (Forum, Blog,
+Comments, Profiles, Media, Groups or Commerce private tables).
 
 ## Deliberate limits
 
@@ -58,8 +58,8 @@ migration rather than implicit reinterpretation.
 ## Degraded mode
 
 The module remains optional and outside `default_enabled`. When it is absent,
-producer owner commands remain available and reaction UI stays hidden. Existing
-Forum votes remain unchanged.
+producer owner commands remain available and reaction UI stays hidden.
+Existing Forum votes remain unchanged.
 
 ## Entry points
 

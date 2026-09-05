@@ -208,6 +208,84 @@ mod member_card {
             retryable,
         )
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn normalize_user_ids_deduplicates_in_order() {
+            let u1 = Uuid::new_v4();
+            let u2 = Uuid::new_v4();
+            let res = ForumMemberCardService::normalize_user_ids(&[u1, u2, u1, u2])
+                .expect("normalization should succeed");
+            assert_eq!(res, vec![u1, u2]);
+        }
+
+        #[test]
+        fn normalize_user_ids_rejects_nil_uuid() {
+            let err = ForumMemberCardService::normalize_user_ids(&[Uuid::nil()]).unwrap_err();
+            assert!(matches!(err, ForumError::Validation(_)));
+        }
+
+        #[test]
+        fn normalize_user_ids_rejects_excessive_count() {
+            let list: Vec<Uuid> = (0..=MAX_FORUM_MEMBER_CARD_USER_IDS)
+                .map(|_| Uuid::new_v4())
+                .collect();
+            let err = ForumMemberCardService::normalize_user_ids(&list).unwrap_err();
+            assert!(matches!(err, ForumError::Validation(_)));
+        }
+
+        #[test]
+        fn audience_mapping_anonymous() {
+            let audience = ForumMemberCardAudience::Anonymous;
+            assert_eq!(
+                audience.into_profile_audience().unwrap(),
+                ProfileAccessAudience::Anonymous
+            );
+        }
+
+        #[test]
+        fn audience_mapping_authenticated() {
+            let actor_id = Uuid::new_v4();
+            let audience = ForumMemberCardAudience::Authenticated { actor_id };
+            assert_eq!(
+                audience.into_profile_audience().unwrap(),
+                ProfileAccessAudience::Authenticated { actor_id }
+            );
+
+            let nil_audience = ForumMemberCardAudience::Authenticated {
+                actor_id: Uuid::nil(),
+            };
+            assert!(nil_audience.into_profile_audience().is_err());
+        }
+
+        #[test]
+        fn audience_mapping_trusted_service() {
+            let audience = ForumMemberCardAudience::TrustedService { actor_id: None };
+            assert_eq!(
+                audience.into_profile_audience().unwrap(),
+                ProfileAccessAudience::TrustedService { actor_id: None }
+            );
+
+            let actor_id = Uuid::new_v4();
+            let audience_actor = ForumMemberCardAudience::TrustedService {
+                actor_id: Some(actor_id),
+            };
+            assert_eq!(
+                audience_actor.into_profile_audience().unwrap(),
+                ProfileAccessAudience::TrustedService {
+                    actor_id: Some(actor_id)
+                }
+            );
+
+            let nil_audience = ForumMemberCardAudience::TrustedService {
+                actor_id: Some(Uuid::nil()),
+            };
+            assert!(nil_audience.into_profile_audience().is_err());
+        }
+    }
 }
 
 pub use member_card::{

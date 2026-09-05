@@ -18,12 +18,14 @@ mod conflict_fences;
 mod contracts;
 mod control_plane;
 mod data;
+pub mod data_backfill;
 pub mod data_copier;
 pub mod data_object_migration;
 pub mod data_post_purge_recovery;
 pub mod data_snapshot_intents;
 pub mod data_snapshot_readiness;
 pub mod data_upgrade;
+pub mod dynamic_lifecycle;
 mod data_snapshot;
 mod definition;
 mod dependency;
@@ -34,17 +36,23 @@ mod distribution_release;
 mod distribution_rollout;
 mod event_delivery;
 mod execution_audit;
+pub mod executor_readiness;
+pub mod external_prebuilt_ingress;
 mod executor;
 mod governance;
 mod infrastructure;
 mod installation;
 mod lifecycle;
 mod lifecycle_writer;
+pub mod gc;
 mod marketplace;
 mod marketplace_content;
 mod mcp;
 mod migration_preflight;
 pub mod migrations;
+pub mod oci_admission;
+pub mod operations_tool;
+pub mod operator;
 #[cfg(feature = "oci-distribution")]
 mod oci;
 #[cfg(feature = "oci-distribution")]
@@ -74,6 +82,7 @@ mod security_epoch;
 mod security_state;
 mod settings;
 mod settings_guard;
+pub mod source_object;
 mod static_package;
 mod static_settings_localization;
 mod static_settings_source_locale;
@@ -82,6 +91,11 @@ mod transition_coordinator;
 mod transition_receipts;
 mod transition_store;
 mod trust;
+pub mod wave_rollout;
+
+pub use source_object::{
+    SourceObjectError, SourceObjectRetentionHold, SourceObjectStore, SourceReceipt,
+};
 
 pub use conflict_fences::{ConflictFenceSet, ConflictKey, ConflictKeyKind};
 pub use data_copier::{
@@ -122,8 +136,47 @@ pub use rhai_authoring::{
     RhaiAuthoringError, RhaiAuthoringPackageCommand, RhaiAuthoringPublishableRelease,
     RhaiAuthoringService, RhaiOciPayload, RhaiSourceCasReceipt,
 };
+pub use executor_readiness::{
+    CachedPreparedPayload, EvaluateReadinessCommand, ExecutorPoolIdentity,
+    ExecutorReadinessError, ExecutorReadinessService, ExecutorSmokeReceipt,
+    OwnerPlacementPolicy, ReleaseReadinessTarget, RuntimeFingerprint,
+    VerifiedPayloadCache,
+};
+pub use dynamic_lifecycle::{
+    DynamicLifecycleAction, DynamicLifecycleError, DynamicLifecycleService,
+    ExecuteDataPurgeCommand, ExecuteDisableCommand, ExecuteEnableCommand,
+    ExecuteInstallCommand, ExecuteInstallResult, ExecuteSettingsPurgeCommand,
+    ExecuteUninstallCommand, ExecuteUninstallResult, ProductionOperationStatus,
+    ReinstallChoice, WorkGenerationRecord,
+};
+pub use operator::{
+    CanonicalPresentationState, ContainmentOutcome, ModuleBlastRadius, ModuleOperatorError,
+    ModuleOperatorService, ModuleReleaseCoordinate, ModuleStatusProjection,
+    ModuleSupportBundle, ModuleVersionDiff, TransitionEligibility,
+    TransitionPreviewProjection,
+};
+pub use operations_tool::{
+    OperationsToolAssignment, OperationsToolComponent, OperationsToolError,
+    OperationsToolMaintenanceOperation, OperationsToolProtocolMatrix, OperationsToolRelease,
+    OperationsToolReleasePayload, OperationsToolService, OperationsToolSupervisorReport,
+    StartOperationsToolMaintenanceCommand, VerifiedOperationsToolRelease,
+    CURRENT_OPERATIONS_TOOL_PROTOCOL, OPERATIONS_TOOL_RELEASE_CONTRACT,
+};
+pub use wave_rollout::{
+    WaveAssignmentPhase, WaveCohort, WaveNodeAssignment, WaveRollbackReceipt,
+    WaveRolloutCoordinator, WaveRolloutError, WaveRolloutState,
+};
 pub use retention::{
-    RetentionError, RetentionHoldKind, RetentionHoldLedger, RetentionHoldRecord, RetentionTarget,
+    ArtifactObjectState, RetentionError, RetentionHoldKind, RetentionHoldLedger,
+    RetentionHoldRecord, RetentionTarget,
+};
+pub use gc::{
+    ArtifactDataObjectGcAdapter, BrowserAssetGcAdapter, BuildAttemptGcAdapter, BuildAttemptStatus,
+    DiagnosticLogGcAdapter, EncryptedSettingsRecoveryPointGcAdapter, GcAdapter,
+    GcCollectionReceipt, GcCoordinator, GcError, GcExecutionToken, GcFinalRecheckDecision,
+    GcTargetKind, GcTombstoneRecord, GcTombstoneStatus, NodeSlotGcAdapter, OciArtifactGcAdapter,
+    OperationsToolGcAdapter, PlatformExecutableCasGcAdapter, SnapshotRestoreCopyGcAdapter,
+    SourceCasGcAdapter,
 };
 pub use security_epoch::{
     GlobalSecurityEpoch, SecurityEpochConflictError, SecurityEpochRecord, SecurityEpochRegistry,
@@ -365,6 +418,12 @@ pub use executor::{
     ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleLifecycleToggleResult,
     execute_module_toggle,
 };
+pub use external_prebuilt_ingress::{
+    ExternalAbiCapabilityEvidence, ExternalLineageEvidence, ExternalPolicyEvidence,
+    ExternalPrebuiltIngressCommand, ExternalPrebuiltIngressError, ExternalPrebuiltIngressEvidence,
+    ExternalPrebuiltIngressReceipt, ExternalPrebuiltIngressService, ExternalProvenanceEvidence,
+    ExternalPublisherEvidence, ExternalSbomEvidence, ExternalSignatureEvidence,
+};
 pub use governance::{
     ALLOY_PUBLICATION_SMOKE_TEST_PATH, ModuleAlloyAuthoredStageCommand,
     ModuleAlloyAuthoredStageResult, ModuleAuthorSignatureEvidenceCommand,
@@ -452,6 +511,10 @@ pub use oci::{
     OciArtifactPublicationReceipt, OciArtifactPublicationTarget, OciArtifactPublisher,
     OciBuildPublicationArtifact, OciBuildPublicationBlob, OciDistributionArtifactPublisher,
     OciDistributionArtifactRegistry, OciRegistryProxyMode, OciRegistryTransportPolicy,
+};
+pub use oci_admission::{
+    OciAdmissionReceipt, OciReleaseAdmissionCommand, OciReleaseAdmissionError,
+    OciReleaseAdmissionService,
 };
 pub use operation_store::{
     ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecordOutcome,

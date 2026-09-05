@@ -1,7 +1,7 @@
 use async_graphql::{Enum, ErrorExtensions, FieldError, SimpleObject};
 use rustok_api::graphql::GraphQLError;
 use rustok_modules::{
-    ModuleTransitionCheckpoint, ModuleTransitionState, RetentionHoldRecord, RetentionTarget,
+    ModuleTransitionCheckpoint, ModuleTransitionState, RetentionHoldRecord,
     TransitionCoordinatorError, TransitionStoreError,
 };
 use uuid::Uuid;
@@ -95,20 +95,7 @@ pub struct RetentionHoldGql {
 
 impl From<RetentionHoldRecord> for RetentionHoldGql {
     fn from(record: RetentionHoldRecord) -> Self {
-        let (target_type, target_identity) = match &record.target {
-            RetentionTarget::SourceCasBlob { digest } => ("source_cas", digest.clone()),
-            RetentionTarget::AdmittedPayloadCas { digest } => ("payload_cas", digest.clone()),
-            RetentionTarget::NodeSlot {
-                node_id,
-                slot_digest,
-            } => ("node_slot", format!("{node_id}:{slot_digest}")),
-            RetentionTarget::RecoveryPoint { snapshot_id } => {
-                ("recovery_point", snapshot_id.to_string())
-            }
-            RetentionTarget::DiagnosticLog { operation_id } => {
-                ("diagnostic_log", operation_id.to_string())
-            }
-        };
+        let (target_type, target_identity) = record.target.identity_key();
 
         let kind_str =
             serde_json::to_string(&record.kind).unwrap_or_else(|_| "unknown".to_string());
