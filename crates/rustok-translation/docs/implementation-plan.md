@@ -3,7 +3,7 @@ id: doc://crates/rustok-translation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress
-last_reviewed: 2026-09-02
+last_reviewed: 2026-09-05
 ---
 
 # Translation implementation plan
@@ -84,26 +84,31 @@ selection.
   workload groups nonterminal work by current assignee, including unassigned
   work. Both reads fail closed on inconsistent workflow evidence and enforce
   explicit queue and workload bounds.
-- Media, Taxonomy, Navigation menu, and Pages metadata are registered owner
-  providers with durable change-cursor repair and exact-locale aggregate
-  coverage. Taxonomy applies term `name`, review-only `slug`, and optional
-  `description` through owner CAS and the shared Outbox receipt ledger. Blog
-  Category canonical copy is consumed through the same-ID Blog-to-Taxonomy
-  Category binding and the `taxonomy/term` provider. Forum Category canonical
-  copy is consumed through the same-ID Forum-to-Taxonomy Category binding and
-  the same `taxonomy/term` provider. The former `blog/category` provider, Blog
-  Category change journal, and Blog-local Category translation storage are
-  retired and must not be recreated. The duplicate `forum/category` provider,
-  Forum Category change/progress runtime, and Forum-local donor translation
-  storage are retired and must not be recreated. Forum topic/reply Translation
-  remains a separate opt-in UGC onboarding track. Navigation applies its menu
-  name and every item title as one CAS-guarded locale aggregate through
-  `MenuService`, using a content-free cursor journal without claiming a generic
-  menu event. Pages applies exact title, review-only slug, and optional SEO
-  metadata through `PageService`, keeping Fly/GrapesJS bodies outside this
-  pilot. Translation validates provider facts and reports tenant-scoped
-  projection freshness as `current`, `behind`, or `unknown` by opaque cursor
-  equality.
+- Media, Taxonomy, Navigation menu, Pages metadata, and Settings static fields
+  are registered owner providers with durable change-cursor repair and
+  exact-locale aggregate coverage. Taxonomy applies term `name`, review-only
+  `slug`, and optional `description` through owner CAS and the shared Outbox
+  receipt ledger. Blog Category canonical copy is consumed through the same-ID
+  Blog-to-Taxonomy Category binding and the `taxonomy/term` provider. Forum
+  Category canonical copy is consumed through the same-ID Forum-to-Taxonomy
+  Category binding and the same `taxonomy/term` provider. The former
+  `blog/category` provider, Blog Category change journal, and Blog-local
+  Category translation storage are retired and must not be recreated. The
+  duplicate `forum/category` provider, Forum Category change/progress runtime,
+  and Forum-local donor translation storage are retired and must not be
+  recreated. Forum topic/reply Translation remains a separate opt-in UGC
+  onboarding track. Navigation applies its menu name and every item title as
+  one CAS-guarded locale aggregate through `MenuService`, using a content-free
+  cursor journal without claiming a generic menu event. Pages applies exact
+  title, review-only slug, and optional SEO metadata through `PageService`,
+  keeping Fly/GrapesJS bodies outside this pilot. Settings registers
+  `modules/static_settings` through the server-owned provider, resolves only
+  owner-admitted localized package fields, reads exact source/target snapshots,
+  progress and bounded changes through public Settings services, and applies
+  deterministic CAS-guarded owner commands with provider-level replay safety;
+  Translation does not read Settings persistence or manifest storage directly.
+  Translation validates provider facts and reports tenant-scoped projection
+  freshness as `current`, `behind`, or `unknown` by opaque cursor equality.
 - `TranslationPolicyService` owns a revisioned, tenant-scoped required-target
   locale subset. It validates through `TenantLocalePolicyPort`, rejects
   disabled/duplicate locales, stores the Tenant policy revision, and uses
@@ -394,9 +399,10 @@ selection.
     `pages/page_metadata` `33545157694`, Navigation `navigation/menu`
     `33549035590`, Forum Category/Taxonomy cutover `33431200532`, Media
     `media/asset` PostgreSQL exact-head `33623651814` and post-merge `main`
-    `33635199181`, application router exact-head `33608857569`, and post-merge
-    `main` `33609559524`.
-- Last verified at (UTC): 2026-09-02
+    `33635199181`, Settings `modules/static_settings` runtime composition
+    `33952057144` and migration approval `33952055814`, application router
+    exact-head `33608857569`, and post-merge `main` `33609559524`.
+- Last verified at (UTC): 2026-09-05
 - Owner: Translation module maintainers
 
 ## Milestones
