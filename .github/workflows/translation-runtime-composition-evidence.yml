@@ -52,6 +52,9 @@ jobs:
         with:
           ref: feat/settings-translation-target-provider-20260904
           fetch-depth: 0
+      - name: Require exact branch head
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
       - name: Restore read-only patch validation context
         shell: python
         run: |
@@ -59,37 +62,36 @@ jobs:
 
           path = Path("apps/server/src/static_settings_translation_target.rs")
           text = path.read_text()
-          old = '''    async fn validate_patch(
-              &self,
-              context: PortContext,
-              request: TranslationPatchRequest,
-          ) -> Result<TranslationPatchValidation, PortError> {
-              validate_translation_apply_context(&context)?;
-              authorize(&context, Action::Update)?;
-          '''
-          new = '''    async fn validate_patch(
-              &self,
-              context: PortContext,
-              request: TranslationPatchRequest,
-          ) -> Result<TranslationPatchValidation, PortError> {
-              validate_translation_read_context(&context)?;
-              authorize(&context, Action::Update)?;
-          '''
-          count = text.count(old)
-          if count != 1:
-              raise SystemExit(f"validate_patch anchor count drifted: {count}")
-          path.write_text(text.replace(old, new))
+          start_marker = "    async fn validate_patch("
+          end_marker = "\n    async fn apply_patch("
+          start = text.find(start_marker)
+          if start < 0:
+              raise SystemExit("validate_patch start marker not found")
+          end = text.find(end_marker, start)
+          if end < 0:
+              raise SystemExit("validate_patch end marker not found")
+          block = text[start:end]
+          old = "        validate_translation_apply_context(&context)?;"
+          new = "        validate_translation_read_context(&context)?;"
+          if block.count(old) != 1:
+              raise SystemExit(f"validate_patch apply-context count drifted: {block.count(old)}")
+          if block.count("        authorize(&context, Action::Update)?;") != 1:
+              raise SystemExit("validate_patch update authorization drifted")
+          text = text[:start] + block.replace(old, new, 1) + text[end:]
+          path.write_text(text)
       - name: Restore workflow and remove helper
+        shell: bash
         run: |
-          git rm .github/workflows/settings-translation-validate-context-fix.yml
-          git checkout HEAD^ -- .github/workflows/translation-runtime-composition-evidence.yml
+          git rm -f .github/workflows/settings-translation-validate-context-fix.yml
+          git show origin/main:.github/workflows/translation-runtime-composition-evidence.yml > .github/workflows/translation-runtime-composition-evidence.yml
           git diff --check
           test "$(git diff --name-only | sort | tr '\n' ' ')" = ".github/workflows/settings-translation-validate-context-fix.yml .github/workflows/translation-runtime-composition-evidence.yml apps/server/src/static_settings_translation_target.rs "
       - name: Commit final contract fix
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/server/src/static_settings_translation_target.rs .github/workflows/translation-runtime-composition-evidence.yml
+          git add -A
           git commit -m "fix(translation): keep settings patch validation read-only"
           git push origin HEAD:feat/settings-translation-target-provider-20260904
 
