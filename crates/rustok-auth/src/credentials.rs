@@ -1,6 +1,6 @@
 use argon2::{
     Argon2,
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    password_hash::{PasswordHasher, PasswordVerifier, phc::PasswordHash},
 };
 use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
@@ -9,9 +9,8 @@ use crate::error::{AuthError, Result};
 
 /// Hash a password with Argon2id and a random salt.
 pub fn hash_password(password: &str) -> Result<String> {
-    let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password(password.as_bytes())
         .map(|hash| hash.to_string())
         .map_err(|_| AuthError::PasswordHashFailed)
 }
