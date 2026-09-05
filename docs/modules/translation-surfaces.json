@@ -350,14 +350,19 @@
     {
       "id": "module_settings_copy",
       "owner_slug": "modules",
-      "resource_kind": "localized_setting",
-      "readiness": "blocked",
-      "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "template_text"],
-      "data_classification": ["tenant_private", "sensitive"],
+      "resource_kind": "static_settings",
+      "readiness": "pilot_candidate",
+      "provider_status": "registered",
+      "field_profiles": ["localized_scalar"],
+      "data_classification": ["tenant_private"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/rustok-modules/src/settings.rs"],
-      "blockers": ["Add stable localized leaf IDs, sensitivity metadata, parallel storage, revisions, and owner events."]
+      "evidence_paths": [
+        "crates/rustok-modules/README.md",
+        "crates/rustok-modules-translation/src/lib.rs",
+        "apps/server/src/static_settings_translation_target.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["Collect retained production-database multi-replica apply/replay and change-cursor recovery evidence before enabling this pilot in production."]
     },
     {
       "id": "oauth_app_copy",

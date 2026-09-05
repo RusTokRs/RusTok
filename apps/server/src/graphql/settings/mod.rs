@@ -54,9 +54,9 @@ pub(super) fn require_host_actor<'a>(
     use rustok_api::graphql::GraphQLError;
 
     let authority = require_host_authority(ctx, required)?;
-    let auth = ctx
-        .data::<crate::context::AuthContext>()
-        .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
+    let auth = ctx.data::<crate::context::AuthContext>().map_err(|_| {
+        <async_graphql::FieldError as GraphQLError>::unauthenticated()
+    })?;
     let tenant = ctx.data::<crate::context::TenantContext>()?;
     require_tenant_settings_scope(auth, tenant.id)?;
     Ok((authority, auth))

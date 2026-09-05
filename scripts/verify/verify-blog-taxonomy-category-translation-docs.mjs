@@ -14,11 +14,15 @@ const modulePlanPath = "crates/rustok-translation/docs/implementation-plan.md";
 const registryPath = "docs/modules/translation-surfaces.json";
 
 function read(relativePath) {
-  return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+  return fs.readFileSync(path.join(repoRoot, relativePath), "utf8").replace(/\r\n/g, "\n");
+}
+
+function normalizeWs(str) {
+  return str.replace(/\s+/g, " ");
 }
 
 function assertIncludes(source, marker, label) {
-  if (!source.includes(marker)) {
+  if (!normalizeWs(source).includes(normalizeWs(marker))) {
     throw new Error(`${label}: missing marker ${JSON.stringify(marker)}`);
   }
 }
