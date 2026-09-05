@@ -208,6 +208,52 @@ async fn locale_jobs_are_distinct_from_schema_and_other_locales() {
         fixture.jobs.succeed(&en_lease).await,
         Err(IndexReplayJobError::CheckpointMissing)
     );
+
+    let en_checkpoint = IndexReplayCheckpoint::new(
+        IndexReplayCheckpointKey::for_locale(
+            Uuid::parse_str(TENANT).unwrap(),
+            SOURCE,
+            fixture.schema.reference.clone(),
+            LocaleKey::new("EN-us").unwrap(),
+        )
+        .unwrap(),
+        None,
+        Some(2),
+        Some(Uuid::from_u128(2).to_string()),
+    )
+    .unwrap();
+    PostgresIndexReplayCheckpointStore::new(fixture.db.clone(), en_lease.clone())
+        .commit_replay_checkpoint(&en_checkpoint)
+        .await
+        .unwrap();
+    fixture.jobs.succeed(&en_lease).await.unwrap();
+    assert_eq!(
+        fixture.jobs.succeed(&de_lease).await,
+        Err(IndexReplayJobError::CheckpointMissing)
+    );
+
+    let checkpoint_rows = fixture
+        .db
+        .query_all_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT locale_key FROM index_checkpoints WHERE tenant_id = '22222222-2222-2222-2222-222222222222' ORDER BY locale_key"
+                .to_owned(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(checkpoint_rows.len(), 2);
+    assert_eq!(
+        checkpoint_rows[0]
+            .try_get::<String>("", "locale_key")
+            .unwrap(),
+        ""
+    );
+    assert_eq!(
+        checkpoint_rows[1]
+            .try_get::<String>("", "locale_key")
+            .unwrap(),
+        "en-US"
+    );
 }
 
 #[tokio::test]
