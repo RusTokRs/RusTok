@@ -85,7 +85,7 @@ jobs:
           git rm -f .github/workflows/settings-translation-validate-context-fix.yml
           git show origin/main:.github/workflows/translation-runtime-composition-evidence.yml > .github/workflows/translation-runtime-composition-evidence.yml
           git diff --check
-          test "$(git diff --name-only | sort | tr '\n' ' ')" = ".github/workflows/settings-translation-validate-context-fix.yml .github/workflows/translation-runtime-composition-evidence.yml apps/server/src/static_settings_translation_target.rs "
+          test "$(git diff HEAD --name-only | sort | tr '\n' ' ')" = ".github/workflows/settings-translation-validate-context-fix.yml .github/workflows/translation-runtime-composition-evidence.yml apps/server/src/static_settings_translation_target.rs "
       - name: Commit final contract fix
         shell: bash
         run: |
