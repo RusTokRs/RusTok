@@ -1,4 +1,4 @@
-mod manifest;
+pub(crate) mod manifest;
 
 pub use manifest::{
     CatalogManifestModule, CatalogModuleVersion, DeploymentSurfaceContract,
