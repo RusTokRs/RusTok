@@ -33,7 +33,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: translation-runtime-composition-evidence
+  group: translation-runtime-composition-evidence-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
