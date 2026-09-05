@@ -15321,6 +15321,7 @@ dependencies = [
  "petgraph 0.8.3",
  "postcard",
  "proptest",
+ "rand_core 0.6.4",
  "rust_decimal",
  "rustok-core",
  "rustok-events",

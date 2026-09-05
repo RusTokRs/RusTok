@@ -390,6 +390,7 @@ admission are not claimed.
 - [ ] Execute/admit retained locale replay/restart command evidence, including schema/locale isolation.
 - [ ] Execute/admit retained multi-host reclaim evidence.
 - [ ] Add partition replay scope only after a real partition-capable source contract exists.
+- [ ] Add explicit targeted/full/shadow rebuild modes under a separate contract.
 
 ## M7 Product Storefront graph
 

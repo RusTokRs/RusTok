@@ -80,15 +80,15 @@ const port = requireMarkers(portPath, [
   'admissions: PostgresIndexQueryAdmissionCatalog',
   'pub fn with_admissions(',
   'let mut compiled = page_query.compiled().clone()',
-  '.apply_link_target_availability(query, &mut compiled)',
+  '.apply_link_target_availability(query, compiled)',
   'self.admissions.get(&query.schema)',
   '.admission()',
-  '.apply(&mut compiled)',
+  '.apply(compiled)',
   'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY',
-  'verify_persisted_schemas(transaction, query, required_schemas).await?',
+  'verify_persisted_schemas(transaction, query, required_schemas).await',
   'compiled.exact_count.as_ref()',
 ]);
-const availabilityOffset = port.indexOf('.apply_link_target_availability(query, &mut compiled)');
+const availabilityOffset = port.indexOf('.apply_link_target_availability(query, compiled)');
 const ownerOffset = port.indexOf('if let Some(descriptor) = self.admissions.get(&query.schema)');
 if (availabilityOffset < 0 || ownerOffset < 0 || availabilityOffset >= ownerOffset) {
   fail(`${portPath} must apply link availability before owner entity admission`);

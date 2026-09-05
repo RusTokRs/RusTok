@@ -66,7 +66,7 @@ requireMarkers('crates/rustok-index/docs/m7-product-storefront-localized-query-a
   '`LocalizedEntityQuery`',
   '`identity_order_direction`',
   '`LocalizedCursorCodec` remains on localized wire version `3`',
-  'Generic `TextLike`',
+  'generic `TextLike`',
 ]);
 
 console.log('[verify-index-localized-query-contract] localized query/projection/cursor/identity-order contract is source-locked');

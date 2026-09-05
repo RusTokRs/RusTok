@@ -16,8 +16,8 @@ The retained schema uses `LocaleMode::Required` and one source with stable owner
 
 Source behavior is deliberately shaped around the fixed GraphQL replay budget:
 
-- exact `en-US` scope exposes 9 one-mutation pages;
-- exact `de` scope exposes 2 one-mutation pages;
+- `en-US`: 9 one-mutation pages;
+- `de`: 2 one-mutation pages;
 - schema-wide scope exposes the same 11 stable mutations in one page.
 
 The exact-locale pages return mutations carrying exactly the requested canonical locale. The schema-wide page returns the same owner events across both locales, so cross-scope replay exercises canonical inbox idempotency instead of inventing separate deliveries for the same owner facts.

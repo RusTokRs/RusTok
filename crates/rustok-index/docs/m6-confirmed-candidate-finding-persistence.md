@@ -45,7 +45,7 @@ absence version.
 Expected and actual values are lowercase SHA-256 digests derived only from typed identity, indexed
 source version, authoritative absence version, and separate expected/materialized state tags. The
 persisted details value remains the bounded
-`{ "contract": "index_drift_digest_finding_v1" }` marker.
+`{ "contract": "index_drift_digest_finding_v1" }` (`index_drift_digest_finding_v1`) marker.
 
 ## Idempotent finding state
 

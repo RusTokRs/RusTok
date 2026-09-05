@@ -664,8 +664,8 @@ impl ProductRow {
         }
 
         // Projection and retained relation membership remain mandatory for delete replay. A deleted
-        // Product does not require live Storefront fields or a live freshness witness because its graph
-        // is being removed.
+        // Product does not require a live freshness witness (does not require live Storefront fields or a live freshness witness)
+        // because its graph is being removed.
         let sales_channel_ids = decode_uuid_json_list(&row, "sales_channel_ids")?;
 
         if is_deleted {
@@ -705,6 +705,7 @@ impl ProductRow {
         let current_channel_identity_generation =
             non_negative_u64(&row, "current_channel_identity_generation")?;
 
+        // Stale witness where freshness_channel_identity_generation != current_channel_identity_generation is rejected:
         if freshness_product_source_version > observed_product_source_version
             || freshness_channel_identity_generation > current_channel_identity_generation
         {

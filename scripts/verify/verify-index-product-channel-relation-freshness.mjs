@@ -201,8 +201,7 @@ requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-convergence.md
   'materialized/query freshness fence is also source complete',
 ]);
 requireMarkers('crates/rustok-index/docs/m7-product-graph-source.md', [
-  'canonical_source_and_freshness_gate_complete_runtime_evidence_pending',
-  'missing or stale witness',
+  'Status: `single_current_product_and_storefront_query_source_complete_execution_admission_pending`',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
   'Product-SalesChannel freshness witness',

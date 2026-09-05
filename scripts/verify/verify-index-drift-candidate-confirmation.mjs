@@ -164,7 +164,7 @@ requireMarkers('lifecycleDoc', [
   'Fail-closed authorization',
 ]);
 requireMarkers('repairDoc', [
-  'Status: `source_complete_missing_entity_composed_recovery_pending`.',
+  'Status: `source_complete_recovery_aware_concrete_owners_execution_pending`.',
   'The service does not scan findings',
   '`materialize_postgres_index_drift_missing_entity_repair_service`',
 ]);

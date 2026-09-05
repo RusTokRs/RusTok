@@ -4,7 +4,7 @@ Status: `source_complete_owner_execution_pending`.
 
 ## Operation
 
-The root mutation now exposes one bounded source-page operation:
+The root mutation now exposes one bounded source-page operation `diagnoseIndexSourcePage(input: IndexDriftSourcePageDiagnosisInput!)`:
 
 ```graphql
 mutation DiagnoseIndexSourcePage($input: IndexDriftSourcePageDiagnosisInput!) {
@@ -44,8 +44,7 @@ checkpoint, scheduler, lifecycle, or repair field.
 
 The resolver creates the request-bound operator context and checks the current effective
 `modules:manage` snapshot before calling `parse_schema`, parsing the limit, or validating the
-continuation length. In other words, authorization runs before schema, limit, or continuation
-parsing.
+continuation length. In other words, authorization runs before schema, limit, or continuation parsing.
 
 After bounded parsing, the resolver looks up `IndexDriftSourcePageDiagnosisRuntime` from the frozen
 runtime extensions and delegates exactly once to `diagnose_source_page_sealed`.

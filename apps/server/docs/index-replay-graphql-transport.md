@@ -28,6 +28,7 @@ per-target locale parsing. Cancellation authorizes before parsing the job UUID.
 Full/Shadow locale and every Targeted key locale are bounded to 32 bytes and canonicalized through
 `rustok_index::LocaleKey`. Targeted therefore treats canonical aliases as the same exact key: the same
 entity requested with `EN-us` and `en-US` becomes a duplicate canonical `EntityKey` and fails closed.
+Omission is not inferred from schema metadata and preserves the historical schema-wide replay identity exactly.
 
 Shadow continuation input is bounded to 16 KiB only after authorization. The token is then
 authenticated, decrypted, expired and scope-checked by the server-owned Shadow transport runtime
@@ -160,7 +161,7 @@ every page request from the same `LocaleKey`:
 - schema-wide request -> schema job + schema checkpoint (`locale_key = ''`);
 - exact-locale request -> locale job + same canonical locale checkpoint.
 
-Terminal success checks the checkpoint using the leased locale rather than a hard-coded empty locale.
+The terminal success fence checks the checkpoint using the leased locale rather than a hard-coded empty locale.
 This keeps acquisition, page scan, checkpoint writes and final success on one exact scope.
 `partition_key` remains empty in both cases.
 

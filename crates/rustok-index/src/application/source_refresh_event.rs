@@ -162,13 +162,11 @@ where
             });
         }
 
-        let source = source_registry
-            .source_for_schema(&key.schema)
-            .ok_or_else(
-                || IndexSourceRefreshEventProcessError::MissingReplaySource {
-                    schema: key.schema.clone(),
-                },
-            )?;
+        let source = source_registry.source_for_schema(&key.schema).ok_or_else(|| {
+            IndexSourceRefreshEventProcessError::MissingReplaySource {
+                schema: key.schema.clone(),
+            }
+        })?;
         if source.source_name() != expected_source_name {
             return Err(IndexSourceRefreshEventProcessError::ReplaySourceMismatch {
                 event_domain,

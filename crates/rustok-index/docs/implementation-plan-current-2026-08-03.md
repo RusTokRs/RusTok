@@ -107,18 +107,26 @@ remain open.
 - M5/M6 bounded source replay contract: `source_complete_owner_execution_pending`
 - M6 replay jobs, checkpoints, multi-page execution, cancellation, retry/dead-letter, and generic
   host scheduling: `source_complete_owner_execution_pending`
-- M6 bounded drift-finding persistence and inspection:
+- M6 bounded replay interruption, source timeout, and no-write dry-run: `source_complete`
+- M6 reconciliation retry, dead-letter, recovery, and generic host scheduling: `source_complete_owner_execution_pending`
+- M6 bounded drift-finding inspection and persistence:
   `source_complete_owner_execution_pending`
-- M6 snapshot-pair digest producer and missing-only selector: `source_complete`
-- M6 source-version-fenced PostgreSQL exact drift snapshot reader:
+- M6 snapshot-pair digest producer and mismatch-only recorder delegation: `source_complete`
+- M6 locale-optional persisted entity finding scope:
   `source_complete_owner_execution_pending`
-- M6 guarded exact-entity diagnosis and bounded GraphQL transport:
+- M6 missing-only entity candidate outcome: `source_complete`
+- M6 bounded source-page missing-entity diagnosis: `source_complete`
+- M6 source-version-fenced PostgreSQL drift snapshot reader:
   `source_complete_owner_execution_pending`
-- M6 source-page missing diagnosis, confidential continuation, private server keyring, and sealed
-  GraphQL transport: `source_complete_owner_execution_pending`
+- M6 guarded exact-entity drift diagnosis operator and bounded GraphQL transport:
+  `source_complete_owner_execution_pending`
+- M6 bounded GraphQL sealed source-page diagnosis transport:
+  `source_complete_owner_execution_pending`
 - M6 explicit source absence watermark registry and Product locale provider:
   `source_complete_owner_execution_pending`
-- M6 Product locale absence PostgreSQL harness:
+- M6 explicit source absence watermark registry, Product provider, and reader fence:
+  `source_complete_owner_execution_pending`
+- M6 Product locale absence PostgreSQL harness (`product_locale_absence_postgres`, real-migration Product locale-absence scenario):
   `source_ready_owner_execution_pending`
 - M6 bounded stale-entity and orphan-link candidate contract: `source_complete`
 - M6 PostgreSQL drift candidate reader: `source_complete`
@@ -130,6 +138,8 @@ remain open.
   `source_complete_recovery_aware_owner_execution_pending`
 - M6 prepared repair pause/resume/abandon recovery policy:
   `source_complete_owner_execution_pending`
+- M6 - add prepared repair recovery policy:
+  `source_complete_recovery_policy_pending`
 - M6 concrete orphan-link evidence reader and command-bound edge-removal owner:
   `source_complete_recovery_aware_owner_execution_pending`
 - M6 concrete repair PostgreSQL execution harness:
@@ -179,8 +189,12 @@ remain open.
 ## M6 exact diagnosis and missing discovery
 
 - [x] Add bounded drift-finding persistence and inspection.
+- [x] Add bounded drift-finding inspection and persistence for already-computed digest mismatches. Retain `drift_finding_writer_postgres_test` evidence.
 - [x] Add one exact snapshot-pair digest producer with deterministic SHA-256 digests.
 - [x] Add the source-version-fenced PostgreSQL exact drift snapshot reader.
+- [x] Extend persisted entity finding scope to locale-free (`drift_finding_locale_scope_postgres_test`, `drift_snapshot_reader_postgres_test`).
+- [ ] Run and admit `drift_snapshot_reader_postgres_test` evidence.
+- [ ] Add targeted repair with before/after admitted evidence.
 - [x] Add explicit retained absence/tombstone watermark proof with canonical source-owner parity.
 - [x] Register Product locale absence for Product schema versions 1 and 2.
 - [x] Expose exact diagnosis through bounded GraphQL `diagnoseIndexEntity`.

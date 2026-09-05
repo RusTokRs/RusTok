@@ -38,7 +38,8 @@ if (selectStart < 0 || selectEnd <= selectStart) {
 }
 const select = jobs.slice(selectStart, selectEnd);
 for (const marker of [
-  'SELECT job_id, state, request, last_error_code',
+  'SELECT job_id, state,',
+  'request, last_error_code',
   "state IN ('pending', 'running', 'succeeded', 'failed')",
   "WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 WHEN 'pending' THEN 2 ELSE 3",
   'created_at DESC',

@@ -48,7 +48,7 @@ The immutable recovery ledger admits only these transitions:
 fabricate before evidence, after evidence, an owner receipt, or a repair receipt.
 
 A newly reserved command receives revision `0`, action `activate`, and state `active`. The initial
-ledger row reuses the repair command UUID as its deterministic decision UUID and copies the original
+ledger row reuses the same command UUID as its deterministic decision UUID and copies the original
 actor and reason.
 
 A pre-existing `prepared` command with no recovery row is `unclassified`. Exact repair retry fails

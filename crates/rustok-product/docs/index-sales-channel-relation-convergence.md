@@ -95,8 +95,8 @@ The Product DDL guard also enforces the state machine directly:
 
 ## Runtime composition
 
-`rustok-distribution::product_index::channel_relation_convergence` registers one generic
-`ModuleWorkRegistration` only when both Product and Channel are selected. The host's existing
+`rustok-distribution::product_index::channel_relation_convergence` registers one
+generic `ModuleWorkRegistration` only when both Product and Channel are selected. The host's existing
 `ModuleWorkScheduler` supplies the polling lifecycle; the bridge itself owns no `tokio::spawn`, sleep
 loop, broker cursor, or event family.
 

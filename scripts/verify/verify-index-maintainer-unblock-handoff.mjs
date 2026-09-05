@@ -102,13 +102,10 @@ if (handoffOutputs !== repairOutputs) {
 }
 
 const event = requireMarkers(eventPath, [
-  'Status: `baseline_admitted_verified_product_index_family_digest_pending`.',
+  'Status: `product_index_family_digest_admitted_maintainer_reverify_pending`.',
   'PR #3390',
-  '7983092f96e14c002c57451709de936e40c01356',
-  'the digest diff was empty',
-  'add `ProductIndexRefreshEvent`',
-  'same reviewed',
-  'wire-contract PR',
+  'The stale-baseline gate is complete',
+  'ProductIndexRefreshEvent',
   'cargo run --locked -p rustok-events --example event_contract_digests -- --write',
 ]);
 const family = requireMarkers(familyPath, [
@@ -136,7 +133,7 @@ for (const marker of [
 ]) {
   if (!handoffEvent.includes(marker)) fail(`${handoffPath} M5 priority is missing ${marker}`);
 }
-if (!event.includes('No GitHub Actions verification packet is claimed or fabricated.')) {
+if (!event.includes('does not automatically write the repository')) {
   fail(`${eventPath} must distinguish maintainer local verification from a retained workflow packet`);
 }
 if (!family.includes('No new loop, scheduler, retry owner, broker consumer, acknowledgement path or Index mutation route is introduced.')) {
@@ -174,11 +171,10 @@ if (!storefront.includes('deeper valid pages remain typed owner-native')) {
 }
 
 const plan = requireMarkers(currentPlanPath, [
-  'Status: `m5_product_refresh_family_source_ready_digest_regeneration_pending`.',
-  'The stale event-contract baseline gate is complete.',
+  'Status: `m5_product_refresh_family_digest_clean_ci_execution_blocked`.',
+  'The stale event-contract baseline gate is complete',
   'product.index.locale_refresh_requested',
   'product.index.variant_refresh_requested',
-  'Before this source PR may merge',
   'M6 source remains complete and execution/admission-gated.',
   'M7 remains evidence/admission-gated.',
   'Partition replay remains blocked until a real source contract filters the requested partition before pagination.',

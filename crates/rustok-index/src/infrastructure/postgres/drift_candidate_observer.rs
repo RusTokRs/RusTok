@@ -162,10 +162,7 @@ pub fn materialize_postgres_index_drift_candidate_confirmer(
     let observer = materialize_postgres_index_drift_candidate_observer(db)?;
     let confirmer = IndexDriftCandidateConfirmer::new(sources, observer);
     Ok(Some(
-        match extensions
-            .get::<SharedIndexSourceAbsenceRegistry>()
-            .cloned()
-        {
+        match extensions.get::<SharedIndexSourceAbsenceRegistry>().cloned() {
             Some(absence) => confirmer.with_absence_registry(absence),
             None => confirmer,
         },

@@ -185,6 +185,25 @@ builders or DTOs.
 
 ## Minimum Contract Set
 
+### Input DTOs/Commands
+
+- Input DTOs and query types are defined by `IndexQuery`, `IndexMutation`, `IndexRecord`, and related request types.
+- Changes to the public fields of these types are breaking changes for index engine consumers.
+
+### Domain Invariants
+
+- Multi-tenant isolation, monotonic schema versions, and keyset ordering remain mandatory invariants.
+- Missing tenant schemas, unauthorized cross-tenant operations, and stale fingerprints must fail closed.
+
+### Events / Outbox Side Effects
+
+- Mutation and replay events are processed through canonical sources and mutation stores.
+- Index engine operations do not emit ad-hoc unversioned outbox events.
+
+### Errors / Failure Codes
+
+- `DomainError`, `SchemaRegistryError`, `CursorValidationError`, and `IndexSourceError` define the stable failure contracts of the crate.
+
 ### Schema source and runtime composition
 
 - `IndexModule::register_runtime_extensions` seeds `IndexSchemaSourceCatalog` and

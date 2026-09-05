@@ -57,11 +57,16 @@ fn index_module_registers_canonical_storage_migrations() {
             "m20260727_000002_create_index_delivery_state",
             "m20260727_000003_create_index_operations",
             "m20260803_000004_create_index_reconciliation_recovery",
+            "m20260804_000005_relax_index_finding_locale_scope",
+            "m20260806_000006_add_index_finding_lifecycle_audit",
+            "m20260806_000007_add_index_finding_repair_commands",
+            "m20260806_000008_add_index_finding_repair_recovery",
+            "m20260808_000009_add_index_job_locale_scope",
         ]
     );
 
     let dependencies = IndexModule.migration_dependencies();
-    assert_eq!(dependencies.len(), 4);
+    assert_eq!(dependencies.len(), 9);
 }
 
 #[tokio::test]
@@ -114,6 +119,9 @@ async fn canonical_storage_migrations_round_trip_on_sqlite() {
         tables,
         BTreeSet::from([
             "index_checkpoints".to_owned(),
+            "index_consistency_finding_lifecycle_events".to_owned(),
+            "index_consistency_finding_repair_commands".to_owned(),
+            "index_consistency_finding_repair_recovery_decisions".to_owned(),
             "index_consistency_findings".to_owned(),
             "index_entities".to_owned(),
             "index_inbox".to_owned(),

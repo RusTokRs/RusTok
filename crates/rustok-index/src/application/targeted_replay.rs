@@ -146,9 +146,9 @@ where
             if !event_ids.insert(event_id) {
                 return Err(IndexReplayTargetedError::DuplicateEventId { position, event_id });
             }
-            self.schemas
-                .validate_mutation(mutation)
-                .map_err(|source| IndexReplayTargetedError::InvalidMutation { position, source })?;
+            if let Err(source) = self.schemas.validate_mutation(mutation) {
+                return Err(IndexReplayTargetedError::InvalidMutation { position, source });
+            }
         }
 
         let mutation_count = mutations.len();

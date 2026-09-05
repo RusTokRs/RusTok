@@ -99,7 +99,7 @@ requireMarkers("reader", [
   "explicit_source_absence_watermark_v1",
 ]);
 requireMarkers("productMigration", [
-  "AFTER INSERT OR UPDATE OR DELETE ON product_translations",
+  "rustok_product_translation_bump_index_revision",
   "rustok_product_store_index_tombstone",
   "rustok_product_clear_superseded_index_tombstone",
 ]);

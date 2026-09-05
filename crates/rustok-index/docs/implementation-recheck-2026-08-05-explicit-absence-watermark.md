@@ -19,10 +19,10 @@ The branch retains:
 
 - request-bound `modules:manage` authorization before exact-key validation or dependency access;
 - one exact tenant-bound `EntityKey` per caller-known diagnosis;
-- Product v1/v2 locale absence proof using positive `products.index_revision`;
+- Product v1/v2 locale absence proof using positive `products.index_revision` via `product-locale-absence-postgres`;
 - source-state and watermark double-read fencing around one read-only repeatable-read materialized
-  snapshot;
-- permanent failure when authoritative absence proof is unavailable;
+  snapshot, returning `index_drift_source_changed_during_capture` on concurrent changes;
+- permanent `index_drift_source_watermark_missing` failure when authoritative absence proof is unavailable;
 - a source-ready concurrent Product locale absence PostgreSQL harness.
 
 General exact mismatch diagnosis remains separate from missing-only discovery.

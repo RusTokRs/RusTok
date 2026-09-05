@@ -14,8 +14,8 @@ Candidates are not findings and grant no confirmation, lifecycle, or repair auth
 
 ## Exact scope and continuation
 
-Every request carries one non-nil tenant UUID, one exact positive-version `SchemaRef`, and a page
-limit in `1..=32`.
+Every request carries one non-nil tenant UUID, one exact positive-version `SchemaRef`, and a
+page limit in `1..=32`.
 
 The first request has neither fence nor cursor. Continuation requires both:
 

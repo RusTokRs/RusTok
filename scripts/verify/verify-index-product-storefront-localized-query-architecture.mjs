@@ -52,10 +52,10 @@ requireMarkers('crates/rustok-index/docs/m7-product-storefront-localized-query-a
   'Channel-less visibility',
 ]);
 requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
-  'main@500c6f647b5f09f617cb907a43093e4f954b3fed` (#3220)',
-  'Explicit localized entity-ID tie-break direction matching owner Asc/Desc ordering.',
-  'Channel-less visibility',
-  'Build the Product Storefront **shadow/evidence adapter**',
+  'Status overlay rechecked at `main@',
+  'localized identity fold, cursor v3 and requested -> fallback projection',
+  'localized PostgreSQL compiler/decoder/runtime with readiness/admission and repeatable-read page/count snapshot',
+  'Channel-less owner semantics are metadata-unrestricted only',
 ]);
 
 console.log('[verify-index-product-storefront-localized-query-architecture] localized runtime/text-pattern/identity-order are locked; adapter and evidence remain pending');

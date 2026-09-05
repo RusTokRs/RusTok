@@ -80,7 +80,7 @@ The environment-gated PostgreSQL harness applies every real Index migration, wri
 one locale-free finding for the same entity identity, proves distinct keys and `NULL` persistence,
 reads the locale-free scope through the real inspector, and refreshes the same durable finding.
 
-It remains source-ready evidence until the repository owner runs it.
+It remains retained execution evidence until the repository owner runs it.
 
 ```bash
 RUSTOK_INDEX_TEST_DATABASE_URL=postgresql://... \

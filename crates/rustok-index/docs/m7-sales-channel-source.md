@@ -34,8 +34,9 @@ fields:
 - `is_default: boolean`
 - `status: string`
 
-The required `id` field duplicates `EntityKey.entity_id` intentionally so future link schemas
-can target stable Channel UUID identity without changing the already published v1 fingerprint.
+The required `id` field duplicates `EntityKey.entity_id` intentionally so
+future link schemas can target stable Channel UUID identity without changing the
+already published v1 fingerprint.
 The schema itself is link-free. `settings` is intentionally omitted because the generic Index
 value contract does not currently expose a JSON field type. Channel targets, module bindings,
 OAuth applications, and resolution policies remain owner-domain data and are not flattened into

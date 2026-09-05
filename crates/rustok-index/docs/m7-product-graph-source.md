@@ -6,8 +6,8 @@ The selected distribution publishes one current Product Index contract and one c
 contract. Parallel Product compatibility implementations remain removed.
 
 The generic Index `SchemaRef` still contains a positive numeric routing key because it participates in
-persisted schema/entity/link/inbox/replay identities. Current Product runtime code owns exactly one such
-Product key, `4`; lower keys are historical storage identities only.
+persisted schema/entity/link/inbox/replay identities.
+Current Product runtime code owns exactly one such Product key, `4`; lower keys are historical storage identities only.
 
 ## Canonical Product graph
 

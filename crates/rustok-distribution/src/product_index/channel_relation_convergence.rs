@@ -281,7 +281,10 @@ impl ModuleWorkHandler for ProductSalesChannelRelationConvergenceAdapter {
                 Ok(_) | Err(ProductSalesChannelRelationResolverError::ProductNotFound) => {
                     self.complete_visibility(&claim).await
                 }
-                Err(error) if owner_rejected(&error) => self.complete_visibility(&claim).await,
+                Err(error) if owner_rejected(&error) => {
+                    // Owner rejection must not head-of-line block valid Products later in the same tenant.
+                    self.complete_visibility(&claim).await
+                }
                 Err(error) => Ok(classify_resolver_error(error)),
             },
             ProductSalesChannelIndexRelationConvergenceWork::ChannelSweep {

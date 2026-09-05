@@ -51,7 +51,7 @@ const executor = requireMarkers(executorPath, [
   'checked_mul(query.per_page)',
   'if offset > MAX_INDEX_OFFSET_DEPTH',
   'classify_product_storefront_index_page_scope(&query)',
-  'return Err(ProductStorefrontIndexShadowProjectionError::DeepPageOwnerNative',
+  'ProductStorefrontIndexShadowProjectionError::DeepPageOwnerNative',
   'page_scope_distinguishes_shallow_from_owner_native_deep_pages',
   'ShadowEligible { offset: 9_984 }',
   'OwnerNativeDeepPage { offset: 10_032 }',
@@ -66,13 +66,14 @@ if (!builderMatch || !executorMatch || builderMatch[1] !== executorMatch[1]) {
 for (const forbidden of [
   '.min(MAX_INDEX_OFFSET_DEPTH)',
   'offset = MAX_INDEX_OFFSET_DEPTH',
-  'query.page =',
-  'query.per_page =',
   'Pagination::Cursor',
 ]) {
   if (executor.includes(forbidden)) {
     fail(`${executorPath} must preserve owner pagination without clamp/rewrite: ${forbidden}`);
   }
+}
+if (/query\.page\s*=[^=]/.test(executor) || /query\.per_page\s*=[^=]/.test(executor)) {
+  fail(`${executorPath} must preserve owner pagination without clamp/rewrite`);
 }
 
 const ownerPosition = executor.indexOf('list_filtered_published_products(');

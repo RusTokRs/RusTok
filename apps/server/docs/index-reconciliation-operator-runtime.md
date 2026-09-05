@@ -12,7 +12,7 @@ and schema registries.
 
 - the frozen `SharedIndexSourceRegistry`;
 - the guarded `IndexDriftDiagnosisOperatorRuntime`;
-- an optional private continuation keyring containing bounded key IDs, `SecretRef` values, lifetime,
+- an optional private server-owned continuation keyring containing bounded key IDs, `SecretRef` values, lifetime,
   and the process-owned resolver registry.
 
 The keyring is not published as an independent extension handle. Raw AES key bytes exist only in one
@@ -37,6 +37,19 @@ authorizes before page-limit validation and scan-request construction.
 7. seals any outgoing raw cursor before returning.
 
 ## Published operator surface
+
+`IndexReconciliationOperatorRuntime` exposes:
+
+- `run(context, request)`;
+- `request_cancel(context, job_id)`;
+- `inspect_dead_letter(context, job_id)`;
+- `inspect_drift_finding(context, finding_id)`;
+- `requeue_dead_letter(context, job_id, reason)`.
+
+The boundary uses `PostgresIndexDriftFindingInspector` for bounded read-only open-finding diagnosis.
+Both inspection methods and requeue authorize before adapter or recovery-request validation and before database access.
+The operator runtime does not expose or own that scheduler.
+Drift inspection is read-only and is not scheduled.
 
 `IndexDriftDiagnosisOperatorRuntime` exposes:
 

@@ -62,13 +62,13 @@ forbidMarkers(catalogPath, catalog, [
 const portPath = 'crates/rustok-index/src/infrastructure/postgres/query_port.rs';
 const port = requireMarkers(portPath, [
   'let mut compiled = page_query.compiled().clone()',
-  '.apply_link_target_availability(query, &mut compiled)',
+  '.apply_link_target_availability(query, compiled)',
   'if let Some(descriptor) = self.admissions.get(&query.schema)',
   '.admission()',
-  '.apply(&mut compiled)',
-  'verify_persisted_schemas(transaction, query, required_schemas).await?',
+  '.apply(compiled)',
+  'verify_persisted_schemas(transaction, query, required_schemas).await',
 ]);
-const availabilityOffset = port.indexOf('.apply_link_target_availability(query, &mut compiled)');
+const availabilityOffset = port.indexOf('.apply_link_target_availability(query, compiled)');
 const entityOffset = port.indexOf('if let Some(descriptor) = self.admissions.get(&query.schema)');
 if (availabilityOffset < 0 || entityOffset < 0 || availabilityOffset >= entityOffset) {
   fail('query_port.rs must apply link availability before generic entity admission');

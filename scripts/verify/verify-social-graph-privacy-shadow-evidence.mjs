@@ -63,7 +63,7 @@ const library = requireMarkers(libraryPath, [
   'collector_started_timestamp_seconds',
   'unknown privacy-shadow metric',
   'collector epoch changed between snapshots',
-  'counter reset detected',
+  'reset detected',
   'window +Inf bucket does not equal observation delta',
   'window error observation/failure mismatch',
   'evidence window contains no observations',

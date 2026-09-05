@@ -22,6 +22,9 @@ pub(super) fn source_version_column<T: IntoIden>(
         DbBackend::Sqlite => {
             column.big_integer();
         }
+        DbBackend::Postgres | DbBackend::MySql => {
+            column.decimal_len(20, 0);
+        }
         _ => {
             column.decimal_len(20, 0);
         }

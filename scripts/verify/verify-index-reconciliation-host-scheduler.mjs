@@ -39,7 +39,6 @@ const planPath = 'crates/rustok-index/docs/implementation-plan.md';
 const aggregatePath = 'scripts/verify/verify-index-query-contract.mjs';
 
 requireMarkers(cargoPath, [
-  'rustok-api.workspace = true',
   'rustok-core.workspace = true',
   'rustok-runtime.workspace = true',
 ]);

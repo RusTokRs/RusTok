@@ -100,7 +100,7 @@ const server = requireMarkers(serverPath, [
   'module_event_dispatcher_base::build_shared_runtime_extensions_with_host_providers(',
   'materialize_postgres_index_query_runtime(&mut extensions, db.clone())',
   'Index query runtime composition failed',
-  'host_materializes_index_query_runtime_after_source_registry',
+  'host_materializes_social_graph_index_query_replay_and_event_runtimes',
   'extensions.contains::<SharedIndexSchemaRegistry>()',
   'extensions.contains::<SharedIndexQueryRuntime>()',
   'host.shared_get::<SharedIndexQueryRuntime>().is_some()',

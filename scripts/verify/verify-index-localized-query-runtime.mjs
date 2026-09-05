@@ -49,7 +49,7 @@ const postgres = requireMarkers('crates/rustok-index/src/infrastructure/postgres
   '.decode_postgres_localized_query_page(query, page_query, page_rows, exact_count_row)',
   'async fn execute_localized_query(',
   'let required_schemas = required_schema_contracts(&self.registry, &query.query)?;',
-  'let page_query = self.registry.compile_postgres_localized_page_query(&query)?;',
+  '.compile_postgres_localized_page_query(&query)?;',
   'let page_query = self.admitted_localized_page_query(&query, page_query)?;',
   'begin localized query snapshot',
   'Self::finish_transaction(transaction, result).await',

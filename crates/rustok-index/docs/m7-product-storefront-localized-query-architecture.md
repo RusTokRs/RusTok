@@ -82,7 +82,8 @@ same timestamp. Ordinary exact-locale SQL compilation is deliberately unchanged.
 
 The localized compiler/decoder/runtime remains source-complete:
 
-- persisted schema readiness and generic entity admission are fail-closed;
+- `IndexQueryPort` publishes `execute_localized_query` and `PostgresIndexQueryPort::execute_localized_query` wires localized execution;
+- persisted schema readiness and generic `PostgresQueryEntityAdmission` are fail-closed;
 - page and exact count execute in one `REPEATABLE READ, READ ONLY` transaction;
 - localized results decode only through the localized decoder;
 - `FilterExpr::TextLike` is a generic bounded scalar String predicate usable inside `any_locale_filter`;

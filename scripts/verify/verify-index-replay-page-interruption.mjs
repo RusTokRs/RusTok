@@ -41,7 +41,7 @@ if (interruptionChecks !== 3) {
 
 const runStart = replay.indexOf('pub async fn run_next_page_interruptible<Check, CheckFuture>');
 const firstCheck = replay.indexOf(checkStatement, runStart);
-const scanStart = replay.indexOf('let scan_request = IndexSourceScanRequest::new(', runStart);
+const scanStart = replay.indexOf('let scan_request =', runStart);
 const mutationState = replay.indexOf('let mut applied_count = 0;', scanStart);
 const mutationLoop = replay.indexOf(
   'for (position, mutation) in page.mutations().iter().enumerate() {',
@@ -114,7 +114,8 @@ const runnerExtensionPath =
   'crates/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
 const runnerExtension = requireMarkers(runnerExtensionPath, [
   'pub async fn run_interruptible<Check>(',
-  '.run_next_page_interruptible(request.page_request().clone(), || {',
+  '.run_next_page_interruptible(',
+  'request.page_request().clone()',
   'Err(crate::IndexReplayError::Interrupted) => {',
   'yield_after_host_interruption(&self.db, &lease, aggregate).await',
   'match yield_for_resume(db, lease).await?',

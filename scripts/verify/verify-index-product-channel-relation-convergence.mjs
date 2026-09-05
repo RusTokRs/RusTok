@@ -152,12 +152,10 @@ const worker = requireMarkers(workerPath, [
   '.claim(tenant_id, current_generation, LEASE_DURATION)',
   'ProductSalesChannelIndexRelationConvergenceClaim::restore',
   'async fn reconcile_sweep_page(',
-  'SELECT id FROM products WHERE tenant_id = $1',
-  'reconcile_product(tenant_id, product_id)',
+  'reconcile_product(',
   'owner_rejected(&error)',
   'head-of-line block valid Products later in the same tenant',
   'ProductSalesChannelRelationResolverError::ProductNotFound',
-  'MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE + 1',
   '.complete_visibility(&claim)',
   '.complete_sweep_page(&claim, next_product_id)',
   '.retry(&claim, delay, marker)',
@@ -165,6 +163,12 @@ const worker = requireMarkers(workerPath, [
   'REJECTED_RETRY_DELAY: Duration = Duration::from_secs(60)',
   'LEASE_DURATION: Duration = Duration::from_secs(300)',
   'owner_rejection_isolated_from_retryable_storage_failures',
+]);
+
+requireMarkers('crates/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
+  'SELECT id FROM products WHERE tenant_id = $1',
+  'reconcile_product(tenant_id, product_id)',
+  'MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE',
 ]);
 forbidMarkers(workerPath, worker, [
   'tokio::spawn',
@@ -181,7 +185,7 @@ forbidMarkers(workerPath, worker, [
 requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'mod channel_relation_convergence;',
   'channel_relation_convergence::register(extensions)',
-  'selected_product_and_channel_bridge_registers_convergence_work',
+  'selected_product_and_channel_bridge_registers_channel_admission_and_convergence_work',
 ]);
 requireMarkers('crates/rustok-distribution/Cargo.toml', ['rustok-runtime.workspace = true']);
 

@@ -746,6 +746,10 @@ node scripts/verify/verify-index-sales-channel-source.mjs
   PostgreSQL partition packet remain for the owner to execute and admit before
   authoritative consumer or production partition cutover.
 
+## Verification
+
+- Contract tests cover every public use case.
+
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`

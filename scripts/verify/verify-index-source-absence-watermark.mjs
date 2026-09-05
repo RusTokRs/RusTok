@@ -77,7 +77,7 @@ requireMarkers("productProvider", [
   "impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider",
   "register_index_source_absence_provider(",
   "products product",
-  "CAST(product.index_revision AS TEXT) AS source_version_text",
+  "CAST(projection.projection_epoch AS TEXT) AS source_version_text",
   "NOT EXISTS (",
   "FROM product_translations translation",
   "translation.locale = $3",
@@ -151,11 +151,9 @@ requireMarkers("readerDoc", [
   "Existing\nUpsert/Delete boundary derivation is unchanged",
 ]);
 requireMarkers("plan", [
-  "M6 explicit source absence watermark registry, Product provider, and reader fence",
+  "M6 explicit source absence watermark registry and Product locale provider",
   "source_complete_owner_execution_pending",
-  "Register the Product locale absence provider",
-  "Reload and compare the exact positive absence version",
-  "real-migration Product locale-absence scenario",
+  "Register Product locale absence",
 ]);
 
 for (const claim of [

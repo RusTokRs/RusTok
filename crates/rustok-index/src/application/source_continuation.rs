@@ -6,6 +6,7 @@ use aes_gcm::{
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
+use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -254,8 +255,7 @@ impl IndexSourceContinuationCodec {
             IndexSourceContinuationError::InvalidKeyMaterial(self.active_key_id.clone())
         })?;
         let mut nonce = [0_u8; NONCE_BYTES];
-        let random_bytes = Uuid::new_v4();
-        nonce.copy_from_slice(&random_bytes.as_bytes()[..NONCE_BYTES]);
+        OsRng.fill_bytes(&mut nonce);
         let aad = associated_data(&self.active_key_id);
         let ciphertext = cipher
             .encrypt(

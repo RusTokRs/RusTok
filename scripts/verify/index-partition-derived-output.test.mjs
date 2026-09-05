@@ -97,12 +97,20 @@ test('rejects derived output inside the retained bundle without creating a file'
   }
 });
 
-test('rejects an external symlink parent that resolves into the retained bundle', () => {
+test('rejects an external symlink parent that resolves into the retained bundle', (t) => {
   const paths = buildPaths();
   try {
     mkdirSync(paths.root);
     const linkedParent = path.join(paths.parent, 'linked-root');
-    symlinkSync(paths.root, linkedParent, 'dir');
+    try {
+      symlinkSync(paths.root, linkedParent, 'dir');
+    } catch (error) {
+      if (process.platform === 'win32' && (error.code === 'EPERM' || error.code === 'EACCES')) {
+        t?.skip?.('directory symlinks require elevated permissions on Windows');
+        return;
+      }
+      throw error;
+    }
     const output = path.join(linkedParent, 'verification-receipt.json');
     assert.throws(
       () => publishDerivedJsonOutsideRetainedBundle({

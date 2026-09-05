@@ -100,7 +100,7 @@ requireMarkers('crates/rustok-product/src/lib.rs', [
 ]);
 
 requireMarkers('crates/rustok-product/docs/index-refresh-relay-step.md', [
-  'Status: `source_complete_typed_family_and_runtime_pending`',
+  'Status: `source_complete_typed_family_source_ready_digest_regeneration_pending`',
   '`product_index_refresh_relay_cursors`',
   '`FOR UPDATE`',
   '`CursorAdvanced`',
@@ -108,7 +108,7 @@ requireMarkers('crates/rustok-product/docs/index-refresh-relay-step.md', [
   'outbox causation id = ledger root_event_id',
   'relay cursor = ledger sequence_no',
   '`ProductIndexRefreshEventFactory`',
-  'does not add `ProductIndexRefreshEvent`',
+  '`ProductIndexRefreshEvent` plus `CanonicalProductIndexRefreshEventFactory`',
   'global `OutboxRelay`',
   'No tests, Node verifiers, Cargo checks',
 ]);

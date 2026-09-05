@@ -338,4 +338,12 @@ async fn host_stop_after_durable_mutation_before_checkpoint_replays_as_duplicate
         .await,
         "succeeded",
     );
+    assert_eq!(
+        scalar_i64(
+            &fixture.db,
+            "SELECT COUNT(*) AS value FROM index_jobs WHERE kind = 'rebuild' AND state = 'succeeded'",
+        )
+        .await,
+        1,
+    );
 }

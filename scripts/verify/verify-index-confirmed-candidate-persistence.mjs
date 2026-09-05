@@ -89,15 +89,17 @@ for (const forbidden of [
 
 const recordStart = source.indexOf('    pub async fn record_confirmed_candidate(');
 const begin = source.indexOf('.begin_with_config(', recordStart);
-const revalidate = source.indexOf('materialized_candidate_matches(transaction, candidate).await?', begin);
+const inTx = source.indexOf('async fn record_in_transaction(');
+const revalidate = source.indexOf('materialized_candidate_matches(transaction, candidate).await?', inTx);
 const findingWrite = source.indexOf('record_finding_in_transaction(transaction, request).await?', revalidate);
-const commit = source.indexOf('.commit()', findingWrite);
+const commit = source.indexOf('.commit()', begin);
 if (
   recordStart < 0 ||
   begin <= recordStart ||
-  revalidate <= begin ||
-  findingWrite <= revalidate ||
-  commit <= findingWrite
+  commit <= begin ||
+  inTx <= recordStart ||
+  revalidate <= inTx ||
+  findingWrite <= revalidate
 ) {
   throw new Error('confirmed candidate writer must begin, revalidate, persist, then commit');
 }
@@ -136,7 +138,7 @@ requireMarkers('lifecycleDoc', [
   '`IndexDriftFindingAuthorizedLifecycleCommand`',
 ]);
 requireMarkers('repairDoc', [
-  'Status: `source_complete_missing_entity_composed_recovery_pending`.',
+  'Status: `source_complete_recovery_aware_concrete_owners_execution_pending`.',
   'reproduces the persisted finding contract',
   '`PostgresMutationStore`',
 ]);

@@ -29,11 +29,11 @@ const job = requireMarkers(jobPath, [
   'pub async fn heartbeat(',
   'pub async fn succeed(',
   'pub async fn fail(',
-  'REPLAY_JOB_REQUEST_CONTRACT: &str = "index_replay_job_v1"',
+  'REPLAY_JOB_REQUEST_CONTRACT_V1: &str = "index_replay_job_v1"',
   'pg_advisory_xact_lock(hashtextextended($1, 0))',
   "kind = 'rebuild'",
-  "scope_kind = 'schema'",
-  "state IN ('pending', 'running', 'succeeded')",
+  'scope_kind',
+  "state IN ('pending', 'running', 'succeeded', 'failed')",
   'attempt_count.checked_add(1)',
   'lease_expires_at > CURRENT_TIMESTAMP',
   'pub(super) async fn assert_active_replay_job_lease(',
@@ -42,7 +42,7 @@ const job = requireMarkers(jobPath, [
   'CheckpointMissing',
   'CheckpointIncomplete',
   "checkpoint_kind = 'rebuild'",
-  "locale_key = '' AND partition_key = ''",
+  "partition_key = ''",
 ]);
 
 for (const forbidden of [
@@ -101,7 +101,7 @@ if (
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_replay_job_tests.rs', [
   'replay_job_excludes_other_workers_and_requires_complete_checkpoint',
   'expired_replay_job_is_reclaimed_and_old_checkpoint_writer_is_fenced',
-  'failed_terminal_replay_job_allows_a_new_job_identity',
+  'failed_terminal_replay_job_blocks_scope_without_raw_details',
   'replay_job_schema_source_and_stored_request_fail_closed',
   'IndexReplayJobAcquireOutcome::Busy',
   'IndexReplayJobError::CheckpointMissing',

@@ -34,10 +34,7 @@ fn locale_bearing_key_bytes_remain_compatible_and_no_locale_is_distinct() {
         tenant_id,
         IndexDriftFindingScope::EntityWithoutLocale { schema, entity_id },
     );
-    assert_ne!(
-        no_locale_request.finding_key(),
-        locale_request.finding_key()
-    );
+    assert_ne!(no_locale_request.finding_key(), locale_request.finding_key());
     assert_eq!(no_locale_request.finding_key().len(), DIGEST_BYTES);
     assert!(
         no_locale_request

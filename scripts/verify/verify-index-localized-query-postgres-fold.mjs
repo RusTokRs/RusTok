@@ -57,7 +57,8 @@ requireMarkers('crates/rustok-index/src/application/postgres_localized_query_res
   'localized_absence_allowed: bool',
   'field.nullable || localized_absence_allowed',
   'LocalizedIndexCursor {',
-  'LocalizedCursorCodec::encode_for_query(&cursor, query, self)',
+  'LocalizedCursorCodec::encode_for_query(',
+  '&cursor, query, self',
   'IndexQueryPage {',
 ]);
 requireMarkers('crates/rustok-index/src/application/localized_validation.rs', [

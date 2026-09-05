@@ -30,7 +30,7 @@ const moduleSource = requireMarkers(modulePath, [
   '#[path = "../product_variant_index.rs"]',
   'mod variant;',
   'variant::register(extensions)?;',
-  'selected_product_bridge_registers_two_current_schemas_and_three_factories',
+  'selected_product_bridge_registers_two_current_schemas_three_factories_and_entity_admissions',
 ]);
 forbidMarkers(modulePath, moduleSource, ['mod graph;', 'graph::', 'four_schemas']);
 

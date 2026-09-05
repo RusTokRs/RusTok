@@ -323,7 +323,7 @@ requireMarkers('crates/rustok-index/docs/m4-social-graph-privacy-consumer.md', [
   '`IndexShadowSocialGraphPrivacyReadPort`',
   '`IndexPrivacyShadowObservation`',
   'host-owned Prometheus adapter',
-  '`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED`',
+  'RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED',
   'default-off',
   'always returns the owner result',
   'remaining caller deadline budget',
@@ -346,7 +346,7 @@ requireMarkers('crates/rustok-social-graph/CRATE_API.md', [
   '`IndexShadowSocialGraphPrivacyReadPort`',
   '`IndexPrivacyShadowObservation`',
   'host-owned Prometheus adapter',
-  '`RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED`',
+  'RUSTOK_SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_ENABLED',
   'owner result',
   'never authorizes',
   'remaining caller deadline budget',
@@ -355,7 +355,7 @@ requireMarkers('crates/rustok-social-graph/CRATE_API.md', [
 ]);
 requireMarkers('crates/rustok-telemetry/CRATE_API.md', [
   '`social_graph_index_privacy_shadow_metrics`',
-  '`rustok_social_graph_index_privacy_shadow_observations_total`',
+  'rustok_social_graph_index_privacy_shadow_observations_total',
   '`false_negative`',
   'tenant and user identifiers',
 ]);

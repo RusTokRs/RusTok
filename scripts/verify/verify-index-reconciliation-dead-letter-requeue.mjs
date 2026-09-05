@@ -84,7 +84,7 @@ requireMarkers(docsPath, [
   'maintainer-run',
 ]);
 requireMarkers(serverDocsPath, [
-  'Status: `source_complete_transport_and_owner_execution_pending`.',
+  'Status: `sealed_source_page_graphql_source_complete_owner_execution_pending`.',
   'The operator runtime does not expose or own that scheduler',
 ]);
 requireMarkers(planPath, [

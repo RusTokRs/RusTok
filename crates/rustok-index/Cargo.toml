@@ -24,6 +24,7 @@ hex.workspace = true
 icu_locale = { version = "2.2", features = ["compiled_data"] }
 petgraph = "0.8.3"
 postcard.workspace = true
+rand_core = { version = "0.6", features = ["getrandom"] }
 rust_decimal.workspace = true
 serde.workspace = true
 serde_json.workspace = true

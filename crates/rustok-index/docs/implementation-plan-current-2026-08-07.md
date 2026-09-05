@@ -19,17 +19,20 @@ inspection. Independent M7 source work continues while that owner-execution gate
 - mutation-source registry and commit-before-ack worker contract;
 - bounded replay/reconciliation/retry/dead-letter/drift/repair foundations;
 - persisted tenant schema readiness;
-- one canonical Product, ProductVariant, and SalesChannel Index source contract;
+- one canonical Product Index source, ProductVariant, and SalesChannel Index source contract;
 - Product/ProductVariant/SalesChannel retained hard-delete identities;
 - Product `variants` and `sales_channels` links;
 - Product-owned Product-to-SalesChannel relation snapshots with independent `relation_epoch`;
-- bounded cross-owner Product visibility -> SalesChannel UUID resolver;
+- bounded cross-owner Product visibility to SalesChannel UUID resolver;
 - Product-owned graph `projection_epoch` as the complete Product mutation clock;
 - projection-aware Product locale absence;
-- Product-to-SalesChannel freshness witness and tenant Channel identity generation;
-- Product visibility convergence requests plus tenant lease/checkpoint state;
-- bounded generic ModuleWork Product/Channel convergence with restart/reclaim and rejected-Product
+- Product-SalesChannel freshness witness and tenant Channel identity generation;
+- Product-owned visibility convergence requests and tenant lease/checkpoint state;
+- bounded generic ModuleWork Product-SalesChannel automatic convergence with restart/reclaim and rejected-Product
   isolation;
+- Freshness watermark source complete;
+- Automatic owner-change relation convergence source complete;
+- Materialized/query freshness fence source complete (covering the source-read -> mutation-apply window);
 - generic PostgreSQL entity freshness admission for every compiler-owned materialized entity alias;
 - Product, ProductVariant, and SalesChannel owner freshness rules;
 - recreate-safe ProductVariant and SalesChannel `index_revision` through retained tombstone seed/clear;

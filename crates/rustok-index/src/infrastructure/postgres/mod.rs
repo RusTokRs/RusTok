@@ -172,10 +172,13 @@ pub use source_reconciliation_runner::{
     PostgresIndexReconciliationRunner,
 };
 pub use source_reconciliation_scheduler::{
-    INDEX_RECONCILIATION_WORKER, IndexReconciliationSchedulerCompositionError,
-    IndexReconciliationSchedulerPolicy, PostgresIndexReconciliationWorkAdapter,
+    INDEX_RECONCILIATION_WORKER, IndexReconciliationSchedulerPolicy,
+    PostgresIndexReconciliationWorkAdapter,
+    IndexReconciliationSchedulerCompositionError,
     register_postgres_index_reconciliation_work,
 };
+#[cfg(test)]
+pub(crate) use source_reconciliation_scheduler::IndexReconciliationWorkRegistration;
 pub use source_replay::PostgresIndexReplayCheckpointStore;
 pub use source_replay_job::{
     IndexReplayJobAcquireOutcome, IndexReplayJobError, IndexReplayJobLease,
@@ -189,3 +192,13 @@ pub use source_replay_runner::{
     IndexReplayCancelOutcome, IndexReplayRunError, IndexReplayRunOutcome, IndexReplayRunRequest,
     IndexReplayRunStatus, IndexReplayTerminalState, PostgresIndexReplayRunner,
 };
+
+#[cfg(test)]
+mod tests {
+    use super::IndexReconciliationWorkRegistration;
+
+    #[test]
+    fn reconciliation_work_registration_is_exported() {
+        let _ = IndexReconciliationWorkRegistration;
+    }
+}

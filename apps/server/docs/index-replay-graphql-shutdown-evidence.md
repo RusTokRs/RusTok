@@ -13,12 +13,11 @@ migrations, schema registration, replay jobs, checkpoints, mutation store, and i
 
 It intentionally builds a minimal async-graphql schema at the same schema-data boundary used by the production
 resolver instead of constructing the full application `AppSchema`. Production `init_graphql_schema` lifecycle
-reservation/keepalive is retained separately by source guards. This packet therefore does not claim full
-HTTP/process bootstrap execution.
+reservation/keepalive is retained separately by source guards. This packet therefore does not claim full HTTP/process bootstrap execution.
 
 ## Deterministic shutdown handoff
 
-The first runtime publishes a source whose `scan` method uses two `tokio::sync::Notify` values:
+The first runtime publishes a source whose `scan` method uses two `Notify` (`tokio::sync::Notify`) values:
 
 1. the GraphQL request runs in its own task with the real request-scoped RBAC permission snapshot;
 2. source scan records that it has started and then waits for an explicit release notification;
@@ -47,7 +46,7 @@ manufacture a terminal failure.
 
 ## Fresh runtime restart
 
-The packet then constructs fresh module/runtime/operator/GraphQL composition over the same SQLite database and a
+The packet then constructs fresh runtime/GraphQL composition over the same SQLite database and a
 new non-stopping `StopHandle`. The source contract and schema identity remain the same, but the scan gate is
 removed.
 

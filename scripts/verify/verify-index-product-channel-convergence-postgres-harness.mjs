@@ -44,8 +44,11 @@ const harness = requireMarkers(harnessPath, [
   '.get::<ModuleWorkRegistrations>()',
   'let scheduler_a = ModuleWorkScheduler::new()',
   'let scheduler_b = ModuleWorkScheduler::new()',
-  '.register_all(&HostRuntimeContext::new(database.host_a.clone()), &scheduler_a)',
-  '.register_all(&HostRuntimeContext::new(database.host_b.clone()), &scheduler_b)',
+  '.register_all(',
+  '&HostRuntimeContext::new(database.host_a.clone())',
+  '&scheduler_a',
+  '&HostRuntimeContext::new(database.host_b.clone())',
+  '&scheduler_b',
   'ProductSalesChannelIndexRelationConvergenceStore::new(database.host_a.clone())',
   '.claim(TENANT_ID, initial_generation, Duration::from_secs(1))',
   'ProductSalesChannelIndexRelationConvergenceWork::VisibilityRequest',
@@ -108,7 +111,7 @@ requireMarkers('crates/rustok-index/docs/m7-product-channel-convergence-postgres
   'unchanged UUID membership',
   'changed membership',
   'query-inadmissible',
-  'not executed',
+  'not been executed',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-channel-convergence-postgres-harness.mjs'",

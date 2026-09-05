@@ -140,6 +140,8 @@ impl ProductWriteTransaction {
         if let Some(product_id) = product_locale_id {
             // Capture the exact post-command Product source state. Any source/ledger failure rolls
             // back both the owner mutation and its event publication.
+            // The same atomic boundary includes both refresh ledgers:
+            // any failure rolls back both the owner mutation and its event publication.
             record_product_locale_refreshes_in_tx(
                 &self.transaction,
                 tenant_id,

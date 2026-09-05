@@ -544,10 +544,8 @@ pub fn materialize_postgres_index_drift_orphan_link_repair_service(
     )?);
     let base_owner: Arc<dyn IndexDriftRepairOwner> =
         Arc::new(PostgresIndexDriftOrphanLinkRepairOwner::new(db.clone())?);
-    let owner: Arc<dyn IndexDriftRepairOwner> = Arc::new(RecoveryAwareIndexDriftRepairOwner::new(
-        db.clone(),
-        base_owner,
-    )?);
+    let owner: Arc<dyn IndexDriftRepairOwner> =
+        Arc::new(RecoveryAwareIndexDriftRepairOwner::new(db.clone(), base_owner)?);
     let owners = IndexDriftRepairOwnerRegistry::new([owner])
         .map_err(|_| permanent_failure(COMPONENTS_INVALID))?;
     let store = materialize_postgres_index_drift_repair_store(db.clone())?;

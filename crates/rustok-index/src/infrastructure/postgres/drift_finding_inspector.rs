@@ -236,9 +236,9 @@ fn decode_scope(
         }
         "entity" => {
             let schema = decode_schema(module_name, entity_name, schema_version)?;
-            let entity_id = entity_id
-                .filter(|value| !value.is_nil())
-                .ok_or_else(invalid_scope)?;
+            let Some(entity_id) = entity_id.filter(|value| !value.is_nil()) else {
+                return Err(invalid_scope());
+            };
             match locale_key {
                 Some(stored_locale) => {
                     let locale = LocaleKey::new(&stored_locale).map_err(|_| invalid_scope())?;

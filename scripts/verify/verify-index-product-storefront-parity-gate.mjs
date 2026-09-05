@@ -167,7 +167,7 @@ requireMarkers('scripts/verify/verify-index-product-storefront-shadow-executor.m
   'implements the crate-private post-owner phase seam',
 ]);
 requireMarkers('scripts/verify/verify-index-product-storefront-tag-hydration.mjs', [
-  'Product IDs from the fixed raw Index page drive bounded Product-owned tag hydration',
+  'Product-owned relations and Taxonomy are the only Product tag authority',
 ]);
 requireMarkers('scripts/verify/verify-index-product-postgres-key4-fixtures.mjs', [
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',

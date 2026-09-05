@@ -34,8 +34,8 @@ scope.
 
 ## Cryptographic envelope
 
-The repository has one current unversioned continuation envelope. It uses AES-256-GCM and a fresh
-96-bit operating-system nonce for every seal operation.
+The repository has one current unversioned continuation envelope. It uses AES-256-GCM and a
+fresh 96-bit operating-system nonce for every seal operation.
 
 The URL-safe unpadded outer envelope contains only bounded key ID, nonce, authenticated ciphertext,
 and the GCM tag. Encrypted claims contain tenant, exact schema, canonical owner/source, optional

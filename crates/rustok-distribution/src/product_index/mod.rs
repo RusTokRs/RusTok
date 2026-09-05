@@ -30,7 +30,11 @@ pub(crate) use storefront_projection::{
 #[cfg(test)]
 mod storefront_serving_budget;
 #[cfg(test)]
-pub(crate) use storefront_serving_budget::ProductStorefrontIndexServingBudgetDecision;
+pub(crate) use storefront_serving_budget::{
+    ProductStorefrontIndexServingBudget, ProductStorefrontIndexServingBudgetDecision,
+    ProductStorefrontIndexServingBudgetObservation,
+    classify_product_storefront_index_serving_budget,
+};
 #[cfg(test)]
 mod storefront_shadow;
 #[cfg(test)]

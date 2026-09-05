@@ -250,13 +250,14 @@ impl ModuleWorkRegistration for IndexReconciliationWorkRegistration {
         let Some(sources) = host.shared_get::<SharedIndexSourceRegistry>() else {
             return Ok(());
         };
-        let schemas = host
-            .shared_get::<SharedIndexSchemaRegistry>()
-            .ok_or_else(|| {
-                ModuleWorkError::Handler(
+        let schemas = match host.shared_get::<SharedIndexSchemaRegistry>() {
+            Some(schemas) => schemas,
+            None => {
+                return Err(ModuleWorkError::Handler(
                     "index.reconciliation_scheduler.missing_schema_registry".to_owned(),
-                )
-            })?;
+                ));
+            }
+        };
         PostgresIndexReconciliationWorkAdapter::new(
             host.db_clone(),
             sources,
@@ -382,9 +383,9 @@ fn decode_due_work(
     if request.contract != RECONCILIATION_JOB_REQUEST_CONTRACT || request.pass_count == 0 {
         return Err(invalid_stored_job());
     }
-    let source = sources
-        .source_for_schema(&schema)
-        .ok_or_else(invalid_stored_job)?;
+    let Some(source) = sources.source_for_schema(&schema) else {
+        return Err(invalid_stored_job());
+    };
     if source.source_name() != request.source_name {
         return Err(invalid_stored_job());
     }

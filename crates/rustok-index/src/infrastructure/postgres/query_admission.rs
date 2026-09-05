@@ -139,11 +139,7 @@ impl PostgresIndexQueryAdmissionCatalog {
         if !self.required_link_targets.contains_key(&query.schema) {
             return Ok(());
         }
-        let link_names = query
-            .referenced_paths()
-            .into_iter()
-            .filter_map(|path| path.links().first().map(|link| link.as_str().to_owned()))
-            .collect::<BTreeSet<_>>();
+        let link_names = referenced_first_hop_links(query);
         if link_names.is_empty() {
             return Ok(());
         }
@@ -206,6 +202,13 @@ impl PostgresIndexQueryAdmissionCatalog {
         }
         Ok(())
     }
+}
+
+fn referenced_first_hop_links(query: &IndexQuery) -> BTreeSet<String> {
+    query.referenced_paths()
+        .into_iter()
+        .filter_map(|path| path.links().first().map(|link| link.as_str().to_owned()))
+        .collect()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
@@ -358,7 +361,7 @@ mod tests {
 
     fn schema(entity: &str) -> SchemaRef {
         SchemaRef {
-            module: ModuleName::new("rustok-product").unwrap(),
+            module: ModuleName::new("catalog").unwrap(),
             entity: EntityName::new(entity).unwrap(),
             version: SchemaVersion::INITIAL,
         }
@@ -514,6 +517,64 @@ mod tests {
                 assert!(sql.contains(marker), "missing {marker}");
             }
         }
+    }
+
+    #[test]
+    fn scalar_only_query_has_no_referenced_link_targets() {
+        let query = query_with_fields(vec![FieldPath::new(FieldName::new("title").unwrap())]);
+        assert!(referenced_first_hop_links(&query).is_empty());
+    }
+
+    #[test]
+    fn linked_query_collects_only_first_hop_link_names() {
+        let query = query_with_fields(vec![FieldPath::linked(
+            [LinkName::new("variants").unwrap(), LinkName::new("details").unwrap()],
+            FieldName::new("sku").unwrap(),
+        )]);
+        let links = referenced_first_hop_links(&query);
+        assert_eq!(links.into_iter().collect::<Vec<_>>(), vec!["variants"]);
+    }
+
+    #[test]
+    fn availability_predicate_uses_current_source_link_and_owner_admitted_target() {
+        let mut links = BTreeSet::new();
+        links.insert("variants".to_owned());
+        let sql = require_requested_link_targets_predicate(&links, "target.active = TRUE");
+        assert!(sql.contains("availability_link.source_version = \"t0\".source_version"));
+        assert!(sql.contains("availability_link.link_name IN ('variants')"));
+        assert!(sql.contains("target.active = TRUE"));
+    }
+
+    #[test]
+    fn root_availability_predicate_applies_to_page_and_count_anchor_shape() {
+        let mut catalog = PostgresIndexQueryAdmissionCatalog::new();
+        catalog
+            .register(
+                "product",
+                schema("product"),
+                PostgresQueryEntityAdmission::new("{{entity}}.source_version > 10").unwrap(),
+            )
+            .unwrap();
+        catalog
+            .register(
+                "product",
+                schema("product_variant"),
+                PostgresQueryEntityAdmission::new("{{entity}}.source_version > 20").unwrap(),
+            )
+            .unwrap();
+        catalog
+            .require_current_link_targets("product", schema("product"))
+            .unwrap();
+        let query = query_with_fields(vec![FieldPath::linked(
+            [LinkName::new("variants").unwrap()],
+            FieldName::new("sku").unwrap(),
+        )]);
+        let mut compiled = compiled();
+        catalog
+            .apply_link_target_availability(&query, &mut compiled)
+            .unwrap();
+        assert!(compiled.sql.contains("availability_link"));
+        assert!(compiled.exact_count.unwrap().sql.contains("availability_link"));
     }
 
     #[test]

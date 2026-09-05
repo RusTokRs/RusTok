@@ -19,10 +19,9 @@ const requireMarkers = (relative, markers) => {
 };
 
 const ownerHelpers = requireMarkers('crates/rustok-product/src/services/catalog/helpers.rs', [
-  'pub(crate) fn product_channel_visibility_condition(',
-  'None => sea_orm::Condition::all().add(sea_orm::sea_query::Expr::cust(',
-  "metadata->'channel_visibility'->'allowed_channel_slugs'",
-  "jsonb_array_length(COALESCE(products.metadata->'channel_visibility'->'allowed_channel_slugs', '[]'::jsonb)) = 0",
+  'pub fn product_channel_visibility_condition(',
+  'None => Condition::all().add(Expr::cust(',
+  "COALESCE(metadata #> '{channel_visibility,allowed_channel_slugs}', '[]'::jsonb) = '[]'::jsonb",
 ]);
 
 const resolver = requireMarkers('crates/rustok-distribution/src/product_index/channel_relation_resolver.rs', [

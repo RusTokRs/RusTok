@@ -95,8 +95,8 @@ pub struct Query(
 #[derive(MergedObject, Default)]
 pub struct Mutation(
     RootMutation,
-    ModuleSettingsCasMutation,
     IndexDriftDiagnosisMutation,
+    ModuleSettingsCasMutation,
     IndexDriftSourcePageDiagnosisMutation,
     IndexReplayMutation,
     #[cfg(feature = "mod-moderation")] ModerationRecoveryMutation,

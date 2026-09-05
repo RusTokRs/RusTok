@@ -51,8 +51,8 @@ registry fails closed.
 The selected Product distribution now registers
 `product-locale-absence-postgres` for `rustok-product::product@1` and `@2`.
 
-For one exact tenant, Product UUID, and canonical locale, the provider returns the positive
-`products.index_revision` only when:
+For one exact tenant, Product UUID, and canonical locale, the provider returns the
+positive `products.index_revision` only when:
 
 - the live Product row exists;
 - the exact `product_translations` row does not exist;
@@ -84,10 +84,11 @@ For an empty ordinary targeted load, the reader now:
 A concurrent translation insert, delete, reassignment, or another owner revision change alters the
 second observation and returns retryable `index_drift_source_changed_during_capture`.
 
-The absence version is domain-tagged and hashed into the opaque `pg:` boundary only for source
-`Missing`. Existing Upsert/Delete boundary derivation is unchanged. Missing provider registration,
-`None`, cross-scope evidence, zero version, or malformed provider state remains fail-closed;
-`index_drift_source_watermark_missing` is preserved when no authoritative proof exists.
+The absence version is domain-tagged (`explicit_source_absence_watermark_v1`) and hashed into
+the opaque `pg:` boundary only for source `Missing`. Existing Upsert/Delete boundary derivation is
+unchanged. Missing provider registration, `None`, cross-scope evidence, zero version, or
+malformed provider state remains fail-closed; `index_drift_source_watermark_missing` is
+preserved when no authoritative proof exists.
 
 ## Source-ready PostgreSQL harness
 

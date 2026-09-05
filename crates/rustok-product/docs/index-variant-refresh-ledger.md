@@ -51,8 +51,7 @@ For `ProductCreated`, `ProductUpdated`, `ProductPublished`, and `ProductDeleted`
 4. records all live and parent-aware retained ProductVariant identities for that Product;
 5. allows the owner transaction to commit.
 
-Variant collection is set-based and scoped to one Product. It does not impose a new maximum variant
-count on existing catalog commands. Any query or ledger-write failure rolls back the Product mutation,
+Variant collection is set-based and scoped to one Product. It does not impose a new maximum variant count on existing catalog commands. Any query or ledger-write failure rolls back the Product mutation,
 root event, locale ledger and variant ledger together.
 
 ## Live and delete versions
@@ -70,9 +69,8 @@ owned by the registered replay/load source.
 
 ## Deliberate limits
 
-This slice does not:
+This slice does not add or change a `rustok-events` wire family or committed digest. It does not:
 
-- add or change a `rustok-events` wire family or committed digest;
 - publish typed ProductVariant refresh events;
 - register a ProductVariant mutation route;
 - start a relay or broker consumer;

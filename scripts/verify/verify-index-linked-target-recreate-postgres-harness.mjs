@@ -110,9 +110,9 @@ requireMarkers('crates/rustok-distribution/src/product_index/query_admission.rs'
 requireMarkers('crates/rustok-index/docs/m7-linked-target-recreate-postgres-harness.md', [
   'Status: `source_ready_execution_pending`',
   'It adds no owner clock, no Index schema, and no compatibility version.',
-  'ProductVariant scenario',
-  'SalesChannel scenario',
-  'link that exists while its target',
+  'ProductVariant recreate scenario',
+  'SalesChannel recreate scenario',
+  'Current Product link presence plus unavailable/stale target is fail-closed',
   'does not claim execution success',
 ]);
 

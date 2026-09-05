@@ -648,8 +648,7 @@ fn decode_wire<T: DeserializeOwned>(
     value: &str,
     code: &'static str,
 ) -> Result<T, IndexDriftCandidateFailure> {
-    let bytes = URL_SAFE_NO_PAD
-        .decode(value)
+    let bytes = URL_SAFE_NO_PAD.decode(value)
         .map_err(|_| permanent_failure(code))?;
     serde_json::from_slice(bytes.as_slice()).map_err(|_| permanent_failure(code))
 }

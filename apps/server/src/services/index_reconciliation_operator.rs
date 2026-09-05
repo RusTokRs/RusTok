@@ -73,9 +73,7 @@ pub enum IndexReconciliationOperatorError {
         rustok_index::infrastructure::postgres::IndexReconciliationDeadLetterInspectionError,
     ),
     #[error(transparent)]
-    DriftInspection(
-        #[from] rustok_index::infrastructure::postgres::IndexDriftFindingInspectionError,
-    ),
+    DriftInspection(#[from] rustok_index::infrastructure::postgres::IndexDriftFindingInspectionError),
     #[error(transparent)]
     Recovery(#[from] rustok_index::infrastructure::postgres::IndexReconciliationRecoveryError),
 }

@@ -32,21 +32,6 @@ pub use generation::{
     StaticDistributionGenerationError, generate_static_distribution,
 };
 
-/// Builds module-owned runtime extensions and then adds explicitly selected
-/// cross-module adapters at the distribution composition boundary.
-///
-/// Executable hosts call this single neutral entrypoint and never import
-/// adapter or owner capability types.
-pub fn build_runtime_extensions(
-    registry: &ModuleRegistry,
-) -> rustok_core::Result<ModuleRuntimeExtensions> {
-    let mut extensions = registry.build_runtime_extensions()?;
-    register_runtime_bridges(&mut extensions)?;
-    register_selected_index_bridges(&mut extensions)?;
-    materialize_index_schema_sources(&mut extensions)?;
-    Ok(extensions)
-}
-
 fn register_runtime_bridges(extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
     #[cfg(feature = "ai-translation")]
     {
@@ -71,6 +56,21 @@ fn register_selected_index_bridges(
     #[cfg(feature = "mod-product")]
     product_index::register(extensions)?;
     Ok(())
+}
+
+/// Builds module-owned runtime extensions and then adds explicitly selected
+/// cross-module adapters at the distribution composition boundary.
+///
+/// Executable hosts call this single neutral entrypoint and never import
+/// adapter or owner capability types.
+pub fn build_runtime_extensions(
+    registry: &ModuleRegistry,
+) -> rustok_core::Result<ModuleRuntimeExtensions> {
+    let mut extensions = registry.build_runtime_extensions()?;
+    register_runtime_bridges(&mut extensions)?;
+    register_selected_index_bridges(&mut extensions)?;
+    materialize_index_schema_sources(&mut extensions)?;
+    Ok(extensions)
 }
 
 fn materialize_index_schema_sources(

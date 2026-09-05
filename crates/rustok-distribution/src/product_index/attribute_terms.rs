@@ -3,9 +3,9 @@ use rust_decimal::Decimal;
 use rustok_index::{FieldName, FieldPath, FilterExpr, IndexValue, LocaleKey};
 use uuid::Uuid;
 
-pub use rustok_product::ProductAttributeTermError;
+pub(crate) use rustok_product::ProductAttributeTermError;
 
-pub const PRODUCT_ATTRIBUTE_TERMS_FIELD: &str = "attribute_terms";
+pub(crate) const PRODUCT_ATTRIBUTE_TERMS_FIELD: &str = "attribute_terms";
 
 /// PostgreSQL CTE fragment used by the replacement Product source to materialize every active,
 /// Product-scoped, filterable EAV value into the Product-owned canonical term grammar.
@@ -157,11 +157,11 @@ product_attribute_terms AS (
 )
 "#;
 
-pub fn text_term(attribute_id: Uuid, value: &str) -> Result<String, ProductAttributeTermError> {
+pub(crate) fn text_term(attribute_id: Uuid, value: &str) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_text_term(attribute_id, value)
 }
 
-pub fn localized_text_term(
+pub(crate) fn localized_text_term(
     attribute_id: Uuid,
     locale: &LocaleKey,
     value: &str,
@@ -169,56 +169,56 @@ pub fn localized_text_term(
     rustok_product::product_attribute_localized_text_term(attribute_id, locale.as_str(), value)
 }
 
-pub fn localized_presence_term(
+pub(crate) fn localized_presence_term(
     attribute_id: Uuid,
     locale: &LocaleKey,
 ) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_localized_presence_term(attribute_id, locale.as_str())
 }
 
-pub fn integer_term(attribute_id: Uuid, value: i64) -> Result<String, ProductAttributeTermError> {
+pub(crate) fn integer_term(attribute_id: Uuid, value: i64) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_integer_term(attribute_id, value)
 }
 
-pub fn decimal_term(
+pub(crate) fn decimal_term(
     attribute_id: Uuid,
     value: Decimal,
 ) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_decimal_term(attribute_id, value)
 }
 
-pub fn boolean_term(attribute_id: Uuid, value: bool) -> Result<String, ProductAttributeTermError> {
+pub(crate) fn boolean_term(attribute_id: Uuid, value: bool) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_boolean_term(attribute_id, value)
 }
 
-pub fn date_term(
+pub(crate) fn date_term(
     attribute_id: Uuid,
     value: NaiveDate,
 ) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_date_term(attribute_id, value)
 }
 
-pub fn datetime_term(
+pub(crate) fn datetime_term(
     attribute_id: Uuid,
     value: DateTime<Utc>,
 ) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_datetime_term(attribute_id, value)
 }
 
-pub fn option_term(
+pub(crate) fn option_term(
     attribute_id: Uuid,
     option_id: Uuid,
 ) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_option_term(attribute_id, option_id)
 }
 
-pub fn contains_term_filter(term: String) -> FilterExpr {
+pub(crate) fn contains_term_filter(term: String) -> FilterExpr {
     FilterExpr::Contains(attribute_terms_path(), IndexValue::String(term))
 }
 
 /// Reproduces the owner localized-text predicate exactly:
 /// requested-value OR (requested-locale-absent AND fallback-value).
-pub fn localized_text_filter(
+pub(crate) fn localized_text_filter(
     attribute_id: Uuid,
     requested_locale: &LocaleKey,
     fallback_locale: &LocaleKey,
@@ -239,7 +239,7 @@ pub fn localized_text_filter(
     ]))
 }
 
-pub fn attribute_terms_path() -> FieldPath {
+pub(crate) fn attribute_terms_path() -> FieldPath {
     FieldPath::new(
         FieldName::new(PRODUCT_ATTRIBUTE_TERMS_FIELD)
             .expect("static Product attribute term field name must be valid"),

@@ -148,16 +148,16 @@ impl RusToKModule for ShutdownReplayModule {
 }
 
 #[derive(Default)]
-struct ReplayTestQuery;
+struct EmptyQuery;
 
 #[async_graphql::Object]
-impl ReplayTestQuery {
+impl EmptyQuery {
     async fn _empty(&self) -> bool {
         true
     }
 }
 
-type ReplayTestSchema = Schema<ReplayTestQuery, IndexReplayMutation, EmptySubscription>;
+type ReplayTestSchema = Schema<EmptyQuery, IndexReplayMutation, EmptySubscription>;
 
 struct ReplayGraphqlRuntime {
     schema: ReplayTestSchema,
@@ -311,7 +311,7 @@ async fn graphql_runtime(db: &DatabaseConnection, gate: Option<ScanGate>) -> Rep
         .expect("guarded replay runtime should materialize");
     let extensions = Arc::new(extensions);
     let (stop_handle, stop_receiver) = StopHandle::new();
-    let schema = Schema::build(ReplayTestQuery, IndexReplayMutation, EmptySubscription)
+    let schema = Schema::build(EmptyQuery, IndexReplayMutation, EmptySubscription)
         .data(extensions)
         .data(stop_handle.clone())
         .finish();

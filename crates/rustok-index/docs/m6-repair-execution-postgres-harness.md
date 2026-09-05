@@ -137,7 +137,7 @@ scripts/evidence/capture-index-repair-postgres.mjs
 scripts/verify/verify-index-repair-retained-evidence.mjs
 ```
 
-The runner requires a clean commit, executes the metadata target followed by both scenario targets,
+The `capture-index-repair-postgres.mjs` runner requires a clean commit, executes the metadata target followed by both scenario targets,
 rejects skips and non-zero results, retains current source hashes, and writes credential-redacted
 complete stdout/stderr plus one final pass packet. Until the runner is executed, all three retained
 output files must remain absent and the verifier reports execution pending.

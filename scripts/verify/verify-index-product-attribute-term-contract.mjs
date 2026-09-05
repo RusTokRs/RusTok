@@ -41,10 +41,10 @@ const source = requireMarkers(modulePath, [
   'product_attribute_value_options option_value',
   'SELECT DISTINCT product_id, term',
   'jsonb_agg(term ORDER BY term)',
-  'hex::encode(locale.as_str().as_bytes())',
-  'hex::encode(value.as_bytes())',
-  'value.normalize().to_string()',
-  'value.timestamp_micros().to_string()',
+  'rustok_product::product_attribute_text_term(',
+  'rustok_product::product_attribute_localized_text_term(',
+  'rustok_product::product_attribute_decimal_term(',
+  'rustok_product::product_attribute_datetime_term(',
   'pub(crate) fn localized_text_filter(',
   'FilterExpr::Or(vec![',
   'FilterExpr::Not(Box::new(requested_present))',
@@ -52,6 +52,12 @@ const source = requireMarkers(modulePath, [
 if (source.includes('pa.code ||') || source.includes('pa.code::text ||')) {
   fail(`${modulePath} must key persisted terms by stable attribute UUID rather than mutable public code`);
 }
+
+requireMarkers('crates/rustok-product/src/services/catalog_attribute_terms.rs', [
+  'hex_encode(value)',
+  'value.normalize().to_string()',
+  'value.timestamp_micros().to_string()',
+]);
 
 requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'mod attribute_terms;',
@@ -69,6 +75,13 @@ requireMarkers('crates/rustok-product/src/services/catalog/attribute_filters.rs'
   'AND is_filterable = TRUE',
   "AND scope IN ('product', 'both')",
   'AND pav.detached_at IS NULL',
+  'parse_product_attribute_filter_value(',
+  'NOT EXISTS (',
+  'requested_any',
+  'pao.archived_at IS NULL',
+]);
+
+requireMarkers('crates/rustok-product/src/services/catalog_attribute_terms.rs', [
   'AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext',
   'AttributeValueType::Integer',
   'AttributeValueType::Decimal',
@@ -77,9 +90,6 @@ requireMarkers('crates/rustok-product/src/services/catalog/attribute_filters.rs'
   'AttributeValueType::Datetime',
   'AttributeValueType::Select | AttributeValueType::Multiselect',
   'AttributeValueType::Json',
-  'NOT EXISTS (',
-  'requested_any',
-  'pao.archived_at IS NULL',
 ]);
 
 requireMarkers('crates/rustok-product/src/services/write_transaction.rs', [

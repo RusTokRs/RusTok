@@ -1,6 +1,6 @@
 # M7 bounded Product source reconciliation
 
-Status: `canonical_source_complete_owner_execution_pending`
+Status: `source_complete_owner_execution_pending`
 
 This capability replays the current Product and ProductVariant sources through more than one complete
 cursor pass. It does not own Product schema compatibility, source mutation, or owner writes.
@@ -15,8 +15,8 @@ A cursor-ordered rebuild can miss an identity inserted behind the current cursor
 is running. Product uses `(product_id, locale)` and ProductVariant uses `variant_id`, so a new lower key
 cannot be discovered by continuing the same pass.
 
-A reconciliation job therefore performs a bounded number of complete source passes. Two passes are a
-useful baseline:
+A reconciliation job therefore performs a bounded number of complete source passes. For the
+first Product admission workflow, two passes are the recommended minimum:
 
 1. replay the current owner projection;
 2. restart at the beginning and catch identities that appeared behind the first cursor, including
@@ -74,9 +74,9 @@ Live/tombstone coexistence for one exact key remains a permanent source-record f
 
 ## Concurrency limit
 
-Multi-pass reconciliation narrows but does not eliminate the final-pass live-write window. It does not
-claim a repeatable-read full-owner snapshot, source watermark, quiescence barrier, or authoritative
-consumer readiness.
+Multi-pass reconciliation narrows but does not eliminate the live-write window. This capability
+therefore does **not** claim a repeatable-read owner snapshot, source watermark, quiescence barrier,
+or authoritative consumer readiness.
 
 For canonical Product graph use, relation freshness is an additional independent gate: Product
 visibility or Channel identity may change before the bounded relation resolver converges. Durable

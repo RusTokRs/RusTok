@@ -9,8 +9,8 @@ current Product visibility contract and the current tenant Channel identity set.
 alone is not enough evidence: an owner watermark can change while the final UUID set remains identical.
 
 `product_sales_channel_index_relation_freshness_snapshots` is the Product-owned append-only witness for
-that boundary. It is separate from `relation_epoch`; a freshness-only change does not pretend that the
-graph membership changed.
+that boundary. It is separate from `relation_epoch`;
+a freshness-only change does not pretend that the graph membership changed.
 
 ## Witness
 
@@ -63,8 +63,8 @@ not require a live witness because the mutation removes the graph rather than pu
 
 Product visibility changes append durable exact convergence requests, and tenant Channel identity
 changes are detected by comparing current Channel generation with Product-owned durable tenant
-checkpoint state. The selected distribution invokes the same bounded resolver through the generic
-ModuleWork scheduler, with tenant leases, restartable request cursors, and restartable 64-Product sweep
+checkpoint state. The selected distribution invokes the same bounded resolver through the
+generic ModuleWork scheduler, with tenant leases, restartable request cursors, and restartable 64-Product sweep
 cursors.
 
 This removes the previous requirement for an external caller to notice an owner change and manually

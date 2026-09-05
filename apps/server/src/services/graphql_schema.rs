@@ -130,7 +130,7 @@ fn stop_handle_from_context(ctx: &ServerRuntimeContext) -> StopHandle {
     }
 
     // Keep the candidate's initial receiver alive until a receiver for the actually published
-    // handle has been installed. This avoids a zero-receiver window if shutdown races schema init.
+    // handle has been installed to avoid a zero-receiver window if shutdown races schema init.
     let (candidate, _initial_receiver) = StopHandle::new();
     ctx.shared_insert_if_absent(candidate);
     let handle = ctx

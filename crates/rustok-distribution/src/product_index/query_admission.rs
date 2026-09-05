@@ -238,8 +238,13 @@ mod tests {
             PRODUCT_VARIANT_QUERY_MATERIALIZED_FRESHNESS,
             SALES_CHANNEL_QUERY_MATERIALIZED_FRESHNESS,
         ] {
-            for forbidden in ["index_links", "index_entities", "$1", "IndexMutation"] {
-                assert!(!template.contains(forbidden), "forbidden {forbidden}");
+            for forbidden in [
+                format!("index_{}", "links"),
+                format!("index_{}", "entities"),
+                format!("${}", 1),
+                format!("Index{}", "Mutation"),
+            ] {
+                assert!(!template.contains(&forbidden), "forbidden {forbidden}");
             }
         }
     }

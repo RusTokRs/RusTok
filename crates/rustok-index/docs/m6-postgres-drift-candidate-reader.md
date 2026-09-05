@@ -47,8 +47,8 @@ or any GraphQL, HTTP, CLI, MCP, or native-admin transport.
 ## Downstream boundaries
 
 Separate internal layers now provide exact confirmation, serializable finding persistence,
-authorization-gated lifecycle commands, generic durable targeted repair, and one concrete
-missing-entity repair path through the canonical mutation inbox.
+authorization-gated lifecycle commands, generic durable targeted repair, and
+one concrete missing-entity repair path through the canonical mutation inbox.
 
 The reader itself still has no source call, finding write, lifecycle transition, mutation owner,
 public continuation, scheduler, page loop, or automatic repair capability.

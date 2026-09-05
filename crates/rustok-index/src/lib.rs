@@ -6,8 +6,9 @@
 //! schema registration, bounded source replay/load contracts, bounded side-effect-free
 //! replay dry-run validation, one-page replay orchestration with durable fenced
 //! checkpoint progression, bounded multi-page replay coordination with
-//! heartbeat/yield/cancellation semantics, bounded multi-pass source reconciliation
-//! with durable pass/cursor progression, bounded reconciliation retry transitions,
+//! heartbeat/yield/cancellation semantics,
+//! bounded multi-pass source reconciliation with durable pass/cursor progression,
+//! bounded reconciliation retry transitions,
 //! host-owned due reconciliation scheduling through the generic module-work lifecycle,
 //! host-published replay and query capabilities, host-database-aware source factory
 //! composition, durable replay-job and schema-application leases, schema-derived

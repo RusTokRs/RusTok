@@ -245,7 +245,7 @@ async fn install_completion_guard(manager: &SchemaManager<'_>) -> Result<(), DbE
         DbBackend::Sqlite => {
             connection
                 .execute_unprepared(&format!(
-                    "CREATE TRIGGER {SQLITE_COMPLETION_TRIGGER} BEFORE UPDATE ON {COMMAND_TABLE} WHEN OLD.state <> 'prepared' OR NEW.state <> 'completed' OR OLD.tenant_id <> NEW.tenant_id OR OLD.command_id <> NEW.command_id OR OLD.finding_id <> NEW.finding_id OR OLD.payload_digest <> NEW.payload_digest OR OLD.target_kind <> NEW.target_kind OR OLD.actor_kind <> NEW.actor_kind OR OLD.actor_subject <> NEW.actor_subject OR OLD.reason <> NEW.reason BEGIN SELECT CASE WHEN (SELECT new_state FROM {DECISION_TABLE} WHERE tenant_id = OLD.tenant_id AND command_id = OLD.command_id ORDER BY revision DESC LIMIT 1) <> 'active' THEN RAISE(ABORT, 'Index finding repair command is not active') END; END"
+                    "CREATE TRIGGER {SQLITE_COMPLETION_TRIGGER} BEFORE UPDATE ON {COMMAND_TABLE} WHEN OLD.state = 'prepared' AND NEW.state = 'completed' AND COALESCE((SELECT new_state FROM {DECISION_TABLE} WHERE tenant_id = OLD.tenant_id AND command_id = OLD.command_id ORDER BY revision DESC LIMIT 1), '') <> 'active' BEGIN SELECT RAISE(ABORT, 'Index finding repair command is not active'); END"
                 ))
                 .await?;
             Ok(())

@@ -102,7 +102,7 @@ requireMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness
   'filter/order/cursor/limit/exact-count',
   'corrective current mutation',
   'locale deletion',
-  'not executed',
+  'not been executed',
   'Channel-generation and visibility convergence races',
 ]);
 

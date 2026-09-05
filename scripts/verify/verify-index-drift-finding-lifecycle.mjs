@@ -204,12 +204,12 @@ requireMarkers('doc', [
   'No tests, verifiers, formatting, Cargo checks',
 ]);
 requireMarkers('repairDoc', [
-  'Status: `source_complete_missing_entity_composed_recovery_pending`.',
+  'Status: `source_complete_recovery_aware_concrete_owners_execution_pending`.',
   'prepared -> completed',
   '`materialize_postgres_index_drift_missing_entity_repair_service`',
 ]);
 requireMarkers('concreteDoc', [
-  'Status: `source_complete_recovery_policy_pending`.',
+  'Status: `source_complete_recovery_aware_owner_execution_pending`.',
   'does not support orphan-link repair',
 ]);
 requireMarkers('plan', [

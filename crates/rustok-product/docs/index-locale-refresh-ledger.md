@@ -52,8 +52,7 @@ Product-only clock boundary on PostgreSQL:
 6. do **not** fan the EAV command out to unchanged ProductVariant refresh rows.
 
 The touch statement changes only `index_revision`. Product-SalesChannel convergence listens to Product
-`metadata`, tenant, or identity changes, so an EAV-only command does not fabricate relation-convergence
-work.
+`metadata`, tenant, or identity changes, so an EAV-only command does not fabricate relation-convergence work.
 
 Non-PostgreSQL Product profiles keep their existing event behavior and do not claim the PostgreSQL Index
 clock/refresh guarantee.
@@ -97,9 +96,8 @@ existing root-event behavior but do not claim an Index refresh ledger.
 
 ## Deliberate limits
 
-This slice does not:
+This slice does not add or change a `rustok-events` wire family or committed digest. It does not:
 
-- add or change a `rustok-events` wire family or committed digest;
 - publish typed Product locale refresh events;
 - add a parallel Product schema or compatibility route;
 - start a broker relay or consumer;

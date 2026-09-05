@@ -45,6 +45,15 @@ const extension = requireMarkers(extensionPath, [
   'aggregate.status = IndexReplayRunStatus::Yielded;',
   'aggregate.status = IndexReplayRunStatus::Cancelled;',
 ]);
+const interrupted = extension.indexOf('Err(crate::IndexReplayError::Interrupted) => {');
+const helper = extension.indexOf('async fn yield_after_host_interruption(');
+const cancel = extension.indexOf('if cancel_if_requested(db, lease).await?', helper);
+const yieldCall = extension.indexOf('match yield_for_resume(db, lease).await?', cancel);
+if (interrupted < 0 || helper < 0 || cancel <= helper || yieldCall <= cancel) {
+  fail('host interruption must preserve a persisted cancel race before yielding the lease to pending');
+}
+
+const yieldHelper = extension.slice(helper);
 for (const forbidden of [
   'request_cancel(',
   'cancel_requested = TRUE',
@@ -53,16 +62,19 @@ for (const forbidden of [
   'StopHandle',
   'index_replay_page_timeout',
 ]) {
-  if (extension.includes(forbidden)) {
-    fail(`${extensionPath} must yield host interruption without manufacturing cancellation/failure/lifecycle ownership: ${forbidden}`);
+  if (yieldHelper.includes(forbidden)) {
+    fail(`yield_after_host_interruption must yield host interruption without manufacturing cancellation/failure/lifecycle ownership: ${forbidden}`);
   }
 }
-const interrupted = extension.indexOf('Err(crate::IndexReplayError::Interrupted) => {');
-const helper = extension.indexOf('async fn yield_after_host_interruption(');
-const cancel = extension.indexOf('if cancel_if_requested(db, lease).await?', helper);
-const yieldCall = extension.indexOf('match yield_for_resume(db, lease).await?', cancel);
-if (interrupted < 0 || helper < 0 || cancel <= helper || yieldCall <= cancel) {
-  fail('host interruption must preserve a persisted cancel race before yielding the lease to pending');
+for (const forbidden of [
+  'request_cancel(',
+  'cancel_requested = TRUE',
+  'StopHandle',
+  'index_replay_page_timeout',
+]) {
+  if (extension.includes(forbidden)) {
+    fail(`${extensionPath} contains forbidden marker: ${forbidden}`);
+  }
 }
 
 const ordinaryPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';

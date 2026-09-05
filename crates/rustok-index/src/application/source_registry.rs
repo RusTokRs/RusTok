@@ -25,9 +25,22 @@ const MAX_FAILURE_CODE_BYTES: usize = 128;
 ///
 /// Construction and deserialization both reject JSON null and encoded values above
 /// 8 KiB so a durable worker cannot bypass the bound by restoring a checkpoint.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexSourceCursor(JsonValue);
+
+impl Serialize for IndexSourceCursor {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            self.0.serialize(serializer)
+        } else {
+            let json_str = serde_json::to_string(&self.0).map_err(serde::ser::Error::custom)?;
+            json_str.serialize(serializer)
+        }
+    }
+}
 
 impl IndexSourceCursor {
     pub fn new(value: JsonValue) -> Result<Self, IndexSourceError> {
@@ -59,7 +72,12 @@ impl<'de> Deserialize<'de> for IndexSourceCursor {
     where
         D: Deserializer<'de>,
     {
-        let value = JsonValue::deserialize(deserializer)?;
+        let value = if deserializer.is_human_readable() {
+            JsonValue::deserialize(deserializer)?
+        } else {
+            let json_str = String::deserialize(deserializer)?;
+            serde_json::from_str(&json_str).map_err(serde::de::Error::custom)?
+        };
         Self::new(value).map_err(D::Error::custom)
     }
 }

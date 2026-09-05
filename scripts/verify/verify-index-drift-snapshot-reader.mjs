@@ -93,7 +93,7 @@ requireMarkers("diagnosis", [
 ]);
 requireMarkers("productProvider", [
   "impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider",
-  "CAST(product.index_revision AS TEXT) AS source_version_text",
+  "CAST(projection.projection_epoch AS TEXT) AS source_version_text",
   "FROM product_translations translation",
   "FROM product_index_tombstones tombstone",
 ]);

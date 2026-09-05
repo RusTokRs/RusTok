@@ -89,8 +89,8 @@ work because neither `RUSTOK_INDEX_TEST_DATABASE_URL` nor `DATABASE_URL` was pre
 were created, so this remains an environment/configuration blocker rather than a source defect.
 
 The next M6 action is an exact rerun with a real opt-in PostgreSQL URL, followed by the retained evidence/verifier/
-Cargo command set in `m6-repair-retained-evidence-admission.md`. Do not add another M6 source slice unless that
-execution exposes a concrete source failure.
+Cargo command set in `m6-repair-retained-evidence-admission.md`.
+Do not add another M6 source slice unless that execution exposes a concrete source failure.
 
 ## M7 — Product Storefront
 

@@ -39,8 +39,7 @@ Three Product fixtures share tenant and locale scope. `A stale candidate` sorts 
 3. The owner Product is updated through PostgreSQL (`vendor` change). The real Product revision and
    graph-projection triggers advance owner state.
 4. The already-produced old mutation is then applied through `PostgresMutationStore`.
-5. Direct read-only evidence confirms that the delayed old source version is physically present in
-   `index_entities`.
+5. Direct read-only evidence confirms that the delayed old source version is physically present in `index_entities`.
 6. A real Product Index query applies a title `IN` filter, title ascending order, cursor page size one,
    lookahead/limit, and exact count.
 

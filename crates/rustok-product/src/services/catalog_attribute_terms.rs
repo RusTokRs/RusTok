@@ -314,4 +314,10 @@ mod tests {
             Err(ProductAttributeTermError::InvalidLocale)
         );
     }
+
+    #[test]
+    fn never_expression_serializes_cleanly() {
+        let serialized = serde_json::to_string(&ProductAttributeTermExpr::Never).unwrap();
+        assert_eq!(serialized, "\"never\"");
+    }
 }

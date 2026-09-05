@@ -250,8 +250,8 @@ requireMarkers(pageTransportDocsPath, [
 requireMarkers(planPath, [
   'M6 bounded GraphQL sealed source-page diagnosis transport',
   '`source_complete_owner_execution_pending`',
-  '[x] Add one bounded source-page transport over the sealed method only.',
-  'M6 - bound stale Index-only entity and orphan-link diagnosis',
+  '[x] Expose one bounded source-page GraphQL mutation over the sealed method only.',
+  'M6 stale entity, orphan-link, lifecycle, and targeted repair',
 ]);
 requireMarkers(recheckPath, [
   'Bounded GraphQL source-page transport',
