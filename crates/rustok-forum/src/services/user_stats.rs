@@ -255,21 +255,6 @@ impl UserStatsService {
         Self::adjust_solution_count_in_tx(txn, tenant_id, solution_author_id, -1).await?;
         Ok(())
     }
-
-    pub(crate) async fn decrement_topic_thread_in_tx(
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        topic_author_id: Option<Uuid>,
-        reply_author_ids: &[Option<Uuid>],
-        solution_author_id: Option<Uuid>,
-    ) -> ForumResult<()> {
-        Self::adjust_topic_count_in_tx(txn, tenant_id, topic_author_id, -1).await?;
-        for reply_author_id in reply_author_ids {
-            Self::adjust_reply_count_in_tx(txn, tenant_id, *reply_author_id, -1).await?;
-        }
-        Self::adjust_solution_count_in_tx(txn, tenant_id, solution_author_id, -1).await?;
-        Ok(())
-    }
 }
 
 include!("member_card.rs");

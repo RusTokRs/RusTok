@@ -16,8 +16,12 @@ function requireAbsent(text, marker, message) {
 
 const servicePath = "crates/rustok-forum/src/services/counter_reconciliation.rs";
 const solutionPath = "crates/rustok-forum/src/services/solution_reconciliation.rs";
+const subscriptionPath = "crates/rustok-forum/src/services/subscription/reconciliation.rs";
+const mentionPath = "crates/rustok-forum/src/services/mention_reconciliation.rs";
 const servicesModPath = "crates/rustok-forum/src/services/mod.rs";
 const graphqlPath = "crates/rustok-forum/src/graphql/reconciliation_query.rs";
+const subscriptionGqlPath = "crates/rustok-forum/src/graphql/subscription_reconciliation_query.rs";
+const mentionGqlPath = "crates/rustok-forum/src/graphql/mention_reconciliation_query.rs";
 const graphqlModPath = "crates/rustok-forum/src/graphql/mod.rs";
 const libPath = "crates/rustok-forum/src/lib.rs";
 const planPath = "crates/rustok-forum/docs/implementation-plan.md";
@@ -25,8 +29,12 @@ const packetPath = "docs/modules/forum-33-counter-reconciliation-actualization-2
 
 const service = read(servicePath);
 const solution = read(solutionPath);
+const subscription = read(subscriptionPath);
+const mention = read(mentionPath);
 const servicesMod = read(servicesModPath);
 const graphql = read(graphqlPath);
+const subscriptionGql = read(subscriptionGqlPath);
+const mentionGql = read(mentionGqlPath);
 const graphqlMod = read(graphqlModPath);
 const lib = read(libPath);
 const plan = read(planPath);
@@ -183,8 +191,77 @@ for (const forbidden of ["tenant_id: Option<Uuid>", "Mutation", "UPDATE forum_"]
 }
 
 for (const marker of [
+  "pub struct ForumSubscriptionReconciliationService",
+  "pub struct ForumSubscriptionReconciliationReport",
+  "pub topic_cursor: Option<ForumSubscriptionCursor>",
+  "pub category_cursor: Option<ForumSubscriptionCursor>",
+  "enforce_operations_scope(security)",
+]) {
+  requireText(subscription, marker, `Forum subscription reconciliation service missing ${marker}`);
+}
+
+for (const forbidden of [
+  "UPDATE forum_",
+  "DELETE FROM forum_",
+  "INSERT INTO forum_",
+  "ActiveModel",
+  " OFFSET ",
+]) {
+  requireAbsent(subscription, forbidden, `read-only subscription reconciliation service must not contain ${forbidden}`);
+}
+
+for (const marker of [
+  "pub struct ForumMentionReconciliationService",
+  "pub struct ForumMentionReconciliationReport",
+  "pub relation_cursor: Option<i64>",
+  "enforce_operations_scope(security)",
+]) {
+  requireText(mention, marker, `Forum mention reconciliation service missing ${marker}`);
+}
+
+for (const forbidden of [
+  "UPDATE forum_",
+  "DELETE FROM forum_",
+  "INSERT INTO forum_",
+  "ActiveModel",
+  " OFFSET ",
+]) {
+  requireAbsent(mention, forbidden, `read-only mention reconciliation service must not contain ${forbidden}`);
+}
+
+for (const marker of [
+  "pub struct ForumSubscriptionReconciliationQuery",
+  "forum_subscription_reconciliation_report",
+  "ForumSubscriptionReconciliationService::new(db)",
+]) {
+  requireText(subscriptionGql, marker, `Forum subscription GraphQL query missing ${marker}`);
+}
+
+for (const marker of [
+  "pub struct ForumMentionReconciliationQuery",
+  "forum_mention_reconciliation_report",
+  "ForumMentionReconciliationService::new(db)",
+]) {
+  requireText(mentionGql, marker, `Forum mention GraphQL query missing ${marker}`);
+}
+
+for (const testPath of [
+  "crates/rustok-forum/tests/counter_reconciliation_sqlite.rs",
+  "crates/rustok-forum/tests/solution_reconciliation_sqlite.rs",
+  "crates/rustok-forum/tests/subscription_reconciliation_sqlite.rs",
+  "crates/rustok-forum/tests/mention_reconciliation_sqlite.rs",
+  "crates/rustok-forum/tests/reconciliation_graphql_contract.rs",
+]) {
+  if (!fs.existsSync(testPath)) {
+    throw new Error(`Missing expected test suite: ${testPath}`);
+  }
+}
+
+for (const marker of [
   "mod reconciliation_query;",
   "reconciliation_query::ForumReconciliationQuery",
+  "subscription_reconciliation_query::ForumSubscriptionReconciliationQuery",
+  "mention_reconciliation_query::ForumMentionReconciliationQuery",
   "GqlForumCounterReconciliationReport",
   "GqlForumSolutionDrift",
   "GqlForumSolutionReconciliationReport",
@@ -195,6 +272,9 @@ for (const marker of [
 for (const marker of [
   "pub mod services;",
   "ForumCounterReconciliationService",
+  "ForumSolutionReconciliationService",
+  "ForumSubscriptionReconciliationService",
+  "ForumMentionReconciliationService",
   "MAX_FORUM_COUNTER_RECONCILIATION_LIMIT",
 ]) {
   requireText(lib, marker, `Forum owner export missing ${marker}`);

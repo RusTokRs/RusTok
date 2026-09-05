@@ -284,14 +284,6 @@ impl CategoryService {
             .await
     }
 
-    pub(crate) async fn find_category_in_tx(
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        category_id: Uuid,
-    ) -> ForumResult<crate::entities::forum_category::Model> {
-        category::CategoryService::find_category_in_tx(txn, tenant_id, category_id).await
-    }
-
     pub(crate) async fn adjust_counters_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,

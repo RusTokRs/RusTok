@@ -14,7 +14,7 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::{CreateReplyInput, ReplyResponse, UpdateReplyInput};
+use crate::dto::ReplyResponse;
 use crate::entities::{forum_reply, forum_reply_body, forum_solution};
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::ForumContentTarget;
@@ -60,31 +60,6 @@ impl ReplyService {
             db,
             event_bus,
         }
-    }
-
-    #[instrument(skip(self, security, input))]
-    pub async fn create(
-        &self,
-        tenant_id: Uuid,
-        security: SecurityContext,
-        topic_id: Uuid,
-        input: CreateReplyInput,
-    ) -> ForumResult<ReplyResponse> {
-        self.create_command(tenant_id, security, topic_id, input.into())
-            .await
-    }
-
-    #[instrument(skip(self, security, input))]
-    pub async fn update(
-        &self,
-        tenant_id: Uuid,
-        reply_id: Uuid,
-        security: SecurityContext,
-        input: UpdateReplyInput,
-    ) -> ForumResult<ReplyResponse> {
-        self.inner
-            .update_with_inline_relations(tenant_id, reply_id, security, input.into())
-            .await
     }
 
     #[instrument(skip(self, security))]

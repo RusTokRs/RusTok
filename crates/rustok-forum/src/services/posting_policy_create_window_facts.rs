@@ -41,6 +41,7 @@ impl ForumTopicCreatesWindowFactPort {
         }
     }
 
+    #[cfg(test)]
     fn with_clock(db: DatabaseConnection, now: CreateWindowClock) -> Self {
         Self { db, now }
     }
@@ -69,6 +70,7 @@ impl ForumReplyCreatesWindowFactPort {
         }
     }
 
+    #[cfg(test)]
     fn with_clock(db: DatabaseConnection, now: CreateWindowClock) -> Self {
         Self { db, now }
     }

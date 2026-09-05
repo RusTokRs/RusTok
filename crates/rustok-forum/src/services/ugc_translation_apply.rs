@@ -20,13 +20,13 @@ use super::{ReplyService, TopicService};
 /// including localized content, invalidates Translation snapshots instead of
 /// allowing a stale machine patch to cross an unrelated producer edit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ForumUgcTranslationApplyResult {
+pub struct ForumUgcTranslationApplyResult {
     pub resource_revision: i64,
     pub target_revision: i64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ApplyExactForumTopicTranslationInput {
+pub struct ApplyExactForumTopicTranslationInput {
     pub source_locale: TenantLocale,
     pub target_locale: TenantLocale,
     pub title: String,
@@ -37,7 +37,7 @@ pub(crate) struct ApplyExactForumTopicTranslationInput {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ApplyExactForumReplyTranslationInput {
+pub struct ApplyExactForumReplyTranslationInput {
     pub source_locale: TenantLocale,
     pub target_locale: TenantLocale,
     pub body: RichTextDocument,
@@ -47,7 +47,7 @@ pub(crate) struct ApplyExactForumReplyTranslationInput {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum ForumUgcTranslationApplyError {
+pub enum ForumUgcTranslationApplyError {
     #[error("Forum UGC translation revision changed after the proposal snapshot")]
     RevisionConflict,
 
@@ -67,11 +67,11 @@ impl From<sea_orm::DbErr> for ForumUgcTranslationApplyError {
     }
 }
 
-pub(crate) type ForumUgcTranslationApplyResultT<T> =
+pub type ForumUgcTranslationApplyResultT<T> =
     Result<T, ForumUgcTranslationApplyError>;
 
 impl TopicService {
-    pub(crate) async fn apply_exact_translation_in_tx(
+    pub async fn apply_exact_translation_in_tx(
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -183,7 +183,7 @@ impl TopicService {
 }
 
 impl ReplyService {
-    pub(crate) async fn apply_exact_translation_in_tx(
+    pub async fn apply_exact_translation_in_tx(
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,

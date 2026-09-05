@@ -14,17 +14,13 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::{
-    CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, UpdateReplyInput,
-};
+use crate::dto::{ListRepliesFilter, ReplyListItem, ReplyResponse};
 use crate::entities::{forum_reply, forum_reply_body, forum_solution};
 use crate::error::{ForumError, ForumResult};
-use crate::richtext::{normalize_discussion, project_stored_discussion, serialize_discussion};
+use crate::richtext::project_stored_discussion;
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
-use crate::services::user_stats::UserStatsService;
 use crate::services::vote::{VoteService, VoteSummary};
-use crate::services::{CategoryService, TopicService};
-use crate::state_machine::{ReplyStatus, TopicStatus};
+use crate::state_machine::ReplyStatus;
 
 pub struct ReplyService {
     db: DatabaseConnection,
@@ -36,92 +32,6 @@ impl ReplyService {
         Self { db, event_bus }
     }
 
-    #[instrument(skip(self, security, input))]
-    pub async fn create(
-        &self,
-        tenant_id: Uuid,
-        security: SecurityContext,
-        topic_id: Uuid,
-        input: CreateReplyInput,
-    ) -> ForumResult<ReplyResponse> {
-        enforce_scope(&security, Resource::ForumReplies, Action::Create)?;
-        let locale = normalize_locale(&input.locale)?;
-        let txn = self.db.begin().await?;
-        let topic = TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
-        let category =
-            CategoryService::find_category_in_tx(&txn, tenant_id, topic.category_id).await?;
-
-        if topic.status == TopicStatus::Closed {
-            return Err(ForumError::TopicClosed);
-        }
-        if topic.status == TopicStatus::Archived {
-            return Err(ForumError::TopicArchived);
-        }
-
-        let stored_body = serialize_discussion(input.content)?;
-
-        if let Some(parent_reply_id) = input.parent_reply_id {
-            let parent = Self::find_reply_in_tx(&txn, tenant_id, parent_reply_id).await?;
-            if parent.topic_id != topic_id {
-                return Err(ForumError::Validation(
-                    "Parent reply belongs to another topic".to_string(),
-                ));
-            }
-        }
-
-        let position = Self::next_position_in_tx(&txn, topic_id).await?;
-        let reply_id = Uuid::new_v4();
-        let now = Utc::now();
-        forum_reply::ActiveModel {
-            id: Set(reply_id),
-            tenant_id: Set(tenant_id),
-            topic_id: Set(topic_id),
-            author_id: Set(security.user_id),
-            parent_reply_id: Set(input.parent_reply_id),
-            status: Set(if category.moderated {
-                ReplyStatus::Pending
-            } else {
-                ReplyStatus::Approved
-            }),
-            position: Set(position),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        }
-        .insert(&txn)
-        .await?;
-
-        forum_reply_body::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            reply_id: Set(reply_id),
-            tenant_id: Set(tenant_id),
-            locale: Set(locale.clone()),
-            body: Set(stored_body),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        }
-        .insert(&txn)
-        .await?;
-
-        let topic = TopicService::adjust_reply_count_in_tx(&txn, tenant_id, topic_id, 1).await?;
-        CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, 1).await?;
-        UserStatsService::adjust_reply_count_in_tx(&txn, tenant_id, security.user_id, 1).await?;
-
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                security.user_id,
-                DomainEvent::ForumTopicReplied {
-                    topic_id,
-                    reply_id,
-                    author_id: security.user_id,
-                },
-            )
-            .await?;
-
-        txn.commit().await?;
-        self.get(tenant_id, security, reply_id, &locale).await
-    }
 
     #[instrument(skip(self))]
     pub async fn get(
@@ -163,87 +73,6 @@ impl ReplyService {
             &locale,
             fallback_locale.as_deref(),
         )
-    }
-
-    #[instrument(skip(self, security, input))]
-    pub async fn update(
-        &self,
-        tenant_id: Uuid,
-        reply_id: Uuid,
-        security: SecurityContext,
-        input: UpdateReplyInput,
-    ) -> ForumResult<ReplyResponse> {
-        let locale = normalize_locale(&input.locale)?;
-        let existing = self.find_reply(tenant_id, reply_id).await?;
-        enforce_owned_scope(
-            &security,
-            Resource::ForumReplies,
-            Action::Update,
-            existing.author_id,
-        )?;
-
-        let Some(content) = input.content else {
-            return self.get(tenant_id, security, reply_id, &locale).await;
-        };
-        let stored_body = serialize_discussion(content)?;
-
-        let txn = self.db.begin().await?;
-        self.upsert_body_in_tx(&txn, tenant_id, reply_id, &locale, stored_body)
-            .await?;
-
-        let mut active: forum_reply::ActiveModel = existing.into();
-        active.updated_at = Set(Utc::now().into());
-        active.update(&txn).await?;
-        txn.commit().await?;
-        self.get(tenant_id, security, reply_id, &locale).await
-    }
-
-    #[instrument(skip(self, security))]
-    pub async fn delete(
-        &self,
-        tenant_id: Uuid,
-        reply_id: Uuid,
-        security: SecurityContext,
-    ) -> ForumResult<()> {
-        let reply = self.find_reply(tenant_id, reply_id).await?;
-        enforce_owned_scope(
-            &security,
-            Resource::ForumReplies,
-            Action::Delete,
-            reply.author_id,
-        )?;
-        let txn = self.db.begin().await?;
-        let solution_removed = forum_solution::Entity::find()
-            .filter(forum_solution::Column::TenantId.eq(tenant_id))
-            .filter(forum_solution::Column::TopicId.eq(reply.topic_id))
-            .one(&txn)
-            .await?
-            .is_some_and(|solution| solution.reply_id == reply_id);
-        forum_reply::Entity::delete_by_id(reply_id)
-            .exec(&txn)
-            .await?;
-        let topic =
-            TopicService::adjust_reply_count_in_tx(&txn, tenant_id, reply.topic_id, -1).await?;
-        CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, -1).await?;
-        UserStatsService::adjust_reply_count_in_tx(&txn, tenant_id, reply.author_id, -1).await?;
-        if solution_removed {
-            UserStatsService::adjust_solution_count_in_tx(&txn, tenant_id, reply.author_id, -1)
-                .await?;
-        }
-        txn.commit().await?;
-        Ok(())
-    }
-
-    #[instrument(skip(self, security))]
-    pub async fn list_for_topic(
-        &self,
-        tenant_id: Uuid,
-        security: SecurityContext,
-        topic_id: Uuid,
-        filter: ListRepliesFilter,
-    ) -> ForumResult<(Vec<ReplyListItem>, u64)> {
-        self.list_for_topic_with_locale_fallback(tenant_id, security, topic_id, filter, None)
-            .await
     }
 
     #[instrument(skip(self, security))]
@@ -311,26 +140,6 @@ impl ReplyService {
             .collect::<ForumResult<Vec<_>>>()?;
 
         Ok((items, total))
-    }
-
-    #[instrument(skip(self, security))]
-    pub async fn list_response_for_topic_with_locale_fallback(
-        &self,
-        tenant_id: Uuid,
-        security: SecurityContext,
-        topic_id: Uuid,
-        filter: ListRepliesFilter,
-        fallback_locale: Option<&str>,
-    ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
-        self.list_response_for_topic_by_statuses_with_locale_fallback(
-            tenant_id,
-            security,
-            topic_id,
-            filter,
-            fallback_locale,
-            None,
-        )
-        .await
     }
 
     #[instrument(skip(self, security))]
@@ -496,16 +305,6 @@ impl ReplyService {
         Ok(map)
     }
 
-    async fn next_position_in_tx(txn: &DatabaseTransaction, topic_id: Uuid) -> ForumResult<i64> {
-        Ok(forum_reply::Entity::find()
-            .filter(forum_reply::Column::TopicId.eq(topic_id))
-            .order_by_desc(forum_reply::Column::Position)
-            .one(txn)
-            .await?
-            .map(|reply| reply.position + 1)
-            .unwrap_or(1))
-    }
-
     async fn upsert_body_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -596,10 +395,9 @@ fn resolve_reply_body<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::ReplyService;
     use crate::{
         CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
-        ListRepliesFilter, TopicService, migrations,
+        ListRepliesFilter, ReplyService, TopicService, migrations,
     };
     use rustok_core::SecurityContext;
     use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
@@ -749,55 +547,5 @@ mod tests {
                 rustok_api::RichTextDocument::single_paragraph("third"),
             ]
         );
-    }
-}
-
-impl ReplyService {
-    pub(crate) async fn update_with_relations(
-        &self,
-        tenant_id: Uuid,
-        reply_id: Uuid,
-        security: SecurityContext,
-        input: UpdateReplyInput,
-    ) -> ForumResult<ReplyResponse> {
-        let locale = normalize_locale(&input.locale)?;
-        let existing = self.find_reply(tenant_id, reply_id).await?;
-        enforce_owned_scope(
-            &security,
-            Resource::ForumReplies,
-            Action::Update,
-            existing.author_id,
-        )?;
-
-        let Some(content) = input.content else {
-            return self.get(tenant_id, security, reply_id, &locale).await;
-        };
-        let document = normalize_discussion(content)?;
-        let stored_body = serialize_discussion(document.clone())?;
-        let relation_service =
-            super::mention_relation::MentionRelationService::new(self.db.clone());
-        let prepared_relations = relation_service
-            .prepare(
-                tenant_id,
-                crate::mentions::ForumContentTarget::reply(reply_id),
-                &locale,
-                &document,
-                &security,
-                std::iter::empty(),
-            )
-            .await?;
-
-        let txn = self.db.begin().await?;
-        self.upsert_body_in_tx(&txn, tenant_id, reply_id, &locale, stored_body)
-            .await?;
-        relation_service
-            .persist_in_tx(&txn, prepared_relations)
-            .await?;
-
-        let mut active: forum_reply::ActiveModel = existing.into();
-        active.updated_at = Set(Utc::now().into());
-        active.update(&txn).await?;
-        txn.commit().await?;
-        self.get(tenant_id, security, reply_id, &locale).await
     }
 }

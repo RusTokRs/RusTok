@@ -58,6 +58,7 @@ impl MentionRelationSyncResult {
         &self.source
     }
 
+    #[cfg(test)]
     pub(crate) fn replayed(&self) -> bool {
         self.replayed
     }
@@ -70,10 +71,12 @@ impl MentionRelationSyncResult {
         &self.added_audiences
     }
 
+    #[cfg(test)]
     pub(crate) fn mention_count(&self) -> usize {
         self.mention_count
     }
 
+    #[cfg(test)]
     pub(crate) fn quote_count(&self) -> usize {
         self.quote_count
     }
@@ -89,6 +92,7 @@ impl MentionRelationService {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn with_profiles(profiles: Arc<dyn ProfilesReader>) -> Self {
         Self {
             profiles,

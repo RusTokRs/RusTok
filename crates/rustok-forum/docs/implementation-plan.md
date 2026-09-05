@@ -1054,15 +1054,24 @@ add another Forum-local schema/data authority. Replace synthetic Wave evidence
 only after the existing Pages reference-consumer execution gate and the Forum
 executable packet are accepted.
 
-For FORUM-33, retain SQLite and PostgreSQL execution evidence for clean/drifted
-counter pages and accepted-solution pages, including relation eligibility,
-missing solution-author stats, stale/mismatched `solution_count`, independent
-multi-page cursor traversal, exhausted-one-side behavior and concurrent
-page-local snapshot cases. The next source reconciliation slice is subscriptions,
-followed by mentions, attachments and permitted shared-owner projections. Do not
-add write repair until operator RBAC, dry-run, durable audit, idempotent job/receipt
-state and bounded recovery are designed together. Add a Forum CLI adapter only
-with the synchronized workspace dependency and `Cargo.lock` update.
+For FORUM-33, SQLite execution evidence is retained and verified for
+clean/drifted counter pages (`counter_reconciliation_sqlite.rs`), accepted-solution
+pages (`solution_reconciliation_sqlite.rs`), subscription pages
+(`subscription_reconciliation_sqlite.rs`), and mention pages
+(`mention_reconciliation_sqlite.rs`). GraphQL schema SDL, RBAC authorization,
+tenant scope isolation, unauthenticated rejection, and operator execution evidence
+are retained and verified across all four reconciliation reports
+(`reconciliation_graphql_contract.rs`). This covers relation eligibility, missing
+solution-author stats, stale/mismatched `solution_count`, independent multi-page
+cursor traversal, exhausted-one-side behavior, target existence, merge redirect
+source subscription detection, muted preferences integrity, positive revision
+checks, child-source agreement, and projection fingerprint validation. Architectural
+cleanup removed `#![allow(dead_code)]` and wired `ugc_translation_apply` as a first-class
+service module. The remaining FORUM-33 scope includes PostgreSQL runtime evidence,
+attachment diagnostics, and permitted shared-owner projections. Do not add write
+repair until operator RBAC, dry-run, durable audit, idempotent job/receipt state and
+bounded recovery are designed together. Add a Forum CLI adapter only with the
+synchronized workspace dependency and `Cargo.lock` update.
 
 Regenerate the event-contract digests and retain release verification for the
 current `Cargo.lock`, then retain SQLite and PostgreSQL evidence for changed/

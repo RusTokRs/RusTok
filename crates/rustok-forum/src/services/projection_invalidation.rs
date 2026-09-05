@@ -50,22 +50,6 @@ pub(crate) async fn publish_forum_topic_projection_direct_in_tx(
     .await
 }
 
-pub(crate) async fn publish_forum_projection_scope_in_tx(
-    event_bus: &TransactionalEventBus,
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    actor_id: Option<Uuid>,
-) -> ForumResult<()> {
-    publish_projection_invalidation_in_tx(
-        event_bus,
-        txn,
-        tenant_id,
-        actor_id,
-        FORUM_PROJECTION_SCOPE,
-        None,
-    )
-    .await
-}
 
 pub(crate) async fn publish_forum_category_projection_in_tx(
     event_bus: &TransactionalEventBus,

@@ -138,3 +138,11 @@ fn matching_tenant_topic_channel_access_subquery(
         .and_where(forum_topic_channel_access::Column::ChannelSlug.eq(channel_slug))
         .to_owned()
 }
+
+fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
+    channel_slug
+        .map(str::trim)
+        .filter(|slug| !slug.is_empty())
+        .map(|slug| slug.to_ascii_lowercase())
+}
+

@@ -14,14 +14,6 @@ impl PreparedImportReplyInsert {
         self.record.topic_id
     }
 
-    pub(crate) fn source(&self) -> &crate::import_mapping::ForumImportExternalRef {
-        &self.record.source
-    }
-
-    pub(crate) fn parent_reply_id(&self) -> Option<Uuid> {
-        self.record.parent_reply_id
-    }
-
     pub(crate) fn status(&self) -> ReplyStatus {
         self.record.status
     }

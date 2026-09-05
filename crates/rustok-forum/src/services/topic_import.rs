@@ -13,32 +13,8 @@ impl PreparedImportTopicInsert {
         self.record.id
     }
 
-    pub(crate) fn category_id(&self) -> Uuid {
-        self.record.category_id
-    }
-
-    pub(crate) fn source(&self) -> &crate::import_mapping::ForumImportExternalRef {
-        &self.record.source
-    }
-
-    pub(crate) fn locale(&self) -> &str {
-        &self.record.locale
-    }
-
     pub(crate) fn author_id(&self) -> Option<Uuid> {
         self.record.author.as_ref().map(|author| author.user_id)
-    }
-
-    pub(crate) fn final_status(&self) -> TopicStatus {
-        self.record.status
-    }
-
-    pub(crate) fn final_locked(&self) -> bool {
-        self.record.is_locked
-    }
-
-    pub(crate) fn created_at(&self) -> chrono::DateTime<Utc> {
-        self.created_at
     }
 }
 

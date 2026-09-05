@@ -175,12 +175,3 @@ impl ReplyService {
         self.get(tenant_id, security, reply_id, &locale).await
     }
 }
-
-#[allow(dead_code)]
-pub(crate) mod ugc_translation_apply {
-    pub(crate) use crate::services::{ReplyService, TopicService};
-
-    pub(crate) mod owner {
-        include!("ugc_translation_apply.rs");
-    }
-}

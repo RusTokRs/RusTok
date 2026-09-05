@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 mod bounded_compat;
 mod category {
     include!("category_import.rs");
@@ -159,6 +157,7 @@ mod topic_vote_lock;
 pub mod user_stats;
 mod user_trust;
 mod user_trust_audience_facts;
+pub mod ugc_translation_apply;
 pub mod vote;
 pub mod widget_contract;
 mod widget_preview;
@@ -264,6 +263,15 @@ pub use storefront_read_state::{
     ForumTopicUnreadSummary,
 };
 pub use subscription::SubscriptionService;
+pub use subscription::reconciliation::{
+    ForumSubscriptionCursor, ForumSubscriptionDrift, ForumSubscriptionDriftKind,
+    ForumSubscriptionReconciliationReport, ForumSubscriptionReconciliationService,
+    ForumSubscriptionTargetKind,
+};
+pub use mention_reconciliation::{
+    ForumMentionDrift, ForumMentionDriftKind, ForumMentionReconciliationReport,
+    ForumMentionReconciliationService,
+};
 pub use topic::MAX_FORUM_TOPIC_TAGS;
 pub use topic_audience::{
     ForumTopicAudiencePolicy,
@@ -359,3 +367,7 @@ pub use user_trust_audience_facts::ForumUserTrustAudienceFactsPort;
 pub use vote::VoteService;
 pub use widget_contract::ForumWidgetContractService;
 pub use widget_preview::ForumWidgetPreviewService;
+pub use ugc_translation_apply::{
+    ApplyExactForumReplyTranslationInput, ApplyExactForumTopicTranslationInput,
+    ForumUgcTranslationApplyError, ForumUgcTranslationApplyResult,
+};
