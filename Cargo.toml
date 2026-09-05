@@ -199,7 +199,7 @@ utoipa = "5.5"
 utoipa-swagger-ui = { version = "7.0", features = ["vendored"] }
 moka = { version = "0.12", features = ["future"] }
 rhai = "1.25.0"
-argon2 = "0.5"
+argon2 = "0.6"
 jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 rand = "0.10.1"
 password-hash = "0.6"
