@@ -503,15 +503,11 @@ impl TranslationTargetProvider for StaticSettingsTranslationTargetProvider {
             let mut facts = self.progress_once(tenant_id, &registries, &request).await?;
             let after = self.global_highwater(tenant_id, &registries).await?;
             if before == after {
+                // Progress and change polling share one cursor contract. A
+                // stable high-water mark is therefore a tail checkpoint.
                 facts.owner_change_cursor = after
-                    .map(|value| OpaqueCursor::new(value.to_string()))
-                    .transpose()
-                    .map_err(|error| {
-                        PortError::invariant_violation(
-                            "settings.translation_progress_cursor_invalid",
-                            error.to_string(),
-                        )
-                    })?;
+                    .map(|value| change_cursor(value, value))
+                    .transpose()?;
                 facts.validate().map_err(|error| {
                     PortError::invariant_violation(
                         "settings.translation_progress_invalid",
