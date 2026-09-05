@@ -17232,6 +17232,7 @@ dependencies = [
  "rustok-migrations",
  "rustok-moderation",
  "rustok-modules",
+ "rustok-modules-translation",
  "rustok-navigation",
  "rustok-notifications",
  "rustok-order",

@@ -95,6 +95,8 @@ mod-flex      = ["rustok-distribution/mod-flex"]
 mod-media     = ["dep:rustok-media", "dep:rustok-translation-targets", "rustok-distribution/mod-media"]
 mod-translation = [
   "dep:rustok-translation",
+  "dep:rustok-modules-translation",
+  "dep:rustok-translation-targets",
   "rustok-translation/graphql",
   "rustok-distribution/mod-translation",
 ]
@@ -106,6 +108,7 @@ ai-translation = ["mod-ai", "mod-translation", "rustok-distribution/ai-translati
 [dependencies]
 rustok-core = { workspace = true, features = ["redis-cache", "server"] }
 rustok-modules.workspace = true
+rustok-modules-translation = { path = "../../crates/rustok-modules-translation", optional = true }
 rustok-sandbox = { workspace = true, features = ["rhai", "wasm-component"] }
 rustok-sandbox-transport.workspace = true
 rustok-worker-transport.workspace = true

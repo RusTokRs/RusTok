@@ -8,7 +8,9 @@ description = "Translation target adapter contracts for static module Settings"
 
 [dependencies]
 hex.workspace = true
-rustok-modules = { workspace = true, default-features = false }
+# Keep the workspace-owned rustok-modules feature contract intact: Cargo 1.96
+# rejects overriding default-features on an inherited workspace dependency.
+rustok-modules.workspace = true
 rustok-translation-targets.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
