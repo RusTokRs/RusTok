@@ -64,21 +64,12 @@ jobs:
           rustc --version --verbose
 
       - name: Create bounded PostgreSQL smoke role
+        env:
+          PGPASSWORD: postgres
         run: |
-          set -euo pipefail
-          container=$(docker ps --filter publish=5432 --format '{{.ID}}' | head -n 1)
-          test -n "$container"
-          docker exec -i "$container" psql --set ON_ERROR_STOP=1 --username postgres --dbname postgres <<SQL
-          CREATE ROLE ${RUSTOK_BROWSER_DATABASE_ROLE}
-            LOGIN
-            PASSWORD '${RUSTOK_BROWSER_DATABASE_PASSWORD}'
-            CREATEDB
-            NOSUPERUSER
-            NOCREATEROLE
-            NOREPLICATION
-            NOBYPASSRLS
-            CONNECTION LIMIT 10;
-          SQL
+          psql --host localhost --port 5432 --username postgres --dbname postgres \
+            --set ON_ERROR_STOP=1 \
+            --command "CREATE ROLE ${RUSTOK_BROWSER_DATABASE_ROLE} LOGIN PASSWORD '${RUSTOK_BROWSER_DATABASE_PASSWORD}' CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 10"
 
       - name: Apply migrations and preserve browser database
         env:
