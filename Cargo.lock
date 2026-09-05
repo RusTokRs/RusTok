@@ -16024,6 +16024,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-modules-translation"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "rustok-api",
+ "rustok-modules",
+ "rustok-translation-targets",
+ "sha2 0.11.0",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-navigation"
 version = "0.1.0"
 dependencies = [

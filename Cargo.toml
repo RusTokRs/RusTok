@@ -226,7 +226,7 @@ rig-vertexai = "=0.42.0"
 
 # Internal crates
 rustok-core = { path = "crates/rustok-core" }
-rustok-modules = { path = "crates/rustok-modules" }
+rustok-modules = { path = "crates/rustok-modules", default-features = false }
 rustok-events = { path = "crates/rustok-events" }
 rustok-events-module = { path = "crates/rustok-events-module" }
 rustok-commerce-foundation = { path = "crates/rustok-commerce-foundation" }
