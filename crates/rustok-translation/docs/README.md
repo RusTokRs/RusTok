@@ -200,25 +200,28 @@ CAS revision and disabled-locale evidence, while required-target progress fails
 closed until an authorized replacement revalidates it.
 
 Registered pilot aggregates are `media/asset`, `taxonomy/term`,
-`navigation/menu`, and `pages/page_metadata`. Canonical Blog Category copy is
-not a separate Translation aggregate: Blog binds its categories to same-ID
-Taxonomy Category terms, so exact Category `name`, review-only `slug`, optional
-`description`, revision, apply, and change-cursor behavior are supplied only by
-`taxonomy/term`. The former `blog/category` provider, Blog Category Translation
-change journal, and Blog-local Category translation storage are retired and
-must not be recreated as a control-plane apply path.
+`navigation/menu`, `pages/page_metadata`, and `modules/static_settings`.
+Canonical Blog Category copy is not a separate Translation aggregate: Blog
+binds its categories to same-ID Taxonomy Category terms, so exact Category
+`name`, review-only `slug`, optional `description`, revision, apply, and
+change-cursor behavior are supplied only by `taxonomy/term`. The former
+`blog/category` provider, Blog Category Translation change journal, and
+Blog-local Category translation storage are retired and must not be recreated
+as a control-plane apply path.
 
 Translation never reads owner tables directly: each registered owner supplies
 exact target facts and an opaque owner cursor. Media counts source-eligible
 active assets in a stable change window; Taxonomy counts active terms including
 Category terms consumed by Blog; Navigation counts only full exact menu
-aggregates; Pages counts active Pages with an exact source metadata row.
-Navigation exposes a required menu name plus one required exact title per menu
-item; Pages exposes title, review-only slug, and optional SEO metadata. Runtime
-locale fallback does not contribute to any aggregate. Production enablement
-continues to require the documented provider-specific database evidence; Blog
-Category does not add a second provider evidence gate beyond the canonical
-Taxonomy owner.
+aggregates; Pages counts active Pages with an exact source metadata row;
+Settings counts only owner-admitted localized static fields and exposes exact
+source/target snapshots, progress, bounded changes, validation, and apply through
+public Settings services. Navigation exposes a required menu name plus one
+required exact title per menu item; Pages exposes title, review-only slug, and
+optional SEO metadata. Runtime locale fallback does not contribute to any
+aggregate. Production enablement continues to require the documented
+provider-specific database evidence; Blog Category does not add a second
+provider evidence gate beyond the canonical Taxonomy owner.
 
 `rustok-translation-targets` remains a separate Cargo package even if its
 physical directory is later moved under `crates/rustok-translation/`. This
