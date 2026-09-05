@@ -356,7 +356,7 @@ impl TranslationTargetProvider for StaticSettingsTranslationTargetProvider {
         context: PortContext,
         request: TranslationPatchRequest,
     ) -> Result<TranslationPatchValidation, PortError> {
-        validate_translation_apply_context(&context)?;
+        validate_translation_read_context(&context)?;
         authorize(&context, Action::Update)?;
         request
             .validate()
