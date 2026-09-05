@@ -215,6 +215,6 @@
     "verify:blog:forum-ui-ownership": "node scripts/verify/verify-blog-forum-ui-ownership.mjs"
   },
   "dependencies": {
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.4"
   }
 }
