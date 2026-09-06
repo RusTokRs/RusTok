@@ -15,7 +15,8 @@ pub use catalog::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
     MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter,
     ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,
-    ProductTranslationExactLocaleRecord, ProductTranslationExactLocaleSnapshot,
+    ProductTranslationExactLocaleError, ProductTranslationExactLocaleRecord,
+    ProductTranslationExactLocaleResult, ProductTranslationExactLocaleSnapshot,
     StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection,
 };
