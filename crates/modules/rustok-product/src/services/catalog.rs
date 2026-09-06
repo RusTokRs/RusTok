@@ -10,7 +10,8 @@ pub mod types;
 
 pub use translation::{
     ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,
-    ProductTranslationExactLocaleRecord, ProductTranslationExactLocaleSnapshot,
+    ProductTranslationExactLocaleError, ProductTranslationExactLocaleRecord,
+    ProductTranslationExactLocaleResult, ProductTranslationExactLocaleSnapshot,
 };
 pub use types::{
     AdminProductList, AdminProductListItem, AdminProductListQuery,
