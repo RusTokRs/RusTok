@@ -5840,11 +5840,14 @@ pub(crate) fn uuid_from_row(
 ) -> Result<Uuid, ArtifactDataError> {
     match backend {
         DbBackend::Postgres => row.try_get("", column).map_err(storage_error),
-        _ => row
-            .try_get::<String>("", column)
-            .map_err(storage_error)?
-            .parse()
-            .map_err(storage_error),
+        _ => match row.try_get::<Uuid>("", column) {
+            Ok(value) => Ok(value),
+            Err(_) => row
+                .try_get::<String>("", column)
+                .map_err(storage_error)?
+                .parse()
+                .map_err(storage_error),
+        },
     }
 }
 

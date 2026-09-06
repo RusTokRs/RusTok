@@ -4,11 +4,11 @@
 //! every intermediate checkpoint preserves the single canonical representation
 //! without dual read/write divergence.
 
-use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use hex::ToHex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -87,7 +87,7 @@ pub fn compute_checkpoint_digest(
     } else {
         hasher.update(b"<start>");
     }
-    hasher.update(&items_processed.to_be_bytes());
+    hasher.update(items_processed.to_be_bytes());
     let status_byte = match status {
         BackfillStatus::InProgress => &[1_u8],
         BackfillStatus::Converged => &[2_u8],
@@ -123,7 +123,10 @@ pub enum BackfillError {
 /// In-memory or database port for durable backfill checkpoints.
 #[async_trait::async_trait]
 pub trait BackfillCheckpointStore: Send + Sync {
-    async fn load_checkpoint(&self, backfill_id: Uuid) -> Result<Option<BackfillCheckpoint>, BackfillError>;
+    async fn load_checkpoint(
+        &self,
+        backfill_id: Uuid,
+    ) -> Result<Option<BackfillCheckpoint>, BackfillError>;
     async fn save_checkpoint(&self, checkpoint: &BackfillCheckpoint) -> Result<(), BackfillError>;
 }
 
@@ -135,13 +138,22 @@ pub struct InMemoryBackfillCheckpointStore {
 
 #[async_trait::async_trait]
 impl BackfillCheckpointStore for InMemoryBackfillCheckpointStore {
-    async fn load_checkpoint(&self, backfill_id: Uuid) -> Result<Option<BackfillCheckpoint>, BackfillError> {
-        let guard = self.checkpoints.lock().map_err(|e| BackfillError::Storage(e.to_string()))?;
+    async fn load_checkpoint(
+        &self,
+        backfill_id: Uuid,
+    ) -> Result<Option<BackfillCheckpoint>, BackfillError> {
+        let guard = self
+            .checkpoints
+            .lock()
+            .map_err(|e| BackfillError::Storage(e.to_string()))?;
         Ok(guard.get(&backfill_id).cloned())
     }
 
     async fn save_checkpoint(&self, checkpoint: &BackfillCheckpoint) -> Result<(), BackfillError> {
-        let mut guard = self.checkpoints.lock().map_err(|e| BackfillError::Storage(e.to_string()))?;
+        let mut guard = self
+            .checkpoints
+            .lock()
+            .map_err(|e| BackfillError::Storage(e.to_string()))?;
         guard.insert(checkpoint.backfill_id, checkpoint.clone());
         Ok(())
     }
@@ -202,7 +214,8 @@ impl<S: BackfillCheckpointStore> DataBackfillCoordinator<S> {
             return Ok(existing);
         }
 
-        let new_checkpoint = BackfillCheckpoint::new(backfill_id, operation_id, module_slug, data_owner_id);
+        let new_checkpoint =
+            BackfillCheckpoint::new(backfill_id, operation_id, module_slug, data_owner_id);
         self.store.save_checkpoint(&new_checkpoint).await?;
         Ok(new_checkpoint)
     }
@@ -227,7 +240,9 @@ impl<S: BackfillCheckpointStore> DataBackfillCoordinator<S> {
             return Ok(current);
         }
         if current.status == BackfillStatus::FailedClosed {
-            return Err(BackfillError::FailedClosed("backfill marked failed closed".to_string()));
+            return Err(BackfillError::FailedClosed(
+                "backfill marked failed closed".to_string(),
+            ));
         }
 
         let page_result = page_processor(current.cursor.clone())
@@ -268,7 +283,10 @@ impl<S: BackfillCheckpointStore> DataBackfillCoordinator<S> {
     }
 
     /// Marks the backfill as entering uncertain-outcome reconciliation following a timeout or ambiguous crash.
-    pub async fn record_uncertain_outcome(&self, backfill_id: Uuid) -> Result<BackfillCheckpoint, BackfillError> {
+    pub async fn record_uncertain_outcome(
+        &self,
+        backfill_id: Uuid,
+    ) -> Result<BackfillCheckpoint, BackfillError> {
         let mut current = self
             .store
             .load_checkpoint(backfill_id)

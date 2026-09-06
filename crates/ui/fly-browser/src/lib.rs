@@ -564,10 +564,12 @@ mod tests {
         assert_eq!(value["intentRequestTimeoutMs"], 1_500);
         assert_eq!(value["pendingIntentLimitMessage"], "Pending limit");
         assert_eq!(value["intentRequestTimeoutMessage"], "Request timeout");
-        assert!(serde_json::from_value::<BrowserAdapterConfig>(json!({
-            "root_selector": "#unsupported"
-        }))
-        .is_err());
+        assert!(
+            serde_json::from_value::<BrowserAdapterConfig>(json!({
+                "root_selector": "#unsupported"
+            }))
+            .is_err()
+        );
     }
 
     #[test]

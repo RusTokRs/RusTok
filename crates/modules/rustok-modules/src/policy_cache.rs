@@ -103,13 +103,15 @@ impl ModuleEffectivePolicyCache {
 
     /// Invalidates the cached entry only if its current revision matches `stale_revision`.
     pub fn invalidate_if_stale(&self, tenant_id: Uuid, stale_revision: &str) -> bool {
-        if let Ok(mut entries) = self.entries.write() {
-            if let Some(entry) = entries.get(&tenant_id) {
-                if entry.identity.matches(tenant_id, stale_revision) {
-                    entries.remove(&tenant_id);
-                    return true;
-                }
-            }
+        let Ok(mut entries) = self.entries.write() else {
+            return false;
+        };
+        let should_remove = entries
+            .get(&tenant_id)
+            .is_some_and(|entry| entry.identity.matches(tenant_id, stale_revision));
+        if should_remove {
+            entries.remove(&tenant_id);
+            return true;
         }
         false
     }
@@ -123,19 +125,16 @@ impl ModuleEffectivePolicyCache {
         previous_revision: Option<&str>,
         next_revision: &str,
     ) -> bool {
-        if let Ok(mut entries) = self.entries.write() {
-            if let Some(entry) = entries.get(&tenant_id) {
-                if let Some(prev) = previous_revision {
-                    if entry.identity.matches(tenant_id, prev) {
-                        entries.remove(&tenant_id);
-                        return true;
-                    }
-                }
-                if !entry.identity.matches(tenant_id, next_revision) {
-                    entries.remove(&tenant_id);
-                    return true;
-                }
-            }
+        let Ok(mut entries) = self.entries.write() else {
+            return false;
+        };
+        let should_remove = entries.get(&tenant_id).is_some_and(|entry| {
+            previous_revision.is_some_and(|previous| entry.identity.matches(tenant_id, previous))
+                || !entry.identity.matches(tenant_id, next_revision)
+        });
+        if should_remove {
+            entries.remove(&tenant_id);
+            return true;
         }
         false
     }

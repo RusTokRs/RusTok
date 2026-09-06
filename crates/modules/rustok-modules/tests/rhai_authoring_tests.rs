@@ -79,7 +79,8 @@ async fn test_rhai_authoring_pipeline_lifecycle() {
         alloy_script_id,
         alloy_revision: 2,
         review_decision_id,
-        review_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+        review_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            .to_string(),
         workspace: workspace.clone(),
         bindings: vec![ModuleRuntimeBinding {
             id: "order_event".to_string(),
@@ -127,7 +128,7 @@ async fn test_rhai_authoring_pipeline_lifecycle() {
 
     assert_eq!(release.descriptor.slug, "orders_notifier");
     assert_eq!(release.descriptor.version, "1.0.0");
-    assert_eq!(release.source_cas_receipt.created, true);
+    assert!(release.source_cas_receipt.created);
     assert_eq!(
         release.descriptor.artifact_digest,
         release.source_cas_receipt.source_digest
@@ -137,7 +138,11 @@ async fn test_rhai_authoring_pipeline_lifecycle() {
         release.source_cas_receipt.source_digest
     );
     assert_eq!(
-        release.oci_payload.annotations.get("io.rustok.alloy.script_id").unwrap(),
+        release
+            .oci_payload
+            .annotations
+            .get("io.rustok.alloy.script_id")
+            .unwrap(),
         &alloy_script_id.to_string()
     );
 
@@ -156,11 +161,8 @@ async fn test_rhai_authoring_pipeline_lifecycle() {
         .expect("retry package release");
 
     assert_eq!(retry_release.package_id, release.package_id);
-    assert_eq!(retry_release.source_cas_receipt.created, false);
-    assert_eq!(
-        retry_release.descriptor_digest,
-        release.descriptor_digest
-    );
+    assert!(!retry_release.source_cas_receipt.created);
+    assert_eq!(retry_release.descriptor_digest, release.descriptor_digest);
 
     // 7. Test Idempotency Conflict: same idempotency key but modified workspace content
     let mut modified_command = command.clone();
@@ -230,7 +232,8 @@ async fn test_rhai_authoring_validation_rejections() {
         alloy_script_id,
         alloy_revision: 1,
         review_decision_id,
-        review_digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+        review_digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            .to_string(),
         workspace: bad_workspace,
         bindings: vec![],
         permissions: vec![],
@@ -259,8 +262,10 @@ async fn test_rhai_authoring_validation_rejections() {
         id: "missing_hook".to_string(),
         kind: ModuleRuntimeBindingKind::Command,
         entrypoint: "src/non_existent.rhai".to_string(),
-        input_schema_digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-        output_schema_digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+        input_schema_digest:
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+        output_schema_digest:
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
         permission: "bad_binding.test".to_string(),
         idempotency: ModuleBindingIdempotency::Required,
         limit_profile: "standard".to_string(),

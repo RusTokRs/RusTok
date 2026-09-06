@@ -2,22 +2,17 @@
 //! executor pools and generations, owner-selected placement enforcement (zero in-process fallback),
 //! and dual candidate/predecessor smoke readiness for automatic mode.
 
-use std::{
-    collections::HashSet,
-    sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
 use rustok_api::ArtifactPermissionLocalization;
 use rustok_core::MigrationSource;
 use rustok_modules::{
-    ArtifactBlobStore, ArtifactModuleKind, ArtifactPayloadKind,
-    ArtifactPermissionDescriptor, ArtifactSchemaDocument,
-    EvaluateReadinessCommand, ExecutorPoolIdentity,
-    ExecutorReadinessError, ExecutorReadinessService, InMemoryArtifactBlobStore,
-    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor,
-    ModuleBindingIdempotency, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
-    ModulesModule, OwnerPlacementPolicy, ReleaseReadinessTarget, RuntimeFingerprint,
-    VerifiedPayloadCache,
+    ArtifactBlobStore, ArtifactModuleKind, ArtifactPayloadKind, ArtifactPermissionDescriptor,
+    ArtifactSchemaDocument, EvaluateReadinessCommand, ExecutorPoolIdentity, ExecutorReadinessError,
+    ExecutorReadinessService, InMemoryArtifactBlobStore, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+    ModuleArtifactDescriptor, ModuleBindingIdempotency, ModuleRuntimeBinding,
+    ModuleRuntimeBindingKind, ModulesModule, OwnerPlacementPolicy, ReleaseReadinessTarget,
+    RuntimeFingerprint, VerifiedPayloadCache,
 };
 use rustok_sandbox::{CapabilityName, RHAI_SANDBOX_RUNTIME_ABI, SandboxExecutorPlacement};
 use sea_orm::Database;
@@ -164,7 +159,9 @@ async fn test_verified_payload_caching_and_cas_rehash() {
     assert_eq!(cache.len(), 1);
 
     // Second fetch hits in-memory cache directly
-    let cached = cache.get(&payload_digest, &fp_digest).expect("cached entry exists");
+    let cached = cache
+        .get(&payload_digest, &fp_digest)
+        .expect("cached entry exists");
     assert_eq!(cached.payload_bytes.as_slice(), script);
     assert_eq!(cached.runtime_fingerprint, fp_digest);
 }
@@ -176,7 +173,10 @@ async fn test_engine_change_invalidates_readiness_receipts() {
 
     let script = b"fn main() { return 200; }";
     let target = build_sample_target("order_processor", "1.0.0", script, vec![]);
-    blobs.put_verified(&target.payload_digest, script).await.unwrap();
+    blobs
+        .put_verified(&target.payload_digest, script)
+        .await
+        .unwrap();
 
     let service = ExecutorReadinessService::new(db.clone(), blobs.clone());
 
@@ -230,10 +230,17 @@ async fn test_engine_change_invalidates_readiness_receipts() {
 
     // Automatic mode is DENIED because current engine has no receipt
     let auto_err = service
-        .check_automatic_mode_eligibility(&target.release_digest, None, &[pool_updated_engine.clone()])
+        .check_automatic_mode_eligibility(
+            &target.release_digest,
+            None,
+            std::slice::from_ref(&pool_updated_engine),
+        )
         .await
         .expect_err("automatic mode must be denied on changed engine");
-    assert!(matches!(auto_err, ExecutorReadinessError::AutomaticModeDenied(_)));
+    assert!(matches!(
+        auto_err,
+        ExecutorReadinessError::AutomaticModeDenied(_)
+    ));
 
     // 3. Repeating readiness on updated engine re-authorizes execution
     let command2 = EvaluateReadinessCommand {
@@ -265,7 +272,10 @@ async fn test_monotonic_pool_generation_gating() {
 
     let script = b"fn main() { return 300; }";
     let target = build_sample_target("notification_hub", "1.0.0", script, vec![]);
-    blobs.put_verified(&target.payload_digest, script).await.unwrap();
+    blobs
+        .put_verified(&target.payload_digest, script)
+        .await
+        .unwrap();
 
     let service = ExecutorReadinessService::new(db.clone(), blobs.clone());
 
@@ -312,7 +322,10 @@ async fn test_monotonic_pool_generation_gating() {
         .check_automatic_mode_eligibility(&target.release_digest, None, &[pool_gen2.clone()])
         .await
         .expect_err("automatic mode denied on un-smoked generation");
-    assert!(matches!(auto_denied, ExecutorReadinessError::AutomaticModeDenied(_)));
+    assert!(matches!(
+        auto_denied,
+        ExecutorReadinessError::AutomaticModeDenied(_)
+    ));
 
     // Re-evaluate readiness on generation 2
     let receipt_gen2 = service
@@ -347,7 +360,10 @@ async fn test_capability_route_checks_fail_closed_on_missing_route() {
         script,
         vec![CapabilityName::new("platform.http").unwrap()],
     );
-    blobs.put_verified(&target.payload_digest, script).await.unwrap();
+    blobs
+        .put_verified(&target.payload_digest, script)
+        .await
+        .unwrap();
 
     let pool = ExecutorPoolIdentity {
         pool_id: "pool-edge".to_string(),
@@ -385,8 +401,8 @@ async fn test_capability_route_checks_fail_closed_on_missing_route() {
     // 2. Service with "platform.http" route succeeds
     let mut routes = HashSet::new();
     routes.insert("platform.http".to_string());
-    let service_with_routes = ExecutorReadinessService::new(db.clone(), blobs.clone())
-        .with_routes(routes);
+    let service_with_routes =
+        ExecutorReadinessService::new(db.clone(), blobs.clone()).with_routes(routes);
 
     let receipt = service_with_routes
         .evaluate_readiness(EvaluateReadinessCommand {
@@ -409,7 +425,10 @@ async fn test_owner_selected_placement_enforcement_zero_in_process_fallback() {
 
     let script = b"fn main() { return 500; }";
     let target = build_sample_target("tenant_isolated_logic", "1.0.0", script, vec![]);
-    blobs.put_verified(&target.payload_digest, script).await.unwrap();
+    blobs
+        .put_verified(&target.payload_digest, script)
+        .await
+        .unwrap();
 
     let service = ExecutorReadinessService::new(db.clone(), blobs.clone());
 
@@ -439,7 +458,9 @@ async fn test_owner_selected_placement_enforcement_zero_in_process_fallback() {
             smoke_test_passed: true,
         })
         .await
-        .expect_err("in-process execution MUST be strictly prohibited when isolated worker required");
+        .expect_err(
+            "in-process execution MUST be strictly prohibited when isolated worker required",
+        );
 
     assert!(
         matches!(fallback_err, ExecutorReadinessError::IsolatedWorkerRequired),
@@ -468,7 +489,10 @@ async fn test_owner_selected_placement_enforcement_zero_in_process_fallback() {
         .expect_err("isolated pool without attestation must fail");
 
     assert!(
-        matches!(attestation_err, ExecutorReadinessError::MissingWorkerAttestation),
+        matches!(
+            attestation_err,
+            ExecutorReadinessError::MissingWorkerAttestation
+        ),
         "Expected MissingWorkerAttestation, received {attestation_err:?}"
     );
 
@@ -507,8 +531,14 @@ async fn test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode(
     let candidate = build_sample_target("commerce_cart", "2.0.0", candidate_script, vec![]);
     let predecessor = build_sample_target("commerce_cart", "1.9.0", predecessor_script, vec![]);
 
-    blobs.put_verified(&candidate.payload_digest, candidate_script).await.unwrap();
-    blobs.put_verified(&predecessor.payload_digest, predecessor_script).await.unwrap();
+    blobs
+        .put_verified(&candidate.payload_digest, candidate_script)
+        .await
+        .unwrap();
+    blobs
+        .put_verified(&predecessor.payload_digest, predecessor_script)
+        .await
+        .unwrap();
 
     let service = ExecutorReadinessService::new(db.clone(), blobs.clone());
 
@@ -543,11 +573,14 @@ async fn test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode(
         .check_automatic_mode_eligibility(
             &candidate.release_digest,
             Some(&predecessor.release_digest),
-            &[pool.clone()],
+            std::slice::from_ref(&pool),
         )
         .await
         .expect_err("must deny automatic mode when candidate lacks receipt");
-    assert!(matches!(err_missing_candidate, ExecutorReadinessError::AutomaticModeDenied(_)));
+    assert!(matches!(
+        err_missing_candidate,
+        ExecutorReadinessError::AutomaticModeDenied(_)
+    ));
 
     // 2. Candidate evaluated with FAILED smoke test -> AUTOMATIC MODE DENIED
     let err_smoke = service
@@ -561,7 +594,10 @@ async fn test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode(
         })
         .await
         .expect_err("smoke failure must fail closed");
-    assert!(matches!(err_smoke, ExecutorReadinessError::SmokeExecutionFailed(_)));
+    assert!(matches!(
+        err_smoke,
+        ExecutorReadinessError::SmokeExecutionFailed(_)
+    ));
 
     // 3. Candidate evaluated with PASSED smoke test -> BOTH CANDIDATE AND PREDECESSOR READY
     service
@@ -581,7 +617,7 @@ async fn test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode(
         .check_automatic_mode_eligibility(
             &candidate.release_digest,
             Some(&predecessor.release_digest),
-            &[pool.clone()],
+            std::slice::from_ref(&pool),
         )
         .await
         .expect("automatic mode must be permitted when both candidate and predecessor pass smoke readiness");

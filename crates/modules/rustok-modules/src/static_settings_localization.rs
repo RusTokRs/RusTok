@@ -80,9 +80,7 @@ impl StaticSettingsLocalizationRegistry {
         if value.len() > MAX_LOCALIZED_VALUE_BYTES {
             return Err(StaticSettingsLocalizationError::InvalidValue {
                 field_id: field_id.to_string(),
-                reason: format!(
-                    "localized value exceeds {MAX_LOCALIZED_VALUE_BYTES} UTF-8 bytes"
-                ),
+                reason: format!("localized value exceeds {MAX_LOCALIZED_VALUE_BYTES} UTF-8 bytes"),
             });
         }
         let path = self.validate_field(field_id)?;
@@ -231,26 +229,20 @@ impl StaticSettingsLocalizationService {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(|error| database_error(error.to_string()))?;
-        let owner_before = StaticTenantLifecycleStore::snapshot(
-            &transaction,
-            tenant_id,
-            registry.module_slug(),
-        )
-        .await
-        .map_err(map_owner_error)?;
+        let owner_before =
+            StaticTenantLifecycleStore::snapshot(&transaction, tenant_id, registry.module_slug())
+                .await
+                .map_err(map_owner_error)?;
         if owner_before.active_idempotency_key.is_some() {
             return Err(StaticSettingsLocalizationError::OwnerOperationInProgress(
                 registry.module_slug().to_string(),
             ));
         }
         let settings = load_base_settings(&transaction, tenant_id, registry.module_slug()).await?;
-        let owner_after = StaticTenantLifecycleStore::snapshot(
-            &transaction,
-            tenant_id,
-            registry.module_slug(),
-        )
-        .await
-        .map_err(map_owner_error)?;
+        let owner_after =
+            StaticTenantLifecycleStore::snapshot(&transaction, tenant_id, registry.module_slug())
+                .await
+                .map_err(map_owner_error)?;
         if owner_after.active_idempotency_key.is_some()
             || owner_before.revision != owner_after.revision
         {
@@ -360,92 +352,93 @@ impl StaticSettingsLocalizationService {
             }
         };
 
-        let result = async {
-            configure_tenant_scope(&transaction, command.tenant_id)
+        let result =
+            async {
+                configure_tenant_scope(&transaction, command.tenant_id)
+                    .await
+                    .map_err(|error| database_error(error.to_string()))?;
+                let current = load_exact_row(
+                    &transaction,
+                    command.tenant_id,
+                    registry.module_slug(),
+                    &command.field_id,
+                    &locale,
+                )
+                .await?;
+                let current_target_revision = current.as_ref().map_or(0, |row| row.target_revision);
+                if current_target_revision != command.expected_target_revision {
+                    return Err(StaticSettingsLocalizationError::TargetRevisionConflict {
+                        field_id: command.field_id.clone(),
+                        locale: locale.clone(),
+                        expected: command.expected_target_revision,
+                        current: current_target_revision,
+                    });
+                }
+                let next_target_revision = command
+                    .expected_target_revision
+                    .checked_add(1)
+                    .ok_or_else(|| {
+                        StaticSettingsLocalizationError::InconsistentState(
+                            "localized target revision overflow".to_string(),
+                        )
+                    })?;
+                let next_owner_revision = command
+                    .expected_owner_revision
+                    .checked_add(1)
+                    .ok_or_else(|| {
+                        StaticSettingsLocalizationError::InconsistentState(
+                            "static owner revision overflow".to_string(),
+                        )
+                    })?;
+                persist_exact_row(
+                    &transaction,
+                    command.tenant_id,
+                    registry.module_slug(),
+                    &command.field_id,
+                    &locale,
+                    &command.value,
+                    command.expected_target_revision,
+                    next_target_revision,
+                    next_owner_revision,
+                )
+                .await?;
+                let advanced_owner_revision = StaticTenantLifecycleStore::advance(
+                    &transaction,
+                    command.tenant_id,
+                    registry.module_slug(),
+                    command.expected_owner_revision,
+                    command.context.idempotency_key,
+                )
                 .await
-                .map_err(|error| database_error(error.to_string()))?;
-            let current = load_exact_row(
-                &transaction,
-                command.tenant_id,
-                registry.module_slug(),
-                &command.field_id,
-                &locale,
-            )
-            .await?;
-            let current_target_revision = current.as_ref().map_or(0, |row| row.target_revision);
-            if current_target_revision != command.expected_target_revision {
-                return Err(StaticSettingsLocalizationError::TargetRevisionConflict {
+                .map_err(map_owner_error)?;
+                if advanced_owner_revision != next_owner_revision {
+                    return Err(StaticSettingsLocalizationError::InconsistentState(
+                        "static owner revision advanced unexpectedly".to_string(),
+                    ));
+                }
+                StaticTenantLifecycleStore::release(
+                    &transaction,
+                    command.tenant_id,
+                    registry.module_slug(),
+                    command.context.idempotency_key,
+                )
+                .await
+                .map_err(map_owner_error)?;
+                let record = StaticLocalizedSettingRecord {
+                    tenant_id: command.tenant_id,
+                    module_slug: registry.module_slug().to_string(),
                     field_id: command.field_id.clone(),
                     locale: locale.clone(),
-                    expected: command.expected_target_revision,
-                    current: current_target_revision,
-                });
+                    value: command.value.clone(),
+                    target_revision: next_target_revision,
+                    owner_revision: next_owner_revision,
+                };
+                idempotency::complete(&transaction, lease, &record)
+                    .await
+                    .map_err(StaticSettingsLocalizationError::OperationReceipt)?;
+                Ok::<_, StaticSettingsLocalizationError>(record)
             }
-            let next_target_revision = command
-                .expected_target_revision
-                .checked_add(1)
-                .ok_or_else(|| {
-                    StaticSettingsLocalizationError::InconsistentState(
-                        "localized target revision overflow".to_string(),
-                    )
-                })?;
-            let next_owner_revision = command
-                .expected_owner_revision
-                .checked_add(1)
-                .ok_or_else(|| {
-                    StaticSettingsLocalizationError::InconsistentState(
-                        "static owner revision overflow".to_string(),
-                    )
-                })?;
-            persist_exact_row(
-                &transaction,
-                command.tenant_id,
-                registry.module_slug(),
-                &command.field_id,
-                &locale,
-                &command.value,
-                command.expected_target_revision,
-                next_target_revision,
-                next_owner_revision,
-            )
-            .await?;
-            let advanced_owner_revision = StaticTenantLifecycleStore::advance(
-                &transaction,
-                command.tenant_id,
-                registry.module_slug(),
-                command.expected_owner_revision,
-                command.context.idempotency_key,
-            )
-            .await
-            .map_err(map_owner_error)?;
-            if advanced_owner_revision != next_owner_revision {
-                return Err(StaticSettingsLocalizationError::InconsistentState(
-                    "static owner revision advanced unexpectedly".to_string(),
-                ));
-            }
-            StaticTenantLifecycleStore::release(
-                &transaction,
-                command.tenant_id,
-                registry.module_slug(),
-                command.context.idempotency_key,
-            )
-            .await
-            .map_err(map_owner_error)?;
-            let record = StaticLocalizedSettingRecord {
-                tenant_id: command.tenant_id,
-                module_slug: registry.module_slug().to_string(),
-                field_id: command.field_id.clone(),
-                locale: locale.clone(),
-                value: command.value.clone(),
-                target_revision: next_target_revision,
-                owner_revision: next_owner_revision,
-            };
-            idempotency::complete(&transaction, lease, &record)
-                .await
-                .map_err(StaticSettingsLocalizationError::OperationReceipt)?;
-            Ok::<_, StaticSettingsLocalizationError>(record)
-        }
-        .await;
+            .await;
 
         match result {
             Ok(record) => {
@@ -454,14 +447,8 @@ impl StaticSettingsLocalizationService {
             }
             Err(error) => {
                 let _ = transaction.rollback().await;
-                abandon_claim_and_fail(
-                    &self.db,
-                    registry.module_slug(),
-                    &command,
-                    lease,
-                    &error,
-                )
-                .await?;
+                abandon_claim_and_fail(&self.db, registry.module_slug(), &command, lease, &error)
+                    .await?;
                 Err(error)
             }
         }
@@ -736,16 +723,12 @@ fn positive_revision(
     })
 }
 
-fn revision_value(
-    revision: u64,
-) -> Result<sea_orm::Value, StaticSettingsLocalizationError> {
-    i64::try_from(revision)
-        .map(Into::into)
-        .map_err(|_| {
-            StaticSettingsLocalizationError::InconsistentState(
-                "revision exceeds storage range".to_string(),
-            )
-        })
+fn revision_value(revision: u64) -> Result<sea_orm::Value, StaticSettingsLocalizationError> {
+    i64::try_from(revision).map(Into::into).map_err(|_| {
+        StaticSettingsLocalizationError::InconsistentState(
+            "revision exceeds storage range".to_string(),
+        )
+    })
 }
 
 fn map_owner_error(error: StaticTenantLifecycleStoreError) -> StaticSettingsLocalizationError {
@@ -821,9 +804,11 @@ mod tests {
             registry.validate_field("storefront.hero.subtitle"),
             Err(StaticSettingsLocalizationError::UnknownField(_))
         ));
-        assert!(registry
-            .validate_value("storefront.hero.title", "Hello")
-            .is_ok());
+        assert!(
+            registry
+                .validate_value("storefront.hero.title", "Hello")
+                .is_ok()
+        );
         assert!(matches!(
             registry.validate_value("storefront.hero.title", "this title is far too long"),
             Err(StaticSettingsLocalizationError::InvalidValue { .. })

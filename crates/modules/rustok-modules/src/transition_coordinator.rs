@@ -325,7 +325,10 @@ impl ModuleTransitionCoordinator {
         if let ModuleTransitionState::PointOfNoReturn { ref reason, .. } = self.checkpoint.state {
             return Err(TransitionCoordinatorError::PastPointOfNoReturn(
                 self.checkpoint.operation_id,
-                format!("Cannot trigger recovery past point of no return: {}", reason),
+                format!(
+                    "Cannot trigger recovery past point of no return: {}",
+                    reason
+                ),
             ));
         }
 
@@ -437,7 +440,10 @@ impl ModuleTransitionCoordinator {
     /// Contains a transition when an automatic actor cannot safely complete
     /// the required recovery command. The state deliberately does not claim
     /// that serving traffic returned to the predecessor.
-    pub fn fail_closed(&mut self, failure_reason: String) -> Result<(), TransitionCoordinatorError> {
+    pub fn fail_closed(
+        &mut self,
+        failure_reason: String,
+    ) -> Result<(), TransitionCoordinatorError> {
         self.ensure_active()?;
         self.checkpoint.revision += 1;
         self.checkpoint.state = ModuleTransitionState::FailedClosed { failure_reason };

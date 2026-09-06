@@ -67,9 +67,7 @@ impl ModuleSettingSpec {
                 return Err(invalid_schema(
                     module_slug,
                     path,
-                    format!(
-                        "localized path is already claimed by field ID '{existing_field_id}'"
-                    ),
+                    format!("localized path is already claimed by field ID '{existing_field_id}'"),
                 ));
             }
 
@@ -95,9 +93,7 @@ impl ModuleSettingSpec {
                 return Err(invalid_schema(
                     module_slug,
                     path,
-                    format!(
-                        "localized setting is fenced by sensitive path '{sensitive_path}'"
-                    ),
+                    format!("localized setting is fenced by sensitive path '{sensitive_path}'"),
                 ));
             }
         }
@@ -148,8 +144,8 @@ impl ModuleSettingSpec {
         let mut snapshot = BTreeMap::new();
 
         for (field_id, path) in localized_fields {
-            if let Some(value) = setting_value_at_path(&normalized, path)
-                .and_then(serde_json::Value::as_str)
+            if let Some(value) =
+                setting_value_at_path(&normalized, path).and_then(serde_json::Value::as_str)
             {
                 snapshot.insert(field_id.clone(), value.to_string());
             }
@@ -403,11 +399,7 @@ fn validate_setting_spec(
                 .properties
                 .get(&property_key)
                 .expect("sorted property key must exist in schema");
-            validate_setting_spec(
-                module_slug,
-                &format!("{key}.{property_key}"),
-                property_spec,
-            )?;
+            validate_setting_spec(module_slug, &format!("{key}.{property_key}"), property_spec)?;
         }
         if let Some(default) = spec.default.as_ref().and_then(serde_json::Value::as_object) {
             for (property_key, property_value) in default {
@@ -947,8 +939,7 @@ mod tests {
                 ..Default::default()
             },
         )]);
-        let localized_fields =
-            BTreeMap::from([("checkout.mode".to_string(), "mode".to_string())]);
+        let localized_fields = BTreeMap::from([("checkout.mode".to_string(), "mode".to_string())]);
 
         let error = ModuleSettingSpec::validate_localization_registry(
             "checkout",
@@ -1028,7 +1019,10 @@ mod tests {
         let schema = HashMap::from([("title".to_string(), string_spec())]);
         let localized_fields = BTreeMap::from([
             ("storefront.title.primary".to_string(), "title".to_string()),
-            ("storefront.title.secondary".to_string(), "title".to_string()),
+            (
+                "storefront.title.secondary".to_string(),
+                "title".to_string(),
+            ),
         ]);
 
         let error = ModuleSettingSpec::validate_localization_registry(
@@ -1050,8 +1044,7 @@ mod tests {
         let schema = HashMap::from([("title".to_string(), string_spec())]);
 
         for field_id in [" bad", "bad..path", ".bad", "bad.", "bad/path"] {
-            let localized_fields =
-                BTreeMap::from([(field_id.to_string(), "title".to_string())]);
+            let localized_fields = BTreeMap::from([(field_id.to_string(), "title".to_string())]);
             assert!(
                 ModuleSettingSpec::validate_localization_registry(
                     "storefront",
@@ -1067,10 +1060,8 @@ mod tests {
     #[test]
     fn unknown_localized_path_is_rejected() {
         let schema = HashMap::from([("title".to_string(), string_spec())]);
-        let localized_fields = BTreeMap::from([(
-            "storefront.subtitle".to_string(),
-            "subtitle".to_string(),
-        )]);
+        let localized_fields =
+            BTreeMap::from([("storefront.subtitle".to_string(), "subtitle".to_string())]);
 
         let error = ModuleSettingSpec::validate_localization_registry(
             "storefront",

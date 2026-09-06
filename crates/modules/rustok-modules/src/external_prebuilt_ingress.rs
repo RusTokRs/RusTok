@@ -12,21 +12,18 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    ArtifactAdmissionLimits, ArtifactPayloadKind, ArtifactPayloadSource,
-    ArtifactRegistry, ControlPlaneInfrastructure, DurableArtifactBlobStore,
-    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor,
-    ModuleCommandContext, ModuleInstallationScope, OciArtifactReference,
-    ReleaseAdmissionIntentJournal, ReleaseAdmissionJournalError,
-    TrustVerificationRequest, TrustVerifier,
+    ArtifactAdmissionLimits, ArtifactPayloadKind, ArtifactPayloadSource, ArtifactRegistry,
+    ControlPlaneInfrastructure, DurableArtifactBlobStore,
+    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor, ModuleCommandContext,
+    ModuleInstallationScope, OciArtifactReference, ReleaseAdmissionIntentJournal,
+    ReleaseAdmissionJournalError, TrustVerificationRequest, TrustVerifier,
 };
 
 /// Verified publisher/ownership evidence for an external prebuilt artifact.
@@ -79,9 +76,10 @@ impl ExternalLineageEvidence {
             ));
         }
         if !valid_sha256_digest(&self.source_digest) {
-            return Err(ExternalPrebuiltIngressError::InvalidLineage(
-                format!("lineage source digest `{}` is not a valid sha256 digest", self.source_digest),
-            ));
+            return Err(ExternalPrebuiltIngressError::InvalidLineage(format!(
+                "lineage source digest `{}` is not a valid sha256 digest",
+                self.source_digest
+            )));
         }
         let trimmed_toolchain = self.build_toolchain.trim();
         if trimmed_toolchain.is_empty()
@@ -123,9 +121,10 @@ impl ExternalSignatureEvidence {
             ));
         }
         if !valid_sha256_digest(&self.signature_digest) {
-            return Err(ExternalPrebuiltIngressError::InvalidSignature(
-                format!("signature digest `{}` is not a valid sha256 digest", self.signature_digest),
-            ));
+            return Err(ExternalPrebuiltIngressError::InvalidSignature(format!(
+                "signature digest `{}` is not a valid sha256 digest",
+                self.signature_digest
+            )));
         }
         if !self.verified {
             return Err(ExternalPrebuiltIngressError::InvalidSignature(
@@ -158,9 +157,10 @@ impl ExternalSbomEvidence {
             ));
         }
         if !valid_sha256_digest(&self.sbom_digest) {
-            return Err(ExternalPrebuiltIngressError::InvalidSbom(
-                format!("SBOM digest `{}` is not a valid sha256 digest", self.sbom_digest),
-            ));
+            return Err(ExternalPrebuiltIngressError::InvalidSbom(format!(
+                "SBOM digest `{}` is not a valid sha256 digest",
+                self.sbom_digest
+            )));
         }
         if self.media_type.trim().is_empty() || self.media_type.chars().any(char::is_control) {
             return Err(ExternalPrebuiltIngressError::InvalidSbom(
@@ -198,9 +198,10 @@ impl ExternalProvenanceEvidence {
             ));
         }
         if !valid_sha256_digest(&self.provenance_digest) {
-            return Err(ExternalPrebuiltIngressError::InvalidProvenance(
-                format!("provenance digest `{}` is not a valid sha256 digest", self.provenance_digest),
-            ));
+            return Err(ExternalPrebuiltIngressError::InvalidProvenance(format!(
+                "provenance digest `{}` is not a valid sha256 digest",
+                self.provenance_digest
+            )));
         }
         if self.media_type.trim().is_empty() || self.media_type.chars().any(char::is_control) {
             return Err(ExternalPrebuiltIngressError::InvalidProvenance(
@@ -238,7 +239,8 @@ impl ExternalAbiCapabilityEvidence {
             }
             ArtifactPayloadKind::Sidecar => {
                 return Err(ExternalPrebuiltIngressError::InvalidAbiCapability(
-                    "sidecar payload kind cannot enter dynamic external prebuilt ingress".to_string(),
+                    "sidecar payload kind cannot enter dynamic external prebuilt ingress"
+                        .to_string(),
                 ));
             }
         }
@@ -428,7 +430,10 @@ fn valid_sha256_digest(digest: &str) -> bool {
         return false;
     }
     let hex = &digest[7..];
-    hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+    hex.len() == 64
+        && hex
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
 }
 
 impl ExternalPrebuiltIngressService {

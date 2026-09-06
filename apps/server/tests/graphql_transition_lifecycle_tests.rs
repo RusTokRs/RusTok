@@ -11,7 +11,10 @@ async fn setup_db() -> DatabaseConnection {
         Uuid::new_v4()
     );
     let mut options = ConnectOptions::new(url);
-    options.max_connections(1).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
     let db = Database::connect(options).await.expect("sqlite connection");
     let manager = SchemaManager::new(&db);
     for migration in rustok_modules::migrations::migrations() {

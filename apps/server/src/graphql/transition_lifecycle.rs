@@ -46,9 +46,16 @@ impl From<ModuleTransitionCheckpoint> for ModuleTransitionCheckpointGql {
                 ModuleTransitionStateGql::Observing,
                 Some(format!("Timeout at {}", timeout_at.to_rfc3339())),
             ),
-            ModuleTransitionState::PointOfNoReturn { reason, committed_at } => (
+            ModuleTransitionState::PointOfNoReturn {
+                reason,
+                committed_at,
+            } => (
                 ModuleTransitionStateGql::PointOfNoReturn,
-                Some(format!("Committed at {}: {}", committed_at.to_rfc3339(), reason)),
+                Some(format!(
+                    "Committed at {}: {}",
+                    committed_at.to_rfc3339(),
+                    reason
+                )),
             ),
             ModuleTransitionState::RecoveredToPredecessor { failure_reason, .. } => (
                 ModuleTransitionStateGql::RecoveredToPredecessor,
@@ -66,7 +73,8 @@ impl From<ModuleTransitionCheckpoint> for ModuleTransitionCheckpointGql {
 
         Self {
             operation_id: cp.operation_id,
-            revision: i64::try_from(cp.revision).unwrap_or(i64::MAX),
+            revision: i64::try_from(cp.revision)
+                .expect("persisted transition revisions are constrained to BIGINT"),
             module_slug: cp.module_slug,
             tenant_id: cp.tenant_id,
             predecessor_digest: cp.predecessor_digest,
@@ -83,11 +91,12 @@ impl From<ModuleTransitionCheckpoint> for ModuleTransitionCheckpointGql {
 
 pub(crate) fn map_transition_service_error(error: ModuleTransitionServiceError) -> FieldError {
     match error {
-        ModuleTransitionServiceError::NotFound(_) => FieldError::new("Transition checkpoint not found")
-            .extend_with(|_, extensions| {
+        ModuleTransitionServiceError::NotFound(_) => {
+            FieldError::new("Transition checkpoint not found").extend_with(|_, extensions| {
                 extensions.set("code", "CHECKPOINT_NOT_FOUND");
                 extensions.set("retryable_issue", false);
-            }),
+            })
+        }
         ModuleTransitionServiceError::AuthorizationDenied => {
             <FieldError as GraphQLError>::permission_denied(
                 "Permission denied for the module transition scope",
@@ -96,16 +105,14 @@ pub(crate) fn map_transition_service_error(error: ModuleTransitionServiceError) 
         ModuleTransitionServiceError::InvalidCommand(message) => {
             <FieldError as GraphQLError>::bad_user_input(&message)
         }
-        ModuleTransitionServiceError::RevisionConflict { expected, current } => {
-            FieldError::new(format!(
-                "Transition revision conflict: expected {expected}, current {current}"
-            ))
-            .extend_with(|_, extensions| {
-                extensions.set("code", "REVISION_CONFLICT");
-                extensions.set("retryable_issue", true);
-                extensions.set("current_revision", current);
-            })
-        }
+        ModuleTransitionServiceError::RevisionConflict { expected, current } => FieldError::new(
+            format!("Transition revision conflict: expected {expected}, current {current}"),
+        )
+        .extend_with(|_, extensions| {
+            extensions.set("code", "REVISION_CONFLICT");
+            extensions.set("retryable_issue", true);
+            extensions.set("current_revision", current);
+        }),
         ModuleTransitionServiceError::IdempotencyConflict => {
             FieldError::new("Idempotency key was used for a different transition command")
                 .extend_with(|_, extensions| {
@@ -113,17 +120,14 @@ pub(crate) fn map_transition_service_error(error: ModuleTransitionServiceError) 
                     extensions.set("retryable_issue", false);
                 })
         }
-        ModuleTransitionServiceError::OperationInProgress => {
-            FieldError::new("Transition command is already in progress").extend_with(
-                |_, extensions| {
-                    extensions.set("code", "OPERATION_IN_PROGRESS");
-                    extensions.set("retryable_issue", true);
-                },
-            )
-        }
-        ModuleTransitionServiceError::Coordinator(error) => {
-            map_transition_coordinator_error(error)
-        }
+        ModuleTransitionServiceError::OperationInProgress => FieldError::new(
+            "Transition command is already in progress",
+        )
+        .extend_with(|_, extensions| {
+            extensions.set("code", "OPERATION_IN_PROGRESS");
+            extensions.set("retryable_issue", true);
+        }),
+        ModuleTransitionServiceError::Coordinator(error) => map_transition_coordinator_error(error),
         ModuleTransitionServiceError::Store(_) | ModuleTransitionServiceError::Outbox(_) => {
             <FieldError as GraphQLError>::internal_error("Transition owner service is unavailable")
         }

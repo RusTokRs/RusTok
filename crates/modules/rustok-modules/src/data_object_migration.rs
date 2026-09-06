@@ -3,9 +3,7 @@
 //! Provides frozen and digest-pinned source object inventory, per-copy durable intents,
 //! verified target reference checkpointing, and strict acceptance verification.
 
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -13,9 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     ModuleCommandContext,
-    data::{
-        configure_tenant_scope, now_expression, placeholder, revision_value, uuid_value,
-    },
+    data::{configure_tenant_scope, now_expression, placeholder, revision_value, uuid_value},
 };
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -28,7 +24,9 @@ pub enum ArtifactDataObjectMigrationError {
     EmptyReason,
     #[error("Target object '{0}' already exists with different digest; cannot overwrite")]
     TargetObjectConflict(String),
-    #[error("Manifest digest mismatch after copy: source {source_manifest}, target {target_manifest}")]
+    #[error(
+        "Manifest digest mismatch after copy: source {source_manifest}, target {target_manifest}"
+    )]
     ManifestMismatch {
         source_manifest: String,
         target_manifest: String,
@@ -116,7 +114,7 @@ impl ArtifactDataObjectMigrationService {
         let mut hasher = Sha256::new();
         hasher.update(tenant_id.as_bytes());
         hasher.update(module_slug.as_bytes());
-        hasher.update(&source_contract_revision.to_be_bytes());
+        hasher.update(source_contract_revision.to_be_bytes());
 
         let count = rows.len() as u64;
         for row in rows {
@@ -126,7 +124,7 @@ impl ArtifactDataObjectMigrationService {
 
             hasher.update(object_name.as_bytes());
             hasher.update(digest_sha256.as_bytes());
-            hasher.update(&size_bytes.to_be_bytes());
+            hasher.update(size_bytes.to_be_bytes());
         }
 
         let digest = format!("sha256:{}", hex::encode(hasher.finalize()));
@@ -317,13 +315,18 @@ impl ArtifactDataObjectMigrationService {
                 .map_err(storage_error)?;
 
             if let Some(target_row) = target_existing {
-                let existing_digest: String = target_row.try_get("", "digest_sha256").map_err(storage_error)?;
+                let existing_digest: String = target_row
+                    .try_get("", "digest_sha256")
+                    .map_err(storage_error)?;
                 if existing_digest != digest_sha256 {
-                    return Err(ArtifactDataObjectMigrationError::TargetObjectConflict(object_name));
+                    return Err(ArtifactDataObjectMigrationError::TargetObjectConflict(
+                        object_name,
+                    ));
                 }
             } else {
                 // Insert target reference with distinct target storage key
-                let target_storage_key = format!("{}:r{}", storage_key, request.target_contract_revision);
+                let target_storage_key =
+                    format!("{}:r{}", storage_key, request.target_contract_revision);
                 transaction
                     .execute_raw(Statement::from_sql_and_values(
                         backend,
@@ -404,7 +407,7 @@ impl ArtifactDataObjectMigrationService {
         let mut target_hasher = Sha256::new();
         target_hasher.update(request.tenant_id.as_bytes());
         target_hasher.update(request.module_slug.as_bytes());
-        target_hasher.update(&request.source_contract_revision.to_be_bytes());
+        target_hasher.update(request.source_contract_revision.to_be_bytes());
 
         for row in target_rows {
             let object_name: String = row.try_get("", "object_name").map_err(storage_error)?;
@@ -413,7 +416,7 @@ impl ArtifactDataObjectMigrationService {
 
             target_hasher.update(object_name.as_bytes());
             target_hasher.update(digest_sha256.as_bytes());
-            target_hasher.update(&size_bytes.to_be_bytes());
+            target_hasher.update(size_bytes.to_be_bytes());
         }
 
         let target_manifest = format!("sha256:{}", hex::encode(target_hasher.finalize()));

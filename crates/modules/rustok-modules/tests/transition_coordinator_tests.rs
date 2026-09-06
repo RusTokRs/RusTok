@@ -116,8 +116,7 @@ fn test_incident_recovery_and_zero_flapping_invariant() {
     assert!(coordinator.state().is_terminal());
 
     // 2. A subsequent recovery attempt must be rejected (single-attempt limit)
-    let second_attempt =
-        coordinator.record_predecessor_recovery("Subsequent incident".to_string());
+    let second_attempt = coordinator.record_predecessor_recovery("Subsequent incident".to_string());
     assert!(matches!(
         second_attempt,
         Err(TransitionCoordinatorError::OperationAlreadyTerminal(..))

@@ -219,9 +219,7 @@ impl ArtifactDataRecoveryReadinessService {
                     .map_err(|e| PostgresRecoveryEvidenceError::Storage(e.to_string()))?;
 
                 let (lsn, wal_level) = if let Some(row) = row_opt {
-                    let lsn: String = row
-                        .try_get("", "lsn")
-                        .unwrap_or_else(|_| "0/0".to_string());
+                    let lsn: String = row.try_get("", "lsn").unwrap_or_else(|_| "0/0".to_string());
                     let wal_level: String = row
                         .try_get("", "wal_level")
                         .unwrap_or_else(|_| "replica".to_string());
@@ -234,7 +232,7 @@ impl ArtifactDataRecoveryReadinessService {
                 hasher.update(b"postgres");
                 hasher.update(lsn.as_bytes());
                 hasher.update(wal_level.as_bytes());
-                hasher.update(&now.timestamp().to_be_bytes());
+                hasher.update(now.timestamp().to_be_bytes());
                 let evidence_digest = format!("sha256:{}", hex::encode(hasher.finalize()));
 
                 Ok(PlatformPostgresRecoveryEvidence {
@@ -267,7 +265,7 @@ impl ArtifactDataRecoveryReadinessService {
                 let mut hasher = Sha256::new();
                 hasher.update(b"sqlite");
                 hasher.update(tag.as_bytes());
-                hasher.update(&now.timestamp().to_be_bytes());
+                hasher.update(now.timestamp().to_be_bytes());
                 let evidence_digest = format!("sha256:{}", hex::encode(hasher.finalize()));
 
                 Ok(PlatformPostgresRecoveryEvidence {
