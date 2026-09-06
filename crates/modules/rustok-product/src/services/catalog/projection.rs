@@ -5,14 +5,13 @@ fn resolve_image_alt_text(
     locale: &str,
     fallback_locale: Option<&str>,
 ) -> Option<String> {
+    let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
     let selected = translations
         .iter()
         .find(|translation| rustok_api::locale_tags_match(&translation.locale, locale))
         .or_else(|| {
-            fallback_locale.and_then(|fallback_locale| {
-                translations.iter().find(|translation| {
-                    rustok_api::locale_tags_match(&translation.locale, fallback_locale)
-                })
+            translations.iter().find(|translation| {
+                rustok_api::locale_tags_match(&translation.locale, fallback_locale)
             })
         })
         .or_else(|| translations.first());
@@ -433,6 +432,10 @@ mod tests {
             resolve_image_alt_text(&translations, "de", Some("en")).as_deref(),
             Some("English alt")
         );
+        assert_eq!(
+            resolve_image_alt_text(&translations, "de", None).as_deref(),
+            Some("English alt")
+        );
     }
 
     #[test]
@@ -443,9 +446,6 @@ mod tests {
             image_translation(image_id, "fr", None),
         ];
 
-        assert_eq!(
-            resolve_image_alt_text(&translations, "fr", Some("en")),
-            None
-        );
+        assert_eq!(resolve_image_alt_text(&translations, "fr", Some("en")), None);
     }
 }
