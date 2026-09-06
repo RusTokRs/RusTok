@@ -360,9 +360,11 @@
         "crates/modules/rustok-modules/README.md",
         "crates/modules/rustok-modules-translation/src/lib.rs",
         "apps/server/src/static_settings_translation_target.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/static_settings_translation_target_postgres.rs",
+        ".github/workflows/settings-translation-target-postgres.yml"
       ],
-      "blockers": ["Collect retained production-database multi-replica apply/replay and change-cursor recovery evidence before enabling this pilot in production."]
+      "blockers": ["Production enablement remains an operator rollout decision; repository-hosted PostgreSQL multi-replica apply/replay and change-cursor recovery are retained by the focused Settings evidence test/workflow, including post-merge main run 34032610739 on c6d591dc9a9e9e633e7e83c0999c02f727c694f8."]
     },
     {
       "id": "oauth_app_copy",
