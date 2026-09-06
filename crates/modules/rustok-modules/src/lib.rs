@@ -89,6 +89,7 @@ mod static_settings_source_locale;
 pub mod static_settings_translation_read;
 mod transition_coordinator;
 mod transition_receipts;
+mod transition_service;
 mod transition_store;
 mod trust;
 pub mod wave_rollout;
@@ -187,8 +188,11 @@ pub use settings_guard::{
 };
 pub use transition_coordinator::{
     ModuleTransitionCheckpoint, ModuleTransitionCoordinator, ModuleTransitionFinalizeCommand,
-    ModuleTransitionRecoveryCommand, ModuleTransitionState, StartTransitionInput,
-    TransitionCoordinatorError, evaluate_transition_watchdog,
+    ModuleTransitionState, StartTransitionInput, TransitionCoordinatorError,
+};
+pub use transition_service::{
+    ModuleTransitionFinalizeReceipt, ModuleTransitionServiceError, SeaOrmModuleTransitionService,
+    evaluate_transition_watchdog,
 };
 pub use transition_receipts::{
     TransitionApplyReceipt, TransitionCancellationReceipt, TransitionConfirmationReceipt,

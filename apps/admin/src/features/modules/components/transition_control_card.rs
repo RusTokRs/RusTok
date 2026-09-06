@@ -3,7 +3,6 @@ use leptos_auth::hooks::{use_tenant, use_token};
 
 use crate::features::modules::transport::{
     ModuleTransitionCheckpoint, ModuleTransitionState, RetentionHold, finalize_module_transition,
-    trigger_module_recovery,
 };
 
 fn short_digest(digest: &str) -> String {
@@ -23,8 +22,6 @@ pub fn TransitionControlCard(
     let token = use_token();
     let tenant = use_tenant();
 
-    let (show_rollback_prompt, set_show_rollback_prompt) = signal(false);
-    let (rollback_reason, set_rollback_reason) = signal(String::new());
     let (is_busy, set_is_busy) = signal(false);
     let (action_error, set_action_error) = signal(Option::<String>::None);
     let (show_holds, set_show_holds) = signal(false);
@@ -32,7 +29,6 @@ pub fn TransitionControlCard(
     let op_id = checkpoint.operation_id.clone();
     let is_observing = checkpoint.state == ModuleTransitionState::Observing;
     let is_past_point_of_no_return = checkpoint.state == ModuleTransitionState::PointOfNoReturn;
-    let is_recovering = checkpoint.state == ModuleTransitionState::RollbackTriggered;
     let is_failed = checkpoint.state == ModuleTransitionState::FailedClosed;
     let is_converged = checkpoint.state == ModuleTransitionState::Converged;
     let recovery_limit_reached = checkpoint.recovery_attempt_count >= 1;
@@ -48,7 +44,7 @@ pub fn TransitionControlCard(
         ModuleTransitionState::PointOfNoReturn => {
             "bg-purple-500/15 text-purple-500 border-purple-500/30"
         }
-        ModuleTransitionState::FailedClosed | ModuleTransitionState::RollbackTriggered => {
+        ModuleTransitionState::FailedClosed => {
             "bg-rose-500/15 text-rose-500 border-rose-500/30"
         }
         _ => "bg-blue-500/15 text-blue-500 border-blue-500/30",
@@ -61,50 +57,14 @@ pub fn TransitionControlCard(
         ModuleTransitionState::Activating => "Activating",
         ModuleTransitionState::Observing => "Observing Window",
         ModuleTransitionState::PointOfNoReturn => "Point of No Return (Irreversible)",
-        ModuleTransitionState::RollbackTriggered => "Rollback Triggered",
         ModuleTransitionState::RecoveredToPredecessor => "Recovered to Predecessor",
         ModuleTransitionState::Converged => "Converged",
         ModuleTransitionState::FailedClosed => "Failed Closed (Quarantined)",
     };
 
-    let trigger_rollback_action = Callback::new({
-        let op_id = op_id.clone();
-        move |()| {
-            let reason = rollback_reason.get();
-            if reason.trim().is_empty() {
-                set_action_error.set(Some(
-                    "Please specify a reason for emergency rollback.".to_string(),
-                ));
-                return;
-            }
-
-            set_is_busy.set(true);
-            set_action_error.set(None);
-
-            let op_id = op_id.clone();
-            let token_val = token.get();
-            let tenant_val = tenant.get();
-
-            leptos::task::spawn_local(async move {
-                match trigger_module_recovery(token_val, tenant_val, op_id, reason).await {
-                    Ok(_) => {
-                        set_is_busy.set(false);
-                        set_show_rollback_prompt.set(false);
-                        if let Some(cb) = on_refresh {
-                            cb.run(());
-                        }
-                    }
-                    Err(err) => {
-                        set_is_busy.set(false);
-                        set_action_error.set(Some(format!("Rollback failed: {err:?}")));
-                    }
-                }
-            });
-        }
-    });
-
     let finalize_transition_action = Callback::new({
         let op_id = op_id.clone();
+        let expected_revision = checkpoint.revision;
         move |()| {
             set_is_busy.set(true);
             set_action_error.set(None);
@@ -112,9 +72,18 @@ pub fn TransitionControlCard(
             let op_id = op_id.clone();
             let token_val = token.get();
             let tenant_val = tenant.get();
+            let idempotency_key = uuid::Uuid::new_v4().to_string();
 
             leptos::task::spawn_local(async move {
-                match finalize_module_transition(token_val, tenant_val, op_id).await {
+                match finalize_module_transition(
+                    token_val,
+                    tenant_val,
+                    op_id,
+                    expected_revision,
+                    idempotency_key,
+                )
+                .await
+                {
                     Ok(_) => {
                         set_is_busy.set(false);
                         if let Some(cb) = on_refresh {
@@ -266,7 +235,7 @@ pub fn TransitionControlCard(
                 }}
             </div>
 
-            // Action Buttons / Rollback Confirmation
+            // Transition action
             <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
                 <div class="flex items-center gap-2">
                     // Finalize Transition Button
@@ -286,66 +255,10 @@ pub fn TransitionControlCard(
                     }}
                 </div>
 
-                <div class="flex items-center gap-2">
-                    // Emergency Rollback Button
-                    {if (is_observing || is_recovering || !is_converged) && !recovery_limit_reached && !is_past_point_of_no_return {
-                        Some(view! {
-                            <button
-                                type="button"
-                                class="inline-flex items-center justify-center rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-rose-500 disabled:opacity-50"
-                                disabled=move || is_busy.get() || recovery_limit_reached
-                                on:click=move |_| set_show_rollback_prompt.update(|v| *v = !*v)
-                            >
-                                "Emergency Rollback"
-                            </button>
-                        })
-                    } else {
-                        None
-                    }}
-                </div>
+                <p class="text-[11px] text-muted-foreground">
+                    "Rollback is executed from the selected active installation so the owner can verify its retained direct predecessor and capability grant."
+                </p>
             </div>
-
-            // Rollback Prompt Form
-            {move || if show_rollback_prompt.get() {
-                Some(view! {
-                    <div class="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/5 p-4 space-y-3">
-                        <div class="space-y-1">
-                            <h4 class="text-xs font-semibold text-rose-500">"Confirm Single-Attempt Rollback"</h4>
-                            <p class="text-[11px] text-muted-foreground">
-                                "This will immediately demote candidate N+1, return traffic to direct predecessor N, and advance the security epoch."
-                            </p>
-                        </div>
-
-                        <input
-                            type="text"
-                            placeholder="Reason for emergency rollback (e.g. Memory leak on node 2)..."
-                            class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-rose-500"
-                            prop:value=move || rollback_reason.get()
-                            on:input=move |ev| set_rollback_reason.set(event_target_value(&ev))
-                        />
-
-                        <div class="flex justify-end gap-2">
-                            <button
-                                type="button"
-                                class="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-accent"
-                                on:click=move |_| set_show_rollback_prompt.set(false)
-                            >
-                                "Cancel"
-                            </button>
-                            <button
-                                type="button"
-                                class="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-rose-500 disabled:opacity-50"
-                                disabled=move || is_busy.get()
-                                on:click=move |_| trigger_rollback_action.run(())
-                            >
-                                {if is_busy.get() { "Executing..." } else { "Confirm & Revert" }}
-                            </button>
-                        </div>
-                    </div>
-                })
-            } else {
-                None
-            }}
         </div>
     }
 }

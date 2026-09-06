@@ -353,8 +353,6 @@ pub enum ModuleTransitionState {
     Observing,
     #[serde(rename = "POINT_OF_NO_RETURN")]
     PointOfNoReturn,
-    #[serde(rename = "ROLLBACK_TRIGGERED")]
-    RollbackTriggered,
     #[serde(rename = "RECOVERED_TO_PREDECESSOR")]
     RecoveredToPredecessor,
     #[serde(rename = "CONVERGED")]
@@ -367,6 +365,7 @@ pub enum ModuleTransitionState {
 pub struct ModuleTransitionCheckpoint {
     #[serde(rename = "operationId")]
     pub operation_id: String,
+    pub revision: i64,
     #[serde(rename = "moduleSlug")]
     pub module_slug: String,
     #[serde(rename = "tenantId")]
@@ -411,12 +410,6 @@ pub struct ModuleTransitionCheckpointResponse {
 pub struct ModuleRetentionHoldsResponse {
     #[serde(rename = "moduleRetentionHolds")]
     pub holds: Vec<RetentionHold>,
-}
-
-#[derive(Deserialize)]
-pub struct TriggerModuleRecoveryResponse {
-    #[serde(rename = "triggerModuleRecovery")]
-    pub checkpoint: ModuleTransitionCheckpoint,
 }
 
 #[derive(Deserialize)]

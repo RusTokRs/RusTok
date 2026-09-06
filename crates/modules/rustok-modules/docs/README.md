@@ -648,7 +648,25 @@ rollback predecessor. `activate_artifact` is the scoped owner transition. It
 serializes one `(scope, slug)`, records only the active non-uninstalled
 predecessor, makes that predecessor inactive, writes the candidate's durable
 predecessor pointer and replayable operation receipt, then makes the candidate
-active and emits `module.artifact.activated` in the same transaction.
+active, creates the transition checkpoint and rollout-window retention hold,
+and emits `module.artifact.activated` in the same transaction. Failure to
+persist either transition record aborts activation.
+
+`rollback_artifact` is the only dynamic serving recovery command. It verifies
+that the retained target is the direct predecessor recorded by the activation
+operation, rejects closed or stale transition revisions, and atomically changes
+both admission selections, advances the checkpoint to
+`RecoveredToPredecessor`, releases the rollout hold, records its idempotency
+receipt, and emits `module.artifact.rolled_back`. No transport may mark a
+checkpoint recovered without completing this serving transition.
+
+`SeaOrmModuleTransitionService::finalize` owns explicit convergence. The
+authenticated command carries tenant scope, `modules:manage` evidence,
+`expected_revision`, and an idempotency key. Its checkpoint CAS, retention-hold
+release, operation receipt, and `module.transition.finalized` event commit in
+one transaction. The watchdog uses the same owner boundary for elapsed
+observation windows. A stale security epoch fails closed and retains recovery
+evidence because automatic rollback cannot reuse an obsolete capability grant.
 
 File-backed admission uses `ArtifactPayloadSource::TemporaryFile` and
 `DurableArtifactBlobStore::stage_file`; the storage adapter hashes the staging

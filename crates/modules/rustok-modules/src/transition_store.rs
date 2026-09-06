@@ -6,7 +6,7 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{
     ActiveModelBehavior, ActiveModelTrait, ConnectionTrait, DeriveEntityModel, DerivePrimaryKey,
-    DeriveRelation, EntityTrait, EnumIter, PrimaryKeyTrait, Set,
+    DeriveRelation, EntityTrait, EnumIter, PrimaryKeyTrait, Set, Statement,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -24,6 +24,14 @@ pub enum TransitionStoreError {
     Serialization(#[from] serde_json::Error),
     #[error("Checkpoint not found for operation `{0}`")]
     CheckpointNotFound(Uuid),
+    #[error(
+        "Checkpoint revision conflict for operation `{operation_id}`: expected `{expected}`, current `{current}`"
+    )]
+    RevisionConflict {
+        operation_id: Uuid,
+        expected: u64,
+        current: u64,
+    },
     #[error("Corrupt stored state data: {0}")]
     CorruptData(String),
 }
@@ -91,7 +99,10 @@ pub mod retention_hold_entity {
 pub struct TransitionCheckpointStore;
 
 impl TransitionCheckpointStore {
-    /// Persists or updates an immutable transition checkpoint in the database.
+    /// Inserts a checkpoint or advances it by exactly one owner revision.
+    ///
+    /// Existing rows are updated with compare-and-swap semantics. A caller
+    /// cannot overwrite a concurrent transition decision with a stale copy.
     pub async fn save_checkpoint<C: ConnectionTrait>(
         db: &C,
         checkpoint: &ModuleTransitionCheckpoint,
@@ -106,9 +117,9 @@ impl TransitionCheckpointStore {
             tenant_id: Set(checkpoint.tenant_id),
             predecessor_digest: Set(checkpoint.predecessor_digest.clone()),
             candidate_digest: Set(checkpoint.candidate_digest.clone()),
-            state: Set(state_json),
+            state: Set(state_json.clone()),
             security_epoch: Set(checkpoint.security_epoch.value() as i64),
-            fences: Set(fences_json),
+            fences: Set(fences_json.clone()),
             recovery_attempt_count: Set(checkpoint.recovery_attempt_count as i32),
             created_at: Set(checkpoint.created_at),
             updated_at: Set(checkpoint.updated_at),
@@ -118,8 +129,83 @@ impl TransitionCheckpointStore {
             .one(db)
             .await?
         {
-            Some(_) => {
-                model.update(db).await?;
+            Some(existing) => {
+                let current = u64::try_from(existing.revision).map_err(|_| {
+                    TransitionStoreError::CorruptData(
+                        "Checkpoint revision is outside the supported range".to_string(),
+                    )
+                })?;
+                let expected = checkpoint.revision.checked_sub(1).ok_or_else(|| {
+                    TransitionStoreError::CorruptData(
+                        "Checkpoint revision must be positive".to_string(),
+                    )
+                })?;
+                if current != expected {
+                    return Err(TransitionStoreError::RevisionConflict {
+                        operation_id: checkpoint.operation_id,
+                        expected,
+                        current,
+                    });
+                }
+
+                let backend = db.get_database_backend();
+                let result = db
+                    .execute_raw(Statement::from_sql_and_values(
+                        backend,
+                        format!(
+                            "UPDATE module_transition_checkpoints SET revision = {}, state = {}, \
+                             security_epoch = {}, fences = {}, recovery_attempt_count = {}, updated_at = {} \
+                             WHERE operation_id = {} AND revision = {}",
+                            crate::data::placeholder(backend, 1),
+                            crate::data::placeholder(backend, 2),
+                            crate::data::placeholder(backend, 3),
+                            crate::data::placeholder(backend, 4),
+                            crate::data::placeholder(backend, 5),
+                            crate::data::placeholder(backend, 6),
+                            crate::data::placeholder(backend, 7),
+                            crate::data::placeholder(backend, 8),
+                        ),
+                        vec![
+                            i64::try_from(checkpoint.revision)
+                                .map_err(|_| TransitionStoreError::CorruptData(
+                                    "Checkpoint revision exceeds the database range".to_string(),
+                                ))?
+                                .into(),
+                            state_json.into(),
+                            i64::try_from(checkpoint.security_epoch.value())
+                                .map_err(|_| TransitionStoreError::CorruptData(
+                                    "Security epoch exceeds the database range".to_string(),
+                                ))?
+                                .into(),
+                            fences_json.into(),
+                            i32::try_from(checkpoint.recovery_attempt_count)
+                                .map_err(|_| TransitionStoreError::CorruptData(
+                                    "Recovery attempt count exceeds the database range".to_string(),
+                                ))?
+                                .into(),
+                            checkpoint.updated_at.into(),
+                            crate::data::uuid_value(checkpoint.operation_id, backend),
+                            i64::try_from(expected)
+                                .map_err(|_| TransitionStoreError::CorruptData(
+                                    "Expected checkpoint revision exceeds the database range".to_string(),
+                                ))?
+                                .into(),
+                        ],
+                    ))
+                    .await?;
+                if result.rows_affected() != 1 {
+                    let current = Self::load_checkpoint(db, checkpoint.operation_id)
+                        .await?
+                        .ok_or(TransitionStoreError::CheckpointNotFound(
+                            checkpoint.operation_id,
+                        ))?
+                        .revision;
+                    return Err(TransitionStoreError::RevisionConflict {
+                        operation_id: checkpoint.operation_id,
+                        expected,
+                        current,
+                    });
+                }
             }
             None => {
                 model.insert(db).await?;

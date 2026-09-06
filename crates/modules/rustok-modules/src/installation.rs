@@ -14,9 +14,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use rustok_api::{
-    ArtifactPermissionRegistration, ArtifactPermissionRegistrationPort,
-    ArtifactPermissionScope, ReleasePermissionAdmissionRequest,
-    ScopedPermissionProjectionRequest,
+    ArtifactPermissionRegistration, ArtifactPermissionRegistrationPort, ArtifactPermissionScope,
+    ReleasePermissionAdmissionRequest, ScopedPermissionProjectionRequest,
 };
 use rustok_events::DomainEvent;
 use rustok_sandbox::{
@@ -437,7 +436,7 @@ pub trait ArtifactRegistry: Send + Sync {
 #[async_trait]
 pub trait ArtifactBlobStore: Send + Sync {
     async fn put_verified(&self, digest: &str, bytes: &[u8])
-    -> Result<(), ModuleInstallationError>;
+        -> Result<(), ModuleInstallationError>;
     async fn get_verified(&self, digest: &str) -> Result<Vec<u8>, ModuleInstallationError>;
 }
 
@@ -498,7 +497,9 @@ impl<B: DurableArtifactBlobStore + ?Sized> DurableArtifactBlobStore for Arc<B> {
         expected_media_type: &str,
         bytes: &[u8],
     ) -> Result<StagedArtifactBlob, ModuleInstallationError> {
-        (**self).stage(expected_digest, expected_media_type, bytes).await
+        (**self)
+            .stage(expected_digest, expected_media_type, bytes)
+            .await
     }
 
     async fn stage_file(
@@ -507,7 +508,9 @@ impl<B: DurableArtifactBlobStore + ?Sized> DurableArtifactBlobStore for Arc<B> {
         expected_media_type: &str,
         source: &std::path::Path,
     ) -> Result<StagedArtifactBlob, ModuleInstallationError> {
-        (**self).stage_file(expected_digest, expected_media_type, source).await
+        (**self)
+            .stage_file(expected_digest, expected_media_type, source)
+            .await
     }
 
     async fn publish(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError> {
@@ -1906,7 +1909,7 @@ impl SeaOrmArtifactInstallationStore {
 
         // Derive conflict fences and register transition checkpoint for coordinator & watchdog
         let fences = ConflictFenceSet::derive_module_update_fences(&slug, tenant_id, &[]);
-        let now = Utc::now();
+        let now = self.infrastructure.now();
         let timeout_at = now + chrono::Duration::seconds(300);
 
         // Place active rollout window retention hold for predecessor if present
@@ -1922,7 +1925,9 @@ impl SeaOrmArtifactInstallationStore {
                 },
                 created_at: now,
             };
-            let _ = RetentionHoldStore::insert_hold(&transaction, &hold).await;
+            RetentionHoldStore::insert_hold(&transaction, &hold)
+                .await
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         }
 
         // Save durable transition checkpoint for transition coordinator & watchdog
@@ -1940,7 +1945,9 @@ impl SeaOrmArtifactInstallationStore {
             created_at: now,
             updated_at: now,
         };
-        let _ = TransitionCheckpointStore::save_checkpoint(&transaction, &checkpoint).await;
+        TransitionCheckpointStore::save_checkpoint(&transaction, &checkpoint)
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         self.infrastructure
             .write_event(
                 &transaction,
@@ -3096,6 +3103,58 @@ impl SeaOrmArtifactInstallationStore {
                 "rollback target revision exceeds database range".into(),
             )
         })?;
+        let transition_row = transaction
+            .query_one_raw(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT operation_id, predecessor_installation_id \
+                     FROM module_artifact_activation_operations \
+                     WHERE installation_id = {} ORDER BY committed_at DESC LIMIT 1",
+                    placeholders.0,
+                ),
+                vec![uuid_value(request.installation_id, backend)],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .ok_or_else(|| {
+                ModuleInstallationError::AdmissionRevisionConflict(
+                    "rollback source has no durable activation transition".into(),
+                )
+            })?;
+        let transition_operation_id =
+            required_uuid_from_row(&transition_row, "operation_id", backend)?;
+        let recorded_predecessor =
+            optional_uuid_from_row(&transition_row, "predecessor_installation_id", backend)?;
+        if recorded_predecessor != Some(target_installation_id) {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "rollback target does not match the activation transition predecessor".into(),
+            ));
+        }
+        let transition_checkpoint = TransitionCheckpointStore::load_checkpoint(
+            &transaction,
+            transition_operation_id,
+        )
+        .await
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+        .ok_or_else(|| {
+            ModuleInstallationError::AdmissionRevisionConflict(
+                "rollback source transition checkpoint is unavailable".into(),
+            )
+        })?;
+        if transition_checkpoint.module_slug != source_slug
+            || transition_checkpoint.tenant_id != tenant_id
+        {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "rollback transition checkpoint scope does not match the source installation"
+                    .into(),
+            ));
+        }
+        let mut transition = crate::ModuleTransitionCoordinator::new(transition_checkpoint);
+        transition
+            .record_predecessor_recovery(request.reason.clone())
+            .map_err(|error| {
+                ModuleInstallationError::AdmissionRevisionConflict(error.to_string())
+            })?;
         let operation_id = self.infrastructure.new_id();
         transaction.execute_raw(Statement::from_sql_and_values(
             backend,
@@ -3144,6 +3203,12 @@ impl SeaOrmArtifactInstallationStore {
             format!("UPDATE module_artifact_installations SET capability_grant_revision = {} WHERE installation_id = {}", placeholders.0, placeholders.1),
             vec![target_capability_grant_revision.into(), uuid_value(target_installation_id, backend)],
         )).await.map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        TransitionCheckpointStore::save_checkpoint(&transaction, transition.checkpoint())
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        RetentionHoldStore::release_holds_for_operation(&transaction, transition_operation_id)
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         self.infrastructure
             .write_event(
                 &transaction,
@@ -5369,64 +5434,54 @@ mod tests {
             )
         };
         assert!(valid().is_ok());
-        assert!(
-            validate_lifecycle_command(
-                Uuid::nil(),
-                &ModuleInstallationScope::Platform,
-                1,
-                &lifecycle_context(None),
-                "operator request",
-            )
-            .is_err()
-        );
-        assert!(
-            validate_lifecycle_command(
-                installation_id,
-                &ModuleInstallationScope::Tenant {
-                    tenant_id: Uuid::nil(),
-                },
-                1,
-                &lifecycle_context(None),
-                "operator request",
-            )
-            .is_err()
-        );
-        assert!(
-            validate_lifecycle_command(
-                installation_id,
-                &ModuleInstallationScope::Platform,
-                1,
-                &ModuleCommandContext {
-                    actor_id: Uuid::nil(),
-                    ..lifecycle_context(None)
-                },
-                "operator request",
-            )
-            .is_err()
-        );
-        assert!(
-            validate_lifecycle_command(
-                installation_id,
-                &ModuleInstallationScope::Platform,
-                1,
-                &ModuleCommandContext {
-                    idempotency_key: Uuid::nil(),
-                    ..lifecycle_context(None)
-                },
-                "operator request",
-            )
-            .is_err()
-        );
-        assert!(
-            validate_lifecycle_command(
-                installation_id,
-                &ModuleInstallationScope::Platform,
-                u64::MAX,
-                &lifecycle_context(None),
-                "operator request",
-            )
-            .is_err()
-        );
+        assert!(validate_lifecycle_command(
+            Uuid::nil(),
+            &ModuleInstallationScope::Platform,
+            1,
+            &lifecycle_context(None),
+            "operator request",
+        )
+        .is_err());
+        assert!(validate_lifecycle_command(
+            installation_id,
+            &ModuleInstallationScope::Tenant {
+                tenant_id: Uuid::nil(),
+            },
+            1,
+            &lifecycle_context(None),
+            "operator request",
+        )
+        .is_err());
+        assert!(validate_lifecycle_command(
+            installation_id,
+            &ModuleInstallationScope::Platform,
+            1,
+            &ModuleCommandContext {
+                actor_id: Uuid::nil(),
+                ..lifecycle_context(None)
+            },
+            "operator request",
+        )
+        .is_err());
+        assert!(validate_lifecycle_command(
+            installation_id,
+            &ModuleInstallationScope::Platform,
+            1,
+            &ModuleCommandContext {
+                idempotency_key: Uuid::nil(),
+                ..lifecycle_context(None)
+            },
+            "operator request",
+        )
+        .is_err());
+        assert!(validate_lifecycle_command(
+            installation_id,
+            &ModuleInstallationScope::Platform,
+            u64::MAX,
+            &lifecycle_context(None),
+            "operator request",
+        )
+        .is_err());
     }
 
     #[test]
@@ -5695,7 +5750,8 @@ mod tests {
         async fn evaluate_permission_continuity(
             &self,
             request: rustok_api::PermissionContinuityEvaluationRequest,
-        ) -> Result<rustok_api::ArtifactPermissionContinuityReceipt, rustok_api::PortError> {
+        ) -> Result<rustok_api::ArtifactPermissionContinuityReceipt, rustok_api::PortError>
+        {
             let fingerprint = rustok_api::compute_canonical_authorization_fingerprint(
                 &request.candidate_permissions,
             );
@@ -5724,7 +5780,10 @@ mod tests {
             &self,
             request: ReleasePermissionAdmissionRequest,
         ) -> Result<(), rustok_api::PortError> {
-            self.admissions.lock().expect("registrar lock").push(request);
+            self.admissions
+                .lock()
+                .expect("registrar lock")
+                .push(request);
             Ok(())
         }
 
@@ -5732,14 +5791,18 @@ mod tests {
             &self,
             request: ScopedPermissionProjectionRequest,
         ) -> Result<(), rustok_api::PortError> {
-            self.projections.lock().expect("registrar lock").push(request);
+            self.projections
+                .lock()
+                .expect("registrar lock")
+                .push(request);
             Ok(())
         }
 
         async fn evaluate_permission_continuity(
             &self,
             request: rustok_api::PermissionContinuityEvaluationRequest,
-        ) -> Result<rustok_api::ArtifactPermissionContinuityReceipt, rustok_api::PortError> {
+        ) -> Result<rustok_api::ArtifactPermissionContinuityReceipt, rustok_api::PortError>
+        {
             let fingerprint = rustok_api::compute_canonical_authorization_fingerprint(
                 &request.candidate_permissions,
             );
@@ -6058,12 +6121,10 @@ mod tests {
         let digest = sha256_digest(b"retained artifact payload");
         let policy = SnapshotArtifactBlobRetentionPolicy::new(now, HashMap::new());
 
-        assert!(
-            !policy
-                .may_delete(&digest)
-                .await
-                .expect("missing retention rule fails closed")
-        );
+        assert!(!policy
+            .may_delete(&digest)
+            .await
+            .expect("missing retention rule fails closed"));
 
         let policy = SnapshotArtifactBlobRetentionPolicy::new(
             now,
@@ -6078,12 +6139,10 @@ mod tests {
             )]),
         );
 
-        assert!(
-            policy
-                .may_delete(&digest)
-                .await
-                .expect("expired unprotected rule allows deletion")
-        );
+        assert!(policy
+            .may_delete(&digest)
+            .await
+            .expect("expired unprotected rule allows deletion"));
     }
 
     #[tokio::test]
@@ -6688,11 +6747,9 @@ mod tests {
             i64::try_get(&checkpoint_operation, "", "revision").expect("checkpoint revision"),
             3
         );
-        assert!(
-            String::try_get(&checkpoint_operation, "", "request_digest")
-                .expect("checkpoint request digest")
-                .starts_with("sha256:")
-        );
+        assert!(String::try_get(&checkpoint_operation, "", "request_digest")
+            .expect("checkpoint request digest")
+            .starts_with("sha256:"));
         assert_eq!(
             String::try_get(&checkpoint_operation, "", "actor_id").expect("checkpoint actor"),
             checkpoint_actor_id.to_string()

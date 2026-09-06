@@ -26,6 +26,11 @@ around the owner contracts.
   native UI packages remain static-promotion-only.
 - Define the owner ports for marketplace publication, installation, activation,
   rollback and policy.
+- Own durable transition checkpoints and rollout-window retention holds.
+  Activation creates both atomically; direct-predecessor rollback updates the
+  checkpoint and serving selection in one transaction; convergence requires a
+  revision-guarded, idempotent owner command and emits transactional outbox
+  evidence.
 - Expose a transport-neutral marketplace catalog port for host-composed local
   and remote providers, plus an owner lifecycle snapshot for registry owners,
   requests, releases, validation gates, events, moderation policy, and

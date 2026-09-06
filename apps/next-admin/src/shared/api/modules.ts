@@ -105,13 +105,13 @@ export type ModuleTransitionState =
   | 'PRESTAGING'
   | 'ACTIVATING'
   | 'OBSERVING'
-  | 'ROLLBACK_TRIGGERED'
   | 'RECOVERED_TO_PREDECESSOR'
   | 'CONVERGED'
   | 'FAILED_CLOSED';
 
 export interface ModuleTransitionCheckpoint {
   operationId: string;
+  revision: number;
   moduleSlug: string;
   tenantId?: string | null;
   predecessorDigest?: string | null;
@@ -462,6 +462,7 @@ const TRANSITION_CHECKPOINT_QUERY = `
 query GetTransitionCheckpoint($opId: UUID!) {
   moduleTransitionCheckpoint(operationId: $opId) {
     operationId
+    revision
     moduleSlug
     tenantId
     predecessorDigest
@@ -480,6 +481,7 @@ const ACTIVE_MODULE_TRANSITIONS_QUERY = `
 query ActiveModuleTransitions {
   activeModuleTransitions {
     operationId
+    revision
     moduleSlug
     tenantId
     predecessorDigest
@@ -506,28 +508,11 @@ query GetRetentionHolds {
 }
 `;
 
-const TRIGGER_RECOVERY_MUTATION = `
-mutation TriggerRecovery($opId: UUID!, $reason: String!) {
-  triggerModuleRecovery(operationId: $opId, reason: $reason) {
-    operationId
-    moduleSlug
-    tenantId
-    predecessorDigest
-    candidateDigest
-    state
-    stateDetails
-    securityEpoch
-    recoveryAttemptCount
-    createdAt
-    updatedAt
-  }
-}
-`;
-
 const FINALIZE_TRANSITION_MUTATION = `
-mutation FinalizeTransition($opId: UUID!) {
-  finalizeModuleTransition(operationId: $opId) {
+mutation FinalizeTransition($opId: UUID!, $expectedRevision: Int!, $idempotencyKey: UUID!) {
+  finalizeModuleTransition(operationId: $opId, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey) {
     operationId
+    revision
     moduleSlug
     tenantId
     predecessorDigest
@@ -687,10 +672,6 @@ interface ActiveModuleTransitionsResponse {
 
 interface ModuleRetentionHoldsResponse {
   moduleRetentionHolds: RetentionHold[];
-}
-
-interface TriggerModuleRecoveryResponse {
-  triggerModuleRecovery: ModuleTransitionCheckpoint;
 }
 
 interface FinalizeModuleTransitionResponse {
@@ -1055,33 +1036,18 @@ export async function listRetentionHolds(
   return data.moduleRetentionHolds;
 }
 
-export async function triggerModuleRecovery(
-  operationId: string,
-  reason: string,
-  opts: GqlOpts = {}
-): Promise<ModuleTransitionCheckpoint> {
-  const data = await graphqlRequest<
-    { opId: string; reason: string },
-    TriggerModuleRecoveryResponse
-  >(
-    TRIGGER_RECOVERY_MUTATION,
-    { opId: operationId, reason },
-    opts.token,
-    opts.tenantSlug
-  );
-  return data.triggerModuleRecovery;
-}
-
 export async function finalizeModuleTransition(
   operationId: string,
+  expectedRevision: number,
+  idempotencyKey: string,
   opts: GqlOpts = {}
 ): Promise<ModuleTransitionCheckpoint> {
   const data = await graphqlRequest<
-    { opId: string },
+    { opId: string; expectedRevision: number; idempotencyKey: string },
     FinalizeModuleTransitionResponse
   >(
     FINALIZE_TRANSITION_MUTATION,
-    { opId: operationId },
+    { opId: operationId, expectedRevision, idempotencyKey },
     opts.token,
     opts.tenantSlug
   );

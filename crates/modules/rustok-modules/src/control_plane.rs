@@ -45,6 +45,7 @@ use crate::{
     SeaOrmModulePromotionService, SeaOrmModuleStaticDistributionBootstrapService,
     SeaOrmModuleStaticDistributionReleaseService, SeaOrmModuleStaticDistributionRolloutService,
     SeaOrmModuleStaticDistributionService, SeaOrmModuleStaticDistributionWorkerService,
+    SeaOrmModuleTransitionService,
     StorageArtifactBlobStore,
 };
 use rustok_storage::StorageRuntime;
@@ -326,6 +327,14 @@ impl ModuleControlPlane {
 
     pub fn installation(&self) -> SeaOrmArtifactInstallationStore {
         SeaOrmArtifactInstallationStore::with_infrastructure(
+            self.db.clone(),
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the durable owner for transition reads and convergence writes.
+    pub fn transitions(&self) -> SeaOrmModuleTransitionService {
+        SeaOrmModuleTransitionService::with_infrastructure(
             self.db.clone(),
             self.infrastructure.clone(),
         )

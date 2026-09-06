@@ -627,6 +627,8 @@ fn schema_registry_covers_all_previously_unregistered_root_event_types() {
         "module.artifact.deactivated",
         "module.artifact.migration_checkpointed",
         "module.artifact.rolled_back",
+        "module.transition.failed_closed",
+        "module.transition.finalized",
         "module.artifact.secret_bound",
         "module.artifact.tenant_disabled",
         "module.artifact.tenant_enabled",

@@ -103,10 +103,10 @@ fn test_incident_recovery_and_zero_flapping_invariant() {
         .advance_to_activating(&security_registry, Duration::from_secs(60))
         .unwrap();
 
-    // 1. Candidate panics during observation window -> trigger automatic recovery
+    // 1. The installation owner reports a completed predecessor recovery.
     coordinator
-        .record_recovery_trigger("Watchdog: Process exited with status 137".to_string())
-        .expect("initial recovery trigger must succeed");
+        .record_predecessor_recovery("Watchdog: Process exited with status 137".to_string())
+        .expect("initial predecessor recovery must succeed");
 
     assert!(matches!(
         coordinator.state(),
@@ -116,7 +116,8 @@ fn test_incident_recovery_and_zero_flapping_invariant() {
     assert!(coordinator.state().is_terminal());
 
     // 2. A subsequent recovery attempt must be rejected (single-attempt limit)
-    let second_attempt = coordinator.record_recovery_trigger("Subsequent incident".to_string());
+    let second_attempt =
+        coordinator.record_predecessor_recovery("Subsequent incident".to_string());
     assert!(matches!(
         second_attempt,
         Err(TransitionCoordinatorError::OperationAlreadyTerminal(..))

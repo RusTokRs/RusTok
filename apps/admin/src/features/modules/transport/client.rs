@@ -636,6 +636,7 @@ const TRANSITION_CHECKPOINT_QUERY: &str = r#"
 query GetTransitionCheckpoint($opId: UUID!) {
     moduleTransitionCheckpoint(operationId: $opId) {
         operationId
+        revision
         moduleSlug
         tenantId
         predecessorDigest
@@ -654,6 +655,7 @@ const ACTIVE_MODULE_TRANSITIONS_QUERY: &str = r#"
 query ActiveModuleTransitions {
     activeModuleTransitions {
         operationId
+        revision
         moduleSlug
         tenantId
         predecessorDigest
@@ -680,28 +682,11 @@ query GetRetentionHolds {
 }
 "#;
 
-const TRIGGER_RECOVERY_MUTATION: &str = r#"
-mutation TriggerRecovery($opId: UUID!, $reason: String!) {
-    triggerModuleRecovery(operationId: $opId, reason: $reason) {
-        operationId
-        moduleSlug
-        tenantId
-        predecessorDigest
-        candidateDigest
-        state
-        stateDetails
-        securityEpoch
-        recoveryAttemptCount
-        createdAt
-        updatedAt
-    }
-}
-"#;
-
 const FINALIZE_TRANSITION_MUTATION: &str = r#"
-mutation FinalizeTransition($opId: UUID!) {
-    finalizeModuleTransition(operationId: $opId) {
+mutation FinalizeTransition($opId: UUID!, $expectedRevision: Int!, $idempotencyKey: UUID!) {
+    finalizeModuleTransition(operationId: $opId, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey) {
         operationId
+        revision
         moduleSlug
         tenantId
         predecessorDigest
@@ -745,30 +730,20 @@ pub async fn fetch_retention_holds(
     Ok(response.holds)
 }
 
-pub async fn trigger_module_recovery(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    operation_id: String,
-    reason: String,
-) -> Result<ModuleTransitionCheckpoint, ApiError> {
-    let response: TriggerModuleRecoveryResponse = request(
-        TRIGGER_RECOVERY_MUTATION,
-        serde_json::json!({ "opId": operation_id, "reason": reason }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.checkpoint)
-}
-
 pub async fn finalize_module_transition(
     token: Option<String>,
     tenant_slug: Option<String>,
     operation_id: String,
+    expected_revision: i64,
+    idempotency_key: String,
 ) -> Result<ModuleTransitionCheckpoint, ApiError> {
     let response: FinalizeModuleTransitionResponse = request(
         FINALIZE_TRANSITION_MUTATION,
-        serde_json::json!({ "opId": operation_id }),
+        serde_json::json!({
+            "opId": operation_id,
+            "expectedRevision": expected_revision,
+            "idempotencyKey": idempotency_key,
+        }),
         token,
         tenant_slug,
     )

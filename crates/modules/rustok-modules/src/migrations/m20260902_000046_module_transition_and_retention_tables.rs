@@ -28,15 +28,17 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX idx_module_transition_checkpoints_tenant ON module_transition_checkpoints(tenant_id)",
                 "CREATE TABLE module_transition_operations (\
                     idempotency_key UUID PRIMARY KEY,\
-                    operation_kind TEXT NOT NULL CHECK (operation_kind IN ('trigger_recovery', 'finalize')),\
+                    operation_kind TEXT NOT NULL CHECK (operation_kind = 'finalize'),\
                     request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     actor_id UUID NOT NULL,\
                     tenant_id UUID NULL,\
                     trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) BETWEEN 1 AND 512),\
                     correlation_id UUID NOT NULL,\
                     operation_id UUID NOT NULL REFERENCES module_transition_checkpoints(operation_id) ON DELETE RESTRICT,\
-                    resulting_revision BIGINT NOT NULL CHECK (resulting_revision > 0),\
-                    created_at TIMESTAMPTZ NOT NULL\
+                    resulting_revision BIGINT NULL CHECK (resulting_revision > 0),\
+                    receipt_json TEXT NULL,\
+                    created_at TIMESTAMPTZ NOT NULL,\
+                    completed_at TIMESTAMPTZ NULL\
                 )",
                 "CREATE INDEX idx_module_transition_operations_operation ON module_transition_operations(operation_id)",
                 "CREATE TABLE module_retention_holds (\
@@ -68,14 +70,16 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX idx_module_transition_checkpoints_tenant ON module_transition_checkpoints(tenant_id)",
                 "CREATE TABLE module_transition_operations (\
                     idempotency_key TEXT PRIMARY KEY NOT NULL,\
-                    operation_kind TEXT NOT NULL CHECK (operation_kind IN ('trigger_recovery', 'finalize')),\
+                    operation_kind TEXT NOT NULL CHECK (operation_kind = 'finalize'),\
                     request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     actor_id TEXT NOT NULL, tenant_id TEXT NULL,\
                     trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) BETWEEN 1 AND 512),\
                     correlation_id TEXT NOT NULL,\
                     operation_id TEXT NOT NULL REFERENCES module_transition_checkpoints(operation_id) ON DELETE RESTRICT,\
-                    resulting_revision INTEGER NOT NULL CHECK (resulting_revision > 0),\
-                    created_at TEXT NOT NULL\
+                    resulting_revision INTEGER NULL CHECK (resulting_revision > 0),\
+                    receipt_json TEXT NULL,\
+                    created_at TEXT NOT NULL,\
+                    completed_at TEXT NULL\
                 )",
                 "CREATE INDEX idx_module_transition_operations_operation ON module_transition_operations(operation_id)",
                 "CREATE TABLE module_retention_holds (\

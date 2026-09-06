@@ -30,6 +30,10 @@ The dynamic artifact lifecycle publishes `module.artifact.activated` with the
 new installation identity, optional direct-predecessor identity, and positive
 owner revision. Actor, reason, idempotency fingerprint, and the operation
 receipt remain in the lifecycle owner rather than the shared event payload.
+Transition convergence publishes `module.transition.finalized` with the owner
+revision and released-hold count. Security preemption that cannot safely reuse
+an obsolete capability grant publishes `module.transition.failed_closed`;
+this event never claims that serving traffic returned to a predecessor.
 
 The typed-family implementation includes sealed
 `social_graph.relation.state_changed` v1. Its payload contains relation id,

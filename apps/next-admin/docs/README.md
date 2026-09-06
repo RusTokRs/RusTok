@@ -57,6 +57,9 @@ Local documentation for `apps/next-admin`.
   result; tenant, actor, permission, correlation, replay, and lifecycle error
   semantics remain authenticated server and owner responsibilities rather than
   Next-local state;
+- module transition finalization forwards the owner-issued checkpoint revision
+  with a fresh UUID idempotency key; dynamic rollback is invoked only from the
+  selected active installation contract, never by changing a transition label;
 - code must go through canonical FSD paths and shared package boundaries.
 
 ## Ownership contract for module UI

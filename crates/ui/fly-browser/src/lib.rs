@@ -564,12 +564,10 @@ mod tests {
         assert_eq!(value["intentRequestTimeoutMs"], 1_500);
         assert_eq!(value["pendingIntentLimitMessage"], "Pending limit");
         assert_eq!(value["intentRequestTimeoutMessage"], "Request timeout");
-        assert!(
-            serde_json::from_value::<BrowserAdapterConfig>(json!({
-                "root_selector": "#unsupported"
-            }))
-            .is_err()
-        );
+        assert!(serde_json::from_value::<BrowserAdapterConfig>(json!({
+            "root_selector": "#unsupported"
+        }))
+        .is_err());
     }
 
     #[test]
@@ -635,6 +633,28 @@ mod tests {
             );
         }
         assert_eq!(names.len(), BrowserIntentKind::ALL.len());
+    }
+
+    #[test]
+    fn command_producing_and_draft_intents_are_mutating() {
+        for kind in [
+            BrowserIntentKind::SetInternalPageLink,
+            BrowserIntentKind::RemoveInternalPageLink,
+            BrowserIntentKind::SetComponentAction,
+            BrowserIntentKind::RemoveComponentAction,
+            BrowserIntentKind::SetComponentForm,
+            BrowserIntentKind::RemoveComponentForm,
+            BrowserIntentKind::SetNativeFormField,
+            BrowserIntentKind::UpsertTranslation,
+            BrowserIntentKind::RemoveTranslation,
+            BrowserIntentKind::Save,
+        ] {
+            assert!(
+                kind.is_mutating(),
+                "{} must be revision protected",
+                kind.as_str()
+            );
+        }
     }
 
     #[test]

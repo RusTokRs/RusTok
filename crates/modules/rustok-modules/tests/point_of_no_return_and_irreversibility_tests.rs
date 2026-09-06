@@ -145,7 +145,7 @@ fn test_commit_point_of_no_return_enforces_fences_and_strictly_forbids_rollback(
 
     // 3. Verify rollback / recovery is strictly FORBIDDEN past point of no return
     let rollback_err = coordinator
-        .record_recovery_trigger("attempt incident recovery".to_string())
+        .record_predecessor_recovery("attempt incident recovery".to_string())
         .expect_err("recovery must be strictly forbidden past point of no return");
 
     match rollback_err {

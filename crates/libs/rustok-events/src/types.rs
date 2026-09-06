@@ -648,6 +648,18 @@ pub enum DomainEvent {
         installation_id: Uuid,
         target_installation_id: Uuid,
     },
+    ModuleTransitionFinalized {
+        operation_id: Uuid,
+        module_slug: String,
+        revision: u64,
+        released_holds: u64,
+    },
+    ModuleTransitionFailedClosed {
+        operation_id: Uuid,
+        module_slug: String,
+        revision: u64,
+        failure_reason: String,
+    },
     ModuleArtifactUninstalled {
         installation_id: Uuid,
         revision: u64,
@@ -1048,6 +1060,8 @@ impl DomainEvent {
                 | Self::ModuleArtifactReverified { .. }
                 | Self::ModuleArtifactActivated { .. }
                 | Self::ModuleArtifactRolledBack { .. }
+                | Self::ModuleTransitionFinalized { .. }
+                | Self::ModuleTransitionFailedClosed { .. }
                 | Self::ModuleArtifactUninstalled { .. }
                 | Self::ModuleArtifactMigrationCheckpointed { .. }
                 | Self::ModuleArtifactDeactivated { .. }
@@ -1183,6 +1197,8 @@ impl DomainEvent {
             Self::ModuleArtifactReverified { .. } => "module.artifact.reverified",
             Self::ModuleArtifactActivated { .. } => "module.artifact.activated",
             Self::ModuleArtifactRolledBack { .. } => "module.artifact.rolled_back",
+            Self::ModuleTransitionFinalized { .. } => "module.transition.finalized",
+            Self::ModuleTransitionFailedClosed { .. } => "module.transition.failed_closed",
             Self::ModuleArtifactUninstalled { .. } => "module.artifact.uninstalled",
             Self::ModuleArtifactMigrationCheckpointed { .. } => {
                 "module.artifact.migration_checkpointed"
@@ -1418,6 +1434,8 @@ impl DomainEvent {
             Self::ModuleArtifactReverified { .. } => 1,
             Self::ModuleArtifactActivated { .. } => 1,
             Self::ModuleArtifactRolledBack { .. } => 1,
+            Self::ModuleTransitionFinalized { .. } => 1,
+            Self::ModuleTransitionFailedClosed { .. } => 1,
             Self::ModuleArtifactUninstalled { .. } => 1,
             Self::ModuleArtifactMigrationCheckpointed { .. } => 1,
             Self::ModuleArtifactDeactivated { .. } => 1,
@@ -2436,6 +2454,42 @@ impl ValidateEvent for DomainEvent {
             } => {
                 validators::validate_not_nil_uuid("installation_id", installation_id)?;
                 validators::validate_not_nil_uuid("target_installation_id", target_installation_id)
+            }
+            Self::ModuleTransitionFinalized {
+                operation_id,
+                module_slug,
+                revision,
+                released_holds: _,
+            } => {
+                validators::validate_not_nil_uuid("operation_id", operation_id)?;
+                validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_max_length("module_slug", module_slug, 128)?;
+                if *revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleTransitionFailedClosed {
+                operation_id,
+                module_slug,
+                revision,
+                failure_reason,
+            } => {
+                validators::validate_not_nil_uuid("operation_id", operation_id)?;
+                validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_max_length("module_slug", module_slug, 128)?;
+                validators::validate_not_empty("failure_reason", failure_reason)?;
+                validators::validate_max_length("failure_reason", failure_reason, 2_000)?;
+                if *revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
             }
             Self::ModuleArtifactUninstalled {
                 installation_id,

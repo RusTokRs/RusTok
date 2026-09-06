@@ -2,7 +2,7 @@
 //!
 //! Orchestrates the complete module release lifecycle:
 //! Preflighting -> Fenced -> PreStaging -> Activating -> Observing -> Converged
-//! or RollbackTriggered -> RecoveredToPredecessor.
+//! or RecoveredToPredecessor.
 //!
 //! Enforces the platform invariant: exactly one automatic recovery attempt is
 //! permitted per transition, preventing infinite flapping or release oscillation.
@@ -18,7 +18,7 @@ use sea_orm::ConnectionTrait;
 use crate::{
     ConflictFenceSet, GlobalSecurityEpoch, MigrationPreflightReceipt, ModuleCommandContext,
     RetentionHoldLedger, RetentionHoldStore, RetentionTarget, SecurityEpochConflictError,
-    SecurityEpochRegistry, TransitionCheckpointStore, UpdateMode,
+    SecurityEpochRegistry, UpdateMode,
 };
 
 /// Lifecycle states of a durable module transition.
@@ -39,11 +39,6 @@ pub enum ModuleTransitionState {
     PointOfNoReturn {
         reason: String,
         committed_at: DateTime<Utc>,
-    },
-    /// An incident was detected and automatic recovery was initiated.
-    RollbackTriggered {
-        reason: String,
-        triggered_at: DateTime<Utc>,
     },
     /// Direct predecessor successfully promoted back to serving; incident contained.
     RecoveredToPredecessor {
@@ -74,7 +69,6 @@ impl ModuleTransitionState {
             Self::Activating => "activating",
             Self::Observing { .. } => "observing",
             Self::PointOfNoReturn { .. } => "point_of_no_return",
-            Self::RollbackTriggered { .. } => "rollback_triggered",
             Self::RecoveredToPredecessor { .. } => "recovered_to_predecessor",
             Self::Converged { .. } => "converged",
             Self::FailedClosed { .. } => "failed_closed",
@@ -133,18 +127,6 @@ pub struct StartTransitionInput {
     pub affected_nodes: Vec<String>,
     pub preflight_receipt: MigrationPreflightReceipt,
     pub requested_mode: UpdateMode,
-}
-
-/// Authenticated recovery command for one exact durable transition revision.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModuleTransitionRecoveryCommand {
-    pub operation_id: Uuid,
-    pub expected_revision: u64,
-    pub reason: String,
-    pub context: ModuleCommandContext,
-    /// Authenticated host fact. The owner rejects a command that did not pass
-    /// the platform `modules:manage` authorization boundary.
-    pub actor_can_manage_modules: bool,
 }
 
 /// Authenticated command that closes the observation window of one exact
@@ -325,10 +307,12 @@ impl ModuleTransitionCoordinator {
         )
     }
 
-    /// Records an incident / failure signal and executes single-attempt recovery.
+    /// Records a completed direct-predecessor recovery.
     ///
-    /// If the recovery attempt limit (1) is already exhausted, the transition fails closed.
-    pub fn record_recovery_trigger(
+    /// The installation owner calls this only inside the transaction that
+    /// already changed serving selection. If the recovery attempt limit is
+    /// exhausted, the transition fails closed.
+    pub fn record_predecessor_recovery(
         &mut self,
         reason: String,
     ) -> Result<(), TransitionCoordinatorError> {
@@ -450,6 +434,17 @@ impl ModuleTransitionCoordinator {
         }
     }
 
+    /// Contains a transition when an automatic actor cannot safely complete
+    /// the required recovery command. The state deliberately does not claim
+    /// that serving traffic returned to the predecessor.
+    pub fn fail_closed(&mut self, failure_reason: String) -> Result<(), TransitionCoordinatorError> {
+        self.ensure_active()?;
+        self.checkpoint.revision += 1;
+        self.checkpoint.state = ModuleTransitionState::FailedClosed { failure_reason };
+        self.checkpoint.updated_at = Utc::now();
+        Ok(())
+    }
+
     fn ensure_active(&self) -> Result<(), TransitionCoordinatorError> {
         if self.checkpoint.state.is_terminal() {
             Err(TransitionCoordinatorError::OperationAlreadyTerminal(
@@ -459,66 +454,6 @@ impl ModuleTransitionCoordinator {
             Ok(())
         }
     }
-}
-
-/// Evaluates all active transition observation windows against deadlines and security epochs.
-///
-/// Automatically finalizes convergence when observation deadline expires without issues,
-/// releases temporary `ActiveRolloutWindow` retention holds, and triggers single-attempt
-/// recovery if a security epoch preemption or invalidation is observed.
-pub async fn evaluate_transition_watchdog<C: ConnectionTrait>(
-    db: &C,
-    security_registry: &SecurityEpochRegistry,
-) -> Result<Vec<ModuleTransitionCheckpoint>, TransitionCoordinatorError> {
-    let active_checkpoints = TransitionCheckpointStore::list_active_checkpoints(db)
-        .await
-        .map_err(|e| TransitionCoordinatorError::PreflightFailed(e.to_string()))?;
-
-    let mut updated = Vec::new();
-    let now = Utc::now();
-
-    for checkpoint in active_checkpoints {
-        let mut coordinator = ModuleTransitionCoordinator::new(checkpoint);
-        let mut changed = false;
-
-        // 1. Check for stale security epoch preemption
-        if let Err(_epoch_err) =
-            security_registry.validate_epoch(coordinator.checkpoint().security_epoch)
-        {
-            let msg = format!(
-                "Security epoch preemption: Epoch {:?} is stale (current: {:?})",
-                coordinator.checkpoint().security_epoch,
-                security_registry.current_epoch()
-            );
-            // Try single-attempt recovery or fail-closed
-            let _ = coordinator.record_recovery_trigger(msg);
-            changed = true;
-        } else {
-            // 2. Check for observation timeout expiration
-            if let ModuleTransitionState::Observing { timeout_at } = coordinator.state() {
-                if now >= *timeout_at {
-                    if coordinator.finalize_convergence(security_registry).is_ok() {
-                        changed = true;
-                        // Release GC retention holds associated with this rollout
-                        let _ = RetentionHoldStore::release_holds_for_operation(
-                            db,
-                            coordinator.checkpoint().operation_id,
-                        )
-                        .await;
-                    }
-                }
-            }
-        }
-
-        if changed {
-            TransitionCheckpointStore::save_checkpoint(db, coordinator.checkpoint())
-                .await
-                .map_err(|e| TransitionCoordinatorError::PreflightFailed(e.to_string()))?;
-            updated.push(coordinator.checkpoint().clone());
-        }
-    }
-
-    Ok(updated)
 }
 
 #[cfg(test)]
@@ -608,7 +543,7 @@ mod tests {
 
         // 1. Candidate fails on node -> automatic recovery attempt 1 succeeds!
         coordinator
-            .record_recovery_trigger("Node watchdog: Candidate process crashed".to_string())
+            .record_predecessor_recovery("Node watchdog: Candidate process crashed".to_string())
             .unwrap();
         assert!(matches!(
             coordinator.state(),
@@ -618,7 +553,7 @@ mod tests {
 
         // 2. Subsequent failure signal triggers -> must be rejected by terminal check
         let second_trigger =
-            coordinator.record_recovery_trigger("Second failure signal".to_string());
+            coordinator.record_predecessor_recovery("Second failure signal".to_string());
         assert!(second_trigger.is_err());
     }
 
