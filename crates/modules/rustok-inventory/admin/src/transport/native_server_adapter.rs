@@ -171,8 +171,9 @@ async fn optional_request_context(
 }
 
 #[cfg(feature = "ssr")]
-fn inventory_owner_error<E>(
+fn owner_operation_error<E>(
     _error: E,
+    owner: &'static str,
     owner_operation: &'static str,
     correlation_id: &str,
     tenant_id: uuid::Uuid,
@@ -184,7 +185,7 @@ fn inventory_owner_error<E>(
 ) -> ServerFnError {
     tracing::error!(
         error_type = std::any::type_name::<E>(),
-        owner = "rustok_inventory",
+        owner,
         consumer = INVENTORY_ADMIN_OWNER,
         owner_operation,
         correlation_id,
@@ -203,6 +204,58 @@ fn inventory_owner_error<E>(
 }
 
 #[cfg(feature = "ssr")]
+fn inventory_owner_error<E>(
+    error: E,
+    owner_operation: &'static str,
+    correlation_id: &str,
+    tenant_id: uuid::Uuid,
+    actor_id: Option<uuid::Uuid>,
+    subject_id: Option<uuid::Uuid>,
+    request_context: Option<&rustok_api::RequestContext>,
+    code: &'static str,
+    public_message: &'static str,
+) -> ServerFnError {
+    owner_operation_error(
+        error,
+        "rustok_inventory",
+        owner_operation,
+        correlation_id,
+        tenant_id,
+        actor_id,
+        subject_id,
+        request_context,
+        code,
+        public_message,
+    )
+}
+
+#[cfg(feature = "ssr")]
+fn product_owner_error<E>(
+    error: E,
+    owner_operation: &'static str,
+    correlation_id: &str,
+    tenant_id: uuid::Uuid,
+    actor_id: Option<uuid::Uuid>,
+    subject_id: Option<uuid::Uuid>,
+    request_context: Option<&rustok_api::RequestContext>,
+    code: &'static str,
+    public_message: &'static str,
+) -> ServerFnError {
+    owner_operation_error(
+        error,
+        "rustok_product",
+        owner_operation,
+        correlation_id,
+        tenant_id,
+        actor_id,
+        subject_id,
+        request_context,
+        code,
+        public_message,
+    )
+}
+
+#[cfg(feature = "ssr")]
 fn ensure_permission(
     permissions: &[rustok_api::Permission],
     required: &[rustok_api::Permission],
@@ -216,9 +269,29 @@ fn ensure_permission(
 }
 
 #[cfg(feature = "ssr")]
-fn inventory_read_service_from_context() -> rustok_inventory::AdminInventoryReadService {
+fn product_catalog_service_from_context(
+    owner_operation: &'static str,
+    correlation_id: &str,
+) -> Result<rustok_product::CatalogService, ServerFnError> {
     let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
-    rustok_inventory::AdminInventoryReadService::new(runtime_ctx.db_clone())
+    let event_bus = runtime_ctx
+        .shared_get::<rustok_outbox::TransactionalEventBus>()
+        .ok_or_else(|| {
+            tracing::error!(
+                owner = "rustok_product",
+                consumer = INVENTORY_ADMIN_OWNER,
+                owner_operation,
+                correlation_id,
+                code = "inventory.admin_product_event_bus_unavailable",
+                boundary = INVENTORY_ADMIN_BOUNDARY,
+                "inventory admin Product owner runtime is missing the transactional event bus"
+            );
+            ServerFnError::new("Product catalog is temporarily unavailable")
+        })?;
+    Ok(rustok_product::CatalogService::new(
+        runtime_ctx.db_clone(),
+        event_bus,
+    ))
 }
 
 #[cfg(feature = "ssr")]
@@ -265,15 +338,21 @@ fn parse_uuid(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError
 #[cfg(feature = "ssr")]
 fn parse_product_status(
     value: Option<String>,
-) -> Result<Option<rustok_inventory::ProductStatus>, ServerFnError> {
+) -> Result<Option<rustok_product::entities::product::ProductStatus>, ServerFnError> {
     let Some(value) = crate::core::normalize_status_filter(value) else {
         return Ok(None);
     };
 
     match value.as_str() {
-        "DRAFT" => Ok(Some(rustok_inventory::ProductStatus::Draft)),
-        "ACTIVE" => Ok(Some(rustok_inventory::ProductStatus::Active)),
-        "ARCHIVED" => Ok(Some(rustok_inventory::ProductStatus::Archived)),
+        "DRAFT" => Ok(Some(
+            rustok_product::entities::product::ProductStatus::Draft,
+        )),
+        "ACTIVE" => Ok(Some(
+            rustok_product::entities::product::ProductStatus::Active,
+        )),
+        "ARCHIVED" => Ok(Some(
+            rustok_product::entities::product::ProductStatus::Archived,
+        )),
         _ => Err(ServerFnError::new("Invalid product status")),
     }
 }
@@ -303,12 +382,12 @@ fn map_current_tenant(tenant: &rustok_api::TenantContext) -> crate::model::Curre
 }
 
 #[cfg(feature = "ssr")]
-fn map_status(status: rustok_inventory::ProductStatus) -> String {
+fn map_status(status: rustok_product::entities::product::ProductStatus) -> String {
     status.to_string().to_ascii_uppercase()
 }
 
 #[cfg(feature = "ssr")]
-fn map_product_list(value: rustok_inventory::AdminInventoryProductList) -> InventoryProductList {
+fn map_product_list(value: rustok_product::AdminProductList) -> InventoryProductList {
     InventoryProductList {
         items: value.items.into_iter().map(map_product_list_item).collect(),
         total: value.total,
@@ -320,7 +399,7 @@ fn map_product_list(value: rustok_inventory::AdminInventoryProductList) -> Inven
 
 #[cfg(feature = "ssr")]
 fn map_product_list_item(
-    value: rustok_inventory::AdminInventoryProductListItem,
+    value: rustok_product::AdminProductListItem,
 ) -> crate::model::InventoryProductListItem {
     crate::model::InventoryProductListItem {
         id: value.id.to_string(),
@@ -331,14 +410,15 @@ fn map_product_list_item(
         product_type: value.product_type,
         shipping_profile_slug: value.shipping_profile_slug,
         tags: value.tags,
-        created_at: value.created_at,
-        published_at: value.published_at,
+        created_at: value.created_at.to_rfc3339(),
+        published_at: value.published_at.map(|value| value.to_rfc3339()),
     }
 }
 
 #[cfg(feature = "ssr")]
 fn map_product_detail(
-    value: rustok_inventory::AdminInventoryProductDetail,
+    value: rustok_product::dto::ProductResponse,
+    locale: &str,
 ) -> InventoryProductDetail {
     InventoryProductDetail {
         id: value.id.to_string(),
@@ -346,9 +426,9 @@ fn map_product_detail(
         vendor: value.vendor,
         product_type: value.product_type,
         shipping_profile_slug: value.shipping_profile_slug,
-        created_at: value.created_at,
-        updated_at: value.updated_at,
-        published_at: value.published_at,
+        created_at: value.created_at.to_rfc3339(),
+        updated_at: value.updated_at.to_rfc3339(),
+        published_at: value.published_at.map(|value| value.to_rfc3339()),
         translations: value
             .translations
             .into_iter()
@@ -359,7 +439,11 @@ fn map_product_detail(
                 description: translation.description,
             })
             .collect(),
-        variants: value.variants.into_iter().map(map_variant).collect(),
+        variants: value
+            .variants
+            .into_iter()
+            .map(|variant| map_variant(variant, locale))
+            .collect(),
     }
 }
 
@@ -395,13 +479,33 @@ fn map_release_result(
 }
 
 #[cfg(feature = "ssr")]
-fn map_variant(value: rustok_inventory::AdminInventoryVariant) -> crate::model::InventoryVariant {
+fn resolve_variant_title(value: &rustok_product::dto::VariantResponse, locale: &str) -> String {
+    value
+        .translations
+        .iter()
+        .find(|translation| rustok_api::locale_tags_match(&translation.locale, locale))
+        .and_then(|translation| translation.title.clone())
+        .or_else(|| {
+            value
+                .translations
+                .iter()
+                .find_map(|translation| translation.title.clone())
+        })
+        .unwrap_or_else(|| value.title.clone())
+}
+
+#[cfg(feature = "ssr")]
+fn map_variant(
+    value: rustok_product::dto::VariantResponse,
+    locale: &str,
+) -> crate::model::InventoryVariant {
+    let title = resolve_variant_title(&value, locale);
     crate::model::InventoryVariant {
         id: value.id.to_string(),
         sku: value.sku,
         barcode: value.barcode,
         shipping_profile_slug: value.shipping_profile_slug,
-        title: value.title,
+        title,
         option1: value.option1,
         option2: value.option2,
         option3: value.option3,
@@ -410,8 +514,8 @@ fn map_variant(value: rustok_inventory::AdminInventoryVariant) -> crate::model::
             .into_iter()
             .map(|price| crate::model::InventoryPrice {
                 currency_code: price.currency_code,
-                amount: price.amount,
-                compare_at_amount: price.compare_at_amount,
+                amount: price.amount.to_string(),
+                compare_at_amount: price.compare_at_amount.map(|amount| amount.to_string()),
                 on_sale: price.on_sale,
             })
             .collect(),
@@ -465,7 +569,6 @@ async fn inventory_products_native(
     {
         use rustok_api::Permission;
         use rustok_api::{AuthContext, RequestContext, TenantContext};
-        use rustok_inventory::AdminInventoryProductsFilter;
 
         let owner_operation = "list_products";
         let correlation_id = inventory_admin_correlation_id(owner_operation);
@@ -487,21 +590,27 @@ async fn inventory_products_native(
 
         let requested_locale = crate::core::normalize_locale_filter(locale)
             .unwrap_or_else(|| request_context.locale.clone());
-        let service = inventory_read_service_from_context();
+        let query = rustok_product::AdminProductListQuery {
+            search: crate::core::normalize_search_filter(search),
+            status: parse_product_status(status)?,
+            category_id: None,
+            sort_by: rustok_product::StorefrontProductSortBy::CreatedAt,
+            sort_direction: rustok_product::StorefrontProductSortDirection::Desc,
+            attribute_filters: Vec::new(),
+        };
+        let service = product_catalog_service_from_context(owner_operation, &correlation_id)?;
         let products = service
-            .list_products(
+            .list_admin_products_with_query(
                 tenant.id,
-                Some(requested_locale.as_str()),
-                AdminInventoryProductsFilter {
-                    status: parse_product_status(status)?,
-                    search: crate::core::normalize_search_filter(search),
-                    page: None,
-                    per_page: None,
-                },
+                requested_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+                query,
+                1,
+                24,
             )
             .await
             .map_err(|error| {
-                inventory_owner_error(
+                product_owner_error(
                     error,
                     owner_operation,
                     &correlation_id,
@@ -557,12 +666,20 @@ async fn inventory_product_native(
         let product_id = parse_uuid(&id, "product_id")?;
         let requested_locale = crate::core::normalize_locale_filter(locale)
             .unwrap_or_else(|| request_context.locale.clone());
-        let service = inventory_read_service_from_context();
-        let product = service
-            .get_product(tenant.id, product_id, Some(requested_locale.as_str()))
+        let service = product_catalog_service_from_context(owner_operation, &correlation_id)?;
+        let product = match service
+            .get_product_with_locale_fallback(
+                tenant.id,
+                product_id,
+                requested_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
             .await
-            .map_err(|error| {
-                inventory_owner_error(
+        {
+            Ok(product) => product,
+            Err(rustok_product::CommerceError::ProductNotFound(_)) => return Ok(None),
+            Err(error) => {
+                return Err(product_owner_error(
                     error,
                     owner_operation,
                     &correlation_id,
@@ -572,10 +689,14 @@ async fn inventory_product_native(
                     Some(&request_context),
                     "inventory.admin_product_unavailable",
                     "Inventory product is temporarily unavailable",
-                )
-            })?;
+                ));
+            }
+        };
 
-        Ok(product.map(map_product_detail))
+        Ok(Some(map_product_detail(
+            product,
+            requested_locale.as_str(),
+        )))
     }
     #[cfg(not(feature = "ssr"))]
     {
