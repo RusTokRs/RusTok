@@ -12,9 +12,7 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, VerifyingKey};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -45,7 +43,7 @@ impl OperationsToolComponent {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "controller" => Some(Self::Controller),
             "reconciler" => Some(Self::Reconciler),
@@ -111,7 +109,9 @@ pub enum OperationsToolError {
     Expired,
     #[error("Operations-tool release `{0}` not found")]
     NotFound(Uuid),
-    #[error("Protocol mismatch: owner requires {owner_protocol}, but tool supplies {tool_protocol}")]
+    #[error(
+        "Protocol mismatch: owner requires {owner_protocol}, but tool supplies {tool_protocol}"
+    )]
     ProtocolIncompatible {
         owner_protocol: u32,
         tool_protocol: u32,
@@ -154,7 +154,9 @@ impl OperationsToolRelease {
             || !valid_digest(&self.payload.reconciler_digest)
             || !valid_digest(&self.payload.agent_digest)
         {
-            return Err(OperationsToolError::InvalidDigest("digest validation failed".to_string()));
+            return Err(OperationsToolError::InvalidDigest(
+                "digest validation failed".to_string(),
+            ));
         }
         if self.payload.issued_at > now {
             return Err(OperationsToolError::NotYetValid);
@@ -353,7 +355,10 @@ impl OperationsToolService {
             .ok_or(OperationsToolError::NotFound(target_release_id))?;
 
         let release = self.parse_release_row(row, backend)?;
-        if !self.protocol_matrix.is_compatible(current_protocol, release.payload.protocol_revision) {
+        if !self
+            .protocol_matrix
+            .is_compatible(current_protocol, release.payload.protocol_revision)
+        {
             return Err(OperationsToolError::ProtocolIncompatible {
                 owner_protocol: current_protocol,
                 tool_protocol: release.payload.protocol_revision,
@@ -371,7 +376,11 @@ impl OperationsToolService {
         now: DateTime<Utc>,
     ) -> Result<OperationsToolMaintenanceOperation, OperationsToolError> {
         let target_release = self
-            .verify_preflight(command.target_release_id, CURRENT_OPERATIONS_TOOL_PROTOCOL, now)
+            .verify_preflight(
+                command.target_release_id,
+                CURRENT_OPERATIONS_TOOL_PROTOCOL,
+                now,
+            )
             .await?;
 
         if let Some(pred_id) = command.predecessor_release_id {
@@ -430,8 +439,14 @@ impl OperationsToolService {
         let target_payload = target_release.payload();
         for host_id in &command.host_ids {
             for (component, digest) in [
-                (OperationsToolComponent::Controller, &target_payload.controller_digest),
-                (OperationsToolComponent::Reconciler, &target_payload.reconciler_digest),
+                (
+                    OperationsToolComponent::Controller,
+                    &target_payload.controller_digest,
+                ),
+                (
+                    OperationsToolComponent::Reconciler,
+                    &target_payload.reconciler_digest,
+                ),
                 (OperationsToolComponent::Agent, &target_payload.agent_digest),
             ] {
                 let assignment_id = Uuid::new_v4();
@@ -461,7 +476,11 @@ impl OperationsToolService {
                 ];
 
                 self.db
-                    .execute_raw(Statement::from_sql_and_values(backend, assign_sql, assign_values))
+                    .execute_raw(Statement::from_sql_and_values(
+                        backend,
+                        assign_sql,
+                        assign_values,
+                    ))
                     .await
                     .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
             }
@@ -507,7 +526,8 @@ impl OperationsToolService {
             .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
 
         // If all assignments converged, mark operation converged
-        self.check_and_converge_operation(report.operation_id, now).await?;
+        self.check_and_converge_operation(report.operation_id, now)
+            .await?;
 
         self.get_assignment(report.operation_id, &report.host_id, report.component)
             .await
@@ -555,8 +575,14 @@ impl OperationsToolService {
 
         // 2. Re-point desired digests to predecessor component digests
         for (comp, digest) in [
-            (OperationsToolComponent::Controller, &pred_payload.controller_digest),
-            (OperationsToolComponent::Reconciler, &pred_payload.reconciler_digest),
+            (
+                OperationsToolComponent::Controller,
+                &pred_payload.controller_digest,
+            ),
+            (
+                OperationsToolComponent::Reconciler,
+                &pred_payload.reconciler_digest,
+            ),
             (OperationsToolComponent::Agent, &pred_payload.agent_digest),
         ] {
             let update_assign_sql = format!(
@@ -655,12 +681,19 @@ impl OperationsToolService {
 
         let op_id: Uuid = self.get_uuid_from_row(&row, "operation_id", backend)?;
         let target_release_id: Uuid = self.get_uuid_from_row(&row, "target_release_id", backend)?;
-        let predecessor_release_id: Option<Uuid> = self.get_optional_uuid_from_row(&row, "predecessor_release_id", backend)?;
-        let status: String = row.try_get("", "status").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let recovery_attempts: i32 = row.try_get("", "recovery_attempts").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let predecessor_release_id: Option<Uuid> =
+            self.get_optional_uuid_from_row(&row, "predecessor_release_id", backend)?;
+        let status: String = row
+            .try_get("", "status")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let recovery_attempts: i32 = row
+            .try_get("", "recovery_attempts")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let actor_id: Uuid = self.get_uuid_from_row(&row, "actor_id", backend)?;
         let idempotency_key: Uuid = self.get_uuid_from_row(&row, "idempotency_key", backend)?;
-        let trace_id: String = row.try_get("", "trace_id").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let trace_id: String = row
+            .try_get("", "trace_id")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let correlation_id: Uuid = self.get_uuid_from_row(&row, "correlation_id", backend)?;
         let created_at: DateTime<Utc> = self.get_datetime_from_row(&row, "created_at", backend)?;
         let updated_at: DateTime<Utc> = self.get_datetime_from_row(&row, "updated_at", backend)?;
@@ -710,19 +743,28 @@ impl OperationsToolService {
             ))
             .await
             .map_err(|e| OperationsToolError::Storage(e.to_string()))?
-            .ok_or_else(|| {
-                OperationsToolError::Storage("Assignment not found".to_string())
-            })?;
+            .ok_or_else(|| OperationsToolError::Storage("Assignment not found".to_string()))?;
 
         let assignment_id: Uuid = self.get_uuid_from_row(&row, "assignment_id", backend)?;
         let op_id: Uuid = self.get_uuid_from_row(&row, "operation_id", backend)?;
-        let h_id: String = row.try_get("", "host_id").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let comp_str: String = row.try_get("", "component").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let comp = OperationsToolComponent::from_str(&comp_str).expect("valid component");
-        let desired_digest: String = row.try_get("", "desired_digest").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let observed_digest: Option<String> = row.try_get("", "observed_digest").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let status: String = row.try_get("", "status").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let reported_at: Option<DateTime<Utc>> = self.get_optional_datetime_from_row(&row, "reported_at", backend)?;
+        let h_id: String = row
+            .try_get("", "host_id")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let comp_str: String = row
+            .try_get("", "component")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let comp = OperationsToolComponent::parse(&comp_str).expect("valid component");
+        let desired_digest: String = row
+            .try_get("", "desired_digest")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let observed_digest: Option<String> = row
+            .try_get("", "observed_digest")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let status: String = row
+            .try_get("", "status")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let reported_at: Option<DateTime<Utc>> =
+            self.get_optional_datetime_from_row(&row, "reported_at", backend)?;
         let updated_at: DateTime<Utc> = self.get_datetime_from_row(&row, "updated_at", backend)?;
 
         Ok(OperationsToolAssignment {
@@ -744,14 +786,30 @@ impl OperationsToolService {
         backend: DbBackend,
     ) -> Result<OperationsToolRelease, OperationsToolError> {
         let release_id: Uuid = self.get_uuid_from_row(&row, "release_id", backend)?;
-        let version: String = row.try_get("", "version").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let protocol_revision: i32 = row.try_get("", "protocol_revision").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let package_digest: String = row.try_get("", "package_digest").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let controller_digest: String = row.try_get("", "controller_digest").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let reconciler_digest: String = row.try_get("", "reconciler_digest").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let agent_digest: String = row.try_get("", "agent_digest").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let signer_key_digest: String = row.try_get("", "signer_key_digest").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let signature: String = row.try_get("", "signature").map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let version: String = row
+            .try_get("", "version")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let protocol_revision: i32 = row
+            .try_get("", "protocol_revision")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let package_digest: String = row
+            .try_get("", "package_digest")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let controller_digest: String = row
+            .try_get("", "controller_digest")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let reconciler_digest: String = row
+            .try_get("", "reconciler_digest")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let agent_digest: String = row
+            .try_get("", "agent_digest")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let signer_key_digest: String = row
+            .try_get("", "signer_key_digest")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+        let signature: String = row
+            .try_get("", "signature")
+            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
         let issued_at: DateTime<Utc> = self.get_datetime_from_row(&row, "issued_at", backend)?;
         let expires_at: DateTime<Utc> = self.get_datetime_from_row(&row, "expires_at", backend)?;
 
@@ -773,45 +831,81 @@ impl OperationsToolService {
         })
     }
 
-    fn get_uuid_from_row(&self, row: &sea_orm::QueryResult, col: &str, backend: DbBackend) -> Result<Uuid, OperationsToolError> {
+    fn get_uuid_from_row(
+        &self,
+        row: &sea_orm::QueryResult,
+        col: &str,
+        backend: DbBackend,
+    ) -> Result<Uuid, OperationsToolError> {
         match backend {
             DbBackend::Sqlite => {
-                let s: String = row.try_get("", col).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+                let s: String = row
+                    .try_get("", col)
+                    .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
                 Uuid::parse_str(&s).map_err(|e| OperationsToolError::Storage(e.to_string()))
             }
-            _ => row.try_get("", col).map_err(|e| OperationsToolError::Storage(e.to_string())),
+            _ => row
+                .try_get("", col)
+                .map_err(|e| OperationsToolError::Storage(e.to_string())),
         }
     }
 
-    fn get_optional_uuid_from_row(&self, row: &sea_orm::QueryResult, col: &str, backend: DbBackend) -> Result<Option<Uuid>, OperationsToolError> {
+    fn get_optional_uuid_from_row(
+        &self,
+        row: &sea_orm::QueryResult,
+        col: &str,
+        backend: DbBackend,
+    ) -> Result<Option<Uuid>, OperationsToolError> {
         match backend {
             DbBackend::Sqlite => {
-                let s: Option<String> = row.try_get("", col).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+                let s: Option<String> = row
+                    .try_get("", col)
+                    .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
                 match s {
-                    Some(val) => Uuid::parse_str(&val).map(Some).map_err(|e| OperationsToolError::Storage(e.to_string())),
+                    Some(val) => Uuid::parse_str(&val)
+                        .map(Some)
+                        .map_err(|e| OperationsToolError::Storage(e.to_string())),
                     None => Ok(None),
                 }
             }
-            _ => row.try_get("", col).map_err(|e| OperationsToolError::Storage(e.to_string())),
+            _ => row
+                .try_get("", col)
+                .map_err(|e| OperationsToolError::Storage(e.to_string())),
         }
     }
 
-    fn get_datetime_from_row(&self, row: &sea_orm::QueryResult, col: &str, backend: DbBackend) -> Result<DateTime<Utc>, OperationsToolError> {
+    fn get_datetime_from_row(
+        &self,
+        row: &sea_orm::QueryResult,
+        col: &str,
+        backend: DbBackend,
+    ) -> Result<DateTime<Utc>, OperationsToolError> {
         match backend {
             DbBackend::Sqlite => {
-                let s: String = row.try_get("", col).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+                let s: String = row
+                    .try_get("", col)
+                    .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
                 DateTime::parse_from_rfc3339(&s)
                     .map(|dt| dt.with_timezone(&Utc))
                     .map_err(|e| OperationsToolError::Storage(e.to_string()))
             }
-            _ => row.try_get("", col).map_err(|e| OperationsToolError::Storage(e.to_string())),
+            _ => row
+                .try_get("", col)
+                .map_err(|e| OperationsToolError::Storage(e.to_string())),
         }
     }
 
-    fn get_optional_datetime_from_row(&self, row: &sea_orm::QueryResult, col: &str, backend: DbBackend) -> Result<Option<DateTime<Utc>>, OperationsToolError> {
+    fn get_optional_datetime_from_row(
+        &self,
+        row: &sea_orm::QueryResult,
+        col: &str,
+        backend: DbBackend,
+    ) -> Result<Option<DateTime<Utc>>, OperationsToolError> {
         match backend {
             DbBackend::Sqlite => {
-                let s: Option<String> = row.try_get("", col).map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+                let s: Option<String> = row
+                    .try_get("", col)
+                    .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
                 match s {
                     Some(val) => DateTime::parse_from_rfc3339(&val)
                         .map(|dt| Some(dt.with_timezone(&Utc)))
@@ -819,7 +913,9 @@ impl OperationsToolService {
                     None => Ok(None),
                 }
             }
-            _ => row.try_get("", col).map_err(|e| OperationsToolError::Storage(e.to_string())),
+            _ => row
+                .try_get("", col)
+                .map_err(|e| OperationsToolError::Storage(e.to_string())),
         }
     }
 }

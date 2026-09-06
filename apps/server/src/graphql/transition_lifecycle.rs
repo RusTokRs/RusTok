@@ -1,8 +1,8 @@
 use async_graphql::{Enum, ErrorExtensions, FieldError, SimpleObject};
 use rustok_api::graphql::GraphQLError;
 use rustok_modules::{
-    ModuleTransitionCheckpoint, ModuleTransitionState, RetentionHoldRecord,
-    TransitionCoordinatorError, TransitionStoreError,
+    ModuleTransitionCheckpoint, ModuleTransitionServiceError, ModuleTransitionState,
+    RetentionHoldRecord, TransitionCoordinatorError,
 };
 use uuid::Uuid;
 
@@ -14,7 +14,6 @@ pub enum ModuleTransitionStateGql {
     Activating,
     Observing,
     PointOfNoReturn,
-    RollbackTriggered,
     RecoveredToPredecessor,
     Converged,
     FailedClosed,
@@ -23,6 +22,7 @@ pub enum ModuleTransitionStateGql {
 #[derive(SimpleObject, Clone, Debug)]
 pub struct ModuleTransitionCheckpointGql {
     pub operation_id: Uuid,
+    pub revision: i64,
     pub module_slug: String,
     pub tenant_id: Option<Uuid>,
     pub predecessor_digest: Option<String>,
@@ -46,13 +46,16 @@ impl From<ModuleTransitionCheckpoint> for ModuleTransitionCheckpointGql {
                 ModuleTransitionStateGql::Observing,
                 Some(format!("Timeout at {}", timeout_at.to_rfc3339())),
             ),
-            ModuleTransitionState::PointOfNoReturn { reason, committed_at } => (
+            ModuleTransitionState::PointOfNoReturn {
+                reason,
+                committed_at,
+            } => (
                 ModuleTransitionStateGql::PointOfNoReturn,
-                Some(format!("Committed at {}: {}", committed_at.to_rfc3339(), reason)),
-            ),
-            ModuleTransitionState::RollbackTriggered { reason, .. } => (
-                ModuleTransitionStateGql::RollbackTriggered,
-                Some(reason.clone()),
+                Some(format!(
+                    "Committed at {}: {}",
+                    committed_at.to_rfc3339(),
+                    reason
+                )),
             ),
             ModuleTransitionState::RecoveredToPredecessor { failure_reason, .. } => (
                 ModuleTransitionStateGql::RecoveredToPredecessor,
@@ -70,6 +73,8 @@ impl From<ModuleTransitionCheckpoint> for ModuleTransitionCheckpointGql {
 
         Self {
             operation_id: cp.operation_id,
+            revision: i64::try_from(cp.revision)
+                .expect("persisted transition revisions are constrained to BIGINT"),
             module_slug: cp.module_slug,
             tenant_id: cp.tenant_id,
             predecessor_digest: cp.predecessor_digest,
@@ -80,6 +85,51 @@ impl From<ModuleTransitionCheckpoint> for ModuleTransitionCheckpointGql {
             recovery_attempt_count: cp.recovery_attempt_count as i32,
             created_at: cp.created_at.to_rfc3339(),
             updated_at: cp.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+pub(crate) fn map_transition_service_error(error: ModuleTransitionServiceError) -> FieldError {
+    match error {
+        ModuleTransitionServiceError::NotFound(_) => {
+            FieldError::new("Transition checkpoint not found").extend_with(|_, extensions| {
+                extensions.set("code", "CHECKPOINT_NOT_FOUND");
+                extensions.set("retryable_issue", false);
+            })
+        }
+        ModuleTransitionServiceError::AuthorizationDenied => {
+            <FieldError as GraphQLError>::permission_denied(
+                "Permission denied for the module transition scope",
+            )
+        }
+        ModuleTransitionServiceError::InvalidCommand(message) => {
+            <FieldError as GraphQLError>::bad_user_input(&message)
+        }
+        ModuleTransitionServiceError::RevisionConflict { expected, current } => FieldError::new(
+            format!("Transition revision conflict: expected {expected}, current {current}"),
+        )
+        .extend_with(|_, extensions| {
+            extensions.set("code", "REVISION_CONFLICT");
+            extensions.set("retryable_issue", true);
+            extensions.set("current_revision", current);
+        }),
+        ModuleTransitionServiceError::IdempotencyConflict => {
+            FieldError::new("Idempotency key was used for a different transition command")
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "IDEMPOTENCY_CONFLICT");
+                    extensions.set("retryable_issue", false);
+                })
+        }
+        ModuleTransitionServiceError::OperationInProgress => FieldError::new(
+            "Transition command is already in progress",
+        )
+        .extend_with(|_, extensions| {
+            extensions.set("code", "OPERATION_IN_PROGRESS");
+            extensions.set("retryable_issue", true);
+        }),
+        ModuleTransitionServiceError::Coordinator(error) => map_transition_coordinator_error(error),
+        ModuleTransitionServiceError::Store(_) | ModuleTransitionServiceError::Outbox(_) => {
+            <FieldError as GraphQLError>::internal_error("Transition owner service is unavailable")
         }
     }
 }
@@ -107,18 +157,6 @@ impl From<RetentionHoldRecord> for RetentionHoldGql {
             kind: kind_str,
             created_at: record.created_at.to_rfc3339(),
         }
-    }
-}
-
-pub(crate) fn map_transition_store_error(error: TransitionStoreError) -> FieldError {
-    match error {
-        TransitionStoreError::CheckpointNotFound(_) => {
-            FieldError::new("Transition checkpoint not found").extend_with(|_, extensions| {
-                extensions.set("code", "CHECKPOINT_NOT_FOUND");
-                extensions.set("retryable_issue", false);
-            })
-        }
-        _ => <FieldError as GraphQLError>::internal_error("Transition store is unavailable"),
     }
 }
 

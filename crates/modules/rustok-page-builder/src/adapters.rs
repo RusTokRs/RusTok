@@ -271,7 +271,7 @@ mod tests {
     use serde_json::json;
 
     fn baseline() -> Value {
-        serde_json::from_str(include_str!("../../fly/fixtures/grapesjs/baseline.json"))
+        serde_json::from_str(include_str!("../../../ui/fly/fixtures/grapesjs/baseline.json"))
             .expect("baseline fixture must be valid JSON")
     }
 

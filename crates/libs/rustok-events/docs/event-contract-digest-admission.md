@@ -1,6 +1,6 @@
 # Event contract digest admission
 
-Status: `product_index_family_digest_admitted_maintainer_reverify_pending`.
+Status: `current_contract_digest_admitted_local_verification_complete`.
 
 ## Purpose
 
@@ -44,6 +44,16 @@ cargo run --locked -p rustok-events --example event_contract_digests -- --write
 ```
 
 No alternative hashing implementation, copied digest, hand-authored JSON Schema or parallel generator is admitted.
+
+## Current admission
+
+On 2026-09-06 the canonical generator admitted the new
+`module.transition.finalized` and `module.transition.failed_closed` root event
+contracts. The committed artifact was generated on the current tree with the
+command above, and
+`published_event_contract_matches_committed_release_artifact` passed against
+that exact output. Both events remain initial schema-version contracts; no
+parallel or compatibility event family was introduced.
 
 ## Review packet
 

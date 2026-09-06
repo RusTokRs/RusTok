@@ -1667,11 +1667,14 @@ impl RootQuery {
         ctx: &Context<'_>,
         operation_id: Uuid,
     ) -> Result<Option<crate::graphql::transition_lifecycle::ModuleTransitionCheckpointGql>> {
+        ensure_modules_read_permission(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let checkpoint =
-            rustok_modules::TransitionCheckpointStore::load_checkpoint(db, operation_id)
-                .await
-                .map_err(crate::graphql::transition_lifecycle::map_transition_store_error)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let checkpoint = ModuleControlPlane::new(db.clone())
+            .transitions()
+            .checkpoint(operation_id, Some(tenant.id))
+            .await
+            .map_err(crate::graphql::transition_lifecycle::map_transition_service_error)?;
         Ok(checkpoint.map(Into::into))
     }
 
@@ -1680,10 +1683,14 @@ impl RootQuery {
         &self,
         ctx: &Context<'_>,
     ) -> Result<Vec<crate::graphql::transition_lifecycle::ModuleTransitionCheckpointGql>> {
+        ensure_modules_read_permission(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let checkpoints = rustok_modules::TransitionCheckpointStore::list_active_checkpoints(db)
+        let tenant = ctx.data::<TenantContext>()?;
+        let checkpoints = ModuleControlPlane::new(db.clone())
+            .transitions()
+            .active_checkpoints(Some(tenant.id))
             .await
-            .map_err(crate::graphql::transition_lifecycle::map_transition_store_error)?;
+            .map_err(crate::graphql::transition_lifecycle::map_transition_service_error)?;
         Ok(checkpoints.into_iter().map(Into::into).collect())
     }
 
@@ -1692,10 +1699,14 @@ impl RootQuery {
         &self,
         ctx: &Context<'_>,
     ) -> Result<Vec<crate::graphql::transition_lifecycle::RetentionHoldGql>> {
+        ensure_modules_read_permission(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let holds = rustok_modules::RetentionHoldStore::list_active_holds(db)
+        let tenant = ctx.data::<TenantContext>()?;
+        let holds = ModuleControlPlane::new(db.clone())
+            .transitions()
+            .retention_holds(Some(tenant.id))
             .await
-            .map_err(crate::graphql::transition_lifecycle::map_transition_store_error)?;
+            .map_err(crate::graphql::transition_lifecycle::map_transition_service_error)?;
         Ok(holds.into_iter().map(Into::into).collect())
     }
 }

@@ -3,9 +3,9 @@
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
-- Transport profile: temporary native-only; native/GraphQL admin parity is in progress.
+- Transport profile: native-only; parallel GraphQL admin parity is planned but not yet implemented.
 
 ## Mission
 
@@ -591,9 +591,10 @@ cutover remain open. See [`m7-product-source.md`](./m7-product-source.md),
 
 ### M11 - Admin and cutover
 
-- [ ] Expose schema, partition, lag, inbox, failure, rebuild, drift, and query
-      diagnostics.
-- [ ] Add rebuild/cancel/retry commands.
+- [x] Expose schema, storage/partition, and rebuild/drift diagnostics in the Leptos admin dashboard.
+- [x] Expose live lag, inbox, failure metrics, and query execution diagnostics.
+- [x] Add rebuild/cancel operator actions in `rustok-index-admin` (native server functions, strict tenant binding, `MODULES_MANAGE` guards, and pure view-model action formatters).
+- [x] Add retry operator actions and live failure recovery metrics.
 - [ ] Publish new FBA contracts and runtime evidence.
 - [ ] Migrate consumers and delete final compatibility code.
 - [ ] Promote FBA only after compiled/live evidence.
@@ -745,6 +746,8 @@ node scripts/verify/verify-index-sales-channel-source.mjs
   evidence, one admitted PostgreSQL/reference equivalence bundle, and one real full
   PostgreSQL partition packet remain for the owner to execute and admit before
   authoritative consumer or production partition cutover.
+- 2026-09-06: modernized rustok-index-admin with M11 operator diagnostics dashboard, tabbed Leptos UI (Overview, Schemas Catalog, Storage Foundation, Replay & Operations), zero-Leptos core view models, and purged obsolete FTS/search terminology from en/ru locales.
+- 2026-09-06: implemented rebuild and cancellation operator actions in rustok-index-admin with native Leptos server functions, strict tenant-scope binding and MODULES_MANAGE permission guards, pure view-model result formatters, and contract verification.
 
 ## Verification
 

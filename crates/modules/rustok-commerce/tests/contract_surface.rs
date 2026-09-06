@@ -90,7 +90,7 @@ fn payment_planning_redirects_to_the_main_ecommerce_plan() {
 
 #[test]
 fn central_registry_tracks_all_ecommerce_modules_in_ffa_fba_board() {
-    let registry = include_str!("../../../docs/modules/registry.md");
+    let registry = include_str!("../../../../docs/modules/registry.md");
     for required_row in [
         "| `commerce` | admin + storefront |",
         "| `cart` | storefront |",

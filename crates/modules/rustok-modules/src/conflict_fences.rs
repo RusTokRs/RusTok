@@ -78,10 +78,7 @@ impl ConflictKey {
 
     /// Fleet-level operations-tool exclusion fence.
     pub fn fleet_operations_tool() -> Self {
-        Self::new(
-            ConflictKeyKind::ReleaseUnit,
-            "fleet:operations_tool",
-        )
+        Self::new(ConflictKeyKind::ReleaseUnit, "fleet:operations_tool")
     }
 
     /// Database schema migration owner fence for a module.
@@ -213,11 +210,12 @@ impl ConflictFenceSet {
         tenant_id: Option<Uuid>,
         affected_nodes: &[String],
     ) -> Self {
-        let mut keys = Vec::new();
-        keys.push(ConflictKey::release_unit(module_slug));
-        keys.push(ConflictKey::data_migration_owner(module_slug));
-        keys.push(ConflictKey::traffic(module_slug, tenant_id));
-        keys.push(ConflictKey::job_queue(module_slug, tenant_id));
+        let mut keys = vec![
+            ConflictKey::release_unit(module_slug),
+            ConflictKey::data_migration_owner(module_slug),
+            ConflictKey::traffic(module_slug, tenant_id),
+            ConflictKey::job_queue(module_slug, tenant_id),
+        ];
 
         if let Some(tid) = tenant_id {
             keys.push(ConflictKey::namespace(tid, module_slug));
@@ -249,7 +247,7 @@ mod tests {
         let k4 = ConflictKey::release_unit("customer");
 
         // Hierarchy rule: ReleaseUnit < DataMigrationOwner < Namespace < Topology
-        let mut keys = vec![k1.clone(), k2.clone(), k3.clone(), k4.clone()];
+        let mut keys = [k1.clone(), k2.clone(), k3.clone(), k4.clone()];
         keys.sort();
 
         assert_eq!(keys[0], k4);

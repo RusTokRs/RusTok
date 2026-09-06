@@ -2075,11 +2075,21 @@ backend preflight.
   Verified by `conflict_fences.rs`, `transition_coordinator.rs`, `transition_control_card.rs`, and `point_of_no_return_and_irreversibility_tests.rs`.
 - [x] Implement explicit rollback-window closure and the finalization gate.
   `ModuleTransitionCoordinator::finalize_convergence` validates the security epoch
-  and transitions state to `Converged`. The watchdog (`evaluate_transition_watchdog`),
-  server background worker (`ModuleTransitionWatchdog`), and server mutation
-  (`finalizeModuleTransition`) atomically release temporary `ActiveRolloutWindow` GC
-  retention holds, closing the rollback window and unblocking CAS garbage collection.
-  Verified by `transition_watchdog_tests.rs` and `module_graphql_native_parity.rs`.
+  and transitions state to `Converged`. `SeaOrmModuleTransitionService` is the
+  single persistence owner used by the watchdog, server background worker, and
+  `finalizeModuleTransition`. Operator finalization requires authenticated
+  `modules:manage` evidence, exact tenant scope, `expectedRevision`, and an
+  `idempotencyKey`. Checkpoint CAS, operation receipt, transactional outbox
+  evidence, and release of temporary `ActiveRolloutWindow` holds commit
+  atomically. Dynamic recovery is performed only by
+  `rollbackTenantArtifact`: it verifies the activation-recorded direct
+  predecessor and atomically changes the serving selection, advances the
+  checkpoint, releases the hold, and emits rollback evidence. Security-epoch
+  preemption fails closed without claiming recovery when no fresh
+  capability-grant decision is available.
+  Verified by `transition_service_tests.rs`,
+  `transition_watchdog_tests.rs`, and
+  `graphql_transition_lifecycle_tests.rs`.
 - [x] Integrate bounded artifact-data snapshot readiness and platform
   PostgreSQL recovery evidence without adding automatic restore.
   Verified by `data_snapshot_readiness.rs`, `control_plane.rs`, and `snapshot_readiness_and_recovery_evidence_tests.rs`.

@@ -37,7 +37,7 @@ fn atomic_local_backend_keeps_capacity_and_cas_regressions() {
 #[test]
 fn redis_feature_is_compatibility_only_in_core_and_owned_by_cache() {
     let core_manifest = include_str!("../Cargo.toml");
-    let cache_manifest = include_str!("../../rustok-cache/Cargo.toml");
+    let cache_manifest = include_str!("../../../modules/rustok-cache/Cargo.toml");
 
     assert!(core_manifest.contains("redis-cache = []"));
     assert!(!core_manifest.contains("\nredis ="));
@@ -49,12 +49,12 @@ fn redis_feature_is_compatibility_only_in_core_and_owned_by_cache() {
 
 #[test]
 fn shared_redis_backend_connects_lazily_and_recovers_generation_through_monitor() {
-    let cache_lib = include_str!("../../rustok-cache/src/lib.rs");
-    let shared = include_str!("../../rustok-cache/src/shared_backend.rs");
-    let weighted = include_str!("../../rustok-cache/src/weighted.rs");
-    let generation_recovery = include_str!("../../rustok-cache/src/backend_generation_recovery.rs");
-    let redis_status = include_str!("../../rustok-cache/src/redis_status.rs");
-    let recovery_test = include_str!("../../rustok-cache/src/startup_recovery_tests.rs");
+    let cache_lib = include_str!("../../../modules/rustok-cache/src/lib.rs");
+    let shared = include_str!("../../../modules/rustok-cache/src/shared_backend.rs");
+    let weighted = include_str!("../../../modules/rustok-cache/src/weighted.rs");
+    let generation_recovery = include_str!("../../../modules/rustok-cache/src/backend_generation_recovery.rs");
+    let redis_status = include_str!("../../../modules/rustok-cache/src/redis_status.rs");
+    let recovery_test = include_str!("../../../modules/rustok-cache/src/startup_recovery_tests.rs");
 
     assert!(shared.contains("manager: AsyncMutex<Option<redis::aio::ConnectionManager>>"));
     assert!(shared.contains("async fn connection_manager(&self)"));
@@ -93,11 +93,11 @@ fn shared_redis_backend_connects_lazily_and_recovers_generation_through_monitor(
 
 #[test]
 fn memory_only_cache_feature_matrix_remains_enforced() {
-    let cache_lib = include_str!("../../rustok-cache/src/lib.rs");
-    let cache_manifest = include_str!("../../rustok-cache/Cargo.toml");
-    let shared = include_str!("../../rustok-cache/src/shared_backend.rs");
-    let weighted = include_str!("../../rustok-cache/src/weighted.rs");
-    let workflow = include_str!("../../../.github/workflows/cache-feature-matrix.yml");
+    let cache_lib = include_str!("../../../modules/rustok-cache/src/lib.rs");
+    let cache_manifest = include_str!("../../../modules/rustok-cache/Cargo.toml");
+    let shared = include_str!("../../../modules/rustok-cache/src/shared_backend.rs");
+    let weighted = include_str!("../../../modules/rustok-cache/src/weighted.rs");
+    let workflow = include_str!("../../../../.github/workflows/cache-feature-matrix.yml");
 
     assert!(cache_lib.contains("#[cfg(feature = \"redis-cache\")]\nmod fallback;"));
     assert!(cache_lib.contains("mod shared_backend;"));

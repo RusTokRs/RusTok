@@ -99,6 +99,14 @@ Platform-scope artifact and static-distribution events use the root event
 contract's nil-tenant sentinel only through its explicit event allow-list;
 tenant-scoped events fail closed if that sentinel is supplied.
 
+`SeaOrmModuleTransitionService` is the sole host-facing transition query and
+convergence boundary. Its reads enforce exact tenant scope, including the
+platform `None` scope, and host lifecycle/settings guards propagate owner read
+failures instead of treating missing evidence as permission to mutate. SQLite
+stores the service's UUID identities as BLOB values consistently across parent
+and foreign-key columns; revisions, security epochs, and retry counters use
+checked conversions at both persistence edges.
+
 Secret values never cross the artifact capability response. The sandbox-visible
 `platform.secrets.acquire_handle` operation returns only logical reference and
 revision. A host adapter that needs the value must use
@@ -648,7 +656,25 @@ rollback predecessor. `activate_artifact` is the scoped owner transition. It
 serializes one `(scope, slug)`, records only the active non-uninstalled
 predecessor, makes that predecessor inactive, writes the candidate's durable
 predecessor pointer and replayable operation receipt, then makes the candidate
-active and emits `module.artifact.activated` in the same transaction.
+active, creates the transition checkpoint and rollout-window retention hold,
+and emits `module.artifact.activated` in the same transaction. Failure to
+persist either transition record aborts activation.
+
+`rollback_artifact` is the only dynamic serving recovery command. It verifies
+that the retained target is the direct predecessor recorded by the activation
+operation, rejects closed or stale transition revisions, and atomically changes
+both admission selections, advances the checkpoint to
+`RecoveredToPredecessor`, releases the rollout hold, records its idempotency
+receipt, and emits `module.artifact.rolled_back`. No transport may mark a
+checkpoint recovered without completing this serving transition.
+
+`SeaOrmModuleTransitionService::finalize` owns explicit convergence. The
+authenticated command carries tenant scope, `modules:manage` evidence,
+`expected_revision`, and an idempotency key. Its checkpoint CAS, retention-hold
+release, operation receipt, and `module.transition.finalized` event commit in
+one transaction. The watchdog uses the same owner boundary for elapsed
+observation windows. A stale security epoch fails closed and retains recovery
+evidence because automatic rollback cannot reuse an obsolete capability grant.
 
 File-backed admission uses `ArtifactPayloadSource::TemporaryFile` and
 `DurableArtifactBlobStore::stage_file`; the storage adapter hashes the staging

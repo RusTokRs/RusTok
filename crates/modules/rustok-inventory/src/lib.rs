@@ -25,10 +25,7 @@ pub use reservation_port_context::{
 };
 pub use rustok_commerce_foundation::entities::product::ProductStatus;
 pub use services::{
-    AdminInventoryPrice, AdminInventoryProductDetail, AdminInventoryProductList,
-    AdminInventoryProductListItem, AdminInventoryProductTranslation, AdminInventoryProductsFilter,
-    AdminInventoryReadService, AdminInventoryVariant, BootstrapService, InitialInventory,
-    InventoryAvailabilityCheckResult, InventoryQuantityWriteResult,
+    BootstrapService, InitialInventory, InventoryAvailabilityCheckResult, InventoryQuantityWriteResult,
     InventoryReservationReleaseWriteResult, InventoryReservationWriteResult, InventoryService,
     PublicChannelInventoryProjection, PublicChannelInventoryVariantProjectionInput,
     check_public_channel_inventory_request, check_variant_availability_for_public_channel,

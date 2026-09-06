@@ -29,8 +29,7 @@ impl MigrationTrait for Migration {
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
-                "CREATE TABLE module_static_settings_source_locales (\
+            DbBackend::Sqlite => &["CREATE TABLE module_static_settings_source_locales (\
                     tenant_id TEXT NOT NULL,\
                     module_slug TEXT NOT NULL,\
                     locale TEXT NOT NULL CHECK (length(locale) BETWEEN 2 AND 32),\
@@ -38,8 +37,7 @@ impl MigrationTrait for Migration {
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
                     PRIMARY KEY (tenant_id, module_slug)\
-                )",
-            ],
+                )"],
             _ => return Err(DbErr::Custom("Unsupported database backend".to_string())),
         };
 

@@ -258,6 +258,15 @@
       "mode": "none",
       "owner": "rustok-product",
       "reason": "PostgreSQL CAT-34 performs no forward row backfill: derived closure storage is already non-canonical, unread and unwritten on PostgreSQL after the verified hierarchy consumer, write and invariant cutovers; the migration physically removes only that retired storage without CASCADE, while its reversible down path reconstructs exact closure rows from retained Product parent_id before restoring the compatibility trigger"
+    },
+    {
+      "id": "product-image-alt-storage-retirement",
+      "migration": "m20260906_000021_retire_product_image_alt_storage",
+      "mode": "fixture",
+      "owner": "rustok-product",
+      "reason": "Legacy product_images.alt_text is an unlocalized runtime-compatibility copy. The cutover preserves only values that have no existing storage-only und translation, never overwrites an existing und row (including explicit NULL), then removes the duplicate base column.",
+      "setup_sql": "INSERT INTO tenants (id, name, slug) VALUES ('40000000-0000-0000-0000-000000000001', 'Product image alt retirement fixture', 'product-image-alt-retirement-fixture'); INSERT INTO products (id, tenant_id, status, metadata, created_at, updated_at) VALUES ('40000000-0000-0000-0000-000000000010', '40000000-0000-0000-0000-000000000001', 'active', '{}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP); INSERT INTO product_images (id, product_id, media_id, position, alt_text) VALUES ('40000000-0000-0000-0000-000000000020', '40000000-0000-0000-0000-000000000010', '40000000-0000-0000-0000-000000000030', 0, 'Legacy image alt'), ('40000000-0000-0000-0000-000000000021', '40000000-0000-0000-0000-000000000010', '40000000-0000-0000-0000-000000000031', 1, 'Must not overwrite explicit null'); INSERT INTO product_image_translations (id, image_id, locale, alt_text) VALUES ('40000000-0000-0000-0000-000000000040', '40000000-0000-0000-0000-000000000021', 'und', NULL)",
+      "assertion_sql": "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'product_images' AND column_name = 'alt_text') AND EXISTS (SELECT 1 FROM product_image_translations WHERE image_id = '40000000-0000-0000-0000-000000000020'::uuid AND locale = 'und' AND alt_text = 'Legacy image alt') AND (SELECT COUNT(*) FROM product_image_translations WHERE image_id = '40000000-0000-0000-0000-000000000020'::uuid AND locale = 'und') = 1 AND EXISTS (SELECT 1 FROM product_image_translations WHERE image_id = '40000000-0000-0000-0000-000000000021'::uuid AND locale = 'und' AND alt_text IS NULL) AND (SELECT COUNT(*) FROM product_image_translations WHERE image_id = '40000000-0000-0000-0000-000000000021'::uuid AND locale = 'und') = 1) AS passed"
     }
   ]
 }

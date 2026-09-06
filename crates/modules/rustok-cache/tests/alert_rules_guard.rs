@@ -1,11 +1,11 @@
 #[test]
 fn cache_alerts_reference_metrics_exported_by_the_capability() {
-    let alerts = include_str!("../../../ops/prometheus/alert_rules.yml");
+    let alerts = include_str!("../../../../ops/prometheus/alert_rules.yml");
     let redis = include_str!("../src/redis_status.rs");
     let generation_and_refresh = include_str!("../src/observability.rs");
     let cas = include_str!("../src/cas_observability.rs");
     let service = include_str!("../src/service.rs");
-    let telemetry = include_str!("../../rustok-telemetry/src/metrics.rs");
+    let telemetry = include_str!("../../../libs/rustok-telemetry/src/metrics.rs");
 
     for (alert, metric, source) in [
         ("CacheRedisDegraded", "rustok_cache_redis_degraded", redis),
@@ -119,7 +119,7 @@ fn live_redis_hardening_retains_latency_circuit_and_restart_recovery() {
 #[test]
 fn permanent_gate_executes_expiry_eviction_and_concurrent_local_cas() {
     let cas = include_str!("atomic_cas.rs");
-    let workflow = include_str!("../../../.github/workflows/cache-hardening.yml");
+    let workflow = include_str!("../../../../.github/workflows/cache-hardening.yml");
 
     for required in [
         "concurrent_local_compare_and_set_has_exactly_one_winner",
@@ -148,7 +148,7 @@ fn permanent_gate_executes_expiry_eviction_and_concurrent_local_cas() {
 fn live_fallback_cas_outage_evidence_remains_wired() {
     let evidence = include_str!("fallback_cas_live.rs");
     let fallback = include_str!("../src/fallback.rs");
-    let workflow = include_str!("../../../.github/workflows/cache-hardening.yml");
+    let workflow = include_str!("../../../../.github/workflows/cache-hardening.yml");
 
     for required in [
         "fallback_cas_fails_closed_during_redis_outage_and_recovers",

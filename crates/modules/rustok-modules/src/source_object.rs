@@ -15,9 +15,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -93,7 +91,8 @@ impl SourceObjectStore {
         if !cas_root.exists() {
             fs::create_dir_all(&cas_root).map_err(|e| SourceObjectError::Io(e.to_string()))?;
         }
-        let canonical_root = fs::canonicalize(&cas_root).map_err(|e| SourceObjectError::Io(e.to_string()))?;
+        let canonical_root =
+            fs::canonicalize(&cas_root).map_err(|e| SourceObjectError::Io(e.to_string()))?;
         Ok(Self {
             db,
             cas_root: canonical_root,
@@ -130,12 +129,14 @@ impl SourceObjectStore {
         manifest_digest: Option<&str>,
     ) -> Result<SourceReceipt, SourceObjectError> {
         if !valid_digest(expected_digest) {
-            return Err(SourceObjectError::InvalidDigest(expected_digest.to_string()));
+            return Err(SourceObjectError::InvalidDigest(
+                expected_digest.to_string(),
+            ));
         }
-        if let Some(m_digest) = manifest_digest {
-            if !valid_digest(m_digest) {
-                return Err(SourceObjectError::InvalidDigest(m_digest.to_string()));
-            }
+        if let Some(m_digest) = manifest_digest
+            && !valid_digest(m_digest)
+        {
+            return Err(SourceObjectError::InvalidDigest(m_digest.to_string()));
         }
 
         let computed_digest = sha256_digest(bytes);
@@ -159,7 +160,12 @@ impl SourceObjectStore {
         // If blob does not already exist on disk, commit atomically via hard link or rename
         if !destination.exists() {
             let seq = SOURCE_UPLOAD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-            let temp_filename = format!(".upload-{}-{}-{}.tmp", std::process::id(), preparation_id, seq);
+            let temp_filename = format!(
+                ".upload-{}-{}-{}.tmp",
+                std::process::id(),
+                preparation_id,
+                seq
+            );
             let temp_path = self.cas_root.join(temp_filename);
 
             let mut file = OpenOptions::new()
@@ -344,10 +350,7 @@ impl SourceObjectStore {
             placeholder(backend, 2)
         );
 
-        let values = vec![
-            uuid_value(preparation_id, backend),
-            source_digest.into(),
-        ];
+        let values = vec![uuid_value(preparation_id, backend), source_digest.into()];
 
         let row = self
             .db
@@ -405,18 +408,19 @@ impl SourceObjectStore {
         receipt: &SourceReceipt,
         calling_scope: Option<&ModuleInstallationScope>,
     ) -> Result<(), SourceObjectError> {
-        if let Some(scope) = calling_scope {
-            match (scope, &receipt.scope) {
-                (ModuleInstallationScope::Tenant { tenant_id }, ModuleInstallationScope::Tenant { tenant_id: owner_id }) => {
-                    if tenant_id != owner_id {
-                        return Err(SourceObjectError::UnauthorizedTenant {
-                            receipt_id: receipt.source_receipt_id,
-                            target_tenant: *tenant_id,
-                        });
-                    }
-                }
-                _ => {}
-            }
+        if let Some(scope) = calling_scope
+            && let (
+                ModuleInstallationScope::Tenant { tenant_id },
+                ModuleInstallationScope::Tenant {
+                    tenant_id: owner_id,
+                },
+            ) = (scope, &receipt.scope)
+            && tenant_id != owner_id
+        {
+            return Err(SourceObjectError::UnauthorizedTenant {
+                receipt_id: receipt.source_receipt_id,
+                target_tenant: *tenant_id,
+            });
         }
         Ok(())
     }

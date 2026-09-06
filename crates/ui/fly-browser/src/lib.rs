@@ -638,6 +638,28 @@ mod tests {
     }
 
     #[test]
+    fn command_producing_and_draft_intents_are_mutating() {
+        for kind in [
+            BrowserIntentKind::SetInternalPageLink,
+            BrowserIntentKind::RemoveInternalPageLink,
+            BrowserIntentKind::SetComponentAction,
+            BrowserIntentKind::RemoveComponentAction,
+            BrowserIntentKind::SetComponentForm,
+            BrowserIntentKind::RemoveComponentForm,
+            BrowserIntentKind::SetNativeFormField,
+            BrowserIntentKind::UpsertTranslation,
+            BrowserIntentKind::RemoveTranslation,
+            BrowserIntentKind::Save,
+        ] {
+            assert!(
+                kind.is_mutating(),
+                "{} must be revision protected",
+                kind.as_str()
+            );
+        }
+    }
+
+    #[test]
     fn envelope_uses_typed_kind_without_rejecting_extensions() {
         let known = BrowserIntentEnvelope {
             protocol: FLY_BROWSER_PROTOCOL.to_string(),

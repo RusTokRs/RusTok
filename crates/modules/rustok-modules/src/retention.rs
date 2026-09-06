@@ -112,9 +112,7 @@ impl RetentionTarget {
             RetentionTarget::BuildAttempt { attempt_id } => {
                 ("build_attempt", attempt_id.to_string())
             }
-            RetentionTarget::PlatformExecutableCas { digest } => {
-                ("executable_cas", digest.clone())
-            }
+            RetentionTarget::PlatformExecutableCas { digest } => ("executable_cas", digest.clone()),
             RetentionTarget::ArtifactDataObject {
                 object_id,
                 namespace_instance_id,

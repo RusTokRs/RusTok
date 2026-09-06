@@ -35,7 +35,8 @@ pub struct WaveNodeAssignment {
 
 impl WaveNodeAssignment {
     pub fn is_fully_pre_staged(&self) -> bool {
-        self.pre_staged_candidate && (self.predecessor_digest.is_none() || self.pre_staged_predecessor)
+        self.pre_staged_candidate
+            && (self.predecessor_digest.is_none() || self.pre_staged_predecessor)
     }
 }
 
@@ -116,7 +117,9 @@ impl WaveRolloutCoordinator {
                 if assignment.node_id == node_id {
                     assignment.pre_staged_candidate = candidate_ok;
                     assignment.pre_staged_predecessor = predecessor_ok;
-                    if assignment.is_fully_pre_staged() && assignment.phase == WaveAssignmentPhase::PreStaging {
+                    if assignment.is_fully_pre_staged()
+                        && assignment.phase == WaveAssignmentPhase::PreStaging
+                    {
                         assignment.phase = WaveAssignmentPhase::PreStaged;
                     }
                 }

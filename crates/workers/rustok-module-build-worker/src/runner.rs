@@ -1268,7 +1268,7 @@ mod tests {
             .expect("create scenario directory");
         let scenario_bytes = String::from_utf8(
             include_bytes!(
-                "../../rustok-module-template/assets/tests/sandbox-scenario.json.template"
+                "../../../utils/rustok-module-template/assets/tests/sandbox-scenario.json.template"
             )
             .to_vec(),
         )

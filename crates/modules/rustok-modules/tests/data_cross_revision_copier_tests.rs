@@ -121,7 +121,7 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
     };
     let page1_res = copier.copy_page(page1_req).await.expect("page 1 succeeds");
     assert_eq!(page1_res.items_copied, 2);
-    assert_eq!(page1_res.is_terminal_page, false);
+    assert!(!page1_res.is_terminal_page);
     assert_eq!(page1_res.next_page_cursor, Some("item_02".to_string()));
 
     // Idempotent retry of Page 1 with same idempotency key
@@ -155,7 +155,7 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
     };
     let page2_res = copier.copy_page(page2_req).await.expect("page 2 succeeds");
     assert_eq!(page2_res.items_copied, 2);
-    assert_eq!(page2_res.is_terminal_page, false);
+    assert!(!page2_res.is_terminal_page);
     assert_eq!(page2_res.next_page_cursor, Some("item_04".to_string()));
 
     // 5. Copy Page 3 (size = 2): item 05 (terminal page)
@@ -171,7 +171,7 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
     };
     let page3_res = copier.copy_page(page3_req).await.expect("page 3 succeeds");
     assert_eq!(page3_res.items_copied, 1);
-    assert_eq!(page3_res.is_terminal_page, true);
+    assert!(page3_res.is_terminal_page);
     assert_eq!(page3_res.next_page_cursor, None);
 
     // Verify all 5 records exist in target contract revision (2)

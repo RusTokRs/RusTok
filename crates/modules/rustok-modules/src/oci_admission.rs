@@ -19,12 +19,11 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    ArtifactAdmissionLimits, ArtifactPayloadSource,
-    ArtifactRegistry, ControlPlaneInfrastructure, DurableArtifactBlobStore,
-    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor,
+    ArtifactAdmissionLimits, ArtifactPayloadSource, ArtifactRegistry, ControlPlaneInfrastructure,
+    DurableArtifactBlobStore, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor,
     ModuleCommandContext, ModuleInstallationScope, OciArtifactReference,
-    ReleaseAdmissionIntentJournal, ReleaseAdmissionJournalError,
-    TrustVerificationRequest, TrustVerifier,
+    ReleaseAdmissionIntentJournal, ReleaseAdmissionJournalError, TrustVerificationRequest,
+    TrustVerifier,
 };
 
 /// Error conditions during OCI release admission.

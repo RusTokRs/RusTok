@@ -60,9 +60,27 @@ async fn test_object_migration_lifecycle_acceptance_and_live_object_guard() {
 
     // 2. Insert 3 source objects in revision 1
     let objects = [
-        ("avatar.png", "image/png", 2048, "sha256:1111111111111111111111111111111111111111111111111111111111111111", "storage/avatar"),
-        ("document.pdf", "application/pdf", 1048576, "sha256:2222222222222222222222222222222222222222222222222222222222222222", "storage/doc"),
-        ("photo.jpg", "image/jpeg", 524288, "sha256:3333333333333333333333333333333333333333333333333333333333333333", "storage/photo"),
+        (
+            "avatar.png",
+            "image/png",
+            2048,
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "storage/avatar",
+        ),
+        (
+            "document.pdf",
+            "application/pdf",
+            1048576,
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "storage/doc",
+        ),
+        (
+            "photo.jpg",
+            "image/jpeg",
+            524288,
+            "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "storage/photo",
+        ),
     ];
 
     for (name, content_type, size, digest, key) in objects {
@@ -119,7 +137,7 @@ async fn test_object_migration_lifecycle_acceptance_and_live_object_guard() {
         .await
         .expect("migration succeeds");
     assert_eq!(receipt.objects_migrated, 3);
-    assert_eq!(receipt.accepted, true);
+    assert!(receipt.accepted);
     assert!(receipt.inventory_manifest_digest.starts_with("sha256:"));
 
     // 5. Verify target objects and guard passing
@@ -127,7 +145,10 @@ async fn test_object_migration_lifecycle_acceptance_and_live_object_guard() {
         .count_unmigrated_live_objects(tenant_id, module_slug, 1, 2)
         .await
         .expect("count unmigrated objects after copy");
-    assert_eq!(remaining_unmigrated, 0, "no unmigrated objects should remain");
+    assert_eq!(
+        remaining_unmigrated, 0,
+        "no unmigrated objects should remain"
+    );
 
     data_copier
         .ensure_no_unmigrated_live_objects(tenant_id, module_slug, 1, 2)

@@ -15446,6 +15446,7 @@ dependencies = [
  "rustok-api",
  "rustok-inventory",
  "rustok-outbox",
+ "rustok-product",
  "rustok-ui-core",
  "rustok-ui-i18n-leptos",
  "serde",

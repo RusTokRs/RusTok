@@ -36,7 +36,9 @@ pub enum ArtifactDataCopyError {
     SourceNamespaceMissing(u64),
     #[error("Target namespace for revision {0} not found")]
     TargetNamespaceMissing(u64),
-    #[error("Source has {0} unmigrated live objects in module_artifact_data_objects; structured copier alone cannot authorize revision change")]
+    #[error(
+        "Source has {0} unmigrated live objects in module_artifact_data_objects; structured copier alone cannot authorize revision change"
+    )]
     UnmigratedLiveObjects(u64),
     #[error("Storage error: {0}")]
     Storage(String),
@@ -213,8 +215,8 @@ impl ArtifactDataCrossRevisionCopier {
         let mut hasher = Sha256::new();
         hasher.update(request.tenant_id.as_bytes());
         hasher.update(request.module_slug.as_bytes());
-        hasher.update(&request.source_contract_revision.to_be_bytes());
-        hasher.update(&request.target_contract_revision.to_be_bytes());
+        hasher.update(request.source_contract_revision.to_be_bytes());
+        hasher.update(request.target_contract_revision.to_be_bytes());
 
         let mut source_items = Vec::with_capacity(rows.len());
         for row in rows {
@@ -224,7 +226,7 @@ impl ArtifactDataCrossRevisionCopier {
 
             hasher.update(data_key.as_bytes());
             hasher.update(value_text.as_bytes());
-            hasher.update(&revision.to_be_bytes());
+            hasher.update(revision.to_be_bytes());
 
             source_items.push((data_key, value_text));
         }
@@ -327,8 +329,8 @@ impl ArtifactDataCrossRevisionCopier {
 
             // Parse json to store as proper Json value in DB
             let parsed_value: serde_json::Value =
-                serde_json::from_str(value_text).map_err(|e| storage_error(e))?;
-            let value_size_bytes = value_text.as_bytes().len() as u64;
+                serde_json::from_str(value_text).map_err(storage_error)?;
+            let value_size_bytes = value_text.len() as u64;
 
             transaction
                 .execute_raw(Statement::from_sql_and_values(

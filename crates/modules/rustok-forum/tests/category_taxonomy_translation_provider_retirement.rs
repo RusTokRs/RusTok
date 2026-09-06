@@ -5,7 +5,7 @@ const LIFECYCLE: &str = include_str!("../src/services/category_lifecycle_owner.r
 const LOCALES: &str = include_str!("../src/services/category_owner_locale_enumeration.rs");
 const SEARCH: &str = include_str!("../src/search_projection.rs");
 const READ_MODEL: &str = include_str!("../src/services/read_model_owner.rs");
-const SERVER: &str = include_str!("../../../apps/server/src/services/module_event_dispatcher.rs");
+const SERVER: &str = include_str!("../../../../apps/server/src/services/module_event_dispatcher.rs");
 
 #[test]
 fn forum_category_translation_provider_and_mirror_writes_are_retired_after_taxonomy_cutover() {

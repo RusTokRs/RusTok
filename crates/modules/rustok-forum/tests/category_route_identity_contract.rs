@@ -4,7 +4,7 @@ const ERROR: &str = include_str!("../src/error.rs");
 const INITIAL_MIGRATION: &str =
     include_str!("../src/migrations/m20260328_000001_create_forum_tables.rs");
 const SLUG_LOCALE_DECISION: &str =
-    include_str!("../../../DECISIONS/2026-03-29-forum-slug-locale-contract.md");
+    include_str!("../../../../DECISIONS/2026-03-29-forum-slug-locale-contract.md");
 
 #[test]
 fn owner_uses_locale_aware_category_slug_and_existing_unique_route_key() {

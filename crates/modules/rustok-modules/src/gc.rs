@@ -185,7 +185,9 @@ impl GcAdapter for SourceCasGcAdapter {
         match target {
             RetentionTarget::SourceCasBlob { digest } => {
                 if let Some(ref_id) = self.referenced_digests.get(digest) {
-                    Ok(Some(format!("Referenced by active build/release: {ref_id}")))
+                    Ok(Some(format!(
+                        "Referenced by active build/release: {ref_id}"
+                    )))
                 } else {
                     Ok(None)
                 }
@@ -325,14 +327,12 @@ impl GcAdapter for BuildAttemptGcAdapter {
 
     fn check_live_references(&self, target: &RetentionTarget) -> Result<Option<String>, GcError> {
         match target {
-            RetentionTarget::BuildAttempt { attempt_id } => {
-                match self.attempts.get(attempt_id) {
-                    Some(BuildAttemptStatus::Running) => Ok(Some(format!(
-                        "Build attempt {attempt_id} is currently running"
-                    ))),
-                    _ => Ok(None),
-                }
-            }
+            RetentionTarget::BuildAttempt { attempt_id } => match self.attempts.get(attempt_id) {
+                Some(BuildAttemptStatus::Running) => Ok(Some(format!(
+                    "Build attempt {attempt_id} is currently running"
+                ))),
+                _ => Ok(None),
+            },
             _ => Err(GcError::TargetKindMismatch {
                 expected: GcTargetKind::BuildAttempts,
                 actual: target_to_kind(target),
@@ -436,7 +436,9 @@ impl GcAdapter for ArtifactDataObjectGcAdapter {
                 if *state == ArtifactObjectState::Live {
                     return Err(GcError::LiveArtifactDataProhibited);
                 }
-                if *state == ArtifactObjectState::Staging && self.active_staging_intents.contains(object_id) {
+                if *state == ArtifactObjectState::Staging
+                    && self.active_staging_intents.contains(object_id)
+                {
                     return Ok(Some(format!(
                         "Artifact data object {object_id} has active staging intent"
                     )));
@@ -568,7 +570,9 @@ impl GcAdapter for EncryptedSettingsRecoveryPointGcAdapter {
 
     fn execute_physical_purge(&mut self, target: &RetentionTarget) -> Result<(), GcError> {
         match target {
-            RetentionTarget::EncryptedSettingsRecoveryPoint { recovery_point_id, .. } => {
+            RetentionTarget::EncryptedSettingsRecoveryPoint {
+                recovery_point_id, ..
+            } => {
                 self.recovery_points.remove(recovery_point_id);
                 Ok(())
             }
@@ -763,7 +767,8 @@ impl GcAdapter for OperationsToolGcAdapter {
                 host_id,
                 slot_digest,
             } => {
-                self.predecessor_slots.remove(&format!("{host_id}:{slot_digest}"));
+                self.predecessor_slots
+                    .remove(&format!("{host_id}:{slot_digest}"));
                 Ok(())
             }
             _ => Err(GcError::TargetKindMismatch {
@@ -856,21 +861,24 @@ impl GcCoordinator {
         reason: impl Into<String>,
         now: DateTime<Utc>,
     ) -> Result<GcTombstoneRecord, GcError> {
-        if let RetentionTarget::ArtifactDataObject { state, .. } = &target {
-            if *state == ArtifactObjectState::Live {
-                return Err(GcError::LiveArtifactDataProhibited);
+        if matches!(
+            &target,
+            RetentionTarget::ArtifactDataObject {
+                state: ArtifactObjectState::Live,
+                ..
             }
+        ) {
+            return Err(GcError::LiveArtifactDataProhibited);
         }
 
-        if let Some(existing_id) = self.target_to_tombstone.get(&target) {
-            if let Some(tombstone) = self.tombstones.get(existing_id) {
-                if matches!(
-                    tombstone.status,
-                    GcTombstoneStatus::ActiveGrace | GcTombstoneStatus::GraceExpired
-                ) {
-                    return Err(GcError::AlreadyTombstoned(target, *existing_id));
-                }
-            }
+        if let Some(existing_id) = self.target_to_tombstone.get(&target)
+            && let Some(tombstone) = self.tombstones.get(existing_id)
+            && matches!(
+                tombstone.status,
+                GcTombstoneStatus::ActiveGrace | GcTombstoneStatus::GraceExpired
+            )
+        {
+            return Err(GcError::AlreadyTombstoned(target, *existing_id));
         }
 
         let tombstone_id = Uuid::new_v4();
@@ -938,11 +946,13 @@ impl GcCoordinator {
     ) -> GcFinalRecheckDecision {
         let tombstone = match self.tombstones.get_mut(&tombstone_id) {
             Some(t) => t,
-            None => return GcFinalRecheckDecision::DeniedInactiveStatus {
-                status: GcTombstoneStatus::Revoked {
-                    reason: "Tombstone not found".to_string(),
-                },
-            },
+            None => {
+                return GcFinalRecheckDecision::DeniedInactiveStatus {
+                    status: GcTombstoneStatus::Revoked {
+                        reason: "Tombstone not found".to_string(),
+                    },
+                };
+            }
         };
 
         if !matches!(
@@ -1030,10 +1040,9 @@ impl GcCoordinator {
             return Err(GcError::TokenExpired(token.expires_at));
         }
 
-        let recorded_token = self
-            .issued_tokens
-            .remove(&token.token_id)
-            .ok_or_else(|| GcError::InvalidToken("Token not found or already consumed".to_string()))?;
+        let recorded_token = self.issued_tokens.remove(&token.token_id).ok_or_else(|| {
+            GcError::InvalidToken("Token not found or already consumed".to_string())
+        })?;
 
         if recorded_token != token {
             return Err(GcError::InvalidToken("Token mismatch".to_string()));
@@ -1075,7 +1084,8 @@ impl GcCoordinator {
             receipt_digest,
         };
 
-        self.collection_receipts.insert(collection_id, receipt.clone());
+        self.collection_receipts
+            .insert(collection_id, receipt.clone());
         Ok(receipt)
     }
 
