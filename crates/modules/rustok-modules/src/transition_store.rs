@@ -5,8 +5,9 @@
 
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ActiveModelBehavior, ActiveModelTrait, ConnectionTrait, DeriveEntityModel, DerivePrimaryKey,
-    DeriveRelation, EntityTrait, EnumIter, PrimaryKeyTrait, Set, Statement,
+    ActiveModelBehavior, ActiveModelTrait, ColumnTrait, ConnectionTrait, DeriveEntityModel,
+    DerivePrimaryKey, DeriveRelation, EntityTrait, EnumIter, PrimaryKeyTrait, QueryFilter, Set,
+    Statement,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -109,18 +110,34 @@ impl TransitionCheckpointStore {
     ) -> Result<(), TransitionStoreError> {
         let state_json = serde_json::to_value(&checkpoint.state)?;
         let fences_json = serde_json::to_value(&checkpoint.fences)?;
+        let revision = i64::try_from(checkpoint.revision).map_err(|_| {
+            TransitionStoreError::CorruptData(
+                "Checkpoint revision exceeds the database range".to_string(),
+            )
+        })?;
+        let security_epoch = i64::try_from(checkpoint.security_epoch.value()).map_err(|_| {
+            TransitionStoreError::CorruptData(
+                "Security epoch exceeds the database range".to_string(),
+            )
+        })?;
+        let recovery_attempt_count =
+            i32::try_from(checkpoint.recovery_attempt_count).map_err(|_| {
+                TransitionStoreError::CorruptData(
+                    "Recovery attempt count exceeds the database range".to_string(),
+                )
+            })?;
 
         let model = transition_checkpoint_entity::ActiveModel {
             operation_id: Set(checkpoint.operation_id),
-            revision: Set(checkpoint.revision as i64),
+            revision: Set(revision),
             module_slug: Set(checkpoint.module_slug.clone()),
             tenant_id: Set(checkpoint.tenant_id),
             predecessor_digest: Set(checkpoint.predecessor_digest.clone()),
             candidate_digest: Set(checkpoint.candidate_digest.clone()),
             state: Set(state_json.clone()),
-            security_epoch: Set(checkpoint.security_epoch.value() as i64),
+            security_epoch: Set(security_epoch),
             fences: Set(fences_json.clone()),
-            recovery_attempt_count: Set(checkpoint.recovery_attempt_count as i32),
+            recovery_attempt_count: Set(recovery_attempt_count),
             created_at: Set(checkpoint.created_at),
             updated_at: Set(checkpoint.updated_at),
         };
@@ -166,25 +183,13 @@ impl TransitionCheckpointStore {
                             crate::data::placeholder(backend, 8),
                         ),
                         vec![
-                            i64::try_from(checkpoint.revision)
-                                .map_err(|_| TransitionStoreError::CorruptData(
-                                    "Checkpoint revision exceeds the database range".to_string(),
-                                ))?
-                                .into(),
+                            revision.into(),
                             state_json.into(),
-                            i64::try_from(checkpoint.security_epoch.value())
-                                .map_err(|_| TransitionStoreError::CorruptData(
-                                    "Security epoch exceeds the database range".to_string(),
-                                ))?
-                                .into(),
+                            security_epoch.into(),
                             fences_json.into(),
-                            i32::try_from(checkpoint.recovery_attempt_count)
-                                .map_err(|_| TransitionStoreError::CorruptData(
-                                    "Recovery attempt count exceeds the database range".to_string(),
-                                ))?
-                                .into(),
+                            recovery_attempt_count.into(),
                             checkpoint.updated_at.into(),
-                            crate::data::uuid_value(checkpoint.operation_id, backend),
+                            sea_orm::Value::Uuid(Some(checkpoint.operation_id)),
                             i64::try_from(expected)
                                 .map_err(|_| TransitionStoreError::CorruptData(
                                     "Expected checkpoint revision exceeds the database range".to_string(),
@@ -228,25 +233,7 @@ impl TransitionCheckpointStore {
             None => return Ok(None),
         };
 
-        let state: ModuleTransitionState = serde_json::from_value(model.state)
-            .map_err(|e| TransitionStoreError::CorruptData(format!("Invalid state JSON: {e}")))?;
-        let fences: ConflictFenceSet = serde_json::from_value(model.fences)
-            .map_err(|e| TransitionStoreError::CorruptData(format!("Invalid fences JSON: {e}")))?;
-
-        Ok(Some(ModuleTransitionCheckpoint {
-            operation_id: model.operation_id,
-            revision: model.revision.max(0) as u64,
-            module_slug: model.module_slug,
-            tenant_id: model.tenant_id,
-            predecessor_digest: model.predecessor_digest,
-            candidate_digest: model.candidate_digest,
-            state,
-            security_epoch: GlobalSecurityEpoch(model.security_epoch as u64),
-            fences,
-            recovery_attempt_count: model.recovery_attempt_count.max(0) as u32,
-            created_at: model.created_at,
-            updated_at: model.updated_at,
-        }))
+        Ok(Some(checkpoint_from_model(model)?))
     }
 
     /// Lists all active (non-terminal) module transition checkpoints.
@@ -254,64 +241,77 @@ impl TransitionCheckpointStore {
         db: &C,
     ) -> Result<Vec<ModuleTransitionCheckpoint>, TransitionStoreError> {
         let models = transition_checkpoint_entity::Entity::find().all(db).await?;
-        let mut checkpoints = Vec::new();
+        active_checkpoints_from_models(models)
+    }
 
-        for model in models {
-            let state: ModuleTransitionState =
-                serde_json::from_value(model.state).map_err(|e| {
-                    TransitionStoreError::CorruptData(format!("Invalid state JSON: {e}"))
-                })?;
-            if !state.is_terminal() {
-                let fences: ConflictFenceSet =
-                    serde_json::from_value(model.fences).map_err(|e| {
-                        TransitionStoreError::CorruptData(format!("Invalid fences JSON: {e}"))
-                    })?;
+    /// Lists active checkpoints from one exact tenant or platform scope.
+    pub async fn list_active_checkpoints_for_tenant<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Vec<ModuleTransitionCheckpoint>, TransitionStoreError> {
+        use transition_checkpoint_entity::Column;
 
-                checkpoints.push(ModuleTransitionCheckpoint {
-                    operation_id: model.operation_id,
-                    revision: model.revision.max(0) as u64,
-                    module_slug: model.module_slug,
-                    tenant_id: model.tenant_id,
-                    predecessor_digest: model.predecessor_digest,
-                    candidate_digest: model.candidate_digest,
-                    state,
-                    security_epoch: GlobalSecurityEpoch(model.security_epoch as u64),
-                    fences,
-                    recovery_attempt_count: model.recovery_attempt_count.max(0) as u32,
-                    created_at: model.created_at,
-                    updated_at: model.updated_at,
-                });
-            }
+        let query = transition_checkpoint_entity::Entity::find();
+        let query = match tenant_id {
+            Some(tenant_id) => query.filter(Column::TenantId.eq(tenant_id)),
+            None => query.filter(Column::TenantId.is_null()),
+        };
+        active_checkpoints_from_models(query.all(db).await?)
+    }
+}
+
+fn active_checkpoints_from_models(
+    models: Vec<transition_checkpoint_entity::Model>,
+) -> Result<Vec<ModuleTransitionCheckpoint>, TransitionStoreError> {
+    let mut checkpoints = Vec::new();
+    for model in models {
+        let checkpoint = checkpoint_from_model(model)?;
+        if !checkpoint.state.is_terminal() {
+            checkpoints.push(checkpoint);
         }
-
-        Ok(checkpoints)
     }
+    Ok(checkpoints)
+}
 
-    /// Finds any active (non-terminal) checkpoint for a specific module slug and optional tenant.
-    pub async fn find_active_checkpoint_for_module<C: ConnectionTrait>(
-        db: &C,
-        module_slug: &str,
-        tenant_id: Option<Uuid>,
-    ) -> Result<Option<ModuleTransitionCheckpoint>, TransitionStoreError> {
-        let active = Self::list_active_checkpoints(db).await?;
-        Ok(active.into_iter().find(|cp| {
-            cp.module_slug == module_slug && (tenant_id.is_none() || cp.tenant_id == tenant_id)
-        }))
-    }
+fn checkpoint_from_model(
+    model: transition_checkpoint_entity::Model,
+) -> Result<ModuleTransitionCheckpoint, TransitionStoreError> {
+    let state: ModuleTransitionState = serde_json::from_value(model.state).map_err(|error| {
+        TransitionStoreError::CorruptData(format!("Invalid state JSON: {error}"))
+    })?;
+    let fences: ConflictFenceSet = serde_json::from_value(model.fences).map_err(|error| {
+        TransitionStoreError::CorruptData(format!("Invalid fences JSON: {error}"))
+    })?;
+    let revision = u64::try_from(model.revision).map_err(|_| {
+        TransitionStoreError::CorruptData(
+            "Checkpoint revision is outside the supported range".to_string(),
+        )
+    })?;
+    let security_epoch = u64::try_from(model.security_epoch).map_err(|_| {
+        TransitionStoreError::CorruptData(
+            "Security epoch is outside the supported range".to_string(),
+        )
+    })?;
+    let recovery_attempt_count = u32::try_from(model.recovery_attempt_count).map_err(|_| {
+        TransitionStoreError::CorruptData(
+            "Recovery attempt count is outside the supported range".to_string(),
+        )
+    })?;
 
-    /// Finds any active checkpoint currently under observation (`Observing` state) for a module.
-    pub async fn find_active_observing_checkpoint<C: ConnectionTrait>(
-        db: &C,
-        module_slug: &str,
-        tenant_id: Option<Uuid>,
-    ) -> Result<Option<ModuleTransitionCheckpoint>, TransitionStoreError> {
-        let active = Self::list_active_checkpoints(db).await?;
-        Ok(active.into_iter().find(|cp| {
-            cp.module_slug == module_slug
-                && (tenant_id.is_none() || cp.tenant_id == tenant_id)
-                && matches!(cp.state, ModuleTransitionState::Observing { .. })
-        }))
-    }
+    Ok(ModuleTransitionCheckpoint {
+        operation_id: model.operation_id,
+        revision,
+        module_slug: model.module_slug,
+        tenant_id: model.tenant_id,
+        predecessor_digest: model.predecessor_digest,
+        candidate_digest: model.candidate_digest,
+        state,
+        security_epoch: GlobalSecurityEpoch(security_epoch),
+        fences,
+        recovery_attempt_count,
+        created_at: model.created_at,
+        updated_at: model.updated_at,
+    })
 }
 
 // ============================================================================

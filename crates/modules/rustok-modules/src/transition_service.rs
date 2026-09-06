@@ -14,7 +14,7 @@ use crate::{
     ControlPlaneInfrastructure, ModuleTransitionCheckpoint, ModuleTransitionCoordinator,
     ModuleTransitionFinalizeCommand, RetentionHoldStore, SecurityEpochRegistry,
     TransitionCheckpointStore, TransitionCoordinatorError, TransitionStoreError,
-    data::{now_expression, placeholder, uuid_from_row, uuid_value},
+    data::{now_expression, placeholder, uuid_from_row},
 };
 
 const OPERATION_KIND: &str = "finalize";
@@ -77,13 +77,39 @@ impl SeaOrmModuleTransitionService {
         &self,
         tenant_id: Option<Uuid>,
     ) -> Result<Vec<ModuleTransitionCheckpoint>, ModuleTransitionServiceError> {
-        let checkpoints = TransitionCheckpointStore::list_active_checkpoints(&self.db)
+        TransitionCheckpointStore::list_active_checkpoints_for_tenant(&self.db, tenant_id)
             .await
-            .map_err(store_error)?;
-        Ok(checkpoints
+            .map_err(store_error)
+    }
+
+    pub async fn active_checkpoint_for_module(
+        &self,
+        module_slug: &str,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Option<ModuleTransitionCheckpoint>, ModuleTransitionServiceError> {
+        Ok(self
+            .active_checkpoints(tenant_id)
+            .await?
             .into_iter()
-            .filter(|checkpoint| checkpoint.tenant_id == tenant_id)
-            .collect())
+            .find(|checkpoint| checkpoint.module_slug == module_slug))
+    }
+
+    pub async fn active_observing_checkpoint_for_module(
+        &self,
+        module_slug: &str,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Option<ModuleTransitionCheckpoint>, ModuleTransitionServiceError> {
+        Ok(self
+            .active_checkpoints(tenant_id)
+            .await?
+            .into_iter()
+            .find(|checkpoint| {
+                checkpoint.module_slug == module_slug
+                    && matches!(
+                        checkpoint.state,
+                        crate::ModuleTransitionState::Observing { .. }
+                    )
+            }))
     }
 
     pub async fn retention_holds(
@@ -128,13 +154,11 @@ impl SeaOrmModuleTransitionService {
         if let Some(receipt) = load_operation(&transaction, &command, &request_digest).await? {
             return Ok(receipt);
         }
-        let checkpoint = TransitionCheckpointStore::load_checkpoint(
-            &transaction,
-            command.operation_id,
-        )
-        .await
-        .map_err(store_error)?
-        .ok_or(ModuleTransitionServiceError::NotFound(command.operation_id))?;
+        let checkpoint =
+            TransitionCheckpointStore::load_checkpoint(&transaction, command.operation_id)
+                .await
+                .map_err(store_error)?
+                .ok_or(ModuleTransitionServiceError::NotFound(command.operation_id))?;
         if checkpoint.tenant_id != command.context.tenant_id {
             return Err(ModuleTransitionServiceError::AuthorizationDenied);
         }
@@ -144,9 +168,7 @@ impl SeaOrmModuleTransitionService {
                 current: checkpoint.revision,
             });
         }
-        if let Some(receipt) =
-            reserve_operation(&transaction, &command, &request_digest).await?
-        {
+        if let Some(receipt) = reserve_operation(&transaction, &command, &request_digest).await? {
             return Ok(receipt);
         }
 
@@ -156,12 +178,10 @@ impl SeaOrmModuleTransitionService {
         TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
             .await
             .map_err(store_error)?;
-        let released_holds = RetentionHoldStore::release_holds_for_operation(
-            &transaction,
-            command.operation_id,
-        )
-        .await
-        .map_err(store_error)?;
+        let released_holds =
+            RetentionHoldStore::release_holds_for_operation(&transaction, command.operation_id)
+                .await
+                .map_err(store_error)?;
         let receipt = ModuleTransitionFinalizeReceipt {
             checkpoint: coordinator.checkpoint().clone(),
             released_holds,
@@ -209,13 +229,13 @@ impl SeaOrmModuleTransitionService {
             }
 
             let transaction = self.db.begin().await.map_err(database_error)?;
-            let current = TransitionCheckpointStore::load_checkpoint(
-                &transaction,
-                observed.operation_id,
-            )
-            .await
-            .map_err(store_error)?
-            .ok_or(ModuleTransitionServiceError::NotFound(observed.operation_id))?;
+            let current =
+                TransitionCheckpointStore::load_checkpoint(&transaction, observed.operation_id)
+                    .await
+                    .map_err(store_error)?
+                    .ok_or(ModuleTransitionServiceError::NotFound(
+                        observed.operation_id,
+                    ))?;
             if current.revision != observed.revision || current.state.is_terminal() {
                 continue;
             }
@@ -227,12 +247,9 @@ impl SeaOrmModuleTransitionService {
                     security_registry.current_epoch().value(),
                 );
                 coordinator.fail_closed(reason.clone())?;
-                TransitionCheckpointStore::save_checkpoint(
-                    &transaction,
-                    coordinator.checkpoint(),
-                )
-                .await
-                .map_err(store_error)?;
+                TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
+                    .await
+                    .map_err(store_error)?;
                 self.infrastructure
                     .write_event(
                         &transaction,
@@ -251,12 +268,9 @@ impl SeaOrmModuleTransitionService {
                     .map_err(|error| ModuleTransitionServiceError::Outbox(error.to_string()))?;
             } else {
                 coordinator.finalize_convergence(security_registry)?;
-                TransitionCheckpointStore::save_checkpoint(
-                    &transaction,
-                    coordinator.checkpoint(),
-                )
-                .await
-                .map_err(store_error)?;
+                TransitionCheckpointStore::save_checkpoint(&transaction, coordinator.checkpoint())
+                    .await
+                    .map_err(store_error)?;
                 let released_holds = RetentionHoldStore::release_holds_for_operation(
                     &transaction,
                     coordinator.checkpoint().operation_id,
@@ -347,18 +361,18 @@ async fn reserve_operation(
                 now_expression(backend),
             ),
             vec![
-                uuid_value(command.context.idempotency_key, backend),
+                sea_orm::Value::Uuid(Some(command.context.idempotency_key)),
                 OPERATION_KIND.into(),
                 request_digest.to_owned().into(),
-                uuid_value(command.context.actor_id, backend),
+                sea_orm::Value::Uuid(Some(command.context.actor_id)),
                 command
                     .context
                     .tenant_id
-                    .map(|tenant_id| uuid_value(tenant_id, backend))
+                    .map(|tenant_id| sea_orm::Value::Uuid(Some(tenant_id)))
                     .unwrap_or(sea_orm::Value::Uuid(None)),
                 command.context.trace_id.clone().into(),
-                uuid_value(command.context.correlation_id, backend),
-                uuid_value(command.operation_id, backend),
+                sea_orm::Value::Uuid(Some(command.context.correlation_id)),
+                sea_orm::Value::Uuid(Some(command.operation_id)),
             ],
         ))
         .await
@@ -384,7 +398,7 @@ async fn load_operation<C: ConnectionTrait>(
                  FROM module_transition_operations WHERE idempotency_key = {}",
                 placeholder(backend, 1),
             ),
-            vec![uuid_value(command.context.idempotency_key, backend)],
+            vec![sea_orm::Value::Uuid(Some(command.context.idempotency_key))],
         ))
         .await
         .map_err(database_error)?;
@@ -428,7 +442,9 @@ fn validate_operation_row(
         && uuid_from_row(row, "actor_id", backend).map_err(database_error)?
             == command.context.actor_id
         && stored_tenant == command.context.tenant_id
-        && row.try_get::<String>("", "trace_id").map_err(database_error)?
+        && row
+            .try_get::<String>("", "trace_id")
+            .map_err(database_error)?
             == command.context.trace_id
         && uuid_from_row(row, "correlation_id", backend).map_err(database_error)?
             == command.context.correlation_id
@@ -463,12 +479,14 @@ async fn complete_operation(
             ),
             vec![
                 i64::try_from(receipt.checkpoint.revision)
-                    .map_err(|_| ModuleTransitionServiceError::Store(
-                        "transition revision exceeds database range".to_string(),
-                    ))?
+                    .map_err(|_| {
+                        ModuleTransitionServiceError::Store(
+                            "transition revision exceeds database range".to_string(),
+                        )
+                    })?
                     .into(),
                 receipt_json.into(),
-                uuid_value(idempotency_key, backend),
+                sea_orm::Value::Uuid(Some(idempotency_key)),
             ],
         ))
         .await

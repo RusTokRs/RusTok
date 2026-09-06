@@ -195,8 +195,9 @@ impl ArtifactDataSnapshotIntentService {
         grace_period: StdDuration,
     ) -> Result<ReconciledSnapshotIntentsReceipt, SnapshotIntentError> {
         let backend = self.db.get_database_backend();
-        let threshold = Utc::now() - chrono::Duration::from_std(grace_period)
-            .unwrap_or_else(|_| chrono::Duration::seconds(300));
+        let threshold = Utc::now()
+            - chrono::Duration::from_std(grace_period)
+                .unwrap_or_else(|_| chrono::Duration::seconds(300));
 
         let rows = self
             .db

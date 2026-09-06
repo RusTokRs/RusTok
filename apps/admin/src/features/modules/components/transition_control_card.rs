@@ -44,9 +44,7 @@ pub fn TransitionControlCard(
         ModuleTransitionState::PointOfNoReturn => {
             "bg-purple-500/15 text-purple-500 border-purple-500/30"
         }
-        ModuleTransitionState::FailedClosed => {
-            "bg-rose-500/15 text-rose-500 border-rose-500/30"
-        }
+        ModuleTransitionState::FailedClosed => "bg-rose-500/15 text-rose-500 border-rose-500/30",
         _ => "bg-blue-500/15 text-blue-500 border-blue-500/30",
     };
 
