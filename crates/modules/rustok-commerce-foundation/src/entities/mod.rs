@@ -13,7 +13,6 @@ pub mod shipping_profile;
 pub mod shipping_profile_translation;
 pub mod stock_location;
 pub mod stock_location_translation;
-pub mod variant_translation;
 
 pub use inventory_item::Entity as InventoryItem;
 pub use inventory_level::Entity as InventoryLevel;
@@ -30,4 +29,3 @@ pub use shipping_profile::Entity as ShippingProfile;
 pub use shipping_profile_translation::Entity as ShippingProfileTranslation;
 pub use stock_location::Entity as StockLocation;
 pub use stock_location_translation::Entity as StockLocationTranslation;
-pub use variant_translation::Entity as VariantTranslation;
