@@ -3,10 +3,10 @@ const INBOX: &str = include_str!("../src/forum_inbox.rs");
 const INGESTION: &str = include_str!("../src/ingestion.rs");
 const LIB: &str = include_str!("../src/lib.rs");
 const SERVER_WORKER: &str =
-    include_str!("../../../apps/server/src/services/forum_search_inbox_worker.rs");
-const SERVER_SERVICES: &str = include_str!("../../../apps/server/src/services/mod.rs");
+    include_str!("../../../../apps/server/src/services/forum_search_inbox_worker.rs");
+const SERVER_SERVICES: &str = include_str!("../../../../apps/server/src/services/mod.rs");
 const SERVER_BOOTSTRAP: &str =
-    include_str!("../../../apps/server/src/services/server_bootstrap.rs");
+    include_str!("../../../../apps/server/src/services/server_bootstrap.rs");
 
 fn require(source: &str, marker: &str) {
     assert!(source.contains(marker), "missing source marker: {marker}");
@@ -48,7 +48,7 @@ fn sweeper_reuses_search_owned_claim_projection_and_retry_owners() {
         "claim.complete().await?",
         "claim.retry(&error).await?",
         "self.forum_projector.rebuild_tenant",
-        "self.forum_projector.refresh_entity",
+        ".refresh_entity",
         "self.forum_projector.delete_tenant",
         "self.projector.rebuild_tenant",
         "self.blog_projector.rebuild_tenant",

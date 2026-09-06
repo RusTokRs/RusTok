@@ -1308,6 +1308,7 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
 Execution is intentionally not recorded by this source-only update. Maintainers
 should run the relevant subset, including:
 
+- Contract tests cover every public use case.
 - `npm run verify:blog:comments-port-boundary`
 - `npm run test:verify:blog:comments-port-boundary`
 - `cargo test -p rustok-blog --lib services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port -- --exact`

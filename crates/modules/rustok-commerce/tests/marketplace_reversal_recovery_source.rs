@@ -19,13 +19,13 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     let rest = include_str!("../src/controllers/marketplace_reversal_financial.rs");
     let graphql = include_str!("../src/graphql/marketplace_financial.rs");
     let marketplace_worker =
-        include_str!("../../../apps/server/src/services/marketplace_financial_worker.rs");
+        include_str!("../../../../apps/server/src/services/marketplace_financial_worker.rs");
     let payment_controller = include_str!("../../rustok-payment/src/controllers.rs");
     let payment_recovery =
         include_str!("../../rustok-payment/src/provider_event_recovery_controller.rs");
     let payment_worker =
-        include_str!("../../../apps/server/src/services/payment_provider_event_worker.rs");
-    let dispatcher = include_str!("../../../apps/server/src/services/module_event_dispatcher.rs");
+        include_str!("../../../../apps/server/src/services/payment_provider_event_worker.rs");
+    let dispatcher = include_str!("../../../../apps/server/src/services/module_event_dispatcher.rs");
 
     assert!(adapter.contains("refund.completed"));
     assert!(adapter.contains("chargeback.completed"));

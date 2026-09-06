@@ -6,7 +6,7 @@ const GRAPHQL_ADAPTER: &str =
     include_str!("../storefront/src/transport/topic_route_graphql_adapter.rs");
 const NATIVE_ADAPTER: &str =
     include_str!("../storefront/src/transport/native_server_adapter_topic_route.rs");
-const HOST: &str = include_str!("../../../apps/storefront/src/forum_topic_route.rs");
+const HOST: &str = include_str!("../../../../apps/storefront/src/forum_topic_route.rs");
 
 fn require(source: &str, markers: &[&str]) {
     for marker in markers {

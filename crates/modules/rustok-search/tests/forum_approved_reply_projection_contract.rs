@@ -6,7 +6,7 @@ const FORUM_REPLY_UPDATE: &str = include_str!("../../rustok-forum/src/services/r
 const SEARCH_PROJECTOR: &str = include_str!("../src/forum_projector.rs");
 const SEARCH_ENGINE: &str = include_str!("../src/engine.rs");
 const ADMIN_GLOBAL_SEARCH: &str =
-    include_str!("../../../apps/admin/src/widgets/app_shell/native_server_adapter.rs");
+    include_str!("../../../../apps/admin/src/widgets/app_shell/native_server_adapter.rs");
 
 fn require(source: &str, marker: &str) {
     assert!(source.contains(marker), "missing source marker: {marker}");
