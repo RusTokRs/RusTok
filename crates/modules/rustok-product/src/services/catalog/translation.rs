@@ -3,6 +3,28 @@ use super::*;
 use rustok_api::TenantLocale;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ProductTranslationExactLocaleError {
+    #[error(transparent)]
+    Commerce(#[from] CommerceError),
+
+    #[error("Product translation source locale not found: {locale} for product {product_id}")]
+    SourceLocaleNotFound { product_id: Uuid, locale: String },
+
+    #[error("Product translation {revision} revision conflict")]
+    RevisionConflict { revision: &'static str },
+}
+
+impl From<sea_orm::DbErr> for ProductTranslationExactLocaleError {
+    fn from(error: sea_orm::DbErr) -> Self {
+        Self::Commerce(CommerceError::Database(error))
+    }
+}
+
+pub type ProductTranslationExactLocaleResult<T> =
+    Result<T, ProductTranslationExactLocaleError>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProductTranslationExactLocaleRecord {
@@ -68,7 +90,7 @@ impl CatalogService {
         product_id: Uuid,
         source_locale: &str,
         target_locale: &str,
-    ) -> CommerceResult<ProductTranslationExactLocaleSnapshot> {
+    ) -> ProductTranslationExactLocaleResult<ProductTranslationExactLocaleSnapshot> {
         let source_locale = canonical_translation_locale(source_locale)?;
         let target_locale = canonical_translation_locale(target_locale)?;
         validate_locale_pair(&source_locale, &target_locale)?;
@@ -91,7 +113,7 @@ impl CatalogService {
         actor_id: Uuid,
         product_id: Uuid,
         request: ProductTranslationExactLocaleApply,
-    ) -> CommerceResult<ProductTranslationExactLocaleApplyReceipt> {
+    ) -> ProductTranslationExactLocaleResult<ProductTranslationExactLocaleApplyReceipt> {
         request
             .target
             .validate()
@@ -111,14 +133,15 @@ impl CatalogService {
 
         let translations = load_product_translations(&txn, tenant_id, product_id).await?;
         let source = exact_locale_row(&translations, &source_locale).ok_or_else(|| {
-            CommerceError::TranslationSourceLocaleNotFound {
+            ProductTranslationExactLocaleError::SourceLocaleNotFound {
                 product_id,
                 locale: source_locale.clone(),
             }
         })?;
         let target = exact_locale_row(&translations, &target_locale);
 
-        let current_resource_revision = product_translation_resource_revision(&product, &translations);
+        let current_resource_revision =
+            product_translation_resource_revision(&product, &translations);
         let current_source_revision = product_translation_locale_revision(source);
         let current_target_revision = target.map(product_translation_locale_revision);
 
@@ -133,7 +156,9 @@ impl CatalogService {
             &current_source_revision,
         )?;
         if request.expected_target_revision != current_target_revision {
-            return Err(CommerceError::TranslationRevisionConflict { revision: "target" });
+            return Err(ProductTranslationExactLocaleError::RevisionConflict {
+                revision: "target",
+            });
         }
 
         let handle = request
@@ -149,10 +174,9 @@ impl CatalogService {
             active.description = Set(request.target.description.clone());
             active.meta_title = Set(request.target.meta_title.clone());
             active.meta_description = Set(request.target.meta_description.clone());
-            active
-                .update(&txn)
-                .await
-                .map_err(|error| map_product_unique_violation(error, &handle, &target_locale, None))?;
+            active.update(&txn).await.map_err(|error| {
+                map_product_unique_violation(error, &handle, &target_locale, None)
+            })?;
         } else {
             entities::product_translation::ActiveModel {
                 id: Set(generate_id()),
@@ -167,13 +191,16 @@ impl CatalogService {
             }
             .insert(&txn)
             .await
-            .map_err(|error| map_product_unique_violation(error, &handle, &target_locale, None))?;
+            .map_err(|error| {
+                map_product_unique_violation(error, &handle, &target_locale, None)
+            })?;
         }
 
         let translations_after = load_product_translations(&txn, tenant_id, product_id).await?;
         let target_after = exact_locale_row(&translations_after, &target_locale)
             .expect("exact Product target locale must exist after owner apply");
-        let resource_revision = product_translation_resource_revision(&product, &translations_after);
+        let resource_revision =
+            product_translation_resource_revision(&product, &translations_after);
         let target_revision = product_translation_locale_revision(target_after);
         let target = ProductTranslationExactLocaleRecord::from(target_after.clone());
 
@@ -198,7 +225,7 @@ async fn load_product<C>(
     db: &C,
     tenant_id: Uuid,
     product_id: Uuid,
-) -> CommerceResult<entities::product::Model>
+) -> ProductTranslationExactLocaleResult<entities::product::Model>
 where
     C: ConnectionTrait,
 {
@@ -206,14 +233,14 @@ where
         .filter(entities::product::Column::TenantId.eq(tenant_id))
         .one(db)
         .await?
-        .ok_or(CommerceError::ProductNotFound(product_id))
+        .ok_or_else(|| CommerceError::ProductNotFound(product_id).into())
 }
 
 async fn load_product_translations<C>(
     db: &C,
     tenant_id: Uuid,
     product_id: Uuid,
-) -> CommerceResult<Vec<entities::product_translation::Model>>
+) -> ProductTranslationExactLocaleResult<Vec<entities::product_translation::Model>>
 where
     C: ConnectionTrait,
 {
@@ -230,10 +257,10 @@ fn build_exact_locale_snapshot(
     translations: Vec<entities::product_translation::Model>,
     source_locale: String,
     target_locale: String,
-) -> CommerceResult<ProductTranslationExactLocaleSnapshot> {
+) -> ProductTranslationExactLocaleResult<ProductTranslationExactLocaleSnapshot> {
     let source = exact_locale_row(&translations, &source_locale)
         .cloned()
-        .ok_or_else(|| CommerceError::TranslationSourceLocaleNotFound {
+        .ok_or_else(|| ProductTranslationExactLocaleError::SourceLocaleNotFound {
             product_id: product.id,
             locale: source_locale.clone(),
         })?;
@@ -270,17 +297,23 @@ fn exact_locale_row<'a>(
         .find(|translation| translation.locale == locale)
 }
 
-fn canonical_translation_locale(locale: &str) -> CommerceResult<String> {
+fn canonical_translation_locale(
+    locale: &str,
+) -> ProductTranslationExactLocaleResult<String> {
     TenantLocale::new(locale)
         .map(TenantLocale::into_inner)
-        .map_err(|error| CommerceError::Validation(error.to_string()))
+        .map_err(|error| CommerceError::Validation(error.to_string()).into())
 }
 
-fn validate_locale_pair(source_locale: &str, target_locale: &str) -> CommerceResult<()> {
+fn validate_locale_pair(
+    source_locale: &str,
+    target_locale: &str,
+) -> ProductTranslationExactLocaleResult<()> {
     if source_locale == target_locale {
         return Err(CommerceError::Validation(
             "Product translation source and target locale must differ".to_string(),
-        ));
+        )
+        .into());
     }
     Ok(())
 }
@@ -289,9 +322,9 @@ fn ensure_revision(
     revision: &'static str,
     expected: &str,
     current: &str,
-) -> CommerceResult<()> {
+) -> ProductTranslationExactLocaleResult<()> {
     if expected != current {
-        return Err(CommerceError::TranslationRevisionConflict { revision });
+        return Err(ProductTranslationExactLocaleError::RevisionConflict { revision });
     }
     Ok(())
 }
@@ -314,7 +347,9 @@ fn product_translation_resource_revision(
     finish_revision(hasher)
 }
 
-fn product_translation_locale_revision(translation: &entities::product_translation::Model) -> String {
+fn product_translation_locale_revision(
+    translation: &entities::product_translation::Model,
+) -> String {
     let mut hasher = Sha256::new();
     digest_text(&mut hasher, "rustok-product/translation-locale/v1");
     digest_translation(&mut hasher, translation);
