@@ -47,6 +47,17 @@ fn product_owner_error_facts(error: &CommerceError) -> ProductOwnerErrorFacts {
             if id.is_nil() { 0 } else { 1 },
             false,
         ),
+        CommerceError::TranslationSourceLocaleNotFound { product_id, locale } => (
+            "translation_source_locale_not_found",
+            1,
+            locale.chars().count(),
+            1,
+            if product_id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        CommerceError::TranslationRevisionConflict { .. } => {
+            ("translation_revision_conflict", 0, 0, 0, 0, false)
+        }
         CommerceError::DuplicateHandle { handle, locale } => (
             "duplicate_handle",
             2,
@@ -86,6 +97,16 @@ pub fn map_product_public_error(
             true,
         ),
         CommerceError::ProductNotFound(_) => ("Product was not found", "PRODUCT_NOT_FOUND", false),
+        CommerceError::TranslationSourceLocaleNotFound { .. } => (
+            "Product source locale was not found",
+            "PRODUCT_TRANSLATION_SOURCE_NOT_FOUND",
+            false,
+        ),
+        CommerceError::TranslationRevisionConflict { .. } => (
+            "Product translation changed and must be reloaded",
+            "PRODUCT_TRANSLATION_REVISION_CONFLICT",
+            false,
+        ),
         CommerceError::DuplicateHandle { .. } => (
             "Product handle conflicts with an existing product",
             "DUPLICATE_HANDLE",
