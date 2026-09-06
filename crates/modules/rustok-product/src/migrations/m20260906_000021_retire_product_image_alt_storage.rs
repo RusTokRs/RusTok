@@ -66,9 +66,7 @@ async fn base_alt_column_exists(manager: &SchemaManager<'_>) -> Result<bool, DbE
     Ok(count != 0)
 }
 
-async fn ensure_unowned_alt_fits_canonical_storage(
-    txn: &DatabaseTransaction,
-) -> Result<(), DbErr> {
+async fn ensure_unowned_alt_fits_canonical_storage(txn: &DatabaseTransaction) -> Result<(), DbErr> {
     let oversized = CountRow::find_by_statement(Statement::from_string(
         DatabaseBackend::Postgres,
         r#"
