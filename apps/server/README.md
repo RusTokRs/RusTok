@@ -19,7 +19,7 @@
 
 ## Interactions
 
-- Uses `crates/rustok-core` and platform/domain modules as the backend composition root.
+- Uses `crates/libs/rustok-core` and platform/domain modules as the backend composition root.
 - Serves `apps/admin`, `apps/storefront`, `apps/next-admin`, and `apps/next-frontend`.
 - Hosts platform-owned runtime layers such as MCP management, module composition, and orchestration bridges.
 

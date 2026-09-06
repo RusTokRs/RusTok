@@ -14,10 +14,10 @@ function forbid(text, marker, label) {
   if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
 }
 
-const query = read("crates/rustok-forum/src/graphql/member_card_query.rs");
-const gqlMod = read("crates/rustok-forum/src/graphql/mod.rs");
-const profilePresentation = read("crates/rustok-profiles/src/presentation.rs");
-const profileLoader = read("crates/rustok-profiles/src/loader.rs");
+const query = read("crates/modules/rustok-forum/src/graphql/member_card_query.rs");
+const gqlMod = read("crates/modules/rustok-forum/src/graphql/mod.rs");
+const profilePresentation = read("crates/modules/rustok-profiles/src/presentation.rs");
+const profileLoader = read("crates/modules/rustok-profiles/src/loader.rs");
 const packet = read("docs/modules/forum-15-member-card-stats-actualization-2026-08-10.md");
 
 for (const marker of [

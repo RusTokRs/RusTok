@@ -34,7 +34,7 @@ function functionSlice(source, name, nextName) {
   return source.slice(start, end < 0 ? source.length : end);
 }
 
-const ports = read("crates/rustok-product/src/ports.rs");
+const ports = read("crates/modules/rustok-product/src/ports.rs");
 for (const required of [
   "async fn list_admin_products(",
   "pub struct AdminProductsRequest",
@@ -51,7 +51,7 @@ for (const required of [
   requireText(ports, required, `Product admin list port contract must contain ${required}`);
 }
 
-const queryTypes = read("crates/rustok-product/src/services/catalog/types.rs");
+const queryTypes = read("crates/modules/rustok-product/src/services/catalog/types.rs");
 for (const forbidden of [
   "pub raw_status: Option<String>",
   "pub vendor: Option<String>",
@@ -65,7 +65,7 @@ for (const forbidden of [
   );
 }
 
-const ownerQuery = read("crates/rustok-product/src/services/catalog/admin_queries.rs");
+const ownerQuery = read("crates/modules/rustok-product/src/services/catalog/admin_queries.rs");
 for (const required of [
   "list_admin_products_with_compatibility_query(",
   "Column::Status.eq(raw_status)",
@@ -80,7 +80,7 @@ for (const required of [
   requireText(ownerQuery, required, `owner admin list implementation must contain ${required}`);
 }
 
-const adminProducts = read("crates/rustok-commerce/src/controllers/admin/products.rs");
+const adminProducts = read("crates/modules/rustok-commerce/src/controllers/admin/products.rs");
 const list = functionSlice(adminProducts, "list_products", "create_product");
 for (const required of [
   ".product_catalog_read_port()",
@@ -107,7 +107,7 @@ for (const forbidden of [
   forbidText(list, forbidden, `mounted admin list must not contain ${forbidden}`);
 }
 
-const sharedProducts = read("crates/rustok-commerce/src/controllers/products.rs");
+const sharedProducts = read("crates/modules/rustok-commerce/src/controllers/products.rs");
 requireText(
   sharedProducts,
   "pub async fn list_products(",

@@ -5,20 +5,20 @@ const root = process.cwd();
 const failures = [];
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 const files = {
-  domain: "crates/rustok-groups/src/domain.rs",
-  dto: "crates/rustok-groups/src/dto.rs",
-  ports: "crates/rustok-groups/src/ports.rs",
-  service: "crates/rustok-groups/src/membership_enforcement.rs",
-  command: "crates/rustok-groups/src/membership_enforcement_command.rs",
-  entities: "crates/rustok-groups/src/membership_enforcement_entities.rs",
+  domain: "crates/modules/rustok-groups/src/domain.rs",
+  dto: "crates/modules/rustok-groups/src/dto.rs",
+  ports: "crates/modules/rustok-groups/src/ports.rs",
+  service: "crates/modules/rustok-groups/src/membership_enforcement.rs",
+  command: "crates/modules/rustok-groups/src/membership_enforcement_command.rs",
+  entities: "crates/modules/rustok-groups/src/membership_enforcement_entities.rs",
   migration:
-    "crates/rustok-groups/src/migrations/m20260723_000008_create_group_membership_enforcement_state.rs",
+    "crates/modules/rustok-groups/src/migrations/m20260723_000008_create_group_membership_enforcement_state.rs",
   eventMigration:
-    "crates/rustok-groups/src/migrations/m20260808_000009_extend_group_domain_events_for_membership_enforcement.rs",
-  migrationRegistry: "crates/rustok-groups/src/migrations/mod.rs",
-  module: "crates/rustok-groups/src/lib.rs",
-  registry: "crates/rustok-groups/contracts/groups-fba-registry.json",
-  plan: "crates/rustok-groups/docs/implementation-plan.md",
+    "crates/modules/rustok-groups/src/migrations/m20260808_000009_extend_group_domain_events_for_membership_enforcement.rs",
+  migrationRegistry: "crates/modules/rustok-groups/src/migrations/mod.rs",
+  module: "crates/modules/rustok-groups/src/lib.rs",
+  registry: "crates/modules/rustok-groups/contracts/groups-fba-registry.json",
+  plan: "crates/modules/rustok-groups/docs/implementation-plan.md",
 };
 
 for (const relative of Object.values(files)) {

@@ -3,7 +3,7 @@
 - Date: 2026-07-23
 - Status: Accepted
 - Owners: RusToK platform / Index module
-- Scope: `crates/rustok-index`, source-module index contracts, consumers, and runtime wiring
+- Scope: `crates/modules/rustok-index`, source-module index contracts, consumers, and runtime wiring
 
 ## Context
 
@@ -94,5 +94,5 @@ Costs:
 ## Implementation tracking
 
 The authoritative task list and completion marks live in
-`crates/rustok-index/docs/implementation-plan.md`. Every implementation PR must
+`crates/modules/rustok-index/docs/implementation-plan.md`. Every implementation PR must
 update that plan and the progress log.

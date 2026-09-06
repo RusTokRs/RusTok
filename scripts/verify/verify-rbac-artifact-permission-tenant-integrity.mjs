@@ -33,30 +33,30 @@ const forbidAll = (file, markers) => {
 };
 
 const catalogMigration =
-  "crates/rustok-rbac/src/m20260716_000001_artifact_permission_catalog.rs";
+  "crates/modules/rustok-rbac/src/m20260716_000001_artifact_permission_catalog.rs";
 const grantMigration =
-  "crates/rustok-rbac/src/m20260717_000001_artifact_role_permissions.rs";
+  "crates/modules/rustok-rbac/src/m20260717_000001_artifact_role_permissions.rs";
 const cutoverMigration =
-  "crates/rustok-rbac/src/m20260803_000001_canonicalize_artifact_permissions.rs";
+  "crates/modules/rustok-rbac/src/m20260803_000001_canonicalize_artifact_permissions.rs";
 const supersededMigration =
-  "crates/rustok-rbac/src/m20260801_000001_enforce_artifact_permission_tenant_integrity.rs";
-const platformMigrator = "crates/rustok-migrations/src/lib.rs";
+  "crates/modules/rustok-rbac/src/m20260801_000001_enforce_artifact_permission_tenant_integrity.rs";
+const platformMigrator = "crates/utils/rustok-migrations/src/lib.rs";
 const migrationCompatibilityWorkflow = ".github/workflows/migration-compatibility.yml";
 const migrationCompatibilityVerifier =
   "scripts/verify/verify-migration-plan-compatibility.mjs";
-const owner = "crates/rustok-rbac/src/artifact_permission_assignment.rs";
-const catalog = "crates/rustok-rbac/src/artifact_permission_catalog.rs";
-const exports = "crates/rustok-rbac/src/lib.rs";
-const docs = "crates/rustok-rbac/docs/README.md";
+const owner = "crates/modules/rustok-rbac/src/artifact_permission_assignment.rs";
+const catalog = "crates/modules/rustok-rbac/src/artifact_permission_catalog.rs";
+const exports = "crates/modules/rustok-rbac/src/lib.rs";
+const docs = "crates/modules/rustok-rbac/docs/README.md";
 const host = "apps/server/src/controllers/artifact_permissions.rs";
 const userAdmin =
   "apps/server/src/services/auth_admin_mutation_provider/user_admin.rs";
 const sqliteProof =
-  "crates/rustok-rbac/tests/artifact_permission_tenant_integrity_sqlite.rs";
+  "crates/modules/rustok-rbac/tests/artifact_permission_tenant_integrity_sqlite.rs";
 const upgradeProof =
-  "crates/rustok-rbac/tests/artifact_permission_upgrade_sqlite.rs";
+  "crates/modules/rustok-rbac/tests/artifact_permission_upgrade_sqlite.rs";
 const outboxProof =
-  "crates/rustok-rbac/tests/artifact_permission_outbox_sqlite.rs";
+  "crates/modules/rustok-rbac/tests/artifact_permission_outbox_sqlite.rs";
 
 if (existsSync(path.join(root, supersededMigration))) {
   failures.push(`${supersededMigration}: superseded trigger-only migration must be deleted`);

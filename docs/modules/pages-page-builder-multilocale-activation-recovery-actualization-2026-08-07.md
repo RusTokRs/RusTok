@@ -84,8 +84,8 @@ This slice does not:
 New source packet:
 
 ```text
-crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs
-crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs
+crates/modules/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs
+crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs
 ```
 
 It retains:

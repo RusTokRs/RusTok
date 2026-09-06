@@ -1,10 +1,10 @@
 #[test]
 fn graphql_fulfillment_mutations_use_commerce_orchestration() {
     let graphql = include_str!(
-        "../../../crates/rustok-commerce/src/graphql/mutations/provider_operations.rs"
+        "../../../crates/modules/rustok-commerce/src/graphql/mutations/provider_operations.rs"
     );
     let facade = include_str!(
-        "../../../crates/rustok-commerce/src/services/fulfillment_orchestration_facade.rs"
+        "../../../crates/modules/rustok-commerce/src/services/fulfillment_orchestration_facade.rs"
     );
 
     assert!(

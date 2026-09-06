@@ -9,12 +9,12 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json";
+  "crates/modules/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json";
 const notePath =
-  "crates/rustok-forum/docs/forum-23a8-profile-service-mutation-boundary.md";
-const servicesPath = "crates/rustok-profiles/src/services.rs";
-const graphqlMutationPath = "crates/rustok-profiles/src/graphql/mutation.rs";
-const cliBackfillPath = "crates/rustok-profiles/cli/src/lib.rs";
+  "crates/modules/rustok-forum/docs/forum-23a8-profile-service-mutation-boundary.md";
+const servicesPath = "crates/modules/rustok-profiles/src/services.rs";
+const graphqlMutationPath = "crates/modules/rustok-profiles/src/graphql/mutation.rs";
+const cliBackfillPath = "crates/modules/rustok-profiles/cli/src/lib.rs";
 
 const directMethods = [
   "upsert_profile",

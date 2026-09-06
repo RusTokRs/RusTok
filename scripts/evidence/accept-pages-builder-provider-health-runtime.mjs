@@ -16,11 +16,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
-const contractPath = path.join(repoRoot, "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json");
-const runtimeContractPath = path.join(repoRoot, "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json");
-const identitySourcePath = path.join(repoRoot, "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json");
-const evaluatorSourcePath = path.join(repoRoot, "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json");
-const bindingSourcePath = path.join(repoRoot, "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json");
+const contractPath = path.join(repoRoot, "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json");
+const runtimeContractPath = path.join(repoRoot, "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json");
+const identitySourcePath = path.join(repoRoot, "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json");
+const evaluatorSourcePath = path.join(repoRoot, "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json");
+const bindingSourcePath = path.join(repoRoot, "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json");
 const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 const CLOCK_SKEW_MS = 5_000;

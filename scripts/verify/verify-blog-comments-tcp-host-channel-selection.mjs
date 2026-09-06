@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-tcp-host-channel-selection.json';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-75.md';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-host-channel-selection.json';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-75.md';
 const runtimePath = 'apps/server/src/services/comments_provider_runtime.rs';
-const channelPath = 'crates/rustok-comments/src/tcp_channel.rs';
-const transportPath = 'crates/rustok-comments/src/tcp_transport.rs';
-const serverPath = 'crates/rustok-comments/src/tcp_server.rs';
-const commentsManifestPath = 'crates/rustok-comments/Cargo.toml';
+const channelPath = 'crates/modules/rustok-comments/src/tcp_channel.rs';
+const transportPath = 'crates/modules/rustok-comments/src/tcp_transport.rs';
+const serverPath = 'crates/modules/rustok-comments/src/tcp_server.rs';
+const commentsManifestPath = 'crates/modules/rustok-comments/Cargo.toml';
 const lockPath = 'Cargo.lock';
 
 function read(path) {

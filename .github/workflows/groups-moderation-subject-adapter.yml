@@ -3,34 +3,34 @@ name: Groups Moderation Subject Adapter Contract
 on:
   pull_request:
     paths:
-      - "crates/rustok-groups/Cargo.toml"
-      - "crates/rustok-groups/src/lib.rs"
-      - "crates/rustok-groups/src/moderation_subject.rs"
-      - "crates/rustok-groups/src/membership_enforcement_command.rs"
-      - "crates/rustok-groups/src/membership_enforcement_transaction.rs"
-      - "crates/rustok-groups/contracts/groups-effective-membership-access.json"
-      - "crates/rustok-groups/docs/implementation-plan.md"
-      - "crates/rustok-moderation-api/Cargo.toml"
-      - "crates/rustok-moderation-api/src/model.rs"
-      - "crates/rustok-moderation/src/application_dispatch.rs"
-      - "crates/rustok-moderation/docs/implementation-plan.md"
+      - "crates/modules/rustok-groups/Cargo.toml"
+      - "crates/modules/rustok-groups/src/lib.rs"
+      - "crates/modules/rustok-groups/src/moderation_subject.rs"
+      - "crates/modules/rustok-groups/src/membership_enforcement_command.rs"
+      - "crates/modules/rustok-groups/src/membership_enforcement_transaction.rs"
+      - "crates/modules/rustok-groups/contracts/groups-effective-membership-access.json"
+      - "crates/modules/rustok-groups/docs/implementation-plan.md"
+      - "crates/modules/rustok-moderation-api/Cargo.toml"
+      - "crates/modules/rustok-moderation-api/src/model.rs"
+      - "crates/modules/rustok-moderation/src/application_dispatch.rs"
+      - "crates/modules/rustok-moderation/docs/implementation-plan.md"
       - "scripts/verify/verify-groups-moderation-subject-adapter.mjs"
       - ".github/workflows/groups-moderation-subject-adapter.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-groups/Cargo.toml"
-      - "crates/rustok-groups/src/lib.rs"
-      - "crates/rustok-groups/src/moderation_subject.rs"
-      - "crates/rustok-groups/src/membership_enforcement_command.rs"
-      - "crates/rustok-groups/src/membership_enforcement_transaction.rs"
-      - "crates/rustok-groups/contracts/groups-effective-membership-access.json"
-      - "crates/rustok-groups/docs/implementation-plan.md"
-      - "crates/rustok-moderation-api/Cargo.toml"
-      - "crates/rustok-moderation-api/src/model.rs"
-      - "crates/rustok-moderation/src/application_dispatch.rs"
-      - "crates/rustok-moderation/docs/implementation-plan.md"
+      - "crates/modules/rustok-groups/Cargo.toml"
+      - "crates/modules/rustok-groups/src/lib.rs"
+      - "crates/modules/rustok-groups/src/moderation_subject.rs"
+      - "crates/modules/rustok-groups/src/membership_enforcement_command.rs"
+      - "crates/modules/rustok-groups/src/membership_enforcement_transaction.rs"
+      - "crates/modules/rustok-groups/contracts/groups-effective-membership-access.json"
+      - "crates/modules/rustok-groups/docs/implementation-plan.md"
+      - "crates/modules/rustok-moderation-api/Cargo.toml"
+      - "crates/modules/rustok-moderation-api/src/model.rs"
+      - "crates/modules/rustok-moderation/src/application_dispatch.rs"
+      - "crates/modules/rustok-moderation/docs/implementation-plan.md"
       - "scripts/verify/verify-groups-moderation-subject-adapter.mjs"
       - ".github/workflows/groups-moderation-subject-adapter.yml"
   workflow_dispatch:
@@ -87,9 +87,9 @@ jobs:
         shell: bash
         run: |
           rustfmt +1.96.0 --edition 2024 --check \
-            crates/rustok-groups/src/moderation_subject.rs \
-            crates/rustok-moderation-api/src/model.rs \
-            crates/rustok-moderation/src/application_dispatch.rs
+            crates/modules/rustok-groups/src/moderation_subject.rs \
+            crates/modules/rustok-moderation-api/src/model.rs \
+            crates/modules/rustok-moderation/src/application_dispatch.rs
       - name: Test neutral moderation scope claim contract
         run: cargo test --locked -p rustok-moderation-api --lib scope_claim
       - name: Test Moderation dispatcher trusted scope propagation

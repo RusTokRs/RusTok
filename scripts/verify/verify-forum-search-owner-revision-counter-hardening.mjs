@@ -9,15 +9,15 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 const paths = {
   contract:
-    "crates/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json",
+    "crates/modules/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json",
   note:
-    "crates/rustok-forum/docs/forum-23b2g2a1-search-owner-revision-counter-hardening.md",
+    "crates/modules/rustok-forum/docs/forum-23b2g2a1-search-owner-revision-counter-hardening.md",
   baseline:
-    "crates/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260731_000008_harden_forum_projection_revision_counter.rs",
-  registry: "crates/rustok-forum/src/migrations/mod.rs",
-  allocator: "crates/rustok-forum/src/services/projection_invalidation.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260731_000008_harden_forum_projection_revision_counter.rs",
+  registry: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  allocator: "crates/modules/rustok-forum/src/services/projection_invalidation.rs",
 };
 
 function read(relativePath) {

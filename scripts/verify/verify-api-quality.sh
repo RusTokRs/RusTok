@@ -261,7 +261,7 @@ fi
 # ─── Parity: shared AuthLifecycleService ───
 header "REST ↔ GraphQL parity: shared auth service"
 
-auth_service=$(grep -rl "AuthLifecycleService\|IdentityService\|identity_service\|auth_lifecycle" "apps/server/src" "crates/rustok-core/src" 2>/dev/null || true)
+auth_service=$(grep -rl "AuthLifecycleService\|IdentityService\|identity_service\|auth_lifecycle" "apps/server/src" "crates/libs/rustok-core/src" 2>/dev/null || true)
 if [[ -n "$auth_service" ]]; then
     pass "Shared auth service found:"
     echo "$auth_service" | head -5

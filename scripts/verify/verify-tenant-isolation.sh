@@ -22,12 +22,12 @@ fail()   { echo -e "  ${RED}✗${NC} $1"; ERRORS=$((ERRORS + 1)); }
 warn()   { echo -e "  ${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 
 DOMAIN_CRATES=(
-    "crates/rustok-content/src"
-    "crates/rustok-commerce/src"
-    "crates/rustok-blog/src"
-    "crates/rustok-forum/src"
-    "crates/rustok-pages/src"
-    "crates/rustok-tenant/src"
+    "crates/modules/rustok-content/src"
+    "crates/modules/rustok-commerce/src"
+    "crates/modules/rustok-blog/src"
+    "crates/modules/rustok-forum/src"
+    "crates/modules/rustok-pages/src"
+    "crates/modules/rustok-tenant/src"
 )
 
 EXISTING_CRATES=()
@@ -105,7 +105,7 @@ fi
 # ─── 4. Миграции: каждая domain-таблица имеет tenant_id column ───
 header "4. Миграции: tenant_id column в domain таблицах"
 
-MIGRATION_DIR="crates/rustok-migrations/src"
+MIGRATION_DIR="crates/utils/rustok-migrations/src"
 if [[ -d "$MIGRATION_DIR" ]]; then
     # Find create_table calls and check for tenant_id
     migration_files=$(find "$MIGRATION_DIR" -name "*.rs" -not -name "lib.rs" | sort)

@@ -27,7 +27,7 @@ We introduce `alloy_scaffold_module` in `rustok-mcp` as the first real Alloy pro
 The tool:
 
 - accepts structured `ScaffoldModuleRequest`;
-- can preview a draft `crates/rustok-<slug>` module skeleton;
+- can preview a draft `crates/modules/rustok-<slug>` module skeleton;
 - can write that skeleton to disk when `write_files=true`;
 - generates only a draft scaffold aligned with RusToK crate conventions;
 - does not register the module in runtime;

@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const contractPath = "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-external-observer-execution-contract.json";
+const contractPath = "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-external-observer-execution-contract.json";
 const contract = JSON.parse(readFileSync(resolve(root, contractPath), "utf8"));
 const outputPath = resolve(root, contract.evidence_path);
 const expectedCase = "moving_observer_retains_duplicate_across_advancing_cycles";

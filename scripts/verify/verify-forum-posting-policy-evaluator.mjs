@@ -40,7 +40,7 @@ function requireOrdered(source, markers, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-posting-policy-evaluator.json";
+  "crates/modules/rustok-forum/contracts/forum-posting-policy-evaluator.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const evaluator = read(contract.evaluator_file);
 const contractSource = read(contract.contract_file);
@@ -49,7 +49,7 @@ const crateRoot = read(contract.crate_root);
 const proof = read(contract.source_proof);
 const note = read(contract.owner_note);
 const upstream = JSON.parse(read(contract.upstream_contract) || "{}");
-const plan = read("crates/rustok-forum/docs/implementation-plan.md");
+const plan = read("crates/modules/rustok-forum/docs/implementation-plan.md");
 
 if (
   contract.schema_version !== 1 ||

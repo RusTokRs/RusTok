@@ -122,14 +122,14 @@ This slice does not:
 
 ## Source evidence
 
-- `crates/rustok-pages/Cargo.toml`
-- `crates/rustok-pages/src/http.rs`
-- `crates/rustok-pages/src/http/inline_edit_assets.rs`
+- `crates/modules/rustok-pages/Cargo.toml`
+- `crates/modules/rustok-pages/src/http.rs`
+- `crates/modules/rustok-pages/src/http/inline_edit_assets.rs`
 - `apps/server/Cargo.toml`
 - `apps/storefront/scripts/build-pages-inline-edit-client.mjs`
 - `scripts/build/build-pages-inline-edit-server.sh`
-- `crates/rustok-pages/contracts/evidence/pages-inline-edit-asset-delivery-source.json`
-- `crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs`
+- `crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-asset-delivery-source.json`
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs`
 
 ## Next cursor
 
@@ -145,14 +145,14 @@ No tests, static verifiers, formatting, Cargo commands, WASM builds, client buil
 Suggested commands, intentionally not run:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
 node apps/storefront/scripts/build-pages-inline-edit-client.mjs --print-wasm-bindgen-version
 bash scripts/build/build-pages-inline-edit-server.sh
 cargo test -p rustok-pages --features inline-edit-assets --all-targets -- --nocapture
 cargo check -p rustok-server --features pages-inline-edit-assets
-node crates/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-ssr-delivery.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-ssr-delivery.mjs
 ```
 
 Execution evidence remains pending.

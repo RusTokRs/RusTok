@@ -26,7 +26,7 @@ const forbidMarkers = (relative, markers) => {
   }
 };
 
-requireMarkers("crates/rustok-groups/src/localization.rs", [
+requireMarkers("crates/modules/rustok-groups/src/localization.rs", [
   "GroupLocalizationReadPort",
   "GroupLocalizationCommandPort",
   "normalize_locale_tag",
@@ -40,7 +40,7 @@ requireMarkers("crates/rustok-groups/src/localization.rs", [
   "require_effective_manager_owned",
   "GroupManagerCapability::ManageSettings",
 ]);
-forbidMarkers("crates/rustok-groups/src/localization.rs", [
+forbidMarkers("crates/modules/rustok-groups/src/localization.rs", [
   "PLATFORM_FALLBACK_LOCALE",
   "build_locale_candidates",
   "rows.first()",
@@ -48,7 +48,7 @@ forbidMarkers("crates/rustok-groups/src/localization.rs", [
   "fn require_local_manager(",
 ]);
 
-requireMarkers("crates/rustok-groups/src/effective_membership_guard.rs", [
+requireMarkers("crates/modules/rustok-groups/src/effective_membership_guard.rs", [
   "require_effective_manager_direct_owned",
   "require_effective_manager_owned",
   "resolve_group_membership_enforcement_now_for_update",
@@ -57,36 +57,36 @@ requireMarkers("crates/rustok-groups/src/effective_membership_guard.rs", [
   "GroupManagerCapability::ManageSettings",
 ]);
 
-requireMarkers("crates/rustok-groups/src/membership_enforcement_transaction.rs", [
+requireMarkers("crates/modules/rustok-groups/src/membership_enforcement_transaction.rs", [
   "reserve_group_write_for_update",
   "UPDATE groups SET version = version WHERE tenant_id = ? AND id = ?",
   "lock_exclusive()",
   "resolve_group_membership_enforcement_for_update",
 ]);
 
-requireMarkers("crates/rustok-groups/src/graphql_localization.rs", [
+requireMarkers("crates/modules/rustok-groups/src/graphql_localization.rs", [
   "group_translations",
   "upsert_group_translation",
   "delete_group_translation",
   "GroupLocalizationReadPort",
   "GroupLocalizationCommandPort",
 ]);
-requireMarkers("crates/rustok-groups/rustok-module.toml", [
+requireMarkers("crates/modules/rustok-groups/rustok-module.toml", [
   'query = "graphql_application_cas::GroupsQueryRoot"',
   'mutation = "graphql_application_cas::GroupsMutationRoot"',
 ]);
-requireMarkers("crates/rustok-groups/src/graphql_applications.rs", [
+requireMarkers("crates/modules/rustok-groups/src/graphql_applications.rs", [
   "GroupsBaseQueryRoot",
   "GroupsBaseMutationRoot",
   "pub struct GroupsQueryRoot",
   "pub struct GroupsMutationRoot",
 ]);
-requireMarkers("crates/rustok-groups/src/graphql_policy_history.rs", [
+requireMarkers("crates/modules/rustok-groups/src/graphql_policy_history.rs", [
   "GroupsBaseQueryRoot",
   "pub struct GroupsQueryRoot",
   "pub type GroupsMutationRoot",
 ]);
-requireMarkers("crates/rustok-groups/src/graphql_application_cas.rs", [
+requireMarkers("crates/modules/rustok-groups/src/graphql_application_cas.rs", [
   "GroupsBaseQueryRoot",
   "GroupsPreApplicationMutationRoot",
   "GroupsApplicationCasMutation",
@@ -118,7 +118,7 @@ forbidMarkers("apps/server/tests/groups_localization_enforcement_expiry_sqlite.r
   "groups:manage",
 ]);
 
-requireMarkers("crates/rustok-groups/docs/localization-enforcement-expiry-sqlite-contract.md", [
+requireMarkers("crates/modules/rustok-groups/docs/localization-enforcement-expiry-sqlite-contract.md", [
   "executable source added / maintainer execution pending",
   "stored membership lifecycle status remains `active`",
   "groups.membership_suspended",
@@ -128,7 +128,7 @@ requireMarkers("crates/rustok-groups/docs/localization-enforcement-expiry-sqlite
   "localization_concurrency",
 ]);
 
-requireMarkers("crates/rustok-groups/admin/src/core.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/core.rs", [
   "prepare_group_translation_query",
   "prepare_upsert_group_translation",
   "prepare_delete_group_translation",
@@ -136,15 +136,15 @@ requireMarkers("crates/rustok-groups/admin/src/core.rs", [
   "title.chars().count() > 240",
   "value.chars().count() > 500",
 ]);
-forbidMarkers("crates/rustok-groups/admin/src/core.rs", ["use leptos", "leptos::"]);
-requireMarkers("crates/rustok-groups/admin/src/transport.rs", [
+forbidMarkers("crates/modules/rustok-groups/admin/src/core.rs", ["use leptos", "leptos::"]);
+requireMarkers("crates/modules/rustok-groups/admin/src/transport.rs", [
   "load_group_admin_translations",
   "upsert_group_admin_translation",
   "delete_group_admin_translation",
   "execute_selected_transport",
   "never falls back",
 ]);
-requireMarkers("crates/rustok-groups/admin/src/ui/localization.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/ui/localization.rs", [
   "prepare_group_translation_query",
   "prepare_upsert_group_translation",
   "prepare_delete_group_translation",
@@ -153,15 +153,15 @@ requireMarkers("crates/rustok-groups/admin/src/ui/localization.rs", [
   "delete_group_admin_translation",
   "groups.admin.localization.lastTranslationWarning",
 ]);
-forbidMarkers("crates/rustok-groups/admin/src/ui/localization.rs", [
+forbidMarkers("crates/modules/rustok-groups/admin/src/ui/localization.rs", [
   "graphql_adapter",
   "native_localization_adapter",
   "native_server_adapter",
 ]);
 
 for (const relative of [
-  "crates/rustok-groups/admin/locales/en.json",
-  "crates/rustok-groups/admin/locales/ru.json",
+  "crates/modules/rustok-groups/admin/locales/en.json",
+  "crates/modules/rustok-groups/admin/locales/ru.json",
 ]) {
   if (!requireFile(relative)) continue;
   const messages = JSON.parse(read(relative));
@@ -177,8 +177,8 @@ for (const relative of [
   }
 }
 
-if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
-  const registry = JSON.parse(read("crates/rustok-groups/contracts/groups-fba-registry.json"));
+if (requireFile("crates/modules/rustok-groups/contracts/groups-fba-registry.json")) {
+  const registry = JSON.parse(read("crates/modules/rustok-groups/contracts/groups-fba-registry.json"));
   const enforcementPort = registry?.provider?.ports?.find((port) => port?.name === "GroupMembershipEnforcementCommandPort");
   const readPort = registry?.provider?.ports?.find((port) => port?.name === "GroupLocalizationReadPort");
   const commandPort = registry?.provider?.ports?.find((port) => port?.name === "GroupLocalizationCommandPort");

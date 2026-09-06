@@ -8,7 +8,7 @@ const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
-const source = readFileSync(new URL('crates/rustok-tax/src/ports.rs', root), 'utf8');
+const source = readFileSync(new URL('crates/modules/rustok-tax/src/ports.rs', root), 'utf8');
 const failures = [];
 
 const requireText = (value, label) => {

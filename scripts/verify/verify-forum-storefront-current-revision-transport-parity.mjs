@@ -10,12 +10,12 @@ const requireAbsent = (text, needle, message) => {
   if (text.includes(needle)) throw new Error(message);
 };
 
-const facade = read("crates/rustok-forum/storefront/src/transport/mod.rs");
-const graphql = read("crates/rustok-forum/storefront/src/transport/revision_graphql_adapter.rs");
-const native = read("crates/rustok-forum/storefront/src/transport/native_server_adapter_revision.rs");
-const cargo = read("crates/rustok-forum/storefront/Cargo.toml");
+const facade = read("crates/modules/rustok-forum/storefront/src/transport/mod.rs");
+const graphql = read("crates/modules/rustok-forum/storefront/src/transport/revision_graphql_adapter.rs");
+const native = read("crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_revision.rs");
+const cargo = read("crates/modules/rustok-forum/storefront/Cargo.toml");
 const contract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-storefront-current-revision-transport-parity.json"),
+  read("crates/modules/rustok-forum/contracts/forum-storefront-current-revision-transport-parity.json"),
 );
 
 for (const fact of ["topic", "reply"]) {

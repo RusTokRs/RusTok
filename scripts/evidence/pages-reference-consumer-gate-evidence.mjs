@@ -18,11 +18,11 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath = path.join(
   repoRoot,
-  "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
 );
 const gatePath = path.join(
   repoRoot,
-  "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
 );
 const MAX_INPUT_BYTES = 32 * 1024 * 1024;
 const MAX_CAPTURE_BYTES = 8 * 1024 * 1024;

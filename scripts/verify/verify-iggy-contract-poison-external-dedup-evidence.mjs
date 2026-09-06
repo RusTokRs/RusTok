@@ -4,12 +4,12 @@ import { readFileSync } from "node:fs";
 
 const contract = JSON.parse(
   readFileSync(
-    "crates/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-source.json",
+    "crates/modules/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-source.json",
     "utf8",
   ),
 );
 const test = readFileSync(
-  "crates/rustok-iggy/tests/contract_poison_external_iggy_dedup.rs",
+  "crates/modules/rustok-iggy/tests/contract_poison_external_iggy_dedup.rs",
   "utf8",
 );
 const failures = [];
@@ -144,7 +144,7 @@ if (contract.test_target !== "contract_poison_external_iggy_dedup") {
 }
 if (
   contract.source_path !==
-  "crates/rustok-iggy/tests/contract_poison_external_iggy_dedup.rs"
+  "crates/modules/rustok-iggy/tests/contract_poison_external_iggy_dedup.rs"
 ) {
   failures.push("dedup source path drift");
 }

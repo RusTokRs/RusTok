@@ -34,7 +34,7 @@ function featureBody(source, feature) {
   return match[1];
 }
 
-const commerceCargo = read("crates/rustok-commerce/Cargo.toml");
+const commerceCargo = read("crates/modules/rustok-commerce/Cargo.toml");
 const commerceFeature = featureBody(commerceCargo, "marketplace-financial");
 for (const dependency of [
   "dep:rustok-marketplace",
@@ -64,7 +64,7 @@ requireMatch(
   "rustok-commerce default feature set must stay marketplace-free",
 );
 
-const distributionCargo = read("crates/rustok-distribution/Cargo.toml");
+const distributionCargo = read("crates/modules/rustok-distribution/Cargo.toml");
 const distributionBase = featureBody(distributionCargo, "mod-commerce");
 if (/marketplace/i.test(distributionBase)) {
   fail("rustok-distribution/mod-commerce must not enable marketplace owners");
@@ -104,7 +104,7 @@ for (const dependency of [
   }
 }
 
-const commerceLib = read("crates/rustok-commerce/src/lib.rs");
+const commerceLib = read("crates/modules/rustok-commerce/src/lib.rs");
 forbidMatch(
   commerceLib,
   /fn\s+register_runtime_extensions\s*\(/,
@@ -116,7 +116,7 @@ requireMatch(
   "marketplace financial listener/runtime use must be feature-gated in CommerceModule",
 );
 
-const migrations = read("crates/rustok-commerce/src/migrations/mod.rs");
+const migrations = read("crates/modules/rustok-commerce/src/migrations/mod.rs");
 for (const migration of [
   "m20260721_000001_create_checkout_marketplace_economics_checkpoints",
   "m20260721_000002_create_marketplace_financial_operations",
@@ -132,7 +132,7 @@ for (const migration of [
   );
 }
 
-const serviceModules = read("crates/rustok-commerce/src/services/mod.rs");
+const serviceModules = read("crates/modules/rustok-commerce/src/services/mod.rs");
 for (const moduleName of [
   "checkout_marketplace_allocation",
   "checkout_marketplace_commission",
@@ -150,10 +150,10 @@ for (const moduleName of [
 }
 
 for (const [relativePath, marker] of [
-  ["crates/rustok-commerce/src/controllers/mod.rs", "marketplace_financial"],
-  ["crates/rustok-commerce/src/graphql/mod.rs", "marketplace_financial"],
-  ["crates/rustok-commerce/src/graphql_runtime.rs", "marketplace_financial_runtime"],
-  ["crates/rustok-commerce/src/openapi.rs", "openapi_marketplace_financial.rs"],
+  ["crates/modules/rustok-commerce/src/controllers/mod.rs", "marketplace_financial"],
+  ["crates/modules/rustok-commerce/src/graphql/mod.rs", "marketplace_financial"],
+  ["crates/modules/rustok-commerce/src/graphql_runtime.rs", "marketplace_financial_runtime"],
+  ["crates/modules/rustok-commerce/src/openapi.rs", "openapi_marketplace_financial.rs"],
 ]) {
   const source = read(relativePath);
   requireMatch(
@@ -164,7 +164,7 @@ for (const [relativePath, marker] of [
 }
 
 const pipeline = read(
-  "crates/rustok-commerce/src/services/checkout_stage_pipeline_owner_ports.rs",
+  "crates/modules/rustok-commerce/src/services/checkout_stage_pipeline_owner_ports.rs",
 );
 requireMatch(
   pipeline,
@@ -172,7 +172,7 @@ requireMatch(
   "base staged checkout must fail closed for marketplace lines before capture",
 );
 
-const storefront = read("crates/rustok-commerce/src/storefront_staged_checkout_runtime.rs");
+const storefront = read("crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs");
 requireMatch(
   storefront,
   /#\[cfg\(feature = "marketplace-financial"\)\][\s\S]*MarketplaceAllocationService[\s\S]*MarketplaceCommissionService[\s\S]*MarketplaceLedgerService/,

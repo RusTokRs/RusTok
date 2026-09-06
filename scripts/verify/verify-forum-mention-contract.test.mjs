@@ -47,26 +47,26 @@ ${options.missingCap ? "// FORUM_MAX_MENTION_TARGETS_PER_REVISION removed" : ""}
 `;
   writeFixture(
     root,
-    "crates/rustok-forum/src/mentions.rs",
+    "crates/modules/rustok-forum/src/mentions.rs",
     options.missingCap
       ? contract.replace("pub const FORUM_MAX_MENTION_TARGETS_PER_REVISION: usize = 32;", "")
       : contract,
   );
   writeFixture(
     root,
-    "crates/rustok-forum/src/error.rs",
+    "crates/modules/rustok-forum/src/error.rs",
     options.errorCarriesHandle
       ? 'MentionTargetUnavailable { handle: String }\n"FORUM_MENTION_TARGET_UNAVAILABLE"\n'
       : 'MentionTargetUnavailable,\n"FORUM_MENTION_TARGET_UNAVAILABLE"\n',
   );
   writeFixture(
     root,
-    "crates/rustok-forum/src/lib.rs",
+    "crates/modules/rustok-forum/src/lib.rs",
     "pub mod mentions;\npub use mentions::*;\n",
   );
   writeFixture(
     root,
-    "crates/rustok-forum/tests/mention_contract.rs",
+    "crates/modules/rustok-forum/tests/mention_contract.rs",
     [
       "canonical_extraction_ignores_code_and_email_addresses",
       "canonical_extraction_reads_structural_text_nodes",
@@ -79,12 +79,12 @@ ${options.missingCap ? "// FORUM_MAX_MENTION_TARGETS_PER_REVISION removed" : ""}
   );
   writeFixture(
     root,
-    "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/docs/implementation-plan.md",
     "Forum richtext cutover is complete\n",
   );
   writeFixture(
     root,
-    "crates/rustok-forum/CRATE_API.md",
+    "crates/modules/rustok-forum/CRATE_API.md",
     "ForumMentionRevisionProjection\nForumQuoteReference\n",
   );
   return root;

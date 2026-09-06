@@ -43,8 +43,8 @@ It is important to distinguish:
 - Platform module composition: `modules.toml`
 - Runtime registry: `apps/server/src/modules/mod.rs`
 - Manifest wiring: `apps/server/src/modules/manifest.rs`
-- Base module contracts: `crates/rustok-core/src/module.rs`
-- `Core` / `Optional` taxonomy: `crates/rustok-core/src/registry.rs`
+- Base module contracts: `crates/libs/rustok-core/src/module.rs`
+- `Core` / `Optional` taxonomy: `crates/libs/rustok-core/src/registry.rs`
 
 ## Platform Modules
 
@@ -92,7 +92,7 @@ It is important to distinguish:
 | `marketplace` | `rustok-marketplace` | `marketplace_seller`, `marketplace_listing`, `marketplace_allocation`, `marketplace_commission`, `marketplace_ledger`, `marketplace_payout` |
 | `moderation` | `rustok-moderation` | — |
 | `blog` | `rustok-blog` | `content`, `comments`, `outbox`, `taxonomy` |
-| `forum` | `rustok-forum` | `content`, `taxonomy`, `page_builder` |
+| `forum` | `rustok-forum` | `content`, `taxonomy` |
 | `notifications` | `rustok-notifications` | `outbox` |
 | `comments` | `rustok-comments` | — |
 | `pages` | `rustok-pages` | `content`, `outbox`, `page_builder` |

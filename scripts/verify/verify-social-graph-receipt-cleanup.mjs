@@ -38,11 +38,11 @@ function assertNotContains(text, pattern, description) {
 }
 
 const paths = {
-  lib: "crates/rustok-social-graph/src/lib.rs",
-  ports: "crates/rustok-social-graph/src/ports.rs",
-  maintenance: "crates/rustok-social-graph/src/maintenance.rs",
-  receipts: "crates/rustok-social-graph/src/receipts.rs",
-  test: "crates/rustok-social-graph/tests/receipt_cleanup_sqlite.rs",
+  lib: "crates/modules/rustok-social-graph/src/lib.rs",
+  ports: "crates/modules/rustok-social-graph/src/ports.rs",
+  maintenance: "crates/modules/rustok-social-graph/src/maintenance.rs",
+  receipts: "crates/modules/rustok-social-graph/src/receipts.rs",
+  test: "crates/modules/rustok-social-graph/tests/receipt_cleanup_sqlite.rs",
 };
 
 for (const value of Object.values(paths)) assertExists(value);

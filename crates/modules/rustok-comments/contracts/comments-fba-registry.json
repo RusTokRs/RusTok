@@ -1,0 +1,187 @@
+{
+  "schema_version": 4,
+  "module": "comments",
+  "role": "provider",
+  "status": "boundary_ready",
+  "contract_version": "comments.thread.v1",
+  "richtext_contract": {
+    "write": "rustok_api::RichTextDocument",
+    "read": "rustok_api::RichTextView",
+    "plain_text_projection": "CommentRecord.body_text",
+    "profile": "comment",
+    "storage": "canonical_prosemirror_json",
+    "format_selector": false
+  },
+  "ports": [
+    {
+      "name": "CommentsThreadPort",
+      "owner": "comments",
+      "operations": [
+        "create_comment",
+        "get_comment",
+        "list_comments_for_target",
+        "list_public_comments_for_target",
+        "update_comment",
+        "set_comment_status",
+        "delete_comment"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": true,
+      "deadline_required": true,
+      "write_operations": [
+        "create_comment",
+        "update_comment",
+        "set_comment_status",
+        "delete_comment"
+      ],
+      "read_operations": [
+        "get_comment",
+        "list_comments_for_target",
+        "list_public_comments_for_target"
+      ]
+    }
+  ],
+  "consumers": [
+    {
+      "module": "blog",
+      "profile": "blog_post_comments",
+      "degraded_modes": [
+        "hide_comment_form",
+        "show_cached_thread_snapshot"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/modules/rustok-comments/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-comments-fba.mjs",
+    "static_matrix": "crates/modules/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json",
+    "port_boundary_runner": "scripts/verify/verify-comments-port-boundary.mjs",
+    "port_boundary_self_test": "scripts/verify/verify-comments-port-boundary.test.mjs",
+    "runtime_order_smoke": "crates/modules/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json",
+    "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs",
+    "thread_write_invariants": "crates/modules/rustok-comments/contracts/evidence/comments-thread-write-invariants.json",
+    "thread_write_invariants_runner": "scripts/verify/verify-comments-thread-write-invariants.mjs",
+    "thread_write_invariants_self_test": "scripts/verify/verify-comments-thread-write-invariants.test.mjs",
+    "thread_insert_error_classifier_test": "crates/modules/rustok-comments/src/entities/thread_insert_error_tests.rs",
+    "thread_write_invariants_test": "crates/modules/rustok-comments/tests/thread_write_invariants.rs",
+    "thread_creation_concurrency_test": "crates/modules/rustok-comments/tests/thread_creation_concurrency.rs"
+  },
+  "verification_chain": {
+    "package_script": "verify:comments:fba",
+    "test_package_script": "test:verify:comments:fba",
+    "steps": [
+      "node scripts/verify/verify-comments-fba.mjs",
+      "npm run verify:comments:port-boundary",
+      "npm run verify:comments:thread-write-invariants",
+      "npm run verify:owner:fba-runtime-order"
+    ],
+    "test_steps": [
+      "npm run test:verify:comments:port-boundary",
+      "npm run test:verify:comments:thread-write-invariants",
+      "npm run test:verify:owner:fba-runtime-order"
+    ],
+    "source_gates": {
+      "comments_port_boundary": {
+        "package_script": "verify:comments:port-boundary",
+        "test_package_script": "test:verify:comments:port-boundary",
+        "verifier": "scripts/verify/verify-comments-port-boundary.mjs",
+        "self_test": "scripts/verify/verify-comments-port-boundary.test.mjs",
+        "evidence": "crates/modules/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json"
+      },
+      "thread_write_invariants": {
+        "package_script": "verify:comments:thread-write-invariants",
+        "test_package_script": "test:verify:comments:thread-write-invariants",
+        "verifier": "scripts/verify/verify-comments-thread-write-invariants.mjs",
+        "self_test": "scripts/verify/verify-comments-thread-write-invariants.test.mjs",
+        "unit_test": "crates/modules/rustok-comments/src/entities/thread_insert_error_tests.rs",
+        "evidence": "crates/modules/rustok-comments/contracts/evidence/comments-thread-write-invariants.json"
+      }
+    }
+  },
+  "in_process_provider_impl": {
+    "service": "InProcessCommentsThreadProvider",
+    "source": "crates/modules/rustok-comments/src/ports.rs",
+    "marker": "impl CommentsThreadPort for InProcessCommentsThreadProvider",
+    "status": "implemented"
+  },
+  "events": [
+    {
+      "type": "comment.created",
+      "owner": "comments",
+      "publication": "rustok_outbox::TransactionalEventBus::publish_in_tx",
+      "consumer": "blog",
+      "projection_status": "implemented_static_only"
+    },
+    {
+      "type": "comment.deleted",
+      "owner": "comments",
+      "publication": "rustok_outbox::TransactionalEventBus::publish_in_tx",
+      "consumer": "blog",
+      "projection_status": "implemented_static_only"
+    }
+  ],
+  "contract_tests": {
+    "status": "source_verified_no_compile",
+    "runtime_status": "pending",
+    "source": "crates/modules/rustok-comments/contracts/comments-fba-registry.json",
+    "runner": "scripts/verify/verify-comments-port-boundary.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "source_profiles": [
+      "in_process"
+    ],
+    "pending_profiles": [
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "create_comment",
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"],
+        "runtime_evidence": "pending"
+      },
+      {
+        "operation": "get_comment",
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "richtext_view_projection", "server_plain_text_projection"],
+        "runtime_evidence": "pending"
+      },
+      {
+        "operation": "list_comments_for_target",
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved"],
+        "runtime_evidence": "pending"
+      },
+      {
+        "operation": "list_public_comments_for_target",
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "approved_only_projection"],
+        "runtime_evidence": "pending"
+      },
+      {
+        "operation": "update_comment",
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"],
+        "runtime_evidence": "pending"
+      },
+      {
+        "operation": "set_comment_status",
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
+        "runtime_evidence": "pending"
+      },
+      {
+        "operation": "delete_comment",
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
+        "runtime_evidence": "pending"
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": ["embedded_native"],
+      "degraded_modes": ["hide_comment_form", "show_cached_thread_snapshot"],
+      "runtime_evidence": "pending"
+    }
+  }
+}

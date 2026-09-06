@@ -10,18 +10,18 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const adminRouter = read('crates/rustok-commerce/src/controllers/admin/mod.rs');
-const returns = read('crates/rustok-commerce/src/controllers/admin/returns.rs');
+const adminRouter = read('crates/modules/rustok-commerce/src/controllers/admin/mod.rs');
+const returns = read('crates/modules/rustok-commerce/src/controllers/admin/returns.rs');
 const ownerDecision = read(
-  'crates/rustok-commerce/src/services/return_decision_owner_orchestration.rs',
+  'crates/modules/rustok-commerce/src/services/return_decision_owner_orchestration.rs',
 );
-const commerceRuntime = read('crates/rustok-commerce/src/controllers/mod.rs');
-const ownerCommand = read('crates/rustok-order/src/post_order_command.rs');
-const paymentAdminRead = read('crates/rustok-payment/src/admin_read.rs');
-const graphql = read('crates/rustok-commerce/src/graphql/mutations/fulfillment.rs');
-const plan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const commerceRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
+const ownerCommand = read('crates/modules/rustok-order/src/post_order_command.rs');
+const paymentAdminRead = read('crates/modules/rustok-payment/src/admin_read.rs');
+const graphql = read('crates/modules/rustok-commerce/src/graphql/mutations/fulfillment.rs');
+const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 const record = read(
-  'crates/rustok-commerce/docs/rest-admin-return-decision-payment-owner-read-cutover-2026-08-12.md',
+  'crates/modules/rustok-commerce/docs/rest-admin-return-decision-payment-owner-read-cutover-2026-08-12.md',
 );
 const failures = [];
 

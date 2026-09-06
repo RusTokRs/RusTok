@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
 const testPath = "apps/server/tests/groups_membership_enforcement_expiry_sqlite.rs";
-const docsPath = "crates/rustok-groups/docs/membership-enforcement-expiry-sqlite-contract.md";
+const docsPath = "crates/modules/rustok-groups/docs/membership-enforcement-expiry-sqlite-contract.md";
 
 const test = fs.readFileSync(testPath, "utf8");
 const docs = fs.readFileSync(docsPath, "utf8");

@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-registry-admission-source.json";
+  "crates/modules/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-registry-admission-source.json";
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;

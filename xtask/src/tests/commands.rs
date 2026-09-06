@@ -13,7 +13,7 @@ fn build_module_test_plan_includes_main_and_ui_crates() {
         trust_level: "verified".to_string(),
         license: "BUSL-1.1".to_string(),
         manifest_path: "modules.toml".to_string(),
-        package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
+        package_manifest_path: "crates/modules/rustok-blog/rustok-module.toml".to_string(),
         module_entry_type: Some("BlogModule".to_string()),
         marketplace: ModuleMarketplacePreview {
             category: Some("content".to_string()),
@@ -22,11 +22,11 @@ fn build_module_test_plan_includes_main_and_ui_crates() {
         ui_packages: ModuleUiPackagesPreview {
             admin: Some(ModuleUiPackagePreview {
                 crate_name: "rustok-blog-admin".to_string(),
-                manifest_path: "crates/rustok-blog/admin/Cargo.toml".to_string(),
+                manifest_path: "crates/modules/rustok-blog/admin/Cargo.toml".to_string(),
             }),
             storefront: Some(ModuleUiPackagePreview {
                 crate_name: "rustok-blog-storefront".to_string(),
-                manifest_path: "crates/rustok-blog/storefront/Cargo.toml".to_string(),
+                manifest_path: "crates/modules/rustok-blog/storefront/Cargo.toml".to_string(),
             }),
         },
     };
@@ -58,7 +58,7 @@ fn build_publish_registry_request_serializes_v2_contract() {
         trust_level: "verified".to_string(),
         license: "BUSL-1.1".to_string(),
         manifest_path: "modules.toml".to_string(),
-        package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
+        package_manifest_path: "crates/modules/rustok-blog/rustok-module.toml".to_string(),
         module_entry_type: Some("BlogModule".to_string()),
         marketplace: ModuleMarketplacePreview {
             category: Some("content".to_string()),
@@ -67,11 +67,11 @@ fn build_publish_registry_request_serializes_v2_contract() {
         ui_packages: ModuleUiPackagesPreview {
             admin: Some(ModuleUiPackagePreview {
                 crate_name: "rustok-blog-admin".to_string(),
-                manifest_path: "crates/rustok-blog/admin/Cargo.toml".to_string(),
+                manifest_path: "crates/modules/rustok-blog/admin/Cargo.toml".to_string(),
             }),
             storefront: Some(ModuleUiPackagePreview {
                 crate_name: "rustok-blog-storefront".to_string(),
-                manifest_path: "crates/rustok-blog/storefront/Cargo.toml".to_string(),
+                manifest_path: "crates/modules/rustok-blog/storefront/Cargo.toml".to_string(),
             }),
         },
     };
@@ -124,7 +124,7 @@ fn build_live_publish_registry_request_turns_off_dry_run() {
         trust_level: "verified".to_string(),
         license: "BUSL-1.1".to_string(),
         manifest_path: "modules.toml".to_string(),
-        package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
+        package_manifest_path: "crates/modules/rustok-blog/rustok-module.toml".to_string(),
         module_entry_type: Some("BlogModule".to_string()),
         marketplace: ModuleMarketplacePreview {
             category: Some("content".to_string()),
@@ -133,11 +133,11 @@ fn build_live_publish_registry_request_turns_off_dry_run() {
         ui_packages: ModuleUiPackagesPreview {
             admin: Some(ModuleUiPackagePreview {
                 crate_name: "rustok-blog-admin".to_string(),
-                manifest_path: "crates/rustok-blog/admin/Cargo.toml".to_string(),
+                manifest_path: "crates/modules/rustok-blog/admin/Cargo.toml".to_string(),
             }),
             storefront: Some(ModuleUiPackagePreview {
                 crate_name: "rustok-blog-storefront".to_string(),
-                manifest_path: "crates/rustok-blog/storefront/Cargo.toml".to_string(),
+                manifest_path: "crates/modules/rustok-blog/storefront/Cargo.toml".to_string(),
             }),
         },
     };
@@ -935,7 +935,7 @@ fn build_yank_registry_request_serializes_v2_contract() {
         crate_name: "rustok-blog".to_string(),
         current_local_version: "1.2.3".to_string(),
         matches_local_version: true,
-        package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
+        package_manifest_path: "crates/modules/rustok-blog/rustok-module.toml".to_string(),
     };
 
     let request_body = serde_json::to_value(build_yank_registry_request(
@@ -964,7 +964,7 @@ fn build_live_yank_registry_request_turns_off_dry_run_and_keeps_reason_code() {
         crate_name: "rustok-blog".to_string(),
         current_local_version: "1.2.3".to_string(),
         matches_local_version: true,
-        package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
+        package_manifest_path: "crates/modules/rustok-blog/rustok-module.toml".to_string(),
     };
 
     let request_body = serde_json::to_value(build_live_yank_registry_request(
@@ -985,7 +985,7 @@ fn build_owner_transfer_registry_request_serializes_v2_contract() {
         slug: "blog".to_string(),
         crate_name: "rustok-blog".to_string(),
         current_local_version: "1.2.3".to_string(),
-        package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
+        package_manifest_path: "crates/modules/rustok-blog/rustok-module.toml".to_string(),
         new_owner_user_id: "11111111-1111-1111-1111-111111111111".to_string(),
         reason: Some("Ownership transferred to the forum publisher".to_string()),
         reason_code: Some("maintenance_handoff".to_string()),
@@ -1021,7 +1021,7 @@ fn build_live_owner_transfer_registry_request_turns_off_dry_run() {
         slug: "blog".to_string(),
         crate_name: "rustok-blog".to_string(),
         current_local_version: "1.2.3".to_string(),
-        package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
+        package_manifest_path: "crates/modules/rustok-blog/rustok-module.toml".to_string(),
         new_owner_user_id: "22222222-2222-2222-2222-222222222222".to_string(),
         reason: Some("Transfer to the comments publisher".to_string()),
         reason_code: Some("publisher_rotation".to_string()),

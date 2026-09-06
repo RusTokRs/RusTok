@@ -10,10 +10,10 @@ function sameSet(actual, expected, label) {
   if (a !== e) fail(`${label} drift: expected ${e}, got ${a}`);
 }
 
-const registryPath = 'crates/rustok-ai-product/contracts/ai-product-fba-registry.json';
-const evidencePath = 'crates/rustok-ai-product/contracts/evidence/ai-product-consumer-static-matrix.json';
-const fallbackSmokePath = 'crates/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json';
-const providerPath = 'crates/rustok-product/contracts/product-fba-registry.json';
+const registryPath = 'crates/modules/rustok-ai-product/contracts/ai-product-fba-registry.json';
+const evidencePath = 'crates/modules/rustok-ai-product/contracts/evidence/ai-product-consumer-static-matrix.json';
+const fallbackSmokePath = 'crates/modules/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json';
+const providerPath = 'crates/modules/rustok-product/contracts/product-fba-registry.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const fallbackSmoke = json(fallbackSmokePath);
@@ -58,7 +58,7 @@ if (agentCatalog.catalog_api !== 'product_ai_agents' || agentCatalog.workflow_ap
 sameSet(agentCatalog.roles ?? [], ['product_copywriter', 'product_attribute_enricher'], 'product agent roles');
 if (agentCatalog.workflow !== 'product_enrichment' || agentCatalog.all_stages_require_approval !== true) fail('product agent workflow policy drift');
 
-const aiAgentCatalog = read('crates/rustok-ai/src/agent.rs');
+const aiAgentCatalog = read('crates/modules/rustok-ai/src/agent.rs');
 hasAll(aiAgentCatalog, [
   'rustok_ai_product::product_ai_agents()',
   'rustok_ai_product::product_ai_workflows()',
@@ -67,14 +67,14 @@ hasAll(aiAgentCatalog, [
   'with_stage_validators',
   'owner: "rustok-ai-product"'
 ], 'AI owner catalog composition');
-const aiService = read('crates/rustok-ai/src/service.rs');
+const aiService = read('crates/modules/rustok-ai/src/service.rs');
 hasAll(aiService, [
   'catalog.validate_stage_execution(',
   'Self::run_task_job_with_authority(',
   'TaskJobExecutionAuthority::RegisteredAgentAssignment'
 ], 'product agent canonical task-run composition');
 
-const attributesHandler = read('crates/rustok-ai/src/direct_product_attributes.rs');
+const attributesHandler = read('crates/modules/rustok-ai/src/direct_product_attributes.rs');
 hasAll(attributesHandler, [
   'runtime.product_catalog_read_port()',
   'read_product_projection(',
@@ -89,7 +89,7 @@ if (attributesHandler.includes('CatalogService')) {
   fail('product attributes must not bypass ProductCatalogReadPort with CatalogService');
 }
 
-const runtimeTypes = read('crates/rustok-ai/src/service/types.rs');
+const runtimeTypes = read('crates/modules/rustok-ai/src/service/types.rs');
 hasAll(runtimeTypes, [
   'SharedAiProductCatalogReadPort',
   'product_catalog_read_port',
@@ -100,7 +100,7 @@ hasAll(commerceRuntime, [
   'Arc<dyn rustok_product::ProductCatalogReadPort>',
   'SharedAiProductCatalogReadPort'
 ], 'server product catalog runtime composition');
-const directTests = read('crates/rustok-ai/src/direct.rs');
+const directTests = read('crates/modules/rustok-ai/src/direct.rs');
 hasAll(directTests, [
   'direct_product_attributes_returns_review_only_suggestions_without_product_write',
   'direct_product_attributes_degrades_when_catalog_port_is_unavailable',
@@ -118,10 +118,10 @@ if (fallbackSmoke.profile !== registry.contract_tests.fallback_smoke.profiles[0]
 if (fallbackSmoke.degraded_mode !== registry.contract_tests.fallback_smoke.degraded_modes[0]) fail('fallback smoke degraded mode drift');
 sameSet(fallbackSmoke.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'fallback smoke cases');
 
-const plan = read('crates/rustok-ai-product/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-ai-product/docs/implementation-plan.md');
 hasAll(plan, [`- FBA status: \`${registry.status}\``, 'ai-product-fba-registry.json', 'ProductCatalogReadPort', 'ai-product-consumer-static-matrix.json', 'ai-product-runtime-fallback-smoke.json'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `ai-product` |', 'crates/rustok-ai-product/contracts/ai-product-fba-registry.json', 'crates/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json'], 'central registry');
+hasAll(central, ['| `ai-product` |', 'crates/modules/rustok-ai-product/contracts/ai-product-fba-registry.json', 'crates/modules/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`ai-product`', 'ProductCatalogReadPort', 'ai-product-fba-registry.json', 'ai-product-runtime-fallback-smoke.json'], 'unified plan');
 

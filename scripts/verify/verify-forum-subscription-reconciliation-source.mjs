@@ -14,10 +14,10 @@ function requireAbsent(text, marker, message) {
   if (text.includes(marker)) throw new Error(message);
 }
 
-const servicePath = "crates/rustok-forum/src/services/subscription/reconciliation.rs";
-const subscriptionModulePath = "crates/rustok-forum/src/services/subscription.rs";
-const graphqlPath = "crates/rustok-forum/src/graphql/subscription_reconciliation_query.rs";
-const graphqlModulePath = "crates/rustok-forum/src/graphql/mod.rs";
+const servicePath = "crates/modules/rustok-forum/src/services/subscription/reconciliation.rs";
+const subscriptionModulePath = "crates/modules/rustok-forum/src/services/subscription.rs";
+const graphqlPath = "crates/modules/rustok-forum/src/graphql/subscription_reconciliation_query.rs";
+const graphqlModulePath = "crates/modules/rustok-forum/src/graphql/mod.rs";
 const packetPath = "docs/modules/forum-33-subscription-reconciliation-actualization-2026-08-08.md";
 
 const service = read(servicePath);

@@ -11,11 +11,11 @@ const rootPath = configuredRoot
 const read = (relativePath) => readFileSync(path.join(rootPath, relativePath), "utf8");
 
 const sourcePath =
-  "crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs";
+  "crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs";
 const evidencePath =
-  "crates/rustok-fulfillment/contracts/evidence/storefront-native-error-safety-source.json";
-const docPath = "crates/rustok-fulfillment/docs/storefront-native-error-safety.md";
-const cargo = read("crates/rustok-fulfillment/storefront/Cargo.toml");
+  "crates/modules/rustok-fulfillment/contracts/evidence/storefront-native-error-safety-source.json";
+const docPath = "crates/modules/rustok-fulfillment/docs/storefront-native-error-safety.md";
+const cargo = read("crates/modules/rustok-fulfillment/storefront/Cargo.toml");
 const source = read(sourcePath);
 const evidence = JSON.parse(read(evidencePath));
 const doc = read(docPath);

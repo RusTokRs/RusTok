@@ -29,27 +29,27 @@ const between = (source, start, end, label) => {
 };
 
 const paths = {
-  cargo: "crates/rustok-product/admin/Cargo.toml",
-  facade: "crates/rustok-product/admin/src/catalog_transport.rs",
-  safety: "crates/rustok-product/admin/src/transport/graphql_error_safety.rs",
-  legacy: "crates/rustok-product/admin/src/transport.rs",
-  listGraphql: "crates/rustok-product/admin/src/transport/admin_catalog_graphql.rs",
-  native: "crates/rustok-product/admin/src/transport/native_server_adapter.rs",
-  graphql: "crates/rustok-product/admin/src/transport/graphql_adapter.rs",
-  graphqlHttp: "crates/rustok-graphql/src/lib.rs",
-  ui: "crates/rustok-product/admin/src/ui/leptos.rs",
+  cargo: "crates/modules/rustok-product/admin/Cargo.toml",
+  facade: "crates/modules/rustok-product/admin/src/catalog_transport.rs",
+  safety: "crates/modules/rustok-product/admin/src/transport/graphql_error_safety.rs",
+  legacy: "crates/modules/rustok-product/admin/src/transport.rs",
+  listGraphql: "crates/modules/rustok-product/admin/src/transport/admin_catalog_graphql.rs",
+  native: "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs",
+  graphql: "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs",
+  graphqlHttp: "crates/ui/rustok-graphql/src/lib.rs",
+  ui: "crates/modules/rustok-product/admin/src/ui/leptos.rs",
   catalogGuard: "scripts/verify/verify-product-admin-catalog-options-error-safety.mjs",
   primaryEvidence:
-    "crates/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source.json",
+    "crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source.json",
   primaryReview:
-    "crates/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source-review.json",
-  primaryDoc: "crates/rustok-product/docs/admin-primary-graphql-read-error-safety.md",
+    "crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source-review.json",
+  primaryDoc: "crates/modules/rustok-product/docs/admin-primary-graphql-read-error-safety.md",
   categoryEvidence:
-    "crates/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source.json",
+    "crates/modules/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source.json",
   categoryReview:
-    "crates/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source-review.json",
-  categoryDoc: "crates/rustok-product/docs/admin-category-graphql-read-error-safety.md",
-  masterPlan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source-review.json",
+  categoryDoc: "crates/modules/rustok-product/docs/admin-category-graphql-read-error-safety.md",
+  masterPlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
 const cargo = read(paths.cargo);

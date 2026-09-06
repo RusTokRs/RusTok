@@ -38,14 +38,14 @@ function assertNotContains(text, pattern, description) {
 }
 
 const paths = {
-  event: "crates/rustok-events/src/social_graph.rs",
-  ports: "crates/rustok-social-graph/src/ports.rs",
-  maintenance: "crates/rustok-social-graph/src/maintenance.rs",
-  lib: "crates/rustok-social-graph/src/lib.rs",
-  readme: "crates/rustok-social-graph/README.md",
-  plan: "crates/rustok-social-graph/docs/implementation-plan.md",
-  profilesPlan: "crates/rustok-profiles/docs/implementation-plan.md",
-  test: "crates/rustok-social-graph/tests/relation_event_replay_sqlite.rs",
+  event: "crates/libs/rustok-events/src/social_graph.rs",
+  ports: "crates/modules/rustok-social-graph/src/ports.rs",
+  maintenance: "crates/modules/rustok-social-graph/src/maintenance.rs",
+  lib: "crates/modules/rustok-social-graph/src/lib.rs",
+  readme: "crates/modules/rustok-social-graph/README.md",
+  plan: "crates/modules/rustok-social-graph/docs/implementation-plan.md",
+  profilesPlan: "crates/modules/rustok-profiles/docs/implementation-plan.md",
+  test: "crates/modules/rustok-social-graph/tests/relation_event_replay_sqlite.rs",
 };
 
 for (const value of Object.values(paths)) assertExists(value);

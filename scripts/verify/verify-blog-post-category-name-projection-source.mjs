@@ -10,11 +10,11 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const files = {
-  evidence: 'crates/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
-  postService: 'crates/rustok-blog/src/services/post.rs',
-  categoryProjection: 'crates/rustok-blog/src/services/category_name_projection.rs',
-  dto: 'crates/rustok-blog/src/dto/post.rs',
-  harness: 'crates/rustok-blog/tests/post_category_name_projection.rs',
+  evidence: 'crates/modules/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
+  postService: 'crates/modules/rustok-blog/src/services/post.rs',
+  categoryProjection: 'crates/modules/rustok-blog/src/services/category_name_projection.rs',
+  dto: 'crates/modules/rustok-blog/src/dto/post.rs',
+  harness: 'crates/modules/rustok-blog/tests/post_category_name_projection.rs',
 };
 
 function read(relativePath) {

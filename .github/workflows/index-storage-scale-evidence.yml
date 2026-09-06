@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - "crates/rustok-index/**"
+      - "crates/modules/rustok-index/**"
       - "ops/benches/**"
       - "scripts/verify/*index-storage*.mjs"
       - "scripts/verify/storage-decision*.mjs"

@@ -23,7 +23,7 @@ const preparer = read('scripts/verify/prepare-index-storage-decision.mjs');
 const finalizer = read('scripts/verify/finalize-index-storage-adr.mjs');
 const verifier = read('scripts/verify/verify-index-storage-adr.mjs');
 const fixture = read('scripts/verify/index-storage-decision-tooling.test.mjs');
-const guide = read('crates/rustok-index/docs/storage-decision.md');
+const guide = read('crates/modules/rustok-index/docs/storage-decision.md');
 const smokeWorkflow = read('.github/workflows/index-storage-smoke.yml');
 const scaleWorkflow = read('.github/workflows/index-storage-scale-evidence.yml');
 

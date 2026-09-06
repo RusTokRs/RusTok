@@ -18,20 +18,20 @@ const forbidText = (source, value, label) => {
 };
 const countText = (source, value) => source.split(value).length - 1;
 
-const cargoPath = "crates/rustok-pricing/admin/Cargo.toml";
-const transportPath = "crates/rustok-pricing/admin/src/transport.rs";
-const graphqlPath = "crates/rustok-pricing/admin/src/transport/graphql_adapter.rs";
+const cargoPath = "crates/modules/rustok-pricing/admin/Cargo.toml";
+const transportPath = "crates/modules/rustok-pricing/admin/src/transport.rs";
+const graphqlPath = "crates/modules/rustok-pricing/admin/src/transport/graphql_adapter.rs";
 const safetyPath =
-  "crates/rustok-pricing/admin/src/transport/graphql_error_safety.rs";
+  "crates/modules/rustok-pricing/admin/src/transport/graphql_error_safety.rs";
 const nativePath =
-  "crates/rustok-pricing/admin/src/transport/native_server_adapter.rs";
+  "crates/modules/rustok-pricing/admin/src/transport/native_server_adapter.rs";
 const evidencePath =
-  "crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source.json";
+  "crates/modules/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source.json";
 const reviewPath =
-  "crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source-review.json";
-const docPath = "crates/rustok-pricing/docs/admin-graphql-error-safety.md";
-const planPath = "crates/rustok-pricing/docs/implementation-plan.md";
-const masterPlanPath = "crates/rustok-commerce/docs/implementation-plan.md";
+  "crates/modules/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source-review.json";
+const docPath = "crates/modules/rustok-pricing/docs/admin-graphql-error-safety.md";
+const planPath = "crates/modules/rustok-pricing/docs/implementation-plan.md";
+const masterPlanPath = "crates/modules/rustok-commerce/docs/implementation-plan.md";
 
 const cargo = read(cargoPath);
 const transport = read(transportPath);

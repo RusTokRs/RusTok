@@ -47,7 +47,7 @@ RusToK uses a hybrid transport layer:
 API adapters follow the backend module layout:
 
 - owner services, ports, GraphQL roots and REST DTO/handlers live in
-  `crates/rustok-<module>/src`;
+  `crates/modules/rustok-<module>/src`;
 - published OpenAPI/GraphQL/FBA evidence artifacts live in module-local `contracts/`;
 - `apps/server` mounts owner-owned routes, composes schema roots and provides runtime state;
 - `apps/server` must not become the owner of module DTOs, resolver policy, command

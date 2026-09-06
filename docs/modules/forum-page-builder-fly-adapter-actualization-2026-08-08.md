@@ -12,7 +12,7 @@ The repository also already had a stricter owner boundary than the old cursor im
 
 Forum Fly component/block/adapter contracts: source-ready.
 
-`crates/rustok-forum/rustok-module.toml` now remains the canonical source for two complementary admin contributions:
+`crates/modules/rustok-forum/rustok-module.toml` now remains the canonical source for two complementary admin contributions:
 
 - `rustok.forum.widget-catalog` requires `tree + properties`, declares the three canonical Forum widget block/component ids and their owner-backed property editor references;
 - `rustok.forum.widget-preview` requires only `preview` and declares the three renderer contracts.
@@ -29,11 +29,11 @@ Each Fly block stores only an opaque JSON object under `props`. No topic, reply,
 
 ## Generated runtime contract
 
-`crates/rustok-forum/admin/build.rs` delegates generic TOML parsing and provider/version/capability admission to the shared `rustok-build/src/module_manifest_contribution.rs` normalizer. It validates the Forum-specific role split and exact block/renderer/property-editor component set, then emits the normalized version-pinned manifest to `OUT_DIR`.
+`crates/modules/rustok-forum/admin/build.rs` delegates generic TOML parsing and provider/version/capability admission to the shared `rustok-build/src/module_manifest_contribution.rs` normalizer. It validates the Forum-specific role split and exact block/renderer/property-editor component set, then emits the normalized version-pinned manifest to `OUT_DIR`.
 
 Forum admin runtime does not parse TOML.
 
-`crates/rustok-forum/admin/src/page_builder.rs` now provides:
+`crates/modules/rustok-forum/admin/src/page_builder.rs` now provides:
 
 - the build-generated `ModuleContributionManifest`;
 - a policy-aware Forum admin contribution registry;

@@ -9,7 +9,7 @@ This document establishes the **core backend stack libraries** in `apps/server` 
 | Library | Role in server | Where to look in repository |
 |---|---|---|
 | `axum` | Backend framework, bootstrap, HTTP routing, handlers and middleware integration | `apps/server/src/host.rs`, `apps/server/src/controllers/**`, `apps/server/src/middleware/**` |
-| `sea-orm` | ORM, entities, queries, migrations | `apps/server/src/models/**`, `crates/rustok-migrations/**` |
+| `sea-orm` | ORM, entities, queries, migrations | `apps/server/src/models/**`, `crates/utils/rustok-migrations/**` |
 | `async-graphql` | GraphQL schema/query/mutation/resolvers | `apps/server/src/graphql/**` |
 | `tokio` | Async runtime for I/O and background tasks | server entry point and async services in `apps/server/src/**` |
 | `serde` / `serde_json` | (De)serialization for API, configs and payload | DTO/response/request structures in `apps/server/src/**` |

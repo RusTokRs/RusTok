@@ -44,12 +44,12 @@ function forbidAll(source, markers, description) {
 }
 
 const rootCargo = read("Cargo.toml");
-const serviceRoot = "crates/rustok-product-catalog-service";
+const serviceRoot = "crates/modules/rustok-product-catalog-service";
 const cargo = read(`${serviceRoot}/Cargo.toml`);
 const source = read(`${serviceRoot}/src/main.rs`);
 const readme = read(`${serviceRoot}/README.md`);
-const registrySource = read("crates/rustok-product/contracts/product-fba-registry.json");
-const plan = read("crates/rustok-product/docs/implementation-plan.md");
+const registrySource = read("crates/modules/rustok-product/contracts/product-fba-registry.json");
+const plan = read("crates/modules/rustok-product/docs/implementation-plan.md");
 
 requireAll(rootCargo, ['"crates/*"'], "workspace service discovery");
 requireAll(cargo, [
@@ -192,7 +192,7 @@ if (registry) {
   const external = registry.external_transport ?? {};
   const expected = {
     provider_host_crate: "rustok-product-catalog-service",
-    provider_host_source: "crates/rustok-product-catalog-service/src/main.rs",
+    provider_host_source: "crates/modules/rustok-product-catalog-service/src/main.rs",
     provider_host_binary: "rustok-product-catalog-service",
     provider_host_database: "postgresql",
     provider_host_transport_security: "tls_or_explicit_loopback",

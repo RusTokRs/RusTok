@@ -5,27 +5,27 @@ on:
     branches:
       - main
     paths:
-      - "crates/rustok-pages/src/**"
-      - "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs"
-      - "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs"
-      - "crates/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-postgres-execution.json"
-      - "crates/rustok-pages/docs/implementation-plan.md"
-      - "crates/rustok-outbox/src/**"
+      - "crates/modules/rustok-pages/src/**"
+      - "crates/modules/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs"
+      - "crates/modules/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-postgres-execution.json"
+      - "crates/modules/rustok-pages/docs/implementation-plan.md"
+      - "crates/modules/rustok-outbox/src/**"
       - "docs/modules/pages-page-builder-rollback-activated-recovery-actualization-2026-08-07.md"
       - "docs/modules/pages-rollback-activated-artifact-loss-recovery-postgres-evidence-actualization-2026-08-14.md"
   pull_request:
     paths:
-      - "crates/rustok-pages/src/**"
-      - "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs"
-      - "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs"
-      - "crates/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-postgres-execution.json"
-      - "crates/rustok-pages/docs/implementation-plan.md"
-      - "crates/rustok-outbox/src/**"
-      - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
+      - "crates/modules/rustok-pages/src/**"
+      - "crates/modules/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs"
+      - "crates/modules/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-postgres-execution.json"
+      - "crates/modules/rustok-pages/docs/implementation-plan.md"
+      - "crates/modules/rustok-outbox/src/**"
+      - "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json"
       - "docs/modules/pages-page-builder-rollback-activated-recovery-actualization-2026-08-07.md"
       - "docs/modules/pages-rollback-activated-artifact-loss-recovery-postgres-evidence-actualization-2026-08-14.md"
       - ".github/workflows/pages-rollback-activated-artifact-loss-recovery-postgres-evidence.yml"
@@ -86,13 +86,13 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - name: Verify rollback-activated artifact-loss recovery source
-        run: node crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs
       - name: Validate execution contract
         shell: bash
         run: |
           node <<'NODE'
           const fs = require('node:fs');
-          const path = 'crates/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-postgres-execution.json';
+          const path = 'crates/modules/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-postgres-execution.json';
           const contract = JSON.parse(fs.readFileSync(path, 'utf8'));
           const fail = (message) => { console.error(message); process.exit(1); };
           if (contract.format !== 'pages_rollback_activated_artifact_loss_recovery_postgres_execution_source_v1') fail('execution contract format drifted');
@@ -137,8 +137,8 @@ jobs:
           node <<'NODE'
           const crypto = require('node:crypto');
           const fs = require('node:fs');
-          const contractPath = 'crates/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-postgres-execution.json';
-          const registryPath = 'crates/rustok-page-builder/contracts/page-builder-fba-registry.json';
+          const contractPath = 'crates/modules/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-postgres-execution.json';
+          const registryPath = 'crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json';
           const contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
           const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
           const consumer = registry.consumers?.[0];

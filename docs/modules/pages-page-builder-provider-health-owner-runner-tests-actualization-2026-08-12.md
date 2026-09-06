@@ -40,7 +40,7 @@ The seven synthetic fail-closed cases are:
 
 The contract for this source slice is:
 
-`crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-runner-test-source.json`.
+`crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-runner-test-source.json`.
 
 The anti-drift guard is:
 
@@ -51,14 +51,14 @@ The anti-drift guard is:
 `.github/workflows/pages-page-builder-provider-health.yml` is a read-only focused gate. It executes:
 
 ```text
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
 node scripts/verify/verify-pages-builder-provider-health-owner-runner-tests.mjs
 node scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs
-node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 ```
 
 The synthetic runner suite and source guards are intended to run in ordinary CI without operator credentials or live infrastructure.

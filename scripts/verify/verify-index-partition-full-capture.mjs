@@ -35,10 +35,10 @@ try {
   const postInspectionGuard = read('scripts/verify/verify-index-partition-post-inspection-drift.mjs');
   const postInspectionTest = read('scripts/verify/index-partition-post-inspection-drift.test.mjs');
   const tooling = read('scripts/verify/index-storage-tooling.mjs');
-  const runbook = read('crates/rustok-index/docs/partition-full-capture.md');
-  const plan = read('crates/rustok-index/docs/implementation-plan.md');
+  const runbook = read('crates/modules/rustok-index/docs/partition-full-capture.md');
+  const plan = read('crates/modules/rustok-index/docs/implementation-plan.md');
   const normalizedPlan = plan.replace(/\s+/gu, ' ');
-  const readme = read('crates/rustok-index/README.md');
+  const readme = read('crates/modules/rustok-index/README.md');
   const m3Start = plan.indexOf('### M3 - PostgreSQL storage engine');
   const retainedStart = plan.indexOf('#### Retained repository contract wording');
   if (m3Start < 0 || retainedStart <= m3Start) {

@@ -5,14 +5,14 @@ on:
     branches:
       - main
     paths:
-      - "crates/rustok-pages/src/**"
-      - "crates/rustok-pages/admin/src/**"
-      - "crates/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs"
-      - "crates/rustok-pages/contracts/evidence/pages-publish-rollback-outbox-cache-postgres-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-artifact-rollback-postgres-execution.json"
-      - "crates/rustok-outbox/src/**"
+      - "crates/modules/rustok-pages/src/**"
+      - "crates/modules/rustok-pages/admin/src/**"
+      - "crates/modules/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-publish-rollback-outbox-cache-postgres-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-artifact-rollback-postgres-execution.json"
+      - "crates/modules/rustok-outbox/src/**"
       - "docs/modules/pages-page-builder-postgres-outbox-cache-packet-2026-08-04.md"
       - ".github/workflows/pages-artifact-rollback-postgres-evidence.yml"
   workflow_dispatch:
@@ -53,15 +53,15 @@ jobs:
           test "$GITHUB_REF" = "refs/heads/main"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: Verify rollback source boundary
-        run: node crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs
       - name: Verify PostgreSQL rollback/outbox/cache source
-        run: node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
       - name: Validate execution contract
         shell: bash
         run: |
           node <<'NODE'
           const fs = require('node:fs');
-          const path = 'crates/rustok-pages/contracts/evidence/pages-artifact-rollback-postgres-execution.json';
+          const path = 'crates/modules/rustok-pages/contracts/evidence/pages-artifact-rollback-postgres-execution.json';
           const contract = JSON.parse(fs.readFileSync(path, 'utf8'));
           const fail = (message) => { console.error(message); process.exit(1); };
           if (contract.format !== 'pages_artifact_rollback_postgres_execution_source_v1') fail('execution contract format drifted');
@@ -126,8 +126,8 @@ jobs:
           node <<'NODE'
           const crypto = require('node:crypto');
           const fs = require('node:fs');
-          const contractPath = 'crates/rustok-pages/contracts/evidence/pages-artifact-rollback-postgres-execution.json';
-          const registryPath = 'crates/rustok-page-builder/contracts/page-builder-fba-registry.json';
+          const contractPath = 'crates/modules/rustok-pages/contracts/evidence/pages-artifact-rollback-postgres-execution.json';
+          const registryPath = 'crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json';
           const contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
           const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
           const consumer = registry.consumers?.[0];

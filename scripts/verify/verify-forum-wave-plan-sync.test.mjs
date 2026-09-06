@@ -11,9 +11,9 @@ const scriptPath = path.resolve("scripts/verify/verify-forum-wave-plan-sync.mjs"
 const verifierContractPath = "scripts/verify/verify-forum-wave-plan-sync.mjs";
 const verifierTestContractPath = "scripts/verify/verify-forum-wave-plan-sync.test.mjs";
 const pagesGateAcceptancePath =
-  "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json";
+  "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json";
 const waveAdmissionPath =
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json";
 const waveAdmissionVerifierPath =
   "scripts/verify/verify-forum-page-builder-wave-admission.mjs";
 
@@ -188,12 +188,12 @@ function run(planContent, evidencePacket, overrides = {}) {
   try {
     writeFixture(
       root,
-      "crates/rustok-forum/docs/implementation-plan.md",
+      "crates/modules/rustok-forum/docs/implementation-plan.md",
       planContent,
     );
     writeFixture(
       root,
-      "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
+      "crates/modules/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
       JSON.stringify(evidencePacket, null, 2),
     );
     writeFixture(

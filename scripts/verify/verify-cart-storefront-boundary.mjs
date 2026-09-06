@@ -41,17 +41,17 @@ function assertNotContains(text, pattern, description) {
 }
 
 const files = {
-  lib: "crates/rustok-cart/storefront/src/lib.rs",
-  coreDir: "crates/rustok-cart/storefront/src/core/mod.rs",
-  ui: "crates/rustok-cart/storefront/src/ui/leptos.rs",
-  transport: "crates/rustok-cart/storefront/src/transport/mod.rs",
-  legacyApi: "crates/rustok-cart/storefront/src/api.rs",
-  graphqlAdapter: "crates/rustok-cart/storefront/src/transport/graphql_adapter.rs",
-  graphqlSafety: "crates/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
-  graphqlEvidence: "crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json",
-  nativeServerAdapter: "crates/rustok-cart/storefront/src/transport/native_server_adapter.rs",
-  model: "crates/rustok-cart/storefront/src/model.rs",
-  implementationPlan: "crates/rustok-cart/docs/implementation-plan.md",
+  lib: "crates/modules/rustok-cart/storefront/src/lib.rs",
+  coreDir: "crates/modules/rustok-cart/storefront/src/core/mod.rs",
+  ui: "crates/modules/rustok-cart/storefront/src/ui/leptos.rs",
+  transport: "crates/modules/rustok-cart/storefront/src/transport/mod.rs",
+  legacyApi: "crates/modules/rustok-cart/storefront/src/api.rs",
+  graphqlAdapter: "crates/modules/rustok-cart/storefront/src/transport/graphql_adapter.rs",
+  graphqlSafety: "crates/modules/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
+  graphqlEvidence: "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json",
+  nativeServerAdapter: "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter.rs",
+  model: "crates/modules/rustok-cart/storefront/src/model.rs",
+  implementationPlan: "crates/modules/rustok-cart/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
   packageJson: "package.json",
 };

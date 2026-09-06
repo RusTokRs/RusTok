@@ -11,11 +11,11 @@ const rejectMarker = (source, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`must not contain ${label}`);
 };
 
-const commandPath = 'crates/rustok-blog/src/services/category_command.rs';
-const syncPath = 'crates/rustok-blog/src/services/category_taxonomy_sync.rs';
-const libPath = 'crates/rustok-blog/src/lib.rs';
-const evidencePath = 'crates/rustok-blog/src/translation_evidence.rs';
-const runtimePath = 'crates/rustok-blog/tests/category_taxonomy_structure_sync.rs';
+const commandPath = 'crates/modules/rustok-blog/src/services/category_command.rs';
+const syncPath = 'crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs';
+const libPath = 'crates/modules/rustok-blog/src/lib.rs';
+const evidencePath = 'crates/modules/rustok-blog/src/translation_evidence.rs';
+const runtimePath = 'crates/modules/rustok-blog/tests/category_taxonomy_structure_sync.rs';
 
 for (const path of [commandPath, syncPath, libPath, runtimePath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);

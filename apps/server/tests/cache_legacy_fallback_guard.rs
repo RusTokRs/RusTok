@@ -25,7 +25,7 @@ fn collect_rust_files(root: &Path, files: &mut Vec<PathBuf>) {
 fn production_code_uses_only_the_canonical_degradation_aware_fallback() {
     let root = repo_root();
     let this_guard = root.join("apps/server/tests/cache_legacy_fallback_guard.rs");
-    let core_guard = root.join("crates/rustok-core/tests/cache_atomic_backend_guard.rs");
+    let core_guard = root.join("crates/libs/rustok-core/tests/cache_atomic_backend_guard.rs");
     let mut files = Vec::new();
     collect_rust_files(&root.join("apps"), &mut files);
     collect_rust_files(&root.join("crates"), &mut files);
@@ -58,14 +58,14 @@ fn production_code_uses_only_the_canonical_degradation_aware_fallback() {
         "legacy rustok-core cache backends must remain removed: {violations:?}"
     );
 
-    let core_lib = std::fs::read_to_string(root.join("crates/rustok-core/src/lib.rs"))
+    let core_lib = std::fs::read_to_string(root.join("crates/libs/rustok-core/src/lib.rs"))
         .expect("rustok-core root source");
     assert!(core_lib.contains("mod cache;"));
     assert!(!core_lib.contains("pub mod cache;"));
     assert!(!core_lib.contains("pub use cache::RedisCacheBackend;"));
     assert!(!core_lib.contains("pub use cache_atomic::{FallbackCacheBackend"));
 
-    let canonical = std::fs::read_to_string(root.join("crates/rustok-cache/src/shared_backend.rs"))
+    let canonical = std::fs::read_to_string(root.join("crates/modules/rustok-cache/src/shared_backend.rs"))
         .expect("canonical shared cache backend source");
     assert!(canonical.contains("DegradationAwareFallbackBackend::new("));
 }

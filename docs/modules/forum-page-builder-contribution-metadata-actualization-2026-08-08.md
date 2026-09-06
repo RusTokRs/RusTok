@@ -10,7 +10,7 @@ The missing boundary was canonical Fly contribution discovery metadata. Forum ha
 
 ## Source result
 
-`crates/rustok-forum/rustok-module.toml` now declares one owner-provider contribution discovery entry:
+`crates/modules/rustok-forum/rustok-module.toml` now declares one owner-provider contribution discovery entry:
 
 - module/provider identity remains `forum` / `rustok.forum`;
 - owner version continues to derive from `[module].version` through the shared normalizer;
@@ -29,7 +29,7 @@ The existing `topic_detail` manifest entry incorrectly reused `forum.topic_list.
 
 No Forum-local TOML parser or contribution generator is added. The declaration is consumed by the shared source introduced in PR #3222:
 
-- `crates/rustok-build/src/module_manifest_contribution.rs` validates module/provider/version, exact target provider versions, required permissions, capabilities and reserved identity metadata;
+- `crates/utils/rustok-build/src/module_manifest_contribution.rs` validates module/provider/version, exact target provider versions, required permissions, capabilities and reserved identity metadata;
 - `xtask module validate forum` invokes the same normalizer as module publish readiness;
 - Forum admin receives no `fly-ui` or Page Builder UI dependency in this slice;
 - `Cargo.toml` dependency topology and `Cargo.lock` remain unchanged by this slice.

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - "crates/rustok-page-builder/**"
+      - "crates/modules/rustok-page-builder/**"
       - "scripts/evidence/record-page-builder-static-sanitization-execution.mjs"
       - "scripts/verify/verify-page-builder-static-sanitization-execution.mjs"
       - "docs/modules/page-builder-static-sanitization-execution-actualization-*.md"
@@ -13,7 +13,7 @@ on:
     branches:
       - main
     paths:
-      - "crates/rustok-page-builder/**"
+      - "crates/modules/rustok-page-builder/**"
       - "scripts/evidence/record-page-builder-static-sanitization-execution.mjs"
       - "scripts/verify/verify-page-builder-static-sanitization-execution.mjs"
       - "docs/modules/page-builder-static-sanitization-execution-actualization-*.md"
@@ -43,7 +43,7 @@ jobs:
         with:
           node-version: 22
       - name: Verify existing static publish resource-limit boundary
-        run: node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs
+        run: node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs
       - name: Verify static sanitization execution source
         run: node scripts/verify/verify-page-builder-static-sanitization-execution.mjs
 

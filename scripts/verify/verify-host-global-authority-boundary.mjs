@@ -10,18 +10,18 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const authoritySource = read('crates/rustok-api/src/context/host_authority.rs');
-const apiContextSource = read('crates/rustok-api/src/context/mod.rs');
-const apiLibSource = read('crates/rustok-api/src/lib.rs');
+const authoritySource = read('crates/libs/rustok-api/src/context/host_authority.rs');
+const apiContextSource = read('crates/libs/rustok-api/src/context/mod.rs');
+const apiLibSource = read('crates/libs/rustok-api/src/lib.rs');
 const serverLibSource = read('apps/server/src/lib.rs');
 const credentialSource = read('apps/server/src/host_authority.rs');
 const tenantMiddlewareSource = read('apps/server/src/middleware/auth_context.rs');
 const graphqlControllerSource = read('apps/server/src/controllers/graphql.rs');
 const eventsNativeSource = read(
-  'crates/rustok-events-module/admin/src/transport/native_server_adapter.rs',
+  'crates/modules/rustok-events-module/admin/src/transport/native_server_adapter.rs',
 );
 const iggyNativeSource = read(
-  'crates/rustok-iggy-connector/admin/src/transport/native_server_adapter.rs',
+  'crates/modules/rustok-iggy-connector/admin/src/transport/native_server_adapter.rs',
 );
 const systemSource = read('apps/server/src/graphql/system.rs');
 const settingsModuleSource = read('apps/server/src/graphql/settings/mod.rs');

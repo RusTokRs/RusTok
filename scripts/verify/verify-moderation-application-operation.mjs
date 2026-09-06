@@ -1,27 +1,27 @@
 import fs from "node:fs";
 
 const entity = fs.readFileSync(
-  "crates/rustok-moderation/src/entities/moderation_application_operation.rs",
+  "crates/modules/rustok-moderation/src/entities/moderation_application_operation.rs",
   "utf8",
 );
 const migration = fs.readFileSync(
-  "crates/rustok-moderation/src/migrations/m20260807_000004_create_moderation_application_operations.rs",
+  "crates/modules/rustok-moderation/src/migrations/m20260807_000004_create_moderation_application_operations.rs",
   "utf8",
 );
 const migrations = fs.readFileSync(
-  "crates/rustok-moderation/src/migrations/mod.rs",
+  "crates/modules/rustok-moderation/src/migrations/mod.rs",
   "utf8",
 );
-const domain = fs.readFileSync("crates/rustok-moderation/src/domain.rs", "utf8");
+const domain = fs.readFileSync("crates/modules/rustok-moderation/src/domain.rs", "utf8");
 const application = fs.readFileSync(
-  "crates/rustok-moderation/src/application.rs",
+  "crates/modules/rustok-moderation/src/application.rs",
   "utf8",
 );
 const decide = fs.readFileSync(
-  "crates/rustok-moderation/src/commands/case_decide.rs",
+  "crates/modules/rustok-moderation/src/commands/case_decide.rs",
   "utf8",
 );
-const forumCargo = fs.readFileSync("crates/rustok-forum/Cargo.toml", "utf8");
+const forumCargo = fs.readFileSync("crates/modules/rustok-forum/Cargo.toml", "utf8");
 
 function requireText(source, needle, message) {
   if (!source.includes(needle)) throw new Error(message);

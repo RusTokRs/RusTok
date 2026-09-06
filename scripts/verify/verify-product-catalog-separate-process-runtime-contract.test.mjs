@@ -11,18 +11,18 @@ const verifier = resolve(
   "scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs",
 );
 const contractPath =
-  "crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json";
+  "crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json";
 const evidencePath =
-  "crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime.json";
+  "crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime.json";
 const runnerPath =
   "scripts/evidence/capture-product-catalog-separate-process-runtime.mjs";
 const verifierPath =
   "scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs";
 const probePath =
-  "crates/rustok-product-transport/examples/product_catalog_runtime_probe.rs";
-const registryPath = "crates/rustok-product/contracts/product-fba-registry.json";
-const planPath = "crates/rustok-product/docs/implementation-plan.md";
-const providerPath = "crates/rustok-product-catalog-service/src/main.rs";
+  "crates/modules/rustok-product-transport/examples/product_catalog_runtime_probe.rs";
+const registryPath = "crates/modules/rustok-product/contracts/product-fba-registry.json";
+const planPath = "crates/modules/rustok-product/docs/implementation-plan.md";
+const providerPath = "crates/modules/rustok-product-catalog-service/src/main.rs";
 const consumerPath = "apps/server/src/services/product_catalog_deployment.rs";
 const commands = {
   provider: {

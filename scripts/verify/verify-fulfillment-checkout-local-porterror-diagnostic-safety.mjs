@@ -27,19 +27,19 @@ const between = (source, start, end, label) => {
   return source.slice(startIndex, endIndex);
 };
 
-const source = read("crates/rustok-fulfillment/src/checkout_execution.rs");
+const source = read("crates/modules/rustok-fulfillment/src/checkout_execution.rs");
 const evidence = JSON.parse(
   read(
-    "crates/rustok-fulfillment/contracts/evidence/checkout-execution-local-porterror-diagnostic-safety-source.json",
+    "crates/modules/rustok-fulfillment/contracts/evidence/checkout-execution-local-porterror-diagnostic-safety-source.json",
   ),
 );
 const admissionEvidence = JSON.parse(
   read(
-    "crates/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json",
+    "crates/modules/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json",
   ),
 );
 const doc = read(
-  "crates/rustok-fulfillment/docs/checkout-execution-local-porterror-diagnostic-safety.md",
+  "crates/modules/rustok-fulfillment/docs/checkout-execution-local-porterror-diagnostic-safety.md",
 );
 
 const mapper = between(

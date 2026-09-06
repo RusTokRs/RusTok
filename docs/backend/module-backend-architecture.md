@@ -11,13 +11,13 @@ Backend ownership is split by responsibility:
 
 | Layer | Owner | What Belongs Here |
 |---|---|---|
-| Domain module | `crates/rustok-<module>` | Entities, domain services, ports, events, migrations, owner-owned GraphQL/REST DTOs. |
-| Module UI transport adapters | `crates/rustok-<module>/admin` or `storefront` | Leptos `#[server]` functions and UI-facing transport facades over module APIs. |
+| Domain module | `crates/modules/rustok-<module>` | Entities, domain services, ports, events, migrations, owner-owned GraphQL/REST DTOs. |
+| Module UI transport adapters | `crates/modules/rustok-<module>/admin` or `storefront` | Leptos `#[server]` functions and UI-facing transport facades over module APIs. |
 | HTTP host | `apps/server` | Axum routing, middleware, request extractors, runtime assembly and route mounting. |
-| Stable API contracts | `crates/rustok-api` | `PortContext`, `PortError`, permission, locale and request contracts. |
-| Executable backend foundation | `crates/rustok-runtime`, `crates/rustok-web` | Runtime helper access and Axum boundary helpers. |
-| FBA metadata | `crates/rustok-fba` | Provider/consumer descriptors, backend topology and transport-profile metadata. |
-| CLI contracts | `crates/rustok-cli-core` | Command/provider contracts for future `rustok-cli` and module-local `cli/` adapters. |
+| Stable API contracts | `crates/libs/rustok-api` | `PortContext`, `PortError`, permission, locale and request contracts. |
+| Executable backend foundation | `crates/libs/rustok-runtime`, `crates/libs/rustok-web` | Runtime helper access and Axum boundary helpers. |
+| FBA metadata | `crates/libs/rustok-fba` | Provider/consumer descriptors, backend topology and transport-profile metadata. |
+| CLI contracts | `crates/utils/rustok-cli-core` | Command/provider contracts for future `rustok-cli` and module-local `cli/` adapters. |
 
 The host composes modules; it does not become the owner of module business logic. A module
 that needs a backend capability exposes typed services, ports, events or owner-owned
@@ -28,7 +28,7 @@ transport roots from its crate.
 A module backend is a small hexagonal package with optional adapter packages around it:
 
 ```text
-crates/rustok-<module>/
+crates/modules/rustok-<module>/
   src/                 domain, application services, ports, events, migrations
   contracts/           published OpenAPI/GraphQL/FBA evidence, not executable code
   docs/                local contract and implementation plan
@@ -71,12 +71,12 @@ Use this table before adding a dependency:
 
 | Code Location | May Depend On | Must Not Depend On |
 |---|---|---|
-| `crates/rustok-<module>/src` | `rustok-core`, `rustok-api`, domain support crates, `rustok-fba` only when publishing descriptors | `apps/server`, `rustok-cli-core` for command execution, UI crates, `clap` |
-| `crates/rustok-<module>/src/graphql` | owner services, `rustok-api`, GraphQL crates already used by the module | `apps/server` resolver DTOs, host context, duplicated service logic |
-| `crates/rustok-<module>/src/rest` or `controllers` | owner services, `rustok-web`, narrow module runtime structs | host-only response helpers, service locators, host-only controllers |
-| `crates/rustok-<module>/src/runtime.rs` | explicit handles, `rustok-runtime` helpers when repeated lookup is needed | service locator patterns, global host context |
-| `crates/rustok-<module>/contracts` | schema/evidence artifacts and registry JSON | executable Rust code, command scripts, runtime wiring |
-| `crates/rustok-<module>/cli` | module domain crate, `rustok-cli-core` | production server runtime, UI crates, direct stdout/exit policy in domain services |
+| `crates/modules/rustok-<module>/src` | `rustok-core`, `rustok-api`, domain support crates, `rustok-fba` only when publishing descriptors | `apps/server`, `rustok-cli-core` for command execution, UI crates, `clap` |
+| `crates/modules/rustok-<module>/src/graphql` | owner services, `rustok-api`, GraphQL crates already used by the module | `apps/server` resolver DTOs, host context, duplicated service logic |
+| `crates/modules/rustok-<module>/src/rest` or `controllers` | owner services, `rustok-web`, narrow module runtime structs | host-only response helpers, service locators, host-only controllers |
+| `crates/modules/rustok-<module>/src/runtime.rs` | explicit handles, `rustok-runtime` helpers when repeated lookup is needed | service locator patterns, global host context |
+| `crates/modules/rustok-<module>/contracts` | schema/evidence artifacts and registry JSON | executable Rust code, command scripts, runtime wiring |
+| `crates/modules/rustok-<module>/cli` | module domain crate, `rustok-cli-core` | production server runtime, UI crates, direct stdout/exit policy in domain services |
 | `apps/server` | module public entrypoints, `rustok-runtime`, `rustok-web` | module business rules, module-owned DTO ownership, CLI adapters |
 
 When the table is not enough, prefer the narrowest crate that matches the boundary. Shared

@@ -23,14 +23,14 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'pub(crate) mod relation_admission;',
   'mod channel_relation_convergence;',
   'mod query_admission;',
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
 ]);
 
-const admissionPath = 'crates/rustok-distribution/src/product_index/relation_admission.rs';
+const admissionPath = 'crates/modules/rustok-distribution/src/product_index/relation_admission.rs';
 const admission = requireMarkers(admissionPath, [
   'PRODUCT_SALES_CHANNEL_RELATION_EVENT_DOMAIN',
   'rustok-distribution.product-sales-channel-relation',
@@ -60,7 +60,7 @@ forbidMarkers(admissionPath, admission, [
   'CURRENT_TIMESTAMP',
 ]);
 
-const productPath = 'crates/rustok-distribution/src/product_index/product.rs';
+const productPath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 const product = requireMarkers(productPath, [
   'many_field("sales_channel_ids", IndexValueType::Uuid, true, true)?',
   'name: link_name("sales_channels")?',
@@ -83,7 +83,7 @@ forbidMarkers(productPath, product, [
   'PRODUCT_EVENT_DOMAIN_V2',
 ]);
 
-const documentPath = 'crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md';
+const documentPath = 'crates/modules/rustok-index/docs/m7-product-sales-channel-relation-admission.md';
 const document = requireMarkers(documentPath, [
   'Status: `canonical_source_freshness_convergence_and_query_fence_complete_runtime_evidence_pending`',
   'current Product Index graph contains the Product-to-SalesChannel link',

@@ -24,7 +24,7 @@ function requireText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-approved-posts-index-hardening.json";
+  "crates/modules/rustok-forum/contracts/forum-approved-posts-index-hardening.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const migration = read(contract.migration_file);
 const migrationRegistry = read(contract.migration_registry);
@@ -124,7 +124,7 @@ for (const marker of [
 
 for (const marker of [
   '"downstream_index_hardening_task": "FORUM-26I"',
-  '"downstream_index_hardening_contract": "crates/rustok-forum/contracts/forum-approved-posts-index-hardening.json"',
+  '"downstream_index_hardening_contract": "crates/modules/rustok-forum/contracts/forum-approved-posts-index-hardening.json"',
 ]) {
   requireText(upstream, marker, `FORUM-26H contract is missing downstream marker ${marker}`);
 }

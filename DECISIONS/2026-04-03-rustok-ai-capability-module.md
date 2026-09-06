@@ -19,7 +19,7 @@ orchestration, and `rustok-mcp` will cease to be a thin adapter.
 
 ## Decision
 
-Create a separate capability crate `crates/rustok-ai`.
+Create a separate capability crate `crates/modules/rustok-ai`.
 
 `rustok-ai`:
 
@@ -32,7 +32,7 @@ Create a separate capability crate `crates/rustok-ai`.
 - owns GraphQL query/mutation/subscription roots, DTO and permission checks;
 - accepts host-specific RBAC role lookup via `AiGraphqlRoleSlugProvider`, without importing
   server models/services;
-- ships a separate Leptos admin UI package `crates/rustok-ai/admin`;
+- ships a separate Leptos admin UI package `crates/modules/rustok-ai/admin`;
 - ships a separate Next.js admin UI package `apps/next-admin/packages/rustok-ai`.
 
 `rustok-mcp` meanwhile remains:
@@ -67,7 +67,7 @@ adapters to host persistence.
 
 ### 4. UI must remain capability-owned, while the host is only a composition root
 
-Leptos UI is shipped as `crates/rustok-ai/admin`, Next.js UI as
+Leptos UI is shipped as `crates/modules/rustok-ai/admin`, Next.js UI as
 `apps/next-admin/packages/rustok-ai`. This preserves the platform rule:
 
 - module/capability-specific business UI does not go into `apps/admin` or `apps/next-admin`;

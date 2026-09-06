@@ -19,7 +19,7 @@ const requireMarkers = (relative, markers) => {
 };
 
 const retryPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_replay_retry.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_retry.rs';
 const retryStore = requireMarkers(retryPath, [
   'const MAX_REPLAY_ATTEMPTS: u32 = 100;',
   'const MAX_BACKOFF_SECONDS: u64 = 86_400;',
@@ -93,7 +93,7 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod source_replay_retry;',
   'IndexReplayRetryDisposition',
   'IndexReplayRetryError',
@@ -103,13 +103,13 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
   'PostgresIndexReplayRetryStore',
 ]);
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_replay_job.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_replay_job.rs', [
   "state = 'pending' AND available_at <= CURRENT_TIMESTAMP",
   'attempt_count = stored.attempt_count.checked_add(1)',
 ]);
 
 const runnerPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = requireMarkers(runnerPath, [
   'let details = replay_failure_details(&error);',
   'match finish_failure(&self.db, &lease, details).await?',
@@ -124,7 +124,7 @@ for (const premature of [
   }
 }
 
-requireMarkers('crates/rustok-index/docs/m6-replay-retry-transition-store.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-retry-transition-store.md', [
   'Status: `source_complete_runner_wiring_pending`',
   'maximum attempts: `5`',
   'running -> pending',
@@ -135,10 +135,10 @@ requireMarkers('crates/rustok-index/docs/m6-replay-retry-transition-store.md', [
   'canonical implementation-plan item',
   'maintainer-run',
 ]);
-requireMarkers('crates/rustok-index/docs/README.md', [
+requireMarkers('crates/modules/rustok-index/docs/README.md', [
   '[M6 Replay Retry Transition Store](./m6-replay-retry-transition-store.md)',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add bounded retry/backoff, dead-letter state, and global scheduling ownership.',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [

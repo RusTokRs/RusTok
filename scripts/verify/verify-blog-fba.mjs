@@ -11,32 +11,32 @@ function sameSet(actual, expected, label) {
   const e = [...expected].sort().join('|');
   if (a !== e) fail(`${label} drift: expected ${e}, got ${a}`);
 }
-const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
-const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
-const runtimeSmokePath = 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
-const consumerRuntimeOrderSmokePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json';
-const commentsEventProjectionPath = 'crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
-const projectionHandlerPath = 'crates/rustok-blog/src/services/comment_projection.rs';
-const projectionPostgresHarnessPath = 'crates/rustok-blog/tests/comment_projection_postgres_test.rs';
-const projectionRestartHarnessPath = 'crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs';
+const registryPath = 'crates/modules/rustok-blog/contracts/blog-fba-registry.json';
+const evidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
+const runtimeSmokePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
+const consumerRuntimeOrderSmokePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json';
+const commentsEventProjectionPath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
+const projectionHandlerPath = 'crates/modules/rustok-blog/src/services/comment_projection.rs';
+const projectionPostgresHarnessPath = 'crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs';
+const projectionRestartHarnessPath = 'crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs';
 const projectionHarnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
 const projectionPostgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
 const projectionRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
 const projectionPostgresHarnessEnvironment = 'RUSTOK_BLOG_TEST_DATABASE_URL';
-const blogInitialMigrationPath = 'crates/rustok-blog/src/migrations/m20260328_000001_create_blog_post_tables.rs';
+const blogInitialMigrationPath = 'crates/modules/rustok-blog/src/migrations/m20260328_000001_create_blog_post_tables.rs';
 const removedRichtextArtifacts = [
-  'crates/rustok-blog/src/migrations/m20260730_000006_cutover_blog_article_richtext.rs',
-  'crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs',
-  'crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json',
-  'crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json',
-  'crates/rustok-blog/docs/richtext-cutover-inventory.md',
+  'crates/modules/rustok-blog/src/migrations/m20260730_000006_cutover_blog_article_richtext.rs',
+  'crates/modules/rustok-blog/src/bin/blog_article_richtext_backfill.rs',
+  'crates/modules/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json',
+  'crates/modules/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json',
+  'crates/modules/rustok-blog/docs/richtext-cutover-inventory.md',
   'scripts/verify/verify-blog-richtext-offline-backfill.mjs',
   'scripts/verify/verify-blog-richtext-offline-backfill.test.mjs',
 ];
-const categorySearchReindexPath = 'crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json';
-const graphqlRateLimitPath = 'crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json';
-const aiRichtextBoundaryPath = 'crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json';
-const providerPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
+const categorySearchReindexPath = 'crates/modules/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json';
+const graphqlRateLimitPath = 'crates/modules/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json';
+const aiRichtextBoundaryPath = 'crates/modules/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json';
+const providerPath = 'crates/modules/rustok-comments/contracts/comments-fba-registry.json';
 const packageJsonPath = 'package.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
@@ -138,7 +138,7 @@ for (const removedPath of removedRichtextArtifacts) {
   if (fs.existsSync(removedPath)) fail(`removed Blog richtext artifact was restored: ${removedPath}`);
 }
 
-const manifest = read('crates/rustok-blog/rustok-module.toml');
+const manifest = read('crates/modules/rustok-blog/rustok-module.toml');
 hasAll(manifest, ['[fba.consumer]', 'registry = "contracts/blog-fba-registry.json"', 'profile = "blog_post_comments"', 'comments.thread.v1'], 'manifest');
 
 if (evidence.schema_version !== 3 || evidence.surface !== 'comments_port_boundary') fail('comments port matrix schema/identity drift');
@@ -286,15 +286,15 @@ hasAll(projectionRestartHarness, [
   'count_outbox_events(&restarted_db).await?, 1',
 ], 'blog comment projection restart target');
 hasNone(projectionRestartHarness, ['#[ignore]', 'runtime_verified'], 'blog comment projection restart target');
-const migration = read('crates/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs');
+const migration = read('crates/modules/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs');
 hasAll(migration, ['BlogCommentProjectionDeliveries', 'EventId', 'TenantId', 'PostId'], 'blog comment projection migration');
-const moduleSource = read('crates/rustok-blog/src/lib.rs');
+const moduleSource = read('crates/modules/rustok-blog/src/lib.rs');
 hasAll(moduleSource, ['fn register_event_listeners(', 'BlogCommentProjectionHandler::new(ctx.db.clone())'], 'blog event-listener registration');
 
-const plan = read('crates/rustok-blog/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-blog/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `boundary_ready`', 'blog-fba-registry.json', commentsEventProjectionPath, categorySearchReindexPath, graphqlRateLimitPath, aiRichtextBoundaryPath, 'CommentsThreadPort', 'blog-comments-consumer-static-matrix.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, 'verify:blog:comments-port-boundary', 'test:verify:blog:comments-port-boundary', 'verify:blog:comments-event-projection', 'test:verify:blog:comments-event-projection', 'services::comment_projection::tests', 'comment_projection_postgres_test', 'comment_projection_restart_postgres_test', 'RUSTOK_BLOG_TEST_DATABASE_URL', 'registry schema v13', 'degraded UI modes remain planned'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `blog` |', 'crates/rustok-blog/contracts/blog-fba-registry.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, '`in_progress` | `boundary_ready`'], 'central registry');
+hasAll(central, ['| `blog` |', 'crates/modules/rustok-blog/contracts/blog-fba-registry.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, '`in_progress` | `boundary_ready`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`blog`', 'CommentsThreadPort', 'blog-fba-registry.json'], 'unified plan');
 

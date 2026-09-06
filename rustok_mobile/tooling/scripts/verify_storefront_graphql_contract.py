@@ -49,12 +49,12 @@ class GraphQlContract:
     runtime_error_marker: str | None = None
 
 
-SEARCH_STOREFRONT_API = "crates/rustok-search/storefront/src/api.rs"
-COMMERCE_QUERY = "crates/rustok-commerce/src/graphql/query.rs"
-COMMERCE_MUTATION = "crates/rustok-commerce/src/graphql/mutations/cart.rs"
-COMMERCE_TYPES = "crates/rustok-commerce/src/graphql/types.rs"
-COMMERCE_RUNTIME_TEST = "crates/rustok-commerce/tests/graphql_runtime_parity_test/main.rs"
-COMMERCE_RUNTIME_CART_TEST = "crates/rustok-commerce/tests/graphql_runtime_parity_test/cart.rs"
+SEARCH_STOREFRONT_API = "crates/modules/rustok-search/storefront/src/api.rs"
+COMMERCE_QUERY = "crates/modules/rustok-commerce/src/graphql/query.rs"
+COMMERCE_MUTATION = "crates/modules/rustok-commerce/src/graphql/mutations/cart.rs"
+COMMERCE_TYPES = "crates/modules/rustok-commerce/src/graphql/types.rs"
+COMMERCE_RUNTIME_TEST = "crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/main.rs"
+COMMERCE_RUNTIME_CART_TEST = "crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/cart.rs"
 
 
 CONTRACTS: tuple[GraphQlContract, ...] = (

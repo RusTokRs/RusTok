@@ -16,7 +16,7 @@ Those slices already cover durable event correlation, relay recovery and the pub
 
 ## Packet added by this slice
 
-`crates/rustok-pages/tests/native_storefront_cache_contract.rs` adds one bounded contract harness over the same public cache primitives used by the native server function:
+`crates/modules/rustok-pages/tests/native_storefront_cache_contract.rs` adds one bounded contract harness over the same public cache primitives used by the native server function:
 
 - `PagesCacheReadPort`;
 - `PagesCacheReadRuntime`;
@@ -67,15 +67,15 @@ The real native adapter remains unchanged and keeps this order:
 9. fill the cache only after the owner result is complete;
 10. ignore cache fill failure and return the authoritative source result.
 
-The source verifier is `crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs`.
+The source verifier is `crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs`.
 
 ## Evidence boundary
 
 Machine evidence is recorded in:
 
-- `crates/rustok-pages/contracts/evidence/pages-native-storefront-cache-source.json`;
-- `crates/rustok-pages/tests/native_storefront_cache_contract.rs`;
-- `crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs`.
+- `crates/modules/rustok-pages/contracts/evidence/pages-native-storefront-cache-source.json`;
+- `crates/modules/rustok-pages/tests/native_storefront_cache_contract.rs`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs`.
 
 The execution list is empty and every validation flag remains false. Tests, Cargo, formatting, verifiers, database scenarios, the native server function, browser flows, workflows and CI were not run in this slice.
 
@@ -101,7 +101,7 @@ A later continuity packet should connect a real durable `NodePublished` relay de
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs
 cargo test -p rustok-pages --test native_storefront_cache_contract -- --nocapture
 cargo check -p rustok-pages --all-targets
 cargo check -p rustok-pages-storefront --features ssr --all-targets

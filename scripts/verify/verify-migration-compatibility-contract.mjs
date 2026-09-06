@@ -52,7 +52,7 @@ function forbidMarkers(relativePath, markers) {
   }
 }
 
-const smokeTest = "crates/rustok-migrations/tests/postgres_zero_migration_smoke.rs";
+const smokeTest = "crates/utils/rustok-migrations/tests/postgres_zero_migration_smoke.rs";
 requireMarkers(smokeTest, [
   "mod support;",
   "load_backfill_fixtures()",
@@ -80,8 +80,8 @@ requireMarkers(smokeTest, [
   'parse_binary_flag("RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST", Some("1"))',
 ]);
 
-requireMarkers("crates/rustok-migrations/tests/support/mod.rs", ["pub mod backfill_fixtures;"]);
-requireMarkers("crates/rustok-migrations/tests/support/backfill_fixtures.rs", [
+requireMarkers("crates/utils/rustok-migrations/tests/support/mod.rs", ["pub mod backfill_fixtures;"]);
+requireMarkers("crates/utils/rustok-migrations/tests/support/backfill_fixtures.rs", [
   "pub struct BackfillFixture",
   'std::env::var("RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES")',
   "pub async fn apply_setup",
@@ -109,7 +109,7 @@ requireMarkers(smokeScript, [
 ]);
 forbidMarkers(smokeScript, ["-p migration ", "|| true"]);
 
-requireMarkers("crates/rustok-migrations/src/bin/export_migration_plan.rs", [
+requireMarkers("crates/utils/rustok-migrations/src/bin/export_migration_plan.rs", [
   "Migrator::migrations()",
   '"schema_version": 1',
   '"migrations": migrations',

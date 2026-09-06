@@ -29,19 +29,19 @@ const forbidAll = (source, values, label) => {
   for (const value of values) forbidText(source, value, label);
 };
 
-const channel = read('crates/rustok-channel/src/ports.rs');
-const region = read('crates/rustok-region/src/ports.rs');
-const cart = read('crates/rustok-cart/src/checkout_snapshot.rs');
-const pricing = read('crates/rustok-pricing/src/ports.rs');
-const payment = read('crates/rustok-payment/src/ports.rs');
-const paymentCompensation = read('crates/rustok-payment/src/checkout_compensation.rs');
-const fulfillment = read('crates/rustok-fulfillment/src/ports.rs');
-const customer = read('crates/rustok-customer/src/ports.rs');
-const inventory = read('crates/rustok-inventory/src/ports.rs');
-const order = read('crates/rustok-order/src/ports.rs');
-const orderCompensation = read('crates/rustok-order/src/checkout_compensation.rs');
-const orderPaymentSettlement = read('crates/rustok-order/src/checkout_payment_settlement.rs');
-const orderRecovery = read('crates/rustok-order/src/checkout_order_recovery.rs');
+const channel = read('crates/modules/rustok-channel/src/ports.rs');
+const region = read('crates/modules/rustok-region/src/ports.rs');
+const cart = read('crates/modules/rustok-cart/src/checkout_snapshot.rs');
+const pricing = read('crates/modules/rustok-pricing/src/ports.rs');
+const payment = read('crates/modules/rustok-payment/src/ports.rs');
+const paymentCompensation = read('crates/modules/rustok-payment/src/checkout_compensation.rs');
+const fulfillment = read('crates/modules/rustok-fulfillment/src/ports.rs');
+const customer = read('crates/modules/rustok-customer/src/ports.rs');
+const inventory = read('crates/modules/rustok-inventory/src/ports.rs');
+const order = read('crates/modules/rustok-order/src/ports.rs');
+const orderCompensation = read('crates/modules/rustok-order/src/checkout_compensation.rs');
+const orderPaymentSettlement = read('crates/modules/rustok-order/src/checkout_payment_settlement.rs');
+const orderRecovery = read('crates/modules/rustok-order/src/checkout_order_recovery.rs');
 const orderCheckoutAdapters = orderCompensation + orderPaymentSettlement + orderRecovery;
 
 for (const [source, label] of [

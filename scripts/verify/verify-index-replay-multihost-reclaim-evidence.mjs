@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const packetPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_multihost_restart_tests.rs';
+const packetPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_multihost_restart_tests.rs';
 const packet = requireMarkers(packetPath, [
   'struct BlockingFirstScanSource',
   'first_host_scan_started: Arc<Notify>',
@@ -78,11 +78,11 @@ if (
   fail('packet order must remain host-a in-flight -> deterministic expiry -> host-b attempt-2 completion -> release host-a -> stale LeaseLost fence');
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   '#[cfg(test)]\nmod source_replay_multihost_restart_tests;'.replace('\\n', '\n'),
 ]);
 
-const jobPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_job.rs';
+const jobPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_job.rs';
 const job = requireMarkers(jobPath, [
   "state = 'running' AND lease_expires_at <= CURRENT_TIMESTAMP",
   'attempt_count = {prefix}4',
@@ -93,14 +93,14 @@ if (job.includes('distributed_consensus')) {
   fail(`${jobPath} must not introduce a second ownership mechanism for this evidence slice`);
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs', [
   'IndexReplayRunError::LeaseLost',
   'checkpoint_lease_lost',
   'terminal_write_outcome',
   'await_page_with_lease_heartbeats(',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m6-replay-multihost-reclaim-evidence.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-multihost-reclaim-evidence.md', [
   'Status: `source_complete_execution_pending`.',
   'two distinct `PostgresIndexReplayRunner` instances',
   'host B invokes the ordinary runner for the same replay scope',
@@ -111,7 +111,7 @@ requireMarkers('crates/rustok-index/docs/m6-replay-multihost-reclaim-evidence.md
   'Production execution/admission remains maintainer-owned.',
 ]);
 
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.',
   'Execute/admit retained multi-host reclaim evidence.',
   'Define explicit Full/Targeted/Shadow replay mode identity and fail-closed execution surfaces.',

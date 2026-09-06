@@ -15,11 +15,11 @@ function forbid(text, marker, label) {
 }
 
 const files = {
-  mapping: "crates/rustok-forum/src/export_mapping.rs",
-  planner: "crates/rustok-forum/src/export_planner.rs",
-  categoryLocales: "crates/rustok-forum/src/services/category_owner_locale_enumeration.rs",
-  topicLocales: "crates/rustok-forum/src/services/topic_facade_locale_enumeration.rs",
-  replyLocales: "crates/rustok-forum/src/services/reply_facade.rs",
+  mapping: "crates/modules/rustok-forum/src/export_mapping.rs",
+  planner: "crates/modules/rustok-forum/src/export_planner.rs",
+  categoryLocales: "crates/modules/rustok-forum/src/services/category_owner_locale_enumeration.rs",
+  topicLocales: "crates/modules/rustok-forum/src/services/topic_facade_locale_enumeration.rs",
+  replyLocales: "crates/modules/rustok-forum/src/services/reply_facade.rs",
   packet: "docs/modules/forum-34-export-target-planner-actualization-2026-08-09.md",
 };
 

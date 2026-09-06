@@ -24,7 +24,7 @@ Do not create a separate central doc for each module in `docs/modules/`. Central
 For a new path-module, the following set is expected:
 
 ```text
-crates/rustok-<slug>/
+crates/modules/rustok-<slug>/
   Cargo.toml
   README.md
   rustok-module.toml

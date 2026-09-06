@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath = path.join(
   repoRoot,
-  "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
+  "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
 );
 const MAX_INVENTORY_BYTES = 1024 * 1024;
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;

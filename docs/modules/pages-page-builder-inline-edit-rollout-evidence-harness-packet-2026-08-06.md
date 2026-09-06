@@ -14,10 +14,10 @@ No rollout execution is claimed by this source packet.
 ## Source files
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-inline-edit-rollout-execution-contract.json
-crates/rustok-pages/contracts/evidence/pages-inline-edit-rollout-evidence-harness-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-rollout-execution-contract.json
+crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-rollout-evidence-harness-source.json
 scripts/evidence/assemble-pages-inline-edit-rollout-evidence.mjs
-crates/rustok-pages/scripts/verify/verify-pages-inline-edit-rollout-evidence-harness.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-rollout-evidence-harness.mjs
 ```
 
 ## Required predecessor
@@ -213,7 +213,7 @@ It does not retain:
 ## Source guard
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-rollout-evidence-harness.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-rollout-evidence-harness.mjs
 ```
 
 The guard verifies the contract chain, assembler mutation boundary, FFA/FBA separation, cohort and monitoring requirements, privacy markers and active execution-plan cursor.

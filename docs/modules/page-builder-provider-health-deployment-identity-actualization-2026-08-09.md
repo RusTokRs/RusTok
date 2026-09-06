@@ -125,7 +125,7 @@ Therefore:
 
 Runtime identity metric:
 
-- `crates/rustok-telemetry/src/page_builder_provider_metrics.rs`.
+- `crates/libs/rustok-telemetry/src/page_builder_provider_metrics.rs`.
 
 Canonical release identity chain:
 
@@ -134,7 +134,7 @@ Canonical release identity chain:
 
 Machine contract:
 
-- `crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json`.
+- `crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json`.
 
 Capture harness:
 
@@ -142,7 +142,7 @@ Capture harness:
 
 Fail-closed source guard:
 
-- `crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs`.
+- `crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs`.
 
 ## Next cursor
 
@@ -169,7 +169,7 @@ Suggested maintainer commands, intentionally not run:
 
 ```bash
 cargo test -p rustok-telemetry page_builder_provider
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
-node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 ```

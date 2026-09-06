@@ -13,7 +13,7 @@ import { dirname, resolve } from "node:path";
 
 const root = process.cwd();
 const parentContractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
 const outputPath =
   "target/forum-search-versioned-invalidation-runtime-evidence.json";
 const canonicalConsumerGroup = "rustok-search-forum-projection-v1";

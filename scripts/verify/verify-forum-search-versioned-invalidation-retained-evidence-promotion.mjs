@@ -18,18 +18,18 @@ const forbidAll = (text, markers, label) => {
 };
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-retained-evidence-promotion.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-retained-evidence-promotion.json";
 const parentPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
 const reviewerPath =
   "scripts/evidence/review-forum-search-versioned-invalidation-runtime-evidence.mjs";
 const verifierPath =
   "scripts/verify/verify-forum-search-versioned-invalidation-retained-evidence-promotion.mjs";
 const docPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d12-retained-evidence-promotion.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d12-retained-evidence-promotion.md";
 const d11DocPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d11-aggregate-evidence-assembler.md";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d11-aggregate-evidence-assembler.md";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const aggregatePath =
   "target/forum-search-versioned-invalidation-runtime-evidence.json";
 const candidatePath =

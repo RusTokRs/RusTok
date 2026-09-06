@@ -15,17 +15,17 @@ function forbid(text, marker, label) {
 }
 
 const files = {
-  services: "crates/rustok-forum/src/services/mod.rs",
-  tombstoneAdmission: "crates/rustok-forum/src/import_tombstone_preparation.rs",
-  writer: "crates/rustok-forum/src/services/import_tombstone_write.rs",
-  legacyWriter: "crates/rustok-forum/src/services/import_write.rs",
-  replyImport: "crates/rustok-forum/src/services/reply_owner_tombstone_import.rs",
-  legacyReplyImport: "crates/rustok-forum/src/services/reply_owner_import.rs",
-  replyOwner: "crates/rustok-forum/src/services/reply_owner.rs",
-  relationImport: "crates/rustok-forum/src/services/mention_relation_import.rs",
-  relationOwner: "crates/rustok-forum/src/services/mention_relation.rs",
-  postgres: "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/postgres_up.rs",
-  sqlite: "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_revisions.rs",
+  services: "crates/modules/rustok-forum/src/services/mod.rs",
+  tombstoneAdmission: "crates/modules/rustok-forum/src/import_tombstone_preparation.rs",
+  writer: "crates/modules/rustok-forum/src/services/import_tombstone_write.rs",
+  legacyWriter: "crates/modules/rustok-forum/src/services/import_write.rs",
+  replyImport: "crates/modules/rustok-forum/src/services/reply_owner_tombstone_import.rs",
+  legacyReplyImport: "crates/modules/rustok-forum/src/services/reply_owner_import.rs",
+  replyOwner: "crates/modules/rustok-forum/src/services/reply_owner.rs",
+  relationImport: "crates/modules/rustok-forum/src/services/mention_relation_import.rs",
+  relationOwner: "crates/modules/rustok-forum/src/services/mention_relation.rs",
+  postgres: "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/postgres_up.rs",
+  sqlite: "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_revisions.rs",
   packet: "docs/modules/forum-34-deleted-reply-persistence-actualization-2026-08-10.md",
 };
 
@@ -147,7 +147,7 @@ for (const marker of [
   "deletedTimestamp",
   "deleted_at_ms",
 ]) forbid(
-  read("crates/rustok-forum/src/import_mapping.rs"),
+  read("crates/modules/rustok-forum/src/import_mapping.rs"),
   marker,
   "canonical NodeBB mapping must remain tombstone-sidecar free",
 );

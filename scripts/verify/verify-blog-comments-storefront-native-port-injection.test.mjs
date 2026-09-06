@@ -17,16 +17,16 @@ const verifier = path.resolve(
   'scripts/verify/verify-blog-comments-storefront-native-port-injection.mjs',
 );
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-storefront-native-port-injection.json';
-const facadePath = 'crates/rustok-blog/src/lib.rs';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-native-port-injection.json';
+const facadePath = 'crates/modules/rustok-blog/src/lib.rs';
 const nativeAdapterPath =
-  'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs';
-const servicePath = 'crates/rustok-blog/src/services/comment.rs';
+  'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs';
+const servicePath = 'crates/modules/rustok-blog/src/services/comment.rs';
 const consumerMatrixPath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
 const fallbackEvidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
-const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
 const fixtureFiles = [
   evidencePath,
   facadePath,

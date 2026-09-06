@@ -34,7 +34,7 @@ The admission does **not** target Pages FBA, Page Builder FFA, Forum FFA/FBA, or
 
 The slice adds:
 
-- `crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json`;
+- `crates/modules/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json`;
 - `scripts/evidence/admit-pages-page-builder-terminal-readiness.mjs`;
 - `scripts/evidence/admit-pages-page-builder-terminal-readiness.test.mjs`;
 - `scripts/verify/verify-pages-page-builder-terminal-readiness-admission.mjs`.
@@ -55,11 +55,11 @@ The accessibility packet must retain passing `full` and `read_only` profiles wit
 
 After validating the retained packets, the runner separately rechecks canonical source readiness instead of assuming those packets prove the whole programme.
 
-For Page Builder FBA it reads `crates/rustok-page-builder/contracts/page-builder-fba-registry.json`, requires the current status to remain `boundary_ready`, recursively enumerates every current `executed_evidence: "pending"` field path and retains their count plus source paths. Any nonzero count blocks `transport_verified`.
+For Page Builder FBA it reads `crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json`, requires the current status to remain `boundary_ready`, recursively enumerates every current `executed_evidence: "pending"` field path and retains their count plus source paths. Any nonzero count blocks `transport_verified`.
 
 This is intentionally broader than the rollout/Wave receipt. The FBA registry currently has pending evidence for independent provider/consumer, sanitization/persistence/rollback/recovery domains; those obligations cannot be erased by a successful tenant settings transition.
 
-For Pages FFA it reads `crates/rustok-pages/docs/implementation-plan.md` and requires the current `execution-rollout-pending` marker to remain present. While that marker remains, this source does not call the Pages FFA programme terminally complete and does not admit `parity_verified` governance.
+For Pages FFA it reads `crates/modules/rustok-pages/docs/implementation-plan.md` and requires the current `execution-rollout-pending` marker to remain present. While that marker remains, this source does not call the Pages FFA programme terminally complete and does not admit `parity_verified` governance.
 
 The runner also rechecks the current central readiness rows:
 

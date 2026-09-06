@@ -3,17 +3,17 @@
 import { readFile } from "node:fs/promises";
 
 const files = {
-  test: "crates/rustok-distribution/tests/product_locale_absence_postgres.rs",
-  provider: "crates/rustok-distribution/src/product_index/absence.rs",
-  reader: "crates/rustok-index/src/infrastructure/postgres/drift_snapshot_reader.rs",
+  test: "crates/modules/rustok-distribution/tests/product_locale_absence_postgres.rs",
+  provider: "crates/modules/rustok-distribution/src/product_index/absence.rs",
+  reader: "crates/modules/rustok-index/src/infrastructure/postgres/drift_snapshot_reader.rs",
   productMigration:
-    "crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs",
+    "crates/modules/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs",
   canonicalProjectionMigration:
-    "crates/rustok-product/src/migrations/m20260807_000010_canonicalize_product_index_graph_projection.rs",
+    "crates/modules/rustok-product/src/migrations/m20260807_000010_canonicalize_product_index_graph_projection.rs",
   freshnessMigration:
-    "crates/rustok-product/src/migrations/m20260807_000011_add_product_sales_channel_relation_freshness.rs",
-  doc: "crates/rustok-index/docs/m6-product-locale-absence-postgres-harness.md",
-  plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+    "crates/modules/rustok-product/src/migrations/m20260807_000011_add_product_sales_channel_relation_freshness.rs",
+  doc: "crates/modules/rustok-index/docs/m6-product-locale-absence-postgres-harness.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
   aggregate: "scripts/verify/verify-index-query-contract.mjs",
 };
 

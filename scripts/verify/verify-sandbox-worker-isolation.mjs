@@ -5,8 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const workerRoot = path.join(root, 'crates/rustok-sandbox-worker');
-const transportRoot = path.join(root, 'crates/rustok-sandbox-transport');
+const workerRoot = path.join(root, 'crates/workers/rustok-sandbox-worker');
+const transportRoot = path.join(root, 'crates/workers/rustok-sandbox-transport');
 const serverRoot = path.join(root, 'apps/server');
 
 const forbiddenDependencies = [

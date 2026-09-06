@@ -22,7 +22,7 @@ Document the runtime purpose, expected format, and default behavior for this env
 
 ## Evidence
 
-- `crates/rustok-workflow/src/lib.rs:68`
+- `crates/modules/rustok-workflow/src/lib.rs:68`
 
 ## Notes
 

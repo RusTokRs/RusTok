@@ -10,14 +10,14 @@ const root = path.resolve(
 const read = (relativePath) =>
   readFileSync(path.join(root, relativePath), 'utf8');
 
-const eventPath = 'crates/rustok-events/src/blog_comments_schedule_audit.rs';
-const libPath = 'crates/rustok-events/src/lib.rs';
-const contractPath = 'crates/rustok-events/src/contract.rs';
-const testPath = 'crates/rustok-events/tests/blog_comments_schedule_audit.rs';
-const apiPath = 'crates/rustok-events/CRATE_API.md';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-88.md';
+const eventPath = 'crates/libs/rustok-events/src/blog_comments_schedule_audit.rs';
+const libPath = 'crates/libs/rustok-events/src/lib.rs';
+const contractPath = 'crates/libs/rustok-events/src/contract.rs';
+const testPath = 'crates/libs/rustok-events/tests/blog_comments_schedule_audit.rs';
+const apiPath = 'crates/libs/rustok-events/CRATE_API.md';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-88.md';
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-audit-event-contract.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-audit-event-contract.json';
 
 const event = read(eventPath);
 const lib = read(libPath);

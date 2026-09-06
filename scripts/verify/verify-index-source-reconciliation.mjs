@@ -25,7 +25,7 @@ const forbidMarkers = (relative, source, markers) => {
 };
 
 const runnerPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_runner.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_runner.rs';
 const runner = requireMarkers(runnerPath, [
   'RECONCILIATION_JOB_REQUEST_CONTRACT: &str = "index_reconciliation_job_v1"',
   'RECONCILIATION_JOB_CURSOR_CONTRACT: &str = "index_reconciliation_cursor_v1"',
@@ -90,7 +90,7 @@ if (apply < 0 || progress <= apply) {
 }
 
 requireMarkers(
-  'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_runner_tests.rs',
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_runner_tests.rs',
   [
     'two_pass_reconciliation_catches_insert_behind_first_cursor',
     'bounded_reconciliation_yields_and_resumes_durable_pass_state',
@@ -108,7 +108,7 @@ requireMarkers(
   ],
 );
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod source_reconciliation_retry;',
   'mod source_reconciliation_runner;',
   'mod source_reconciliation_runner_tests;',
@@ -118,7 +118,7 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
   'IndexReconciliationRunOutcome',
   'PostgresIndexReconciliationRunner',
 ]);
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'bounded multi-pass source reconciliation with durable pass/cursor progression',
   'bounded reconciliation retry transitions',
   'IndexReconciliationRunRequest',
@@ -127,19 +127,19 @@ requireMarkers('crates/rustok-index/src/lib.rs', [
 ]);
 
 const operationsMigration = requireMarkers(
-  'crates/rustok-index/src/migrations/m20260727_000003_create_index_operations.rs',
+  'crates/modules/rustok-index/src/migrations/m20260727_000003_create_index_operations.rs',
   [
     'ColumnDef::new(IndexJobs::Cursor).json_binary()',
     "kind IN ('schema_apply', 'secondary_index', 'rebuild', 'reconcile', 'consistency_check')",
   ],
 );
 forbidMarkers(
-  'crates/rustok-index/src/migrations/m20260727_000003_create_index_operations.rs',
+  'crates/modules/rustok-index/src/migrations/m20260727_000003_create_index_operations.rs',
   operationsMigration,
   ['index_reconciliation_cursor_v1'],
 );
 
-requireMarkers('crates/rustok-index/docs/m7-product-reconciliation.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-reconciliation.md', [
   'Status: `source_complete_owner_execution_pending`',
   '`PostgresIndexReconciliationRunner`',
   '`index_reconciliation_job_v1`',

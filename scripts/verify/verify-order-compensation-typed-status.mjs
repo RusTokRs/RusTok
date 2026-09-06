@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const root = new URL('../../', import.meta.url);
 const source = readFileSync(
-  new URL('crates/rustok-order/src/checkout_compensation.rs', root),
+  new URL('crates/modules/rustok-order/src/checkout_compensation.rs', root),
   'utf8',
 );
 const failures = [];

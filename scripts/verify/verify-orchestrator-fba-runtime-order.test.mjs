@@ -6,17 +6,17 @@ import { OrchestratorFbaRuntimeOrderError, verifyOrchestratorFbaRuntimeOrder } f
 
 const repoRoot = process.cwd();
 const files = [
-  'crates/rustok-ai/contracts/ai-fba-registry.json',
-  'crates/rustok-ai/contracts/evidence/ai-orchestrator-runtime-order-smoke.json',
-  'crates/rustok-ai/src/router.rs',
-  'crates/rustok-ai/src/direct.rs',
-  'crates/rustok-ai/admin/src/transport/mod.rs',
-  'crates/rustok-ai/admin/src/ui/leptos.rs',
-  'crates/rustok-page-builder/contracts/page-builder-fba-registry.json',
-  'crates/rustok-page-builder/contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json',
-  'crates/rustok-page-builder/src/service.rs',
-  'crates/rustok-page-builder/src/transport.rs',
-  'crates/rustok-page-builder/src/adapters.rs',
+  'crates/modules/rustok-ai/contracts/ai-fba-registry.json',
+  'crates/modules/rustok-ai/contracts/evidence/ai-orchestrator-runtime-order-smoke.json',
+  'crates/modules/rustok-ai/src/router.rs',
+  'crates/modules/rustok-ai/src/direct.rs',
+  'crates/modules/rustok-ai/admin/src/transport/mod.rs',
+  'crates/modules/rustok-ai/admin/src/ui/leptos.rs',
+  'crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json',
+  'crates/modules/rustok-page-builder/contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json',
+  'crates/modules/rustok-page-builder/src/service.rs',
+  'crates/modules/rustok-page-builder/src/transport.rs',
+  'crates/modules/rustok-page-builder/src/adapters.rs',
 ];
 
 const aiRegistry = JSON.parse(fs.readFileSync(path.join(repoRoot, files[0]), 'utf8'));
@@ -45,12 +45,12 @@ function expectFailure(root, pattern) {
 verifyOrchestratorFbaRuntimeOrder();
 
 const missingRegistration = fixture();
-const mediaBinding = path.join(missingRegistration, 'crates/rustok-ai/src/direct_domain_media.rs');
+const mediaBinding = path.join(missingRegistration, 'crates/modules/rustok-ai/src/direct_domain_media.rs');
 fs.writeFileSync(mediaBinding, fs.readFileSync(mediaBinding, 'utf8').replaceAll('register_media_ai_vertical_handlers', 'removed_registration'));
 expectFailure(missingRegistration, /ai runtime binding lacks register_media_ai_vertical_handlers/);
 
 const publishOrderDrift = fixture();
-const servicePath = path.join(publishOrderDrift, 'crates/rustok-page-builder/src/service.rs');
+const servicePath = path.join(publishOrderDrift, 'crates/modules/rustok-page-builder/src/service.rs');
 fs.writeFileSync(servicePath, fs.readFileSync(servicePath, 'utf8').replace('ensure_capability(&self.flags, BuilderCapabilityKind::Publish)?;', '/* publish capability guard removed */'));
 expectFailure(publishOrderDrift, /page-builder guarded publish source marker missing/);
 

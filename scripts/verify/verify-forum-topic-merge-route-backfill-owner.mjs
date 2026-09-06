@@ -12,17 +12,17 @@ const mustNotContain = (text, needle, label) => {
   }
 };
 
-const owner = read("crates/rustok-forum/src/services/topic_route_backfill.rs");
-const route = read("crates/rustok-forum/src/services/topic_route.rs");
+const owner = read("crates/modules/rustok-forum/src/services/topic_route_backfill.rs");
+const route = read("crates/modules/rustok-forum/src/services/topic_route.rs");
 const migration = read(
-  "crates/rustok-forum/src/migrations/m20260805_000024_add_forum_topic_route_aliases.rs",
+  "crates/modules/rustok-forum/src/migrations/m20260805_000024_add_forum_topic_route_aliases.rs",
 );
 const contract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-topic-merge-route-backfill-owner.json"),
+  read("crates/modules/rustok-forum/contracts/forum-topic-merge-route-backfill-owner.json"),
 );
-const test = read("crates/rustok-forum/tests/topic_merge_route_backfill_sqlite.rs");
-const docs = read("crates/rustok-forum/docs/forum-24e-topic-merge-route-backfill.md");
-const readme = read("crates/rustok-forum/docs/README.md");
+const test = read("crates/modules/rustok-forum/tests/topic_merge_route_backfill_sqlite.rs");
+const docs = read("crates/modules/rustok-forum/docs/forum-24e-topic-merge-route-backfill.md");
+const readme = read("crates/modules/rustok-forum/docs/README.md");
 
 if (contract.task !== "FORUM-24E") {
   throw new Error("FORUM-24E contract task drifted");

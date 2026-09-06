@@ -28,7 +28,7 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-notification-recipient-host-runtime.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-recipient-host-runtime.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const adapter = read(contract.adapter_file ?? "");
 const services = read(contract.services_file ?? "");

@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath = path.join(
   repoRoot,
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json",
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json",
 );
 const freshnessVerifierPath = path.join(
   repoRoot,

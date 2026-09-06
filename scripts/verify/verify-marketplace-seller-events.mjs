@@ -4,20 +4,20 @@ import process from "node:process";
 
 const root = process.cwd();
 const files = {
-  dto: "crates/rustok-marketplace-seller/src/dto.rs",
-  entity: "crates/rustok-marketplace-seller/src/entities/seller_event.rs",
-  entities: "crates/rustok-marketplace-seller/src/entities/mod.rs",
-  migration: "crates/rustok-marketplace-seller/src/migrations/m20260718_000003_create_marketplace_seller_events.rs",
-  migrations: "crates/rustok-marketplace-seller/src/migrations/mod.rs",
-  reader: "crates/rustok-marketplace-seller/src/seller_events.rs",
-  service: "crates/rustok-marketplace-seller/src/service.rs",
-  ports: "crates/rustok-marketplace-seller/src/ports.rs",
-  receipted: "crates/rustok-marketplace-seller/src/receipted_commands.rs",
-  lifecycleTests: "crates/rustok-marketplace-seller/src/seller_events_tests.rs",
-  sellerResponseTests: "crates/rustok-marketplace-seller/src/seller_response_events_tests.rs",
-  memberTests: "crates/rustok-marketplace-seller/src/seller_member_events_tests.rs",
-  registry: "crates/rustok-marketplace-seller/contracts/marketplace-seller-fba-registry.json",
-  receipts: "crates/rustok-marketplace-seller/src/command_receipts.rs",
+  dto: "crates/modules/rustok-marketplace-seller/src/dto.rs",
+  entity: "crates/modules/rustok-marketplace-seller/src/entities/seller_event.rs",
+  entities: "crates/modules/rustok-marketplace-seller/src/entities/mod.rs",
+  migration: "crates/modules/rustok-marketplace-seller/src/migrations/m20260718_000003_create_marketplace_seller_events.rs",
+  migrations: "crates/modules/rustok-marketplace-seller/src/migrations/mod.rs",
+  reader: "crates/modules/rustok-marketplace-seller/src/seller_events.rs",
+  service: "crates/modules/rustok-marketplace-seller/src/service.rs",
+  ports: "crates/modules/rustok-marketplace-seller/src/ports.rs",
+  receipted: "crates/modules/rustok-marketplace-seller/src/receipted_commands.rs",
+  lifecycleTests: "crates/modules/rustok-marketplace-seller/src/seller_events_tests.rs",
+  sellerResponseTests: "crates/modules/rustok-marketplace-seller/src/seller_response_events_tests.rs",
+  memberTests: "crates/modules/rustok-marketplace-seller/src/seller_member_events_tests.rs",
+  registry: "crates/modules/rustok-marketplace-seller/contracts/marketplace-seller-fba-registry.json",
+  receipts: "crates/modules/rustok-marketplace-seller/src/command_receipts.rs",
 };
 
 const failures = [];

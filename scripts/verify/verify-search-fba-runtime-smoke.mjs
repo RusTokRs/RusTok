@@ -13,8 +13,8 @@ function sameSet(actual, expected, label) {
   assert(a === e, `${label} drift: expected ${e}, got ${a}`);
 }
 
-const registryPath = 'crates/rustok-search/contracts/search-fba-registry.json';
-const smokePath = 'crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json';
+const registryPath = 'crates/modules/rustok-search/contracts/search-fba-registry.json';
+const smokePath = 'crates/modules/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json';
 const registry = json(registryPath);
 const smoke = json(smokePath);
 
@@ -97,7 +97,7 @@ for (const error of [
   assert(mapped.kind === error[1] && mapped.code === error[2] && mapped.retryable === error[3], `typed error mapping drift for ${error[0]}`);
 }
 
-const ports = read('crates/rustok-search/src/ports.rs');
+const ports = read('crates/modules/rustok-search/src/ports.rs');
 for (const snippet of [
   'context.require_policy(PortCallPolicy::read())?',
   'request.locale.get_or_insert_with(|| context.locale.clone())',
@@ -107,9 +107,9 @@ for (const snippet of [
   'PortError::unavailable("search.external"',
 ]) assert(ports.includes(snippet), `ports.rs source marker missing ${snippet}`);
 
-const engine = read('crates/rustok-search/src/pg_engine.rs');
+const engine = read('crates/modules/rustok-search/src/pg_engine.rs');
 assert(engine.includes('pub(crate) fn connection(&self) -> &DatabaseConnection'), 'PgSearchEngine connection fallback accessor drift');
-const suggestions = read('crates/rustok-search/src/suggestions.rs');
+const suggestions = read('crates/modules/rustok-search/src/suggestions.rs');
 for (const snippet of ['SearchSuggestionService', 'SearchSuggestionQuery', 'SearchSuggestion', 'LIKE', 'limit']) {
   assert(suggestions.includes(snippet), `suggestions source marker missing ${snippet}`);
 }

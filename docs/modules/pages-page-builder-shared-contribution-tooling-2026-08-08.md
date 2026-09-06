@@ -4,11 +4,11 @@ Status: `source-ready / execution-pending`
 
 ## Scope
 
-This slice continues the Pages/Page Builder contribution parity sequence after PR #3215. The Pages reference consumer already stored its Fly contribution declaration in canonical `crates/rustok-pages/rustok-module.toml`, but parsing, normalization and provider-version injection still lived inside the Pages admin build script. That left the metadata shape reusable in data but not yet reusable as module tooling or publish-readiness policy.
+This slice continues the Pages/Page Builder contribution parity sequence after PR #3215. The Pages reference consumer already stored its Fly contribution declaration in canonical `crates/modules/rustok-pages/rustok-module.toml`, but parsing, normalization and provider-version injection still lived inside the Pages admin build script. That left the metadata shape reusable in data but not yet reusable as module tooling or publish-readiness policy.
 
 ## Shared source boundary
 
-`crates/rustok-build/src/module_manifest_contribution.rs` is now the shared parser/normalizer for module contribution metadata. `rustok-build` already owns platform build tooling and already carries `serde`, `serde_json` and `toml`; no new workspace package or dependency edge is introduced for this slice. The module itself remains metadata-only and does not reference `fly-ui`, Leptos, Page Builder runtime packages or the `rustok-modules` control plane.
+`crates/utils/rustok-build/src/module_manifest_contribution.rs` is now the shared parser/normalizer for module contribution metadata. `rustok-build` already owns platform build tooling and already carries `serde`, `serde_json` and `toml`; no new workspace package or dependency edge is introduced for this slice. The module itself remains metadata-only and does not reference `fly-ui`, Leptos, Page Builder runtime packages or the `rustok-modules` control plane.
 
 The shared normalizer:
 
@@ -26,7 +26,7 @@ The shared module is build metadata tooling only. It does not build a runtime `C
 
 ## Pages build-time consumer
 
-`crates/rustok-pages/admin/build.rs` includes the platform build source directly for its build-script compilation and is reduced to a Pages-specific adapter. It retains only Pages-specific assertions and exported constant names:
+`crates/modules/rustok-pages/admin/build.rs` includes the platform build source directly for its build-script compilation and is reduced to a Pages-specific adapter. It retains only Pages-specific assertions and exported constant names:
 
 - module slug must remain `pages`;
 - module version must match the admin crate package version;

@@ -1,10 +1,10 @@
 const SAFE_QUERY_SOURCE_PATHS = [
-  'crates/rustok-commerce/src/graphql/safe_query.rs',
-  'crates/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs',
-  'crates/rustok-commerce/src/graphql/safe_query/source.rs',
-  'crates/rustok-commerce/src/graphql/safe_query/source/rustok_fulfillment_shim.rs',
-  'crates/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_service.rs',
-  'crates/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_boundary.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query/source.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_fulfillment_shim.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_service.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_boundary.rs',
 ];
 
 const FULFILLMENT_SHIM_SOURCE_PATHS = SAFE_QUERY_SOURCE_PATHS.slice(3);

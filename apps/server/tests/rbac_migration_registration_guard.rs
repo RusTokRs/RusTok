@@ -17,9 +17,9 @@ fn source(relative: &str) -> String {
 #[test]
 fn rbac_integrity_migration_is_registered_once_through_auth_module() {
     let root = repo_root();
-    let registry = source("crates/rustok-auth/src/migrations/mod.rs");
+    let registry = source("crates/modules/rustok-auth/src/migrations/mod.rs");
     let migration = source(
-        "crates/rustok-auth/src/migrations/m20260714_900001_enforce_rbac_relation_tenant_integrity.rs",
+        "crates/modules/rustok-auth/src/migrations/m20260714_900001_enforce_rbac_relation_tenant_integrity.rs",
     );
 
     assert!(registry.contains("mod m20260714_900001_enforce_rbac_relation_tenant_integrity;"));
@@ -30,7 +30,7 @@ fn rbac_integrity_migration_is_registered_once_through_auth_module() {
     );
     assert!(!root
         .join(
-            "crates/rustok-migrations/src/m20260714_900001_enforce_rbac_relation_tenant_integrity.rs"
+            "crates/utils/rustok-migrations/src/m20260714_900001_enforce_rbac_relation_tenant_integrity.rs"
         )
         .exists());
 
@@ -51,9 +51,9 @@ fn rbac_integrity_migration_is_registered_once_through_auth_module() {
 #[test]
 fn durable_rbac_generation_migration_is_registered_once_through_auth_module() {
     let root = repo_root();
-    let registry = source("crates/rustok-auth/src/migrations/mod.rs");
+    let registry = source("crates/modules/rustok-auth/src/migrations/mod.rs");
     let migration = source(
-        "crates/rustok-auth/src/migrations/m20260714_900002_create_rbac_invalidation_state.rs",
+        "crates/modules/rustok-auth/src/migrations/m20260714_900002_create_rbac_invalidation_state.rs",
     );
 
     assert!(registry.contains("mod m20260714_900002_create_rbac_invalidation_state;"));
@@ -62,7 +62,7 @@ fn durable_rbac_generation_migration_is_registered_once_through_auth_module() {
     );
     assert!(
         !root
-            .join("crates/rustok-migrations/src/m20260714_900002_create_rbac_invalidation_state.rs")
+            .join("crates/utils/rustok-migrations/src/m20260714_900002_create_rbac_invalidation_state.rs")
             .exists()
     );
     for required in [
@@ -80,7 +80,7 @@ fn durable_rbac_generation_migration_is_registered_once_through_auth_module() {
 
 #[test]
 fn central_migrator_keeps_existing_dependency_and_inventory_tests() {
-    let central = source("crates/rustok-migrations/src/lib.rs");
+    let central = source("crates/utils/rustok-migrations/src/lib.rs");
 
     for required in [
         "module_migration_sources_cover_server_module_crates",

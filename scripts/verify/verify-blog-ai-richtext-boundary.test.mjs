@@ -22,7 +22,7 @@ function fixture(options = {}) {
     : 'CreatePostInput, PostResponse, PostService, UpdatePostInput, richtext';
   writeFixtureFile(
     root,
-    'crates/rustok-ai/src/rustok_blog.rs',
+    'crates/modules/rustok-ai/src/rustok_blog.rs',
     `pub use rustok_blog_owner::{\n    ${shimExports},\n};\n${options.testOnlyMigrations ? '#[cfg(test)]\npub use rustok_blog_owner::migrations;\n' : ''}`,
   );
 
@@ -39,7 +39,7 @@ function fixture(options = {}) {
     '}',
     options.testOnlyMigrations ? '#[cfg(test)]\nmod tests { fn fixture() { crate::rustok_blog::migrations::migrations(); } }' : '',
   ].join('\n');
-  writeFixtureFile(root, 'crates/rustok-ai/src/direct.rs', direct);
+  writeFixtureFile(root, 'crates/modules/rustok-ai/src/direct.rs', direct);
 
   const evidence = {
     schema_version: 1,
@@ -48,7 +48,7 @@ function fixture(options = {}) {
     status: 'source_verified_no_compile',
     compile_policy: 'not_run_by_request',
     shim: {
-      path: 'crates/rustok-ai/src/rustok_blog.rs',
+      path: 'crates/modules/rustok-ai/src/rustok_blog.rs',
       owner: 'rustok_blog_owner',
       allowed_reexports: options.evidenceAllowsMigrations
         ? ['CreatePostInput', 'PostResponse', 'PostService', 'UpdatePostInput', 'migrations', 'richtext']
@@ -56,7 +56,7 @@ function fixture(options = {}) {
       forbidden_reexports: ['migrations', 'entities', 'graphql', 'http', 'seo_targets'],
     },
     writer: {
-      path: 'crates/rustok-ai/src/direct.rs',
+      path: 'crates/modules/rustok-ai/src/direct.rs',
       required_markers: [
         'use crate::rustok_blog::{CreatePostInput, PostService, UpdatePostInput};',
         'impl DirectTaskHandler for BlogDraftHandler',
@@ -79,16 +79,16 @@ function fixture(options = {}) {
   };
   writeFixtureFile(
     root,
-    'crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json',
+    'crates/modules/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json',
     JSON.stringify(evidence),
   );
   writeFixtureFile(
     root,
-    'crates/rustok-blog/docs/implementation-plan.md',
+    'crates/modules/rustok-blog/docs/implementation-plan.md',
     [
       '# plan',
       'AI Blog owner shim',
-      'crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json',
+      'crates/modules/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json',
       'scripts/verify/verify-blog-ai-richtext-boundary.mjs',
       'scripts/verify/verify-blog-ai-richtext-boundary.test.mjs',
       '35. Bound the AI Blog owner shim.',
@@ -96,7 +96,7 @@ function fixture(options = {}) {
   );
   writeFixtureFile(
     root,
-    'crates/rustok-blog/contracts/blog-fba-registry.json',
+    'crates/modules/rustok-blog/contracts/blog-fba-registry.json',
     JSON.stringify({
       schema_version: 13,
       verification_chain: {
@@ -106,7 +106,7 @@ function fixture(options = {}) {
             test_package_script: 'test:verify:blog:ai-richtext-boundary',
             verifier: 'scripts/verify/verify-blog-ai-richtext-boundary.mjs',
             self_test: 'scripts/verify/verify-blog-ai-richtext-boundary.test.mjs',
-            evidence: 'crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json',
+            evidence: 'crates/modules/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json',
           },
         },
       },

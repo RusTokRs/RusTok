@@ -3,14 +3,14 @@ name: Blog Taxonomy Category Delete Lifecycle Contract
 on:
   pull_request:
     paths:
-      - "crates/rustok-taxonomy/src/category_delete.rs"
-      - "crates/rustok-blog/src/services/category_delete.rs"
-      - "crates/rustok-blog/src/services/category_owner.rs"
-      - "crates/rustok-blog/src/services/category_taxonomy_sync.rs"
-      - "crates/rustok-blog/src/services/mod.rs"
-      - "crates/rustok-blog/src/controllers/mod.rs"
-      - "crates/rustok-blog/src/controllers/categories.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_delete_lifecycle.rs"
+      - "crates/modules/rustok-taxonomy/src/category_delete.rs"
+      - "crates/modules/rustok-blog/src/services/category_delete.rs"
+      - "crates/modules/rustok-blog/src/services/category_owner.rs"
+      - "crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs"
+      - "crates/modules/rustok-blog/src/services/mod.rs"
+      - "crates/modules/rustok-blog/src/controllers/mod.rs"
+      - "crates/modules/rustok-blog/src/controllers/categories.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_delete_lifecycle.rs"
       - "apps/server/src/services/mod.rs"
       - "apps/server/src/services/flex_attached_values.rs"
       - ".github/workflows/blog-taxonomy-category-delete-lifecycle.yml"
@@ -18,14 +18,14 @@ on:
     branches:
       - main
     paths:
-      - "crates/rustok-taxonomy/src/category_delete.rs"
-      - "crates/rustok-blog/src/services/category_delete.rs"
-      - "crates/rustok-blog/src/services/category_owner.rs"
-      - "crates/rustok-blog/src/services/category_taxonomy_sync.rs"
-      - "crates/rustok-blog/src/services/mod.rs"
-      - "crates/rustok-blog/src/controllers/mod.rs"
-      - "crates/rustok-blog/src/controllers/categories.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_delete_lifecycle.rs"
+      - "crates/modules/rustok-taxonomy/src/category_delete.rs"
+      - "crates/modules/rustok-blog/src/services/category_delete.rs"
+      - "crates/modules/rustok-blog/src/services/category_owner.rs"
+      - "crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs"
+      - "crates/modules/rustok-blog/src/services/mod.rs"
+      - "crates/modules/rustok-blog/src/controllers/mod.rs"
+      - "crates/modules/rustok-blog/src/controllers/categories.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_delete_lifecycle.rs"
       - "apps/server/src/services/mod.rs"
       - "apps/server/src/services/flex_attached_values.rs"
       - ".github/workflows/blog-taxonomy-category-delete-lifecycle.yml"
@@ -66,11 +66,11 @@ jobs:
       - name: Check touched Rust leaf formatting
         run: |
           rustfmt +1.96.0 --edition 2024 --check \
-            crates/rustok-taxonomy/src/category_delete.rs \
-            crates/rustok-blog/src/services/category_delete.rs \
-            crates/rustok-blog/src/services/category_owner.rs \
-            crates/rustok-blog/src/controllers/categories.rs \
-            crates/rustok-blog/tests/category_taxonomy_delete_lifecycle.rs
+            crates/modules/rustok-taxonomy/src/category_delete.rs \
+            crates/modules/rustok-blog/src/services/category_delete.rs \
+            crates/modules/rustok-blog/src/services/category_owner.rs \
+            crates/modules/rustok-blog/src/controllers/categories.rs \
+            crates/modules/rustok-blog/tests/category_taxonomy_delete_lifecycle.rs
       - name: Run Blog Taxonomy Category delete lifecycle contract
         run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_delete_lifecycle -- --nocapture
       - name: Re-run Blog Taxonomy Category structure sync contract

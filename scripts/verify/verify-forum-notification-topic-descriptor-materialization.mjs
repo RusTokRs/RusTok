@@ -35,7 +35,7 @@ function between(source, start, end, label) {
 }
 
 const contract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-notification-topic-descriptor-materialization.json") ||
+  read("crates/modules/rustok-forum/contracts/forum-notification-topic-descriptor-materialization.json") ||
     "{}",
 );
 const source = read(contract.notification_source_file ?? "");

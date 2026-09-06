@@ -42,7 +42,7 @@ function section(source, start, end) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-moderation-audience-transport-composition.json";
+  "crates/modules/rustok-forum/contracts/forum-moderation-audience-transport-composition.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const helper = read(contract.transport_helper ?? "");
 const graphql = read(contract.graphql_handler ?? "");
@@ -298,7 +298,7 @@ for (const marker of [
   "exact tenant-scoped topic author",
   "No new GraphQL field, REST route, OpenAPI shape",
   "Trust remains blocked on `FORUM-26`",
-  "canonical `crates/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten",
+  "canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten",
   "were not run by the implementation agent",
 ]) {
   requireText(note, marker, `FORUM-20AZ owner note is missing ${marker}`);

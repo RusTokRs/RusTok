@@ -17,11 +17,11 @@ function run(root = repoRoot) {
 function copyFixture() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'search-fba-runtime-smoke-'));
   for (const file of [
-    'crates/rustok-search/contracts/search-fba-registry.json',
-    'crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json',
-    'crates/rustok-search/src/ports.rs',
-    'crates/rustok-search/src/pg_engine.rs',
-    'crates/rustok-search/src/suggestions.rs',
+    'crates/modules/rustok-search/contracts/search-fba-registry.json',
+    'crates/modules/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json',
+    'crates/modules/rustok-search/src/ports.rs',
+    'crates/modules/rustok-search/src/pg_engine.rs',
+    'crates/modules/rustok-search/src/suggestions.rs',
   ]) {
     const target = path.join(tmp, file);
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -41,7 +41,7 @@ const success = run();
 assert(success.status === 0, `expected repository fixture to pass\nSTDOUT:\n${success.stdout}\nSTDERR:\n${success.stderr}`);
 
 const missingLocale = copyFixture();
-const portsPath = path.join(missingLocale, 'crates/rustok-search/src/ports.rs');
+const portsPath = path.join(missingLocale, 'crates/modules/rustok-search/src/ports.rs');
 fs.writeFileSync(
   portsPath,
   fs.readFileSync(portsPath, 'utf8').replaceAll('request.locale.get_or_insert_with(|| context.locale.clone())', '/* locale fallback removed */'),
@@ -51,7 +51,7 @@ assert(localeResult.status !== 0, 'expected missing locale fallback marker to fa
 assert(localeResult.stderr.includes('locale') || localeResult.stderr.includes('source marker'), `expected locale/source marker failure, got ${localeResult.stderr}`);
 
 const missingMode = copyFixture();
-const smokePath = path.join(missingMode, 'crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json');
+const smokePath = path.join(missingMode, 'crates/modules/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json');
 const smoke = JSON.parse(fs.readFileSync(smokePath, 'utf8'));
 smoke.cases = smoke.cases.map((testCase) => ({
   ...testCase,

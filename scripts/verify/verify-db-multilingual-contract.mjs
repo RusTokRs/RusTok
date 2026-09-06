@@ -185,11 +185,11 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
 
   const directGuardedFiles = [
     {
-      path: "crates/rustok-search/src/migrations/m20260325_000003_create_search_query_logs.rs",
+      path: "crates/modules/rustok-search/src/migrations/m20260325_000003_create_search_query_logs.rs",
       requiredMarkers: ["ColumnDef::new(SearchQueryLogs::Locale).string_len(32)"],
     },
     {
-      path: "crates/rustok-search/src/migrations/m20260721_000008_expand_search_query_locale_storage.rs",
+      path: "crates/modules/rustok-search/src/migrations/m20260721_000008_expand_search_query_locale_storage.rs",
       requiredMarkers: [
         "ALTER TABLE search_query_logs ALTER COLUMN locale TYPE VARCHAR(32)",
         "MODIFY COLUMN locale VARCHAR(32) NULL",
@@ -198,14 +198,14 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
       ],
     },
     {
-      path: "crates/rustok-search/src/migrations/mod.rs",
+      path: "crates/modules/rustok-search/src/migrations/mod.rs",
       requiredMarkers: [
         "mod m20260721_000008_expand_search_query_locale_storage;",
         "Box::new(m20260721_000008_expand_search_query_locale_storage::Migration)",
       ],
     },
     {
-      path: "crates/rustok-order/src/migrations/m20260721_000117_add_order_change_source_locale.rs",
+      path: "crates/modules/rustok-order/src/migrations/m20260721_000117_add_order_change_source_locale.rs",
       requiredMarkers: [
         "LEGACY_UNDETERMINED_LOCALE",
         "ColumnDef::new(OrderChanges::SourceLocale)",
@@ -218,7 +218,7 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
       ],
     },
     {
-      path: "crates/rustok-order/src/migrations/mod.rs",
+      path: "crates/modules/rustok-order/src/migrations/mod.rs",
       requiredMarkers: [
         "mod m20260721_000117_add_order_change_source_locale;",
         "Box::new(m20260721_000117_add_order_change_source_locale::Migration)",

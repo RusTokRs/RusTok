@@ -8,10 +8,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../..");
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 
-const port = read("crates/rustok-product/src/catalog_schema_write_port.rs");
-const runtime = read("crates/rustok-product/src/runtime.rs");
-const lib = read("crates/rustok-product/src/lib.rs");
-const commerceMutations = read("crates/rustok-commerce/src/graphql/mutations/catalog.rs");
+const port = read("crates/modules/rustok-product/src/catalog_schema_write_port.rs");
+const runtime = read("crates/modules/rustok-product/src/runtime.rs");
+const lib = read("crates/modules/rustok-product/src/lib.rs");
+const commerceMutations = read("crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs");
 const failures = [];
 
 function requireText(source, text, label) {

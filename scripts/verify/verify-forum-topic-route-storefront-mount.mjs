@@ -11,16 +11,16 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  core: "crates/rustok-forum/storefront/src/core.rs",
-  model: "crates/rustok-forum/storefront/src/model.rs",
-  packageLib: "crates/rustok-forum/storefront/src/lib.rs",
-  transport: "crates/rustok-forum/storefront/src/transport/mod.rs",
-  graphql: "crates/rustok-forum/storefront/src/transport/topic_route_graphql_adapter.rs",
-  native: "crates/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
+  core: "crates/modules/rustok-forum/storefront/src/core.rs",
+  model: "crates/modules/rustok-forum/storefront/src/model.rs",
+  packageLib: "crates/modules/rustok-forum/storefront/src/lib.rs",
+  transport: "crates/modules/rustok-forum/storefront/src/transport/mod.rs",
+  graphql: "crates/modules/rustok-forum/storefront/src/transport/topic_route_graphql_adapter.rs",
+  native: "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
   host: "apps/storefront/src/forum_topic_route.rs",
   hostLib: "apps/storefront/src/lib.rs",
-  contract: "crates/rustok-forum/contracts/forum-topic-route-storefront-mount.json",
-  docs: "crates/rustok-forum/docs/forum-24i-topic-route-storefront-mount.md",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-route-storefront-mount.json",
+  docs: "crates/modules/rustok-forum/docs/forum-24i-topic-route-storefront-mount.md",
 };
 
 function read(relativePath) {

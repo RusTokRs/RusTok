@@ -38,7 +38,7 @@ function between(source, start, end, label) {
 }
 
 const contract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-notification-inbox-grouped-graphql.json") || "{}",
+  read("crates/modules/rustok-forum/contracts/forum-notification-inbox-grouped-graphql.json") || "{}",
 );
 const ownerGraphql = read(contract.notifications_graphql_file ?? "");
 const ownerLib = read(contract.notifications_lib_file ?? "");

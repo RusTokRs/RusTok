@@ -9,10 +9,10 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json';
 const harnessPath =
-  'crates/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs';
-const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
+  'crates/modules/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
 const harnessCommand =
   'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --exact';
 

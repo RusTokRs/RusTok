@@ -24,10 +24,10 @@ Cache-consumer and provider consumer-properties evidence remain unrelated pendin
 
 The historical parent source contract remains deliberately unvalidated and unchanged:
 
-- `crates/rustok-pages/contracts/evidence/pages-artifact-repair-rollback-continuity-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs`;
-- `crates/rustok-pages/tests/artifact_repair_rollback_continuity_postgres.rs`;
-- `crates/rustok-pages/docs/artifact-repair-rollback-continuity.md`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-artifact-repair-rollback-continuity-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs`;
+- `crates/modules/rustok-pages/tests/artifact_repair_rollback_continuity_postgres.rs`;
+- `crates/modules/rustok-pages/docs/artifact-repair-rollback-continuity.md`;
 - `docs/modules/pages-page-builder-repair-rollback-continuity-actualization-2026-08-07.md`.
 
 That parent PostgreSQL harness covers the parent contract directly: successful physical-loss rebuild + explicit activation + rollback continuity, idempotent rollback replay, historical-target manifest rejection, surviving-manifest identity mismatch rejection, and fail-closed rejection when a current manifest is missing while the historical source artifact still exists.
@@ -52,12 +52,12 @@ This is not inference from child evidence. The parent has its own exact-main Pos
 New source-ready execution packet:
 
 - `.github/workflows/pages-artifact-repair-rollback-continuity-postgres-evidence.yml`;
-- `crates/rustok-pages/contracts/evidence/pages-artifact-repair-rollback-continuity-postgres-execution.json`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-artifact-repair-rollback-continuity-postgres-execution.json`;
 - this actualization.
 
 PR-side preflight executes on the exact PR head:
 
-1. `node crates/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs`;
+1. `node crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs`;
 2. `cargo test --locked -p rustok-pages --test artifact_repair_rollback_continuity_postgres -- --nocapture` against PostgreSQL 16;
 3. `cargo check --locked -p rustok-pages --all-targets`.
 

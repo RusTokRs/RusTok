@@ -139,12 +139,12 @@ SCRIPTS=(
     "verify-module-build-worker-isolation.mjs:Module Build Worker Isolation"
     "verify-module-build-worker-deployment.mjs:Module Build Worker Deployment"
     "verify-worker-runtime-policy.mjs:Worker Runtime Backpressure Policy"
-    "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs:Page Builder Contract Parity"
-    "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs:Page Builder Contract Registry"
-    "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs:Page Builder Fallback Profiles"
-    "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs:Page Builder Toggle Profiles Consistency"
-    "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs:Page Builder FBA Baseline Gate"
-    "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs:Page Builder Consumer Readiness"
+    "../../crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs:Page Builder Contract Parity"
+    "../../crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs:Page Builder Contract Registry"
+    "../../crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs:Page Builder Fallback Profiles"
+    "../../crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs:Page Builder Toggle Profiles Consistency"
+    "../../crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs:Page Builder FBA Baseline Gate"
+    "../../crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs:Page Builder Consumer Readiness"
 )
 
 # Filter to selected script if specified
@@ -197,7 +197,7 @@ for entry in "${SCRIPTS[@]}"; do
     echo -e "${SEPARATOR}"
 
     if [[ "$script_file" == *.mjs ]]; then
-        if [[ "$script_file" == "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs" || "$script_file" == "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs" || "$script_file" == "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs" || "$script_file" == "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs" ]]; then
+        if [[ "$script_file" == "../../crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs" || "$script_file" == "../../crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs" || "$script_file" == "../../crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs" || "$script_file" == "../../crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs" ]]; then
             runner=(node "$script_path" "${PBC_MODULE:-pages}")
         else
             runner=(node "$script_path")

@@ -19,13 +19,13 @@ function compact(value) {
 }
 
 const contract = JSON.parse(
-  read("crates/rustok-reactions/contracts/reactions-host-composition.json"),
+  read("crates/modules/rustok-reactions/contracts/reactions-host-composition.json"),
 );
 const tests = read("apps/server/tests/reactions_composition_profiles.rs");
 const serverCargo = read("apps/server/Cargo.toml");
 const modules = read("modules.toml");
-const reactionsPlan = compact(read("crates/rustok-reactions/docs/implementation-plan.md"));
-const forumPlan = compact(read("crates/rustok-forum/docs/implementation-plan.md"));
+const reactionsPlan = compact(read("crates/modules/rustok-reactions/docs/implementation-plan.md"));
+const forumPlan = compact(read("crates/modules/rustok-forum/docs/implementation-plan.md"));
 
 if (contract.schema_version !== 1) fail("unexpected host contract schema");
 if (contract.contract !== "reactions_optional_host_composition_v1") {

@@ -4,11 +4,11 @@ import { resolve } from 'node:path';
 
 const adapterPath = resolve(
   process.cwd(),
-  '../../crates/fly-browser/assets/fly-browser.js'
+  '../../crates/ui/fly-browser/assets/fly-browser.js'
 );
 const canvasRuntimePath = resolve(
   process.cwd(),
-  '../../crates/rustok-page-builder/admin/src/editor/canvas_runtime.js'
+  '../../crates/modules/rustok-page-builder/admin/src/editor/canvas_runtime.js'
 );
 
 type RuntimeEvent = {

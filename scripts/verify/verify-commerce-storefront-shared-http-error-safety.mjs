@@ -10,12 +10,12 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const controller = read('crates/rustok-commerce/src/controllers/store/mod.rs');
-const contextOwner = read('crates/rustok-commerce/src/services/context.rs');
-const channelOwner = read('crates/rustok-channel/src/error.rs');
-const channelBoundary = read('crates/rustok-commerce/src/storefront_channel.rs');
-const apiPorts = read('crates/rustok-api/src/ports.rs');
-const webErrors = read('crates/rustok-web/src/lib.rs');
+const controller = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
+const contextOwner = read('crates/modules/rustok-commerce/src/services/context.rs');
+const channelOwner = read('crates/modules/rustok-channel/src/error.rs');
+const channelBoundary = read('crates/modules/rustok-commerce/src/storefront_channel.rs');
+const apiPorts = read('crates/libs/rustok-api/src/ports.rs');
+const webErrors = read('crates/libs/rustok-web/src/lib.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {

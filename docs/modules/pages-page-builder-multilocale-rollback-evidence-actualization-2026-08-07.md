@@ -38,7 +38,7 @@ That meant corrupted durable receipt evidence could be structurally SHA-shaped a
 
 ## Source change
 
-`crates/rustok-pages/src/services/page/artifact_set.rs` now revalidates the durable evidence at rollback time rather than trusting that admission once happened correctly.
+`crates/modules/rustok-pages/src/services/page/artifact_set.rs` now revalidates the durable evidence at rollback time rather than trusting that admission once happened correctly.
 
 ### Canonical activation request identity
 
@@ -95,9 +95,9 @@ This slice keeps all earlier fences:
 New execution-pending packet:
 
 ```text
-crates/rustok-pages/tests/artifact_multilocale_repair_rollback_evidence_postgres.rs
-crates/rustok-pages/scripts/verify/verify-pages-multilocale-repair-rollback-evidence.mjs
-crates/rustok-pages/contracts/evidence/pages-multilocale-repair-rollback-evidence-source.json
+crates/modules/rustok-pages/tests/artifact_multilocale_repair_rollback_evidence_postgres.rs
+crates/modules/rustok-pages/scripts/verify/verify-pages-multilocale-repair-rollback-evidence.mjs
+crates/modules/rustok-pages/contracts/evidence/pages-multilocale-repair-rollback-evidence-source.json
 ```
 
 It retains three source scenarios:

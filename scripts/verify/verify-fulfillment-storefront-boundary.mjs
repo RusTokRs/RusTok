@@ -41,19 +41,19 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-fulfillment/storefront/src/lib.rs";
-const modelPath = "crates/rustok-fulfillment/storefront/src/model.rs";
-const corePath = "crates/rustok-fulfillment/storefront/src/core/mod.rs";
-const uiPath = "crates/rustok-fulfillment/storefront/src/ui/leptos.rs";
-const i18nPath = "crates/rustok-fulfillment/storefront/src/i18n.rs";
-const manifestPath = "crates/rustok-fulfillment/rustok-module.toml";
-const transportPath = "crates/rustok-fulfillment/storefront/src/transport.rs";
-const graphqlPath = "crates/rustok-fulfillment/storefront/src/transport/graphql_adapter.rs";
-const nativeServerFunctionsPath = "crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs";
-const cargoPath = "crates/rustok-fulfillment/storefront/Cargo.toml";
-const commerceTransportPath = "crates/rustok-commerce/storefront/src/transport/mod.rs";
-const commerceUiPath = "crates/rustok-commerce/storefront/src/ui/leptos/mod.rs";
-const planPath = "crates/rustok-fulfillment/docs/implementation-plan.md";
+const libPath = "crates/modules/rustok-fulfillment/storefront/src/lib.rs";
+const modelPath = "crates/modules/rustok-fulfillment/storefront/src/model.rs";
+const corePath = "crates/modules/rustok-fulfillment/storefront/src/core/mod.rs";
+const uiPath = "crates/modules/rustok-fulfillment/storefront/src/ui/leptos.rs";
+const i18nPath = "crates/modules/rustok-fulfillment/storefront/src/i18n.rs";
+const manifestPath = "crates/modules/rustok-fulfillment/rustok-module.toml";
+const transportPath = "crates/modules/rustok-fulfillment/storefront/src/transport.rs";
+const graphqlPath = "crates/modules/rustok-fulfillment/storefront/src/transport/graphql_adapter.rs";
+const nativeServerFunctionsPath = "crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs";
+const cargoPath = "crates/modules/rustok-fulfillment/storefront/Cargo.toml";
+const commerceTransportPath = "crates/modules/rustok-commerce/storefront/src/transport/mod.rs";
+const commerceUiPath = "crates/modules/rustok-commerce/storefront/src/ui/leptos/mod.rs";
+const planPath = "crates/modules/rustok-fulfillment/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 

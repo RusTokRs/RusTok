@@ -10,13 +10,13 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const controller = read('crates/rustok-commerce/src/controllers/store/orders.rs');
-const httpRuntime = read('crates/rustok-commerce/src/controllers/mod.rs');
-const paymentOwner = read('crates/rustok-payment/src/order_read.rs');
-const paymentLib = read('crates/rustok-payment/src/lib.rs');
-const plan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const controller = read('crates/modules/rustok-commerce/src/controllers/store/orders.rs');
+const httpRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
+const paymentOwner = read('crates/modules/rustok-payment/src/order_read.rs');
+const paymentLib = read('crates/modules/rustok-payment/src/lib.rs');
+const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 const record = read(
-  'crates/rustok-commerce/docs/rest-storefront-order-refund-read-owner-port-cutover-2026-08-10.md',
+  'crates/modules/rustok-commerce/docs/rest-storefront-order-refund-read-owner-port-cutover-2026-08-10.md',
 );
 const failures = [];
 

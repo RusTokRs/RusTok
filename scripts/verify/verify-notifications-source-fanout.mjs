@@ -40,19 +40,19 @@ function reject(source, pattern, message) {
 }
 
 const contractPath =
-  "crates/rustok-notifications/contracts/notifications-source-fanout.json";
+  "crates/modules/rustok-notifications/contracts/notifications-source-fanout.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const migration = read(contract.migration ?? "");
 const service = read(contract.service ?? "");
-const entities = read("crates/rustok-notifications/src/entities.rs");
-const model = read("crates/rustok-notifications/src/model.rs");
-const library = read("crates/rustok-notifications/src/lib.rs");
-const ownerTest = read("crates/rustok-notifications/tests/fanout_sqlite.rs");
+const entities = read("crates/modules/rustok-notifications/src/entities.rs");
+const model = read("crates/modules/rustok-notifications/src/model.rs");
+const library = read("crates/modules/rustok-notifications/src/lib.rs");
+const ownerTest = read("crates/modules/rustok-notifications/tests/fanout_sqlite.rs");
 const sparseTest = read(contract.sparse_page_test ?? "");
 const forumProvider = read(
   contract.forum_user_mention_source?.provider ?? "",
 );
-const forumTest = read("crates/rustok-forum/tests/notification_source_sqlite.rs");
+const forumTest = read("crates/modules/rustok-forum/tests/notification_source_sqlite.rs");
 
 if (contract.schema_version !== 5) {
   failures.push("notifications source fan-out contract must use schema_version=5");

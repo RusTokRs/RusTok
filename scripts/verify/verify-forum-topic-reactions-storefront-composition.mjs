@@ -18,17 +18,17 @@ const appCargo = read("apps/storefront/Cargo.toml");
 const appBuild = read("apps/storefront/build.rs");
 const appModules = read("apps/storefront/src/modules/mod.rs");
 const composition = read("apps/storefront/src/modules/forum_reactions_composition.rs");
-const forumCargo = read("crates/rustok-forum/Cargo.toml");
-const forumStorefrontCargo = read("crates/rustok-forum/storefront/Cargo.toml");
-const forumStorefrontLib = read("crates/rustok-forum/storefront/src/lib.rs");
-const forumTransport = read("crates/rustok-forum/storefront/src/transport/mod.rs");
+const forumCargo = read("crates/modules/rustok-forum/Cargo.toml");
+const forumStorefrontCargo = read("crates/modules/rustok-forum/storefront/Cargo.toml");
+const forumStorefrontLib = read("crates/modules/rustok-forum/storefront/src/lib.rs");
+const forumTransport = read("crates/modules/rustok-forum/storefront/src/transport/mod.rs");
 const contract = JSON.parse(
   read("apps/storefront/contracts/forum-topic-reactions-composition.json"),
 );
 
 requireContains(
   appCargo,
-  'rustok-reactions-storefront = { path = "../../crates/rustok-reactions-storefront", default-features = false, optional = true }',
+  'rustok-reactions-storefront = { path = "../../crates/modules/rustok-reactions-storefront", default-features = false, optional = true }',
   "Storefront host must own the optional Reactions presentation dependency",
 );
 requireContains(

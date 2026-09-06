@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const lifecyclePath = 'crates/rustok-index/src/infrastructure/postgres/secondary_index.rs';
+const lifecyclePath = 'crates/modules/rustok-index/src/infrastructure/postgres/secondary_index.rs';
 const lifecycle = requireMarkers(lifecyclePath, [
   'pub struct SecondaryIndexSpec',
   'pub struct SecondaryIndexPlan',
@@ -82,7 +82,7 @@ for (const forbidden of [
   if (lifecycle.includes(forbidden)) fail(`${lifecyclePath} contains forbidden marker ${forbidden}`);
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/secondary_index_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/secondary_index_tests.rs', [
   'plan_derives_stable_typed_and_containment_indexes',
   'ensure_reindex_and_retire_are_durable_and_idempotent',
   'expired_operation_is_reclaimed_with_attempt_fencing',
@@ -93,18 +93,18 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/secondary_index_
   'SecondaryIndexClaimOutcome::Busy',
   'SecondaryIndexError::LeaseLost',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod secondary_index;',
   'mod secondary_index_tests;',
   'PostgresSecondaryIndexManager',
   'SecondaryIndexPlan',
 ]);
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'PostgresSecondaryIndexManager',
   'SecondaryIndexExecutionOutcome',
   'SecondaryIndexSpec',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- [x] Add secondary-index planning and lifecycle management.',
   'M3 secondary-index lifecycle: `complete`',
 ]);

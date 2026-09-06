@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(scriptPath), "../..");
 const registryPath = "docs/modules/translation-surfaces.json";
-const providerPath = "crates/rustok-translation-targets/src/lib.rs";
+const providerPath = "crates/modules/rustok-translation-targets/src/lib.rs";
 
 function fail(message, failures) {
   failures.push(message);

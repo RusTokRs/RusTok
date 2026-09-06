@@ -9,22 +9,22 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json",
-  publisherContract: "crates/rustok-forum/contracts/forum-search-versioned-invalidation-publisher.json",
-  note: "crates/rustok-forum/docs/forum-23b2g2b3a-versioned-invalidation-wire-contract.md",
+  contract: "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json",
+  publisherContract: "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-publisher.json",
+  note: "crates/modules/rustok-forum/docs/forum-23b2g2b3a-versioned-invalidation-wire-contract.md",
   decision: "DECISIONS/2026-07-31-forum-search-versioned-invalidation-rollout.md",
-  checkpointContract: "crates/rustok-forum/contracts/forum-search-owner-revision-checkpoint.json",
-  ledgerContract: "crates/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
-  sourceContract: "crates/rustok-forum/contracts/forum-search-owner-revision-source.json",
-  ingestContract: "crates/rustok-forum/contracts/forum-search-durable-ingest-sequence.json",
-  eventLib: "crates/rustok-events/src/lib.rs",
-  eventPayload: "crates/rustok-events/src/contract.rs",
-  eventDigests: "crates/rustok-events/contracts/event-contract-digests.json",
-  outbox: "crates/rustok-outbox/src/transactional.rs",
-  forumPublisher: "crates/rustok-forum/src/services/projection_invalidation.rs",
-  searchInbox: "crates/rustok-search/src/forum_inbox.rs",
-  forumPlan: "crates/rustok-forum/docs/implementation-plan.md",
-  searchPlan: "crates/rustok-search/docs/implementation-plan.md",
+  checkpointContract: "crates/modules/rustok-forum/contracts/forum-search-owner-revision-checkpoint.json",
+  ledgerContract: "crates/modules/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
+  sourceContract: "crates/modules/rustok-forum/contracts/forum-search-owner-revision-source.json",
+  ingestContract: "crates/modules/rustok-forum/contracts/forum-search-durable-ingest-sequence.json",
+  eventLib: "crates/libs/rustok-events/src/lib.rs",
+  eventPayload: "crates/libs/rustok-events/src/contract.rs",
+  eventDigests: "crates/libs/rustok-events/contracts/event-contract-digests.json",
+  outbox: "crates/modules/rustok-outbox/src/transactional.rs",
+  forumPublisher: "crates/modules/rustok-forum/src/services/projection_invalidation.rs",
+  searchInbox: "crates/modules/rustok-search/src/forum_inbox.rs",
+  forumPlan: "crates/modules/rustok-forum/docs/implementation-plan.md",
+  searchPlan: "crates/modules/rustok-search/docs/implementation-plan.md",
 };
 
 function target(relativePath) {

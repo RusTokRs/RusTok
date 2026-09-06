@@ -29,25 +29,25 @@ function requireNoMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-const commentPath = "crates/rustok-comments/src/entities/comment.rs";
-const threadPath = "crates/rustok-comments/src/entities/comment_thread.rs";
-const entitiesModulePath = "crates/rustok-comments/src/entities/mod.rs";
+const commentPath = "crates/modules/rustok-comments/src/entities/comment.rs";
+const threadPath = "crates/modules/rustok-comments/src/entities/comment_thread.rs";
+const entitiesModulePath = "crates/modules/rustok-comments/src/entities/mod.rs";
 const classifierTestPath =
-  "crates/rustok-comments/src/entities/thread_insert_error_tests.rs";
+  "crates/modules/rustok-comments/src/entities/thread_insert_error_tests.rs";
 const identityEntityPath =
-  "crates/rustok-comments/src/entities/comment_thread_identity_lock.rs";
-const servicesPath = "crates/rustok-comments/src/services.rs";
+  "crates/modules/rustok-comments/src/entities/comment_thread_identity_lock.rs";
+const servicesPath = "crates/modules/rustok-comments/src/services.rs";
 const counterMigrationPath =
-  "crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs";
+  "crates/modules/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs";
 const identityMigrationPath =
-  "crates/rustok-comments/src/migrations/m20260723_000009_add_comment_thread_identity_locks.rs";
-const migrationRegistryPath = "crates/rustok-comments/src/migrations/mod.rs";
-const writeTestPath = "crates/rustok-comments/tests/thread_write_invariants.rs";
+  "crates/modules/rustok-comments/src/migrations/m20260723_000009_add_comment_thread_identity_locks.rs";
+const migrationRegistryPath = "crates/modules/rustok-comments/src/migrations/mod.rs";
+const writeTestPath = "crates/modules/rustok-comments/tests/thread_write_invariants.rs";
 const firstThreadTestPath =
-  "crates/rustok-comments/tests/thread_creation_concurrency.rs";
+  "crates/modules/rustok-comments/tests/thread_creation_concurrency.rs";
 const evidencePath =
-  "crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json";
-const planPath = "crates/rustok-comments/docs/implementation-plan.md";
+  "crates/modules/rustok-comments/contracts/evidence/comments-thread-write-invariants.json";
+const planPath = "crates/modules/rustok-comments/docs/implementation-plan.md";
 
 const comment = read(commentPath);
 const thread = read(threadPath);

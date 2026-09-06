@@ -3,13 +3,13 @@
 import { readFile } from "node:fs/promises";
 
 const files = {
-  reader: "crates/rustok-index/src/infrastructure/postgres/drift_snapshot_reader.rs",
-  test: "crates/rustok-index/tests/drift_snapshot_reader_postgres_test.rs",
+  reader: "crates/modules/rustok-index/src/infrastructure/postgres/drift_snapshot_reader.rs",
+  test: "crates/modules/rustok-index/tests/drift_snapshot_reader_postgres_test.rs",
   diagnosis: "apps/server/src/services/index_drift_diagnosis_operator.rs",
-  productProvider: "crates/rustok-distribution/src/product_index/absence.rs",
-  doc: "crates/rustok-index/docs/m6-postgres-drift-snapshot-reader.md",
-  recheck: "crates/rustok-index/docs/implementation-recheck-2026-08-05-explicit-absence-watermark.md",
-  plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  productProvider: "crates/modules/rustok-distribution/src/product_index/absence.rs",
+  doc: "crates/modules/rustok-index/docs/m6-postgres-drift-snapshot-reader.md",
+  recheck: "crates/modules/rustok-index/docs/implementation-recheck-2026-08-05-explicit-absence-watermark.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
 };
 
 const c = Object.fromEntries(

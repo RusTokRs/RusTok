@@ -25,20 +25,20 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-const activePath = "crates/rustok-search/src/projector.rs";
-const legacyPath = "crates/rustok-search/src/projector_legacy.rs";
-const libPath = "crates/rustok-search/src/lib.rs";
-const ingestionPath = "crates/rustok-search/src/ingestion.rs";
-const blogPath = "crates/rustok-search/src/blog_projector.rs";
-const forumPath = "crates/rustok-search/src/forum_projector.rs";
-const rustTestPath = "crates/rustok-search/tests/search_scope_preservation_contract.rs";
-const replyTestPath = "crates/rustok-search/tests/forum_approved_reply_projection_contract.rs";
-const contractPath = "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
-const searchContractPath = "crates/rustok-forum/contracts/forum-search-projection.json";
-const invalidationPath = "crates/rustok-forum/contracts/forum-projection-invalidation.json";
-const visibilityPath = "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
-const approvedReplyPath = "crates/rustok-forum/contracts/forum-approved-reply-search.json";
-const notePath = "crates/rustok-forum/docs/forum-20bm-search-rebuild-scope-preservation.md";
+const activePath = "crates/modules/rustok-search/src/projector.rs";
+const legacyPath = "crates/modules/rustok-search/src/projector_legacy.rs";
+const libPath = "crates/modules/rustok-search/src/lib.rs";
+const ingestionPath = "crates/modules/rustok-search/src/ingestion.rs";
+const blogPath = "crates/modules/rustok-search/src/blog_projector.rs";
+const forumPath = "crates/modules/rustok-search/src/forum_projector.rs";
+const rustTestPath = "crates/modules/rustok-search/tests/search_scope_preservation_contract.rs";
+const replyTestPath = "crates/modules/rustok-search/tests/forum_approved_reply_projection_contract.rs";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
+const searchContractPath = "crates/modules/rustok-forum/contracts/forum-search-projection.json";
+const invalidationPath = "crates/modules/rustok-forum/contracts/forum-projection-invalidation.json";
+const visibilityPath = "crates/modules/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
+const approvedReplyPath = "crates/modules/rustok-forum/contracts/forum-approved-reply-search.json";
+const notePath = "crates/modules/rustok-forum/docs/forum-20bm-search-rebuild-scope-preservation.md";
 
 const active = read(activePath);
 const legacy = read(legacyPath);

@@ -26,7 +26,7 @@ const forbidMarkers = (relative, markers) => {
   }
 };
 
-requireMarkers("crates/rustok-groups/src/migrations/m20260721_000005_create_group_domain_events.rs", [
+requireMarkers("crates/modules/rustok-groups/src/migrations/m20260721_000005_create_group_domain_events.rs", [
   "group_domain_events",
   "groups.invitation.targeted_created",
   "group domain events are append-only",
@@ -36,13 +36,13 @@ requireMarkers("crates/rustok-groups/src/migrations/m20260721_000005_create_grou
   "'group_id'",
   "'target_user_id'",
 ]);
-forbidMarkers("crates/rustok-groups/src/migrations/m20260721_000005_create_group_domain_events.rs", [
+forbidMarkers("crates/modules/rustok-groups/src/migrations/m20260721_000005_create_group_domain_events.rs", [
   "NEW.token_hash",
   "'token_hash'",
   "plaintext_token",
 ]);
 
-requireMarkers("crates/rustok-groups/src/targeted_invitations.rs", [
+requireMarkers("crates/modules/rustok-groups/src/targeted_invitations.rs", [
   "GroupTargetedInvitationCommandPort",
   "GroupTargetedInvitationService",
   "model.target_user_id != Some(actor_user_id)",
@@ -54,12 +54,12 @@ requireMarkers("crates/rustok-groups/src/targeted_invitations.rs", [
   "store_receipt",
   "replay_receipt",
 ]);
-forbidMarkers("crates/rustok-groups/src/targeted_invitations.rs", [
+forbidMarkers("crates/modules/rustok-groups/src/targeted_invitations.rs", [
   "invitation_token_hash",
   "AcceptGroupInvitationRequest { token",
 ]);
 
-requireMarkers("crates/rustok-groups/src/notification_source.rs", [
+requireMarkers("crates/modules/rustok-groups/src/notification_source.rs", [
   "GroupsNotificationSourceProviderFactory",
   "NotificationSourceProviderFactory",
   "groups.invitation.targeted_created",
@@ -68,48 +68,48 @@ requireMarkers("crates/rustok-groups/src/notification_source.rs", [
   "invitation.target_user_id != Some(request.recipient_id)",
   '"/modules/groups?invitation={}"',
 ]);
-forbidMarkers("crates/rustok-groups/src/notification_source.rs", [
+forbidMarkers("crates/modules/rustok-groups/src/notification_source.rs", [
   "token_hash",
   "plaintext_token",
   "NotificationTargetRoute::new(format!(\"http",
 ]);
 
-requireMarkers("crates/rustok-groups/src/graphql_invitations.rs", [
+requireMarkers("crates/modules/rustok-groups/src/graphql_invitations.rs", [
   "accept_targeted_group_invitation",
   "AcceptTargetedGroupInvitationRequest",
   "GroupTargetedInvitationCommandPort",
   "with_idempotency_key",
 ]);
-requireMarkers("crates/rustok-groups/rustok-module.toml", [
+requireMarkers("crates/modules/rustok-groups/rustok-module.toml", [
   'query = "graphql_application_cas::GroupsQueryRoot"',
   'mutation = "graphql_application_cas::GroupsMutationRoot"',
 ]);
-requireMarkers("crates/rustok-groups/src/lib.rs", [
+requireMarkers("crates/modules/rustok-groups/src/lib.rs", [
   "register_notification_source_provider_factory",
   "notification_source::GroupsNotificationSourceProviderFactory",
   "pub mod targeted_invitations;",
   "assert_eq!(module.migrations().len(), 7)",
 ]);
 
-requireMarkers("crates/rustok-groups/storefront/src/core.rs", [
+requireMarkers("crates/modules/rustok-groups/storefront/src/core.rs", [
   'GROUP_TARGETED_INVITATION_QUERY_KEY: &str = "invitation"',
   "prepare_accept_targeted_group_invitation",
 ]);
-forbidMarkers("crates/rustok-groups/storefront/src/core.rs", ["use leptos", "leptos::"]);
-requireMarkers("crates/rustok-groups/storefront/src/transport.rs", [
+forbidMarkers("crates/modules/rustok-groups/storefront/src/core.rs", ["use leptos", "leptos::"]);
+requireMarkers("crates/modules/rustok-groups/storefront/src/transport.rs", [
   "accept_groups_storefront_targeted_invitation",
   '"groups.storefront.targeted_invitation.accept"',
   'GROUPS_STOREFRONT_TRANSPORT_FALLBACK_POLICY: &str = "never falls back"',
 ]);
-requireMarkers("crates/rustok-groups/storefront/src/ui/invitation_acceptance.rs", [
+requireMarkers("crates/modules/rustok-groups/storefront/src/ui/invitation_acceptance.rs", [
   "prepare_accept_targeted_group_invitation",
   "accept_groups_storefront_targeted_invitation",
   "GROUP_TARGETED_INVITATION_QUERY_KEY",
   "query_writer.clear_key(GROUP_TARGETED_INVITATION_QUERY_KEY)",
 ]);
 
-if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
-  const registry = JSON.parse(read("crates/rustok-groups/contracts/groups-fba-registry.json"));
+if (requireFile("crates/modules/rustok-groups/contracts/groups-fba-registry.json")) {
+  const registry = JSON.parse(read("crates/modules/rustok-groups/contracts/groups-fba-registry.json"));
   const targetedPort = registry?.provider?.ports?.find(
     (port) => port?.name === "GroupTargetedInvitationCommandPort",
   );
@@ -128,8 +128,8 @@ if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
 }
 
 for (const relative of [
-  "crates/rustok-groups/storefront/locales/en.json",
-  "crates/rustok-groups/storefront/locales/ru.json",
+  "crates/modules/rustok-groups/storefront/locales/en.json",
+  "crates/modules/rustok-groups/storefront/locales/ru.json",
 ]) {
   if (!requireFile(relative)) continue;
   const messages = JSON.parse(read(relative));

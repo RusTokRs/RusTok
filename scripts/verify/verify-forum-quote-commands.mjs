@@ -54,17 +54,17 @@ function collectRustFiles(root, relative = "") {
 }
 
 const contract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-mention-write-boundary.json") || "{}",
+  read("crates/modules/rustok-forum/contracts/forum-mention-write-boundary.json") || "{}",
 );
 const dto = read(contract.quote_command?.dto ?? "");
 const service = read(contract.quote_command?.service ?? "");
-const relationTests = read("crates/rustok-forum/src/services/mention_relation_tests.rs");
-const controller = read("crates/rustok-forum/src/controllers/quote_commands.rs");
-const routes = read("crates/rustok-forum/src/controllers/mod.rs");
-const graphql = read("crates/rustok-forum/src/graphql/quote_commands.rs");
-const graphqlRoot = read("crates/rustok-forum/src/graphql/mod.rs");
-const openapi = read("crates/rustok-forum/src/openapi.rs");
-const d1Record = read("crates/rustok-forum/docs/forum-12d1-quote-commands.md");
+const relationTests = read("crates/modules/rustok-forum/src/services/mention_relation_tests.rs");
+const controller = read("crates/modules/rustok-forum/src/controllers/quote_commands.rs");
+const routes = read("crates/modules/rustok-forum/src/controllers/mod.rs");
+const graphql = read("crates/modules/rustok-forum/src/graphql/quote_commands.rs");
+const graphqlRoot = read("crates/modules/rustok-forum/src/graphql/mod.rs");
+const openapi = read("crates/modules/rustok-forum/src/openapi.rs");
+const d1Record = read("crates/modules/rustok-forum/docs/forum-12d1-quote-commands.md");
 
 for (const [field, expected] of [
   ["quotes_field_required", true],
@@ -181,12 +181,12 @@ const topicOwner = read(contract.owner_entrypoints?.topic_update?.owner ?? "");
 const topicImplementation = read(contract.owner_entrypoints?.topic_update?.implementation ?? "");
 const replyOwner = read(contract.owner_entrypoints?.reply_create?.owner ?? "");
 const replyImplementation = read(contract.owner_entrypoints?.reply_update?.implementation ?? "");
-const topicFacade = read("crates/rustok-forum/src/services/topic_facade.rs");
-const replyFacade = read("crates/rustok-forum/src/services/reply_facade.rs");
-const contentController = read("crates/rustok-forum/src/controllers/content_commands.rs");
-const contentGraphql = read("crates/rustok-forum/src/graphql/content_commands.rs");
-const inlineTests = read("crates/rustok-forum/src/services/relation_quote_input_tests.rs");
-const d2Record = read("crates/rustok-forum/docs/forum-12d2-inline-quote-commands.md");
+const topicFacade = read("crates/modules/rustok-forum/src/services/topic_facade.rs");
+const replyFacade = read("crates/modules/rustok-forum/src/services/reply_facade.rs");
+const contentController = read("crates/modules/rustok-forum/src/controllers/content_commands.rs");
+const contentGraphql = read("crates/modules/rustok-forum/src/graphql/content_commands.rs");
+const inlineTests = read("crates/modules/rustok-forum/src/services/relation_quote_input_tests.rs");
+const d2Record = read("crates/modules/rustok-forum/docs/forum-12d2-inline-quote-commands.md");
 
 for (const marker of [
   "CreateTopicCommandInput",

@@ -35,7 +35,7 @@ function between(source, start, end, label) {
 }
 
 const contract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-notification-inbox-auth-reactive-bootstrap.json") ||
+  read("crates/modules/rustok-forum/contracts/forum-notification-inbox-auth-reactive-bootstrap.json") ||
     "{}",
 );
 const transport = read(contract.storefront_transport_file ?? "");

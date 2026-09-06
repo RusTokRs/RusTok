@@ -57,9 +57,9 @@ node scripts/verify/verify-release-readiness-contract.mjs
 node scripts/verify/verify-rust-host-browser-contract.mjs
 node scripts/verify/verify-development-container-topology.mjs
 
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs
 
 cargo tree -i rsa --workspace --all-features
 cargo tree -i atomic-polyfill --workspace --all-features

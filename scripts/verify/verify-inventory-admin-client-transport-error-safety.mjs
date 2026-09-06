@@ -32,17 +32,17 @@ const between = (source, start, end, label) => {
 };
 
 const paths = {
-  facade: "crates/rustok-inventory/admin/src/transport/mod.rs",
-  safety: "crates/rustok-inventory/admin/src/transport/error_safety.rs",
+  facade: "crates/modules/rustok-inventory/admin/src/transport/mod.rs",
+  safety: "crates/modules/rustok-inventory/admin/src/transport/error_safety.rs",
   native:
-    "crates/rustok-inventory/admin/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-inventory/admin/src/transport/native_server_adapter.rs",
   evidence:
-    "crates/rustok-inventory/contracts/evidence/admin-client-transport-error-safety-source.json",
+    "crates/modules/rustok-inventory/contracts/evidence/admin-client-transport-error-safety-source.json",
   review:
-    "crates/rustok-inventory/contracts/evidence/admin-client-transport-error-safety-source-review.json",
-  doc: "crates/rustok-inventory/docs/admin-client-transport-error-safety.md",
-  inventoryPlan: "crates/rustok-inventory/docs/implementation-plan.md",
-  commercePlan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-inventory/contracts/evidence/admin-client-transport-error-safety-source-review.json",
+  doc: "crates/modules/rustok-inventory/docs/admin-client-transport-error-safety.md",
+  inventoryPlan: "crates/modules/rustok-inventory/docs/implementation-plan.md",
+  commercePlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
   nativeGuard: "scripts/verify/verify-inventory-admin-native-error-safety.mjs",
 };
 

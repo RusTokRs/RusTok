@@ -7,9 +7,9 @@ const transport = fs.readFileSync(
 const graphqlMod = fs.readFileSync("apps/server/src/graphql/mod.rs", "utf8");
 const schema = fs.readFileSync("apps/server/src/graphql/schema.rs", "utf8");
 const serverCargo = fs.readFileSync("apps/server/Cargo.toml", "utf8");
-const ports = fs.readFileSync("crates/rustok-moderation/src/ports.rs", "utf8");
+const ports = fs.readFileSync("crates/modules/rustok-moderation/src/ports.rs", "utf8");
 const caseOpen = fs.readFileSync(
-  "crates/rustok-moderation/src/commands/case_open.rs",
+  "crates/modules/rustok-moderation/src/commands/case_open.rs",
   "utf8",
 );
 

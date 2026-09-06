@@ -88,7 +88,7 @@ requireMarkers('ops/benches/README.md', [
   'does not rename, drop, or alter the canonical production relations',
 ]);
 
-requireMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
+requireMarkers('crates/modules/rustok-index/docs/partition-evidence-runbook.md', [
   'index_partition_query_audit_v1',
   'index-partition-snapshot-capture',
   'baseline.json',
@@ -98,13 +98,13 @@ requireMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
   'measurements. A failed attempt may leave partial shadow state for inspection',
 ]);
 
-requireMarkers('crates/rustok-index/docs/README.md', [
+requireMarkers('crates/modules/rustok-index/docs/README.md', [
   'M3 partition baseline/shadow snapshot runner: `complete`',
   'The real query, mutation,',
   'maintenance, and cutover measurements remain open.',
 ]);
 
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- M3 partition baseline/shadow snapshot runner: `complete`',
   '- [x] Add owner-operated PostgreSQL baseline/shadow snapshot capture.',
   '- [ ] Execute retained PostgreSQL query, mutation, maintenance, and cutover evidence.',

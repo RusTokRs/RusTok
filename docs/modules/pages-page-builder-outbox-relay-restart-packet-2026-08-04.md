@@ -18,7 +18,7 @@ does not claim that PostgreSQL, Cargo or a verifier ran.
 
 ## Outbox relay restart packet: ready, unvalidated
 
-`crates/rustok-pages/tests/outbox_relay_restart_postgres.rs` creates an isolated
+`crates/modules/rustok-pages/tests/outbox_relay_restart_postgres.rs` creates an isolated
 PostgreSQL schema and applies the real `OutboxModule` migration. It writes one Pages
 `NodePublished` root envelope through `TransactionalEventBus` and commits the durable
 `sys_events` row before either relay worker starts.
@@ -69,9 +69,9 @@ This slice does not change production Pages, Outbox or cache behavior. In partic
 
 Source evidence is recorded in:
 
-- `crates/rustok-pages/contracts/evidence/pages-outbox-relay-restart-postgres-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs`;
-- `crates/rustok-pages/tests/outbox_relay_restart_postgres.rs`.
+- `crates/modules/rustok-pages/contracts/evidence/pages-outbox-relay-restart-postgres-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs`;
+- `crates/modules/rustok-pages/tests/outbox_relay_restart_postgres.rs`.
 
 PostgreSQL execution remains pending. The evidence execution list is empty and all
 validation flags remain false.
@@ -96,7 +96,7 @@ rollout evidence.
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-pages --test outbox_relay_restart_postgres -- --nocapture
 cargo check -p rustok-pages --all-targets

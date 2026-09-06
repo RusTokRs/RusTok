@@ -729,7 +729,7 @@
 [1m[92m   Compiling[0m sea-bae v0.2.1
 [1m[92m   Compiling[0m derive_more-impl v2.1.1
 [1m[92m   Compiling[0m tachys v0.2.18
-[1m[92m    Checking[0m fly v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly)
+[1m[92m    Checking[0m fly v0.1.0 (/home/runner/work/RusTok/RusTok/crates/ui/fly)
 [1m[92m   Compiling[0m async-stream-impl v0.3.6
 [1m[92m   Compiling[0m crossbeam-epoch v0.9.20
 [1m[92m    Checking[0m static_assertions v1.1.0
@@ -793,7 +793,7 @@
 [1m[92m   Compiling[0m leptos_hot_reload v0.8.6
 [1m[92m    Checking[0m moka v0.12.15
 [1m[92m    Checking[0m typed-builder v0.23.2
-[1m[92m    Checking[0m rustok-api v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-api)
+[1m[92m    Checking[0m rustok-api v0.1.0 (/home/runner/work/RusTok/RusTok/crates/libs/rustok-api)
 [1m[92m   Compiling[0m attribute-derive v0.10.5
 [1m[92m   Compiling[0m convert_case_extras v0.2.0
 [1m[92m   Compiling[0m leptos v0.8.20
@@ -811,11 +811,11 @@
 [1m[92m    Checking[0m bit-vec v0.8.0
 [1m[92m    Checking[0m rusty-fork v0.3.1
 [1m[92m    Checking[0m bit-set v0.8.0
-[1m[92m    Checking[0m fly-ui v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly-ui)
+[1m[92m    Checking[0m fly-ui v0.1.0 (/home/runner/work/RusTok/RusTok/crates/ui/fly-ui)
 [1m[92m    Checking[0m rand_xorshift v0.4.0
 [1m[92m    Checking[0m unarray v0.1.4
 [1m[92m    Checking[0m proptest v1.11.0
-[1m[92m    Checking[0m fly-leptos v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly-leptos)
+[1m[92m    Checking[0m fly-leptos v0.1.0 (/home/runner/work/RusTok/RusTok/crates/ui/fly-leptos)
 [1m[92m    Checking[0m rustls-webpki v0.103.13
 [1m[92m    Checking[0m sqlx-core v0.8.6
 [1m[92m    Checking[0m tokio-rustls v0.26.4
@@ -826,17 +826,17 @@
 [1m[92m    Checking[0m opentelemetry-otlp v0.32.0
 [1m[92m    Checking[0m sqlx-postgres v0.8.6
 [1m[92m    Checking[0m sqlx-sqlite v0.8.6
-[1m[92m    Checking[0m rustok-telemetry v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-telemetry)
-[1m[92m    Checking[0m rustok-events v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-events)
+[1m[92m    Checking[0m rustok-telemetry v0.1.0 (/home/runner/work/RusTok/RusTok/crates/libs/rustok-telemetry)
+[1m[92m    Checking[0m rustok-events v0.1.0 (/home/runner/work/RusTok/RusTok/crates/libs/rustok-events)
 [1m[92m    Checking[0m sqlx v0.8.6
 [1m[92m    Checking[0m sea-query-binder v0.7.0
 [1m[92m    Checking[0m sea-orm v1.1.20
 [1m[92m    Checking[0m sea-schema v0.16.2
 [1m[92m    Checking[0m sea-orm-migration v1.1.20
-[1m[92m    Checking[0m rustok-core v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-core)
-[1m[92m    Checking[0m rustok-page-builder v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-page-builder)
+[1m[92m    Checking[0m rustok-core v0.1.0 (/home/runner/work/RusTok/RusTok/crates/libs/rustok-core)
+[1m[92m    Checking[0m rustok-page-builder v0.1.0 (/home/runner/work/RusTok/RusTok/crates/modules/rustok-page-builder)
 [1m[91merror[E0252][0m[1m: the name `PageBuilderRuntimeTelemetry` is defined multiple times[0m
-  [1m[94m--> [0mcrates/rustok-page-builder/src/service.rs:13:70
+  [1m[94m--> [0mcrates/modules/rustok-page-builder/src/service.rs:13:70
    [1m[94m|[0m
 [1m[94m10[0m [1m[94m|[0m     NoopPageBuilderRuntimeTelemetry, PageBuilderRuntimeCallEvidence, PageBuilderRuntimeTelemetry,
    [1m[94m|[0m                                                                      [1m[94m---------------------------[0m [1m[94mprevious import of the trait `PageBuilderRuntimeTelemetry` here[0m
@@ -850,7 +850,7 @@
    [1m[94m= [0m[1mnote[0m: `PageBuilderRuntimeTelemetry` must be defined only once in the type namespace of this module
 
 [1m[91merror[E0252][0m[1m: the name `NoopPageBuilderRuntimeTelemetry` is defined multiple times[0m
-  [1m[94m--> [0mcrates/rustok-page-builder/src/service.rs:13:5
+  [1m[94m--> [0mcrates/modules/rustok-page-builder/src/service.rs:13:5
    [1m[94m|[0m
 [1m[94m10[0m [1m[94m|[0m     NoopPageBuilderRuntimeTelemetry, PageBuilderRuntimeCallEvidence, PageBuilderRuntimeTelemetry,
    [1m[94m|[0m     [1m[94m-------------------------------[0m [1m[94mprevious import of the type `NoopPageBuilderRuntimeTelemetry` here[0m
@@ -864,7 +864,7 @@
    [1m[94m= [0m[1mnote[0m: `NoopPageBuilderRuntimeTelemetry` must be defined only once in the type namespace of this module
 
 [1m[91merror[E0252][0m[1m: the name `PageBuilderRuntimeCallEvidence` is defined multiple times[0m
-  [1m[94m--> [0mcrates/rustok-page-builder/src/service.rs:13:38
+  [1m[94m--> [0mcrates/modules/rustok-page-builder/src/service.rs:13:38
    [1m[94m|[0m
 [1m[94m10[0m [1m[94m|[0m     NoopPageBuilderRuntimeTelemetry, PageBuilderRuntimeCallEvidence, PageBuilderRuntimeTelemetry,
    [1m[94m|[0m                                      [1m[94m------------------------------[0m [1m[94mprevious import of the type `PageBuilderRuntimeCallEvidence` here[0m
@@ -878,7 +878,7 @@
    [1m[94m= [0m[1mnote[0m: `PageBuilderRuntimeCallEvidence` must be defined only once in the type namespace of this module
 
 [1m[33mwarning[0m[1m: unused imports: `NoopPageBuilderRuntimeTelemetry`, `PageBuilderRuntimeCallEvidence`, and `PageBuilderRuntimeTelemetry`[0m
-  [1m[94m--> [0mcrates/rustok-page-builder/src/service.rs:13:5
+  [1m[94m--> [0mcrates/modules/rustok-page-builder/src/service.rs:13:5
    [1m[94m|[0m
 [1m[94m13[0m [1m[94m|[0m     NoopPageBuilderRuntimeTelemetry, PageBuilderRuntimeCallEvidence, PageBuilderRuntimeTelemetry,
    [1m[94m|[0m     [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m  [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m  [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
@@ -886,7 +886,7 @@
    [1m[94m= [0m[1mnote[0m: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
 
 [1m[91merror[E0433][0m[1m: `crate` in paths can only be used in start position[0m
-    [1m[94m--> [0mcrates/rustok-page-builder/src/service.rs:1295:39
+    [1m[94m--> [0mcrates/modules/rustok-page-builder/src/service.rs:1295:39
      [1m[94m|[0m
 [1m[94m1295[0m [1m[94m|[0m             crate::runtime_telemetry::crate::runtime_telemetry::PageBuilderRuntimeCallStatus::Started
      [1m[94m|[0m                                       [1m[91m^^^^^[0m [1m[91mcan only be used in path start position[0m
@@ -902,7 +902,7 @@
      [1m[94m|[0m
 
 [1m[91merror[E0433][0m[1m: `crate` in paths can only be used in start position[0m
-    [1m[94m--> [0mcrates/rustok-page-builder/src/service.rs:1307:39
+    [1m[94m--> [0mcrates/modules/rustok-page-builder/src/service.rs:1307:39
      [1m[94m|[0m
 [1m[94m1307[0m [1m[94m|[0m             crate::runtime_telemetry::crate::runtime_telemetry::PageBuilderRuntimeCallStatus::Failed
      [1m[94m|[0m                                       [1m[91m^^^^^[0m [1m[91mcan only be used in path start position[0m

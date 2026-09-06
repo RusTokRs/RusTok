@@ -16,7 +16,7 @@ Gate acceptance must require both branches. It must not replace the rollout-only
 
 ## Acceptance source
 
-`crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json` defines the source-only owner-decision boundary.
+`crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json` defines the source-only owner-decision boundary.
 
 `scripts/evidence/accept-pages-reference-consumer-gate.mjs` requires:
 
@@ -107,7 +107,7 @@ accepted Pages gate packet
 -> observed Forum control-plane Wave
 ```
 
-`crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json` requires the accepted gate packet together with exact-source Forum browser, runtime-authorization and server-function evidence. Forum Wave admission is source-ready but maintainer execution remains pending, so the observed Wave is still blocked on admitted exact-source inputs.
+`crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json` requires the accepted gate packet together with exact-source Forum browser, runtime-authorization and server-function evidence. Forum Wave admission is source-ready but maintainer execution remains pending, so the observed Wave is still blocked on admitted exact-source inputs.
 
 Only maintainer-produced accepted gate evidence can enter that admission runner, and admission itself still does not accept Forum Wave.
 
@@ -116,7 +116,7 @@ Only maintainer-produced accepted gate evidence can enter that admission runner,
 Source verifier:
 
 ```text
-crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
 ```
 
 It locks the dual packet lineage, exact source/RepoDigest binding, exact candidate command records, fail-closed source gate, historical-health semantics, explicit owner/rollback decisions, the downstream Forum admission cursor and non-promotion boundaries.

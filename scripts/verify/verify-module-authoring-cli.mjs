@@ -6,35 +6,35 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const cliRoot = path.join(root, 'crates/rustok-modules/cli');
+const cliRoot = path.join(root, 'crates/modules/rustok-modules/cli');
 const manifest = fs.readFileSync(path.join(cliRoot, 'Cargo.toml'), 'utf8');
 const source = fs.readFileSync(path.join(cliRoot, 'src/lib.rs'), 'utf8');
 const sandboxHarness = fs.readFileSync(
-  path.join(root, 'crates/rustok-sandbox/src/harness.rs'),
+  path.join(root, 'crates/workers/rustok-sandbox/src/harness.rs'),
   'utf8',
 );
 const authoringOwner = fs.readFileSync(
-  path.join(root, 'crates/rustok-modules/src/authoring.rs'),
+  path.join(root, 'crates/modules/rustok-modules/src/authoring.rs'),
   'utf8',
 );
 const governanceOwner = fs.readFileSync(
-  path.join(root, 'crates/rustok-modules/src/governance.rs'),
+  path.join(root, 'crates/modules/rustok-modules/src/governance.rs'),
   'utf8',
 );
 const publishValidation = fs.readFileSync(
-  path.join(root, 'crates/rustok-modules/src/publish_validation.rs'),
+  path.join(root, 'crates/modules/rustok-modules/src/publish_validation.rs'),
   'utf8',
 );
 const moduleManifest = fs.readFileSync(
-  path.join(root, 'crates/rustok-modules/rustok-module.toml'),
+  path.join(root, 'crates/modules/rustok-modules/rustok-module.toml'),
   'utf8',
 );
 const registryManifest = fs.readFileSync(
-  path.join(root, 'crates/rustok-cli-registry/Cargo.toml'),
+  path.join(root, 'crates/utils/rustok-cli-registry/Cargo.toml'),
   'utf8',
 );
 const registry = fs.readFileSync(
-  path.join(root, 'crates/rustok-cli-registry/src/generated.rs'),
+  path.join(root, 'crates/utils/rustok-cli-registry/src/generated.rs'),
   'utf8',
 );
 const serverManifest = fs.readFileSync(path.join(root, 'apps/server/Cargo.toml'), 'utf8');

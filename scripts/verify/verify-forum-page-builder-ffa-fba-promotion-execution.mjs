@@ -51,16 +51,16 @@ function forbidText(source, marker, label) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-execution-source.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-execution-source.json";
 const reviewContractPath =
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json";
 const runnerPath = "scripts/evidence/execute-forum-page-builder-ffa-fba-promotion.mjs";
 const testsPath = "scripts/evidence/execute-forum-page-builder-ffa-fba-promotion.test.mjs";
 const resolverPath = "apps/server/src/graphql/module_settings_cas.rs";
 const servicePath = "apps/server/src/services/module_rollout_promotion_settings.rs";
-const lifecyclePath = "crates/rustok-modules/src/lifecycle_writer.rs";
-const storePath = "crates/rustok-modules/src/operation_store.rs";
-const snapshotPath = "crates/rustok-pages/src/graphql/builder_rollout.rs";
+const lifecyclePath = "crates/modules/rustok-modules/src/lifecycle_writer.rs";
+const storePath = "crates/modules/rustok-modules/src/operation_store.rs";
+const snapshotPath = "crates/modules/rustok-pages/src/graphql/builder_rollout.rs";
 const actualizationPath =
   "docs/modules/forum-page-builder-ffa-fba-promotion-review-actualization-2026-08-12.md";
 const planPath = "docs/modules/pages-page-builder-parity-continuation-plan.md";

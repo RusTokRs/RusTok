@@ -41,11 +41,11 @@ for (const marker of [
 }
 
 for (const pathMarker of [
-  '"crates/rustok-channel/**"',
-  '"crates/rustok-product/**"',
-  '"crates/rustok-index/**"',
-  '"crates/rustok-distribution/src/product_index/**"',
-  '"crates/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"',
+  '"crates/modules/rustok-channel/**"',
+  '"crates/modules/rustok-product/**"',
+  '"crates/modules/rustok-index/**"',
+  '"crates/modules/rustok-distribution/src/product_index/**"',
+  '"crates/modules/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"',
   '"scripts/verify/verify-index-product-current-schema-promotion.mjs"',
   '"scripts/verify/verify-index-product-current-schema-promotion-postgres-packet.mjs"',
   '"scripts/verify/verify-index-product-current-schema-promotion-evidence.mjs"',

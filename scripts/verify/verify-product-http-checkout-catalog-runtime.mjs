@@ -40,11 +40,11 @@ function findFunctionBody(source, functionName) {
   return null;
 }
 
-const runtimePath = "crates/rustok-commerce/src/controllers/mod.rs";
-const checkoutPath = "crates/rustok-commerce/src/controllers/store/checkout.rs";
-const stagedPath = "crates/rustok-commerce/src/storefront_staged_checkout_runtime.rs";
-const registryPath = "crates/rustok-product/contracts/product-fba-registry.json";
-const planPath = "crates/rustok-product/docs/implementation-plan.md";
+const runtimePath = "crates/modules/rustok-commerce/src/controllers/mod.rs";
+const checkoutPath = "crates/modules/rustok-commerce/src/controllers/store/checkout.rs";
+const stagedPath = "crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs";
+const registryPath = "crates/modules/rustok-product/contracts/product-fba-registry.json";
+const planPath = "crates/modules/rustok-product/docs/implementation-plan.md";
 const runtime = read(runtimePath);
 const checkout = read(checkoutPath);
 const staged = read(stagedPath);

@@ -191,16 +191,16 @@ Queue semantics:
 
 ### Wave 1 — Core modules
 
-- [x] `core/modules` — `crates/rustok-modules`
-- [x] `core/auth` — `crates/rustok-auth` — blocked
-- [x] `core/cache` — `crates/rustok-cache` — blocked
-- [x] `core/channel` — `crates/rustok-channel` — blocked
-- [x] `core/email` — `crates/rustok-email` — blocked
-- [x] `core/index` — `crates/rustok-index` — blocked
-- [x] `core/search` — `crates/rustok-search` — blocked
-- [x] `core/outbox` — `crates/rustok-outbox` — blocked
-- [x] `core/tenant` — `crates/rustok-tenant` — blocked
-- [ ] `core/rbac` — `crates/rustok-rbac` — in_progress
+- [x] `core/modules` — `crates/modules/rustok-modules`
+- [x] `core/auth` — `crates/modules/rustok-auth` — blocked
+- [x] `core/cache` — `crates/modules/rustok-cache` — blocked
+- [x] `core/channel` — `crates/modules/rustok-channel` — blocked
+- [x] `core/email` — `crates/modules/rustok-email` — blocked
+- [x] `core/index` — `crates/modules/rustok-index` — blocked
+- [x] `core/search` — `crates/modules/rustok-search` — blocked
+- [x] `core/outbox` — `crates/modules/rustok-outbox` — blocked
+- [x] `core/tenant` — `crates/modules/rustok-tenant` — blocked
+- [ ] `core/rbac` — `crates/modules/rustok-rbac` — in_progress
 - [ ] Core interaction sweep — auth/tenant/RBAC generation and caches; channel/locale
   cache dimensions; transactional events/outbox; index/search replay and rebuild;
   lifecycle and migration ordering.
@@ -230,14 +230,14 @@ Use the Core Integrity and RBAC/Server companion plans.
 
 ### Wave 3 — Non-module foundation and shared runtime
 
-- [ ] `foundation/rustok-core` — `crates/rustok-core`
-- [ ] `foundation/rustok-api` — `crates/rustok-api`
-- [ ] `foundation/rustok-runtime` — `crates/rustok-runtime`
-- [ ] `foundation/rustok-web` — `crates/rustok-web`
-- [ ] `foundation/rustok-events` — `crates/rustok-events`
-- [ ] `foundation/rustok-storage` — `crates/rustok-storage`
-- [ ] `foundation/rustok-telemetry` — `crates/rustok-telemetry`
-- [ ] `foundation/rustok-test-utils` — `crates/rustok-test-utils`
+- [ ] `foundation/rustok-core` — `crates/libs/rustok-core`
+- [ ] `foundation/rustok-api` — `crates/libs/rustok-api`
+- [ ] `foundation/rustok-runtime` — `crates/libs/rustok-runtime`
+- [ ] `foundation/rustok-web` — `crates/libs/rustok-web`
+- [ ] `foundation/rustok-events` — `crates/libs/rustok-events`
+- [ ] `foundation/rustok-storage` — `crates/utils/rustok-storage`
+- [ ] `foundation/rustok-telemetry` — `crates/libs/rustok-telemetry`
+- [ ] `foundation/rustok-test-utils` — `crates/utils/rustok-test-utils`
 - [ ] Foundation interaction sweep — public ownership, dependency direction,
   transaction/event primitives, typed context, telemetry, and test fidelity.
 
@@ -303,7 +303,7 @@ frontend, and Leptos-library companion plans.
 For `page_builder/pages`, also run:
 
 ```powershell
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs
 ```
 
 ## Cycle completion and reset

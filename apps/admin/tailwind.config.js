@@ -5,8 +5,8 @@ module.exports = {
     "./src/**/*.rs",
     "./index.html",
     "../../crates/**/admin/src/**/*.rs",
-    "../../crates/leptos-ui/src/**/*.rs",
-    "../../crates/leptos-*/src/**/*.rs",
+    "../../crates/ui/leptos-ui/src/**/*.rs",
+    "../../crates/ui/leptos-*/src/**/*.rs",
   ],
   theme: {
     extend: {

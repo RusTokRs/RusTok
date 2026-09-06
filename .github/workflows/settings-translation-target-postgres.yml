@@ -4,11 +4,11 @@ on:
   pull_request:
     paths:
       - "apps/server/**"
-      - "crates/rustok-migrations/**"
-      - "crates/rustok-modules/**"
-      - "crates/rustok-modules-translation/**"
-      - "crates/rustok-outbox/**"
-      - "crates/rustok-translation-targets/**"
+      - "crates/utils/rustok-migrations/**"
+      - "crates/modules/rustok-modules/**"
+      - "crates/modules/rustok-modules-translation/**"
+      - "crates/modules/rustok-outbox/**"
+      - "crates/modules/rustok-translation-targets/**"
       - "docs/modules/translation-implementation-plan.md"
       - "docs/modules/translation-surfaces.json"
       - ".github/workflows/settings-translation-target-postgres.yml"
@@ -17,11 +17,11 @@ on:
       - main
     paths:
       - "apps/server/**"
-      - "crates/rustok-migrations/**"
-      - "crates/rustok-modules/**"
-      - "crates/rustok-modules-translation/**"
-      - "crates/rustok-outbox/**"
-      - "crates/rustok-translation-targets/**"
+      - "crates/utils/rustok-migrations/**"
+      - "crates/modules/rustok-modules/**"
+      - "crates/modules/rustok-modules-translation/**"
+      - "crates/modules/rustok-outbox/**"
+      - "crates/modules/rustok-translation-targets/**"
       - "docs/modules/translation-implementation-plan.md"
       - "docs/modules/translation-surfaces.json"
       - ".github/workflows/settings-translation-target-postgres.yml"

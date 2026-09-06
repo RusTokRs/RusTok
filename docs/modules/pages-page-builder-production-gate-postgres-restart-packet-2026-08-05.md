@@ -49,8 +49,8 @@ ordinary Pages module listener
 ## Source retained
 
 - `apps/server/tests/pages_production_gate_postgres_restart.rs`
-- `crates/rustok-pages/contracts/evidence/pages-production-gate-postgres-restart-source.json`
-- `crates/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs`
+- `crates/modules/rustok-pages/contracts/evidence/pages-production-gate-postgres-restart-source.json`
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs`
 
 The harness is gated by `RUSTOK_PAGES_TEST_DATABASE_URL`, with `DATABASE_URL` as fallback. Each run creates an isolated PostgreSQL schema, applies the real `OutboxModule` and `PagesModule` migrations, and drops the schema at completion.
 
@@ -75,10 +75,10 @@ This source slice does not:
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs
 
 cargo test -p rustok-server --features mod-pages \
   --test pages_production_gate_postgres_restart -- --nocapture

@@ -10,9 +10,9 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const controller = read('crates/rustok-workflow/src/controllers/executions.rs');
-const ownerError = read('crates/rustok-workflow/src/error.rs');
-const ownerService = read('crates/rustok-workflow/src/services/workflow_service.rs');
+const controller = read('crates/modules/rustok-workflow/src/controllers/executions.rs');
+const ownerError = read('crates/modules/rustok-workflow/src/error.rs');
+const ownerService = read('crates/modules/rustok-workflow/src/services/workflow_service.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {

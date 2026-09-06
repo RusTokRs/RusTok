@@ -16,14 +16,14 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution-contract.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution-contract.json";
 const expectedSourceContract =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json";
 const expectedRunner = "scripts/evidence/capture-iggy-dlq-duplicate-external-scan.mjs";
 const expectedVerifier =
   "scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs";
 const expectedEvidence =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution.json";
 const expectedCase =
   "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset";
 const expectedCommand = {

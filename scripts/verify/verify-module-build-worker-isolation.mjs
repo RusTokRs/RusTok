@@ -5,23 +5,23 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const workerRoot = path.join(root, 'crates/rustok-module-build-worker');
+const workerRoot = path.join(root, 'crates/workers/rustok-module-build-worker');
 const workerManifest = path.join(workerRoot, 'Cargo.toml');
 const jobLauncherPath = path.join(workerRoot, 'src/runner.rs');
 const readinessProbePath = path.join(workerRoot, 'src/bin/rustok-module-build-worker-probe.rs');
 const artifactPath = path.join(workerRoot, 'src/artifact.rs');
-const artifactContractPath = path.join(root, 'crates/rustok-modules/src/artifact.rs');
-const buildContractPath = path.join(root, 'crates/rustok-modules/src/build.rs');
-const authoringPath = path.join(root, 'crates/rustok-modules/src/authoring.rs');
-const authoringCliPath = path.join(root, 'crates/rustok-modules/cli/src/lib.rs');
+const artifactContractPath = path.join(root, 'crates/modules/rustok-modules/src/artifact.rs');
+const buildContractPath = path.join(root, 'crates/modules/rustok-modules/src/build.rs');
+const authoringPath = path.join(root, 'crates/modules/rustok-modules/src/authoring.rs');
+const authoringCliPath = path.join(root, 'crates/modules/rustok-modules/cli/src/lib.rs');
 const moduleTemplateManifestPath = path.join(
   root,
-  'crates/rustok-module-template/assets/Cargo.toml.template',
+  'crates/utils/rustok-module-template/assets/Cargo.toml.template',
 );
 const serverRoot = path.join(root, 'apps/server');
-const dispatcherRoot = path.join(root, 'crates/rustok-module-build-dispatcher');
-const transportServerPath = path.join(root, 'crates/rustok-module-build-transport/src/server.rs');
-const publicationRoot = path.join(root, 'crates/rustok-build-publication');
+const dispatcherRoot = path.join(root, 'crates/workers/rustok-module-build-dispatcher');
+const transportServerPath = path.join(root, 'crates/workers/rustok-module-build-transport/src/server.rs');
+const publicationRoot = path.join(root, 'crates/utils/rustok-build-publication');
 const signingPath = path.join(publicationRoot, 'src/signing.rs');
 const forbiddenDependencies = [
   'sea-orm',
@@ -66,13 +66,13 @@ const nativeDynamicLoaderPatterns = [
   /\bLibrary::new\s*\(/,
 ];
 const nativeDynamicBoundaryRoots = [
-  'crates/alloy/src',
-  'crates/rustok-modules/src',
-  'crates/rustok-modules/cli/src',
-  'crates/rustok-module-build-worker/src',
-  'crates/rustok-sandbox/src',
-  'crates/rustok-module-sdk/src',
-  'crates/rustok-module-template/src',
+  'crates/modules/alloy/src',
+  'crates/modules/rustok-modules/src',
+  'crates/modules/rustok-modules/cli/src',
+  'crates/workers/rustok-module-build-worker/src',
+  'crates/workers/rustok-sandbox/src',
+  'crates/utils/rustok-module-sdk/src',
+  'crates/utils/rustok-module-template/src',
 ];
 
 function fail(message) {

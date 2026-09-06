@@ -38,18 +38,18 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-product/admin/src/lib.rs";
-const corePath = "crates/rustok-product/admin/src/core.rs";
-const uiPath = "crates/rustok-product/admin/src/ui/leptos.rs";
-const transportPath = "crates/rustok-product/admin/src/transport.rs";
-const legacyApiPath = "crates/rustok-product/admin/src/api.rs";
-const graphqlAdapterPath = "crates/rustok-product/admin/src/transport/graphql_adapter.rs";
-const nativeAdapterPath = "crates/rustok-product/admin/src/transport/native_server_adapter.rs";
-const cargoPath = "crates/rustok-product/admin/Cargo.toml";
-const commerceQueryPath = "crates/rustok-commerce/src/graphql/query.rs";
-const commerceCatalogMutationPath = "crates/rustok-commerce/src/graphql/mutations/catalog.rs";
-const commerceTypesPath = "crates/rustok-commerce/src/graphql/types.rs";
-const implementationPlanPath = "crates/rustok-product/docs/implementation-plan.md";
+const libPath = "crates/modules/rustok-product/admin/src/lib.rs";
+const corePath = "crates/modules/rustok-product/admin/src/core.rs";
+const uiPath = "crates/modules/rustok-product/admin/src/ui/leptos.rs";
+const transportPath = "crates/modules/rustok-product/admin/src/transport.rs";
+const legacyApiPath = "crates/modules/rustok-product/admin/src/api.rs";
+const graphqlAdapterPath = "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs";
+const nativeAdapterPath = "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs";
+const cargoPath = "crates/modules/rustok-product/admin/Cargo.toml";
+const commerceQueryPath = "crates/modules/rustok-commerce/src/graphql/query.rs";
+const commerceCatalogMutationPath = "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs";
+const commerceTypesPath = "crates/modules/rustok-commerce/src/graphql/types.rs";
+const implementationPlanPath = "crates/modules/rustok-product/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 

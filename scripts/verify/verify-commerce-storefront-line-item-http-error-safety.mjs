@@ -10,15 +10,15 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const carts = read('crates/rustok-commerce/src/controllers/store/carts.rs');
+const carts = read('crates/modules/rustok-commerce/src/controllers/store/carts.rs');
 const boundary = read(
-  'crates/rustok-commerce/src/controllers/store/line_item_resolution.rs',
+  'crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs',
 );
-const portContract = read('crates/rustok-api/src/ports.rs');
-const commerceErrors = read('crates/rustok-commerce-foundation/src/error.rs');
-const inventoryOwner = read('crates/rustok-inventory/src/services/public_channel.rs');
-const productTests = read('crates/rustok-commerce/src/controllers/store/tests/products.rs');
-const testRoot = read('crates/rustok-commerce/src/controllers/store/tests/mod.rs');
+const portContract = read('crates/libs/rustok-api/src/ports.rs');
+const commerceErrors = read('crates/modules/rustok-commerce-foundation/src/error.rs');
+const inventoryOwner = read('crates/modules/rustok-inventory/src/services/public_channel.rs');
+const productTests = read('crates/modules/rustok-commerce/src/controllers/store/tests/products.rs');
+const testRoot = read('crates/modules/rustok-commerce/src/controllers/store/tests/mod.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {

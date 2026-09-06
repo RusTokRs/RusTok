@@ -56,16 +56,16 @@ function fixture({
   publicSearchPathFallback = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-comments-projection-'));
-  const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
-  const handlerPath = 'crates/rustok-blog/src/services/comment_projection.rs';
-  const postgresHarnessPath = 'crates/rustok-blog/tests/comment_projection_postgres_test.rs';
-  const restartHarnessPath = 'crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs';
-  const serviceExportPath = 'crates/rustok-blog/src/services/mod.rs';
-  const entityPath = 'crates/rustok-blog/src/entities/blog_comment_projection_delivery.rs';
-  const migrationPath = 'crates/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs';
-  const migrationRegistryPath = 'crates/rustok-blog/src/migrations/mod.rs';
-  const modulePath = 'crates/rustok-blog/src/lib.rs';
-  const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
+  const evidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
+  const handlerPath = 'crates/modules/rustok-blog/src/services/comment_projection.rs';
+  const postgresHarnessPath = 'crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs';
+  const restartHarnessPath = 'crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs';
+  const serviceExportPath = 'crates/modules/rustok-blog/src/services/mod.rs';
+  const entityPath = 'crates/modules/rustok-blog/src/entities/blog_comment_projection_delivery.rs';
+  const migrationPath = 'crates/modules/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs';
+  const migrationRegistryPath = 'crates/modules/rustok-blog/src/migrations/mod.rs';
+  const modulePath = 'crates/modules/rustok-blog/src/lib.rs';
+  const registryPath = 'crates/modules/rustok-blog/contracts/blog-fba-registry.json';
   const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
   const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing';
   const dispatcherHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact';
@@ -541,7 +541,7 @@ assert!(!handler.handles(&forum_created));
   );
   write(
     root,
-    'crates/rustok-blog/docs/implementation-plan.md',
+    'crates/modules/rustok-blog/docs/implementation-plan.md',
     'blog-comments-event-projection.json verify:blog:comments-event-projection test:verify:blog:comments-event-projection source_verified_no_compile services::comment_projection::tests ProjectionUpdateDecision seven retry decisions tests::module_registers_comment_projection_handler_with_host_routing event_dispatcher_routes_registered_handler_and_commits_projection concurrent_created_events_converge_without_lost_updates optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears eight zero-row same envelope restarted_process_reuses_delivery_ledger_without_reapplying_counter comment_projection_postgres_test comment_projection_restart_postgres_test RUSTOK_BLOG_TEST_DATABASE_URL EventBus EventDispatcher independent PostgreSQL connections two sequential OS test processes server-host restart',
   );
 

@@ -11,11 +11,11 @@ import { spawnSync } from 'node:child_process';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const verifier = path.join(repositoryRoot, 'scripts/verify/verify-blog-tag-pagination-source.mjs');
 const files = [
-  'crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
-  'crates/rustok-blog/src/services/tag.rs',
-  'crates/rustok-blog/src/dto/tag.rs',
-  'crates/rustok-blog/docs/implementation-plan-slice-102.md',
-  'crates/rustok-blog/docs/implementation-plan-current.md',
+  'crates/modules/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
+  'crates/modules/rustok-blog/src/services/tag.rs',
+  'crates/modules/rustok-blog/src/dto/tag.rs',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-102.md',
+  'crates/modules/rustok-blog/docs/implementation-plan-current.md',
 ];
 
 function target(root, relativePath) {
@@ -76,7 +76,7 @@ test('rejects removal of the owner page-size clamp', () => {
   const result = rejects((root) => {
     replace(
       root,
-      'crates/rustok-blog/src/services/tag.rs',
+      'crates/modules/rustok-blog/src/services/tag.rs',
       'let per_page = bounded_tag_page_size(filter.per_page);',
       'let per_page = filter.per_page.max(1);',
     );
@@ -89,7 +89,7 @@ test('rejects unsafe multiplication in the page offset', () => {
   const result = rejects((root) => {
     replace(
       root,
-      'crates/rustok-blog/src/services/tag.rs',
+      'crates/modules/rustok-blog/src/services/tag.rs',
       'let offset = tag_page_offset(page, per_page);',
       'let offset = ((page - 1) * per_page) as usize;',
     );
@@ -102,7 +102,7 @@ test('rejects removal of the published DTO maximum', () => {
   const result = rejects((root) => {
     replace(
       root,
-      'crates/rustok-blog/src/dto/tag.rs',
+      'crates/modules/rustok-blog/src/dto/tag.rs',
       '#[param(minimum = 1, maximum = 100)]',
       '#[param(minimum = 1)]',
     );
@@ -113,7 +113,7 @@ test('rejects removal of the published DTO maximum', () => {
 
 test('rejects runtime promotion without execution', () => {
   const result = rejects((root) => {
-    const relativePath = 'crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json';
+    const relativePath = 'crates/modules/rustok-blog/contracts/evidence/blog-tag-pagination-source.json';
     const value = JSON.parse(readFileSync(target(root, relativePath), 'utf8'));
     value.runtime_status = 'passed';
     write(root, relativePath, `${JSON.stringify(value, null, 2)}\n`);
@@ -124,7 +124,7 @@ test('rejects runtime promotion without execution', () => {
 
 test('rejects claiming database-side pagination', () => {
   const result = rejects((root) => {
-    const relativePath = 'crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json';
+    const relativePath = 'crates/modules/rustok-blog/contracts/evidence/blog-tag-pagination-source.json';
     const value = JSON.parse(readFileSync(target(root, relativePath), 'utf8'));
     value.source_contract.database_side_pagination_claimed = true;
     write(root, relativePath, `${JSON.stringify(value, null, 2)}\n`);

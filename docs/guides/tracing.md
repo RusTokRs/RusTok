@@ -14,7 +14,7 @@ The complete distributed tracing guide is in [`docs/standards/distributed-tracin
 
 RusToK uses OpenTelemetry + `tracing` crate for end-to-end request tracing.
 
-- **Crate:** `crates/rustok-telemetry`
+- **Crate:** `crates/libs/rustok-telemetry`
 - **Export protocol:** OTLP (compatible with Jaeger, Tempo, Honeycomb, etc.)
 - **Correlation:** every span contains `tenant_id`, `request_id`, `trace_id`
 

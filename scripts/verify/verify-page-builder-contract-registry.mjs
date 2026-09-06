@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const target = resolve(
   __dirname,
-  '../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs',
+  '../../crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs',
 );
 
 const result = spawnSync(process.execPath, [target, ...process.argv.slice(2)], {

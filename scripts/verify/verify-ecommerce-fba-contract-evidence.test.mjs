@@ -43,7 +43,7 @@ const createFixtureRoot = ({ mutateEvidence } = {}) => {
     module: moduleSlug,
     packet: 'contract-test-placeholder-matrix',
     status: 'static_matrix_locked',
-    generated_from: 'crates/rustok-pricing/contracts/pricing-fba-registry.json',
+    generated_from: 'crates/modules/rustok-pricing/contracts/pricing-fba-registry.json',
     runner: 'scripts/verify/verify-ecommerce-fba-contract-evidence.mjs',
     contract_version: registry.contract_version,
     profiles: registry.contract_tests.profiles,
@@ -59,8 +59,8 @@ const createFixtureRoot = ({ mutateEvidence } = {}) => {
     promotion_gate: 'does_not_raise_boundary_ready_without_runtime_execution',
   };
   mutateEvidence?.(evidence);
-  write('crates/rustok-pricing/contracts/pricing-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
-  write('crates/rustok-pricing/contracts/evidence/pricing-contract-test-static-matrix.json', `${JSON.stringify(evidence, null, 2)}\n`);
+  write('crates/modules/rustok-pricing/contracts/pricing-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
+  write('crates/modules/rustok-pricing/contracts/evidence/pricing-contract-test-static-matrix.json', `${JSON.stringify(evidence, null, 2)}\n`);
   return pathToFileURL(`${rootPath}/`);
 };
 

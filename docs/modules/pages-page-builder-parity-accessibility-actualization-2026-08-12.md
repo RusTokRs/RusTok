@@ -45,7 +45,7 @@ node scripts/verify/verify-page-builder-admin-accessibility.mjs
 node scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs
 node scripts/verify/verify-page-builder-accessibility-browser-packet-verifier.mjs
 node scripts/evidence/verify-page-builder-accessibility-browser-packet.test.mjs
-node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 node scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs
 ```
 
@@ -55,7 +55,7 @@ The workflow has `contents: read` only. It validates retained source/contracts a
 
 ## Rendered accessibility evidence continuation
 
-PR #3453 adds `crates/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs` to the ordinary `rustok-page-builder-admin` unit-test target. Unlike the static source guard, these tests render the real Leptos `PageBuilderAdmin` with a concrete `AdminCanvasController` and assert facts in the generated HTML. The focused `cargo test -p rustok-page-builder-admin --lib` execution was retained green for that slice.
+PR #3453 adds `crates/modules/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs` to the ordinary `rustok-page-builder-admin` unit-test target. Unlike the static source guard, these tests render the real Leptos `PageBuilderAdmin` with a concrete `AdminCanvasController` and assert facts in the generated HTML. The focused `cargo test -p rustok-page-builder-admin --lib` execution was retained green for that slice.
 
 The retained SSR evidence covers only a bounded subset of the open execution cursor:
 
@@ -70,7 +70,7 @@ This is executable rendered-DOM evidence, not a browser accessibility-tree, keyb
 
 PR #3456 retained an exact-source/deployment Playwright packet rather than a synthetic HTML fixture:
 
-- contract: `crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json`;
+- contract: `crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json`;
 - runner: `apps/next-admin/tests/page-builder-accessibility/browser-evidence.spec.ts`;
 - config: `apps/next-admin/playwright.page-builder-accessibility.config.ts`;
 - stale-output guard: `apps/next-admin/tests/page-builder-accessibility/global-setup.ts`;
@@ -96,7 +96,7 @@ Even after a passing browser packet exists, **screen-reader execution remains pe
 
 The next source slice adds a separate fail-closed verifier for a maintainer-produced browser packet:
 
-- verifier source contract: `crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json`;
+- verifier source contract: `crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json`;
 - verifier runner: `scripts/evidence/verify-page-builder-accessibility-browser-packet.mjs`;
 - synthetic verifier cases: `scripts/evidence/verify-page-builder-accessibility-browser-packet.test.mjs`;
 - verifier anti-drift guard: `scripts/verify/verify-page-builder-accessibility-browser-packet-verifier.mjs`.

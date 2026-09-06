@@ -63,7 +63,7 @@ The public `pages` helper now passes the same tenant default locale to the fallb
 
 ## Focused regression
 
-`crates/rustok-pages/tests/page_locale_fallback.rs` retains:
+`crates/modules/rustok-pages/tests/page_locale_fallback.rs` retains:
 
 ```text
 requested locale: fr
@@ -84,12 +84,12 @@ The selected detail and public list now resolve the same translation for this sc
 
 ## Source evidence
 
-- `crates/rustok-pages/contracts/evidence/pages-public-list-locale-fallback-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-public-list-locale-fallback.mjs`;
-- `crates/rustok-pages/tests/page_locale_fallback.rs`;
-- `crates/rustok-pages/src/services/page/read.rs`;
-- `crates/rustok-pages/src/graphql/query.rs`;
-- `crates/rustok-pages/storefront/src/transport/native_server_adapter.rs`.
+- `crates/modules/rustok-pages/contracts/evidence/pages-public-list-locale-fallback-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-public-list-locale-fallback.mjs`;
+- `crates/modules/rustok-pages/tests/page_locale_fallback.rs`;
+- `crates/modules/rustok-pages/src/services/page/read.rs`;
+- `crates/modules/rustok-pages/src/graphql/query.rs`;
+- `crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs`.
 
 ## Boundaries
 
@@ -113,12 +113,12 @@ It does not:
 Suggested commands, intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-public-list-locale-fallback.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-public-list-locale-fallback.mjs
 cargo test -p rustok-pages --test page_locale_fallback -- --nocapture
 
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-server-fn.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-channel-admission.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-server-fn.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-channel-admission.mjs
 ```
 
 Execution evidence remains pending.

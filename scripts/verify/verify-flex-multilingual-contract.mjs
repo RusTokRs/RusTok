@@ -23,17 +23,17 @@ function expectNotContains(relativePath, unexpectedSnippet, description) {
 }
 
 expectContains(
-  "crates/rustok-migrations/src/lib.rs",
+  "crates/utils/rustok-migrations/src/lib.rs",
   "m20260410_000001_cleanup_flex_attached_legacy_inline_metadata",
   "flex attached cleanup migration to be wired into the platform migrator",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "let resolved_localized = localized_data.and_then(|value| value.as_object().cloned());",
   "standalone entry view to resolve only parallel localized rows in owner crate",
 );
 expectNotContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "or_else(|| {\n                if legacy_localized.is_empty() {",
   "legacy inline localized fallback branch in standalone owner runtime",
 );
@@ -60,7 +60,7 @@ for (const snippet of [
   "struct PreparedAttachedValuesWrite",
 ]) {
   expectContains(
-    "crates/flex/src/attached.rs",
+    "crates/modules/flex/src/attached.rs",
     snippet,
     "owner-owned attached Flex payload helper",
   );
@@ -71,17 +71,17 @@ for (const snippet of [
   );
 }
 expectContains(
-  "crates/flex/src/attached.rs",
+  "crates/modules/flex/src/attached.rs",
   "or_else(|| localized_by_locale.values().next().cloned())",
   "attached payload resolution to fall back only to existing localized rows",
 );
 expectNotContains(
-  "crates/flex/src/attached.rs",
+  "crates/modules/flex/src/attached.rs",
   "first_available_localized_values",
   "first-available attached locale fallback in authoring",
 );
 expectContains(
-  "crates/flex/src/attached.rs",
+  "crates/modules/flex/src/attached.rs",
   "FlexError::InvalidLocale(locale.to_string())",
   "attached authoring to reject an invalid locale instead of using a fallback",
 );
@@ -91,22 +91,22 @@ expectContains(
   "standalone authoring to select an exact locale localization",
 );
 expectNotContains(
-  "crates/flex/src/attached.rs",
+  "crates/modules/flex/src/attached.rs",
   "unwrap_or_else(|| Value::Object(legacy_localized.into_iter().collect()))",
   "legacy inline localized fallback in attached update path",
 );
 expectNotContains(
-  "crates/flex/src/attached.rs",
+  "crates/modules/flex/src/attached.rs",
   "Some(legacy_localized)",
   "legacy inline localized fallback in attached read path",
 );
 expectContains(
-  "crates/flex/README.md",
+  "crates/modules/flex/README.md",
   "Cleanup migrations remove residual inline locale-aware Flex payloads",
   "flex README to document migration-based cleanup",
 );
 expectContains(
-  "crates/flex/docs/README.md",
+  "crates/modules/flex/docs/README.md",
   "runtime path must not read donor/base-row inline localized JSON as a canonical fallback",
   "flex docs to ban inline localized runtime fallback",
 );

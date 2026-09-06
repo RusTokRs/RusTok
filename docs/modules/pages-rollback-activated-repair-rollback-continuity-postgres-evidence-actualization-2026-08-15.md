@@ -21,9 +21,9 @@ No open competing PR for this target was found at the fresh-base recheck.
 
 The source-ready packet remains:
 
-- `crates/rustok-pages/tests/artifact_rollback_activated_repair_rollback_continuity_postgres.rs`;
-- `crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-repair-rollback-continuity.mjs`;
-- `crates/rustok-pages/contracts/evidence/pages-rollback-activated-repair-rollback-continuity-source.json`;
+- `crates/modules/rustok-pages/tests/artifact_rollback_activated_repair_rollback_continuity_postgres.rs`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-rollback-activated-repair-rollback-continuity.mjs`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-rollback-activated-repair-rollback-continuity-source.json`;
 - `docs/modules/pages-page-builder-rollback-activated-repair-rollback-continuity-actualization-2026-08-07.md`.
 
 The historical source contract deliberately remains `pages_rollback_activated_repair_rollback_continuity_source_unvalidated`, with empty `execution` and false execution/validation flags. Those fields are source-contract nonclaims and are **not** mutated by later workflow execution. Exact execution evidence is carried by the separate execution contract and retained exact-main receipt defined by this slice.
@@ -40,13 +40,13 @@ The verifier also keeps the repeated-loss latest-state rollback regression conne
 This slice adds:
 
 - `.github/workflows/pages-rollback-activated-repair-rollback-continuity-postgres-evidence.yml`;
-- `crates/rustok-pages/contracts/evidence/pages-rollback-activated-repair-rollback-continuity-postgres-execution.json`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-rollback-activated-repair-rollback-continuity-postgres-execution.json`;
 - this retained actualization.
 
 The workflow requires PostgreSQL 16 and Rust 1.96.0 and runs:
 
 ```text
-node crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-repair-rollback-continuity.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-rollback-activated-repair-rollback-continuity.mjs
 cargo test --locked -p rustok-pages --test artifact_rollback_activated_repair_rollback_continuity_postgres -- --nocapture
 cargo test --locked -p rustok-pages --test artifact_repeated_loss_recovery_postgres -- --nocapture
 cargo check --locked -p rustok-pages --all-targets

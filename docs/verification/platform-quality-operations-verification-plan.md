@@ -97,7 +97,7 @@ The check covers:
 
 ### 4.2 Local docs
 
-- [ ] Changed `apps/*` and `crates/*` synchronize root `README.md`, `docs/README.md` and `docs/implementation-plan.md`.
+- [ ] Changed `apps/*` and `crates/modules/*` synchronize root `README.md`, `docs/README.md` and `docs/implementation-plan.md`.
 - [ ] Public contracts in `README.md` remain in English, central docs in `docs/` are now also in English.
 - [ ] Documentation describes the actual source of truth, not temporary workarounds.
 

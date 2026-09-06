@@ -31,14 +31,14 @@ const between = (source, start, end, label) => {
   return source.slice(startIndex, endIndex);
 };
 
-const sourcePath = 'crates/rustok-order/src/order_read.rs';
+const sourcePath = 'crates/modules/rustok-order/src/order_read.rs';
 const evidencePath =
-  'crates/rustok-order/contracts/evidence/order-read-port-diagnostic-safety-source-review.json';
-const documentationPath = 'crates/rustok-order/docs/order-read-port-diagnostic-safety.md';
+  'crates/modules/rustok-order/contracts/evidence/order-read-port-diagnostic-safety-source-review.json';
+const documentationPath = 'crates/modules/rustok-order/docs/order-read-port-diagnostic-safety.md';
 const source = read(sourcePath);
 const evidence = JSON.parse(read(evidencePath));
 const documentation = read(documentationPath);
-const plan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 
 const contextFacts = between(
   source,
@@ -416,7 +416,7 @@ for (const reviewedPath of [
   sourcePath,
   documentationPath,
   evidencePath,
-  'crates/rustok-commerce/docs/implementation-plan.md',
+  'crates/modules/rustok-commerce/docs/implementation-plan.md',
   'scripts/verify/verify-order-read-port-diagnostic-safety.mjs',
 ]) {
   if (!evidence.reviewed_scope?.includes(reviewedPath)) {

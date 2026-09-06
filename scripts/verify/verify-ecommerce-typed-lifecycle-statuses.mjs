@@ -13,36 +13,36 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const cart = read('crates/rustok-cart/src/dto/status.rs');
-const cartLib = read('crates/rustok-cart/src/lib.rs');
-const cartAtomic = read('crates/rustok-cart/src/atomic_checkout_port.rs');
-const order = read('crates/rustok-order/src/status.rs');
-const orderLib = read('crates/rustok-order/src/lib.rs');
-const orderCompensation = read('crates/rustok-order/src/checkout_compensation.rs');
-const orderRecovery = read('crates/rustok-order/src/checkout_order_recovery.rs');
-const orderStageFacade = read('crates/rustok-commerce/src/services/checkout_order_stages.rs');
-const orderStageLegacy = read('crates/rustok-commerce/src/services/checkout_order_stages_legacy.rs');
+const cart = read('crates/modules/rustok-cart/src/dto/status.rs');
+const cartLib = read('crates/modules/rustok-cart/src/lib.rs');
+const cartAtomic = read('crates/modules/rustok-cart/src/atomic_checkout_port.rs');
+const order = read('crates/modules/rustok-order/src/status.rs');
+const orderLib = read('crates/modules/rustok-order/src/lib.rs');
+const orderCompensation = read('crates/modules/rustok-order/src/checkout_compensation.rs');
+const orderRecovery = read('crates/modules/rustok-order/src/checkout_order_recovery.rs');
+const orderStageFacade = read('crates/modules/rustok-commerce/src/services/checkout_order_stages.rs');
+const orderStageLegacy = read('crates/modules/rustok-commerce/src/services/checkout_order_stages_legacy.rs');
 const orderStage = `${orderStageFacade}\n${orderStageLegacy}`;
-const payment = read('crates/rustok-payment/src/dto/payment.rs');
-const paymentPorts = read('crates/rustok-payment/src/ports.rs');
+const payment = read('crates/modules/rustok-payment/src/dto/payment.rs');
+const paymentPorts = read('crates/modules/rustok-payment/src/ports.rs');
 const paymentStageFacade = read(
-  'crates/rustok-commerce/src/services/checkout_payment_stages.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_payment_stages.rs',
 );
 const paymentStageLegacy = read(
-  'crates/rustok-commerce/src/services/checkout_payment_stages_legacy.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_payment_stages_legacy.rs',
 );
 const paymentStage = `${paymentStageFacade}\n${paymentStageLegacy}`;
-const fulfillment = read('crates/rustok-fulfillment/src/status.rs');
+const fulfillment = read('crates/modules/rustok-fulfillment/src/status.rs');
 const fulfillmentTypedExecution = read(
-  'crates/rustok-fulfillment/src/checkout_execution_typed.rs',
+  'crates/modules/rustok-fulfillment/src/checkout_execution_typed.rs',
 );
-const fulfillmentLib = read('crates/rustok-fulfillment/src/lib.rs');
+const fulfillmentLib = read('crates/modules/rustok-fulfillment/src/lib.rs');
 const fulfillmentStage = read(
-  'crates/rustok-commerce/src/services/checkout_fulfillment_stages.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages.rs',
 );
-const finalization = read('crates/rustok-commerce/src/services/checkout_finalization.rs');
+const finalization = read('crates/modules/rustok-commerce/src/services/checkout_finalization.rs');
 const compensation = read(
-  'crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_compensation_owner_ports.rs',
 );
 
 requireText(
@@ -205,7 +205,7 @@ forbidText(
 );
 
 forbidText(cartLib, 'pub mod status;', 'duplicate cart status module export');
-if (existsSync(new URL('crates/rustok-cart/src/status.rs', root))) {
+if (existsSync(new URL('crates/modules/rustok-cart/src/status.rs', root))) {
   failures.push('duplicate cart lifecycle status file must not exist');
 }
 

@@ -3,10 +3,10 @@ name: Product Taxonomy Category Binding
 on:
   pull_request:
     paths:
-      - "crates/rustok-product/src/migrations/m20260828_000015_add_product_taxonomy_category_binding.rs"
-      - "crates/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs"
-      - "crates/rustok-product/src/migrations/mod.rs"
-      - "crates/rustok-product/docs/category-taxonomy-binding.md"
+      - "crates/modules/rustok-product/src/migrations/m20260828_000015_add_product_taxonomy_category_binding.rs"
+      - "crates/modules/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs"
+      - "crates/modules/rustok-product/src/migrations/mod.rs"
+      - "crates/modules/rustok-product/docs/category-taxonomy-binding.md"
       - "scripts/verify/verify-product-taxonomy-category-binding.mjs"
       - ".github/workflows/product-taxonomy-category-binding.yml"
 
@@ -42,6 +42,6 @@ jobs:
       - name: Verify Product Category binding seam
         run: node scripts/verify/verify-product-taxonomy-category-binding.mjs
       - name: Check Product formatting
-        run: cargo fmt --check --manifest-path crates/rustok-product/Cargo.toml
+        run: cargo fmt --check --manifest-path crates/modules/rustok-product/Cargo.toml
       - name: Compile Product migration seam
         run: cargo check -p rustok-product --lib

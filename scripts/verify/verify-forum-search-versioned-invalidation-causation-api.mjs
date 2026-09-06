@@ -30,20 +30,20 @@ function forbidMarker(source, marker, label) {
   }
 }
 
-const eventsContractPath = "crates/rustok-events/src/contract.rs";
-const eventsLibPath = "crates/rustok-events/src/lib.rs";
-const eventsApiPath = "crates/rustok-events/CRATE_API.md";
-const digestPath = "crates/rustok-events/contracts/event-contract-digests.json";
-const outboxTransactionalPath = "crates/rustok-outbox/src/transactional.rs";
-const outboxTransportPath = "crates/rustok-outbox/src/transport.rs";
-const outboxApiPath = "crates/rustok-outbox/CRATE_API.md";
-const forumPublisherPath = "crates/rustok-forum/src/services/projection_invalidation.rs";
+const eventsContractPath = "crates/libs/rustok-events/src/contract.rs";
+const eventsLibPath = "crates/libs/rustok-events/src/lib.rs";
+const eventsApiPath = "crates/libs/rustok-events/CRATE_API.md";
+const digestPath = "crates/libs/rustok-events/contracts/event-contract-digests.json";
+const outboxTransactionalPath = "crates/modules/rustok-outbox/src/transactional.rs";
+const outboxTransportPath = "crates/modules/rustok-outbox/src/transport.rs";
+const outboxApiPath = "crates/modules/rustok-outbox/CRATE_API.md";
+const forumPublisherPath = "crates/modules/rustok-forum/src/services/projection_invalidation.rs";
 const machineContractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-causation-api.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-causation-api.json";
 const publisherContractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-publisher.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-publisher.json";
 const ownerNotePath =
-  "crates/rustok-forum/docs/forum-23b2g2b3b1-causation-publication-api.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3b1-causation-publication-api.md";
 
 const sources = new Map([
   [eventsContractPath, read(eventsContractPath)],

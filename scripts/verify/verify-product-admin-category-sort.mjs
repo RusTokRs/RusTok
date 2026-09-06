@@ -24,15 +24,15 @@ function requireText(source, marker, message) {
 }
 
 const files = {
-  controls: read("crates/rustok-product/admin/src/catalog_controls.rs"),
-  ui: read("crates/rustok-product/admin/src/ui/catalog_admin.rs"),
-  transport: read("crates/rustok-product/admin/src/catalog_transport.rs"),
-  graphql: read("crates/rustok-product/admin/src/transport/admin_catalog_graphql.rs"),
-  native: read("crates/rustok-product/admin/src/transport/admin_catalog_native.rs"),
-  ownerTypes: read("crates/rustok-product/src/services/catalog/types.rs"),
-  ownerQuery: read("crates/rustok-product/src/services/catalog/admin_queries.rs"),
-  graphqlRoot: read("crates/rustok-commerce/src/graphql/product_catalog.rs"),
-  plan: read("crates/rustok-product/docs/implementation-plan.md"),
+  controls: read("crates/modules/rustok-product/admin/src/catalog_controls.rs"),
+  ui: read("crates/modules/rustok-product/admin/src/ui/catalog_admin.rs"),
+  transport: read("crates/modules/rustok-product/admin/src/catalog_transport.rs"),
+  graphql: read("crates/modules/rustok-product/admin/src/transport/admin_catalog_graphql.rs"),
+  native: read("crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs"),
+  ownerTypes: read("crates/modules/rustok-product/src/services/catalog/types.rs"),
+  ownerQuery: read("crates/modules/rustok-product/src/services/catalog/admin_queries.rs"),
+  graphqlRoot: read("crates/modules/rustok-commerce/src/graphql/product_catalog.rs"),
+  plan: read("crates/modules/rustok-product/docs/implementation-plan.md"),
 };
 
 for (const marker of ["ProductAdminListInput", "category_id", "sort_by", "sort_direction", "published_at", "created_at", "desc", "asc"]) {

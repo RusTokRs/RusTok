@@ -13,18 +13,18 @@ const failures = [];
 
 const paths = {
   centralPlan: 'docs/modules/translation-implementation-plan.md',
-  localPlan: 'crates/rustok-translation/docs/implementation-plan.md',
-  translationRoot: 'crates/rustok-translation/src/lib.rs',
-  observability: 'crates/rustok-translation/src/observability.rs',
-  workflow: 'crates/rustok-translation/src/workflow.rs',
-  eventContract: 'crates/rustok-events/src/translation_workflow.rs',
-  position: 'crates/rustok-iggy/src/position.rs',
-  runtimeMetrics: 'crates/rustok-telemetry/src/runtime_consumer_metrics.rs',
+  localPlan: 'crates/modules/rustok-translation/docs/implementation-plan.md',
+  translationRoot: 'crates/modules/rustok-translation/src/lib.rs',
+  observability: 'crates/modules/rustok-translation/src/observability.rs',
+  workflow: 'crates/modules/rustok-translation/src/workflow.rs',
+  eventContract: 'crates/libs/rustok-events/src/translation_workflow.rs',
+  position: 'crates/modules/rustok-iggy/src/position.rs',
+  runtimeMetrics: 'crates/libs/rustok-telemetry/src/runtime_consumer_metrics.rs',
   eventRuntime: 'apps/server/src/services/event_transport_factory.rs',
   evidence:
-    'crates/rustok-translation/contracts/evidence/translation-event-consumer-lag-prerequisite-source.json',
+    'crates/modules/rustok-translation/contracts/evidence/translation-event-consumer-lag-prerequisite-source.json',
   handoff:
-    'crates/rustok-translation/docs/translation-event-consumer-lag-prerequisite.md',
+    'crates/modules/rustok-translation/docs/translation-event-consumer-lag-prerequisite.md',
 };
 
 const centralPlan = read(paths.centralPlan);

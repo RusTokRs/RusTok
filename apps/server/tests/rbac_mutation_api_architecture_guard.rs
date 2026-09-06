@@ -178,7 +178,7 @@ fn committed_role_replacement_locks_target_and_checks_noop_before_generation_bum
 
 #[test]
 fn public_role_repair_surface_splits_read_only_plan_from_transactional_apply() {
-    let exports = source("crates/rustok-rbac/src/lib.rs");
+    let exports = source("crates/modules/rustok-rbac/src/lib.rs");
     let server = source("apps/server/src/services/rbac_repair.rs");
 
     assert!(exports.contains("mod repair;"));
@@ -195,8 +195,8 @@ fn public_role_repair_surface_splits_read_only_plan_from_transactional_apply() {
 
 #[test]
 fn operational_cli_applies_repair_and_generation_in_one_transaction() {
-    let cli = source("crates/rustok-rbac/cli/src/lib.rs");
-    let cargo = source("crates/rustok-rbac/cli/Cargo.toml");
+    let cli = source("crates/modules/rustok-rbac/cli/src/lib.rs");
+    let cargo = source("crates/modules/rustok-rbac/cli/Cargo.toml");
 
     let required = "sea-orm.workspace = true";
     assert!(

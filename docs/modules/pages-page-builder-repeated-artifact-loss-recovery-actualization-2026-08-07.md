@@ -74,7 +74,7 @@ Existing-binding activation remains strict and does not fall through into missin
 New environment-gated source packet:
 
 ```text
-crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs
+crates/modules/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs
 ```
 
 It retains four unexecuted scenarios:
@@ -87,13 +87,13 @@ It retains four unexecuted scenarios:
 Machine evidence:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-repeated-artifact-loss-recovery-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-repeated-artifact-loss-recovery-source.json
 ```
 
 Static source guard:
 
 ```text
-crates/rustok-pages/scripts/verify/verify-pages-repeated-artifact-loss-recovery.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-repeated-artifact-loss-recovery.mjs
 ```
 
 ## Validation boundary

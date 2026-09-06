@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const paths = {
   verifierContract:
-    "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json",
   executionContract:
-    "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json",
   runner: "scripts/evidence/verify-page-builder-accessibility-browser-packet.mjs",
   runnerTest: "scripts/evidence/verify-page-builder-accessibility-browser-packet.test.mjs",
   actualization: "docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md",

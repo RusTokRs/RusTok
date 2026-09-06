@@ -7,18 +7,18 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const read = (relativePath) => readFileSync(path.join(root, relativePath), 'utf8');
 const readBuffer = (relativePath) => readFileSync(path.join(root, relativePath));
 
-const commentsLibPath = 'crates/rustok-comments/src/lib.rs';
-const staticDelegationPath = 'crates/rustok-comments/src/tcp_delegation.rs';
-const reloadDelegationPath = 'crates/rustok-comments/src/tcp_delegation_reload.rs';
-const staticTransportPath = 'crates/rustok-comments/src/tcp_transport.rs';
-const reloadTransportPath = 'crates/rustok-comments/src/tcp_transport_reload.rs';
+const commentsLibPath = 'crates/modules/rustok-comments/src/lib.rs';
+const staticDelegationPath = 'crates/modules/rustok-comments/src/tcp_delegation.rs';
+const reloadDelegationPath = 'crates/modules/rustok-comments/src/tcp_delegation_reload.rs';
+const staticTransportPath = 'crates/modules/rustok-comments/src/tcp_transport.rs';
+const reloadTransportPath = 'crates/modules/rustok-comments/src/tcp_transport_reload.rs';
 const runtimePath = 'apps/server/src/services/comments_provider_runtime.rs';
 const staticHostPath = 'apps/server/src/services/comments_provider_runtime_keyring.rs';
 const reloadHostPath =
   'apps/server/src/services/comments_provider_runtime_keyring_reload.rs';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-78.md';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-78.md';
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-keyring-reload.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-keyring-reload.json';
 
 const commentsLib = read(commentsLibPath);
 const staticDelegation = read(staticDelegationPath);

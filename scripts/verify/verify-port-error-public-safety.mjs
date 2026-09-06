@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 
 const root = new URL('../../', import.meta.url);
-const source = readFileSync(new URL('crates/rustok-api/src/ports.rs', root), 'utf8');
+const source = readFileSync(new URL('crates/libs/rustok-api/src/ports.rs', root), 'utf8');
 const failures = [];
 
 const requireText = (value, label) => {

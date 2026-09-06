@@ -37,13 +37,13 @@ function reject(source, pattern, message) {
 }
 
 const contract = JSON.parse(read(
-  "crates/rustok-notifications/contracts/notifications-fanout-worker.json",
+  "crates/modules/rustok-notifications/contracts/notifications-fanout-worker.json",
 ) || "{}");
 const owner = read(contract.owner_worker ?? "");
 const service = read(contract.canonical_service ?? "");
 const server = read(contract.server_worker ?? "");
 const bootstrap = read(contract.bootstrap ?? "");
-const library = read("crates/rustok-notifications/src/lib.rs");
+const library = read("crates/modules/rustok-notifications/src/lib.rs");
 const workerTest = read(contract.tests?.[0] ?? "");
 const deferralTest = read(contract.tests?.[1] ?? "");
 

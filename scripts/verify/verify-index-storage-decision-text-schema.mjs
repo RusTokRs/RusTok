@@ -9,10 +9,10 @@ const fail = (message) => {
   process.exit(1);
 };
 
-const schema = JSON.parse(read('crates/rustok-index/docs/storage-decision.schema.json'));
+const schema = JSON.parse(read('crates/modules/rustok-index/docs/storage-decision.schema.json'));
 const fixture = read('scripts/verify/storage-decision-schema-text.test.mjs');
 const router = read('scripts/verify/index-storage-tooling.mjs');
-const guide = read('crates/rustok-index/docs/storage-decision.md');
+const guide = read('crates/modules/rustok-index/docs/storage-decision.md');
 const prototypes = ['jsonb', 'typed_eav', 'hot_projection'];
 const topLevelText = [
   'owner',

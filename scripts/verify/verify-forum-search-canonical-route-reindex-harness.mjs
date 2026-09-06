@@ -29,18 +29,18 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-const cargoPath = "crates/rustok-search/Cargo.toml";
-const testPath = "crates/rustok-search/tests/forum_canonical_route_reindex_postgres.rs";
-const forumProjectionPath = "crates/rustok-forum/src/search_projection.rs";
-const ingestionPath = "crates/rustok-search/src/ingestion.rs";
-const projectorPath = "crates/rustok-search/src/forum_projector.rs";
-const enginePath = "crates/rustok-search/src/engine.rs";
+const cargoPath = "crates/modules/rustok-search/Cargo.toml";
+const testPath = "crates/modules/rustok-search/tests/forum_canonical_route_reindex_postgres.rs";
+const forumProjectionPath = "crates/modules/rustok-forum/src/search_projection.rs";
+const ingestionPath = "crates/modules/rustok-search/src/ingestion.rs";
+const projectorPath = "crates/modules/rustok-search/src/forum_projector.rs";
+const enginePath = "crates/modules/rustok-search/src/engine.rs";
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-canonical-route-reindex-harness.json";
+  "crates/modules/rustok-forum/contracts/forum-search-canonical-route-reindex-harness.json";
 const notePath =
-  "crates/rustok-forum/docs/forum-24r-search-canonical-route-reindex-harness.md";
+  "crates/modules/rustok-forum/docs/forum-24r-search-canonical-route-reindex-harness.md";
 const upstreamPath =
-  "crates/rustok-forum/contracts/forum-search-canonical-route-cutover.json";
+  "crates/modules/rustok-forum/contracts/forum-search-canonical-route-cutover.json";
 
 const cargo = read(cargoPath);
 const test = read(testPath);

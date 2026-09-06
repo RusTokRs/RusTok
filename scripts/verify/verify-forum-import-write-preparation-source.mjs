@@ -15,9 +15,9 @@ function forbid(text, marker, label) {
 }
 
 const files = {
-  lib: "crates/rustok-forum/src/lib.rs",
-  resolution: "crates/rustok-forum/src/import_resolution.rs",
-  preparation: "crates/rustok-forum/src/import_write_preparation.rs",
+  lib: "crates/modules/rustok-forum/src/lib.rs",
+  resolution: "crates/modules/rustok-forum/src/import_resolution.rs",
+  preparation: "crates/modules/rustok-forum/src/import_write_preparation.rs",
   packet: "docs/modules/forum-34-import-write-preparation-actualization-2026-08-09.md",
 };
 

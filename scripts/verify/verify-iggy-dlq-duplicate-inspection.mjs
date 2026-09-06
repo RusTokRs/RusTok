@@ -6,38 +6,38 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-inspection-source.json";
-const sourcePath = "crates/rustok-iggy/src/dlq_duplicate_inspection.rs";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-inspection-source.json";
+const sourcePath = "crates/modules/rustok-iggy/src/dlq_duplicate_inspection.rs";
 const adapterContractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-source.json";
-const adapterSourcePath = "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-source.json";
+const adapterSourcePath = "crates/modules/rustok-iggy/src/dlq_duplicate_external_scan.rs";
 const rollingContractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-rolling-window-source.json";
-const rollingSourcePath = "crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-rolling-window-source.json";
+const rollingSourcePath = "crates/modules/rustok-iggy/src/dlq_duplicate_rolling_window.rs";
 const movingContractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json";
 const movingSourcePath =
-  "crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs";
+  "crates/modules/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs";
 const alertContractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json";
-const alertSourcePath = "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json";
+const alertSourcePath = "crates/modules/rustok-iggy/src/dlq_duplicate_alert_policy.rs";
 const alertRuntimeContractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json";
-const alertRuntimeSourcePath = "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json";
+const alertRuntimeSourcePath = "crates/modules/rustok-iggy/src/dlq_duplicate_alert_runtime.rs";
 const observerContractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json";
 const observerIggySourcePath =
-  "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs";
+  "crates/modules/rustok-iggy/src/dlq_duplicate_alert_observer.rs";
 const observerServerSourcePath =
   "apps/server/src/services/event_dlq_duplicate_alert_observer.rs";
-const libPath = "crates/rustok-iggy/src/lib.rs";
-const decodeFailurePath = "crates/rustok-iggy/src/contract_decode_failure.rs";
-const transportPath = "crates/rustok-iggy/src/transport.rs";
+const libPath = "crates/modules/rustok-iggy/src/lib.rs";
+const decodeFailurePath = "crates/modules/rustok-iggy/src/contract_decode_failure.rs";
+const transportPath = "crates/modules/rustok-iggy/src/transport.rs";
 const receiptInspectorPath =
-  "crates/rustok-iggy-connector/src/consumer_poison_inspection.rs";
-const documentationPath = "crates/rustok-iggy/docs/dlq-duplicate-inspection.md";
+  "crates/modules/rustok-iggy-connector/src/consumer_poison_inspection.rs";
+const documentationPath = "crates/modules/rustok-iggy/docs/dlq-duplicate-inspection.md";
 const profilesCheckpointPath =
-  "crates/rustok-profiles/docs/poison-duplicate-dlq-operations-checkpoint.md";
+  "crates/modules/rustok-profiles/docs/poison-duplicate-dlq-operations-checkpoint.md";
 const verifierPath = "scripts/verify/verify-iggy-dlq-duplicate-inspection.mjs";
 
 const contract = JSON.parse(readFileSync(resolve(repoRoot, contractPath), "utf8"));

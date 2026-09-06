@@ -8,7 +8,7 @@ Current correction rechecked at `main@9221664d677f3f8775ef4ade66ffe14a4b316c54` 
 
 The earlier source path placed `HostRuntimeContext` lookup inside `rustok-pages-admin`. A standalone admin host does not own the tenant database runtime; its request context contains auth/session and UI security state. Therefore that source design was not a valid standalone runtime ownership boundary and is superseded here before runtime acceptance.
 
-Pages server now owns rollout persistence access through GraphQL `pageBuilderRolloutSnapshot` in `crates/rustok-pages/src/graphql/builder_rollout.rs`.
+Pages server now owns rollout persistence access through GraphQL `pageBuilderRolloutSnapshot` in `crates/modules/rustok-pages/src/graphql/builder_rollout.rs`.
 
 The resolver:
 

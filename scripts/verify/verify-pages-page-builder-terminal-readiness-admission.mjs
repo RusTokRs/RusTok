@@ -58,21 +58,21 @@ function countPendingExecutedEvidence(value, prefix = "$") {
 }
 
 const contractPath =
-  "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json";
+  "crates/modules/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json";
 const inventorySourcePath =
-  "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json";
+  "crates/modules/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json";
 const runnerPath = "scripts/evidence/admit-pages-page-builder-terminal-readiness.mjs";
 const testsPath = "scripts/evidence/admit-pages-page-builder-terminal-readiness.test.mjs";
 const verifierPath = "scripts/verify/verify-pages-page-builder-terminal-readiness-admission.mjs";
 const actualizationPath =
   "docs/modules/pages-page-builder-terminal-readiness-admission-actualization-2026-08-13.md";
 const executionContractPath =
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-execution-source.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-execution-source.json";
 const accessibilityContractPath =
-  "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json";
+  "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json";
 const registryPath = "docs/modules/registry.md";
-const fbaRegistryPath = "crates/rustok-page-builder/contracts/page-builder-fba-registry.json";
-const pagesPlanPath = "crates/rustok-pages/docs/implementation-plan.md";
+const fbaRegistryPath = "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json";
+const pagesPlanPath = "crates/modules/rustok-pages/docs/implementation-plan.md";
 
 const contract = json(contractPath);
 const inventorySource = json(inventorySourcePath);

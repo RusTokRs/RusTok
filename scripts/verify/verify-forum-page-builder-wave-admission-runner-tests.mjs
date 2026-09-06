@@ -7,12 +7,12 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const failures = [];
 const files = {
-  contract: "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-runner-test-source.json",
+  contract: "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-runner-test-source.json",
   runner: "scripts/evidence/admit-forum-page-builder-wave.mjs",
   test: "scripts/evidence/admit-forum-page-builder-wave.test.mjs",
   verifier: "scripts/verify/verify-forum-page-builder-wave-admission-runner-tests.mjs",
   admissionGuard: "scripts/verify/verify-forum-page-builder-wave-admission.mjs",
-  admissionSource: "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
+  admissionSource: "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
   actualization: "docs/modules/forum-page-builder-wave-admission-runner-tests-actualization-2026-08-12.md",
   workflow: ".github/workflows/pages-page-builder-provider-health.yml",
 };
@@ -173,7 +173,7 @@ for (const marker of [
 ]) need(actualization, marker, "runner-test actualization");
 
 for (const marker of [
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-runner-test-source.json",
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-runner-test-source.json",
   "scripts/evidence/admit-forum-page-builder-wave.test.mjs",
   "scripts/verify/verify-forum-page-builder-wave-admission-runner-tests.mjs",
   "Verify Forum Wave admission source",

@@ -24,7 +24,7 @@ const forbidMarkers = (relative, source, markers) => {
 };
 
 const canonicalMigrationPath =
-  'crates/rustok-product/src/migrations/m20260807_000010_canonicalize_product_index_graph_projection.rs';
+  'crates/modules/rustok-product/src/migrations/m20260807_000010_canonicalize_product_index_graph_projection.rs';
 const migration = requireMarkers(canonicalMigrationPath, [
   'RENAME TO product_index_graph_projection_snapshots',
   'rustok_product_guard_index_graph_projection_snapshot',
@@ -56,7 +56,7 @@ forbidMarkers(canonicalMigrationPath, migration, [
 ]);
 
 const relationMigration = requireMarkers(
-  'crates/rustok-product/src/migrations/m20260807_000008_add_product_sales_channel_index_relation_snapshots.rs',
+  'crates/modules/rustok-product/src/migrations/m20260807_000008_add_product_sales_channel_index_relation_snapshots.rs',
   [
     'CREATE TRIGGER trg_products_retain_empty_channel_relation',
     'AFTER DELETE ON products',
@@ -68,31 +68,31 @@ if (!(migration.includes('trg_products_zz_index_graph_projection_delete') &&
   fail('Product hard-delete projection ordering markers are incomplete');
 }
 
-requireMarkers('crates/rustok-product/src/migrations/mod.rs', [
+requireMarkers('crates/modules/rustok-product/src/migrations/mod.rs', [
   'mod m20260807_000010_canonicalize_product_index_graph_projection;',
   'Box::new(m20260807_000010_canonicalize_product_index_graph_projection::Migration)',
 ]);
 
-const productSource = requireMarkers('crates/rustok-distribution/src/product_index/product.rs', [
+const productSource = requireMarkers('crates/modules/rustok-distribution/src/product_index/product.rs', [
   'product_index_graph_projection_snapshots',
   'projection.projection_epoch AS source_version',
   'projection.product_source_version AS projected_product_source_version',
   'projection.channel_ids AS sales_channel_ids',
   'name: link_name("sales_channels")?',
 ]);
-forbidMarkers('crates/rustok-distribution/src/product_index/product.rs', productSource, [
+forbidMarkers('crates/modules/rustok-distribution/src/product_index/product.rs', productSource, [
   'product_index_graph_v3_projection_snapshots',
   'ProductSchemaVersion',
   'PRODUCT_EVENT_DOMAIN_V1',
   'PRODUCT_EVENT_DOMAIN_V2',
 ]);
 
-const absence = requireMarkers('crates/rustok-distribution/src/product_index/absence.rs', [
+const absence = requireMarkers('crates/modules/rustok-distribution/src/product_index/absence.rs', [
   'product_index_graph_projection_snapshots',
   'projection.product_source_version = product.index_revision',
   'CAST(projection.projection_epoch AS TEXT) AS source_version_text',
 ]);
-forbidMarkers('crates/rustok-distribution/src/product_index/absence.rs', absence, [
+forbidMarkers('crates/modules/rustok-distribution/src/product_index/absence.rs', absence, [
   'product_index_graph_v3_projection_snapshots',
   'CAST(product.index_revision AS TEXT)',
 ]);

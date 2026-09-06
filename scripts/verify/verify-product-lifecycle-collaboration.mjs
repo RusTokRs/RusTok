@@ -11,31 +11,31 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const modules = read('modules.toml');
-const productManifest = read('crates/rustok-product/rustok-module.toml');
-const inventoryManifest = read('crates/rustok-inventory/rustok-module.toml');
-const pricingManifest = read('crates/rustok-pricing/rustok-module.toml');
-const productCargo = read('crates/rustok-product/Cargo.toml');
-const productRuntime = read('crates/rustok-product/src/lib.rs');
-const catalog = read('crates/rustok-product/src/services/catalog.rs');
-const commands = read('crates/rustok-product/src/services/catalog/commands.rs');
-const inventoryBootstrap = read('crates/rustok-inventory/src/services/bootstrap.rs');
-const pricingBootstrap = read('crates/rustok-pricing-persistence/src/lib.rs');
+const productManifest = read('crates/modules/rustok-product/rustok-module.toml');
+const inventoryManifest = read('crates/modules/rustok-inventory/rustok-module.toml');
+const pricingManifest = read('crates/modules/rustok-pricing/rustok-module.toml');
+const productCargo = read('crates/modules/rustok-product/Cargo.toml');
+const productRuntime = read('crates/modules/rustok-product/src/lib.rs');
+const catalog = read('crates/modules/rustok-product/src/services/catalog.rs');
+const commands = read('crates/modules/rustok-product/src/services/catalog/commands.rs');
+const inventoryBootstrap = read('crates/modules/rustok-inventory/src/services/bootstrap.rs');
+const pricingBootstrap = read('crates/modules/rustok-pricing-persistence/src/lib.rs');
 const manifestCorequisites = read('apps/server/src/modules/manifest/corequisites.rs');
 const manifestManager = read('apps/server/src/modules/manifest/mod.rs');
 const tenantLifecycle = read('apps/server/src/services/module_lifecycle.rs');
 const effectivePolicy = read('apps/server/src/services/effective_module_policy.rs');
-const ownerPolicy = read('crates/rustok-modules/src/policy.rs');
-const lifecycleWriter = read('crates/rustok-modules/src/lifecycle_writer.rs');
-const lifecycleExecutor = read('crates/rustok-modules/src/executor.rs');
-const recovery = read('crates/rustok-modules/src/recovery.rs');
+const ownerPolicy = read('crates/modules/rustok-modules/src/policy.rs');
+const lifecycleWriter = read('crates/modules/rustok-modules/src/lifecycle_writer.rs');
+const lifecycleExecutor = read('crates/modules/rustok-modules/src/executor.rs');
+const recovery = read('crates/modules/rustok-modules/src/recovery.rs');
 const recoveryMigration = read(
-  'crates/rustok-migrations/src/m20260808_000099_create_module_operation_override_states.rs',
+  'crates/utils/rustok-migrations/src/m20260808_000099_create_module_operation_override_states.rs',
 );
-const platformMigrator = read('crates/rustok-migrations/src/lib.rs');
+const platformMigrator = read('crates/utils/rustok-migrations/src/lib.rs');
 const runbook = read('apps/server/docs/module-lifecycle-retry-compensation-runbook.md');
-const note = read('crates/rustok-product/docs/product-lifecycle-collaboration.md');
+const note = read('crates/modules/rustok-product/docs/product-lifecycle-collaboration.md');
 const evidence = JSON.parse(
-  read('crates/rustok-product/contracts/evidence/product-lifecycle-collaboration-source.json'),
+  read('crates/modules/rustok-product/contracts/evidence/product-lifecycle-collaboration-source.json'),
 );
 
 const failures = [];

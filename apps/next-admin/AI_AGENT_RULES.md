@@ -166,7 +166,7 @@ This is canonical for Next hosts and reused in Next storefront.
 
 ## Related to Rust Packages
 
-If you're working on **Rust module UI packages** (`crates/rustok-*/admin`), those follow different rules:
+If you're working on **Rust module UI packages** (`crates/modules/rustok-*/admin`), those follow different rules:
 
 - [Architecture Guide](../../docs/UI/module-package-architecture.md) — FFA, `core/transport/ui` split
 - [Implementation Guide](../../docs/UI/module-package-implementation.md) — internal libraries, i18n, file structure

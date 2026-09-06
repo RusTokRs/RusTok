@@ -16,7 +16,7 @@ fn source(relative: &str) -> String {
 
 #[test]
 fn permission_resolver_is_read_only() {
-    let contract = source("crates/rustok-rbac/src/services/permission_resolver.rs");
+    let contract = source("crates/modules/rustok-rbac/src/services/permission_resolver.rs");
 
     for forbidden in [
         "async fn assign_role_permissions(",
@@ -36,7 +36,7 @@ fn permission_resolver_is_read_only() {
 
 #[test]
 fn permission_resolver_test_doubles_are_read_only() {
-    let authorizer = source("crates/rustok-rbac/src/services/permission_authorizer.rs");
+    let authorizer = source("crates/modules/rustok-rbac/src/services/permission_authorizer.rs");
 
     for forbidden in [
         "async fn assign_role_permissions(",
@@ -58,7 +58,7 @@ fn permission_resolver_test_doubles_are_read_only() {
 
 #[test]
 fn runtime_permission_resolver_has_no_mutation_composition_surface() {
-    let runtime = source("crates/rustok-rbac/src/services/runtime_permission_resolver.rs");
+    let runtime = source("crates/modules/rustok-rbac/src/services/runtime_permission_resolver.rs");
     let impl_start = runtime
         .find("impl<S, C, E> PermissionResolver for RuntimePermissionResolver")
         .expect("runtime resolver PermissionResolver implementation must exist");

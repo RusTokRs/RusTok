@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const applicationPath = 'crates/rustok-index/src/application/source_replay.rs';
+const applicationPath = 'crates/modules/rustok-index/src/application/source_replay.rs';
 const application = requireMarkers(applicationPath, [
   'locale: Option<LocaleKey>',
   'pub(crate) fn for_locale(',
@@ -42,7 +42,7 @@ for (const forbidden of ['partition_key', 'scope_kind = \'partition\'', 'targete
   }
 }
 
-const adapterPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay.rs';
+const adapterPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay.rs';
 const adapter = requireMarkers(adapterPath, [
   'key.locale() != lease.locale()',
   'checkpoint_lease_identity_mismatch',
@@ -56,7 +56,7 @@ if (adapter.includes('partition_key()') || adapter.includes('partition: Option')
   fail(`${adapterPath} must keep partition scope empty in this slice`);
 }
 
-const packetPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_locale_job_tests.rs';
+const packetPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_locale_job_tests.rs';
 requireMarkers(packetPath, [
   'locale_jobs_are_distinct_from_schema_and_other_locales',
   'IndexReplayCheckpointKey::new(',
@@ -70,7 +70,7 @@ requireMarkers(packetPath, [
   'checkpoint_rows.len(), 2',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m6-locale-replay-checkpoint-worker.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-locale-replay-checkpoint-worker.md', [
   'Status: `checkpoint_worker_source_complete_runner_pending`.',
   '`SchemaNotRegistered`',
   '`LocaleScopeUnsupported`',

@@ -1,17 +1,17 @@
 import { readFile } from 'node:fs/promises';
 
 const paths = {
-  vocabulary: 'crates/fly-browser/src/lib.rs',
-  capability: 'crates/rustok-page-builder/admin/src/capability_access.rs',
-  adapter: 'crates/rustok-page-builder/admin/src/ui/browser_adapter.rs',
-  assets: 'crates/rustok-page-builder/admin/src/editor/ssr_assets.rs',
-  forms: 'crates/rustok-page-builder/admin/src/editor/ssr_forms.rs',
-  editorMod: 'crates/rustok-page-builder/admin/src/editor/mod.rs',
-  canvas: 'crates/rustok-page-builder/admin/src/editor/modular_canvas.rs',
-  lib: 'crates/rustok-page-builder/admin/src/lib.rs',
-  browserTests: 'crates/rustok-page-builder/admin/src/ssr_assets_browser_tests.rs',
-  localeEn: 'crates/rustok-page-builder/admin/locales/en.json',
-  localeRu: 'crates/rustok-page-builder/admin/locales/ru.json',
+  vocabulary: 'crates/ui/fly-browser/src/lib.rs',
+  capability: 'crates/modules/rustok-page-builder/admin/src/capability_access.rs',
+  adapter: 'crates/modules/rustok-page-builder/admin/src/ui/browser_adapter.rs',
+  assets: 'crates/modules/rustok-page-builder/admin/src/editor/ssr_assets.rs',
+  forms: 'crates/modules/rustok-page-builder/admin/src/editor/ssr_forms.rs',
+  editorMod: 'crates/modules/rustok-page-builder/admin/src/editor/mod.rs',
+  canvas: 'crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs',
+  lib: 'crates/modules/rustok-page-builder/admin/src/lib.rs',
+  browserTests: 'crates/modules/rustok-page-builder/admin/src/ssr_assets_browser_tests.rs',
+  localeEn: 'crates/modules/rustok-page-builder/admin/locales/en.json',
+  localeRu: 'crates/modules/rustok-page-builder/admin/locales/ru.json',
 };
 
 const source = Object.fromEntries(

@@ -25,19 +25,19 @@ const requireBefore = (source, first, second, label) => {
 };
 
 const files = {
-  event: "crates/rustok-events/src/rbac_role_mutation.rs",
-  eventContract: "crates/rustok-events/src/contract.rs",
-  eventRegistry: "crates/rustok-events/src/lib.rs",
-  owner: "crates/rustok-rbac/src/role_mutation.rs",
-  ownerLib: "crates/rustok-rbac/src/lib.rs",
+  event: "crates/libs/rustok-events/src/rbac_role_mutation.rs",
+  eventContract: "crates/libs/rustok-events/src/contract.rs",
+  eventRegistry: "crates/libs/rustok-events/src/lib.rs",
+  owner: "crates/modules/rustok-rbac/src/role_mutation.rs",
+  ownerLib: "crates/modules/rustok-rbac/src/lib.rs",
   adapter:
     "apps/server/src/services/auth_admin_mutation_provider/user_admin.rs",
   continuity:
     "apps/server/src/services/auth_admin_mutation_provider/super_admin_guard.rs",
   graphql: "apps/server/src/graphql/rbac_runtime.rs",
-  machine: "crates/rustok-rbac/contracts/rbac-owner-role-mutation-contract.json",
-  docs: "crates/rustok-rbac/docs/owner-role-mutation-contract.md",
-  plan: "crates/rustok-rbac/docs/implementation-plan.md",
+  machine: "crates/modules/rustok-rbac/contracts/rbac-owner-role-mutation-contract.json",
+  docs: "crates/modules/rustok-rbac/docs/owner-role-mutation-contract.md",
+  plan: "crates/modules/rustok-rbac/docs/implementation-plan.md",
   master: "docs/verification/PLATFORM_VERIFICATION_PLAN.md",
 };
 const sources = Object.fromEntries(

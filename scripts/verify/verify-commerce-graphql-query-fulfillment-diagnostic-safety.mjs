@@ -11,13 +11,13 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const boundary = read(
-  'crates/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_boundary.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_boundary.rs',
 );
 const service = read(
-  'crates/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_service.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_service.rs',
 );
 const shim = read(
-  'crates/rustok-commerce/src/graphql/safe_query/source/rustok_fulfillment_shim.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_fulfillment_shim.rs',
 );
 const failures = [];
 

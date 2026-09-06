@@ -75,7 +75,7 @@ No additional Pages/Page Builder provider-health, gate or Forum-admission archit
 
 ## Anti-drift boundary
 
-`crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs` is updated so the synchronized base plans must expose the current provider-health/gate/admission markers and must not regress to the stale current-state claims listed above.
+`crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs` is updated so the synchronized base plans must expose the current provider-health/gate/admission markers and must not regress to the stale current-state claims listed above.
 
 The guard still requires the committed source gate and Forum Wave to remain fail closed/unexecuted; plan synchronization must never be interpreted as runtime acceptance.
 

@@ -11,19 +11,19 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const forbiddenFiles = [
-  "crates/rustok-pages/src/entities/page_block.rs",
-  "crates/rustok-pages/src/dto/block.rs",
-  "crates/rustok-pages/src/services/block.rs",
-  "crates/rustok-pages/src/services/page/update.rs",
+  "crates/modules/rustok-pages/src/entities/page_block.rs",
+  "crates/modules/rustok-pages/src/dto/block.rs",
+  "crates/modules/rustok-pages/src/services/block.rs",
+  "crates/modules/rustok-pages/src/services/page/update.rs",
   "apps/next-admin/packages/blog/src/api/pages.ts",
   "apps/next-admin/packages/blog/src/components/page-builder.tsx",
   "apps/next-admin/src/app/dashboard/blog/page-builder/page.tsx",
 ];
 
 const scannedRoots = [
-  "crates/rustok-pages/src",
-  "crates/rustok-pages/admin/src",
-  "crates/rustok-pages/storefront/src",
+  "crates/modules/rustok-pages/src",
+  "crates/modules/rustok-pages/admin/src",
+  "crates/modules/rustok-pages/storefront/src",
   "apps/next-admin/packages/blog/src",
   "apps/next-admin/src/app/dashboard/blog",
 ];

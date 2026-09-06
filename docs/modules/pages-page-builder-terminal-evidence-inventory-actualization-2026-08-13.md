@@ -12,8 +12,8 @@ PR #3487 intentionally stopped before terminal readiness. Its successful output 
 
 The remaining blockers are authoritative source facts, not values that the prerequisite runner may waive:
 
-- `crates/rustok-page-builder/contracts/page-builder-fba-registry.json` remains `boundary_ready` and contains recursive `executed_evidence: "pending"` entries;
-- `crates/rustok-pages/docs/implementation-plan.md` still carries the top-level `execution-rollout-pending` marker;
+- `crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json` remains `boundary_ready` and contains recursive `executed_evidence: "pending"` entries;
+- `crates/modules/rustok-pages/docs/implementation-plan.md` still carries the top-level `execution-rollout-pending` marker;
 - the central readiness board still requires verification evidence in the same PR before `parity_verified` or `transport_verified` can be recorded.
 
 A terminal inventory therefore has to combine the exact prerequisite packet with the **current canonical source state**, rather than turning rollout success into an implicit readiness approval.
@@ -40,7 +40,7 @@ Pages FFA is independently blocked while `execution-rollout-pending` remains in 
 
 This continuation adds:
 
-- `crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json`;
+- `crates/modules/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json`;
 - `scripts/evidence/inventory-pages-page-builder-terminal-readiness.mjs`;
 - `scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs`;
 - `scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs`.

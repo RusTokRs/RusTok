@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const admissionContractPath =
-  "crates/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json";
+  "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json";
 const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/u;

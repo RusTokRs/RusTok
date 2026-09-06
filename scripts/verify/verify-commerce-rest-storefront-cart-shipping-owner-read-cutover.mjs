@@ -10,15 +10,15 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const carts = read('crates/rustok-commerce/src/controllers/store/carts.rs');
+const carts = read('crates/modules/rustok-commerce/src/controllers/store/carts.rs');
 const helper = read(
-  'crates/rustok-commerce/src/controllers/store/carts/shipping_owner_reads.rs',
+  'crates/modules/rustok-commerce/src/controllers/store/carts/shipping_owner_reads.rs',
 );
-const httpRuntime = read('crates/rustok-commerce/src/controllers/mod.rs');
-const shippingOwner = read('crates/rustok-fulfillment/src/shipping_option_read.rs');
-const plan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const httpRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
+const shippingOwner = read('crates/modules/rustok-fulfillment/src/shipping_option_read.rs');
+const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 const record = read(
-  'crates/rustok-commerce/docs/rest-storefront-cart-shipping-owner-read-cutover-2026-08-09.md',
+  'crates/modules/rustok-commerce/docs/rest-storefront-cart-shipping-owner-read-cutover-2026-08-09.md',
 );
 const failures = [];
 

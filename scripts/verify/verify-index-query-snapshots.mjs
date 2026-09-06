@@ -26,7 +26,7 @@ const requireNormalizedMarkers = (relative, markers) => {
   return source;
 };
 
-const testPath = 'crates/rustok-index/src/application/query_snapshot_tests.rs';
+const testPath = 'crates/modules/rustok-index/src/application/query_snapshot_tests.rs';
 const test = requireMarkers(testPath, [
   'include_str!("snapshots/m4_many_projection.plan.snap")',
   'include_str!("snapshots/m4_many_projection.sql")',
@@ -50,7 +50,7 @@ for (const forbidden of [
   if (test.includes(forbidden)) fail(`${testPath} contains forbidden marker ${forbidden}`);
 }
 
-const planPath = 'crates/rustok-index/src/application/snapshots/m4_many_projection.plan.snap';
+const planPath = 'crates/modules/rustok-index/src/application/snapshots/m4_many_projection.plan.snap';
 const plan = requireMarkers(planPath, [
   'root=rustok-product::product@1',
   'alias:<root>=t0',
@@ -61,7 +61,7 @@ const plan = requireMarkers(planPath, [
 ]);
 if (!plan.endsWith('\n')) fail(`${planPath} must end with one newline`);
 
-const sqlPath = 'crates/rustok-index/src/application/snapshots/m4_many_projection.sql';
+const sqlPath = 'crates/modules/rustok-index/src/application/snapshots/m4_many_projection.sql';
 const sql = requireMarkers(sqlPath, [
   'SELECT "t0".entity_id AS "__t0_entity_id"',
   'AS "__many_0"',
@@ -85,7 +85,7 @@ if ((sql.match(/\$\d+/gu) ?? []).at(-1) !== '$12') {
   fail(`${sqlPath} must retain the canonical ordered placeholder envelope through $12`);
 }
 
-const compiledPath = 'crates/rustok-index/src/application/snapshots/m4_many_projection.compiled.snap';
+const compiledPath = 'crates/modules/rustok-index/src/application/snapshots/m4_many_projection.compiled.snap';
 const compiled = requireMarkers(compiledPath, [
   'bind:1={"type":"uuid","value":"00000000-0000-0000-0000-000000000001"}',
   'bind:7={"type":"text","value":"variants"}',
@@ -96,7 +96,7 @@ const compiled = requireMarkers(compiledPath, [
 ]);
 if (!compiled.endsWith('\n')) fail(`${compiledPath} must end with one newline`);
 
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'mod query_snapshot_tests;',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
@@ -107,7 +107,7 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-query-snapshots.mjs'",
   "console.log('[verify-index-query-contract] OK')",
 ]);
-requireNormalizedMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
+requireNormalizedMarkers('crates/modules/rustok-index/docs/m4-query-snapshots.md', [
   'Status: `source_complete_owner_execution_pending`',
   'compares all three files byte-for-byte',
   'does not execute SQL',
@@ -115,7 +115,7 @@ requireNormalizedMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
   'verify-index-query-contract.mjs',
   'Not run by the implementation agent',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- [x] Add retained v4 plan/SQL snapshots and synchronized source guards.',
   '- [ ] Execute PostgreSQL/reference-engine equivalence capture and admit retained live evidence.',
   'M4 retained plan/SQL snapshots: `source_complete`',

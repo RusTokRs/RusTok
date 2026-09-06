@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const executionPath = 'crates/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
+const executionPath = 'crates/modules/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
 const execution = requireMarkers(executionPath, [
   'pub(crate) trait ProductStorefrontIndexProjectionPhases',
   'impl ProductStorefrontIndexProjectionPhases for ProductStorefrontIndexShadowExecutor',
@@ -36,7 +36,7 @@ if (execution.includes('list_filtered_published_products(')) {
   fail(`${executionPath} retained budget evidence seam must remain post-owner only`);
 }
 
-const packetPath = 'crates/rustok-distribution/src/product_index/storefront_budgeted_execution_tests.rs';
+const packetPath = 'crates/modules/rustok-distribution/src/product_index/storefront_budgeted_execution_tests.rs';
 const packet = requireMarkers(packetPath, [
   'future::pending',
   'AtomicUsize',
@@ -79,7 +79,7 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'ProductStorefrontIndexProjectionPhases',
   '#[cfg(test)]\nmod storefront_budgeted_execution_tests;',
 ]);

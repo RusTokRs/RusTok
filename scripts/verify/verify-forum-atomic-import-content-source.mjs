@@ -15,15 +15,15 @@ function forbid(text, marker, label) {
 }
 
 const files = {
-  services: "crates/rustok-forum/src/services/mod.rs",
-  categoryImport: "crates/rustok-forum/src/services/category_import.rs",
-  topicImport: "crates/rustok-forum/src/services/topic_import.rs",
-  replyImport: "crates/rustok-forum/src/services/reply_owner_import.rs",
-  importWrite: "crates/rustok-forum/src/services/import_write.rs",
-  relationImport: "crates/rustok-forum/src/services/mention_relation_import.rs",
-  categoryOwner: "crates/rustok-forum/src/services/category_projection_owner.rs",
-  topicOwner: "crates/rustok-forum/src/services/topic_inline.rs",
-  replyOwner: "crates/rustok-forum/src/services/reply_owner_inline.rs",
+  services: "crates/modules/rustok-forum/src/services/mod.rs",
+  categoryImport: "crates/modules/rustok-forum/src/services/category_import.rs",
+  topicImport: "crates/modules/rustok-forum/src/services/topic_import.rs",
+  replyImport: "crates/modules/rustok-forum/src/services/reply_owner_import.rs",
+  importWrite: "crates/modules/rustok-forum/src/services/import_write.rs",
+  relationImport: "crates/modules/rustok-forum/src/services/mention_relation_import.rs",
+  categoryOwner: "crates/modules/rustok-forum/src/services/category_projection_owner.rs",
+  topicOwner: "crates/modules/rustok-forum/src/services/topic_inline.rs",
+  replyOwner: "crates/modules/rustok-forum/src/services/reply_owner_inline.rs",
   packet: "docs/modules/forum-34-atomic-import-content-actualization-2026-08-09.md",
 };
 

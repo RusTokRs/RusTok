@@ -18,8 +18,8 @@ function assertOrdered(text, needles, label) {
 }
 
 const files = {
-  router: "crates/rustok-ai/src/router.rs",
-  plan: "crates/rustok-ai/docs/implementation-plan.md",
+  router: "crates/modules/rustok-ai/src/router.rs",
+  plan: "crates/modules/rustok-ai/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
 };
 for (const file of Object.values(files)) assertExists(file);

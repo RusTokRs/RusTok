@@ -9,14 +9,14 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const failures = [];
 const files = {
-  evidence: 'crates/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json',
-  taxonomyMutation: 'crates/rustok-taxonomy/src/module_term_mutation.rs',
-  taxonomyLib: 'crates/rustok-taxonomy/src/lib.rs',
-  tagService: 'crates/rustok-blog/src/services/tag.rs',
-  relationMigration: 'crates/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs',
-  harness: 'crates/rustok-blog/tests/taxonomy_tags.rs',
-  slice: 'crates/rustok-blog/docs/implementation-plan-slice-104.md',
-  current: 'crates/rustok-blog/docs/implementation-plan-current.md',
+  evidence: 'crates/modules/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json',
+  taxonomyMutation: 'crates/modules/rustok-taxonomy/src/module_term_mutation.rs',
+  taxonomyLib: 'crates/modules/rustok-taxonomy/src/lib.rs',
+  tagService: 'crates/modules/rustok-blog/src/services/tag.rs',
+  relationMigration: 'crates/modules/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs',
+  harness: 'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
+  slice: 'crates/modules/rustok-blog/docs/implementation-plan-slice-104.md',
+  current: 'crates/modules/rustok-blog/docs/implementation-plan-current.md',
 };
 function read(relativePath) {
   const target = path.join(repoRoot, relativePath);

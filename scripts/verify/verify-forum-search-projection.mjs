@@ -25,23 +25,23 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-const capabilityPath = "crates/rustok-core/src/search_projection.rs";
-const searchFacadePath = "crates/rustok-search/src/projection_source.rs";
-const projectorPath = "crates/rustok-search/src/forum_projector.rs";
-const ingestionPath = "crates/rustok-search/src/ingestion.rs";
-const searchLibPath = "crates/rustok-search/src/lib.rs";
-const replyAudiencePath = "crates/rustok-forum/src/services/reply_audience_read.rs";
-const publicDiscoveryPath = "crates/rustok-forum/src/services/public_discovery.rs";
-const providerPath = "crates/rustok-forum/src/search_projection.rs";
-const replyUpdatePath = "crates/rustok-forum/src/services/reply_inline.rs";
-const forumLibPath = "crates/rustok-forum/src/lib.rs";
-const contractPath = "crates/rustok-forum/contracts/forum-search-projection.json";
-const invalidationPath = "crates/rustok-forum/contracts/forum-projection-invalidation.json";
-const visibilityBulkPath = "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
-const rebuildPreservationPath = "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
-const approvedReplyPath = "crates/rustok-forum/contracts/forum-approved-reply-search.json";
-const upstreamPath = "crates/rustok-forum/contracts/forum-public-discovery-seo.json";
-const notePath = "crates/rustok-forum/docs/forum-20bj-search-projection.md";
+const capabilityPath = "crates/libs/rustok-core/src/search_projection.rs";
+const searchFacadePath = "crates/modules/rustok-search/src/projection_source.rs";
+const projectorPath = "crates/modules/rustok-search/src/forum_projector.rs";
+const ingestionPath = "crates/modules/rustok-search/src/ingestion.rs";
+const searchLibPath = "crates/modules/rustok-search/src/lib.rs";
+const replyAudiencePath = "crates/modules/rustok-forum/src/services/reply_audience_read.rs";
+const publicDiscoveryPath = "crates/modules/rustok-forum/src/services/public_discovery.rs";
+const providerPath = "crates/modules/rustok-forum/src/search_projection.rs";
+const replyUpdatePath = "crates/modules/rustok-forum/src/services/reply_inline.rs";
+const forumLibPath = "crates/modules/rustok-forum/src/lib.rs";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-search-projection.json";
+const invalidationPath = "crates/modules/rustok-forum/contracts/forum-projection-invalidation.json";
+const visibilityBulkPath = "crates/modules/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
+const rebuildPreservationPath = "crates/modules/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
+const approvedReplyPath = "crates/modules/rustok-forum/contracts/forum-approved-reply-search.json";
+const upstreamPath = "crates/modules/rustok-forum/contracts/forum-public-discovery-seo.json";
+const notePath = "crates/modules/rustok-forum/docs/forum-20bj-search-projection.md";
 
 const capability = read(capabilityPath);
 const searchFacade = read(searchFacadePath);

@@ -20,9 +20,9 @@ The verifier invokes `cargo metadata` for these exact profiles:
 
 | Profile | Manifest | Features | Target |
 | --- | --- | --- | --- |
-| Pages storefront default | `crates/rustok-pages/storefront/Cargo.toml` | none | host |
-| Pages storefront hydrate | `crates/rustok-pages/storefront/Cargo.toml` | `hydrate` | `wasm32-unknown-unknown` |
-| Pages storefront SSR | `crates/rustok-pages/storefront/Cargo.toml` | `ssr` | host |
+| Pages storefront default | `crates/modules/rustok-pages/storefront/Cargo.toml` | none | host |
+| Pages storefront hydrate | `crates/modules/rustok-pages/storefront/Cargo.toml` | `hydrate` | `wasm32-unknown-unknown` |
+| Pages storefront SSR | `crates/modules/rustok-pages/storefront/Cargo.toml` | `ssr` | host |
 | Host storefront CSR | `apps/storefront/Cargo.toml` | `csr` | `wasm32-unknown-unknown` |
 | Host storefront hydrate | `apps/storefront/Cargo.toml` | `hydrate` | `wasm32-unknown-unknown` |
 | Host storefront SSR | `apps/storefront/Cargo.toml` | `ssr` | host |
@@ -57,8 +57,8 @@ The Pages SSR profile must additionally reach the Pages owner crate. The host SS
 
 The verifier also scans Rust sources under:
 
-- `crates/rustok-pages/storefront/src`;
-- `crates/rustok-page-builder-storefront/src`;
+- `crates/modules/rustok-pages/storefront/src`;
+- `crates/modules/rustok-page-builder-storefront/src`;
 - `apps/storefront/src`.
 
 Imports and composition markers for Pages admin, Page Builder admin and Fly browser/editor surfaces are forbidden. This protects the package graph and the module entrypoints together.
@@ -79,10 +79,10 @@ A passing graph verifier proves that the selected Cargo feature graphs cannot re
 
 ## Evidence
 
-- verifier: `crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs`;
-- machine evidence: `crates/rustok-pages/contracts/evidence/pages-anonymous-storefront-graph-source.json`;
+- verifier: `crates/modules/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs`;
+- machine evidence: `crates/modules/rustok-pages/contracts/evidence/pages-anonymous-storefront-graph-source.json`;
 - canonical cursor: `docs/modules/pages-page-builder-parity-continuation-plan.md`;
-- Pages-local cursor: `crates/rustok-pages/docs/implementation-plan.md`.
+- Pages-local cursor: `crates/modules/rustok-pages/docs/implementation-plan.md`.
 
 The evidence execution list is empty and every validation flag remains false.
 
@@ -91,7 +91,7 @@ The evidence execution list is empty and every validation flag remains false.
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
 ```
 
 After the graph verifier passes, accepted compiled bundle artifact evidence remains pending for anonymous SSR, CSR and hydrate outputs.

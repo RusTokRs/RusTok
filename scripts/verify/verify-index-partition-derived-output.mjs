@@ -16,7 +16,7 @@ try {
   const verifyCli = read('scripts/verify/verify-index-partition-archive-manifest.mjs');
   const fixture = read('scripts/verify/index-partition-derived-output.test.mjs');
   const tooling = read('scripts/verify/index-storage-tooling.mjs');
-  const runbook = read('crates/rustok-index/docs/partition-full-capture.md');
+  const runbook = read('crates/modules/rustok-index/docs/partition-full-capture.md');
 
   requireMarkers(core, [
     'randomUUID',

@@ -12,13 +12,13 @@ const read = (relativePath) => readFileSync(path.join(root, relativePath), "utf8
 const failures = [];
 
 const paths = {
-  source: "crates/rustok-order/src/checkout_compensation.rs",
+  source: "crates/modules/rustok-order/src/checkout_compensation.rs",
   evidence:
-    "crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source.json",
+    "crates/modules/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source.json",
   review:
-    "crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source-review.json",
-  doc: "crates/rustok-order/docs/checkout-compensation-local-context.md",
-  plan: "crates/rustok-order/docs/implementation-plan.md",
+    "crates/modules/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source-review.json",
+  doc: "crates/modules/rustok-order/docs/checkout-compensation-local-context.md",
+  plan: "crates/modules/rustok-order/docs/implementation-plan.md",
 };
 
 const source = read(paths.source);

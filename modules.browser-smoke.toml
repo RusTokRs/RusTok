@@ -21,15 +21,15 @@ public_url = "http://localhost:3100"
 redirect_uris = ["http://localhost:3100/auth/callback"]
 
 [modules]
-auth = { crate = "rustok-auth", source = "path", path = "crates/rustok-auth", required = true }
-cache = { crate = "rustok-cache", source = "path", path = "crates/rustok-cache", required = true }
-channel = { crate = "rustok-channel", source = "path", path = "crates/rustok-channel", required = true }
-email = { crate = "rustok-email", source = "path", path = "crates/rustok-email", required = true }
-index = { crate = "rustok-index", source = "path", path = "crates/rustok-index", required = true }
-search = { crate = "rustok-search", source = "path", path = "crates/rustok-search", required = true }
-outbox = { crate = "rustok-outbox", source = "path", path = "crates/rustok-outbox", required = true }
-tenant = { crate = "rustok-tenant", source = "path", path = "crates/rustok-tenant", required = true }
-rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", required = true }
+auth = { crate = "rustok-auth", source = "path", path = "crates/modules/rustok-auth", required = true }
+cache = { crate = "rustok-cache", source = "path", path = "crates/modules/rustok-cache", required = true }
+channel = { crate = "rustok-channel", source = "path", path = "crates/modules/rustok-channel", required = true }
+email = { crate = "rustok-email", source = "path", path = "crates/modules/rustok-email", required = true }
+index = { crate = "rustok-index", source = "path", path = "crates/modules/rustok-index", required = true }
+search = { crate = "rustok-search", source = "path", path = "crates/modules/rustok-search", required = true }
+outbox = { crate = "rustok-outbox", source = "path", path = "crates/modules/rustok-outbox", required = true }
+tenant = { crate = "rustok-tenant", source = "path", path = "crates/modules/rustok-tenant", required = true }
+rbac = { crate = "rustok-rbac", source = "path", path = "crates/modules/rustok-rbac", required = true }
 
 [settings]
 default_enabled = []

@@ -25,15 +25,15 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-media/admin/src/lib.rs";
-const corePath = "crates/rustok-media/admin/src/core.rs";
-const transportModPath = "crates/rustok-media/admin/src/transport/mod.rs";
-const nativeAdapterPath = "crates/rustok-media/admin/src/transport/native_server_adapter.rs";
-const graphqlAdapterPath = "crates/rustok-media/admin/src/transport/graphql_adapter.rs";
-const restAdapterPath = "crates/rustok-media/admin/src/transport/rest_adapter.rs";
-const uiPath = "crates/rustok-media/admin/src/ui/leptos.rs";
-const cargoPath = "crates/rustok-media/admin/Cargo.toml";
-const localPlanPath = "crates/rustok-media/docs/implementation-plan.md";
+const libPath = "crates/modules/rustok-media/admin/src/lib.rs";
+const corePath = "crates/modules/rustok-media/admin/src/core.rs";
+const transportModPath = "crates/modules/rustok-media/admin/src/transport/mod.rs";
+const nativeAdapterPath = "crates/modules/rustok-media/admin/src/transport/native_server_adapter.rs";
+const graphqlAdapterPath = "crates/modules/rustok-media/admin/src/transport/graphql_adapter.rs";
+const restAdapterPath = "crates/modules/rustok-media/admin/src/transport/rest_adapter.rs";
+const uiPath = "crates/modules/rustok-media/admin/src/ui/leptos.rs";
+const cargoPath = "crates/modules/rustok-media/admin/Cargo.toml";
+const localPlanPath = "crates/modules/rustok-media/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 
 for (const filePath of [

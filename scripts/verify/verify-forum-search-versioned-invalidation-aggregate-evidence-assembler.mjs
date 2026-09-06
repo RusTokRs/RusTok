@@ -18,15 +18,15 @@ const forbidAll = (text, markers, label) => {
 };
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-aggregate-evidence-assembler.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-aggregate-evidence-assembler.json";
 const parentPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
 const assemblerPath =
   "scripts/evidence/assemble-forum-search-versioned-invalidation-runtime-evidence.mjs";
 const verifierPath =
   "scripts/verify/verify-forum-search-versioned-invalidation-aggregate-evidence-assembler.mjs";
 const docPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d11-aggregate-evidence-assembler.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d11-aggregate-evidence-assembler.md";
 const outputPath =
   "target/forum-search-versioned-invalidation-runtime-evidence.json";
 
@@ -172,7 +172,7 @@ forbidAll(
 
 const inputSources = [
   [
-    "crates/rustok-search/tests/forum_versioned_invalidation_postgres.rs",
+    "crates/modules/rustok-search/tests/forum_versioned_invalidation_postgres.rs",
     "forum_search_versioned_invalidation_postgres_ingress_evidence_v1",
   ],
   [
@@ -188,7 +188,7 @@ const inputSources = [
     "forum_search_versioned_invalidation_semantic_poison_evidence_v1",
   ],
   [
-    "crates/rustok-search/tests/forum_versioned_invalidation_missing_delivery_repair.rs",
+    "crates/modules/rustok-search/tests/forum_versioned_invalidation_missing_delivery_repair.rs",
     "forum_search_versioned_invalidation_missing_delivery_repair_evidence_v1",
   ],
   [

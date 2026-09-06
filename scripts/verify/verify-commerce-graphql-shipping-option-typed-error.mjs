@@ -11,20 +11,20 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const failures = [];
 
-const moduleSource = read('crates/rustok-commerce/src/graphql/mutations/mod.rs');
+const moduleSource = read('crates/modules/rustok-commerce/src/graphql/mutations/mod.rs');
 const layeredSource = read(
-  'crates/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs',
 );
 const contextSource = read(
-  'crates/rustok-commerce/src/graphql/mutations/shipping_option_read_context.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/shipping_option_read_context.rs',
 );
 const typedSource = read(
-  'crates/rustok-commerce/src/graphql/mutations/typed_shipping_option_helper.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/typed_shipping_option_helper.rs',
 );
-const safeSource = read('crates/rustok-commerce/src/graphql/mutations/safe_helpers.rs');
-const legacySource = read('crates/rustok-commerce/src/graphql/mutations/helpers.rs');
-const ownerSource = read('crates/rustok-fulfillment/src/shipping_option_read.rs');
-const ownerRoot = read('crates/rustok-fulfillment/src/lib.rs');
+const safeSource = read('crates/modules/rustok-commerce/src/graphql/mutations/safe_helpers.rs');
+const legacySource = read('crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs');
+const ownerSource = read('crates/modules/rustok-fulfillment/src/shipping_option_read.rs');
+const ownerRoot = read('crates/modules/rustok-fulfillment/src/lib.rs');
 
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);

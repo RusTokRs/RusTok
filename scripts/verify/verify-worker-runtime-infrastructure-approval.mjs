@@ -9,16 +9,16 @@ const APPROVAL_LABEL = "worker-runtime-infra-approved";
 const PROTECTED_PATHS = [
   ".github/workflows/worker-runtime-infrastructure.yml",
   ".github/workflows/hardening-gates.yml",
-  "crates/rustok-worker-transport/Cargo.toml",
-  "crates/rustok-worker-transport/src/lib.rs",
-  "crates/rustok-verification-transport/Cargo.toml",
-  "crates/rustok-verification-transport/src/server.rs",
-  "crates/rustok-verification-worker/src/main.rs",
-  "crates/rustok-verification-worker/src/cosign.rs",
-  "crates/rustok-module-build-worker/src/admission.rs",
-  "crates/rustok-module-build-worker/src/lib.rs",
-  "crates/rustok-module-build-worker/src/main.rs",
-  "crates/rustok-module-build-worker/src/runner.rs",
+  "crates/workers/rustok-worker-transport/Cargo.toml",
+  "crates/workers/rustok-worker-transport/src/lib.rs",
+  "crates/workers/rustok-verification-transport/Cargo.toml",
+  "crates/workers/rustok-verification-transport/src/server.rs",
+  "crates/workers/rustok-verification-worker/src/main.rs",
+  "crates/workers/rustok-verification-worker/src/cosign.rs",
+  "crates/workers/rustok-module-build-worker/src/admission.rs",
+  "crates/workers/rustok-module-build-worker/src/lib.rs",
+  "crates/workers/rustok-module-build-worker/src/main.rs",
+  "crates/workers/rustok-module-build-worker/src/runner.rs",
   "scripts/verify/verify-all.sh",
   "scripts/verify/verify-worker-runtime-policy.mjs",
   "scripts/verify/verify-worker-runtime-infrastructure-approval.mjs",
@@ -111,9 +111,9 @@ function runSelfTest() {
     required: true,
     approved: true,
   });
-  assert(PROTECTED_PATHS.includes("crates/rustok-worker-transport/src/lib.rs"));
-  assert(PROTECTED_PATHS.includes("crates/rustok-module-build-worker/src/runner.rs"));
-  assert(PROTECTED_PATHS.includes("crates/rustok-verification-worker/src/cosign.rs"));
+  assert(PROTECTED_PATHS.includes("crates/workers/rustok-worker-transport/src/lib.rs"));
+  assert(PROTECTED_PATHS.includes("crates/workers/rustok-module-build-worker/src/runner.rs"));
+  assert(PROTECTED_PATHS.includes("crates/workers/rustok-verification-worker/src/cosign.rs"));
   console.log("✔ worker runtime infrastructure approval self-test passed");
 }
 

@@ -10,15 +10,15 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const failures = [];
 const files = {
-  lib: "crates/rustok-region/storefront/src/lib.rs",
-  legacyApi: "crates/rustok-region/storefront/src/api.rs",
-  core: "crates/rustok-region/storefront/src/core.rs",
-  ui: "crates/rustok-region/storefront/src/ui/leptos.rs",
-  transport: "crates/rustok-region/storefront/src/transport/mod.rs",
-  native: "crates/rustok-region/storefront/src/transport/native_server_adapter.rs",
-  graphql: "crates/rustok-region/storefront/src/transport/graphql_adapter.rs",
-  cargo: "crates/rustok-region/storefront/Cargo.toml",
-  plan: "crates/rustok-region/docs/implementation-plan.md",
+  lib: "crates/modules/rustok-region/storefront/src/lib.rs",
+  legacyApi: "crates/modules/rustok-region/storefront/src/api.rs",
+  core: "crates/modules/rustok-region/storefront/src/core.rs",
+  ui: "crates/modules/rustok-region/storefront/src/ui/leptos.rs",
+  transport: "crates/modules/rustok-region/storefront/src/transport/mod.rs",
+  native: "crates/modules/rustok-region/storefront/src/transport/native_server_adapter.rs",
+  graphql: "crates/modules/rustok-region/storefront/src/transport/graphql_adapter.rs",
+  cargo: "crates/modules/rustok-region/storefront/Cargo.toml",
+  plan: "crates/modules/rustok-region/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
   package: "package.json",
 };

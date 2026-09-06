@@ -52,7 +52,7 @@ function expectFailure(root, pathPattern, tokenPattern, message) {
 }
 
 function writeBaseline(root) {
-  write(root, "crates/rustok-taxonomy/src/lib.rs", "pub fn shared_taxonomy() {}\n");
+  write(root, "crates/modules/rustok-taxonomy/src/lib.rs", "pub fn shared_taxonomy() {}\n");
   write(
     root,
     "DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md",
@@ -76,7 +76,7 @@ function writeBaseline(root) {
 
   write(
     root,
-    "crates/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs",
+    "crates/modules/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs",
     [
       "fn migration() { let _ = TaxonomyTerms::Id; }",
       "// .table(BlogPostTags::Table)",
@@ -86,13 +86,13 @@ function writeBaseline(root) {
   );
   write(
     root,
-    "crates/rustok-blog/src/entities/blog_post_tag.rs",
+    "crates/modules/rustok-blog/src/entities/blog_post_tag.rs",
     '#[sea_orm(table_name = "blog_post_tags")]\npub struct Model;\n',
   );
 
   write(
     root,
-    "crates/rustok-forum/src/migrations/m20260329_000005_create_forum_topic_tags.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260329_000005_create_forum_topic_tags.rs",
     [
       "fn migration() {",
       "    let _ = ForumTopicTags::TopicId;",
@@ -105,13 +105,13 @@ function writeBaseline(root) {
   );
   write(
     root,
-    "crates/rustok-forum/src/entities/forum_topic_tag.rs",
+    "crates/modules/rustok-forum/src/entities/forum_topic_tag.rs",
     '#[sea_orm(table_name = "forum_topic_tags")]\npub struct Model;\n',
   );
 
   write(
     root,
-    "crates/rustok-product/src/migrations/m20260329_000001_create_product_tags.rs",
+    "crates/modules/rustok-product/src/migrations/m20260329_000001_create_product_tags.rs",
     [
       "fn migration() {",
       "    let _ = ProductTags::ProductId;",
@@ -124,13 +124,13 @@ function writeBaseline(root) {
   );
   write(
     root,
-    "crates/rustok-product/src/entities/product_tag.rs",
+    "crates/modules/rustok-product/src/entities/product_tag.rs",
     '#[sea_orm(table_name = "product_tags")]\npub struct Model;\n',
   );
 
   write(
     root,
-    "crates/rustok-profiles/src/migrations/m20260330_000002_create_profile_tags.rs",
+    "crates/modules/rustok-profiles/src/migrations/m20260330_000002_create_profile_tags.rs",
     [
       "fn migration() {",
       "    let _ = ProfileTags::ProfileUserId;",
@@ -143,7 +143,7 @@ function writeBaseline(root) {
   );
   write(
     root,
-    "crates/rustok-profiles/src/entities/profile_tag.rs",
+    "crates/modules/rustok-profiles/src/entities/profile_tag.rs",
     '#[sea_orm(table_name = "profile_tags")]\npub struct Model;\n',
   );
 }
@@ -155,29 +155,29 @@ try {
 
   write(
     root,
-    "crates/rustok-taxonomy/src/hierarchy.rs",
+    "crates/modules/rustok-taxonomy/src/hierarchy.rs",
     "pub struct CategoryHierarchy { pub parent_id: Option<i64>, pub position: i32 }\n",
   );
   expectSuccess(
     root,
     "Taxonomy-owned Category hierarchy must be allowed by the ownership boundary",
   );
-  remove(root, "crates/rustok-taxonomy/src/hierarchy.rs");
+  remove(root, "crates/modules/rustok-taxonomy/src/hierarchy.rs");
 
   write(
     root,
-    "crates/rustok-taxonomy/src/entities/category_presentation.rs",
+    "crates/modules/rustok-taxonomy/src/entities/category_presentation.rs",
     "pub struct CategoryPresentation { pub icon_key: Option<String>, pub color: Option<String>, pub image_media_id: Option<String> }\n",
   );
   expectSuccess(
     root,
     "Taxonomy-owned canonical Category presentation must be allowed by the ownership boundary",
   );
-  remove(root, "crates/rustok-taxonomy/src/entities/category_presentation.rs");
+  remove(root, "crates/modules/rustok-taxonomy/src/entities/category_presentation.rs");
 
   write(
     root,
-    "crates/rustok-taxonomy/src/migrations/m0001_consumer_relation.rs",
+    "crates/modules/rustok-taxonomy/src/migrations/m0001_consumer_relation.rs",
     'const TABLE: &str = "blog_post_tags";\n',
   );
   expectFailure(
@@ -186,11 +186,11 @@ try {
     /consumer attachment storage/,
     "Taxonomy-owned consumer relation storage must fail closed",
   );
-  remove(root, "crates/rustok-taxonomy/src/migrations/m0001_consumer_relation.rs");
+  remove(root, "crates/modules/rustok-taxonomy/src/migrations/m0001_consumer_relation.rs");
 
   write(
     root,
-    "crates/rustok-taxonomy/src/entities/generic_attachment.rs",
+    "crates/modules/rustok-taxonomy/src/entities/generic_attachment.rs",
     "pub struct GenericAttachment { pub owner_type: String, pub owner_id: i64 }\n",
   );
   expectFailure(
@@ -199,9 +199,9 @@ try {
     /polymorphic owner_type\/owner_id/,
     "generic polymorphic Taxonomy attachment storage must fail closed",
   );
-  remove(root, "crates/rustok-taxonomy/src/entities/generic_attachment.rs");
+  remove(root, "crates/modules/rustok-taxonomy/src/entities/generic_attachment.rs");
 
-  remove(root, "crates/rustok-profiles/src/entities/profile_tag.rs");
+  remove(root, "crates/modules/rustok-profiles/src/entities/profile_tag.rs");
   expectFailure(
     root,
     /crates\/rustok-profiles\/src\/entities\/profile_tag\.rs/,

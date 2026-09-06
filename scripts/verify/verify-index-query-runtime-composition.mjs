@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const neutralPath = 'crates/rustok-index/src/application/query_runtime.rs';
+const neutralPath = 'crates/modules/rustok-index/src/application/query_runtime.rs';
 const neutral = requireMarkers(neutralPath, [
   'pub struct SharedIndexQueryRuntime',
   'port: Arc<dyn IndexQueryPort>',
@@ -39,7 +39,7 @@ for (const forbidden of [
   }
 }
 
-const materializerPath = 'crates/rustok-index/src/infrastructure/postgres/query_runtime.rs';
+const materializerPath = 'crates/modules/rustok-index/src/infrastructure/postgres/query_runtime.rs';
 const materializer = requireMarkers(materializerPath, [
   'pub enum IndexQueryRuntimeCompositionError',
   'AlreadyMaterialized',
@@ -77,16 +77,16 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'mod query_runtime;',
   'pub use query_runtime::SharedIndexQueryRuntime;',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod query_runtime;',
   'IndexQueryRuntimeCompositionError',
   'materialize_postgres_index_query_runtime',
 ]);
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'materialize_postgres_index_query_runtime',
   'IndexQueryRuntimeCompositionError',
 ]);
@@ -112,11 +112,11 @@ for (const forbidden of ['PostgresIndexQueryPort::new', 'PostgresIndexQueryPort:
 }
 
 for (const relative of [
-  'crates/rustok-distribution/src/lib.rs',
-  'crates/rustok-social-graph/src/lib.rs',
-  'crates/rustok-social-graph/src/index_consumer.rs',
-  'crates/rustok-social-graph/src/index_privacy.rs',
-  'crates/rustok-social-graph/src/index_privacy_shadow.rs',
+  'crates/modules/rustok-distribution/src/lib.rs',
+  'crates/modules/rustok-social-graph/src/lib.rs',
+  'crates/modules/rustok-social-graph/src/index_consumer.rs',
+  'crates/modules/rustok-social-graph/src/index_privacy.rs',
+  'crates/modules/rustok-social-graph/src/index_privacy_shadow.rs',
 ]) {
   const source = read(relative);
   for (const forbidden of ['PostgresIndexQueryPort::new', 'PostgresIndexQueryPort::with_admissions']) {
@@ -134,18 +134,18 @@ requireMarkers('xtask/src/server_event_runtime_contracts.rs', [
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-query-runtime-composition.mjs'",
 ]);
-requireMarkers('crates/rustok-index/CRATE_API.md', [
+requireMarkers('crates/modules/rustok-index/CRATE_API.md', [
   '`SharedIndexQueryRuntime`',
   '`materialize_postgres_index_query_runtime`',
   'Runtime presence does not claim',
   'Calling `PostgresIndexQueryPort::new` outside the Index-owned runtime materializer',
 ]);
-requireMarkers('crates/rustok-index/README.md', [
+requireMarkers('crates/modules/rustok-index/README.md', [
   'M4 source-owned registry and server query-runtime composition: source complete',
   '`SharedIndexQueryRuntime`',
   'Composition performs no SQL',
 ]);
-requireMarkers('crates/rustok-index/docs/m4-query-runtime-composition.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-query-runtime-composition.md', [
   'Status: `source_complete_execution_pending`',
   '`SharedIndexQueryRuntime`',
   '`materialize_postgres_index_query_runtime(extensions, db)`',
@@ -153,7 +153,7 @@ requireMarkers('crates/rustok-index/docs/m4-query-runtime-composition.md', [
   'selected consumers may be recomposed only after runtime publication',
   'Not run by the implementation agent',
 ]);
-requireMarkers('crates/rustok-index/docs/m4-query-planner.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-query-planner.md', [
   'M4 server-owned shared query runtime composition: `source_complete_execution_pending`',
   '`SharedIndexQueryRuntime` is a neutral cloneable `IndexQueryPort` capability',
   'Runtime presence does not establish persisted tenant schema readiness',

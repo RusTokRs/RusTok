@@ -9,10 +9,10 @@ export class FoundationFbaRuntimeSmokeError extends Error {}
 export const foundationFbaRuntimeSmokeModules = [
   {
     module: 'channel',
-    registry: 'crates/rustok-channel/contracts/channel-fba-registry.json',
-    smoke: 'crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json',
+    registry: 'crates/modules/rustok-channel/contracts/channel-fba-registry.json',
+    smoke: 'crates/modules/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json',
     markers: [
-      ['crates/rustok-channel/src/ports.rs', [
+      ['crates/modules/rustok-channel/src/ports.rs', [
         'impl ChannelReadPort for crate::ChannelService',
         'context.require_policy(PortCallPolicy::read())?;',
         'validate_channel_read_request(&request)?;',
@@ -21,15 +21,15 @@ export const foundationFbaRuntimeSmokeModules = [
         'channel.slug_empty',
         'channel.host_target_empty'
       ]],
-      ['crates/rustok-channel/admin/src/transport/mod.rs', ['mod native_server_adapter;', 'mod rest_adapter;']]
+      ['crates/modules/rustok-channel/admin/src/transport/mod.rs', ['mod native_server_adapter;', 'mod rest_adapter;']]
     ]
   },
   {
     module: 'tenant',
-    registry: 'crates/rustok-tenant/contracts/tenant-fba-registry.json',
-    smoke: 'crates/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json',
+    registry: 'crates/modules/rustok-tenant/contracts/tenant-fba-registry.json',
+    smoke: 'crates/modules/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json',
     markers: [
-      ['crates/rustok-tenant/src/ports.rs', [
+      ['crates/modules/rustok-tenant/src/ports.rs', [
         'impl TenantReadPort for crate::TenantService',
         'context.require_policy(PortCallPolicy::read())?;',
         'validate_tenant_read_request(&request)?;',
@@ -61,10 +61,10 @@ export const foundationFbaRuntimeSmokeModules = [
   },
   {
     module: 'email',
-    registry: 'crates/rustok-email/contracts/email-fba-registry.json',
-    smoke: 'crates/rustok-email/contracts/evidence/email-runtime-fallback-smoke.json',
+    registry: 'crates/modules/rustok-email/contracts/email-fba-registry.json',
+    smoke: 'crates/modules/rustok-email/contracts/evidence/email-runtime-fallback-smoke.json',
     markers: [
-      ['crates/rustok-email/src/ports.rs', [
+      ['crates/modules/rustok-email/src/ports.rs', [
         'impl EmailDeliveryPort for crate::EmailService',
         'require_email_delivery_policy(&context)?;',
         'context\n        .require_policy(PortCallPolicy::write())',

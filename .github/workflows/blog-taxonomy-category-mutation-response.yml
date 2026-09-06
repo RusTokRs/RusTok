@@ -3,17 +3,17 @@ name: Blog Taxonomy Category Mutation Response Contract
 on:
   pull_request:
     paths:
-      - "crates/rustok-blog/src/services/category_owner.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_dual_write.rs"
+      - "crates/modules/rustok-blog/src/services/category_owner.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_dual_write.rs"
       - ".github/workflows/blog-taxonomy-category-mutation-response.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-blog/src/services/category_owner.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_dual_write.rs"
+      - "crates/modules/rustok-blog/src/services/category_owner.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_dual_write.rs"
       - ".github/workflows/blog-taxonomy-category-mutation-response.yml"
   workflow_dispatch:
 
@@ -52,9 +52,9 @@ jobs:
       - name: Check touched Rust leaf formatting
         run: |
           rustfmt +1.96.0 --edition 2024 --check \
-            crates/rustok-blog/src/services/category_owner.rs \
-            crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs \
-            crates/rustok-blog/tests/category_taxonomy_dual_write.rs
+            crates/modules/rustok-blog/src/services/category_owner.rs \
+            crates/modules/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs \
+            crates/modules/rustok-blog/tests/category_taxonomy_dual_write.rs
       - name: Run canonical Category mutation response contract
         run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_mutation_response_cutover -- --nocapture
       - name: Re-run Blog Taxonomy Category read cutover contract

@@ -2,13 +2,13 @@ use std::path::Path;
 
 #[test]
 fn marketplace_family_names_and_ownership_stay_explicit() {
-    let root_manifest = include_str!("../../../crates/rustok-marketplace/rustok-module.toml");
+    let root_manifest = include_str!("../../../crates/modules/rustok-marketplace/rustok-module.toml");
     let seller_manifest =
-        include_str!("../../../crates/rustok-marketplace-seller/rustok-module.toml");
+        include_str!("../../../crates/modules/rustok-marketplace-seller/rustok-module.toml");
     let modules_manifest = include_str!("../../../modules.toml");
     let workspace = include_str!("../../../Cargo.toml");
-    let root_source = include_str!("../../../crates/rustok-marketplace/src/lib.rs");
-    let root_consumer = include_str!("../../../crates/rustok-marketplace/src/seller_directory.rs");
+    let root_source = include_str!("../../../crates/modules/rustok-marketplace/src/lib.rs");
+    let root_consumer = include_str!("../../../crates/modules/rustok-marketplace/src/seller_directory.rs");
 
     for marker in [
         "rustok-marketplace",
@@ -29,12 +29,12 @@ fn marketplace_family_names_and_ownership_stay_explicit() {
     );
 
     for forbidden in [
-        "crates/rustok-seller",
-        "crates/rustok-offer",
-        "crates/rustok-listing",
-        "crates/rustok-commission",
-        "crates/rustok-ledger",
-        "crates/rustok-payout",
+        "crates/modules/rustok-seller",
+        "crates/modules/rustok-offer",
+        "crates/modules/rustok-listing",
+        "crates/modules/rustok-commission",
+        "crates/modules/rustok-ledger",
+        "crates/modules/rustok-payout",
     ] {
         assert!(
             !workspace.contains(forbidden) && !modules_manifest.contains(forbidden),
@@ -49,12 +49,12 @@ fn marketplace_family_names_and_ownership_stay_explicit() {
     assert!(!root_consumer.contains("entities::"));
     assert!(
         !Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../crates/rustok-marketplace/src/entities")
+            .join("../../crates/modules/rustok-marketplace/src/entities")
             .exists()
     );
     assert!(
         !Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../crates/rustok-marketplace/src/migrations")
+            .join("../../crates/modules/rustok-marketplace/src/migrations")
             .exists()
     );
 }
@@ -62,35 +62,35 @@ fn marketplace_family_names_and_ownership_stay_explicit() {
 #[test]
 fn marketplace_seller_owner_and_ports_preserve_contracts() {
     let owner_migration = include_str!(
-        "../../../crates/rustok-marketplace-seller/src/migrations/m20260716_000001_create_marketplace_sellers.rs"
+        "../../../crates/modules/rustok-marketplace-seller/src/migrations/m20260716_000001_create_marketplace_sellers.rs"
     );
     let receipt_migration = include_str!(
-        "../../../crates/rustok-marketplace-seller/src/migrations/m20260716_000002_create_seller_command_receipts.rs"
+        "../../../crates/modules/rustok-marketplace-seller/src/migrations/m20260716_000002_create_seller_command_receipts.rs"
     );
     let seller_entity =
-        include_str!("../../../crates/rustok-marketplace-seller/src/entities/seller.rs");
+        include_str!("../../../crates/modules/rustok-marketplace-seller/src/entities/seller.rs");
     let translation_entity = include_str!(
-        "../../../crates/rustok-marketplace-seller/src/entities/seller_translation.rs"
+        "../../../crates/modules/rustok-marketplace-seller/src/entities/seller_translation.rs"
     );
     let localized =
-        include_str!("../../../crates/rustok-marketplace-seller/src/localized_sellers.rs");
-    let service = include_str!("../../../crates/rustok-marketplace-seller/src/service.rs");
-    let dto = include_str!("../../../crates/rustok-marketplace-seller/src/dto.rs");
-    let ports = include_str!("../../../crates/rustok-marketplace-seller/src/ports.rs");
+        include_str!("../../../crates/modules/rustok-marketplace-seller/src/localized_sellers.rs");
+    let service = include_str!("../../../crates/modules/rustok-marketplace-seller/src/service.rs");
+    let dto = include_str!("../../../crates/modules/rustok-marketplace-seller/src/dto.rs");
+    let ports = include_str!("../../../crates/modules/rustok-marketplace-seller/src/ports.rs");
     let receipt_entity = include_str!(
-        "../../../crates/rustok-marketplace-seller/src/entities/seller_command_receipt.rs"
+        "../../../crates/modules/rustok-marketplace-seller/src/entities/seller_command_receipt.rs"
     );
     let receipt_executor =
-        include_str!("../../../crates/rustok-marketplace-seller/src/command_receipts.rs");
+        include_str!("../../../crates/modules/rustok-marketplace-seller/src/command_receipts.rs");
     let receipted_commands =
-        include_str!("../../../crates/rustok-marketplace-seller/src/receipted_commands.rs");
+        include_str!("../../../crates/modules/rustok-marketplace-seller/src/receipted_commands.rs");
     let registry = include_str!(
-        "../../../crates/rustok-marketplace-seller/contracts/marketplace-seller-fba-registry.json"
+        "../../../crates/modules/rustok-marketplace-seller/contracts/marketplace-seller-fba-registry.json"
     );
-    let admin_core = include_str!("../../../crates/rustok-marketplace-seller/admin/src/core.rs");
+    let admin_core = include_str!("../../../crates/modules/rustok-marketplace-seller/admin/src/core.rs");
     let admin_transport =
-        include_str!("../../../crates/rustok-marketplace-seller/admin/src/transport.rs");
-    let admin_ui = include_str!("../../../crates/rustok-marketplace-seller/admin/src/ui/leptos.rs");
+        include_str!("../../../crates/modules/rustok-marketplace-seller/admin/src/transport.rs");
+    let admin_ui = include_str!("../../../crates/modules/rustok-marketplace-seller/admin/src/ui/leptos.rs");
 
     for marker in [
         "marketplace_sellers",

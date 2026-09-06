@@ -1,12 +1,12 @@
 import fs from "node:fs";
 
 const groupsContractPath =
-  "crates/rustok-groups/contracts/groups-effective-membership-access.json";
-const groupsFbaPath = "crates/rustok-groups/contracts/groups-fba-registry.json";
+  "crates/modules/rustok-groups/contracts/groups-effective-membership-access.json";
+const groupsFbaPath = "crates/modules/rustok-groups/contracts/groups-fba-registry.json";
 const groupsDocsPath =
-  "crates/rustok-groups/docs/membership-enforcement-access-path-integration-contract.md";
+  "crates/modules/rustok-groups/docs/membership-enforcement-access-path-integration-contract.md";
 const forumContractPath =
-  "crates/rustok-forum/contracts/forum-audience-group-facts-host-runtime.json";
+  "crates/modules/rustok-forum/contracts/forum-audience-group-facts-host-runtime.json";
 const adapterPath = "apps/server/src/services/forum_audience_group_facts.rs";
 const ownerBackedPath =
   "apps/server/src/services/forum_audience_group_facts/owner_backed_tests.rs";

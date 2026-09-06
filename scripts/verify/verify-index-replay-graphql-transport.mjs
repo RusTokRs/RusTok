@@ -235,7 +235,7 @@ requireMarkers('apps/server/src/services/index_replay_shadow_transport.rs', [
   'self.operator.run_shadow(context, request).await?',
   'codec.seal(&scope, cursor, Utc::now(), keyring.lifetime())',
 ]);
-requireMarkers('crates/rustok-index/src/application/source_registry.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/source_registry.rs', [
   'const MAX_LOAD_KEYS: usize = 256;',
   'pub struct IndexSourceLoadRequest',
   'IndexSourceError::EmptyLoadKeys',
@@ -248,7 +248,7 @@ requireMarkers('apps/server/src/services/app_lifecycle.rs', [
   'pub async fn stop(&self)',
   'pub fn is_stopping(&self) -> bool',
 ]);
-requireMarkers('crates/rustok-index/src/application/source_continuation.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/source_continuation.rs', [
   'pub fn for_locale(',
   'claims.locale != expected_scope.locale',
   'IndexSourceContinuationError::LocaleScopeMismatch',

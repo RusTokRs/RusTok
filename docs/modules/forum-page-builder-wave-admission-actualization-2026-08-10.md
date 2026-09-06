@@ -21,7 +21,7 @@ This slice closes that source gap without executing the Pages gate, any Forum ev
 New contract:
 
 ```text
-crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json
+crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json
 ```
 
 New bounded runner:

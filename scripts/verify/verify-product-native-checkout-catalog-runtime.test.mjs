@@ -23,7 +23,7 @@ function fixture(options = {}) {
   const compatibilityCatalog = options.compatibilityCatalog ? "CatalogService::new" : "";
   write(
     root,
-    "crates/rustok-commerce/src/storefront_staged_checkout_runtime.rs",
+    "crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs",
     `
     pub async fn complete_storefront_checkout_with_product_port(product_catalog_read_port: Arc<dyn rustok_product::ProductCatalogReadPort>) { complete_storefront_checkout_input_with_product_port(); }
     pub async fn complete_storefront_checkout_input() { product_catalog_read_runtime_for_current_graphql_scope; ${compatibilityCatalog} }
@@ -32,14 +32,14 @@ function fixture(options = {}) {
   );
   write(
     root,
-    "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/modules/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
     options.nativeDirect
       ? "CatalogService::new"
       : `shared_get::<ProductCatalogReadRuntime>() .read_port() complete_storefront_checkout_with_product_port dependency = "ProductCatalogReadRuntime"`,
   );
   write(
     root,
-    "crates/rustok-order/storefront/Cargo.toml",
+    "crates/modules/rustok-order/storefront/Cargo.toml",
     options.omitProductDependency
       ? `[features]\nhydrate = ["leptos/hydrate"]\nssr = ["leptos/ssr"]\n[dependencies]`
       : `[features]\nhydrate = ["leptos/hydrate"]\nssr = ["leptos/ssr", "dep:rustok-product"]\n[dependencies]\nrustok-product = { workspace = true, optional = true }`,
@@ -58,7 +58,7 @@ function fixture(options = {}) {
     : [];
   write(
     root,
-    "crates/rustok-product/contracts/product-fba-registry.json",
+    "crates/modules/rustok-product/contracts/product-fba-registry.json",
     JSON.stringify({
       runtime_composition: {
         source_complete_consumers: complete,
@@ -71,7 +71,7 @@ function fixture(options = {}) {
   );
   write(
     root,
-    "crates/rustok-product/docs/implementation-plan.md",
+    "crates/modules/rustok-product/docs/implementation-plan.md",
     options.omitPlan
       ? "Product plan"
       : "Order storefront native checkout checkout consumer source cutover is complete verify-product-native-checkout-catalog-runtime.mjs",

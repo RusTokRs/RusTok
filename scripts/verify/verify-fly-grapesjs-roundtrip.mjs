@@ -14,7 +14,7 @@ const grapesJsPath = appRequire.resolve('grapesjs/dist/grapes.min.js');
 const presetPath = appRequire.resolve('grapesjs-preset-webpage');
 const grapesJsVersion = appRequire('grapesjs/package.json').version;
 const presetVersion = appRequire('grapesjs-preset-webpage/package.json').version;
-const fixtureRoot = path.join(repositoryRoot, 'crates/fly/fixtures/grapesjs');
+const fixtureRoot = path.join(repositoryRoot, 'crates/ui/fly/fixtures/grapesjs');
 const manifest = JSON.parse(await readFile(path.join(fixtureRoot, 'manifest.json'), 'utf8'));
 const allowedNormalizationIds = new Set(['drop_empty_frame_head']);
 

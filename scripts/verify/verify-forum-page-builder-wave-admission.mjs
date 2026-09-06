@@ -7,13 +7,13 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const failures = [];
 const files = {
-  contract: "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
+  contract: "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
   runner: "scripts/evidence/admit-forum-page-builder-wave.mjs",
-  wave: "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
-  gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
-  browser: "crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json",
-  runtime: "crates/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json",
-  serverfn: "crates/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json",
+  wave: "crates/modules/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
+  gate: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
+  browser: "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json",
+  runtime: "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json",
+  serverfn: "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json",
   freshness: "scripts/verify/verify-forum-wave-evidence-freshness.mjs",
   freshnessTest: "scripts/verify/verify-forum-wave-evidence-freshness.test.mjs",
   planSync: "scripts/verify/verify-forum-wave-plan-sync.mjs",

@@ -1,0 +1,1025 @@
+use leptos::prelude::*;
+
+use crate::model::{
+    InventoryAdminBootstrap, InventoryAvailabilityCheckResult, InventoryProductDetail,
+    InventoryProductList, InventoryQuantityWriteResult, InventoryReservationReleaseWriteResult,
+    InventoryReservationWriteResult,
+};
+
+#[cfg(feature = "ssr")]
+const INVENTORY_ADMIN_OWNER: &str = "rustok_inventory.admin_transport";
+#[cfg(feature = "ssr")]
+const INVENTORY_ADMIN_BOUNDARY: &str = "inventory_admin_native_transport";
+
+pub(crate) async fn fetch_bootstrap() -> Result<InventoryAdminBootstrap, ServerFnError> {
+    inventory_bootstrap_native().await
+}
+
+pub(crate) async fn fetch_products(
+    tenant_id: String,
+    locale: Option<String>,
+    search: Option<String>,
+    status: Option<String>,
+) -> Result<InventoryProductList, ServerFnError> {
+    inventory_products_native(tenant_id, locale, search, status).await
+}
+
+pub(crate) async fn fetch_product(
+    tenant_id: String,
+    id: String,
+    locale: Option<String>,
+) -> Result<Option<InventoryProductDetail>, ServerFnError> {
+    inventory_product_native(tenant_id, id, locale).await
+}
+
+pub(crate) async fn set_variant_quantity(
+    tenant_id: String,
+    variant_id: String,
+    quantity: i32,
+) -> Result<InventoryQuantityWriteResult, ServerFnError> {
+    inventory_set_quantity_native(tenant_id, variant_id, quantity).await
+}
+
+pub(crate) async fn adjust_variant_quantity(
+    tenant_id: String,
+    variant_id: String,
+    adjustment: i32,
+) -> Result<InventoryQuantityWriteResult, ServerFnError> {
+    inventory_adjust_quantity_native(tenant_id, variant_id, adjustment).await
+}
+
+pub(crate) async fn reserve_variant_quantity(
+    tenant_id: String,
+    variant_id: String,
+    quantity: i32,
+) -> Result<InventoryReservationWriteResult, ServerFnError> {
+    inventory_reserve_quantity_native(tenant_id, variant_id, quantity).await
+}
+
+pub(crate) async fn check_variant_availability(
+    tenant_id: String,
+    variant_id: String,
+    requested_quantity: i32,
+) -> Result<InventoryAvailabilityCheckResult, ServerFnError> {
+    inventory_check_availability_native(tenant_id, variant_id, requested_quantity).await
+}
+
+pub(crate) async fn release_reservation_quantity(
+    tenant_id: String,
+    variant_id: String,
+    quantity: i32,
+) -> Result<InventoryReservationReleaseWriteResult, ServerFnError> {
+    inventory_release_reservation_native(tenant_id, variant_id, quantity).await
+}
+
+#[cfg(feature = "ssr")]
+fn inventory_admin_correlation_id(operation: &'static str) -> String {
+    format!("inventory-admin:{operation}:{}", uuid::Uuid::new_v4())
+}
+
+#[cfg(feature = "ssr")]
+fn inventory_context_error<E>(
+    _error: E,
+    owner_operation: &'static str,
+    context_kind: &'static str,
+    correlation_id: &str,
+    code: &'static str,
+    public_message: &'static str,
+) -> ServerFnError {
+    tracing::error!(
+        error_type = std::any::type_name::<E>(),
+        owner = INVENTORY_ADMIN_OWNER,
+        owner_operation,
+        context_kind,
+        correlation_id,
+        code,
+        boundary = INVENTORY_ADMIN_BOUNDARY,
+        "inventory admin request context extraction failed"
+    );
+    ServerFnError::new(public_message)
+}
+
+#[cfg(feature = "ssr")]
+fn auth_context_error<E>(
+    error: E,
+    owner_operation: &'static str,
+    correlation_id: &str,
+) -> ServerFnError {
+    inventory_context_error(
+        error,
+        owner_operation,
+        "auth",
+        correlation_id,
+        "inventory.admin_auth_context_unavailable",
+        "Inventory authentication context is temporarily unavailable",
+    )
+}
+
+#[cfg(feature = "ssr")]
+fn tenant_context_error<E>(
+    error: E,
+    owner_operation: &'static str,
+    correlation_id: &str,
+) -> ServerFnError {
+    inventory_context_error(
+        error,
+        owner_operation,
+        "tenant",
+        correlation_id,
+        "inventory.admin_tenant_context_unavailable",
+        "Inventory tenant context is temporarily unavailable",
+    )
+}
+
+#[cfg(feature = "ssr")]
+fn request_context_error<E>(
+    error: E,
+    owner_operation: &'static str,
+    correlation_id: &str,
+) -> ServerFnError {
+    inventory_context_error(
+        error,
+        owner_operation,
+        "request",
+        correlation_id,
+        "inventory.admin_request_context_unavailable",
+        "Inventory request context is temporarily unavailable",
+    )
+}
+
+#[cfg(feature = "ssr")]
+async fn optional_request_context(
+    owner_operation: &'static str,
+    correlation_id: &str,
+) -> Option<rustok_api::RequestContext> {
+    match leptos_axum::extract::<rustok_api::RequestContext>().await {
+        Ok(context) => Some(context),
+        Err(error) => {
+            tracing::warn!(
+                error_type = std::any::type_name_of_val(&error),
+                owner = INVENTORY_ADMIN_OWNER,
+                owner_operation,
+                context_kind = "request",
+                correlation_id,
+                code = "inventory.admin_optional_request_context_unavailable",
+                boundary = INVENTORY_ADMIN_BOUNDARY,
+                "inventory admin optional request context extraction failed"
+            );
+            None
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn owner_operation_error<E>(
+    _error: E,
+    owner: &'static str,
+    owner_operation: &'static str,
+    correlation_id: &str,
+    tenant_id: uuid::Uuid,
+    actor_id: Option<uuid::Uuid>,
+    subject_id: Option<uuid::Uuid>,
+    request_context: Option<&rustok_api::RequestContext>,
+    code: &'static str,
+    public_message: &'static str,
+) -> ServerFnError {
+    tracing::error!(
+        error_type = std::any::type_name::<E>(),
+        owner,
+        consumer = INVENTORY_ADMIN_OWNER,
+        owner_operation,
+        correlation_id,
+        tenant_id = %tenant_id,
+        actor_id = ?actor_id,
+        subject_id = ?subject_id,
+        request_tenant_id = ?request_context.map(|context| context.tenant_id),
+        channel_id = ?request_context.and_then(|context| context.channel_id),
+        channel_slug = ?request_context.and_then(|context| context.channel_slug.as_deref()),
+        locale = ?request_context.map(|context| context.locale.as_str()),
+        code,
+        boundary = INVENTORY_ADMIN_BOUNDARY,
+        "inventory admin owner operation failed"
+    );
+    ServerFnError::new(public_message)
+}
+
+#[cfg(feature = "ssr")]
+fn inventory_owner_error<E>(
+    error: E,
+    owner_operation: &'static str,
+    correlation_id: &str,
+    tenant_id: uuid::Uuid,
+    actor_id: Option<uuid::Uuid>,
+    subject_id: Option<uuid::Uuid>,
+    request_context: Option<&rustok_api::RequestContext>,
+    code: &'static str,
+    public_message: &'static str,
+) -> ServerFnError {
+    owner_operation_error(
+        error,
+        "rustok_inventory",
+        owner_operation,
+        correlation_id,
+        tenant_id,
+        actor_id,
+        subject_id,
+        request_context,
+        code,
+        public_message,
+    )
+}
+
+#[cfg(feature = "ssr")]
+fn product_owner_error<E>(
+    error: E,
+    owner_operation: &'static str,
+    correlation_id: &str,
+    tenant_id: uuid::Uuid,
+    actor_id: Option<uuid::Uuid>,
+    subject_id: Option<uuid::Uuid>,
+    request_context: Option<&rustok_api::RequestContext>,
+    code: &'static str,
+    public_message: &'static str,
+) -> ServerFnError {
+    owner_operation_error(
+        error,
+        "rustok_product",
+        owner_operation,
+        correlation_id,
+        tenant_id,
+        actor_id,
+        subject_id,
+        request_context,
+        code,
+        public_message,
+    )
+}
+
+#[cfg(feature = "ssr")]
+fn ensure_permission(
+    permissions: &[rustok_api::Permission],
+    required: &[rustok_api::Permission],
+    message: &str,
+) -> Result<(), ServerFnError> {
+    if !rustok_api::has_any_effective_permission(permissions, required) {
+        return Err(ServerFnError::new(format!("Permission denied: {message}")));
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "ssr")]
+fn product_catalog_service_from_context(
+    owner_operation: &'static str,
+    correlation_id: &str,
+) -> Result<rustok_product::CatalogService, ServerFnError> {
+    let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+    let event_bus = runtime_ctx
+        .shared_get::<rustok_outbox::TransactionalEventBus>()
+        .ok_or_else(|| {
+            tracing::error!(
+                owner = "rustok_product",
+                consumer = INVENTORY_ADMIN_OWNER,
+                owner_operation,
+                correlation_id,
+                code = "inventory.admin_product_event_bus_unavailable",
+                boundary = INVENTORY_ADMIN_BOUNDARY,
+                "inventory admin Product owner runtime is missing the transactional event bus"
+            );
+            ServerFnError::new("Product catalog is temporarily unavailable")
+        })?;
+    Ok(rustok_product::CatalogService::new(
+        runtime_ctx.db_clone(),
+        event_bus,
+    ))
+}
+
+#[cfg(feature = "ssr")]
+fn inventory_service_from_context(
+    owner_operation: &'static str,
+    correlation_id: &str,
+    tenant_id: uuid::Uuid,
+    actor_id: uuid::Uuid,
+    request_context: Option<&rustok_api::RequestContext>,
+) -> Result<rustok_inventory::InventoryService, ServerFnError> {
+    let runtime_ctx = leptos::prelude::expect_context::<rustok_api::HostRuntimeContext>();
+    let event_bus = runtime_ctx
+        .shared_get::<rustok_outbox::TransactionalEventBus>()
+        .ok_or_else(|| {
+            tracing::error!(
+                owner = "rustok_inventory",
+                consumer = INVENTORY_ADMIN_OWNER,
+                owner_operation,
+                correlation_id,
+                tenant_id = %tenant_id,
+                actor_id = %actor_id,
+                request_tenant_id = ?request_context.map(|context| context.tenant_id),
+                channel_id = ?request_context.and_then(|context| context.channel_id),
+                channel_slug = ?request_context.and_then(|context| context.channel_slug.as_deref()),
+                locale = ?request_context.map(|context| context.locale.as_str()),
+                code = "inventory.admin_event_bus_unavailable",
+                boundary = INVENTORY_ADMIN_BOUNDARY,
+                "inventory admin transactional event bus is missing"
+            );
+            ServerFnError::new("Inventory runtime is temporarily unavailable")
+        })?;
+    Ok(rustok_inventory::InventoryService::new(
+        runtime_ctx.db_clone(),
+        event_bus,
+    ))
+}
+
+#[cfg(feature = "ssr")]
+fn parse_uuid(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError> {
+    uuid::Uuid::parse_str(value.trim())
+        .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))
+}
+
+#[cfg(feature = "ssr")]
+fn parse_product_status(
+    value: Option<String>,
+) -> Result<Option<rustok_product::entities::product::ProductStatus>, ServerFnError> {
+    let Some(value) = crate::core::normalize_status_filter(value) else {
+        return Ok(None);
+    };
+
+    match value.as_str() {
+        "DRAFT" => Ok(Some(
+            rustok_product::entities::product::ProductStatus::Draft,
+        )),
+        "ACTIVE" => Ok(Some(
+            rustok_product::entities::product::ProductStatus::Active,
+        )),
+        "ARCHIVED" => Ok(Some(
+            rustok_product::entities::product::ProductStatus::Archived,
+        )),
+        _ => Err(ServerFnError::new("Invalid product status")),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn assert_requested_tenant(
+    tenant: &rustok_api::TenantContext,
+    requested_tenant_id: &str,
+) -> Result<(), ServerFnError> {
+    let requested_tenant_id = parse_uuid(requested_tenant_id, "tenant_id")?;
+    if requested_tenant_id != tenant.id {
+        return Err(ServerFnError::new(
+            "Requested tenant_id does not match request tenant context",
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "ssr")]
+fn map_current_tenant(tenant: &rustok_api::TenantContext) -> crate::model::CurrentTenant {
+    crate::model::CurrentTenant {
+        id: tenant.id.to_string(),
+        slug: tenant.slug.clone(),
+        name: tenant.name.clone(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_status(status: rustok_product::entities::product::ProductStatus) -> String {
+    status.to_string().to_ascii_uppercase()
+}
+
+#[cfg(feature = "ssr")]
+fn map_product_list(value: rustok_product::AdminProductList) -> InventoryProductList {
+    InventoryProductList {
+        items: value.items.into_iter().map(map_product_list_item).collect(),
+        total: value.total,
+        page: value.page,
+        per_page: value.per_page,
+        has_next: value.has_next,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_product_list_item(
+    value: rustok_product::AdminProductListItem,
+) -> crate::model::InventoryProductListItem {
+    crate::model::InventoryProductListItem {
+        id: value.id.to_string(),
+        status: map_status(value.status),
+        title: value.title,
+        handle: value.handle,
+        vendor: value.vendor,
+        product_type: value.product_type,
+        shipping_profile_slug: value.shipping_profile_slug,
+        tags: value.tags,
+        created_at: value.created_at.to_rfc3339(),
+        published_at: value.published_at.map(|value| value.to_rfc3339()),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_product_detail(
+    value: rustok_product::dto::ProductResponse,
+    locale: &str,
+) -> InventoryProductDetail {
+    InventoryProductDetail {
+        id: value.id.to_string(),
+        status: map_status(value.status),
+        vendor: value.vendor,
+        product_type: value.product_type,
+        shipping_profile_slug: value.shipping_profile_slug,
+        created_at: value.created_at.to_rfc3339(),
+        updated_at: value.updated_at.to_rfc3339(),
+        published_at: value.published_at.map(|value| value.to_rfc3339()),
+        translations: value
+            .translations
+            .into_iter()
+            .map(|translation| crate::model::InventoryProductTranslation {
+                locale: translation.locale,
+                title: translation.title,
+                handle: translation.handle,
+                description: translation.description,
+            })
+            .collect(),
+        variants: value
+            .variants
+            .into_iter()
+            .map(|variant| map_variant(variant, locale))
+            .collect(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_reservation_result(
+    result: rustok_inventory::InventoryReservationWriteResult,
+) -> InventoryReservationWriteResult {
+    InventoryReservationWriteResult {
+        reserved_quantity: result.reserved_quantity,
+        available_quantity: result.available_quantity,
+        in_stock: result.in_stock,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_availability_result(
+    result: rustok_inventory::InventoryAvailabilityCheckResult,
+) -> InventoryAvailabilityCheckResult {
+    InventoryAvailabilityCheckResult {
+        available: result.available,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_release_result(
+    result: rustok_inventory::InventoryReservationReleaseWriteResult,
+) -> InventoryReservationReleaseWriteResult {
+    InventoryReservationReleaseWriteResult {
+        released_quantity: result.released_quantity,
+        available_quantity: result.available_quantity,
+        in_stock: result.in_stock,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn resolve_variant_title(value: &rustok_product::dto::VariantResponse, locale: &str) -> String {
+    value
+        .translations
+        .iter()
+        .find(|translation| rustok_api::locale_tags_match(&translation.locale, locale))
+        .and_then(|translation| translation.title.clone())
+        .or_else(|| {
+            value
+                .translations
+                .iter()
+                .find_map(|translation| translation.title.clone())
+        })
+        .unwrap_or_else(|| value.title.clone())
+}
+
+#[cfg(feature = "ssr")]
+fn map_variant(
+    value: rustok_product::dto::VariantResponse,
+    locale: &str,
+) -> crate::model::InventoryVariant {
+    let title = resolve_variant_title(&value, locale);
+    crate::model::InventoryVariant {
+        id: value.id.to_string(),
+        sku: value.sku,
+        barcode: value.barcode,
+        shipping_profile_slug: value.shipping_profile_slug,
+        title,
+        option1: value.option1,
+        option2: value.option2,
+        option3: value.option3,
+        prices: value
+            .prices
+            .into_iter()
+            .map(|price| crate::model::InventoryPrice {
+                currency_code: price.currency_code,
+                amount: price.amount.to_string(),
+                compare_at_amount: price.compare_at_amount.map(|amount| amount.to_string()),
+                on_sale: price.on_sale,
+            })
+            .collect(),
+        inventory_quantity: value.inventory_quantity,
+        inventory_policy: value.inventory_policy,
+        in_stock: value.in_stock,
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "inventory/bootstrap")]
+async fn inventory_bootstrap_native() -> Result<InventoryAdminBootstrap, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::Permission;
+        use rustok_api::{AuthContext, TenantContext};
+
+        let owner_operation = "bootstrap";
+        let correlation_id = inventory_admin_correlation_id(owner_operation);
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(|error| auth_context_error(error, owner_operation, &correlation_id))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(|error| tenant_context_error(error, owner_operation, &correlation_id))?;
+        ensure_permission(
+            &auth.permissions,
+            &[Permission::INVENTORY_LIST, Permission::INVENTORY_READ],
+            "inventory:list or inventory:read required",
+        )?;
+
+        Ok(InventoryAdminBootstrap {
+            current_tenant: map_current_tenant(&tenant),
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        Err(ServerFnError::new(
+            "inventory/bootstrap requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "inventory/products")]
+async fn inventory_products_native(
+    tenant_id: String,
+    locale: Option<String>,
+    search: Option<String>,
+    status: Option<String>,
+) -> Result<InventoryProductList, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::Permission;
+        use rustok_api::{AuthContext, RequestContext, TenantContext};
+
+        let owner_operation = "list_products";
+        let correlation_id = inventory_admin_correlation_id(owner_operation);
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(|error| auth_context_error(error, owner_operation, &correlation_id))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(|error| tenant_context_error(error, owner_operation, &correlation_id))?;
+        let request_context = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(|error| request_context_error(error, owner_operation, &correlation_id))?;
+        ensure_permission(
+            &auth.permissions,
+            &[Permission::INVENTORY_LIST],
+            "inventory:list required",
+        )?;
+        assert_requested_tenant(&tenant, &tenant_id)?;
+
+        let requested_locale = crate::core::normalize_locale_filter(locale)
+            .unwrap_or_else(|| request_context.locale.clone());
+        let query = rustok_product::AdminProductListQuery {
+            search: crate::core::normalize_search_filter(search),
+            status: parse_product_status(status)?,
+            category_id: None,
+            sort_by: rustok_product::StorefrontProductSortBy::CreatedAt,
+            sort_direction: rustok_product::StorefrontProductSortDirection::Desc,
+            attribute_filters: Vec::new(),
+        };
+        let service = product_catalog_service_from_context(owner_operation, &correlation_id)?;
+        let products = service
+            .list_admin_products_with_query(
+                tenant.id,
+                requested_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+                query,
+                1,
+                24,
+            )
+            .await
+            .map_err(|error| {
+                product_owner_error(
+                    error,
+                    owner_operation,
+                    &correlation_id,
+                    tenant.id,
+                    Some(auth.user_id),
+                    None,
+                    Some(&request_context),
+                    "inventory.admin_products_unavailable",
+                    "Inventory products are temporarily unavailable",
+                )
+            })?;
+
+        Ok(map_product_list(products))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (tenant_id, locale, search, status);
+        Err(ServerFnError::new(
+            "inventory/products requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "inventory/product")]
+async fn inventory_product_native(
+    tenant_id: String,
+    id: String,
+    locale: Option<String>,
+) -> Result<Option<InventoryProductDetail>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::Permission;
+        use rustok_api::{AuthContext, RequestContext, TenantContext};
+
+        let owner_operation = "get_product";
+        let correlation_id = inventory_admin_correlation_id(owner_operation);
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(|error| auth_context_error(error, owner_operation, &correlation_id))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(|error| tenant_context_error(error, owner_operation, &correlation_id))?;
+        let request_context = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(|error| request_context_error(error, owner_operation, &correlation_id))?;
+        ensure_permission(
+            &auth.permissions,
+            &[Permission::INVENTORY_READ],
+            "inventory:read required",
+        )?;
+        assert_requested_tenant(&tenant, &tenant_id)?;
+
+        let product_id = parse_uuid(&id, "product_id")?;
+        let requested_locale = crate::core::normalize_locale_filter(locale)
+            .unwrap_or_else(|| request_context.locale.clone());
+        let service = product_catalog_service_from_context(owner_operation, &correlation_id)?;
+        let product = match service
+            .get_product_with_locale_fallback(
+                tenant.id,
+                product_id,
+                requested_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await
+        {
+            Ok(product) => product,
+            Err(rustok_product::CommerceError::ProductNotFound(_)) => return Ok(None),
+            Err(error) => {
+                return Err(product_owner_error(
+                    error,
+                    owner_operation,
+                    &correlation_id,
+                    tenant.id,
+                    Some(auth.user_id),
+                    Some(product_id),
+                    Some(&request_context),
+                    "inventory.admin_product_unavailable",
+                    "Inventory product is temporarily unavailable",
+                ));
+            }
+        };
+
+        Ok(Some(map_product_detail(
+            product,
+            requested_locale.as_str(),
+        )))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (tenant_id, id, locale);
+        Err(ServerFnError::new(
+            "inventory/product requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "inventory/variant/set-quantity")]
+async fn inventory_set_quantity_native(
+    tenant_id: String,
+    variant_id: String,
+    quantity: i32,
+) -> Result<InventoryQuantityWriteResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::Permission;
+        use rustok_api::{AuthContext, TenantContext};
+
+        let owner_operation = "set_variant_quantity";
+        let correlation_id = inventory_admin_correlation_id(owner_operation);
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(|error| auth_context_error(error, owner_operation, &correlation_id))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(|error| tenant_context_error(error, owner_operation, &correlation_id))?;
+        let request_context = optional_request_context(owner_operation, &correlation_id).await;
+        ensure_permission(
+            &auth.permissions,
+            &[Permission::INVENTORY_UPDATE, Permission::INVENTORY_MANAGE],
+            "inventory:update or inventory:manage required",
+        )?;
+        assert_requested_tenant(&tenant, &tenant_id)?;
+
+        let variant_id = parse_uuid(&variant_id, "variant_id")?;
+        inventory_service_from_context(
+            owner_operation,
+            &correlation_id,
+            tenant.id,
+            auth.user_id,
+            request_context.as_ref(),
+        )?
+        .set_variant_quantity(tenant.id, auth.user_id, variant_id, quantity)
+        .await
+        .map(|result| InventoryQuantityWriteResult {
+            quantity: result.quantity,
+            in_stock: result.in_stock,
+        })
+        .map_err(|error| {
+            inventory_owner_error(
+                error,
+                owner_operation,
+                &correlation_id,
+                tenant.id,
+                Some(auth.user_id),
+                Some(variant_id),
+                request_context.as_ref(),
+                "inventory.admin_set_quantity_failed",
+                "Inventory quantity could not be updated",
+            )
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (tenant_id, variant_id, quantity);
+        Err(ServerFnError::new(
+            "inventory/variant/set-quantity requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "inventory/variant/adjust-quantity")]
+async fn inventory_adjust_quantity_native(
+    tenant_id: String,
+    variant_id: String,
+    adjustment: i32,
+) -> Result<InventoryQuantityWriteResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::Permission;
+        use rustok_api::{AuthContext, TenantContext};
+
+        let owner_operation = "adjust_variant_quantity";
+        let correlation_id = inventory_admin_correlation_id(owner_operation);
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(|error| auth_context_error(error, owner_operation, &correlation_id))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(|error| tenant_context_error(error, owner_operation, &correlation_id))?;
+        let request_context = optional_request_context(owner_operation, &correlation_id).await;
+        ensure_permission(
+            &auth.permissions,
+            &[Permission::INVENTORY_UPDATE, Permission::INVENTORY_MANAGE],
+            "inventory:update or inventory:manage required",
+        )?;
+        assert_requested_tenant(&tenant, &tenant_id)?;
+
+        let variant_id = parse_uuid(&variant_id, "variant_id")?;
+        inventory_service_from_context(
+            owner_operation,
+            &correlation_id,
+            tenant.id,
+            auth.user_id,
+            request_context.as_ref(),
+        )?
+        .adjust_variant_quantity(
+            tenant.id,
+            auth.user_id,
+            variant_id,
+            adjustment,
+            Some("Inventory admin native adjust endpoint".to_string()),
+        )
+        .await
+        .map(|result| InventoryQuantityWriteResult {
+            quantity: result.quantity,
+            in_stock: result.in_stock,
+        })
+        .map_err(|error| {
+            inventory_owner_error(
+                error,
+                owner_operation,
+                &correlation_id,
+                tenant.id,
+                Some(auth.user_id),
+                Some(variant_id),
+                request_context.as_ref(),
+                "inventory.admin_adjust_quantity_failed",
+                "Inventory quantity could not be updated",
+            )
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (tenant_id, variant_id, adjustment);
+        Err(ServerFnError::new(
+            "inventory/variant/adjust-quantity requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "inventory/variant/reserve-quantity")]
+async fn inventory_reserve_quantity_native(
+    tenant_id: String,
+    variant_id: String,
+    quantity: i32,
+) -> Result<InventoryReservationWriteResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::Permission;
+        use rustok_api::{AuthContext, TenantContext};
+
+        let owner_operation = "reserve_variant_quantity";
+        let correlation_id = inventory_admin_correlation_id(owner_operation);
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(|error| auth_context_error(error, owner_operation, &correlation_id))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(|error| tenant_context_error(error, owner_operation, &correlation_id))?;
+        let request_context = optional_request_context(owner_operation, &correlation_id).await;
+        ensure_permission(
+            &auth.permissions,
+            &[Permission::INVENTORY_UPDATE, Permission::INVENTORY_MANAGE],
+            "inventory:update or inventory:manage required",
+        )?;
+        assert_requested_tenant(&tenant, &tenant_id)?;
+
+        let variant_id = parse_uuid(&variant_id, "variant_id")?;
+        inventory_service_from_context(
+            owner_operation,
+            &correlation_id,
+            tenant.id,
+            auth.user_id,
+            request_context.as_ref(),
+        )?
+        .reserve(tenant.id, variant_id, quantity)
+        .await
+        .map(map_reservation_result)
+        .map_err(|error| {
+            inventory_owner_error(
+                error,
+                owner_operation,
+                &correlation_id,
+                tenant.id,
+                Some(auth.user_id),
+                Some(variant_id),
+                request_context.as_ref(),
+                "inventory.admin_reservation_failed",
+                "Inventory reservation could not be completed",
+            )
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (tenant_id, variant_id, quantity);
+        Err(ServerFnError::new(
+            "inventory/variant/reserve-quantity requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "inventory/variant/check-availability")]
+async fn inventory_check_availability_native(
+    tenant_id: String,
+    variant_id: String,
+    requested_quantity: i32,
+) -> Result<InventoryAvailabilityCheckResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::Permission;
+        use rustok_api::{AuthContext, TenantContext};
+
+        let owner_operation = "check_variant_availability";
+        let correlation_id = inventory_admin_correlation_id(owner_operation);
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(|error| auth_context_error(error, owner_operation, &correlation_id))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(|error| tenant_context_error(error, owner_operation, &correlation_id))?;
+        let request_context = optional_request_context(owner_operation, &correlation_id).await;
+        ensure_permission(
+            &auth.permissions,
+            &[Permission::INVENTORY_READ, Permission::INVENTORY_UPDATE],
+            "inventory:read or inventory:update required",
+        )?;
+        assert_requested_tenant(&tenant, &tenant_id)?;
+
+        let variant_id = parse_uuid(&variant_id, "variant_id")?;
+        inventory_service_from_context(
+            owner_operation,
+            &correlation_id,
+            tenant.id,
+            auth.user_id,
+            request_context.as_ref(),
+        )?
+        .check_variant_availability(tenant.id, variant_id, requested_quantity)
+        .await
+        .map(map_availability_result)
+        .map_err(|error| {
+            inventory_owner_error(
+                error,
+                owner_operation,
+                &correlation_id,
+                tenant.id,
+                Some(auth.user_id),
+                Some(variant_id),
+                request_context.as_ref(),
+                "inventory.admin_availability_unavailable",
+                "Inventory availability is temporarily unavailable",
+            )
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (tenant_id, variant_id, requested_quantity);
+        Err(ServerFnError::new(
+            "inventory/variant/check-availability requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "inventory/variant/release-reservation")]
+async fn inventory_release_reservation_native(
+    tenant_id: String,
+    variant_id: String,
+    quantity: i32,
+) -> Result<InventoryReservationReleaseWriteResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_api::Permission;
+        use rustok_api::{AuthContext, TenantContext};
+
+        let owner_operation = "release_reservation_quantity";
+        let correlation_id = inventory_admin_correlation_id(owner_operation);
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(|error| auth_context_error(error, owner_operation, &correlation_id))?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(|error| tenant_context_error(error, owner_operation, &correlation_id))?;
+        let request_context = optional_request_context(owner_operation, &correlation_id).await;
+        ensure_permission(
+            &auth.permissions,
+            &[Permission::INVENTORY_UPDATE, Permission::INVENTORY_MANAGE],
+            "inventory:update or inventory:manage required",
+        )?;
+        assert_requested_tenant(&tenant, &tenant_id)?;
+
+        let variant_id = parse_uuid(&variant_id, "variant_id")?;
+        inventory_service_from_context(
+            owner_operation,
+            &correlation_id,
+            tenant.id,
+            auth.user_id,
+            request_context.as_ref(),
+        )?
+        .release_reservation_quantity(tenant.id, variant_id, quantity)
+        .await
+        .map(map_release_result)
+        .map_err(|error| {
+            inventory_owner_error(
+                error,
+                owner_operation,
+                &correlation_id,
+                tenant.id,
+                Some(auth.user_id),
+                Some(variant_id),
+                request_context.as_ref(),
+                "inventory.admin_reservation_release_failed",
+                "Inventory reservation could not be released",
+            )
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (tenant_id, variant_id, quantity);
+        Err(ServerFnError::new(
+            "inventory/variant/release-reservation requires the `ssr` feature",
+        ))
+    }
+}

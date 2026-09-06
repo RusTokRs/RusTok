@@ -24,7 +24,7 @@ function fixture({
 
   write(
     root,
-    "crates/rustok-blog/src/graphql/rate_limit.rs",
+    "crates/modules/rustok-blog/src/graphql/rate_limit.rs",
     `
       BlogGraphqlRateLimitPolicy BlogGraphqlRateLimitExceeded BLOG_RATE_LIMITED
       ext.set("retryAfter", exceeded.retry_after as i64)
@@ -36,7 +36,7 @@ function fixture({
   );
   write(
     root,
-    "crates/rustok-blog/tests/graphql_rate_limit_policy_test.rs",
+    "crates/modules/rustok-blog/tests/graphql_rate_limit_policy_test.rs",
     `
       fn retry_after(_: &Response) -> Option<&str> { None }
       Some("9")
@@ -76,7 +76,7 @@ function fixture({
   );
   write(
     root,
-    "crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json",
+    "crates/modules/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json",
     JSON.stringify({
       schema_version: 1,
       module: "blog",
@@ -84,12 +84,12 @@ function fixture({
       status: "executable_no_compile",
       compile_policy: "not_run_by_request",
       test_targets: [
-        "crates/rustok-blog/tests/graphql_rate_limit_policy_test.rs",
+        "crates/modules/rustok-blog/tests/graphql_rate_limit_policy_test.rs",
         "apps/server/src/graphql/blog_rate_limit.rs",
         "apps/server/src/controllers/graphql.rs",
       ],
       production_contract: {
-        policy: "crates/rustok-blog/src/graphql/rate_limit.rs",
+        policy: "crates/modules/rustok-blog/src/graphql/rate_limit.rs",
         host_adapter: "apps/server/src/graphql/blog_rate_limit.rs",
         http_handoff: "apps/server/src/controllers/graphql.rs",
       },
@@ -97,7 +97,7 @@ function fixture({
   );
   write(
     root,
-    "crates/rustok-blog/docs/implementation-plan.md",
+    "crates/modules/rustok-blog/docs/implementation-plan.md",
     "blog-graphql-rate-limit-runtime-harness.json Retry-After verify-blog-graphql-rate-limit.mjs",
   );
 

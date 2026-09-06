@@ -32,41 +32,41 @@ function forbidText(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
 
-const planPath = "crates/rustok-product/docs/implementation-plan.md";
+const planPath = "crates/modules/rustok-product/docs/implementation-plan.md";
 const registryPath = "docs/modules/implementation-plans-registry.md";
 const plan = read(planPath);
 const registry = read(registryPath);
 
 const storefrontSliceComplete = [
-  complete("crates/rustok-product/storefront/src/catalog_controls.rs", ["pub category_id: Option<String>", "pub sort_by: Option<String>", "pub sort_direction: Option<String>"]),
-  complete("crates/rustok-product/storefront/src/ui/leptos.rs", ['name="category_id"', 'name="sort_by"', 'name="sort_direction"']),
-  complete("crates/rustok-product/storefront/src/transport/catalog_list_native.rs", ["StorefrontProductListQuery::try_from_transport"]),
-  complete("crates/rustok-product/storefront/src/transport/graphql_adapter.rs", ["category_id: controls.category_id", "sort_by: controls.sort_by", "sort_direction: controls.sort_direction"]),
-  complete("crates/rustok-product/src/services/catalog/queries.rs", ["PrimaryCategoryId.eq(category_id)", "StorefrontProductSortBy::PublishedAt", "StorefrontProductSortBy::CreatedAt"]),
+  complete("crates/modules/rustok-product/storefront/src/catalog_controls.rs", ["pub category_id: Option<String>", "pub sort_by: Option<String>", "pub sort_direction: Option<String>"]),
+  complete("crates/modules/rustok-product/storefront/src/ui/leptos.rs", ['name="category_id"', 'name="sort_by"', 'name="sort_direction"']),
+  complete("crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs", ["StorefrontProductListQuery::try_from_transport"]),
+  complete("crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs", ["category_id: controls.category_id", "sort_by: controls.sort_by", "sort_direction: controls.sort_direction"]),
+  complete("crates/modules/rustok-product/src/services/catalog/queries.rs", ["PrimaryCategoryId.eq(category_id)", "StorefrontProductSortBy::PublishedAt", "StorefrontProductSortBy::CreatedAt"]),
 ].every(Boolean);
 
 const adminSliceComplete = [
-  complete("crates/rustok-product/admin/src/catalog_controls.rs", ["ProductAdminListInput", "pub category_id: Option<String>", "pub sort_by: Option<String>", "pub sort_direction: Option<String>"]),
-  complete("crates/rustok-product/admin/src/ui/catalog_admin.rs", ['name="category_id"', 'name="sort_by"', 'name="sort_direction"', "provide_context(catalog_controls)"]),
-  complete("crates/rustok-product/admin/src/catalog_transport.rs", ["use_context::<ProductAdminListInput>()", "admin_catalog_native::fetch_products", "admin_catalog_graphql::fetch_products"]),
-  complete("crates/rustok-product/admin/src/transport/admin_catalog_native.rs", ["AdminProductListQuery::try_from_transport", "list_admin_products_with_query"]),
-  complete("crates/rustok-product/admin/src/transport/admin_catalog_graphql.rs", ["AdminProductCatalogFilter", "categoryId", "sortBy", "sortDirection"]),
-  complete("crates/rustok-product/src/services/catalog/admin_queries.rs", ["Status.eq(status)", "PrimaryCategoryId.eq(category_id)", "order_by_asc", "order_by_desc"]),
+  complete("crates/modules/rustok-product/admin/src/catalog_controls.rs", ["ProductAdminListInput", "pub category_id: Option<String>", "pub sort_by: Option<String>", "pub sort_direction: Option<String>"]),
+  complete("crates/modules/rustok-product/admin/src/ui/catalog_admin.rs", ['name="category_id"', 'name="sort_by"', 'name="sort_direction"', "provide_context(catalog_controls)"]),
+  complete("crates/modules/rustok-product/admin/src/catalog_transport.rs", ["use_context::<ProductAdminListInput>()", "admin_catalog_native::fetch_products", "admin_catalog_graphql::fetch_products"]),
+  complete("crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs", ["AdminProductListQuery::try_from_transport", "list_admin_products_with_query"]),
+  complete("crates/modules/rustok-product/admin/src/transport/admin_catalog_graphql.rs", ["AdminProductCatalogFilter", "categoryId", "sortBy", "sortDirection"]),
+  complete("crates/modules/rustok-product/src/services/catalog/admin_queries.rs", ["Status.eq(status)", "PrimaryCategoryId.eq(category_id)", "order_by_asc", "order_by_desc"]),
 ].every(Boolean);
 
 const attributeFiltersComplete = [
-  complete("crates/rustok-product/storefront/src/catalog_controls.rs", ["pub attribute_filters: Vec<String>", "serialize_attribute_filters"]),
-  complete("crates/rustok-product/storefront/src/ui/leptos.rs", ['read_route_query_value(&route_context, "attribute_filters")', 'name="attribute_filters"']),
-  complete("crates/rustok-product/storefront/src/transport/catalog_list_native.rs", ["try_from_transport_with_attribute_filters", "attribute_filters: Vec<String>"]),
-  complete("crates/rustok-product/storefront/src/transport/graphql_adapter.rs", ["attributeFilters", "attribute_filters: controls.attribute_filters"]),
-  complete("crates/rustok-product/admin/src/catalog_controls.rs", ["pub attribute_filters: Vec<String>", "serialize_attribute_filters"]),
-  complete("crates/rustok-product/admin/src/ui/catalog_admin.rs", ['read_route_query_value(&route_context, "attribute_filters")', 'name="attribute_filters"']),
-  complete("crates/rustok-product/admin/src/transport/admin_catalog_native.rs", ["try_from_transport_with_attribute_filters", "attribute_filters: Vec<String>"]),
-  complete("crates/rustok-product/admin/src/transport/admin_catalog_graphql.rs", ["attributeFilters", "attribute_filters: controls.attribute_filters"]),
-  complete("crates/rustok-product/src/services/catalog/types.rs", ["pub struct ProductAttributeFilter", "attribute_filters: Vec<ProductAttributeFilter>", "MAX_ATTRIBUTE_FILTERS"]),
-  complete("crates/rustok-product/src/services/catalog/attribute_filters.rs", ["is_filterable = TRUE", "pav.detached_at IS NULL", "product_attribute_value_translations", "product_attribute_value_options"]),
-  complete("crates/rustok-product/src/services/catalog/queries.rs", ["load_catalog_attribute_filter_conditions", "list_query.attribute_filters"]),
-  complete("crates/rustok-product/src/services/catalog/admin_queries.rs", ["load_catalog_attribute_filter_conditions", "list_query.attribute_filters"]),
+  complete("crates/modules/rustok-product/storefront/src/catalog_controls.rs", ["pub attribute_filters: Vec<String>", "serialize_attribute_filters"]),
+  complete("crates/modules/rustok-product/storefront/src/ui/leptos.rs", ['read_route_query_value(&route_context, "attribute_filters")', 'name="attribute_filters"']),
+  complete("crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs", ["try_from_transport_with_attribute_filters", "attribute_filters: Vec<String>"]),
+  complete("crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs", ["attributeFilters", "attribute_filters: controls.attribute_filters"]),
+  complete("crates/modules/rustok-product/admin/src/catalog_controls.rs", ["pub attribute_filters: Vec<String>", "serialize_attribute_filters"]),
+  complete("crates/modules/rustok-product/admin/src/ui/catalog_admin.rs", ['read_route_query_value(&route_context, "attribute_filters")', 'name="attribute_filters"']),
+  complete("crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs", ["try_from_transport_with_attribute_filters", "attribute_filters: Vec<String>"]),
+  complete("crates/modules/rustok-product/admin/src/transport/admin_catalog_graphql.rs", ["attributeFilters", "attribute_filters: controls.attribute_filters"]),
+  complete("crates/modules/rustok-product/src/services/catalog/types.rs", ["pub struct ProductAttributeFilter", "attribute_filters: Vec<ProductAttributeFilter>", "MAX_ATTRIBUTE_FILTERS"]),
+  complete("crates/modules/rustok-product/src/services/catalog/attribute_filters.rs", ["is_filterable = TRUE", "pav.detached_at IS NULL", "product_attribute_value_translations", "product_attribute_value_options"]),
+  complete("crates/modules/rustok-product/src/services/catalog/queries.rs", ["load_catalog_attribute_filter_conditions", "list_query.attribute_filters"]),
+  complete("crates/modules/rustok-product/src/services/catalog/admin_queries.rs", ["load_catalog_attribute_filter_conditions", "list_query.attribute_filters"]),
 ].every(Boolean);
 
 const umbrellaPending = "- [ ] Connect storefront/admin UI controls to optional catalog filters/sorts.";

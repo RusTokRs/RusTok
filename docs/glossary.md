@@ -18,7 +18,7 @@ Alphabetical reference guide for domain terminology, architectural patterns, and
 An authorization identity assigned to an AI agent invocation (`rustok-ai`). Effective permissions during an AI run are calculated as the intersection of initiating user permissions and the agent principal's permissions ($\text{Subject} \cap \text{Agent}$), preventing privilege escalation.
 
 ### Alloy
-The dynamic business logic and scripting extension layer ([`crates/alloy`](../crates/alloy/README.md)). Alloy runs sandboxed Rhai/WASM scripts (`rustok-sandbox`) for on-the-fly business rules, ETL data cleansing, and instant API/webhook integration without redeploying server binaries.
+The dynamic business logic and scripting extension layer ([`crates/modules/alloy`](../crates/modules/alloy/README.md)). Alloy runs sandboxed Rhai/WASM scripts (`rustok-sandbox`) for on-the-fly business rules, ETL data cleansing, and instant API/webhook integration without redeploying server binaries.
 
 ### Athanor
 The native vector RAG (Retrieval-Augmented Generation) data plane and embedding engine inside `rustok-ai` (`rustok-ai-athanor`), providing semantic search and vector indexing directly attached to database engines.
@@ -47,7 +47,7 @@ RusTok's backend architectural pattern that decouples domain traits from transpo
 RusTok's framework-agnostic UI architecture. UI state machines, view-models, input validation, and i18n catalogs are written in pure Rust (`rustok-ui-core`). Thin view-adapters allow swapping or upgrading rendering hosts (Leptos, Dioxus, Next.js, Flutter Mobile) without touching domain UI logic.
 
 ### Flex
-The dynamic attribute and runtime entity extension module ([`crates/flex`](../crates/flex/README.md)). Allows adding typed custom properties to entities at runtime without performing database DDL schema migrations.
+The dynamic attribute and runtime entity extension module ([`crates/modules/flex`](../crates/modules/flex/README.md)). Allows adding typed custom properties to entities at runtime without performing database DDL schema migrations.
 
 ---
 
@@ -82,7 +82,7 @@ The central runtime container in `apps/server` built during startup from `module
 ## P
 
 ### PortContext
-The transport-agnostic context structure passed across every module service port (`crates/rustok-api/src/ports.rs`). Carries `tenant_id`, `actor`, OpenTelemetry trace identifiers (`correlation_id`, `causation_id`, `traceparent`), `idempotency_key`, and deadline propagation (`deadline_ms`).
+The transport-agnostic context structure passed across every module service port (`crates/libs/rustok-api/src/ports.rs`). Carries `tenant_id`, `actor`, OpenTelemetry trace identifiers (`correlation_id`, `causation_id`, `traceparent`), `idempotency_key`, and deadline propagation (`deadline_ms`).
 
 ---
 

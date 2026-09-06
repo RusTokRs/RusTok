@@ -14,12 +14,12 @@ const auditedStorePath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_postgres_audit.rs';
 const auditedTriggerPath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_postgres_audited_trigger.rs';
-const migrationRegistryPath = 'crates/rustok-blog/src/migrations/mod.rs';
+const migrationRegistryPath = 'crates/modules/rustok-blog/src/migrations/mod.rs';
 const migrationPath =
-  'crates/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-83.md';
+  'crates/modules/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-83.md';
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-audit-outbox.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-audit-outbox.json';
 
 const runtime = read(runtimePath);
 const guard = read(guardPath);
@@ -55,7 +55,7 @@ const preserved = {
     'af2d688d43286a8118823c31408dd5dc7e3f6202',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_trigger.rs':
     'f44f386c36ac81d51da89ee5568ffd9af083cda0',
-  'crates/rustok-comments/src/tcp_delegation_schedule.rs':
+  'crates/modules/rustok-comments/src/tcp_delegation_schedule.rs':
     '7701953d2892e1b68b4830135639d841ebdd6ed1',
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence.rs':
     '85df8deb3203ff90be55a8fe114294ce3a1f3749',

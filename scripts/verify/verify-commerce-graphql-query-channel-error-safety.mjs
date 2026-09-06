@@ -12,15 +12,15 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  query: 'crates/rustok-commerce/src/graphql/query.rs',
-  safeSource: 'crates/rustok-commerce/src/graphql/safe_query/source.rs',
+  query: 'crates/modules/rustok-commerce/src/graphql/query.rs',
+  safeSource: 'crates/modules/rustok-commerce/src/graphql/safe_query/source.rs',
   channelShim:
-    'crates/rustok-commerce/src/graphql/safe_query/source/rustok_channel_shim.rs',
-  ownerService: 'crates/rustok-channel/src/services/channel_service.rs',
-  ownerError: 'crates/rustok-channel/src/error.rs',
+    'crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_channel_shim.rs',
+  ownerService: 'crates/modules/rustok-channel/src/services/channel_service.rs',
+  ownerError: 'crates/modules/rustok-channel/src/error.rs',
   evidence:
-    'crates/rustok-commerce/contracts/evidence/graphql-query-channel-error-safety-source-review.json',
-  document: 'crates/rustok-commerce/docs/graphql-query-channel-error-safety.md',
+    'crates/modules/rustok-commerce/contracts/evidence/graphql-query-channel-error-safety-source-review.json',
+  document: 'crates/modules/rustok-commerce/docs/graphql-query-channel-error-safety.md',
 };
 
 const query = read(paths.query);
@@ -235,7 +235,7 @@ if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
 for (const marker of [
   '# Commerce GraphQL channel error safety',
   'Status: `source_closed_unvalidated`',
-  'The compatibility resolver source in `crates/rustok-commerce/src/graphql/query.rs` remains unchanged.',
+  'The compatibility resolver source in `crates/modules/rustok-commerce/src/graphql/query.rs` remains unchanged.',
   'call `list_channels(tenant_id, 1, 250)` exactly once',
   'It does not format the Channel owner error into a public string.',
   '`CHANNEL_TEMPORARILY_UNAVAILABLE`',

@@ -14,8 +14,8 @@ function requireAbsent(text, marker, message) {
   if (text.includes(marker)) throw new Error(message);
 }
 
-const graphqlPath = "crates/rustok-forum/src/graphql/read_state.rs";
-const cargoPath = "crates/rustok-forum/Cargo.toml";
+const graphqlPath = "crates/modules/rustok-forum/src/graphql/read_state.rs";
+const cargoPath = "crates/modules/rustok-forum/Cargo.toml";
 const packetPath =
   "docs/modules/forum-33-locale-fallback-metrics-actualization-2026-08-09.md";
 

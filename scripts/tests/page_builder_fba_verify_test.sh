@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 VERIFY_DIR="$REPO_ROOT/scripts/verify"
-PB_VERIFY_DIR="$REPO_ROOT/crates/rustok-page-builder/scripts/verify"
+PB_VERIFY_DIR="$REPO_ROOT/crates/modules/rustok-page-builder/scripts/verify"
 
 write_terminology_fixture_files() {
   cat > "$FIXTURE_ROOT/apps/next-admin/src/features/blog/components/post-form.tsx" <<'EOT'
@@ -19,21 +19,21 @@ EOT
 export const postsApi = {};
 EOT
 
-  cat > "$FIXTURE_ROOT/crates/rustok-pages/admin/src/lib.rs" <<'EOT'
+  cat > "$FIXTURE_ROOT/crates/modules/rustok-pages/admin/src/lib.rs" <<'EOT'
 pub fn placeholder() {}
 EOT
 
-  cat > "$FIXTURE_ROOT/crates/rustok-pages/admin/locales/en.json" <<'EOT'
+  cat > "$FIXTURE_ROOT/crates/modules/rustok-pages/admin/locales/en.json" <<'EOT'
 {}
 EOT
 
-  cat > "$FIXTURE_ROOT/crates/rustok-pages/admin/locales/ru.json" <<'EOT'
+  cat > "$FIXTURE_ROOT/crates/modules/rustok-pages/admin/locales/ru.json" <<'EOT'
 {}
 EOT
 }
 
 write_pages_impl_plan_fixture() {
-  cat > "$FIXTURE_ROOT/crates/rustok-pages/docs/implementation-plan.md" <<'EOT'
+  cat > "$FIXTURE_ROOT/crates/modules/rustok-pages/docs/implementation-plan.md" <<'EOT'
 # План реализации `rustok-pages`
 
 ## Execution checkpoint
@@ -46,7 +46,7 @@ EOT
 write_pages_manifest_fixture() {
   local builder_contract_version="$1"
   local consumer_min_version="${2:-1.0}"
-  cat > "$FIXTURE_ROOT/crates/rustok-pages/rustok-module.toml" <<EOT
+  cat > "$FIXTURE_ROOT/crates/modules/rustok-pages/rustok-module.toml" <<EOT
 [module]
 slug = "pages"
 
@@ -101,7 +101,7 @@ EOT
 }
 
 write_registry_fixture() {
-  cat > "$FIXTURE_ROOT/crates/rustok-page-builder/contracts/page-builder-fba-registry.json" <<'EOT'
+  cat > "$FIXTURE_ROOT/crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json" <<'EOT'
 {
   "schema_version": 1,
   "provider": {
@@ -144,16 +144,16 @@ EOT
 create_fixture_repo() {
   FIXTURE_ROOT="$(mktemp -d)"
   mkdir -p \
-    "$FIXTURE_ROOT/crates/rustok-page-builder/contracts" \
-    "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify" \
-    "$FIXTURE_ROOT/crates/rustok-pages/docs" \
-    "$FIXTURE_ROOT/crates/rustok-pages/admin/locales" \
-    "$FIXTURE_ROOT/crates/rustok-pages/admin/src" \
-    "$FIXTURE_ROOT/crates/rustok-forum/docs" \
+    "$FIXTURE_ROOT/crates/modules/rustok-page-builder/contracts" \
+    "$FIXTURE_ROOT/crates/modules/rustok-page-builder/scripts/verify" \
+    "$FIXTURE_ROOT/crates/modules/rustok-pages/docs" \
+    "$FIXTURE_ROOT/crates/modules/rustok-pages/admin/locales" \
+    "$FIXTURE_ROOT/crates/modules/rustok-pages/admin/src" \
+    "$FIXTURE_ROOT/crates/modules/rustok-forum/docs" \
     "$FIXTURE_ROOT/apps/next-admin/src/features/blog/components" \
     "$FIXTURE_ROOT/apps/next-admin/src/features/blog/api"
 
-  cat > "$FIXTURE_ROOT/crates/rustok-page-builder/rustok-module.toml" <<'EOT'
+  cat > "$FIXTURE_ROOT/crates/modules/rustok-page-builder/rustok-module.toml" <<'EOT'
 [module]
 slug = "page_builder"
 
@@ -169,7 +169,7 @@ EOT
   write_pages_manifest_fixture "1.0"
   write_registry_fixture
 
-  cat > "$FIXTURE_ROOT/crates/rustok-forum/docs/implementation-plan.md" <<'EOT'
+  cat > "$FIXTURE_ROOT/crates/modules/rustok-forum/docs/implementation-plan.md" <<'EOT'
 # Forum implementation
 
 ## Execution checkpoint
@@ -178,7 +178,7 @@ EOT
 - Notes: builder consumer readiness fixture.
 EOT
 
-  cat > "$FIXTURE_ROOT/crates/rustok-forum/rustok-module.toml" <<'EOT'
+  cat > "$FIXTURE_ROOT/crates/modules/rustok-forum/rustok-module.toml" <<'EOT'
 [module]
 slug = "forum"
 
@@ -207,22 +207,22 @@ EOT
 }
 
 copy_verify_scripts() {
-  cp "$PB_VERIFY_DIR/verify-page-builder-contract-parity.mjs" "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify/"
-  cp "$PB_VERIFY_DIR/verify-page-builder-contract-registry.mjs" "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify/"
-  cp "$PB_VERIFY_DIR/verify-page-builder-consumer-readiness.mjs" "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify/"
-  cp "$PB_VERIFY_DIR/verify-page-builder-fallback-profiles.mjs" "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify/"
-  cp "$PB_VERIFY_DIR/verify-page-builder-toggle-profiles-consistency.mjs" "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify/"
-  cp "$PB_VERIFY_DIR/verify-page-builder-fba-baseline.mjs" "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify/"
+  cp "$PB_VERIFY_DIR/verify-page-builder-contract-parity.mjs" "$FIXTURE_ROOT/crates/modules/rustok-page-builder/scripts/verify/"
+  cp "$PB_VERIFY_DIR/verify-page-builder-contract-registry.mjs" "$FIXTURE_ROOT/crates/modules/rustok-page-builder/scripts/verify/"
+  cp "$PB_VERIFY_DIR/verify-page-builder-consumer-readiness.mjs" "$FIXTURE_ROOT/crates/modules/rustok-page-builder/scripts/verify/"
+  cp "$PB_VERIFY_DIR/verify-page-builder-fallback-profiles.mjs" "$FIXTURE_ROOT/crates/modules/rustok-page-builder/scripts/verify/"
+  cp "$PB_VERIFY_DIR/verify-page-builder-toggle-profiles-consistency.mjs" "$FIXTURE_ROOT/crates/modules/rustok-page-builder/scripts/verify/"
+  cp "$PB_VERIFY_DIR/verify-page-builder-fba-baseline.mjs" "$FIXTURE_ROOT/crates/modules/rustok-page-builder/scripts/verify/"
 
   for script in \
     verify-page-builder-fallback-matrix-docs.mjs \
     verify-page-builder-runtime-fallback-gate.mjs \
     verify-page-builder-pages-fallback-gate.mjs; do
-    cat > "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify/$script" <<EOT
+    cat > "$FIXTURE_ROOT/crates/modules/rustok-page-builder/scripts/verify/$script" <<EOT
 #!/usr/bin/env node
 console.log("[$script] PASS fixture stub");
 EOT
-    chmod +x "$FIXTURE_ROOT/crates/rustok-page-builder/scripts/verify/$script"
+    chmod +x "$FIXTURE_ROOT/crates/modules/rustok-page-builder/scripts/verify/$script"
   done
 }
 
@@ -234,13 +234,13 @@ cleanup_fixture_repo() {
 }
 
 test_baseline_passes_on_isolated_fixture() {
-  (cd "$FIXTURE_ROOT" && node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs pages)
-  (cd "$FIXTURE_ROOT" && node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs pages)
-  (cd "$FIXTURE_ROOT" && node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs pages)
-  (cd "$FIXTURE_ROOT" && node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs pages)
-  (cd "$FIXTURE_ROOT" && node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs pages)
-  (cd "$FIXTURE_ROOT" && node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs forum)
-  (cd "$FIXTURE_ROOT" && node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs pages)
+  (cd "$FIXTURE_ROOT" && node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs pages)
+  (cd "$FIXTURE_ROOT" && node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs pages)
+  (cd "$FIXTURE_ROOT" && node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs pages)
+  (cd "$FIXTURE_ROOT" && node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs pages)
+  (cd "$FIXTURE_ROOT" && node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs pages)
+  (cd "$FIXTURE_ROOT" && node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs forum)
+  (cd "$FIXTURE_ROOT" && node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs pages)
 }
 
 test_baseline_fails_on_contract_mismatch_fixture() {
@@ -249,7 +249,7 @@ test_baseline_fails_on_contract_mismatch_fixture() {
   write_pages_manifest_fixture "2.0"
 
   FAIL_OUTPUT_FILE="$(mktemp)"
-  if (cd "$FIXTURE_ROOT" && node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs pages >"$FAIL_OUTPUT_FILE" 2>&1); then
+  if (cd "$FIXTURE_ROOT" && node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs pages >"$FAIL_OUTPUT_FILE" 2>&1); then
     echo "expected baseline to fail on contract mismatch fixture"
     cat "$FAIL_OUTPUT_FILE"
     exit 1
@@ -261,7 +261,7 @@ test_baseline_fails_on_consumer_below_minimum_fixture() {
   write_pages_manifest_fixture "0.9" "1.0"
 
   FAIL_OUTPUT_FILE="$(mktemp)"
-  if (cd "$FIXTURE_ROOT" && node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs pages >"$FAIL_OUTPUT_FILE" 2>&1); then
+  if (cd "$FIXTURE_ROOT" && node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs pages >"$FAIL_OUTPUT_FILE" 2>&1); then
     echo "expected baseline to fail on below-minimum fixture"
     cat "$FAIL_OUTPUT_FILE"
     exit 1
@@ -273,7 +273,7 @@ test_baseline_fails_on_invalid_version_format_fixture() {
   write_pages_manifest_fixture "1.x" "1.0"
 
   FAIL_OUTPUT_FILE="$(mktemp)"
-  if (cd "$FIXTURE_ROOT" && node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs pages >"$FAIL_OUTPUT_FILE" 2>&1); then
+  if (cd "$FIXTURE_ROOT" && node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs pages >"$FAIL_OUTPUT_FILE" 2>&1); then
     echo "expected baseline to fail on invalid version fixture"
     cat "$FAIL_OUTPUT_FILE"
     exit 1

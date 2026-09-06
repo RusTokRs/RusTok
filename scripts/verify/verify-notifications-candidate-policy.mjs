@@ -40,15 +40,15 @@ function reject(source, pattern, message) {
 }
 
 const contractPath =
-  "crates/rustok-notifications/contracts/notifications-candidate-policy.json";
+  "crates/modules/rustok-notifications/contracts/notifications-candidate-policy.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const migration = read(contract.migration ?? "");
 const service = read(contract.service ?? "");
-const library = read("crates/rustok-notifications/src/lib.rs");
-const model = read("crates/rustok-notifications/src/model.rs");
-const migrations = read("crates/rustok-notifications/src/migrations/mod.rs");
-const test = read("crates/rustok-notifications/tests/candidate_sqlite.rs");
-const workerTest = read("crates/rustok-notifications/tests/candidate_worker_sqlite.rs");
+const library = read("crates/modules/rustok-notifications/src/lib.rs");
+const model = read("crates/modules/rustok-notifications/src/model.rs");
+const migrations = read("crates/modules/rustok-notifications/src/migrations/mod.rs");
+const test = read("crates/modules/rustok-notifications/tests/candidate_sqlite.rs");
+const workerTest = read("crates/modules/rustok-notifications/tests/candidate_worker_sqlite.rs");
 
 if (contract.slice !== "NOTIFY-03B/07A" || contract.schema_version !== 8) {
   failures.push("machine contract must identify NOTIFY-03B/07A schema 8");

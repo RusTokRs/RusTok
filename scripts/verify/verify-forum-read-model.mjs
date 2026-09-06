@@ -21,17 +21,17 @@ for (const arg of args) {
 }
 
 const paths = {
-  dto: "crates/rustok-forum/src/dto/read_model.rs",
-  service: "crates/rustok-forum/src/services/read_model.rs",
-  compatibility: "crates/rustok-forum/src/services/bounded_compat.rs",
-  categoryOwner: "crates/rustok-forum/src/services/category_owner.rs",
-  servicesRegistry: "crates/rustok-forum/src/services/mod.rs",
-  topicDto: "crates/rustok-forum/src/dto/topic.rs",
-  replyDto: "crates/rustok-forum/src/dto/reply.rs",
-  sqliteTest: "crates/rustok-forum/tests/read_model_cursor_sqlite.rs",
-  postgresTest: "crates/rustok-forum/tests/read_model_cursor_postgres.rs",
+  dto: "crates/modules/rustok-forum/src/dto/read_model.rs",
+  service: "crates/modules/rustok-forum/src/services/read_model.rs",
+  compatibility: "crates/modules/rustok-forum/src/services/bounded_compat.rs",
+  categoryOwner: "crates/modules/rustok-forum/src/services/category_owner.rs",
+  servicesRegistry: "crates/modules/rustok-forum/src/services/mod.rs",
+  topicDto: "crates/modules/rustok-forum/src/dto/topic.rs",
+  replyDto: "crates/modules/rustok-forum/src/dto/reply.rs",
+  sqliteTest: "crates/modules/rustok-forum/tests/read_model_cursor_sqlite.rs",
+  postgresTest: "crates/modules/rustok-forum/tests/read_model_cursor_postgres.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260713_000012_add_forum_read_model_indexes.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000012_add_forum_read_model_indexes.rs",
 };
 
 function fail(message) {

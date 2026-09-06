@@ -10,7 +10,7 @@ const fixturePath = path.join(
   repoRoot,
   "apps/next-frontend/contracts/seo/runtime-parity-fixtures.json",
 );
-const backendPath = path.join(repoRoot, "crates/rustok-forum/src/seo_targets.rs");
+const backendPath = path.join(repoRoot, "crates/modules/rustok-forum/src/seo_targets.rs");
 
 const fixtures = JSON.parse(readFileSync(fixturePath, "utf8"));
 const backend = readFileSync(backendPath, "utf8");

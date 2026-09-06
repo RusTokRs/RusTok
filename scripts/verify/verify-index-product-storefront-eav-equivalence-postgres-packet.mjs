@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const packetPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_eav_postgres_tests.rs';
+const packetPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_eav_postgres_tests.rs';
 const packet = requireMarkers(packetPath, [
   'RUSTOK_PRODUCT_STOREFRONT_EAV_EQUIVALENCE_DATABASE_URL',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
@@ -53,16 +53,16 @@ if (packet.includes('save_product_attribute_values(')) {
   fail(`${packetPath} is a clean materialization fixture and must not conflate owner-clock command evidence with query equivalence`);
 }
 
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'mod storefront_shadow_eav_postgres_tests;',
   'mod storefront_shadow_postgres_tests;',
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
 ]);
-requireMarkers('crates/rustok-product/src/services/catalog_attribute_terms.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/catalog_attribute_terms.rs', [
   'ProductAttributeTermExpr::Never',
   'product_attribute_localized_text_expr(',
 ]);
-requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/storefront_shadow.rs', [
   'ProductAttributeTermExpr::Never',
   'FilterExpr::Not(Box::new(FilterExpr::IsNull(',
   'root_field("id")?',

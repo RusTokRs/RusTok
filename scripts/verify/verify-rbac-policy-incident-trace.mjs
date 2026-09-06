@@ -23,12 +23,12 @@ const files = {
   authoritative: "apps/server/src/services/rbac_authoritative.rs",
   runtime: "apps/server/src/services/rbac_runtime.rs",
   generation: "apps/server/src/services/rbac_invalidation_generation.rs",
-  metrics: "crates/rustok-telemetry/src/rbac_invalidation_metrics.rs",
-  testDb: "crates/rustok-test-utils/src/db.rs",
+  metrics: "crates/libs/rustok-telemetry/src/rbac_invalidation_metrics.rs",
+  testDb: "crates/utils/rustok-test-utils/src/db.rs",
   evidence:
-    "crates/rustok-rbac/contracts/evidence/rbac-policy-incident-trace-source.json",
-  docs: "crates/rustok-rbac/docs/policy-incident-trace.md",
-  plan: "crates/rustok-rbac/docs/implementation-plan.md",
+    "crates/modules/rustok-rbac/contracts/evidence/rbac-policy-incident-trace-source.json",
+  docs: "crates/modules/rustok-rbac/docs/policy-incident-trace.md",
+  plan: "crates/modules/rustok-rbac/docs/implementation-plan.md",
   master: "docs/verification/PLATFORM_VERIFICATION_PLAN.md",
 };
 

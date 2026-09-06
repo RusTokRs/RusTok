@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 
-const source = readFileSync('crates/rustok-ai-content/src/lib.rs', 'utf8');
-const plan = readFileSync('crates/rustok-ai-content/docs/implementation-plan.md', 'utf8');
-const readme = readFileSync('crates/rustok-ai-content/docs/README.md', 'utf8');
+const source = readFileSync('crates/modules/rustok-ai-content/src/lib.rs', 'utf8');
+const plan = readFileSync('crates/modules/rustok-ai-content/docs/implementation-plan.md', 'utf8');
+const readme = readFileSync('crates/modules/rustok-ai-content/docs/README.md', 'utf8');
 
 function assertIncludes(haystack, needle, label) {
   if (!haystack.includes(needle)) {

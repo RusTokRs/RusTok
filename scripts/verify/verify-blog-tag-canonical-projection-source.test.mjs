@@ -11,14 +11,14 @@ import { spawnSync } from 'node:child_process';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const verifier = path.join(repositoryRoot, 'scripts/verify/verify-blog-tag-canonical-projection-source.mjs');
 const files = [
-  'crates/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
-  'crates/rustok-blog/src/services/tag.rs',
-  'crates/rustok-blog/tests/taxonomy_tags.rs',
-  'crates/rustok-search/src/blog_projector.rs',
-  'crates/rustok-search/tests/blog_projection_postgres_test.rs',
-  'crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json',
-  'crates/rustok-blog/docs/implementation-plan-slice-103.md',
-  'crates/rustok-blog/docs/implementation-plan-current.md',
+  'crates/modules/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
+  'crates/modules/rustok-blog/src/services/tag.rs',
+  'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
+  'crates/modules/rustok-search/src/blog_projector.rs',
+  'crates/modules/rustok-search/tests/blog_projection_postgres_test.rs',
+  'crates/modules/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-103.md',
+  'crates/modules/rustok-blog/docs/implementation-plan-current.md',
 ];
 function absolute(root, relativePath) { return path.join(root, relativePath); }
 function write(root, relativePath, content) {
@@ -60,7 +60,7 @@ test('accepts canonical Blog tag read/Search source', () => {
 
 test('rejects metadata resurrection on empty relation set', () => {
   const result = rejects((root) => {
-    const file = 'crates/rustok-blog/src/services/tag.rs';
+    const file = 'crates/modules/rustok-blog/src/services/tag.rs';
     const source = readFileSync(absolute(root, file), 'utf8');
     write(root, file, source.replace('return Ok(tags_by_post);', 'return Ok(HashMap::new());'));
   });
@@ -70,7 +70,7 @@ test('rejects metadata resurrection on empty relation set', () => {
 
 test('rejects removal of the Blog read regression harness', () => {
   const result = rejects((root) => {
-    const file = 'crates/rustok-blog/tests/taxonomy_tags.rs';
+    const file = 'crates/modules/rustok-blog/tests/taxonomy_tags.rs';
     const source = readFileSync(absolute(root, file), 'utf8');
     write(root, file, source.replace('post_read_does_not_resurrect_metadata_tags_after_relations_are_removed', 'removed_read_case'));
   });
@@ -80,7 +80,7 @@ test('rejects removal of the Blog read regression harness', () => {
 
 test('rejects metadata-backed Search projection', () => {
   const result = rejects((root) => {
-    const file = 'crates/rustok-search/src/blog_projector.rs';
+    const file = 'crates/modules/rustok-search/src/blog_projector.rs';
     const source = readFileSync(absolute(root, file), 'utf8');
     write(root, file, source.replace('FROM blog_post_tags relation', "FROM jsonb_array_elements_text(p.metadata -> 'tags') relation"));
   });
@@ -90,7 +90,7 @@ test('rejects metadata-backed Search projection', () => {
 
 test('rejects premature atomic mutation claim', () => {
   const result = rejects((root) => {
-    const file = 'crates/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json';
+    const file = 'crates/modules/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json';
     const value = JSON.parse(readFileSync(absolute(root, file), 'utf8'));
     value.source_contract.tag_mutation_atomic_reindex_implemented = true;
     write(root, file, `${JSON.stringify(value, null, 2)}\n`);

@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - "crates/rustok-events/**"
-      - "crates/rustok-product/**"
-      - "crates/rustok-index/**"
-      - "crates/rustok-social-graph/**"
-      - "crates/rustok-distribution/src/product_index/**"
-      - "crates/rustok-distribution/src/product_variant_index.rs"
-      - "crates/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
+      - "crates/libs/rustok-events/**"
+      - "crates/modules/rustok-product/**"
+      - "crates/modules/rustok-index/**"
+      - "crates/modules/rustok-social-graph/**"
+      - "crates/modules/rustok-distribution/src/product_index/**"
+      - "crates/modules/rustok-distribution/src/product_variant_index.rs"
+      - "crates/modules/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
       - "apps/server/src/services/product_index_refresh_worker.rs"
       - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs"
@@ -41,13 +41,13 @@ on:
       - main
       - "agent/**"
     paths:
-      - "crates/rustok-events/**"
-      - "crates/rustok-product/**"
-      - "crates/rustok-index/**"
-      - "crates/rustok-social-graph/**"
-      - "crates/rustok-distribution/src/product_index/**"
-      - "crates/rustok-distribution/src/product_variant_index.rs"
-      - "crates/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
+      - "crates/libs/rustok-events/**"
+      - "crates/modules/rustok-product/**"
+      - "crates/modules/rustok-index/**"
+      - "crates/modules/rustok-social-graph/**"
+      - "crates/modules/rustok-distribution/src/product_index/**"
+      - "crates/modules/rustok-distribution/src/product_variant_index.rs"
+      - "crates/modules/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
       - "apps/server/src/services/product_index_refresh_worker.rs"
       - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs"
@@ -151,7 +151,7 @@ jobs:
       - name: Regenerate canonical event digests
         run: cargo run --locked -p rustok-events --example event_contract_digests -- --write
       - name: Require committed canonical event digests
-        run: git diff --exit-code -- crates/rustok-events/contracts/event-contract-digests.json
+        run: git diff --exit-code -- crates/libs/rustok-events/contracts/event-contract-digests.json
 
   focused-cargo:
     name: Events Product Index cargo checks

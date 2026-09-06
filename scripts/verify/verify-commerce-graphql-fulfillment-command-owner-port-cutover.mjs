@@ -12,14 +12,14 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  providerOperations: 'crates/rustok-commerce/src/graphql/mutations/provider_operations.rs',
-  graphqlRuntime: 'crates/rustok-commerce/src/graphql_runtime.rs',
-  fulfillmentCommands: 'crates/rustok-commerce/src/graphql_runtime/fulfillment_commands.rs',
-  lifecycleOwner: 'crates/rustok-fulfillment/src/admin_command.rs',
-  createOwner: 'crates/rustok-fulfillment/src/admin_create_command.rs',
-  manualCreate: 'crates/rustok-commerce/src/services/admin_manual_fulfillment_orchestration.rs',
-  plan: 'crates/rustok-commerce/docs/implementation-plan.md',
-  document: 'crates/rustok-commerce/docs/graphql-fulfillment-command-owner-port-cutover-2026-08-09.md',
+  providerOperations: 'crates/modules/rustok-commerce/src/graphql/mutations/provider_operations.rs',
+  graphqlRuntime: 'crates/modules/rustok-commerce/src/graphql_runtime.rs',
+  fulfillmentCommands: 'crates/modules/rustok-commerce/src/graphql_runtime/fulfillment_commands.rs',
+  lifecycleOwner: 'crates/modules/rustok-fulfillment/src/admin_command.rs',
+  createOwner: 'crates/modules/rustok-fulfillment/src/admin_create_command.rs',
+  manualCreate: 'crates/modules/rustok-commerce/src/services/admin_manual_fulfillment_orchestration.rs',
+  plan: 'crates/modules/rustok-commerce/docs/implementation-plan.md',
+  document: 'crates/modules/rustok-commerce/docs/graphql-fulfillment-command-owner-port-cutover-2026-08-09.md',
 };
 
 const providerOperations = read(paths.providerOperations);

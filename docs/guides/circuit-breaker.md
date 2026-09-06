@@ -441,7 +441,7 @@ Latency: 0.1ms per request
 
 ---
 
-**Implementation:** `crates/rustok-core/src/resilience/circuit_breaker.rs`  
+**Implementation:** `crates/libs/rustok-core/src/resilience/circuit_breaker.rs`  
 **Status:** ✅ Production Ready  
 **Version:** 1.0  
 **Last Updated:** 2026-02-12

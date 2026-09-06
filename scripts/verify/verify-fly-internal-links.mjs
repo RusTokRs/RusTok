@@ -1,22 +1,22 @@
 import { readFile } from 'node:fs/promises';
 
 const paths = {
-  flyLib: 'crates/fly/src/lib.rs',
-  componentVisit: 'crates/fly/src/component_visit.rs',
-  interactionRoute: 'crates/fly/src/interaction_route.rs',
-  safeUrl: 'crates/fly/src/safe_url.rs',
-  internalLink: 'crates/fly/src/internal_link.rs',
-  localizedRoute: 'crates/fly/src/localized_route.rs',
-  runtimePipeline: 'crates/fly/src/runtime_pipeline.rs',
-  runtimeRender: 'crates/fly/src/runtime_render.rs',
-  runtimeValidation: 'crates/fly/src/runtime_validation.rs',
-  browserContract: 'crates/fly-browser/src/lib.rs',
-  browserIntent: 'crates/rustok-page-builder/admin/src/browser_intent.rs',
-  ssrInternalLink: 'crates/rustok-page-builder/admin/src/editor/ssr_internal_link.rs',
-  adminMod: 'crates/rustok-page-builder/admin/src/editor/mod.rs',
-  adminCanvas: 'crates/rustok-page-builder/admin/src/editor/modular_canvas.rs',
-  localeEn: 'crates/rustok-page-builder/admin/locales/en.json',
-  localeRu: 'crates/rustok-page-builder/admin/locales/ru.json',
+  flyLib: 'crates/ui/fly/src/lib.rs',
+  componentVisit: 'crates/ui/fly/src/component_visit.rs',
+  interactionRoute: 'crates/ui/fly/src/interaction_route.rs',
+  safeUrl: 'crates/ui/fly/src/safe_url.rs',
+  internalLink: 'crates/ui/fly/src/internal_link.rs',
+  localizedRoute: 'crates/ui/fly/src/localized_route.rs',
+  runtimePipeline: 'crates/ui/fly/src/runtime_pipeline.rs',
+  runtimeRender: 'crates/ui/fly/src/runtime_render.rs',
+  runtimeValidation: 'crates/ui/fly/src/runtime_validation.rs',
+  browserContract: 'crates/ui/fly-browser/src/lib.rs',
+  browserIntent: 'crates/modules/rustok-page-builder/admin/src/browser_intent.rs',
+  ssrInternalLink: 'crates/modules/rustok-page-builder/admin/src/editor/ssr_internal_link.rs',
+  adminMod: 'crates/modules/rustok-page-builder/admin/src/editor/mod.rs',
+  adminCanvas: 'crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs',
+  localeEn: 'crates/modules/rustok-page-builder/admin/locales/en.json',
+  localeRu: 'crates/modules/rustok-page-builder/admin/locales/ru.json',
 };
 
 const source = Object.fromEntries(await Promise.all(
@@ -40,7 +40,7 @@ requireMarkers('flyLib', [
   'mod component_visit;',
   'mod interaction_route;',
   'mod safe_url;',
-  'pub use component_visit::{visit_project_components, ComponentVisit};',
+  'pub use component_visit::{ComponentVisit, visit_project_components};',
 ], 'Fly traversal, route, and URL infrastructure');
 requireMarkers('componentVisit', [
   'pub struct ComponentVisit',

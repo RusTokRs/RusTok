@@ -9,7 +9,7 @@ const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
-const source = read('crates/rustok-commerce/src/graphql/mutations/fulfillment.rs');
+const source = read('crates/modules/rustok-commerce/src/graphql/mutations/fulfillment.rs');
 const failures = [];
 
 const requireText = (value, label) => {

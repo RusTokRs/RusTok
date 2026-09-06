@@ -1,0 +1,76 @@
+# rustok-seo
+
+## Purpose
+
+`rustok-seo` provides a tenant-aware SEO runtime for RusToK. It owns explicit SEO metadata overrides, template-generated SEO, bulk remediation, manual redirects, sitemap generation, robots.txt rendering, diagnostics, and a storefront-facing page-context contract for SSR metadata generation across GraphQL, REST, and Leptos server-function surfaces.
+
+## Responsibilities
+
+- resolve SEO page context for `page`, `product`, `blog_post`, `forum_category`, and `forum_topic`
+- consume registry-backed SEO target providers through `rustok-seo-targets` and the shared runtime extensions store
+- keep public forum topic SEO resolution channel-aware when a topic is restricted by forum channel access
+- resolve effective metadata through explicit SEO > template-generated SEO > domain/entity fallback
+- run bulk remediation with safe apply modes for preview, missing-only materialization, generated-only overwrite, and explicit-force overwrite
+- expose diagnostics with readiness scoring, issue aggregates, hreflang gap detection, canonical redirect chain/loop detection, `cross_link_gap` hints, and image descriptor quality checks (`missing_image_alt`, `missing_image_size`) for SEO-critical targets
+- normalize JSON-LD into typed `SeoStructuredDataBlock` records with schema kind, source state, and `@graph` expansion
+- manage manual redirects and canonical overrides
+- generate sitemap files, serve `robots.txt`, and submit sitemap indexes via runtime adapters with per-endpoint aggregation and bounded partial-failure summaries
+- prepare Phase D productionization seams for typed SEO events, outbox emission/idempotency, and SEO→index integration without breaking existing public contracts
+- expose a headless REST read path for `SeoPageContext` at `/api/seo/page-context`, reusing canonical request locale/channel context
+- keep REST handlers on narrow `SeoHttpRuntime` state with explicit DB/event bus/runtime extension handles; controller state is isolated to the Axum adapter
+- expose registry-backed SEO target descriptors through GraphQL `seoTargets` and REST `/api/seo/targets`
+  with the same tenant/module-enabled gate and `seo:manage` admin permission contract
+- expose read-only cross-link suggestions through GraphQL `seoCrossLinkSuggestions` and REST `/api/seo/cross-link-suggestions`
+  with tenant/module checks and `seo:read|seo:manage` parity
+- expose control-plane REST parity surfaces for diagnostics/sitemaps/bulk jobs:
+  `/api/seo/diagnostics`, `/api/seo/sitemaps/status`, `/api/seo/sitemaps/jobs`,
+  `/api/seo/sitemaps/jobs/{job_id}`, `/api/seo/bulk/jobs`, `/api/seo/bulk/jobs/{job_id}`
+- keep REST control-plane errors aligned with GraphQL error codes through a GraphQL-compatible
+  envelope (`errors[].extensions.code`)
+- provide shared SEO capability contracts that owner modules can embed into their own admin UI
+- expose admin and storefront read/write surfaces through GraphQL, HTTP, and Leptos server functions
+- require host runtimes to inject `ModuleRuntimeExtensions` for SEO target registry lookup; built-in registries are test-only helpers, not production fallback behavior
+
+## Entry points
+
+- runtime module: `rustok_seo::SeoModule`
+- application composition: `rustok_seo::SeoApplicationServices`, exposing focused `settings()`, `metadata()`, `routing()`, `redirects()`, `sitemaps()`, `bulk()`, and `operations()` services
+- GraphQL: `rustok_seo::graphql::{SeoQuery, SeoMutation}`
+- HTTP routes: `rustok_seo::controllers::routes`
+- cross-cutting admin UI: `crates/modules/rustok-seo/admin`
+- Rust renderer support: `crates/modules/rustok-seo/render`
+
+## Interactions
+
+- reads canonical routing substrate from `rustok-content`
+- reads page/blog/product/forum content from `rustok-pages`, `rustok-blog`, `rustok-product`, and `rustok-forum`
+- consumes media descriptors at runtime boundaries and maps them into the independent `rustok-seo-targets::SeoTargetImageRecord` DTO for OG/Twitter/schema fallback
+- consumes tenant/module settings from `rustok-tenant`
+- is mounted by `apps/server`, consumed by `apps/storefront`, and shared with `apps/next-frontend`
+- reuses host-provided `RequestContext.channel_slug` on REST/GraphQL/Leptos SSR paths so restricted forum topics only resolve SEO in the matching public channel
+- pairs with `rustok-seo-render` for Rust-host SSR head rendering without moving SEO resolution out of the module
+- consumes `rustok-seo-targets` as the extensibility seam for owner-module target registration
+- is expected to integrate with owner-module admin surfaces in `rustok-pages`, `rustok-product`,
+  `rustok-blog`, and `rustok-forum`; `rustok-seo/admin` is reserved for cross-cutting SEO
+  infrastructure rather than long-term ownership of entity editors
+
+## Current execution wave (Phase D)
+
+Phase D is a productionization and integration-parity wave.
+
+Completed baseline (`D1..D6`):
+
+- typed SEO domain events + outbox delivery foundations (live `seo_event_deliveries` tracking with outbox envelope ids and duplicate-emission guard)
+- SEO-to-index consumer seam with bounded retry/dead-letter behavior
+- GraphQL/REST control-plane parity completion (additive `v1` only; REST diagnostics/sitemaps/bulk job parity endpoints are live and share GraphQL-compatible error codes)
+- owner-module admin integrations and Next admin operator parity
+
+Current wave (`D7..D9`) is grouped into large end-to-end milestones (`A..E`):
+
+- `A`: runtime SEO data plumbing (REST primary + GraphQL selected-path adapter semantics for Next storefront)
+- `B`: runtime migration cutover for Next `robots`/`sitemap`/metadata surfaces
+- `C`: route ownership matrix + cross-host fixture parity guardrails
+- `D`: verification matrix execution
+- `E`: docs/runbooks/readiness closeout
+
+See `docs/implementation-plan.md` for the authoritative milestone checklist and status.

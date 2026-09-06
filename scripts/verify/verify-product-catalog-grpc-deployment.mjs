@@ -31,17 +31,17 @@ function forbidAll(source, markers, description) {
   }
 }
 
-const transportCargo = read("crates/rustok-product-transport/Cargo.toml");
-const transportLib = read("crates/rustok-product-transport/src/lib.rs");
-const connection = read("crates/rustok-product-transport/src/connection.rs");
-const readme = read("crates/rustok-product-transport/README.md");
+const transportCargo = read("crates/modules/rustok-product-transport/Cargo.toml");
+const transportLib = read("crates/modules/rustok-product-transport/src/lib.rs");
+const connection = read("crates/modules/rustok-product-transport/src/connection.rs");
+const readme = read("crates/modules/rustok-product-transport/README.md");
 const serverCargo = read("apps/server/Cargo.toml");
 const services = read("apps/server/src/services/mod.rs");
 const deployment = read("apps/server/src/services/product_catalog_deployment.rs");
 const bootstrap = read("apps/server/src/services/server_bootstrap.rs");
 const composition = read("apps/server/src/services/commerce_provider_runtime.rs");
-const registrySource = read("crates/rustok-product/contracts/product-fba-registry.json");
-const plan = read("crates/rustok-product/docs/implementation-plan.md");
+const registrySource = read("crates/modules/rustok-product/contracts/product-fba-registry.json");
+const plan = read("crates/modules/rustok-product/docs/implementation-plan.md");
 
 requireAll(transportCargo, [
   "thiserror.workspace = true",
@@ -82,7 +82,7 @@ forbidAll(connection, ["std::env::var", "CatalogService", "sea_orm"], "Product t
 
 requireAll(serverCargo, [
   'mod-product   = ["dep:rustok-product", "dep:rustok-product-transport"',
-  'rustok-product-transport = { path = "../../crates/rustok-product-transport", optional = true }',
+  'rustok-product-transport = { path = "../../crates/modules/rustok-product-transport", optional = true }',
 ], "server Product transport dependency");
 requireAll(services, ["pub mod product_catalog_deployment;"], "server service exports");
 requireAll(deployment, [

@@ -18,18 +18,18 @@ const forbidAll = (text, markers, label) => {
 };
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-semantic-poison-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-semantic-poison-proof.json";
 const parentContractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
 const docPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d5-semantic-poison-proof.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d5-semantic-poison-proof.md";
 const testPath =
   "apps/server/tests/forum_versioned_invalidation_semantic_poison_iggy.rs";
 const workerPath =
   "apps/server/src/services/forum_search_contract_consumer.rs";
-const searchCargoPath = "crates/rustok-search/Cargo.toml";
+const searchCargoPath = "crates/modules/rustok-search/Cargo.toml";
 const serverCargoPath = "apps/server/Cargo.toml";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const evidencePath =
   "target/forum-search-versioned-invalidation-semantic-poison-evidence.json";
 const stableError =

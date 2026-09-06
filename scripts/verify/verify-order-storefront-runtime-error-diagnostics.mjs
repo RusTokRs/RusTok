@@ -11,14 +11,14 @@ const rootPath = configuredRoot
 const read = (relativePath) => readFileSync(path.join(rootPath, relativePath), "utf8");
 
 const sourcePath =
-  "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs";
+  "crates/modules/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs";
 const source = read(sourcePath);
 const evidence = JSON.parse(
   read(
-    "crates/rustok-order/contracts/evidence/storefront-runtime-error-diagnostics-source.json",
+    "crates/modules/rustok-order/contracts/evidence/storefront-runtime-error-diagnostics-source.json",
   ),
 );
-const doc = read("crates/rustok-order/docs/storefront-runtime-error-diagnostics.md");
+const doc = read("crates/modules/rustok-order/docs/storefront-runtime-error-diagnostics.md");
 
 const failures = [];
 const requireText = (content, value, label) => {

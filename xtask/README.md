@@ -95,7 +95,7 @@ Unknown slugs fail fast with `Unknown module slug`. Local path modules fail vali
 
 To make a new crate visible to `xtask` as a platform module:
 
-1. Create the crate, normally under `crates/rustok-<slug>/`, and ensure it is a Cargo workspace member.
+1. Create the crate, normally under `crates/modules/rustok-<slug>/`, and ensure it is a Cargo workspace member.
 2. Add the local module docs minimum: `README.md`, `docs/README.md`, and `docs/implementation-plan.md`.
 3. Add `rustok-module.toml` with matching `module.slug`, `module.version`, `module.ui_classification`, dependency metadata, and `[crate].entry_type` when the crate implements `RusToKModule`.
 4. Add the module to `[modules]` in `modules.toml`; use `required = true` only for core modules, otherwise keep it optional.

@@ -11,17 +11,17 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  owner: "crates/rustok-forum/src/services/category_route.rs",
-  servicesMod: "crates/rustok-forum/src/services/mod.rs",
-  error: "crates/rustok-forum/src/error.rs",
+  owner: "crates/modules/rustok-forum/src/services/category_route.rs",
+  servicesMod: "crates/modules/rustok-forum/src/services/mod.rs",
+  error: "crates/modules/rustok-forum/src/error.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260328_000001_create_forum_tables.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260328_000001_create_forum_tables.rs",
   decision: "DECISIONS/2026-03-29-forum-slug-locale-contract.md",
   contract:
-    "crates/rustok-forum/contracts/forum-category-route-identity-owner.json",
-  contractTest: "crates/rustok-forum/tests/category_route_identity_contract.rs",
-  sqliteTest: "crates/rustok-forum/tests/category_route_identity_sqlite.rs",
-  docs: "crates/rustok-forum/docs/forum-24l-category-route-identity-owner.md",
+    "crates/modules/rustok-forum/contracts/forum-category-route-identity-owner.json",
+  contractTest: "crates/modules/rustok-forum/tests/category_route_identity_contract.rs",
+  sqliteTest: "crates/modules/rustok-forum/tests/category_route_identity_sqlite.rs",
+  docs: "crates/modules/rustok-forum/docs/forum-24l-category-route-identity-owner.md",
 };
 
 function read(relativePath) {

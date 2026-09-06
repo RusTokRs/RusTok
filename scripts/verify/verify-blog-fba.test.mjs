@@ -186,7 +186,7 @@ test('Blog FBA verification-chain policy rejects source-gate path drift', () => 
 test('Blog FBA verification-chain policy rejects projection unit-test path drift', () => {
   const registry = canonicalRegistry();
   registry.verification_chain.source_gates.comments_event_projection.unit_test =
-    'crates/rustok-blog/src/services/wrong_projection.rs';
+    'crates/modules/rustok-blog/src/services/wrong_projection.rs';
   assert.ok(
     failures({ registry }).includes(
       'registry source gate comments_event_projection path drift',
@@ -197,7 +197,7 @@ test('Blog FBA verification-chain policy rejects projection unit-test path drift
 test('Blog FBA verification-chain policy rejects projection PostgreSQL-test path drift', () => {
   const registry = canonicalRegistry();
   registry.verification_chain.source_gates.comments_event_projection.postgres_test =
-    'crates/rustok-blog/tests/wrong_projection_postgres_test.rs';
+    'crates/modules/rustok-blog/tests/wrong_projection_postgres_test.rs';
   assert.ok(
     failures({ registry }).includes(
       'registry source gate comments_event_projection path drift',
@@ -208,7 +208,7 @@ test('Blog FBA verification-chain policy rejects projection PostgreSQL-test path
 test('Blog FBA verification-chain policy rejects projection restart-test path drift', () => {
   const registry = canonicalRegistry();
   registry.verification_chain.source_gates.comments_event_projection.restart_test =
-    'crates/rustok-blog/tests/wrong_projection_restart_test.rs';
+    'crates/modules/rustok-blog/tests/wrong_projection_restart_test.rs';
   assert.ok(
     failures({ registry }).includes(
       'registry source gate comments_event_projection path drift',
@@ -219,7 +219,7 @@ test('Blog FBA verification-chain policy rejects projection restart-test path dr
 test('Blog FBA verification-chain policy rejects duplicate-delivery PostgreSQL-test path drift', () => {
   const registry = canonicalRegistry();
   registry.verification_chain.source_gates.comments_duplicate_delivery_race.postgres_test =
-    'crates/rustok-blog/tests/wrong_duplicate_race_postgres_test.rs';
+    'crates/modules/rustok-blog/tests/wrong_duplicate_race_postgres_test.rs';
   assert.ok(
     failures({ registry }).includes(
       'registry source gate comments_duplicate_delivery_race path drift',
@@ -230,7 +230,7 @@ test('Blog FBA verification-chain policy rejects duplicate-delivery PostgreSQL-t
 test('Blog FBA verification-chain policy rejects dispatcher duplicate-delivery PostgreSQL-test path drift', () => {
   const registry = canonicalRegistry();
   registry.verification_chain.source_gates.comments_dispatcher_duplicate_delivery.postgres_test =
-    'crates/rustok-blog/tests/wrong_dispatcher_duplicate_postgres_test.rs';
+    'crates/modules/rustok-blog/tests/wrong_dispatcher_duplicate_postgres_test.rs';
   assert.ok(
     failures({ registry }).includes(
       'registry source gate comments_dispatcher_duplicate_delivery path drift',

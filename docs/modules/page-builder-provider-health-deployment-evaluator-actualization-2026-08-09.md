@@ -145,7 +145,7 @@ Unknown operation/outcome labels and non-finite or negative backend values fail 
 
 ## Provider-health policy parity
 
-The evaluator source-locks the same pilot thresholds as `crates/rustok-page-builder/src/health.rs`:
+The evaluator source-locks the same pilot thresholds as `crates/modules/rustok-page-builder/src/health.rs`:
 
 ```text
 preview_p95_ms <= 1500
@@ -211,13 +211,13 @@ A source-ready evaluator is not runtime evidence. Pages may consume observed hea
 Machine source contract:
 
 ```text
-crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json
+crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json
 ```
 
 Fail-closed source guard:
 
 ```text
-crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
+crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
 ```
 
 The guard locks:
@@ -250,8 +250,8 @@ Per maintainer instruction, tests were not run. No Cargo commands, Node verifier
 Suggested maintainer source checks, intentionally not run:
 
 ```bash
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
-node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 ```

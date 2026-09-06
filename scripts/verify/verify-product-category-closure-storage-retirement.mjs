@@ -1,17 +1,17 @@
 import fs from "node:fs";
 
 const migrationPath =
-  "crates/rustok-product/src/migrations/m20260829_000020_retire_product_category_closure_storage.rs";
-const migrationIndexPath = "crates/rustok-product/src/migrations/mod.rs";
+  "crates/modules/rustok-product/src/migrations/m20260829_000020_retire_product_category_closure_storage.rs";
+const migrationIndexPath = "crates/modules/rustok-product/src/migrations/mod.rs";
 const initialSchemaPath =
-  "crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs";
+  "crates/modules/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs";
 const tenantConsistencyPath =
-  "crates/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs";
+  "crates/modules/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs";
 const categoriesPath =
-  "crates/rustok-product/src/services/catalog_schema_service/categories.rs";
+  "crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs";
 const effectiveFormsPath =
-  "crates/rustok-product/src/services/catalog_schema_service/effective_forms.rs";
-const contractPath = "crates/rustok-product/docs/category-taxonomy-binding.md";
+  "crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms.rs";
+const contractPath = "crates/modules/rustok-product/docs/category-taxonomy-binding.md";
 const backfillContractPath = "docs/migrations/backfill-contracts.json";
 const retainedInvariantWorkflowPath =
   ".github/workflows/product-category-closure-invariant-retirement.yml";

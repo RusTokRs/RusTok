@@ -16,7 +16,7 @@ Platform goal: a hybrid of VKontakte-sociality + phpFox-modular groups + Discour
 1) Architectural Doctrine
 1.1. Format: Modular Monolith (Rust Workspace)
 
-Each module = a separate crate (crates/mod_*) with explicit public ports (traits) and private storage.
+Each module = a separate crate (crates/modules/mod_*) with explicit public ports (traits) and private storage.
 
 No "hard" domain-to-domain dependencies: a module does not import other modules' models/tables.
 

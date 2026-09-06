@@ -18,7 +18,7 @@ const runner = path.join(
   "scripts/evidence/verify-page-builder-accessibility-browser-packet.mjs",
 );
 const executionContractPath =
-  "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json";
+  "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json";
 const executionContract = JSON.parse(
   readFileSync(path.join(repoRoot, executionContractPath), "utf8"),
 );

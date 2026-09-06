@@ -1,15 +1,15 @@
 import fs from "node:fs";
 
 const test = fs.readFileSync(
-  "crates/rustok-moderation/tests/postgres_scheduler_contract.rs",
+  "crates/modules/rustok-moderation/tests/postgres_scheduler_contract.rs",
   "utf8",
 );
 const docs = fs.readFileSync(
-  "crates/rustok-moderation/docs/postgres-scheduler-contract.md",
+  "crates/modules/rustok-moderation/docs/postgres-scheduler-contract.md",
   "utf8",
 );
 const scheduler = fs.readFileSync(
-  "crates/rustok-moderation/src/application_scheduler.rs",
+  "crates/modules/rustok-moderation/src/application_scheduler.rs",
   "utf8",
 );
 

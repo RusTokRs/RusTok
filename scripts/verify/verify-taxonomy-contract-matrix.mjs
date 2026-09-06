@@ -79,8 +79,8 @@ const consumers = [
   {
     name: "Blog",
     slug: "blog",
-    manifest: "crates/rustok-blog/rustok-module.toml",
-    contract: "crates/rustok-blog/CRATE_API.md",
+    manifest: "crates/modules/rustok-blog/rustok-module.toml",
+    contract: "crates/modules/rustok-blog/CRATE_API.md",
     contractMarkers: [
       "keeps `blog_post_tags` as the module-owned relation table",
       "Canonical tag identity now lives in shared `rustok-taxonomy`",
@@ -89,8 +89,8 @@ const consumers = [
   {
     name: "Forum",
     slug: "forum",
-    manifest: "crates/rustok-forum/rustok-module.toml",
-    contract: "crates/rustok-forum/docs/README.md",
+    manifest: "crates/modules/rustok-forum/rustok-module.toml",
+    contract: "crates/modules/rustok-forum/docs/README.md",
     contractMarkers: [
       "tag attachments via `forum_topic_tags` with shared vocabulary in `rustok-taxonomy`",
       "uses `rustok-taxonomy` as a shared dictionary for tag identity",
@@ -99,8 +99,8 @@ const consumers = [
   {
     name: "Product",
     slug: "product",
-    manifest: "crates/rustok-product/rustok-module.toml",
-    contract: "crates/rustok-product/README.md",
+    manifest: "crates/modules/rustok-product/rustok-module.toml",
+    contract: "crates/modules/rustok-product/README.md",
     contractMarkers: [
       "Product-owned relation storage for taxonomy-backed tags (`product_tags`).",
       "Depends on `rustok-taxonomy` for shared scope-aware tag dictionary",
@@ -109,8 +109,8 @@ const consumers = [
   {
     name: "Profiles",
     slug: "profiles",
-    manifest: "crates/rustok-profiles/rustok-module.toml",
-    contract: "crates/rustok-profiles/README.md",
+    manifest: "crates/modules/rustok-profiles/rustok-module.toml",
+    contract: "crates/modules/rustok-profiles/README.md",
     contractMarkers: [
       "Own profile-to-taxonomy relation storage via `profile_tags`.",
       "Depends on `rustok-taxonomy` for shared scope-aware tags while keeping `profile_tags` module-owned.",
@@ -132,7 +132,7 @@ requireMarkers("docs/architecture/taxonomy-flex-category-platform-plan.md", [
   "Consumer relation/binding tables stay with the consumer",
 ]);
 
-const dtoPath = "crates/rustok-taxonomy/src/dto.rs";
+const dtoPath = "crates/modules/rustok-taxonomy/src/dto.rs";
 const dto = requireFile(dtoPath);
 let demonstratedKinds = [];
 if (dto !== null) {
@@ -162,7 +162,7 @@ if (dto !== null) {
   }
 }
 
-requireMarkers("crates/rustok-taxonomy/tests/localized_route_lookup.rs", [
+requireMarkers("crates/modules/rustok-taxonomy/tests/localized_route_lookup.rs", [
   "public_route_lookup_uses_registry_authority_over_unregistered_legacy_alias",
   "owner_batch_collapses_equivalent_labels_and_normalizes_scope_and_locale",
   "owner_batch_prefers_module_term_before_global_across_locale_fallback",
@@ -172,14 +172,14 @@ requireMarkers("crates/rustok-taxonomy/tests/localized_route_lookup.rs", [
   "owner_batch_canonical_key_lookup_is_tenant_isolated",
 ]);
 
-requireMarkers("crates/rustok-taxonomy/tests/route_key_registry.rs", [
+requireMarkers("crates/modules/rustok-taxonomy/tests/route_key_registry.rs", [
   "hard_delete_removes_lookup_and_allows_route_identity_reuse",
   "database_primary_key_rejects_second_route_owner",
 ]);
 
 const lookupWorkflow = ".github/workflows/taxonomy-lookup-contract.yml";
 requireMarkers(lookupWorkflow, [
-  '"crates/rustok-taxonomy/src/dto.rs"',
+  '"crates/modules/rustok-taxonomy/src/dto.rs"',
   "--test localized_route_lookup",
   "--test route_key_registry",
 ]);
@@ -188,14 +188,14 @@ const ownershipWorkflow = ".github/workflows/taxonomy-ownership-boundary.yml";
 requireMarkers(ownershipWorkflow, [
   '"DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md"',
   '"docs/architecture/taxonomy-flex-category-platform-plan.md"',
-  '"crates/rustok-blog/rustok-module.toml"',
-  '"crates/rustok-blog/CRATE_API.md"',
-  '"crates/rustok-forum/rustok-module.toml"',
-  '"crates/rustok-forum/docs/README.md"',
-  '"crates/rustok-product/rustok-module.toml"',
-  '"crates/rustok-product/README.md"',
-  '"crates/rustok-profiles/rustok-module.toml"',
-  '"crates/rustok-profiles/README.md"',
+  '"crates/modules/rustok-blog/rustok-module.toml"',
+  '"crates/modules/rustok-blog/CRATE_API.md"',
+  '"crates/modules/rustok-forum/rustok-module.toml"',
+  '"crates/modules/rustok-forum/docs/README.md"',
+  '"crates/modules/rustok-product/rustok-module.toml"',
+  '"crates/modules/rustok-product/README.md"',
+  '"crates/modules/rustok-profiles/rustok-module.toml"',
+  '"crates/modules/rustok-profiles/README.md"',
   '"scripts/verify/verify-taxonomy-contract-matrix.mjs"',
   '"scripts/verify/verify-taxonomy-contract-matrix.test.mjs"',
   "node scripts/verify/verify-taxonomy-contract-matrix.test.mjs",

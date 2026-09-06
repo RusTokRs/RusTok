@@ -9,19 +9,19 @@ const root = resolve(import.meta.dirname, '../..');
 const rules = [
   {
     crate: 'fly',
-    manifest: 'crates/fly/Cargo.toml',
+    manifest: 'crates/ui/fly/Cargo.toml',
     required: [],
     forbidden: ['leptos', 'dioxus', 'rustok-']
   },
   {
     crate: 'fly-ui',
-    manifest: 'crates/fly-ui/Cargo.toml',
+    manifest: 'crates/ui/fly-ui/Cargo.toml',
     required: ['fly = { path = "../fly" }'],
     forbidden: ['leptos', 'dioxus', 'rustok-']
   },
   {
     crate: 'fly-leptos',
-    manifest: 'crates/fly-leptos/Cargo.toml',
+    manifest: 'crates/ui/fly-leptos/Cargo.toml',
     required: [
       'fly = { path = "../fly" }',
       'fly-ui = { path = "../fly-ui" }',

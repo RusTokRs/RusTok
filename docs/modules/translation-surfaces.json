@@ -78,9 +78,9 @@
       "data_classification": ["public"],
       "ai_export": "restricted",
       "evidence_paths": [
-        "crates/rustok-taxonomy/README.md",
-        "crates/rustok-taxonomy/src/translation_target.rs",
-        "crates/rustok-taxonomy/src/translation_target_tests.rs",
+        "crates/modules/rustok-taxonomy/README.md",
+        "crates/modules/rustok-taxonomy/src/translation_target.rs",
+        "crates/modules/rustok-taxonomy/src/translation_target_tests.rs",
         "apps/server/src/services/module_event_dispatcher.rs"
       ],
       "blockers": ["Collect retained production PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence before enabling this pilot in production."]
@@ -95,8 +95,8 @@
       "data_classification": ["public", "tenant_private"],
       "ai_export": "restricted",
       "evidence_paths": [
-        "crates/rustok-media/README.md",
-        "crates/rustok-media/src/translation_target.rs"
+        "crates/modules/rustok-media/README.md",
+        "crates/modules/rustok-media/src/translation_target.rs"
       ],
       "blockers": ["Run projection replay, cursor checkpoint recovery, and sustained multi-replica inventory evidence before enabling this pilot in production."]
     },
@@ -110,9 +110,9 @@
       "data_classification": ["public"],
       "ai_export": "forbidden",
       "evidence_paths": [
-        "crates/rustok-blog/docs/implementation-plan-current.md",
+        "crates/modules/rustok-blog/docs/implementation-plan-current.md",
         "docs/architecture/taxonomy-flex-category-platform-plan.md",
-        "crates/rustok-taxonomy/src/translation_target.rs"
+        "crates/modules/rustok-taxonomy/src/translation_target.rs"
       ],
       "exclusion_reason": "Blog Category canonical localized copy is Taxonomy-owned after TAXONOMY-CAT-1..12. Blog keeps a typed same-ID Category binding and must not register a duplicate blog/category Translation target."
     },
@@ -125,7 +125,7 @@
       "field_profiles": ["plain_text", "slug", "richtext"],
       "data_classification": ["public", "tenant_private"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-content/docs/README.md"],
+      "evidence_paths": ["crates/modules/rustok-content/docs/README.md"],
       "blockers": ["Finish canonical richtext ownership and add exact source/target revisions plus idempotent apply."]
     },
     {
@@ -137,7 +137,7 @@
       "field_profiles": ["plain_text", "seo_text", "slug", "richtext"],
       "data_classification": ["public", "tenant_private"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-blog/docs/implementation-plan.md"],
+      "evidence_paths": ["crates/modules/rustok-blog/docs/implementation-plan.md"],
       "blockers": ["Complete editorial revision/CAS and richtext segment materialization before provider registration."]
     },
     {
@@ -150,9 +150,9 @@
       "data_classification": ["public"],
       "ai_export": "restricted",
       "evidence_paths": [
-        "crates/rustok-pages/README.md",
-        "crates/rustok-pages/src/translation_target.rs",
-        "crates/rustok-pages/src/translation_target_tests.rs",
+        "crates/modules/rustok-pages/README.md",
+        "crates/modules/rustok-pages/src/translation_target.rs",
+        "crates/modules/rustok-pages/src/translation_target_tests.rs",
         "apps/server/src/services/module_event_dispatcher.rs"
       ],
       "blockers": ["Collect retained production PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence before enabling this pilot in production."]
@@ -166,7 +166,7 @@
       "field_profiles": ["page_builder_text"],
       "data_classification": ["public", "tenant_private"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-page-builder/docs/README.md"],
+      "evidence_paths": ["crates/modules/rustok-page-builder/docs/README.md"],
       "blockers": ["Publish lossless stable component/property extraction and materialization with body-revision CAS."]
     },
     {
@@ -179,9 +179,9 @@
       "data_classification": ["public"],
       "ai_export": "allowed",
       "evidence_paths": [
-        "crates/rustok-navigation/README.md",
-        "crates/rustok-navigation/src/translation_target.rs",
-        "crates/rustok-navigation/src/translation_target_tests.rs",
+        "crates/modules/rustok-navigation/README.md",
+        "crates/modules/rustok-navigation/src/translation_target.rs",
+        "crates/modules/rustok-navigation/src/translation_target_tests.rs",
         "apps/server/src/services/module_event_dispatcher.rs"
       ],
       "blockers": ["Collect retained production PostgreSQL migration, concurrent aggregate CAS, and change-cursor recovery evidence before enabling this pilot in production."]
@@ -196,10 +196,10 @@
       "data_classification": ["public"],
       "ai_export": "forbidden",
       "evidence_paths": [
-        "crates/rustok-forum/docs/implementation-plan.md",
-        "crates/rustok-forum/tests/category_taxonomy_translation_provider_retirement.rs",
+        "crates/modules/rustok-forum/docs/implementation-plan.md",
+        "crates/modules/rustok-forum/tests/category_taxonomy_translation_provider_retirement.rs",
         "docs/architecture/taxonomy-flex-category-platform-plan.md",
-        "crates/rustok-taxonomy/src/translation_target.rs"
+        "crates/modules/rustok-taxonomy/src/translation_target.rs"
       ],
       "exclusion_reason": "Forum Category canonical localized copy, routes, hierarchy and presentation are Taxonomy-owned after the verified CAT-5 cutover. Forum keeps a typed same-ID Category binding plus Forum policy, counters and lifecycle state and must not register a duplicate forum/category Translation target."
     },
@@ -212,7 +212,7 @@
       "field_profiles": ["plain_text", "richtext"],
       "data_classification": ["personal", "tenant_private"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/rustok-forum/README.md"],
+      "evidence_paths": ["crates/modules/rustok-forum/README.md"],
       "blockers": ["Define tenant opt-in, author rights, moderation, privacy, and immutable-revision policy."]
     },
     {
@@ -224,7 +224,7 @@
       "field_profiles": ["plain_text", "seo_text", "slug", "localized_scalar"],
       "data_classification": ["public", "tenant_private"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-product/docs/implementation-plan.md"],
+      "evidence_paths": ["crates/modules/rustok-product/docs/implementation-plan.md"],
       "blockers": ["Remove duplicated translation entities and base/translation image-alt drift; add per-locale CAS apply."]
     },
     {
@@ -236,7 +236,7 @@
       "field_profiles": ["plain_text", "seo_text", "slug"],
       "data_classification": ["public", "tenant_private"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-commerce/README.md"],
+      "evidence_paths": ["crates/modules/rustok-commerce/README.md"],
       "blockers": ["Resolve Product/Commerce Foundation schema ownership and add owner-local exact-locale CAS apply."]
     },
     {
@@ -248,7 +248,7 @@
       "field_profiles": ["plain_text", "localized_scalar"],
       "data_classification": ["tenant_private"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/flex/docs/README.md"],
+      "evidence_paths": ["crates/modules/flex/docs/README.md"],
       "blockers": ["Expose provider-facing exact source/target reads, revision-safe apply, and a field policy limited to declared localized leaves."]
     },
     {
@@ -260,7 +260,7 @@
       "field_profiles": ["localized_scalar"],
       "data_classification": ["tenant_private", "personal"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/flex/src/attached.rs", "apps/server/src/services/flex_standalone_service.rs"],
+      "evidence_paths": ["crates/modules/flex/src/attached.rs", "apps/server/src/services/flex_standalone_service.rs"],
       "blockers": ["Exact authoring fallback is removed and invalid locales are rejected; donor owners still need provider-facing exact source/target operations, revision-safe apply, and idempotency."]
     },
     {
@@ -272,7 +272,7 @@
       "field_profiles": ["seo_text"],
       "data_classification": ["public"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-seo/docs/README.md"],
+      "evidence_paths": ["crates/modules/rustok-seo/docs/README.md"],
       "blockers": ["Fix precedence between owner-embedded SEO and explicit SEO overrides."]
     },
     {
@@ -284,7 +284,7 @@
       "field_profiles": ["plain_text"],
       "data_classification": ["personal"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/rustok-profiles/README.md"],
+      "evidence_paths": ["crates/modules/rustok-profiles/README.md"],
       "blockers": ["Define consent, privacy, name-preservation, and immutable-revision policy."]
     },
     {
@@ -296,7 +296,7 @@
       "field_profiles": ["plain_text"],
       "data_classification": ["personal", "tenant_private"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/rustok-comments/README.md"],
+      "evidence_paths": ["crates/modules/rustok-comments/README.md"],
       "blockers": ["Require tenant opt-in, author/moderator policy, and revision-preserving derived translations."]
     },
     {
@@ -308,7 +308,7 @@
       "field_profiles": ["plain_text", "richtext"],
       "data_classification": ["tenant_private"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-groups/README.md"],
+      "evidence_paths": ["crates/modules/rustok-groups/README.md"],
       "blockers": ["Add exact read/apply ports, revisions, idempotency, and permission floors."]
     },
     {
@@ -320,7 +320,7 @@
       "field_profiles": ["plain_text"],
       "data_classification": ["public"],
       "ai_export": "allowed",
-      "evidence_paths": ["crates/rustok-region/README.md"],
+      "evidence_paths": ["crates/modules/rustok-region/README.md"],
       "blockers": ["Add transactional one-locale apply and revision receipts."]
     },
     {
@@ -332,7 +332,7 @@
       "field_profiles": ["plain_text", "template_text"],
       "data_classification": ["tenant_private"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-fulfillment/README.md"],
+      "evidence_paths": ["crates/modules/rustok-fulfillment/README.md"],
       "blockers": ["Classify presentation copy versus transactional facts and add localized owner storage."]
     },
     {
@@ -344,7 +344,7 @@
       "field_profiles": ["plain_text", "seo_text"],
       "data_classification": ["public", "personal"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-marketplace-seller/README.md"],
+      "evidence_paths": ["crates/modules/rustok-marketplace-seller/README.md"],
       "blockers": ["Separate legal identity from translatable seller presentation and add owner CAS."]
     },
     {
@@ -357,12 +357,14 @@
       "data_classification": ["tenant_private"],
       "ai_export": "forbidden",
       "evidence_paths": [
-        "crates/rustok-modules/README.md",
-        "crates/rustok-modules-translation/src/lib.rs",
+        "crates/modules/rustok-modules/README.md",
+        "crates/modules/rustok-modules-translation/src/lib.rs",
         "apps/server/src/static_settings_translation_target.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/static_settings_translation_target_postgres.rs",
+        ".github/workflows/settings-translation-target-postgres.yml"
       ],
-      "blockers": ["Collect retained production-database multi-replica apply/replay and change-cursor recovery evidence before enabling this pilot in production."]
+      "blockers": ["Production enablement remains an operator rollout decision; repository-hosted PostgreSQL multi-replica apply/replay and change-cursor recovery are retained by the focused Settings evidence test/workflow, including post-merge main run 34032610739 on c6d591dc9a9e9e633e7e83c0999c02f727c694f8."]
     },
     {
       "id": "oauth_app_copy",
@@ -373,7 +375,7 @@
       "field_profiles": ["plain_text"],
       "data_classification": ["tenant_private", "sensitive"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/rustok-auth/README.md"],
+      "evidence_paths": ["crates/modules/rustok-auth/README.md"],
       "blockers": ["Separate localizable presentation from client identity, redirect URIs, scopes, and credentials; add owner CAS."]
     },
     {
@@ -385,7 +387,7 @@
       "field_profiles": ["plain_text"],
       "data_classification": ["public", "tenant_private"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-modules/README.md"],
+      "evidence_paths": ["crates/modules/rustok-modules/README.md"],
       "blockers": ["Assign the final registry metadata write owner and expose exact provenance-aware revisions before provider registration."]
     },
     {
@@ -397,7 +399,7 @@
       "field_profiles": ["plain_text", "template_text"],
       "data_classification": ["tenant_private", "sensitive"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/alloy/README.md"],
+      "evidence_paths": ["crates/modules/alloy/README.md"],
       "blockers": ["Replace inline copy with stable neutral keys and parallel localized storage."]
     },
     {
@@ -409,7 +411,7 @@
       "field_profiles": ["plain_text"],
       "data_classification": ["tenant_private", "sensitive"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/rustok-rbac/README.md"],
+      "evidence_paths": ["crates/modules/rustok-rbac/README.md"],
       "blockers": ["Replace inline role/policy copy with stable neutral keys and localized storage."]
     },
     {
@@ -421,7 +423,7 @@
       "field_profiles": ["plain_text"],
       "data_classification": ["tenant_private"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/rustok-channel/README.md"],
+      "evidence_paths": ["crates/modules/rustok-channel/README.md"],
       "blockers": ["Separate technical channel identity from localizable operator display copy."]
     },
     {
@@ -433,7 +435,7 @@
       "field_profiles": ["plain_text", "template_text"],
       "data_classification": ["tenant_private", "sensitive"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/rustok-workflow/README.md"],
+      "evidence_paths": ["crates/modules/rustok-workflow/README.md"],
       "blockers": ["Classify workflow labels versus executable/template content and add localized storage."]
     },
     {
@@ -445,7 +447,7 @@
       "field_profiles": ["plain_text", "template_text"],
       "data_classification": ["tenant_private", "sensitive"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/rustok-mcp/README.md"],
+      "evidence_paths": ["crates/modules/rustok-mcp/README.md"],
       "blockers": ["Separate operator display copy from prompts, tool schemas, secrets, and executable configuration."]
     },
     {
@@ -457,7 +459,7 @@
       "field_profiles": ["plain_text", "template_text"],
       "data_classification": ["tenant_private", "secret"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/rustok-ai/README.md"],
+      "evidence_paths": ["crates/modules/rustok-ai/README.md"],
       "blockers": ["Separate display copy from prompts, credentials, deployment configuration, and run evidence."]
     },
     {
@@ -469,7 +471,7 @@
       "field_profiles": ["immutable_transaction_snapshot"],
       "data_classification": ["immutable_transaction", "personal"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/rustok-order/README.md"],
+      "evidence_paths": ["crates/modules/rustok-order/README.md"],
       "exclusion_reason": "Immutable transaction facts retain original locale attribution and are never retroactively translated."
     },
     {
@@ -481,7 +483,7 @@
       "field_profiles": ["immutable_transaction_snapshot"],
       "data_classification": ["immutable_transaction", "sensitive"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/rustok-payment/README.md"],
+      "evidence_paths": ["crates/modules/rustok-payment/README.md"],
       "exclusion_reason": "Payment facts and provider evidence are immutable and must not enter translation workflow."
     },
     {
@@ -493,7 +495,7 @@
       "field_profiles": ["plain_text"],
       "data_classification": ["tenant_private"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/rustok-search/README.md"],
+      "evidence_paths": ["crates/modules/rustok-search/README.md"],
       "exclusion_reason": "Synonyms, stop words, and query rules remain explicit locale-aware search configuration, not translation memory."
     },
     {

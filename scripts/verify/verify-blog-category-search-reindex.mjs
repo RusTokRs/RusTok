@@ -40,20 +40,20 @@ function requireBeforeWithin(source, startMarker, endMarker, before, after, labe
   }
 }
 
-const permissionPath = "crates/rustok-api/src/permissions.rs";
-const platformRbacPath = "crates/rustok-core/src/rbac.rs";
-const oauthPath = "crates/rustok-api/src/context/auth.rs";
-const servicePath = "crates/rustok-blog/src/services/category.rs";
-const rbacPath = "crates/rustok-blog/src/services/rbac.rs";
-const modulePath = "crates/rustok-blog/src/lib.rs";
-const controllerPath = "crates/rustok-blog/src/controllers/categories.rs";
-const routerPath = "crates/rustok-blog/src/controllers/mod.rs";
-const openapiPath = "crates/rustok-blog/src/openapi.rs";
-const projectorPath = "crates/rustok-search/src/blog_projector.rs";
-const ingestionPath = "crates/rustok-search/src/ingestion.rs";
+const permissionPath = "crates/libs/rustok-api/src/permissions.rs";
+const platformRbacPath = "crates/libs/rustok-core/src/rbac.rs";
+const oauthPath = "crates/libs/rustok-api/src/context/auth.rs";
+const servicePath = "crates/modules/rustok-blog/src/services/category.rs";
+const rbacPath = "crates/modules/rustok-blog/src/services/rbac.rs";
+const modulePath = "crates/modules/rustok-blog/src/lib.rs";
+const controllerPath = "crates/modules/rustok-blog/src/controllers/categories.rs";
+const routerPath = "crates/modules/rustok-blog/src/controllers/mod.rs";
+const openapiPath = "crates/modules/rustok-blog/src/openapi.rs";
+const projectorPath = "crates/modules/rustok-search/src/blog_projector.rs";
+const ingestionPath = "crates/modules/rustok-search/src/ingestion.rs";
 const evidencePath =
-  "crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json";
-const planPath = "crates/rustok-blog/docs/implementation-plan.md";
+  "crates/modules/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json";
+const planPath = "crates/modules/rustok-blog/docs/implementation-plan.md";
 
 const permissionSource = read(permissionPath);
 const platformRbac = read(platformRbacPath);

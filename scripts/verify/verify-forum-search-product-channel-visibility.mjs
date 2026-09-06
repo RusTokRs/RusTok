@@ -9,26 +9,26 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  forumPlan: "crates/rustok-forum/docs/implementation-plan.md",
-  searchPlan: "crates/rustok-search/docs/implementation-plan.md",
+  forumPlan: "crates/modules/rustok-forum/docs/implementation-plan.md",
+  searchPlan: "crates/modules/rustok-search/docs/implementation-plan.md",
   contract:
-    "crates/rustok-forum/contracts/forum-search-product-channel-visibility.json",
-  note: "crates/rustok-forum/docs/forum-23b2e2-product-channel-visibility.md",
-  predicate: "crates/rustok-search/src/storefront_product_channel_visibility.rs",
-  projector: "crates/rustok-search/src/projector_legacy.rs",
-  bootstrap: "crates/rustok-search/src/projector.rs",
-  reconciler: "crates/rustok-search/src/product_channel_reconciliation.rs",
+    "crates/modules/rustok-forum/contracts/forum-search-product-channel-visibility.json",
+  note: "crates/modules/rustok-forum/docs/forum-23b2e2-product-channel-visibility.md",
+  predicate: "crates/modules/rustok-search/src/storefront_product_channel_visibility.rs",
+  projector: "crates/modules/rustok-search/src/projector_legacy.rs",
+  bootstrap: "crates/modules/rustok-search/src/projector.rs",
+  reconciler: "crates/modules/rustok-search/src/product_channel_reconciliation.rs",
   serverWorker:
     "apps/server/src/services/search_product_channel_reconciliation.rs",
   serverServices: "apps/server/src/services/mod.rs",
   serverBootstrap: "apps/server/src/services/server_bootstrap.rs",
-  engine: "crates/rustok-search/src/pg_engine.rs",
-  dictionaries: "crates/rustok-search/src/dictionaries.rs",
-  suggestions: "crates/rustok-search/src/suggestions.rs",
-  graphql: "crates/rustok-search/src/graphql/query.rs",
-  native: "crates/rustok-search/storefront/src/transport/native_server_adapter.rs",
-  forumExecution: "crates/rustok-search/src/forum_storefront_execution.rs",
-  searchLib: "crates/rustok-search/src/lib.rs",
+  engine: "crates/modules/rustok-search/src/pg_engine.rs",
+  dictionaries: "crates/modules/rustok-search/src/dictionaries.rs",
+  suggestions: "crates/modules/rustok-search/src/suggestions.rs",
+  graphql: "crates/modules/rustok-search/src/graphql/query.rs",
+  native: "crates/modules/rustok-search/storefront/src/transport/native_server_adapter.rs",
+  forumExecution: "crates/modules/rustok-search/src/forum_storefront_execution.rs",
+  searchLib: "crates/modules/rustok-search/src/lib.rs",
   previousVerifier:
     "scripts/verify/verify-forum-search-trusted-channel-authority.mjs",
 };

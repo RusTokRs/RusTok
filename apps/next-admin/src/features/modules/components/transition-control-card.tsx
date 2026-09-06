@@ -7,7 +7,6 @@ import {
   IconCheck,
   IconChevronDown,
   IconChevronRight,
-  IconRotate,
   IconShieldLock
 } from '@tabler/icons-react';
 
@@ -20,10 +19,8 @@ import {
   CardHeader,
   CardTitle
 } from '@/shared/ui/shadcn/card';
-import { Input } from '@/shared/ui/shadcn/input';
 import {
   finalizeModuleTransition,
-  triggerModuleRecovery,
   type GqlOpts,
   type ModuleTransitionCheckpoint,
   type RetentionHold
@@ -50,14 +47,11 @@ export function TransitionControlCard({
   onRefresh,
   apiOpts = {}
 }: TransitionControlCardProps) {
-  const [showRollbackPrompt, setShowRollbackPrompt] = useState(false);
-  const [rollbackReason, setRollbackReason] = useState('');
   const [isBusy, setIsBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showHolds, setShowHolds] = useState(false);
 
   const isObserving = checkpoint.state === 'OBSERVING';
-  const isRecovering = checkpoint.state === 'ROLLBACK_TRIGGERED';
   const isFailed = checkpoint.state === 'FAILED_CLOSED';
   const isConverged = checkpoint.state === 'CONVERGED';
   const recoveryLimitReached = checkpoint.recoveryAttemptCount >= 1;
@@ -71,48 +65,23 @@ export function TransitionControlCard({
       case 'RECOVERED_TO_PREDECESSOR':
         return 'secondary';
       case 'FAILED_CLOSED':
-      case 'ROLLBACK_TRIGGERED':
         return 'destructive';
       default:
         return 'outline';
     }
   })();
 
-  const handleTriggerRollback = async () => {
-    if (!rollbackReason.trim()) {
-      setActionError('Please specify a reason for emergency rollback.');
-      return;
-    }
-
-    setIsBusy(true);
-    setActionError(null);
-
-    try {
-      await triggerModuleRecovery(
-        checkpoint.operationId,
-        rollbackReason.trim(),
-        apiOpts
-      );
-      toast.success('Emergency rollback initiated');
-      setShowRollbackPrompt(false);
-      setRollbackReason('');
-      onRefresh?.();
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Rollback trigger failed';
-      setActionError(message);
-      toast.error(message);
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
   const handleFinalizeTransition = async () => {
     setIsBusy(true);
     setActionError(null);
 
     try {
-      await finalizeModuleTransition(checkpoint.operationId, apiOpts);
+      await finalizeModuleTransition(
+        checkpoint.operationId,
+        checkpoint.revision,
+        crypto.randomUUID(),
+        apiOpts
+      );
       toast.success('Module transition finalized successfully');
       onRefresh?.();
     } catch (err) {
@@ -262,7 +231,7 @@ export function TransitionControlCard({
           )}
         </div>
 
-        {/* Controls / Actions */}
+        {/* Transition action */}
         <div className='flex flex-wrap items-center justify-between gap-3 border-t pt-3'>
           <div className='flex items-center gap-2'>
             {isObserving && (
@@ -279,65 +248,12 @@ export function TransitionControlCard({
             )}
           </div>
 
-          <div className='flex items-center gap-2'>
-            {(isObserving || isRecovering || !isConverged) &&
-              !recoveryLimitReached && (
-                <Button
-                  variant='destructive'
-                  size='sm'
-                  disabled={isBusy}
-                  onClick={() => setShowRollbackPrompt((prev) => !prev)}
-                >
-                  <IconRotate className='mr-1.5 h-3.5 w-3.5' />
-                  Emergency Rollback
-                </Button>
-              )}
-          </div>
+          <p className='text-muted-foreground text-[11px]'>
+            Rollback is executed from the selected active installation so the
+            owner can verify its retained direct predecessor and capability
+            grant.
+          </p>
         </div>
-
-        {/* Rollback Confirmation Form */}
-        {showRollbackPrompt && (
-          <div className='border-destructive/30 bg-destructive/5 space-y-3 rounded-md border p-3'>
-            <div className='space-y-1'>
-              <h4 className='text-destructive text-xs font-semibold'>
-                Confirm Single-Attempt Rollback
-              </h4>
-              <p className='text-muted-foreground text-[11px]'>
-                This will immediately demote candidate N+1, return traffic to
-                direct predecessor N, and advance the security epoch.
-              </p>
-            </div>
-
-            <Input
-              placeholder='Reason for emergency rollback (e.g. Memory leak on node 2)...'
-              value={rollbackReason}
-              onChange={(e) => setRollbackReason(e.target.value)}
-              className='text-xs'
-              disabled={isBusy}
-            />
-
-            <div className='flex justify-end gap-2'>
-              <Button
-                type='button'
-                variant='outline'
-                size='sm'
-                onClick={() => setShowRollbackPrompt(false)}
-                disabled={isBusy}
-              >
-                Cancel
-              </Button>
-              <Button
-                type='button'
-                variant='destructive'
-                size='sm'
-                disabled={isBusy}
-                onClick={handleTriggerRollback}
-              >
-                {isBusy ? 'Executing...' : 'Confirm & Revert'}
-              </Button>
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   );

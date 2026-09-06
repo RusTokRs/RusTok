@@ -34,13 +34,13 @@ Current task implementation:
 - [db_baseline.rs](../../apps/server/src/tasks/db_baseline.rs)
 
 For the search hot path, a live PostgreSQL gate is additionally used:
-`crates/rustok-search/tests/postgres_query_plan.rs`. It creates 100,000
+`crates/modules/rustok-search/tests/postgres_query_plan.rs`. It creates 100,000
 temporary tenant-scoped documents, captures `EXPLAIN (ANALYZE, BUFFERS)` and
 checks GIN FTS/trigram indexes. Baseline from 2026-06-27: FTS `6.627 ms`,
 typo fallback `327.516 ms` on local PostgreSQL 16.
 
 The Product storefront hot path uses
-`crates/rustok-product/tests/postgres_migrations.rs`. Its ignored
+`crates/modules/rustok-product/tests/postgres_migrations.rs`. Its ignored
 `storefront_queries_use_indexes_at_representative_scales` test creates an
 isolated owner schema, incrementally seeds ten tenants to 10,000, 100,000, and
 1,000,000 products, and captures page/count JSON plans. The 2026-07-25 local

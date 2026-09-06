@@ -30,19 +30,19 @@ function fixture(options = {}) {
       fn attach_schema_data() { shared_get::<ProductCatalogReadRuntime>(); "commerce GraphQL requires ProductCatalogReadRuntime in host composition"; }
       pub(crate) fn product_catalog_read_runtime_for_current_graphql_scope() { try_with(Clone::clone); ProductCatalogReadRuntime::in_process(db, event_bus); }
     `;
-  write(root, "crates/rustok-commerce/src/graphql_runtime.rs", runtimeSource);
+  write(root, "crates/modules/rustok-commerce/src/graphql_runtime.rs", runtimeSource);
   const wrapperCatalog = options.wrapperCatalog ? "CatalogService::new;" : "";
   const wrapperScope = options.missingScope
     ? ""
     : "product_catalog_read_runtime_for_current_graphql_scope; .read_port();";
   write(
     root,
-    "crates/rustok-commerce/src/storefront_staged_checkout_runtime.rs",
+    "crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs",
     `pub async fn complete_storefront_checkout_input() { ${wrapperScope} complete_storefront_checkout_input_with_product_port; ${wrapperCatalog} }`,
   );
   write(
     root,
-    "crates/rustok-commerce/src/graphql/mutations/checkout.rs",
+    "crates/modules/rustok-commerce/src/graphql/mutations/checkout.rs",
     options.mutationCatalog
       ? "async fn complete_storefront_checkout() { CatalogService::new; }"
       : "async fn complete_storefront_checkout() { complete_storefront_checkout_input; }",
@@ -58,7 +58,7 @@ function fixture(options = {}) {
       ];
   write(
     root,
-    "crates/rustok-product/contracts/product-fba-registry.json",
+    "crates/modules/rustok-product/contracts/product-fba-registry.json",
     JSON.stringify({
       evidence: {
         graphql_checkout_runtime_verifier:
@@ -75,7 +75,7 @@ function fixture(options = {}) {
   );
   write(
     root,
-    "crates/rustok-product/docs/implementation-plan.md",
+    "crates/modules/rustok-product/docs/implementation-plan.md",
     options.omitPlan
       ? "Product plan"
       : "mounted Commerce GraphQL checkout resolver-scoped task-local checkout consumer source cutover is complete verify-product-graphql-checkout-catalog-runtime.mjs Concrete external transport execution remains open",

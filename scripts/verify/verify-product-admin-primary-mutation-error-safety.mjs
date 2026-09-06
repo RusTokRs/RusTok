@@ -29,12 +29,12 @@ const between = (source, start, end, label) => {
 };
 
 const paths = {
-  facade: "crates/rustok-product/admin/src/catalog_transport.rs",
-  safety: "crates/rustok-product/admin/src/transport/graphql_error_safety.rs",
-  legacy: "crates/rustok-product/admin/src/transport.rs",
-  graphql: "crates/rustok-product/admin/src/transport/graphql_adapter.rs",
-  graphqlHttp: "crates/rustok-graphql/src/lib.rs",
-  ui: "crates/rustok-product/admin/src/ui/leptos.rs",
+  facade: "crates/modules/rustok-product/admin/src/catalog_transport.rs",
+  safety: "crates/modules/rustok-product/admin/src/transport/graphql_error_safety.rs",
+  legacy: "crates/modules/rustok-product/admin/src/transport.rs",
+  graphql: "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs",
+  graphqlHttp: "crates/ui/rustok-graphql/src/lib.rs",
+  ui: "crates/modules/rustok-product/admin/src/ui/leptos.rs",
   primaryReadGuard: "scripts/verify/verify-product-admin-primary-read-error-safety.mjs",
   categoryReadGuard: "scripts/verify/verify-product-admin-category-read-error-safety.mjs",
   readDiagnosticGuard:
@@ -42,11 +42,11 @@ const paths = {
   fallbackMutationGuard:
     "scripts/verify/verify-product-admin-fallback-mutation-error-safety.mjs",
   evidence:
-    "crates/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source.json",
+    "crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source.json",
   review:
-    "crates/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source-review.json",
-  doc: "crates/rustok-product/docs/admin-primary-graphql-mutation-error-safety.md",
-  masterPlan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source-review.json",
+  doc: "crates/modules/rustok-product/docs/admin-primary-graphql-mutation-error-safety.md",
+  masterPlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
 const facade = read(paths.facade);

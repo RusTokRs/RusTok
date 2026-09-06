@@ -1,21 +1,21 @@
 #[test]
 fn marketplace_listing_external_events_use_a_sealed_typed_contract() {
-    let contract = include_str!("../../../crates/rustok-events/src/contract.rs");
-    let listing = include_str!("../../../crates/rustok-events/src/marketplace_listing.rs");
-    let outbox = include_str!("../../../crates/rustok-outbox/src/transactional.rs");
-    let owner_service = include_str!("../../../crates/rustok-marketplace-listing/src/service.rs");
+    let contract = include_str!("../../../crates/libs/rustok-events/src/contract.rs");
+    let listing = include_str!("../../../crates/libs/rustok-events/src/marketplace_listing.rs");
+    let outbox = include_str!("../../../crates/modules/rustok-outbox/src/transactional.rs");
+    let owner_service = include_str!("../../../crates/modules/rustok-marketplace-listing/src/service.rs");
     let owner_receipts =
-        include_str!("../../../crates/rustok-marketplace-listing/src/command_receipts.rs");
+        include_str!("../../../crates/modules/rustok-marketplace-listing/src/command_receipts.rs");
     let owner_events =
-        include_str!("../../../crates/rustok-marketplace-listing/src/external_events.rs");
+        include_str!("../../../crates/modules/rustok-marketplace-listing/src/external_events.rs");
     let owner_evented =
-        include_str!("../../../crates/rustok-marketplace-listing/src/evented_commands.rs");
+        include_str!("../../../crates/modules/rustok-marketplace-listing/src/evented_commands.rs");
     let owner_lifecycle =
-        include_str!("../../../crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs");
+        include_str!("../../../crates/modules/rustok-marketplace-listing/src/lifecycle_event_commands.rs");
     let owner_replay =
-        include_str!("../../../crates/rustok-marketplace-listing/src/replay_safe_commands.rs");
+        include_str!("../../../crates/modules/rustok-marketplace-listing/src/replay_safe_commands.rs");
     let owner_tests =
-        include_str!("../../../crates/rustok-marketplace-listing/src/command_receipts_tests.rs");
+        include_str!("../../../crates/modules/rustok-marketplace-listing/src/command_receipts_tests.rs");
 
     for marker in [
         "pub(crate) mod sealed",

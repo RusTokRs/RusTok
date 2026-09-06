@@ -8,17 +8,17 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(".");
 const failures = [];
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-search-ingest-sequence-index.json",
-  note: "crates/rustok-forum/docs/forum-23b2g1a-search-ingest-sequence-index.md",
-  forumPlan: "crates/rustok-forum/docs/implementation-plan.md",
-  searchPlan: "crates/rustok-search/docs/implementation-plan.md",
+  contract: "crates/modules/rustok-forum/contracts/forum-search-ingest-sequence-index.json",
+  note: "crates/modules/rustok-forum/docs/forum-23b2g1a-search-ingest-sequence-index.md",
+  forumPlan: "crates/modules/rustok-forum/docs/implementation-plan.md",
+  searchPlan: "crates/modules/rustok-search/docs/implementation-plan.md",
   predecessor:
-    "crates/rustok-search/src/migrations/m20260731_000010_add_forum_projection_ingest_sequence.rs",
+    "crates/modules/rustok-search/src/migrations/m20260731_000010_add_forum_projection_ingest_sequence.rs",
   migration:
-    "crates/rustok-search/src/migrations/m20260731_000011_add_forum_projection_ingest_sequence_lookup.rs",
-  registry: "crates/rustok-search/src/migrations/mod.rs",
-  inbox: "crates/rustok-search/src/forum_inbox.rs",
-  reconciliation: "crates/rustok-search/src/forum_reconciliation.rs",
+    "crates/modules/rustok-search/src/migrations/m20260731_000011_add_forum_projection_ingest_sequence_lookup.rs",
+  registry: "crates/modules/rustok-search/src/migrations/mod.rs",
+  inbox: "crates/modules/rustok-search/src/forum_inbox.rs",
+  reconciliation: "crates/modules/rustok-search/src/forum_reconciliation.rs",
 };
 
 function read(relativePath) {

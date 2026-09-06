@@ -8,7 +8,7 @@ use rustok_modules::{
     ModuleLifecycleExecutionError, ModuleLifecycleRecoveryCommand, ModuleLifecycleSettingsCommand,
     ModuleLifecycleToggleCommand, ModuleOperationRecoveryError as ModulesRecoveryError,
     ModuleOperationRecoveryPlan, ModuleOperationStoreError, ModuleToggleValidationError,
-    SettingsCompatibilityGuard, TransitionCheckpointStore, normalize_module_settings,
+    SettingsCompatibilityGuard, normalize_module_settings,
 };
 
 use crate::modules::{ManifestError, ManifestManager, map_module_settings_validation_error};
@@ -130,12 +130,11 @@ impl ModuleLifecycleService {
         context: ModuleCommandContext,
         expected_revision: u64,
     ) -> Result<ModuleLifecycleStateSnapshot, ToggleModuleError> {
-        if let Ok(Some(checkpoint)) = TransitionCheckpointStore::find_active_checkpoint_for_module(
-            db,
-            module_slug,
-            Some(tenant_id),
-        )
-        .await
+        if let Some(checkpoint) = ModuleControlPlane::new(db.clone())
+            .transitions()
+            .active_checkpoint_for_module(module_slug, Some(tenant_id))
+            .await
+            .map_err(|error| ToggleModuleError::Policy(error.to_string()))?
         {
             if !checkpoint.state.is_terminal() {
                 return Err(ToggleModuleError::Policy(format!(
@@ -319,12 +318,11 @@ impl ModuleLifecycleService {
         let settings_schema = ManifestManager::module_settings_schema(module_slug)?;
 
         // Revalidate against N/N+1 Settings Compatibility Guard if a rollout window is open
-        if let Ok(Some(checkpoint)) = TransitionCheckpointStore::find_active_observing_checkpoint(
-            db,
-            module_slug,
-            Some(tenant_id),
-        )
-        .await
+        if let Some(checkpoint) = ModuleControlPlane::new(db.clone())
+            .transitions()
+            .active_observing_checkpoint_for_module(module_slug, Some(tenant_id))
+            .await
+            .map_err(|error| UpdateModuleSettingsError::Policy(error.to_string()))?
         {
             if let Some(ref pred_digest) = checkpoint.predecessor_digest {
                 let guard = SettingsCompatibilityGuard::from_observing_checkpoint(
@@ -876,7 +874,7 @@ mod tests {
         let mut modules = HashMap::new();
         modules.insert(
             "content".to_string(),
-            path_module("rustok-content", "crates/rustok-content", false),
+            path_module("rustok-content", "crates/modules/rustok-content", false),
         );
         let manifest = ModulesManifest {
             schema: 2,
@@ -919,7 +917,7 @@ mod tests {
         let mut modules = HashMap::new();
         modules.insert(
             "content".to_string(),
-            path_module("rustok-content", "crates/rustok-content", false),
+            path_module("rustok-content", "crates/modules/rustok-content", false),
         );
         let manifest = ModulesManifest {
             schema: 2,
@@ -1021,7 +1019,7 @@ mod tests {
         let mut modules = HashMap::new();
         modules.insert(
             "tenant".to_string(),
-            path_module("rustok-tenant", "crates/rustok-tenant", true),
+            path_module("rustok-tenant", "crates/modules/rustok-tenant", true),
         );
         let manifest = ModulesManifest {
             schema: 2,
@@ -1090,7 +1088,7 @@ showSummaries = { type = "boolean", default = true }
         let mut modules = HashMap::new();
         modules.insert(
             "content".to_string(),
-            path_module("rustok-content", "crates/rustok-content", false),
+            path_module("rustok-content", "crates/modules/rustok-content", false),
         );
         let manifest = ModulesManifest {
             schema: 2,

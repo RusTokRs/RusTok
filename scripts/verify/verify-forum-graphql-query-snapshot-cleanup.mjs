@@ -29,24 +29,24 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-const snapshotPath = "crates/rustok-forum/src/graphql/query.rs";
-const runtimePath = "crates/rustok-forum/src/graphql/query_runtime.rs";
-const modulePath = "crates/rustok-forum/src/graphql/mod.rs";
+const snapshotPath = "crates/modules/rustok-forum/src/graphql/query.rs";
+const runtimePath = "crates/modules/rustok-forum/src/graphql/query_runtime.rs";
+const modulePath = "crates/modules/rustok-forum/src/graphql/mod.rs";
 const channelVerifierPath = "scripts/verify/verify-channel-proof-points.mjs";
 const replyAudienceVerifierPath = "scripts/verify/verify-forum-reply-audience-read.mjs";
 const replyLegacyVerifierPath = "scripts/verify/verify-forum-reply-legacy-cutover.mjs";
 const categoryVerifierPath = "scripts/verify/verify-forum-category-audience-read.mjs";
 const workflowPath = ".github/workflows/forum11-diagnostics.yml";
-const contractPath = "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json";
-const approvedReplyPath = "crates/rustok-forum/contracts/forum-approved-reply-search.json";
-const notePath = "crates/rustok-forum/docs/forum-20bn-graphql-query-snapshot-cleanup.md";
-const replyLegacyContractPath = "crates/rustok-forum/contracts/forum-reply-legacy-cutover.json";
-const categoryContractPath = "crates/rustok-forum/contracts/forum-category-audience-read.json";
-const publicDiscoveryContractPath = "crates/rustok-forum/contracts/forum-public-discovery-seo.json";
-const searchContractPath = "crates/rustok-forum/contracts/forum-search-projection.json";
-const invalidationContractPath = "crates/rustok-forum/contracts/forum-projection-invalidation.json";
-const visibilityContractPath = "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
-const rebuildContractPath = "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json";
+const approvedReplyPath = "crates/modules/rustok-forum/contracts/forum-approved-reply-search.json";
+const notePath = "crates/modules/rustok-forum/docs/forum-20bn-graphql-query-snapshot-cleanup.md";
+const replyLegacyContractPath = "crates/modules/rustok-forum/contracts/forum-reply-legacy-cutover.json";
+const categoryContractPath = "crates/modules/rustok-forum/contracts/forum-category-audience-read.json";
+const publicDiscoveryContractPath = "crates/modules/rustok-forum/contracts/forum-public-discovery-seo.json";
+const searchContractPath = "crates/modules/rustok-forum/contracts/forum-search-projection.json";
+const invalidationContractPath = "crates/modules/rustok-forum/contracts/forum-projection-invalidation.json";
+const visibilityContractPath = "crates/modules/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
+const rebuildContractPath = "crates/modules/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
 
 if (existsSync(absolute(snapshotPath))) {
   failures.push(`${snapshotPath}: legacy GraphQL query snapshot must be removed`);
@@ -106,7 +106,7 @@ for (const [source, label] of [
 }
 requireMarker(workflow, runtimePath, workflowPath);
 rejectMarker(workflow, snapshotPath, workflowPath);
-rejectMarker(workflow, 'Path("crates/rustok-forum/src/graphql/query.rs")', workflowPath);
+rejectMarker(workflow, 'Path("crates/modules/rustok-forum/src/graphql/query.rs")', workflowPath);
 
 for (const marker of [
   "FORUM-20BN",

@@ -22,20 +22,20 @@ fail()   { echo -e "  ${RED}вњ—${NC} $1"; ERRORS=$((ERRORS + 1)); }
 warn()   { echo -e "  ${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 
 PROD_RS_PATHS=(
-    "crates/rustok-core/src"
-    "crates/rustok-content/src"
-    "crates/rustok-commerce/src"
-    "crates/rustok-blog/src"
-    "crates/rustok-forum/src"
-    "crates/rustok-pages/src"
-    "crates/rustok-events/src"
-    "crates/rustok-rbac/src"
-    "crates/rustok-tenant/src"
-    "crates/rustok-telemetry/src"
-    "crates/rustok-iggy/src"
-    "crates/rustok-outbox/src"
-    "crates/rustok-index/src"
-    "crates/alloy/src"
+    "crates/libs/rustok-core/src"
+    "crates/modules/rustok-content/src"
+    "crates/modules/rustok-commerce/src"
+    "crates/modules/rustok-blog/src"
+    "crates/modules/rustok-forum/src"
+    "crates/modules/rustok-pages/src"
+    "crates/libs/rustok-events/src"
+    "crates/modules/rustok-rbac/src"
+    "crates/modules/rustok-tenant/src"
+    "crates/libs/rustok-telemetry/src"
+    "crates/modules/rustok-iggy/src"
+    "crates/modules/rustok-outbox/src"
+    "crates/modules/rustok-index/src"
+    "crates/modules/alloy/src"
     "apps/server/src"
 )
 
@@ -172,8 +172,8 @@ rm -f /tmp/rustok_long_fns.txt
 # в”Ђв”Ђв”Ђ 6. rustok-core РЅРµ Р·Р°РІРёСЃРёС‚ РѕС‚ domain crates в”Ђв”Ђв”Ђ
 header "6. Dependency: rustok-core independence"
 
-if [[ -f "crates/rustok-core/Cargo.toml" ]]; then
-    core_deps=$(grep -E 'rustok-(content|commerce|blog|forum|pages)' "crates/rustok-core/Cargo.toml" 2>/dev/null || true)
+if [[ -f "crates/libs/rustok-core/Cargo.toml" ]]; then
+    core_deps=$(grep -E 'rustok-(content|commerce|blog|forum|pages)' "crates/libs/rustok-core/Cargo.toml" 2>/dev/null || true)
     if [[ -n "$core_deps" ]]; then
         fail "rustok-core depends on domain crates (circular dependency!):"
         echo "$core_deps"

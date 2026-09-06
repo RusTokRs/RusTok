@@ -63,18 +63,18 @@ The existing Pages reference-consumer gate therefore remains unaccepted, Forum W
 
 Production source:
 
-- `crates/rustok-page-builder/src/health.rs`;
-- `crates/rustok-page-builder/src/runtime_telemetry.rs`;
-- `crates/rustok-page-builder/src/composition.rs`;
-- `crates/rustok-page-builder/src/adapters/fly_service.rs`.
+- `crates/modules/rustok-page-builder/src/health.rs`;
+- `crates/modules/rustok-page-builder/src/runtime_telemetry.rs`;
+- `crates/modules/rustok-page-builder/src/composition.rs`;
+- `crates/modules/rustok-page-builder/src/adapters/fly_service.rs`.
 
 Machine evidence:
 
-- `crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-runtime-observation-source.json`.
+- `crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-runtime-observation-source.json`.
 
 Fail-closed source guard:
 
-- `crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs`.
+- `crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs`.
 
 The guard also source-locks the non-promotion boundary: Pages GraphQL must still contain `provider_health_observed: false`, and Pages admin must still use `PageBuilderAdminProviderStatus::unobserved` until deployment observation authority exists.
 
@@ -102,6 +102,6 @@ Suggested maintainer commands, intentionally not run:
 ```bash
 cargo test -p rustok-page-builder health
 cargo test -p rustok-page-builder runtime_telemetry
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
 cargo check -p rustok-page-builder --all-targets
 ```

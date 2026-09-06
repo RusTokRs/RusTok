@@ -41,18 +41,18 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-product/storefront/src/lib.rs";
-const catalogControlsPath = "crates/rustok-product/storefront/src/catalog_controls.rs";
-const corePath = "crates/rustok-product/storefront/src/core.rs";
-const uiPath = "crates/rustok-product/storefront/src/ui/leptos.rs";
-const transportPath = "crates/rustok-product/storefront/src/transport/mod.rs";
-const catalogListNativePath = "crates/rustok-product/storefront/src/transport/catalog_list_native.rs";
-const legacyApiPath = "crates/rustok-product/storefront/src/api.rs";
-const graphqlAdapterPath = "crates/rustok-product/storefront/src/transport/graphql_adapter.rs";
-const nativeServerAdapterPath = "crates/rustok-product/storefront/src/transport/native_server_adapter.rs";
-const catalogQueriesPath = "crates/rustok-product/src/services/catalog/queries.rs";
-const cargoPath = "crates/rustok-product/storefront/Cargo.toml";
-const implementationPlanPath = "crates/rustok-product/docs/implementation-plan.md";
+const libPath = "crates/modules/rustok-product/storefront/src/lib.rs";
+const catalogControlsPath = "crates/modules/rustok-product/storefront/src/catalog_controls.rs";
+const corePath = "crates/modules/rustok-product/storefront/src/core.rs";
+const uiPath = "crates/modules/rustok-product/storefront/src/ui/leptos.rs";
+const transportPath = "crates/modules/rustok-product/storefront/src/transport/mod.rs";
+const catalogListNativePath = "crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs";
+const legacyApiPath = "crates/modules/rustok-product/storefront/src/api.rs";
+const graphqlAdapterPath = "crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs";
+const nativeServerAdapterPath = "crates/modules/rustok-product/storefront/src/transport/native_server_adapter.rs";
+const catalogQueriesPath = "crates/modules/rustok-product/src/services/catalog/queries.rs";
+const cargoPath = "crates/modules/rustok-product/storefront/Cargo.toml";
+const implementationPlanPath = "crates/modules/rustok-product/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 

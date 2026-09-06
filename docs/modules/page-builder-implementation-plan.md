@@ -722,27 +722,27 @@ node scripts/verify/verify-fly-ui-contributions.mjs
 node scripts/verify/verify-forum-page-builder-contribution-metadata.mjs
 node scripts/verify/verify-page-builder-admin-accessibility.mjs
 node scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs
-node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
 node scripts/verify/verify-forum-page-builder-wave-admission.mjs
 node scripts/verify/verify-forum-wave-plan-sync.mjs
 node scripts/verify/verify-forum-wave-evidence-freshness.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-scenario-baseline.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-scenario-baseline.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs
 npm run verify:page-builder:fba:baseline
 npm run verify:page-builder:consumer:pages
 npm run verify:page-builder:consumer:forum

@@ -8,24 +8,24 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(".");
 const failures = [];
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-search-owner-revision-source.json",
-  predecessor: "crates/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
+  contract: "crates/modules/rustok-forum/contracts/forum-search-owner-revision-source.json",
+  predecessor: "crates/modules/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
   hardening:
-    "crates/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json",
-  note: "crates/rustok-forum/docs/forum-23b2g2b1-search-owner-revision-source.md",
+    "crates/modules/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json",
+  note: "crates/modules/rustok-forum/docs/forum-23b2g2b1-search-owner-revision-source.md",
   ledgerMigration:
-    "crates/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
   hardeningMigration:
-    "crates/rustok-forum/src/migrations/m20260731_000008_harden_forum_projection_revision_counter.rs",
-  forumDto: "crates/rustok-forum/src/dto/event.rs",
-  forumOwner: "crates/rustok-forum/src/services/event.rs",
-  searchOwner: "crates/rustok-search/src/forum_reconciliation.rs",
-  searchLib: "crates/rustok-search/src/lib.rs",
-  searchInbox: "crates/rustok-search/src/forum_inbox.rs",
-  searchMigrations: "crates/rustok-search/src/migrations/mod.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260731_000008_harden_forum_projection_revision_counter.rs",
+  forumDto: "crates/modules/rustok-forum/src/dto/event.rs",
+  forumOwner: "crates/modules/rustok-forum/src/services/event.rs",
+  searchOwner: "crates/modules/rustok-search/src/forum_reconciliation.rs",
+  searchLib: "crates/modules/rustok-search/src/lib.rs",
+  searchInbox: "crates/modules/rustok-search/src/forum_inbox.rs",
+  searchMigrations: "crates/modules/rustok-search/src/migrations/mod.rs",
   hostAdapter: "apps/server/src/services/forum_search_owner_revision.rs",
   hostComposition: "apps/server/src/services/mod.rs",
-  rootEvents: "crates/rustok-events/src/types.rs",
+  rootEvents: "crates/libs/rustok-events/src/types.rs",
 };
 
 function read(relativePath) {

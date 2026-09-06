@@ -22,15 +22,15 @@ const scheduleGuardPath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_guard.rs';
 const processTriggerPath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_trigger.rs';
-const commentsSchedulePath = 'crates/rustok-comments/src/tcp_delegation_schedule.rs';
-const migrationModPath = 'crates/rustok-blog/src/migrations/mod.rs';
+const commentsSchedulePath = 'crates/modules/rustok-comments/src/tcp_delegation_schedule.rs';
+const migrationModPath = 'crates/modules/rustok-blog/src/migrations/mod.rs';
 const migrationPath =
-  'crates/rustok-blog/src/migrations/m20260801_000007_create_blog_comments_delegation_schedule_state.rs';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-82.md';
+  'crates/modules/rustok-blog/src/migrations/m20260801_000007_create_blog_comments_delegation_schedule_state.rs';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-82.md';
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-postgres.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-postgres.json';
 const serverManifestPath = 'apps/server/Cargo.toml';
-const blogManifestPath = 'crates/rustok-blog/Cargo.toml';
+const blogManifestPath = 'crates/modules/rustok-blog/Cargo.toml';
 const lockPath = 'Cargo.lock';
 
 const runtime = read(runtimePath);

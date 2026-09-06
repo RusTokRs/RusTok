@@ -19,7 +19,7 @@ harness, verifier, Cargo, HTTP server, workflow or CI ran.
 
 ## Artifact HTTP cache packet: ready, unvalidated
 
-`crates/rustok-pages/tests/artifact_http_cache_sqlite.rs` applies the real `PagesModule`
+`crates/modules/rustok-pages/tests/artifact_http_cache_sqlite.rs` applies the real `PagesModule`
 migrations to an isolated in-memory SQLite database. It compiles a valid deterministic static
 landing artifact through `StaticLandingCompiler`, stores the real Pages page/body/artifact/binding
 entities and mounts the public `controllers::axum_router` through `HostRuntimeContext`.
@@ -98,9 +98,9 @@ TTL, authorization policy or artifact integrity rule changes.
 
 Source evidence is recorded in:
 
-- `crates/rustok-pages/contracts/evidence/pages-artifact-http-cache-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs`;
-- `crates/rustok-pages/tests/artifact_http_cache_sqlite.rs`.
+- `crates/modules/rustok-pages/contracts/evidence/pages-artifact-http-cache-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs`;
+- `crates/modules/rustok-pages/tests/artifact_http_cache_sqlite.rs`.
 
 SQLite and Axum execution remain pending. The execution list is empty and every validation flag
 remains false.
@@ -120,7 +120,7 @@ evidence.
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs
 cargo test -p rustok-pages --test artifact_http_cache_sqlite -- --nocapture
 cargo check -p rustok-pages --all-targets
 ```

@@ -9,8 +9,8 @@ const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
-const lib = read('crates/rustok-cart/src/lib.rs');
-const guard = read('crates/rustok-cart/src/atomic_checkout_guard.rs');
+const lib = read('crates/modules/rustok-cart/src/lib.rs');
+const guard = read('crates/modules/rustok-cart/src/atomic_checkout_guard.rs');
 const failures = [];
 
 const requireText = (source, value, label) => {

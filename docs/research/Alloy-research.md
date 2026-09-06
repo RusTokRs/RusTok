@@ -25,7 +25,7 @@ Finally, an important research limitation: the file `docs/alloy-concept.md` is *
 
 In the concept, Alloy is described not simply as a scripting add-on but as an independent capability/runtime layer: it receives a task in natural language, writes executable code, runs it in a sandbox, fixes minor errors, and translates stable scenarios into native Rust modules. The key architectural decisions are also explicitly captured: Alloy is a separate horizontal capability layer, RusToK is its host platform; a minimal Alloy build is possible even outside the full RusToK; and the chosen storage scheme for scripts is "DB as source of truth + files for version control". The document also has an explicit lifecycle "AI writes Rhai integration script → sandbox → diff/auto-patch → cargo build → native module" and a roadmap transitioning from Foundation to AI Core, Integration Runtime, Native Compilation and Ecosystem.
 
-From the perspective of the current code, the base for this indeed exists. In `crates/alloy/src/lib.rs`, Alloy is already structured as a RusToK module, exporting runtime, storage, scheduler, execution log, GraphQL/REST and tests. The `Script` model already contains `tenant_id`, `name`, `code`, `trigger`, `status`, `version`, `run_as_system`, `permissions`, `author_id`, and the `scripts` migration already creates a table with uniqueness `(tenant_id, name)`, JSON fields for trigger/permissions and error counters. This means Alloy in the repository is already conceived as a multi-tenant runtime with a standard persistence layer.
+From the perspective of the current code, the base for this indeed exists. In `crates/modules/alloy/src/lib.rs`, Alloy is already structured as a RusToK module, exporting runtime, storage, scheduler, execution log, GraphQL/REST and tests. The `Script` model already contains `tenant_id`, `name`, `code`, `trigger`, `status`, `version`, `run_as_system`, `permissions`, `author_id`, and the `scripts` migration already creates a table with uniqueness `(tenant_id, name)`, JSON fields for trigger/permissions and error counters. This means Alloy in the repository is already conceived as a multi-tenant runtime with a standard persistence layer.
 
 But there are several important gaps between the concept and the code. The concept speaks of a multi-file ecosystem and directly shows YAML where `transform.script` points to `scripts/ga4_compare.rhai`, i.e., a path to a separate file inside some internal namespace. In the current implementation, the script code is simply a single `code: String` field in the `scripts` record; the `ScriptRegistry` interface manages the `Script` object as a whole and knows nothing about packages/modules, imports, revisions or a materialized worktree. In other words, **the concept already assumes a script space at the package/repository level, while the code is still at the single-file record storage level**.
 
@@ -124,7 +124,7 @@ Below is an expert evaluation of three storage options for the internal namespac
 
 ## Can Rhai Be Run and Tested Inside Alloy
 
-Short answer: **yes, it can already**, and the repository confirms this through several independent lines. In `crates/alloy/src/lib.rs`, there are unit tests for simple execution, abort, access to `EntityProxy`, cache invalidation, phase-specific engine and orchestrator integration with storage. In `integration/mod.rs`, there is a more domain-oriented scenario — creating a `Deal` entity with before/on_commit hooks, where one script validates the deal amount and another triggers on commit. This means Alloy can already execute Rhai in unit/integration tests within its own crate and in domain hook orchestration scenarios.
+Short answer: **yes, it can already**, and the repository confirms this through several independent lines. In `crates/modules/alloy/src/lib.rs`, there are unit tests for simple execution, abort, access to `EntityProxy`, cache invalidation, phase-specific engine and orchestrator integration with storage. In `integration/mod.rs`, there is a more domain-oriented scenario — creating a `Deal` entity with before/on_commit hooks, where one script validates the deal amount and another triggers on commit. This means Alloy can already execute Rhai in unit/integration tests within its own crate and in domain hook orchestration scenarios.
 
 Besides tests, there are also operational entry points. The REST API provides `POST /scripts/validate`, `POST /scripts/{id}/run` and `POST /scripts/name/{name}/run`; GraphQL can `create_script`, `update_script`, `run_script`; server-side bootstrap includes the `mod-alloy` feature by default and calls `alloy::init(ctx)` during runtime startup. This means Rhai inside Alloy can not only be tested but also actually run inside the RusToK server runtime.
 
@@ -200,25 +200,25 @@ Below are all the key locations in the repository where changes are required or 
 
 | Path | Current Role | What to Change |
 |---|---|---|
-| `crates/alloy/src/lib.rs` | engine/orchestrator factories, Alloy module, unit tests | make phase/policy-aware default engine; add package-level test helpers; remove ambiguity in `test_operation_limit` |
-| `crates/alloy/src/engine/config.rs` | limit declarations | extend with policy fields for network/import/bindings; tie to runtime policy snapshot |
-| `crates/alloy/src/engine/runtime.rs` | core `ScriptEngine`, compile/cache/execute | apply real Rhai limits; introduce `on_progress`; replace cache key with `tenant_id + script_id + revision_id`; add `ModuleResolver` |
-| `crates/alloy/src/context.rs` | scope injection | add auth context, effective permissions, binding scope, request metadata |
-| `crates/alloy/src/bridge/mod.rs` | phase-aware registration | rebuild as policy-aware governed surface; implement `register_db_services`; remove empty stubs |
-| `crates/alloy/src/bridge/http.rs` | external HTTP access | whitelist, quotas, SSRF protection, secret headers via refs, deterministic mocks for tests |
-| `crates/alloy/src/model/script.rs` | single-record model | transform into package header; add namespace/current_revision/source_kind/checksum/test_status |
-| `crates/alloy/src/storage/traits.rs` | storage contract | extend to revision/module/test/artifact queries |
-| `crates/alloy/src/storage/sea_orm.rs` | DB persistence | add new tables and methods; introduce optimistic locking/compare-and-swap on revisions |
-| `crates/alloy/src/storage/memory.rs` | test storage | support revisions/modules/tests for a full in-memory harness |
-| `crates/alloy/src/migration.rs` and `src/migrations/*` | `scripts` and `script_executions` schema | add `script_revisions`, `script_modules`, `script_tests`, `script_artifacts`, `script_policies`, indices and FKs |
-| `crates/alloy/src/runner/executor.rs` | single execution | universal execution log, policy snapshot, dry-run mode, consistent timeout/error semantics |
-| `crates/alloy/src/runner/orchestrator.rs` | before/after/manual/api routes | unify pipeline, implement permission checks, tenant-aware execution context |
-| `crates/alloy/src/runtime.rs` | shared runtime/scheduler wiring | repository service, resolver cache, scheduler refresh on publish/update |
-| `crates/alloy/src/scheduler/runner.rs` | cron jobs | live reload, distributed lock, durable retry policy, log record per run |
-| `crates/alloy/src/api/handlers.rs` | generic REST API | compile-before-save, revision publish flow, test endpoints, dry-run endpoints |
-| `crates/alloy/src/controllers/mod.rs` | server REST routes | same plus tenant/policy enforcement and richer run/test responses |
-| `crates/alloy/src/graphql/mutation.rs` and `query.rs` | GraphQL surface | revision/test/publish/rollback operations, package graph, artifact status |
-| `crates/alloy/src/execution_log/storage.rs` | log persistence | cover hooks/scheduler/native builds, store policy snapshot/build ref |
+| `crates/modules/alloy/src/lib.rs` | engine/orchestrator factories, Alloy module, unit tests | make phase/policy-aware default engine; add package-level test helpers; remove ambiguity in `test_operation_limit` |
+| `crates/modules/alloy/src/engine/config.rs` | limit declarations | extend with policy fields for network/import/bindings; tie to runtime policy snapshot |
+| `crates/modules/alloy/src/engine/runtime.rs` | core `ScriptEngine`, compile/cache/execute | apply real Rhai limits; introduce `on_progress`; replace cache key with `tenant_id + script_id + revision_id`; add `ModuleResolver` |
+| `crates/modules/alloy/src/context.rs` | scope injection | add auth context, effective permissions, binding scope, request metadata |
+| `crates/modules/alloy/src/bridge/mod.rs` | phase-aware registration | rebuild as policy-aware governed surface; implement `register_db_services`; remove empty stubs |
+| `crates/modules/alloy/src/bridge/http.rs` | external HTTP access | whitelist, quotas, SSRF protection, secret headers via refs, deterministic mocks for tests |
+| `crates/modules/alloy/src/model/script.rs` | single-record model | transform into package header; add namespace/current_revision/source_kind/checksum/test_status |
+| `crates/modules/alloy/src/storage/traits.rs` | storage contract | extend to revision/module/test/artifact queries |
+| `crates/modules/alloy/src/storage/sea_orm.rs` | DB persistence | add new tables and methods; introduce optimistic locking/compare-and-swap on revisions |
+| `crates/modules/alloy/src/storage/memory.rs` | test storage | support revisions/modules/tests for a full in-memory harness |
+| `crates/modules/alloy/src/migration.rs` and `src/migrations/*` | `scripts` and `script_executions` schema | add `script_revisions`, `script_modules`, `script_tests`, `script_artifacts`, `script_policies`, indices and FKs |
+| `crates/modules/alloy/src/runner/executor.rs` | single execution | universal execution log, policy snapshot, dry-run mode, consistent timeout/error semantics |
+| `crates/modules/alloy/src/runner/orchestrator.rs` | before/after/manual/api routes | unify pipeline, implement permission checks, tenant-aware execution context |
+| `crates/modules/alloy/src/runtime.rs` | shared runtime/scheduler wiring | repository service, resolver cache, scheduler refresh on publish/update |
+| `crates/modules/alloy/src/scheduler/runner.rs` | cron jobs | live reload, distributed lock, durable retry policy, log record per run |
+| `crates/modules/alloy/src/api/handlers.rs` | generic REST API | compile-before-save, revision publish flow, test endpoints, dry-run endpoints |
+| `crates/modules/alloy/src/controllers/mod.rs` | server REST routes | same plus tenant/policy enforcement and richer run/test responses |
+| `crates/modules/alloy/src/graphql/mutation.rs` and `query.rs` | GraphQL surface | revision/test/publish/rollback operations, package graph, artifact status |
+| `crates/modules/alloy/src/execution_log/storage.rs` | log persistence | cover hooks/scheduler/native builds, store policy snapshot/build ref |
 | `apps/server/src/services/app_runtime.rs` | bootstrap runtime | initialize repository layer, secret provider, policy service, mocks in tests |
 | `apps/server/src/app.rs` | after_routes/startup tests | add smoke-tests for Alloy runtime, module resolver, policy enforcement |
 | `apps/server/Cargo.toml` | features/deps | dev-deps for integration harness, feature flags for native build sandbox |
@@ -227,15 +227,15 @@ Below are all the key locations in the repository where changes are required or 
 
 | New Path | Purpose |
 |---|---|
-| `crates/alloy/src/repository/mod.rs` | package/revision service |
-| `crates/alloy/src/repository/worktree.rs` | materialization/export |
-| `crates/alloy/src/repository/resolver.rs` | Rhai `ModuleResolver` |
-| `crates/alloy/src/policy/mod.rs` | execution/network/bindings policy |
-| `crates/alloy/src/testing/mod.rs` | fixtures/snapshots/harness |
-| `crates/alloy/src/testing/mock_host.rs` | deterministic host bindings for CI |
-| `crates/alloy/src/native/mod.rs` | Rhai→Rust artifact pipeline |
-| `crates/alloy/src/native/equivalence.rs` | golden tests between Rhai and Rust |
-| `crates/alloy/tests/packages/*` | end-to-end test packages |
+| `crates/modules/alloy/src/repository/mod.rs` | package/revision service |
+| `crates/modules/alloy/src/repository/worktree.rs` | materialization/export |
+| `crates/modules/alloy/src/repository/resolver.rs` | Rhai `ModuleResolver` |
+| `crates/modules/alloy/src/policy/mod.rs` | execution/network/bindings policy |
+| `crates/modules/alloy/src/testing/mod.rs` | fixtures/snapshots/harness |
+| `crates/modules/alloy/src/testing/mock_host.rs` | deterministic host bindings for CI |
+| `crates/modules/alloy/src/native/mod.rs` | Rhai→Rust artifact pipeline |
+| `crates/modules/alloy/src/native/equivalence.rs` | golden tests between Rhai and Rust |
+| `crates/modules/alloy/tests/packages/*` | end-to-end test packages |
 
 ### Test Scenarios
 
@@ -243,12 +243,12 @@ The current test base already shows the right direction: simple execution, abort
 
 | Test Class | What It Checks | Where to Run |
 |---|---|---|
-| Unit | compile/execute, limits, resolver, bindings | `crates/alloy` |
-| Package integration | imports, fixtures, snapshots, revision publish/rollback | `crates/alloy/tests` |
-| Policy tests | allowed hosts, denied hosts, permission mismatch, run_as_system | `crates/alloy/tests/policy_*` |
+| Unit | compile/execute, limits, resolver, bindings | `crates/modules/alloy` |
+| Package integration | imports, fixtures, snapshots, revision publish/rollback | `crates/modules/alloy/tests` |
+| Policy tests | allowed hosts, denied hosts, permission mismatch, run_as_system | `crates/modules/alloy/tests/policy_*` |
 | Server integration | REST/GraphQL create/validate/run/test/publish | `apps/server` |
-| Scheduler tests | cron loading, refresh after update, concurrent protection | `crates/alloy` + server |
-| Native equivalence | Rhai vs generated Rust on same fixture set | `crates/alloy/src/native` |
+| Scheduler tests | cron loading, refresh after update, concurrent protection | `crates/modules/alloy` + server |
+| Native equivalence | Rhai vs generated Rust on same fixture set | `crates/modules/alloy/src/native` |
 | Regression | replay production-like fixtures on published revisions | CI nightly + release branch |
 
 ### CI/CD Integration

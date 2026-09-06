@@ -18,20 +18,20 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-requireMarkers('crates/rustok-index/src/application/query_port.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/query_port.rs', [
   'LocalizedBuild(#[from] PostgresLocalizedQueryBuildError)',
   'LocalizedDecode(#[from] PostgresLocalizedQueryDecodeError)',
   'async fn execute_localized_query(',
   'query: LocalizedEntityQuery',
   'localized Index query execution is unavailable for this adapter',
 ]);
-requireMarkers('crates/rustok-index/src/application/query_runtime.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/query_runtime.rs', [
   'use crate::domain::{IndexQuery, LocalizedEntityQuery};',
   'async fn execute_localized_query(',
   'self.port.execute_localized_query(query).await',
 ]);
 
-const postgres = requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_port.rs', [
+const postgres = requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/query_port.rs', [
   'CompiledPostgresLocalizedPageQuery',
   'domain::{IndexQuery, LocalizedEntityQuery, SchemaRef}',
   'fn admitted_localized_page_query(',
@@ -60,7 +60,7 @@ if (admissionPosition < 0 || beginPosition < 0 || admissionPosition > beginPosit
   fail('localized owner admission must be prepared before the storage transaction begins');
 }
 
-requireMarkers('crates/rustok-index/docs/m7-product-storefront-localized-query-architecture.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-storefront-localized-query-architecture.md', [
   'Status: `runtime_text_pattern_identity_order_source_complete_adapter_and_evidence_pending`',
   '`execute_localized_query`',
   '`REPEATABLE READ, READ ONLY`',

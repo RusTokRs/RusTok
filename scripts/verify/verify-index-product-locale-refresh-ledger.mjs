@@ -19,7 +19,7 @@ const requireMarkers = (relative, markers) => {
 };
 
 const migrationPath =
-  'crates/rustok-product/src/migrations/m20260806_000005_add_product_index_locale_refresh_ledger.rs';
+  'crates/modules/rustok-product/src/migrations/m20260806_000005_add_product_index_locale_refresh_ledger.rs';
 const migration = requireMarkers(migrationPath, [
   'CREATE TABLE product_index_locale_refresh_ledger',
   'sequence_no BIGSERIAL NOT NULL',
@@ -36,12 +36,12 @@ if (migration.includes('REFERENCES products')) {
   fail(`${migrationPath} must retain hard-delete identities without a live Product foreign key`);
 }
 
-requireMarkers('crates/rustok-product/src/migrations/mod.rs', [
+requireMarkers('crates/modules/rustok-product/src/migrations/mod.rs', [
   'mod m20260806_000005_add_product_index_locale_refresh_ledger;',
   'Box::new(m20260806_000005_add_product_index_locale_refresh_ledger::Migration)',
 ]);
 
-const sourcePath = 'crates/rustok-product/src/services/index_refresh.rs';
+const sourcePath = 'crates/modules/rustok-product/src/services/index_refresh.rs';
 const source = requireMarkers(sourcePath, [
   'MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE: usize = 256',
   'MAX_PRODUCT_INDEX_LOCALE_TARGETS_PER_EVENT: usize = 256',
@@ -78,7 +78,7 @@ for (const forbidden of [
   }
 }
 
-const transactionPath = 'crates/rustok-product/src/services/write_transaction.rs';
+const transactionPath = 'crates/modules/rustok-product/src/services/write_transaction.rs';
 const transaction = requireMarkers(transactionPath, [
   'product_locale_refresh_target(&event)',
   'product_index_revision_touch_target(&event)',
@@ -98,23 +98,23 @@ if (publishPosition < 0 || recordPosition <= publishPosition) {
   fail(`${transactionPath} must retain the root event UUID before recording refresh rows`);
 }
 
-requireMarkers('crates/rustok-product/src/services/mod.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/mod.rs', [
   'mod index_refresh;',
   'ProductIndexLocaleRefreshRecord',
   'ProductIndexLocaleRefreshSource',
 ]);
-requireMarkers('crates/rustok-product/src/lib.rs', [
+requireMarkers('crates/modules/rustok-product/src/lib.rs', [
   'MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE',
   'ProductIndexLocaleRefreshRecord',
   'ProductIndexLocaleRefreshSource',
 ]);
 
-const cargo = read('crates/rustok-product/Cargo.toml');
+const cargo = read('crates/modules/rustok-product/Cargo.toml');
 if (cargo.includes('rustok-index')) {
   fail('rustok-product must not depend on rustok-index');
 }
 
-requireMarkers('crates/rustok-product/docs/index-locale-refresh-ledger.md', [
+requireMarkers('crates/modules/rustok-product/docs/index-locale-refresh-ledger.md', [
   'Status: `owner_source_complete_wire_and_consumer_pending`',
   '`refresh_id`, reserved as the future typed event and Index inbox identity',
   '`root_event_id`, the exact durable Product owner envelope',

@@ -12,19 +12,19 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  ports: 'crates/rustok-pricing/src/ports.rs',
-  error: 'crates/rustok-commerce-foundation/src/error.rs',
-  readContext: 'crates/rustok-pricing/src/read_context.rs',
-  writeContext: 'crates/rustok-pricing/src/write_context.rs',
+  ports: 'crates/modules/rustok-pricing/src/ports.rs',
+  error: 'crates/modules/rustok-commerce-foundation/src/error.rs',
+  readContext: 'crates/modules/rustok-pricing/src/read_context.rs',
+  writeContext: 'crates/modules/rustok-pricing/src/write_context.rs',
   readEvidence:
-    'crates/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source.json',
+    'crates/modules/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source.json',
   writeEvidence:
-    'crates/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source.json',
+    'crates/modules/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source.json',
   evidence:
-    'crates/rustok-pricing/contracts/evidence/pricing-owner-port-error-safety-source.json',
+    'crates/modules/rustok-pricing/contracts/evidence/pricing-owner-port-error-safety-source.json',
   review:
-    'crates/rustok-pricing/contracts/evidence/pricing-owner-port-error-safety-source-review.json',
-  document: 'crates/rustok-pricing/docs/pricing-owner-port-error-safety.md',
+    'crates/modules/rustok-pricing/contracts/evidence/pricing-owner-port-error-safety-source-review.json',
+  document: 'crates/modules/rustok-pricing/docs/pricing-owner-port-error-safety.md',
   broad: 'scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs',
   broadTest: 'scripts/verify/verify-ecommerce-public-port-error-safety-v2.test.mjs',
 };
@@ -464,9 +464,9 @@ for (const [key, expected] of Object.entries({
 for (const marker of [
   '# Pricing owner port error safety',
   'Status: **source-ready / unvalidated**',
-  'owner `crates/rustok-pricing/src/ports.rs`',
-  'canonical read `crates/rustok-pricing/src/read_context.rs`',
-  'canonical write `crates/rustok-pricing/src/write_context.rs`',
+  'owner `crates/modules/rustok-pricing/src/ports.rs`',
+  'canonical read `crates/modules/rustok-pricing/src/read_context.rs`',
+  'canonical write `crates/modules/rustok-pricing/src/write_context.rs`',
   'Both canonical wrappers preserve their original owner delegation',
   '**source-closed / unvalidated**',
   'The broader ecommerce cleanup remains open.',

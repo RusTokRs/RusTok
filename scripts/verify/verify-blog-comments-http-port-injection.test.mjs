@@ -8,12 +8,12 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const verifier = path.resolve('scripts/verify/verify-blog-comments-http-port-injection.mjs');
-const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json';
-const runtimePath = 'crates/rustok-blog/src/controllers/mod.rs';
-const controllerPath = 'crates/rustok-blog/src/controllers/comments.rs';
-const servicePath = 'crates/rustok-blog/src/services/comment.rs';
-const matrixPath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
-const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
+const evidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json';
+const runtimePath = 'crates/modules/rustok-blog/src/controllers/mod.rs';
+const controllerPath = 'crates/modules/rustok-blog/src/controllers/comments.rs';
+const servicePath = 'crates/modules/rustok-blog/src/services/comment.rs';
+const matrixPath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
 const harnessTest = 'controllers::tests::blog_http_runtime_exposes_comments_port_selection';
 const harnessCommand = `cargo test -p rustok-blog --lib ${harnessTest} -- --exact`;
 

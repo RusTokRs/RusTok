@@ -8,12 +8,12 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-const source = read('crates/rustok-social-graph/src/index_source.rs');
-const moduleSource = read('crates/rustok-social-graph/src/lib.rs');
-const liveConsumer = read('crates/rustok-social-graph/src/index_consumer.rs');
-const sourceFactory = read('crates/rustok-index/src/infrastructure/postgres/source_factory.rs');
-const contract = read('crates/rustok-index/docs/m5-social-graph-mutation-route.md');
-const ackContract = read('crates/rustok-index/docs/m5-mutation-event-ack-contract.md');
+const source = read('crates/modules/rustok-social-graph/src/index_source.rs');
+const moduleSource = read('crates/modules/rustok-social-graph/src/lib.rs');
+const liveConsumer = read('crates/modules/rustok-social-graph/src/index_consumer.rs');
+const sourceFactory = read('crates/modules/rustok-index/src/infrastructure/postgres/source_factory.rs');
+const contract = read('crates/modules/rustok-index/docs/m5-social-graph-mutation-route.md');
+const ackContract = read('crates/modules/rustok-index/docs/m5-mutation-event-ack-contract.md');
 
 for (const marker of [
   'pub const SOCIAL_GRAPH_RELATION_INDEX_SOURCE: &str =',

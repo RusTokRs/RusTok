@@ -8,8 +8,8 @@ const read = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), "utf8");
 
 const migrationPath =
-  "crates/rustok-blog/src/migrations/m20260803_000011_create_blog_comments_audit_recovery.rs";
-const migrationsModPath = "crates/rustok-blog/src/migrations/mod.rs";
+  "crates/modules/rustok-blog/src/migrations/m20260803_000011_create_blog_comments_audit_recovery.rs";
+const migrationsModPath = "crates/modules/rustok-blog/src/migrations/mod.rs";
 const recoveryPath =
   "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_recovery_postgres.rs";
 const operatorPath =
@@ -18,9 +18,9 @@ const runtimePath = "apps/server/src/services/comments_provider_runtime.rs";
 const bootstrapPath = "apps/server/src/services/server_bootstrap.rs";
 const workerPath =
   "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_worker_source_retry.rs";
-const planPath = "crates/rustok-blog/docs/implementation-plan-slice-94.md";
+const planPath = "crates/modules/rustok-blog/docs/implementation-plan-slice-94.md";
 const evidencePath =
-  "crates/rustok-blog/contracts/evidence/blog-comments-audit-operator-requeue.json";
+  "crates/modules/rustok-blog/contracts/evidence/blog-comments-audit-operator-requeue.json";
 
 for (const file of [
   migrationPath,

@@ -6,13 +6,13 @@ const failures = [];
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 
 const files = {
-  applications: "crates/rustok-groups/src/applications.rs",
-  reviewPort: "crates/rustok-groups/src/applications_review.rs",
-  capabilityPorts: "crates/rustok-groups/src/ports.rs",
-  legacyNative: "crates/rustok-groups/admin/src/transport/native_applications_adapter.rs",
-  casNative: "crates/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs",
-  adminTransport: "crates/rustok-groups/admin/src/transport.rs",
-  finalGraphql: "crates/rustok-groups/src/graphql_application_cas.rs",
+  applications: "crates/modules/rustok-groups/src/applications.rs",
+  reviewPort: "crates/modules/rustok-groups/src/applications_review.rs",
+  capabilityPorts: "crates/modules/rustok-groups/src/ports.rs",
+  legacyNative: "crates/modules/rustok-groups/admin/src/transport/native_applications_adapter.rs",
+  casNative: "crates/modules/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs",
+  adminTransport: "crates/modules/rustok-groups/admin/src/transport.rs",
+  finalGraphql: "crates/modules/rustok-groups/src/graphql_application_cas.rs",
 };
 
 for (const relative of Object.values(files)) {

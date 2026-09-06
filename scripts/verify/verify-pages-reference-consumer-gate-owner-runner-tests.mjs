@@ -8,9 +8,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const failures = [];
 const files = {
   contract:
-    "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-runner-test-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-runner-test-source.json",
   acceptance:
-    "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
   runner: "scripts/evidence/accept-pages-reference-consumer-gate.mjs",
   test: "scripts/evidence/accept-pages-reference-consumer-gate.test.mjs",
   workflow: ".github/workflows/pages-page-builder-provider-health.yml",

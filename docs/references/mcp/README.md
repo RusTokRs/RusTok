@@ -74,7 +74,7 @@ As of today `rustok-mcp` covers:
 - compatibility shim via legacy `enabled_tools`;
 - session-start runtime binding hooks (`McpSessionContext`, `McpAccessResolver`, `McpRuntimeBinding`);
 - runtime allow/deny audit hook via `McpAuditSink`;
-- the first real Alloy product-slice: `alloy_scaffold_module`, which stages a draft `crates/rustok-<slug>` module scaffold, while `alloy_review_module_scaffold` / `alloy_apply_module_scaffold` provide the review/apply boundary.
+- the first real Alloy product-slice: `alloy_scaffold_module`, which stages a draft `crates/modules/rustok-<slug>` module scaffold, while `alloy_review_module_scaffold` / `alloy_apply_module_scaffold` provide the review/apply boundary.
 - persisted server-side control plane for Alloy scaffold drafts in `apps/server` via REST `/api/mcp/scaffold-drafts*` and GraphQL `mcpModuleScaffoldDraft*`.
 - live runtime hook `McpScaffoldDraftStore`, through which `DbBackedMcpRuntimeBridge` can move the Alloy scaffold flow from process-local memory into persisted drafts in `apps/server`.
 
@@ -93,9 +93,9 @@ allow/deny audit.
 
 ## Related local documents
 
-- [`crates/rustok-mcp/README.md`](../../../crates/rustok-mcp/README.md)
-- [`crates/rustok-mcp/docs/README.md`](../../../crates/rustok-mcp/docs/README.md)
-- [`crates/rustok-mcp/docs/implementation-plan.md`](../../../crates/rustok-mcp/docs/implementation-plan.md)
+- [`crates/modules/rustok-mcp/README.md`](../../../crates/modules/rustok-mcp/README.md)
+- [`crates/modules/rustok-mcp/docs/README.md`](../../../crates/modules/rustok-mcp/docs/README.md)
+- [`crates/modules/rustok-mcp/docs/implementation-plan.md`](../../../crates/modules/rustok-mcp/docs/implementation-plan.md)
 - [`docs/modules/registry.md`](../../modules/registry.md)
 - [`docs/modules/crates-registry.md`](../../modules/crates-registry.md)
 

@@ -7,38 +7,38 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 const exists = (relative) => fs.existsSync(path.join(root, relative));
 
 const required = [
-  "crates/rustok-groups/Cargo.toml",
-  "crates/rustok-groups/rustok-module.toml",
-  "crates/rustok-groups/README.md",
-  "crates/rustok-groups/docs/README.md",
-  "crates/rustok-groups/docs/implementation-plan.md",
-  "crates/rustok-groups/contracts/groups-fba-registry.json",
-  "crates/rustok-groups/src/domain.rs",
-  "crates/rustok-groups/src/ports.rs",
-  "crates/rustok-groups/src/service.rs",
-  "crates/rustok-groups/src/localization.rs",
-  "crates/rustok-groups/src/invitations.rs",
-  "crates/rustok-groups/src/targeted_invitations.rs",
-  "crates/rustok-groups/src/applications.rs",
-  "crates/rustok-groups/src/applications_legacy.rs",
-  "crates/rustok-groups/src/applications_cas.rs",
-  "crates/rustok-groups/src/policy_history.rs",
-  "crates/rustok-groups/src/governance.rs",
-  "crates/rustok-groups/src/graphql_applications.rs",
-  "crates/rustok-groups/src/graphql_policy_history.rs",
-  "crates/rustok-groups/src/graphql_application_cas.rs",
-  "crates/rustok-groups/src/migrations/m20260722_000007_create_group_membership_policy_revisions.rs",
-  "crates/rustok-groups/admin/src/core.rs",
-  "crates/rustok-groups/admin/src/application_core.rs",
-  "crates/rustok-groups/admin/src/transport.rs",
-  "crates/rustok-groups/admin/src/ui/root.rs",
-  "crates/rustok-groups/admin/src/ui/applications.rs",
-  "crates/rustok-groups/admin/src/ui/policy_editor.rs",
-  "crates/rustok-groups/storefront/src/core.rs",
-  "crates/rustok-groups/storefront/src/application_core.rs",
-  "crates/rustok-groups/storefront/src/transport.rs",
-  "crates/rustok-groups/storefront/src/ui/leptos.rs",
-  "crates/rustok-groups/storefront/src/ui/application.rs",
+  "crates/modules/rustok-groups/Cargo.toml",
+  "crates/modules/rustok-groups/rustok-module.toml",
+  "crates/modules/rustok-groups/README.md",
+  "crates/modules/rustok-groups/docs/README.md",
+  "crates/modules/rustok-groups/docs/implementation-plan.md",
+  "crates/modules/rustok-groups/contracts/groups-fba-registry.json",
+  "crates/modules/rustok-groups/src/domain.rs",
+  "crates/modules/rustok-groups/src/ports.rs",
+  "crates/modules/rustok-groups/src/service.rs",
+  "crates/modules/rustok-groups/src/localization.rs",
+  "crates/modules/rustok-groups/src/invitations.rs",
+  "crates/modules/rustok-groups/src/targeted_invitations.rs",
+  "crates/modules/rustok-groups/src/applications.rs",
+  "crates/modules/rustok-groups/src/applications_legacy.rs",
+  "crates/modules/rustok-groups/src/applications_cas.rs",
+  "crates/modules/rustok-groups/src/policy_history.rs",
+  "crates/modules/rustok-groups/src/governance.rs",
+  "crates/modules/rustok-groups/src/graphql_applications.rs",
+  "crates/modules/rustok-groups/src/graphql_policy_history.rs",
+  "crates/modules/rustok-groups/src/graphql_application_cas.rs",
+  "crates/modules/rustok-groups/src/migrations/m20260722_000007_create_group_membership_policy_revisions.rs",
+  "crates/modules/rustok-groups/admin/src/core.rs",
+  "crates/modules/rustok-groups/admin/src/application_core.rs",
+  "crates/modules/rustok-groups/admin/src/transport.rs",
+  "crates/modules/rustok-groups/admin/src/ui/root.rs",
+  "crates/modules/rustok-groups/admin/src/ui/applications.rs",
+  "crates/modules/rustok-groups/admin/src/ui/policy_editor.rs",
+  "crates/modules/rustok-groups/storefront/src/core.rs",
+  "crates/modules/rustok-groups/storefront/src/application_core.rs",
+  "crates/modules/rustok-groups/storefront/src/transport.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/leptos.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/application.rs",
   "scripts/verify/verify-groups-localization-boundary.mjs",
   "scripts/verify/verify-groups-invitations-boundary.mjs",
   "scripts/verify/verify-groups-targeted-invitation-delivery.mjs",
@@ -52,10 +52,10 @@ for (const relative of required) {
 }
 
 for (const corePath of [
-  "crates/rustok-groups/admin/src/core.rs",
-  "crates/rustok-groups/admin/src/application_core.rs",
-  "crates/rustok-groups/storefront/src/core.rs",
-  "crates/rustok-groups/storefront/src/application_core.rs",
+  "crates/modules/rustok-groups/admin/src/core.rs",
+  "crates/modules/rustok-groups/admin/src/application_core.rs",
+  "crates/modules/rustok-groups/storefront/src/core.rs",
+  "crates/modules/rustok-groups/storefront/src/application_core.rs",
 ]) {
   if (exists(corePath) && /use\s+leptos|leptos::/.test(read(corePath))) {
     failures.push(`FFA core must remain framework-neutral: ${corePath}`);
@@ -63,14 +63,14 @@ for (const corePath of [
 }
 
 for (const uiPath of [
-  "crates/rustok-groups/admin/src/ui/leptos.rs",
-  "crates/rustok-groups/admin/src/ui/localization.rs",
-  "crates/rustok-groups/admin/src/ui/invitations.rs",
-  "crates/rustok-groups/admin/src/ui/applications.rs",
-  "crates/rustok-groups/admin/src/ui/policy_editor.rs",
-  "crates/rustok-groups/storefront/src/ui/leptos.rs",
-  "crates/rustok-groups/storefront/src/ui/invitation_acceptance.rs",
-  "crates/rustok-groups/storefront/src/ui/application.rs",
+  "crates/modules/rustok-groups/admin/src/ui/leptos.rs",
+  "crates/modules/rustok-groups/admin/src/ui/localization.rs",
+  "crates/modules/rustok-groups/admin/src/ui/invitations.rs",
+  "crates/modules/rustok-groups/admin/src/ui/applications.rs",
+  "crates/modules/rustok-groups/admin/src/ui/policy_editor.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/leptos.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/invitation_acceptance.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/application.rs",
 ]) {
   if (!exists(uiPath)) continue;
   const ui = read(uiPath);
@@ -83,14 +83,14 @@ for (const uiPath of [
 }
 
 const serviceFiles = [
-  "crates/rustok-groups/src/service.rs",
-  "crates/rustok-groups/src/localization.rs",
-  "crates/rustok-groups/src/invitations.rs",
-  "crates/rustok-groups/src/targeted_invitations.rs",
-  "crates/rustok-groups/src/applications_legacy.rs",
-  "crates/rustok-groups/src/applications_cas.rs",
-  "crates/rustok-groups/src/policy_history.rs",
-  "crates/rustok-groups/src/governance.rs",
+  "crates/modules/rustok-groups/src/service.rs",
+  "crates/modules/rustok-groups/src/localization.rs",
+  "crates/modules/rustok-groups/src/invitations.rs",
+  "crates/modules/rustok-groups/src/targeted_invitations.rs",
+  "crates/modules/rustok-groups/src/applications_legacy.rs",
+  "crates/modules/rustok-groups/src/applications_cas.rs",
+  "crates/modules/rustok-groups/src/policy_history.rs",
+  "crates/modules/rustok-groups/src/governance.rs",
 ];
 for (const servicePath of serviceFiles) {
   if (!exists(servicePath)) continue;
@@ -108,8 +108,8 @@ for (const servicePath of serviceFiles) {
   }
 }
 
-if (exists("crates/rustok-groups/src/service.rs")) {
-  const service = read("crates/rustok-groups/src/service.rs");
+if (exists("crates/modules/rustok-groups/src/service.rs")) {
+  const service = read("crates/modules/rustok-groups/src/service.rs");
   for (const marker of [
     "GroupAction::ViewSummary",
     "GroupVisibility::Closed.as_str()",
@@ -125,8 +125,8 @@ if (exists("crates/rustok-groups/src/service.rs")) {
   }
 }
 
-if (exists("crates/rustok-groups/src/policy_history.rs")) {
-  const history = read("crates/rustok-groups/src/policy_history.rs");
+if (exists("crates/modules/rustok-groups/src/policy_history.rs")) {
+  const history = read("crates/modules/rustok-groups/src/policy_history.rs");
   for (const marker of [
     "GroupApplicationPolicyHistoryReadPort",
     "GroupApplicationPolicyHistoryService",
@@ -137,8 +137,8 @@ if (exists("crates/rustok-groups/src/policy_history.rs")) {
   }
 }
 
-if (exists("crates/rustok-groups/src/applications_cas.rs")) {
-  const cas = read("crates/rustok-groups/src/applications_cas.rs");
+if (exists("crates/modules/rustok-groups/src/applications_cas.rs")) {
+  const cas = read("crates/modules/rustok-groups/src/applications_cas.rs");
   for (const marker of [
     "GroupApplicationCasCommandPort",
     "GROUP_APPLICATION_POLICY_CHANGED_CODE",
@@ -149,8 +149,8 @@ if (exists("crates/rustok-groups/src/applications_cas.rs")) {
   }
 }
 
-if (exists("crates/rustok-groups/rustok-module.toml")) {
-  const manifest = read("crates/rustok-groups/rustok-module.toml");
+if (exists("crates/modules/rustok-groups/rustok-module.toml")) {
+  const manifest = read("crates/modules/rustok-groups/rustok-module.toml");
   for (const marker of [
     'query = "graphql_application_cas::GroupsQueryRoot"',
     'mutation = "graphql_application_cas::GroupsMutationRoot"',
@@ -161,8 +161,8 @@ if (exists("crates/rustok-groups/rustok-module.toml")) {
   }
 }
 
-if (exists("crates/rustok-groups/src/graphql_application_cas.rs")) {
-  const graphql = read("crates/rustok-groups/src/graphql_application_cas.rs");
+if (exists("crates/modules/rustok-groups/src/graphql_application_cas.rs")) {
+  const graphql = read("crates/modules/rustok-groups/src/graphql_application_cas.rs");
   for (const marker of [
     "GroupsBaseQueryRoot",
     "GroupsPreApplicationMutationRoot",
@@ -182,8 +182,8 @@ if (exists("crates/rustok-groups/src/graphql_application_cas.rs")) {
   }
 }
 
-if (exists("crates/rustok-groups/src/ports.rs")) {
-  const ports = read("crates/rustok-groups/src/ports.rs");
+if (exists("crates/modules/rustok-groups/src/ports.rs")) {
+  const ports = read("crates/modules/rustok-groups/src/ports.rs");
   for (const marker of [
     "GroupSummaryReadPort",
     "GroupMembershipReadPort",
@@ -204,8 +204,8 @@ if (exists("crates/rustok-groups/src/ports.rs")) {
 }
 
 for (const facadePath of [
-  "crates/rustok-groups/admin/src/transport.rs",
-  "crates/rustok-groups/storefront/src/transport.rs",
+  "crates/modules/rustok-groups/admin/src/transport.rs",
+  "crates/modules/rustok-groups/storefront/src/transport.rs",
 ]) {
   if (!exists(facadePath)) continue;
   const facade = read(facadePath);
@@ -217,8 +217,8 @@ for (const facadePath of [
   }
 }
 
-if (exists("crates/rustok-groups/contracts/groups-fba-registry.json")) {
-  const registry = JSON.parse(read("crates/rustok-groups/contracts/groups-fba-registry.json"));
+if (exists("crates/modules/rustok-groups/contracts/groups-fba-registry.json")) {
+  const registry = JSON.parse(read("crates/modules/rustok-groups/contracts/groups-fba-registry.json"));
   if (registry?.status !== "in_progress") failures.push("Groups FBA registry must remain in_progress until runtime evidence exists");
   if (registry?.privacy?.default_on_provider_unavailable !== "deny_private_content") failures.push("Groups privacy fallback must fail closed");
   if (registry?.privacy?.secret_group_direct_read !== "not_found_without_membership_or_platform_manage") failures.push("Secret group direct reads must preserve non-disclosure");
@@ -232,10 +232,10 @@ if (exists("crates/rustok-groups/contracts/groups-fba-registry.json")) {
 }
 
 for (const localePath of [
-  "crates/rustok-groups/admin/locales/en.json",
-  "crates/rustok-groups/admin/locales/ru.json",
-  "crates/rustok-groups/storefront/locales/en.json",
-  "crates/rustok-groups/storefront/locales/ru.json",
+  "crates/modules/rustok-groups/admin/locales/en.json",
+  "crates/modules/rustok-groups/admin/locales/ru.json",
+  "crates/modules/rustok-groups/storefront/locales/en.json",
+  "crates/modules/rustok-groups/storefront/locales/ru.json",
 ]) {
   if (exists(localePath)) JSON.parse(read(localePath));
 }

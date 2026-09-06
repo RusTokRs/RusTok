@@ -1,6 +1,6 @@
 #[test]
 fn field_definition_cache_uses_one_transactional_generation_and_fail_closed_recovery() {
-    let helper = include_str!("../../../crates/flex/src/cache_generation.rs");
+    let helper = include_str!("../../../crates/modules/flex/src/cache_generation.rs");
     let wrapper = include_str!("../src/services/field_definition_cache.rs");
     let base = include_str!("../src/services/field_definition_cache_base.rs");
     let reconciler = include_str!("../src/services/field_definition_cache_reconciliation.rs");
@@ -138,19 +138,19 @@ fn field_definition_cache_uses_one_transactional_generation_and_fail_closed_reco
 #[test]
 fn field_definition_generation_triggers_follow_table_creation_order() {
     let flex = include_str!(
-        "../../../crates/flex/src/migrations/m20260716_000000_create_field_definition_cache_generation.rs"
+        "../../../crates/modules/flex/src/migrations/m20260716_000000_create_field_definition_cache_generation.rs"
     );
     let auth = include_str!(
-        "../../../crates/rustok-auth/src/migrations/m20260716_000001_create_flex_field_definition_cache_generation.rs"
+        "../../../crates/modules/rustok-auth/src/migrations/m20260716_000001_create_flex_field_definition_cache_generation.rs"
     );
     let product = include_str!(
-        "../../../crates/rustok-product/src/migrations/m20260716_000002_add_product_field_cache_generation_trigger.rs"
+        "../../../crates/modules/rustok-product/src/migrations/m20260716_000002_add_product_field_cache_generation_trigger.rs"
     );
     let order = include_str!(
-        "../../../crates/rustok-commerce/src/migrations/m20260716_000003_add_order_field_cache_generation_trigger.rs"
+        "../../../crates/modules/rustok-commerce/src/migrations/m20260716_000003_add_order_field_cache_generation_trigger.rs"
     );
     let topic = include_str!(
-        "../../../crates/rustok-forum/src/migrations/m20260716_000004_add_topic_field_cache_generation_trigger.rs"
+        "../../../crates/modules/rustok-forum/src/migrations/m20260716_000004_add_topic_field_cache_generation_trigger.rs"
     );
 
     assert!(flex.contains("create_field_definition_cache_generation_table"));
@@ -160,10 +160,10 @@ fn field_definition_generation_triggers_follow_table_creation_order() {
     assert!(order.contains("order_field_definitions"));
     assert!(topic.contains("topic_field_definitions"));
 
-    let auth_mod = include_str!("../../../crates/rustok-auth/src/migrations/mod.rs");
-    let product_mod = include_str!("../../../crates/rustok-product/src/migrations/mod.rs");
-    let commerce_mod = include_str!("../../../crates/rustok-commerce/src/migrations/mod.rs");
-    let forum_mod = include_str!("../../../crates/rustok-forum/src/migrations/mod.rs");
+    let auth_mod = include_str!("../../../crates/modules/rustok-auth/src/migrations/mod.rs");
+    let product_mod = include_str!("../../../crates/modules/rustok-product/src/migrations/mod.rs");
+    let commerce_mod = include_str!("../../../crates/modules/rustok-commerce/src/migrations/mod.rs");
+    let forum_mod = include_str!("../../../crates/modules/rustok-forum/src/migrations/mod.rs");
     assert!(auth_mod.contains("m20260716_000001_create_flex_field_definition_cache_generation"));
     assert!(auth_mod.contains("m20260716_000000_create_field_definition_cache_generation"));
     assert!(product_mod.contains("m20260716_000002_add_product_field_cache_generation_trigger"));
@@ -176,7 +176,7 @@ fn field_definition_generation_triggers_follow_table_creation_order() {
 
 #[test]
 fn permanent_gate_retains_postgres_and_sqlite_flex_generation_evidence() {
-    let postgres = include_str!("../../../crates/flex/tests/postgres_cache_generation.rs");
+    let postgres = include_str!("../../../crates/modules/flex/tests/postgres_cache_generation.rs");
     let workflow = include_str!("../../../.github/workflows/cache-hardening.yml");
 
     for required in [
@@ -196,7 +196,7 @@ fn permanent_gate_retains_postgres_and_sqlite_flex_generation_evidence() {
     }
 
     for required in [
-        "crates/flex/tests/**",
+        "crates/modules/flex/tests/**",
         "apps/server/src/services/field_definition_cache_reconciliation*.rs",
         "cargo test -p flex cache_generation --lib",
         "RUSTOK_FLEX_TEST_POSTGRES_URL",

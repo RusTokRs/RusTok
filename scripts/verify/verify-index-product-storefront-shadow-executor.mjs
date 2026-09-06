@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const executorPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const executorPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
 const source = requireMarkers(executorPath, [
   'pub(crate) struct ProductStorefrontIndexShadowExecutor',
   'product: ProductCatalogReadRuntime',
@@ -93,7 +93,7 @@ for (const forbidden of [
   if (source.includes(forbidden)) fail(`${executorPath} must remain the unbudgeted evidence executor; found ${forbidden}`);
 }
 
-const budgetedPath = 'crates/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
+const budgetedPath = 'crates/modules/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
 requireMarkers(budgetedPath, [
   'ProductStorefrontIndexProjectionPhases',
   'impl ProductStorefrontIndexProjectionPhases for ProductStorefrontIndexShadowExecutor',
@@ -104,22 +104,22 @@ requireMarkers(budgetedPath, [
   'use tokio::time::timeout;',
 ]);
 
-requireMarkers('crates/rustok-product/src/storefront_tag_read_port.rs', [
+requireMarkers('crates/modules/rustok-product/src/storefront_tag_read_port.rs', [
   'pub trait ProductStorefrontTagReadPort',
   'MAX_STOREFRONT_TAG_HYDRATION_PRODUCTS: usize = 48',
   '.load_product_tag_map(',
 ]);
-requireMarkers('crates/rustok-distribution/src/product_index/storefront_projection.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/storefront_projection.rs', [
   'pub(crate) fn project_product_storefront_index_page(',
   'value(&projected.items[0], "tag_ids")',
 ]);
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'ProductStorefrontIndexTagHydrationError',
   'ProductStorefrontIndexBudgetedProjectionExecutor',
   'ProductStorefrontIndexProjectionPhases',
 ]);
 
-const mountedPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
+const mountedPath = 'crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs';
 const mounted = requireMarkers(mountedPath, [
   'CatalogService::new(runtime_ctx.db_clone(), event_bus)',
   '.list_published_products_with_query(',

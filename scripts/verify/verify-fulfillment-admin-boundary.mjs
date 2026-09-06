@@ -38,13 +38,13 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-fulfillment/admin/src/lib.rs";
-const corePath = "crates/rustok-fulfillment/admin/src/core.rs";
-const uiPath = "crates/rustok-fulfillment/admin/src/ui/leptos.rs";
-const transportPath = "crates/rustok-fulfillment/admin/src/transport.rs";
-const legacyApiPath = "crates/rustok-fulfillment/admin/src/api.rs";
-const graphqlAdapterPath = "crates/rustok-fulfillment/admin/src/transport/graphql_adapter.rs";
-const implementationPlanPath = "crates/rustok-fulfillment/docs/implementation-plan.md";
+const libPath = "crates/modules/rustok-fulfillment/admin/src/lib.rs";
+const corePath = "crates/modules/rustok-fulfillment/admin/src/core.rs";
+const uiPath = "crates/modules/rustok-fulfillment/admin/src/ui/leptos.rs";
+const transportPath = "crates/modules/rustok-fulfillment/admin/src/transport.rs";
+const legacyApiPath = "crates/modules/rustok-fulfillment/admin/src/api.rs";
+const graphqlAdapterPath = "crates/modules/rustok-fulfillment/admin/src/transport/graphql_adapter.rs";
+const implementationPlanPath = "crates/modules/rustok-fulfillment/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 
 for (const filePath of [

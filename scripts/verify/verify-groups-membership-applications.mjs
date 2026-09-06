@@ -7,34 +7,34 @@ const exists = (relative) => fs.existsSync(path.join(root, relative));
 const failures = [];
 
 const required = [
-  "crates/rustok-groups/src/application_entities.rs",
-  "crates/rustok-groups/src/applications.rs",
-  "crates/rustok-groups/src/applications_legacy.rs",
-  "crates/rustok-groups/src/applications_cas.rs",
-  "crates/rustok-groups/src/graphql_applications.rs",
-  "crates/rustok-groups/src/graphql_policy_history.rs",
-  "crates/rustok-groups/src/graphql_application_cas.rs",
-  "crates/rustok-groups/src/migrations/m20260722_000006_create_group_membership_applications.rs",
-  "crates/rustok-groups/admin/src/application_core.rs",
-  "crates/rustok-groups/admin/src/application_model.rs",
-  "crates/rustok-groups/admin/src/transport/native_applications_adapter.rs",
-  "crates/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs",
-  "crates/rustok-groups/admin/src/transport/graphql_applications_adapter.rs",
-  "crates/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs",
-  "crates/rustok-groups/admin/src/ui/applications.rs",
-  "crates/rustok-groups/admin/src/ui/policy_editor.rs",
-  "crates/rustok-groups/storefront/src/application_core.rs",
-  "crates/rustok-groups/storefront/src/application_model.rs",
-  "crates/rustok-groups/storefront/src/transport/native_applications_adapter.rs",
-  "crates/rustok-groups/storefront/src/transport/graphql_applications_adapter.rs",
-  "crates/rustok-groups/storefront/src/ui/application.rs",
+  "crates/modules/rustok-groups/src/application_entities.rs",
+  "crates/modules/rustok-groups/src/applications.rs",
+  "crates/modules/rustok-groups/src/applications_legacy.rs",
+  "crates/modules/rustok-groups/src/applications_cas.rs",
+  "crates/modules/rustok-groups/src/graphql_applications.rs",
+  "crates/modules/rustok-groups/src/graphql_policy_history.rs",
+  "crates/modules/rustok-groups/src/graphql_application_cas.rs",
+  "crates/modules/rustok-groups/src/migrations/m20260722_000006_create_group_membership_applications.rs",
+  "crates/modules/rustok-groups/admin/src/application_core.rs",
+  "crates/modules/rustok-groups/admin/src/application_model.rs",
+  "crates/modules/rustok-groups/admin/src/transport/native_applications_adapter.rs",
+  "crates/modules/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs",
+  "crates/modules/rustok-groups/admin/src/transport/graphql_applications_adapter.rs",
+  "crates/modules/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs",
+  "crates/modules/rustok-groups/admin/src/ui/applications.rs",
+  "crates/modules/rustok-groups/admin/src/ui/policy_editor.rs",
+  "crates/modules/rustok-groups/storefront/src/application_core.rs",
+  "crates/modules/rustok-groups/storefront/src/application_model.rs",
+  "crates/modules/rustok-groups/storefront/src/transport/native_applications_adapter.rs",
+  "crates/modules/rustok-groups/storefront/src/transport/graphql_applications_adapter.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/application.rs",
 ];
 
 for (const relative of required) {
   if (!exists(relative)) failures.push(`missing membership application artifact: ${relative}`);
 }
 
-const migrationPath = "crates/rustok-groups/src/migrations/m20260722_000006_create_group_membership_applications.rs";
+const migrationPath = "crates/modules/rustok-groups/src/migrations/m20260722_000006_create_group_membership_applications.rs";
 if (exists(migrationPath)) {
   const migration = read(migrationPath);
   for (const marker of [
@@ -52,7 +52,7 @@ if (exists(migrationPath)) {
   }
 }
 
-const legacyPath = "crates/rustok-groups/src/applications_legacy.rs";
+const legacyPath = "crates/modules/rustok-groups/src/applications_legacy.rs";
 if (exists(legacyPath)) {
   const service = read(legacyPath);
   for (const marker of [
@@ -87,7 +87,7 @@ if (exists(legacyPath)) {
   }
 }
 
-const casPath = "crates/rustok-groups/src/applications_cas.rs";
+const casPath = "crates/modules/rustok-groups/src/applications_cas.rs";
 if (exists(casPath)) {
   const cas = read(casPath);
   for (const marker of [
@@ -104,7 +104,7 @@ if (exists(casPath)) {
   }
 }
 
-const graphqlPath = "crates/rustok-groups/src/graphql_applications.rs";
+const graphqlPath = "crates/modules/rustok-groups/src/graphql_applications.rs";
 if (exists(graphqlPath)) {
   const graphql = read(graphqlPath);
   for (const marker of [
@@ -120,7 +120,7 @@ if (exists(graphqlPath)) {
   }
 }
 
-const casGraphqlPath = "crates/rustok-groups/src/graphql_application_cas.rs";
+const casGraphqlPath = "crates/modules/rustok-groups/src/graphql_application_cas.rs";
 if (exists(casGraphqlPath)) {
   const graphql = read(casGraphqlPath);
   for (const marker of [
@@ -134,7 +134,7 @@ if (exists(casGraphqlPath)) {
   }
 }
 
-const manifestPath = "crates/rustok-groups/rustok-module.toml";
+const manifestPath = "crates/modules/rustok-groups/rustok-module.toml";
 if (exists(manifestPath)) {
   const manifest = read(manifestPath);
   for (const marker of [
@@ -147,8 +147,8 @@ if (exists(manifestPath)) {
 }
 
 for (const corePath of [
-  "crates/rustok-groups/admin/src/application_core.rs",
-  "crates/rustok-groups/storefront/src/application_core.rs",
+  "crates/modules/rustok-groups/admin/src/application_core.rs",
+  "crates/modules/rustok-groups/storefront/src/application_core.rs",
 ]) {
   if (exists(corePath) && /use\s+leptos|leptos::/.test(read(corePath))) {
     failures.push(`membership application FFA core must remain framework-neutral: ${corePath}`);
@@ -156,9 +156,9 @@ for (const corePath of [
 }
 
 for (const uiPath of [
-  "crates/rustok-groups/admin/src/ui/applications.rs",
-  "crates/rustok-groups/admin/src/ui/policy_editor.rs",
-  "crates/rustok-groups/storefront/src/ui/application.rs",
+  "crates/modules/rustok-groups/admin/src/ui/applications.rs",
+  "crates/modules/rustok-groups/admin/src/ui/policy_editor.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/application.rs",
 ]) {
   if (!exists(uiPath)) continue;
   const ui = read(uiPath);
@@ -169,8 +169,8 @@ for (const uiPath of [
 }
 
 for (const facadePath of [
-  "crates/rustok-groups/admin/src/transport.rs",
-  "crates/rustok-groups/storefront/src/transport.rs",
+  "crates/modules/rustok-groups/admin/src/transport.rs",
+  "crates/modules/rustok-groups/storefront/src/transport.rs",
 ]) {
   if (!exists(facadePath)) continue;
   const facade = read(facadePath);
@@ -179,7 +179,7 @@ for (const facadePath of [
   }
 }
 
-const registryPath = "crates/rustok-groups/contracts/groups-fba-registry.json";
+const registryPath = "crates/modules/rustok-groups/contracts/groups-fba-registry.json";
 if (exists(registryPath)) {
   const registry = JSON.parse(read(registryPath));
   const readPort = registry?.provider?.ports?.find((port) => port?.name === "GroupApplicationReadPort");
@@ -215,10 +215,10 @@ if (exists(registryPath)) {
 }
 
 for (const localePath of [
-  "crates/rustok-groups/admin/locales/en.json",
-  "crates/rustok-groups/admin/locales/ru.json",
-  "crates/rustok-groups/storefront/locales/en.json",
-  "crates/rustok-groups/storefront/locales/ru.json",
+  "crates/modules/rustok-groups/admin/locales/en.json",
+  "crates/modules/rustok-groups/admin/locales/ru.json",
+  "crates/modules/rustok-groups/storefront/locales/en.json",
+  "crates/modules/rustok-groups/storefront/locales/ru.json",
 ]) {
   if (!exists(localePath)) continue;
   const messages = JSON.parse(read(localePath));

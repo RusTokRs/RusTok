@@ -4,19 +4,19 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-reply-range-move-owner.json",
-  docs: "crates/rustok-forum/docs/forum-21s-reply-range-move-owner.md",
-  readme: "crates/rustok-forum/docs/README.md",
-  owner: "crates/rustok-forum/src/services/topic_reply_range_move.rs",
-  serviceRegistry: "crates/rustok-forum/src/services/mod.rs",
-  crateApi: "crates/rustok-forum/src/lib.rs",
-  error: "crates/rustok-forum/src/error.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-reply-range-move-owner.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21s-reply-range-move-owner.md",
+  readme: "crates/modules/rustok-forum/docs/README.md",
+  owner: "crates/modules/rustok-forum/src/services/topic_reply_range_move.rs",
+  serviceRegistry: "crates/modules/rustok-forum/src/services/mod.rs",
+  crateApi: "crates/modules/rustok-forum/src/lib.rs",
+  error: "crates/modules/rustok-forum/src/error.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260804_000022_add_forum_reply_range_move_operations.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260804_000022_add_forum_reply_range_move_operations.rs",
   positionMigration:
-    "crates/rustok-forum/src/migrations/m20260804_000023_advance_forum_reply_range_move_positions.rs",
-  migrationRegistry: "crates/rustok-forum/src/migrations/mod.rs",
-  sqlite: "crates/rustok-forum/tests/reply_range_move_sqlite.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260804_000023_advance_forum_reply_range_move_positions.rs",
+  migrationRegistry: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  sqlite: "crates/modules/rustok-forum/tests/reply_range_move_sqlite.rs",
 };
 
 const read = (path) => readFileSync(path, "utf8");

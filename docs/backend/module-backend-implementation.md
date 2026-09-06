@@ -22,7 +22,7 @@ A backend module should keep these responsibilities separate. Small modules may 
 files, but the ownership split must remain clear.
 
 ```text
-crates/rustok-<module>/
+crates/modules/rustok-<module>/
   Cargo.toml
   README.md
   rustok-module.toml

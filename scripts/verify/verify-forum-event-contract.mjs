@@ -24,28 +24,28 @@ const staticOnly = args.has("--static-only");
 const postgres = args.has("--postgres");
 
 const files = {
-  entity: "crates/rustok-forum/src/entities/forum_domain_event.rs",
-  dto: "crates/rustok-forum/src/dto/event.rs",
-  service: "crates/rustok-forum/src/services/event.rs",
-  migrationRegistry: "crates/rustok-forum/src/migrations/mod.rs",
+  entity: "crates/modules/rustok-forum/src/entities/forum_domain_event.rs",
+  dto: "crates/modules/rustok-forum/src/dto/event.rs",
+  service: "crates/modules/rustok-forum/src/services/event.rs",
+  migrationRegistry: "crates/modules/rustok-forum/src/migrations/mod.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/mod.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/mod.rs",
   postgresSchema:
-    "crates/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/postgres_up/schema.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/postgres_up/schema.rs",
   postgresContent:
-    "crates/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/postgres_up/content.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/postgres_up/content.rs",
   postgresRelations:
-    "crates/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/postgres_up/relations.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/postgres_up/relations.rs",
   sqliteSchema:
-    "crates/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/sqlite_up/schema.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/sqlite_up/schema.rs",
   sqliteCategoryTopic:
-    "crates/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/sqlite_up/category_topic.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/sqlite_up/category_topic.rs",
   sqliteReplyRelations:
-    "crates/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/sqlite_up/reply_relations.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events/sqlite_up/reply_relations.rs",
   contract:
-    "crates/rustok-forum/tests/support/event_contract.rs",
-  sqliteTest: "crates/rustok-forum/tests/domain_event_contract_sqlite.rs",
-  postgresTest: "crates/rustok-forum/tests/domain_event_contract_postgres.rs",
+    "crates/modules/rustok-forum/tests/support/event_contract.rs",
+  sqliteTest: "crates/modules/rustok-forum/tests/domain_event_contract_sqlite.rs",
+  postgresTest: "crates/modules/rustok-forum/tests/domain_event_contract_postgres.rs",
 };
 
 const eventTypes = [

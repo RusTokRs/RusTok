@@ -22,28 +22,28 @@ function fixture(options = {}) {
 
   write(
     root,
-    "crates/rustok-product-transport/Cargo.toml",
+    "crates/modules/rustok-product-transport/Cargo.toml",
     `thiserror.workspace = true\nurl.workspace = true\nsha2.workspace = true\nsubtle = "2"\ntonic = { workspace = true, features = ["tls-ring", "tls-webpki-roots"] }`,
   );
   write(
     root,
-    "crates/rustok-product-transport/src/lib.rs",
+    "crates/modules/rustok-product-transport/src/lib.rs",
     `pub mod auth; pub mod connection; GrpcProductCatalogReadConnectionConfig GrpcProductCatalogReadConnectionError ValidatedGrpcProductCatalogReadConnection ProductCatalogGrpcBearerToken`,
   );
   const connection = options.missingTls
     ? `pub struct GrpcProductCatalogReadConnectionConfig; pub fn validated( Url::parse(value.trim()) !parsed.username().is_empty() parsed.password().is_some() parsed.query().is_some() parsed.fragment().is_some() !matches!(parsed.path(), "" | "/") "http" if allow_insecure_loopback && is_loopback_host(parsed.host()) => false InsecureEndpointForbidden MAX_CONNECT_TIMEOUT_MS timeout_ms == 0 || timeout_ms > MAX_CONNECT_TIMEOUT_MS .connect_timeout(validated.connect_timeout) .tcp_keepalive(Some(Duration::from_secs(30))) pub async fn connect(`
     : `pub struct GrpcProductCatalogReadConnectionConfig; pub fn validated( Url::parse(value.trim()) !parsed.username().is_empty() parsed.password().is_some() parsed.query().is_some() parsed.fragment().is_some() !matches!(parsed.path(), "" | "/") "https" => true "http" if allow_insecure_loopback && is_loopback_host(parsed.host()) => false InsecureEndpointForbidden MAX_CONNECT_TIMEOUT_MS timeout_ms == 0 || timeout_ms > MAX_CONNECT_TIMEOUT_MS ClientTlsConfig::new().with_webpki_roots() tls.domain_name(domain) .connect_timeout(validated.connect_timeout) .tcp_keepalive(Some(Duration::from_secs(30))) pub async fn connect(`;
-  write(root, "crates/rustok-product-transport/src/connection.rs", connection);
+  write(root, "crates/modules/rustok-product-transport/src/connection.rs", connection);
   write(
     root,
-    "crates/rustok-product-transport/README.md",
+    "crates/modules/rustok-product-transport/README.md",
     `RUSTOK_PRODUCT_CATALOG_PROVIDER=embedded RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK=true does not silently fall back to the embedded provider`,
   );
 
   write(
     root,
     "apps/server/Cargo.toml",
-    `mod-product   = ["dep:rustok-product", "dep:rustok-product-transport"\nrustok-product-transport = { path = "../../crates/rustok-product-transport", optional = true }`,
+    `mod-product   = ["dep:rustok-product", "dep:rustok-product-transport"\nrustok-product-transport = { path = "../../crates/modules/rustok-product-transport", optional = true }`,
   );
   write(
     root,
@@ -81,7 +81,7 @@ function fixture(options = {}) {
   const staleRegistry = options.staleRegistry === true;
   write(
     root,
-    "crates/rustok-product/contracts/product-fba-registry.json",
+    "crates/modules/rustok-product/contracts/product-fba-registry.json",
     JSON.stringify({
       status: falsePromotion ? "transport_verified" : "boundary_ready",
       evidence: {
@@ -107,7 +107,7 @@ function fixture(options = {}) {
   );
   write(
     root,
-    "crates/rustok-product/docs/implementation-plan.md",
+    "crates/modules/rustok-product/docs/implementation-plan.md",
     options.missingPlan
       ? "Product plan"
       : "The production host now owns explicit Product catalog deployment selection. Invalid remote configuration or connection failure aborts startup. RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN. Adapter and production-wiring source are complete. Product remains `boundary_ready` rather than `transport_verified`; configured remote-profile execution evidence remain open. Wire a fail-closed production external Product runtime profile. verify-product-catalog-grpc-deployment.mjs",

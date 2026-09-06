@@ -11,7 +11,7 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const failures = [];
 
-const wrapper = read('crates/rustok-payment/src/checkout_execution.rs');
+const wrapper = read('crates/modules/rustok-payment/src/checkout_execution.rs');
 const parts = [
   'types.rs',
   'diagnostic_safety.rs',
@@ -22,7 +22,7 @@ const parts = [
   'validation_identity.rs',
   'validation_errors.rs',
 ].map((name) =>
-  read(`crates/rustok-payment/src/checkout_execution/${name}`),
+  read(`crates/modules/rustok-payment/src/checkout_execution/${name}`),
 );
 const source = `${wrapper}\n${parts.join('\n')}`;
 

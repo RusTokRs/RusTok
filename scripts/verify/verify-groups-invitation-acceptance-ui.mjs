@@ -31,30 +31,30 @@ const forbidMarkers = (relative, markers) => {
 };
 
 const required = [
-  "crates/rustok-groups/storefront/Cargo.toml",
-  "crates/rustok-groups/storefront/src/core.rs",
-  "crates/rustok-groups/storefront/src/model.rs",
-  "crates/rustok-groups/storefront/src/transport.rs",
-  "crates/rustok-groups/storefront/src/transport/native_server_adapter.rs",
-  "crates/rustok-groups/storefront/src/transport/graphql_adapter.rs",
-  "crates/rustok-groups/storefront/src/ui/mod.rs",
-  "crates/rustok-groups/storefront/src/ui/leptos.rs",
-  "crates/rustok-groups/storefront/src/ui/invitation_acceptance.rs",
-  "crates/rustok-groups/storefront/locales/en.json",
-  "crates/rustok-groups/storefront/locales/ru.json",
-  "crates/rustok-groups/storefront/README.md",
-  "crates/rustok-groups/contracts/groups-fba-registry.json",
-  "crates/rustok-groups/docs/implementation-plan.md",
+  "crates/modules/rustok-groups/storefront/Cargo.toml",
+  "crates/modules/rustok-groups/storefront/src/core.rs",
+  "crates/modules/rustok-groups/storefront/src/model.rs",
+  "crates/modules/rustok-groups/storefront/src/transport.rs",
+  "crates/modules/rustok-groups/storefront/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-groups/storefront/src/transport/graphql_adapter.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/mod.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/leptos.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/invitation_acceptance.rs",
+  "crates/modules/rustok-groups/storefront/locales/en.json",
+  "crates/modules/rustok-groups/storefront/locales/ru.json",
+  "crates/modules/rustok-groups/storefront/README.md",
+  "crates/modules/rustok-groups/contracts/groups-fba-registry.json",
+  "crates/modules/rustok-groups/docs/implementation-plan.md",
 ];
 for (const relative of required) requireFile(relative);
 
-requireMarkers("crates/rustok-groups/storefront/Cargo.toml", [
+requireMarkers("crates/modules/rustok-groups/storefront/Cargo.toml", [
   "leptos-auth.workspace = true",
   "leptos-ui-routing.workspace = true",
   "dep:rustok-groups",
 ]);
 
-requireMarkers("crates/rustok-groups/storefront/src/core.rs", [
+requireMarkers("crates/modules/rustok-groups/storefront/src/core.rs", [
   'GROUP_INVITATION_TOKEN_QUERY_KEY: &str = "invite"',
   "MIN_GROUP_INVITATION_TOKEN_LENGTH: usize = 32",
   "MAX_GROUP_INVITATION_TOKEN_LENGTH: usize = 160",
@@ -62,19 +62,19 @@ requireMarkers("crates/rustok-groups/storefront/src/core.rs", [
   "prepare_accept_group_invitation",
   "groups-storefront-accept-invitation-",
 ]);
-forbidMarkers("crates/rustok-groups/storefront/src/core.rs", [
+forbidMarkers("crates/modules/rustok-groups/storefront/src/core.rs", [
   "use leptos",
   "leptos::",
   "acceptGroupInvitation",
 ]);
 
-requireMarkers("crates/rustok-groups/storefront/src/model.rs", [
+requireMarkers("crates/modules/rustok-groups/storefront/src/model.rs", [
   "AcceptGroupInvitationCommand",
   "GroupsStorefrontMembership",
   "GroupsStorefrontAcceptInvitationResult",
 ]);
 
-requireMarkers("crates/rustok-groups/storefront/src/transport.rs", [
+requireMarkers("crates/modules/rustok-groups/storefront/src/transport.rs", [
   "access_token: Option<String>",
   "graphql_with_access_token",
   "accept_groups_storefront_invitation",
@@ -85,7 +85,7 @@ requireMarkers("crates/rustok-groups/storefront/src/transport.rs", [
 ]);
 
 requireMarkers(
-  "crates/rustok-groups/storefront/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-groups/storefront/src/transport/native_server_adapter.rs",
   [
     "groups/storefront/invitations/accept",
     "AcceptGroupInvitationCommand",
@@ -99,7 +99,7 @@ requireMarkers(
 );
 
 requireMarkers(
-  "crates/rustok-groups/storefront/src/transport/graphql_adapter.rs",
+  "crates/modules/rustok-groups/storefront/src/transport/graphql_adapter.rs",
   [
     "GroupsStorefrontAcceptInvitation",
     "acceptGroupInvitation",
@@ -108,15 +108,15 @@ requireMarkers(
     "GroupsStorefrontAcceptInvitationResult",
   ],
 );
-forbidMarkers("crates/rustok-groups/storefront/src/transport/graphql_adapter.rs", [
+forbidMarkers("crates/modules/rustok-groups/storefront/src/transport/graphql_adapter.rs", [
   "createGroupInvitation",
   "revokeGroupInvitation",
 ]);
 
-requireMarkers("crates/rustok-groups/storefront/src/ui/mod.rs", [
+requireMarkers("crates/modules/rustok-groups/storefront/src/ui/mod.rs", [
   "pub mod invitation_acceptance;",
 ]);
-requireMarkers("crates/rustok-groups/storefront/src/ui/leptos.rs", [
+requireMarkers("crates/modules/rustok-groups/storefront/src/ui/leptos.rs", [
   "leptos_auth::AuthContext",
   "use_context::<AuthContext>()",
   "AuthContext::get_token",
@@ -126,7 +126,7 @@ requireMarkers("crates/rustok-groups/storefront/src/ui/leptos.rs", [
   "transport=transport",
 ]);
 requireMarkers(
-  "crates/rustok-groups/storefront/src/ui/invitation_acceptance.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/invitation_acceptance.rs",
   [
     "prepare_accept_group_invitation",
     "accept_groups_storefront_invitation",
@@ -140,7 +140,7 @@ requireMarkers(
   ],
 );
 forbidMarkers(
-  "crates/rustok-groups/storefront/src/ui/invitation_acceptance.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/invitation_acceptance.rs",
   [
     "graphql_adapter",
     "native_server_adapter",
@@ -166,8 +166,8 @@ const localeKeys = [
   "groups.storefront.invitation.invalidToken",
 ];
 for (const relative of [
-  "crates/rustok-groups/storefront/locales/en.json",
-  "crates/rustok-groups/storefront/locales/ru.json",
+  "crates/modules/rustok-groups/storefront/locales/en.json",
+  "crates/modules/rustok-groups/storefront/locales/ru.json",
 ]) {
   if (!requireFile(relative)) continue;
   let messages;
@@ -184,10 +184,10 @@ for (const relative of [
   }
 }
 
-if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
+if (requireFile("crates/modules/rustok-groups/contracts/groups-fba-registry.json")) {
   let registry;
   try {
-    registry = JSON.parse(read("crates/rustok-groups/contracts/groups-fba-registry.json"));
+    registry = JSON.parse(read("crates/modules/rustok-groups/contracts/groups-fba-registry.json"));
   } catch (error) {
     failures.push(`Groups FBA registry is invalid JSON: ${error.message}`);
   }
@@ -219,7 +219,7 @@ if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
   }
 }
 
-requireMarkers("crates/rustok-groups/docs/implementation-plan.md", [
+requireMarkers("crates/modules/rustok-groups/docs/implementation-plan.md", [
   "invitation acceptance/delivery source",
   "runtime parity and Notifications consumer evidence",
   "targeted invitation delivery remains `in_progress`",

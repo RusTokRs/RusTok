@@ -18,13 +18,13 @@ const forbidText = (source, value, label) => {
 };
 
 const files = {
-  metrics: "crates/rustok-telemetry/src/rbac_invalidation_metrics.rs",
-  telemetry: "crates/rustok-telemetry/src/lib.rs",
+  metrics: "crates/libs/rustok-telemetry/src/rbac_invalidation_metrics.rs",
+  telemetry: "crates/libs/rustok-telemetry/src/lib.rs",
   watchdog: "apps/server/src/services/rbac_invalidation_generation.rs",
-  docs: "crates/rustok-rbac/docs/README.md",
-  plan: "crates/rustok-rbac/docs/implementation-plan.md",
+  docs: "crates/modules/rustok-rbac/docs/README.md",
+  plan: "crates/modules/rustok-rbac/docs/implementation-plan.md",
   serverPlan: "apps/server/docs/implementation-plan.md",
-  telemetryPlan: "crates/rustok-telemetry/docs/implementation-plan.md",
+  telemetryPlan: "crates/libs/rustok-telemetry/docs/implementation-plan.md",
   master: "docs/verification/PLATFORM_VERIFICATION_PLAN.md",
 };
 
@@ -142,7 +142,7 @@ for (const marker of [
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "`core/rbac` — `crates/rustok-rbac` — in_progress",
+  "`core/rbac` — `crates/modules/rustok-rbac` — in_progress",
   "dedicated invalidation observability",
 ]) requireText(master, marker, `${files.master}: active cursor`);
 

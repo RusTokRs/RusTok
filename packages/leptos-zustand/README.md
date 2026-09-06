@@ -28,7 +28,7 @@ Target apps:
 ## Runtime implementations
 
 ### 1) Leptos (Rust)
-Rust helpers live in `crates/leptos-zustand`.
+Rust helpers live in `crates/ui/leptos-zustand`.
 
 Exports:
 - `StoreSnapshot`, `StoreUpdate`

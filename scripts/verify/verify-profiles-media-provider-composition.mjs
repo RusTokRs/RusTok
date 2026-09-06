@@ -35,13 +35,13 @@ const schemaPath = "apps/server/src/services/graphql_schema.rs";
 const bootstrapPath = "apps/server/src/services/server_bootstrap.rs";
 const routerPath = "apps/server/src/services/app_router.rs";
 const serverCargoPath = "apps/server/Cargo.toml";
-const transportCargoPath = "crates/rustok-media-transport/Cargo.toml";
+const transportCargoPath = "crates/modules/rustok-media-transport/Cargo.toml";
 const transportClientPath =
-  "crates/rustok-media-transport/src/public_image_client.rs";
-const transportLibPath = "crates/rustok-media-transport/src/lib.rs";
-const profileGraphqlPath = "crates/rustok-profiles/src/graphql/types.rs";
+  "crates/modules/rustok-media-transport/src/public_image_client.rs";
+const transportLibPath = "crates/modules/rustok-media-transport/src/lib.rs";
+const profileGraphqlPath = "crates/modules/rustok-profiles/src/graphql/types.rs";
 const profileNativePath =
-  "crates/rustok-profiles/storefront/src/transport/native_server_adapter.rs";
+  "crates/modules/rustok-profiles/storefront/src/transport/native_server_adapter.rs";
 
 const runtime = readRepo(runtimePath);
 const deployment = readRepo(deploymentPath);

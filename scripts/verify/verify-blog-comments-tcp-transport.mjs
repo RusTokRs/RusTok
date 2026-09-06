@@ -1,14 +1,14 @@
 import fs from 'node:fs';
 
-const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json';
-const manifestPath = 'crates/rustok-comments/Cargo.toml';
-const exportPath = 'crates/rustok-comments/src/lib.rs';
-const authPath = 'crates/rustok-comments/src/tcp_auth.rs';
-const channelPath = 'crates/rustok-comments/src/tcp_channel.rs';
-const protocolPath = 'crates/rustok-comments/src/tcp_protocol.rs';
-const remotePath = 'crates/rustok-comments/src/remote.rs';
-const transportPath = 'crates/rustok-comments/src/tcp_transport.rs';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-68.md';
+const evidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json';
+const manifestPath = 'crates/modules/rustok-comments/Cargo.toml';
+const exportPath = 'crates/modules/rustok-comments/src/lib.rs';
+const authPath = 'crates/modules/rustok-comments/src/tcp_auth.rs';
+const channelPath = 'crates/modules/rustok-comments/src/tcp_channel.rs';
+const protocolPath = 'crates/modules/rustok-comments/src/tcp_protocol.rs';
+const remotePath = 'crates/modules/rustok-comments/src/remote.rs';
+const transportPath = 'crates/modules/rustok-comments/src/tcp_transport.rs';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-68.md';
 
 function read(path) {
   return fs.readFileSync(path, 'utf8');

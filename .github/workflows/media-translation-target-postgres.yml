@@ -3,23 +3,23 @@ name: Media Translation Target PostgreSQL Evidence
 on:
   pull_request:
     paths:
-      - "crates/rustok-media/**"
-      - "crates/rustok-translation-targets/**"
-      - "crates/rustok-outbox/**"
-      - "crates/rustok-storage/**"
+      - "crates/modules/rustok-media/**"
+      - "crates/modules/rustok-translation-targets/**"
+      - "crates/modules/rustok-outbox/**"
+      - "crates/utils/rustok-storage/**"
       - "docs/modules/translation-implementation-plan.md"
-      - "crates/rustok-translation/docs/implementation-plan.md"
+      - "crates/modules/rustok-translation/docs/implementation-plan.md"
       - ".github/workflows/media-translation-target-postgres.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-media/**"
-      - "crates/rustok-translation-targets/**"
-      - "crates/rustok-outbox/**"
-      - "crates/rustok-storage/**"
+      - "crates/modules/rustok-media/**"
+      - "crates/modules/rustok-translation-targets/**"
+      - "crates/modules/rustok-outbox/**"
+      - "crates/utils/rustok-storage/**"
       - "docs/modules/translation-implementation-plan.md"
-      - "crates/rustok-translation/docs/implementation-plan.md"
+      - "crates/modules/rustok-translation/docs/implementation-plan.md"
       - ".github/workflows/media-translation-target-postgres.yml"
   workflow_dispatch:
 
@@ -72,7 +72,7 @@ jobs:
         with:
           shared-key: media-translation-target-postgres
       - name: Check focused PostgreSQL test formatting
-        run: rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check crates/rustok-media/tests/translation_target_postgres.rs
+        run: rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check crates/modules/rustok-media/tests/translation_target_postgres.rs
       - name: Compile Media PostgreSQL translation evidence
         run: cargo test --locked -p rustok-media --test translation_target_postgres --no-run
       - name: Execute Media PostgreSQL translation evidence

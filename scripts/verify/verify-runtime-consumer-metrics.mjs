@@ -3,9 +3,9 @@
 import { readFileSync } from "node:fs";
 
 const files = {
-  telemetryLib: readFileSync("crates/rustok-telemetry/src/lib.rs", "utf8"),
+  telemetryLib: readFileSync("crates/libs/rustok-telemetry/src/lib.rs", "utf8"),
   telemetry: readFileSync(
-    "crates/rustok-telemetry/src/runtime_consumer_metrics.rs",
+    "crates/libs/rustok-telemetry/src/runtime_consumer_metrics.rs",
     "utf8",
   ),
   metricsEndpoint: readFileSync("apps/server/src/controllers/metrics.rs", "utf8"),
@@ -17,9 +17,9 @@ const files = {
     "apps/server/src/services/social_graph_index_position_observer.rs",
     "utf8",
   ),
-  position: readFileSync("crates/rustok-iggy/src/position.rs", "utf8"),
+  position: readFileSync("crates/modules/rustok-iggy/src/position.rs", "utf8"),
   consumer: readFileSync(
-    "crates/rustok-social-graph/src/index_consumer.rs",
+    "crates/modules/rustok-social-graph/src/index_consumer.rs",
     "utf8",
   ),
 };

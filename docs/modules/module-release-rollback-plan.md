@@ -1788,18 +1788,18 @@ backend preflight.
   exact host/component desired/observed assignments, protocol matrix,
   idempotent supervisor reports, and one predecessor recovery authorization.
   The supervisor remains a narrow executor; tools are never built, installed,
-  or selected by a candidate role. Implemented in `crates/rustok-modules/src/operations_tool.rs`
+  or selected by a candidate role. Implemented in `crates/modules/rustok-modules/src/operations_tool.rs`
   (`OperationsToolService`, `OperationsToolRelease`, `OperationsToolReleasePayload`,
   `VerifiedOperationsToolRelease`, `OperationsToolProtocolMatrix`,
   `OperationsToolMaintenanceOperation`, `OperationsToolAssignment`) backed by migration
   `m20260904_000053_module_operations_tool.rs` (`module_operations_tool_releases`,
   `module_operations_tool_maintenance_operations`, `module_operations_tool_assignments`).
   Fleet-level exclusion uses `ConflictKey::fleet_operations_tool()` in `ConflictFenceSet`.
-  Verified by `crates/rustok-modules/tests/operations_tool_tests.rs` (5 passed).
+  Verified by `crates/modules/rustok-modules/tests/operations_tool_tests.rs` (5 passed).
 - [x] Add the trusted installer-selected `<instance-root>` and canonical
   relative `config`, `operations`, `releases`, `sources`, `storage`, `data`,
   `state`, `work`, `cache`, `logs`, and `run` layout. Implemented in
-  `crates/rustok-runtime/src/layout.rs` (`InstanceLayout`, `prepare_instance_layout`,
+  `crates/libs/rustok-runtime/src/layout.rs` (`InstanceLayout`, `prepare_instance_layout`,
   `bind_instance_placement`). Accept any supported operating-system path,
   bind its normalized value only as host placement/restart evidence, and keep
   absolute paths out of release/artifact/migration identity. Let advanced
@@ -1816,37 +1816,37 @@ backend preflight.
   `rustok-build-source` as the deterministic archive builder/inspector and an
   archive-specialized client; route reviewed Rhai bounded-workspace bytes
   through the same generic owner without tar wrapping or a second writer.
-  Implemented `SourceObjectStore` in `crates/rustok-modules/src/source_object.rs`
+  Implemented `SourceObjectStore` in `crates/modules/rustok-modules/src/source_object.rs`
   backed by migration `m20260904_000052_module_source_objects.rs` with tables
   `module_source_object_receipts` and `module_source_object_retention_holds`.
   Blobs are stored media-type neutral directly under `<cas_root>/<digest_hex>` without
   extension, supporting deterministic archives and reviewed Rhai bounded-workspace objects
   without tar wrapping. Same-preparation publication is idempotent, RLS enforces tenant
   isolation, and retention holds prevent premature garbage collection. `CasArchiveStore`
-  and `CasArchivePublisher` in `crates/rustok-build-source` updated to work with media-neutral
-  layout. Verified by `crates/rustok-modules/tests/source_object_store_tests.rs` (4 passed),
-  `crates/rustok-build-source` (7 passed), and `scripts/verify/verify-module-source-archive.mjs`.
+  and `CasArchivePublisher` in `crates/utils/rustok-build-source` updated to work with media-neutral
+  layout. Verified by `crates/modules/rustok-modules/tests/source_object_store_tests.rs` (4 passed),
+  `crates/utils/rustok-build-source` (7 passed), and `scripts/verify/verify-module-source-archive.mjs`.
 - [x] Implement single-node side-by-side HTTP/SSR switching and fenced worker
   generation handoff, plus multi-node canary/wave rollout with predecessor
   capacity retained and both bundles pre-staged before mutation.
-  Implemented `HttpSsrSwitchingCoordinator` in `crates/rustok-artifact-node-agent/src/slot_supervisor.rs`
+  Implemented `HttpSsrSwitchingCoordinator` in `crates/workers/rustok-artifact-node-agent/src/slot_supervisor.rs`
   (pre-switch candidate failure consumes 0 recovery attempts with predecessor capacity 100% retained;
   atomic proxy cutover; post-switch single predecessor recovery). Implemented `FencedWorkerGenerationCoordinator`
   (active generation claim fencing, candidate authorization, symmetric rollback without duplicate claims).
-  Implemented `WaveRolloutCoordinator` in `crates/rustok-modules/src/wave_rollout.rs` (dual pre-staging
+  Implemented `WaveRolloutCoordinator` in `crates/modules/rustok-modules/src/wave_rollout.rs` (dual pre-staging
   barrier across all nodes before mutation, sequential canary/wave mutation, untouched cohort capacity
-  retention, and bounded wave rollback). Verified by `crates/rustok-artifact-node-agent/tests/slot_supervisor_and_watchdog_tests.rs`
-  (5 passed) and `crates/rustok-modules/tests/wave_rollout_tests.rs` (3 passed).
+  retention, and bounded wave rollback). Verified by `crates/workers/rustok-artifact-node-agent/tests/slot_supervisor_and_watchdog_tests.rs`
+  (5 passed) and `crates/modules/rustok-modules/tests/wave_rollout_tests.rs` (3 passed).
 - [x] Make every browser asset release-qualified/content-addressed, retain N
   and N+1 for the measured client/cache lifetime, and return strict not-found
   for a missing immutable asset.
   Implemented `ReleaseQualifiedAsset`, `ReleaseAssetSet`, and `BrowserAssetRegistry`
-  in `crates/rustok-web/src/browser_assets.rs`. Every browser asset is release-qualified
+  in `crates/libs/rustok-web/src/browser_assets.rs`. Every browser asset is release-qualified
   and content-addressed with `Cache-Control: public, max-age=31536000, immutable` and strong ETag
   revalidation. Dual N and N+1 retention is enforced across rollouts and rollbacks for the
   measured client/cache lifetime (`retained_until` extended on rollout and rollback). Missing or expired
   immutable assets return strict HTTP 404 NOT_FOUND with `Cache-Control: no-cache, no-store, must-revalidate`
-  and never fall back to HTML or default routes. Verified by `crates/rustok-web/src/lib.rs` (6 tests passing).
+  and never fall back to HTML or default routes. Verified by `crates/libs/rustok-web/src/lib.rs` (6 tests passing).
 - [x] Implement independent owner-driven retention/GC adapters for source CAS,
   OCI manifests/layers/referrers, build attempts, platform executable CAS,
   live/staging/logically-deleted artifact-data objects, snapshot/restore
@@ -1854,8 +1854,8 @@ backend preflight.
   roots, browser assets, node slots, operations-tool packages/evidence/local
   predecessor slots, and diagnostics using
   tombstone/grace/final recheck.
-  Extended `RetentionTarget` in `crates/rustok-modules/src/retention.rs` with all 11 owner targets
-  and added canonical `identity_key(&self)`. Implemented 3-phase GC lifecycle in `crates/rustok-modules/src/gc.rs`
+  Extended `RetentionTarget` in `crates/modules/rustok-modules/src/retention.rs` with all 11 owner targets
+  and added canonical `identity_key(&self)`. Implemented 3-phase GC lifecycle in `crates/modules/rustok-modules/src/gc.rs`
   with `GcCoordinator`, `GcTombstoneRecord` (digest-bound, mandatory grace-period enforced), `GcExecutionToken`
   (short-lived authorization issued only upon successful final recheck against authoritative `RetentionHoldLedger`
   and owner reference checks), and immutable `GcCollectionReceipt`. Implemented 11 independent owner-driven
@@ -1864,34 +1864,34 @@ backend preflight.
   `SnapshotRestoreCopyGcAdapter`, `EncryptedSettingsRecoveryPointGcAdapter` (protecting active KMS key versions and
   schema descriptor roots), `BrowserAssetGcAdapter`, `NodeSlotGcAdapter`, `OperationsToolGcAdapter` (protecting
   predecessor slots for crash recovery), and `DiagnosticLogGcAdapter`.
-  Verified by `crates/rustok-modules/tests/gc_adapters_tests.rs` (all 10 tests passing).
+  Verified by `crates/modules/rustok-modules/tests/gc_adapters_tests.rs` (all 10 tests passing).
 - [x] Replace first-install per-role activation with one base-bundle install
   operation that consumes an admitted bundle, pre-stages candidate-only roles,
   verifies the pre-install recovery boundary, then applies schema/seed/admin and
   deploys. Prove fresh-install cleanup, restart resume, and common
   recovery-required-with-restore behavior after durable state exists; install
   apply must not depend on a build/publisher.
-  Replaced first-install per-role activation with a single canonical base-bundle install operation consuming an admitted bundle binding (`InstallDistributionBinding`) with complete role set digests and bundle root verification. Enforced candidate-only role pre-staging (`InstallDeploymentPort::deploy_distribution`) with verified health evidence references across roles prior to activation. Enforced explicit durable recovery boundaries in `execute_install_apply`: pre-schema failures (e.g., base-distribution bootstrap import or pre-migration failure) cleanly transition the session to `InstallState::FreshInstallCleaned` without leaving dirty state, whereas post-schema failures (seed, admin provisioning, rollout deployment, verification, or finalization) transition the session to `InstallState::RecoveryRequired` to mandate durable point-in-time restore rather than false rollback claims. Verified by integration test suite `crates/rustok-installer/tests/base_bundle_install_tests.rs` (all 4 tests passing: happy path candidate role pre-staging, fresh-install cleanup on pre-schema failure, recovery-required on seed failure, recovery-required on rollout deployment failure).
+  Replaced first-install per-role activation with a single canonical base-bundle install operation consuming an admitted bundle binding (`InstallDistributionBinding`) with complete role set digests and bundle root verification. Enforced candidate-only role pre-staging (`InstallDeploymentPort::deploy_distribution`) with verified health evidence references across roles prior to activation. Enforced explicit durable recovery boundaries in `execute_install_apply`: pre-schema failures (e.g., base-distribution bootstrap import or pre-migration failure) cleanly transition the session to `InstallState::FreshInstallCleaned` without leaving dirty state, whereas post-schema failures (seed, admin provisioning, rollout deployment, verification, or finalization) transition the session to `InstallState::RecoveryRequired` to mandate durable point-in-time restore rather than false rollback claims. Verified by integration test suite `crates/utils/rustok-installer/tests/base_bundle_install_tests.rs` (all 4 tests passing: happy path candidate role pre-staging, fresh-install cleanup on pre-schema failure, recovery-required on seed failure, recovery-required on rollout deployment failure).
 
 ### 2. Build the Readiness Inventory and Migration Contract
 
 - [x] Add the local readiness block to every module and the compact central
   board to `docs/modules/registry.md`.
-  Implemented compact central readiness board in `docs/modules/registry.md` covering all 48 modules in `modules.toml`. Documented exact classification, data boundary, migration safety class, snapshot readiness, and downgrade strategy, with explicit `data boundary: none` for stateless orchestration modules. Live readiness blocks established in `docs/templates/module_contract.md`, `crates/rustok-rbac/docs/implementation-plan.md`, and `crates/rustok-modules/docs/implementation-plan.md`.
+  Implemented compact central readiness board in `docs/modules/registry.md` covering all 48 modules in `modules.toml`. Documented exact classification, data boundary, migration safety class, snapshot readiness, and downgrade strategy, with explicit `data boundary: none` for stateless orchestration modules. Live readiness blocks established in `docs/templates/module_contract.md`, `crates/modules/rustok-rbac/docs/implementation-plan.md`, and `crates/modules/rustok-modules/docs/implementation-plan.md`.
 - [x] Update the module authoring guide, canonical template/descriptor, and
   repository validation so every future module supplies bounded readiness
   declarations or an explicit `data boundary: none` result.
-  Updated `docs/modules/module-authoring.md` and `docs/templates/module_contract.md` with the `Release and Data Rollback Readiness Gate` requiring bounded readiness declarations or explicit `data boundary: none`. Verified by repository contract checks in `crates/xtask` (122 tests passing).
+  Updated `docs/modules/module-authoring.md` and `docs/templates/module_contract.md` with the `Release and Data Rollback Readiness Gate` requiring bounded readiness declarations or explicit `data boundary: none`. Verified by repository contract checks in `crates/modules/xtask` (122 tests passing).
 - [x] Inventory authoritative data, objects, indexes, caches, public contracts,
   durable work, external side effects, dependencies/dependents, migration
   ordering, snapshot limits, and realistic restore boundaries.
   All platform modules inventoried across authoritative data boundaries, durable work, event dependencies, and restore boundaries in the central registry board and module plans.
 - [x] Extend native migration declarations with the exact safety metadata
   required to produce a bounded phase plan.
-  Extended `crates/rustok-core/src/migrations.rs` and `crates/rustok-core/src/module.rs` with `MigrationSafetyMetadata`, `MigrationSafetyClass` (`AdditiveOnly`, `ExpandContract`, `MaintenanceOnly`, `Irreversible`), `MigrationPhaseConstraint` (`PreActivation`, `PostActivation`, `MaintenanceWindow`), and `MigrationSource::migration_safety_metadata`. Verified by `cargo test -p rustok-core`.
+  Extended `crates/libs/rustok-core/src/migrations.rs` and `crates/libs/rustok-core/src/module.rs` with `MigrationSafetyMetadata`, `MigrationSafetyClass` (`AdditiveOnly`, `ExpandContract`, `MaintenanceOnly`, `Irreversible`), `MigrationPhaseConstraint` (`PreActivation`, `PostActivation`, `MaintenanceWindow`), and `MigrationSource::migration_safety_metadata`. Verified by `cargo test -p rustok-core`.
 - [x] Consolidate unreleased migrations before establishing immutable
   production migration identities.
-  All pre-release migrations consolidated into canonical target schemas across `crates/rustok-rbac` and `crates/rustok-modules` without temporary versioned bridges (`v1`/`v2`), compatibility wrappers, or dual read/write paths, adhering strictly to repository zero-legacy policy.
+  All pre-release migrations consolidated into canonical target schemas across `crates/modules/rustok-rbac` and `crates/modules/rustok-modules` without temporary versioned bridges (`v1`/`v2`), compatibility wrappers, or dual read/write paths, adhering strictly to repository zero-legacy policy.
 - [x] Classify supported transition classes and evidence gaps for existing
   modules without assigning module-wide automatic eligibility.
 
@@ -1907,20 +1907,20 @@ backend preflight.
   references the authorized release and preparation. Concurrent tenant
   installs must never share authority or raw logs.
   Implemented `ReleasePreparation`, `ReleasePreparationState`, and `SanitizedPreparationEvidence`
-  in `crates/rustok-modules/src/release_preparation.rs`. Enforced `can_share_metadata_with`
+  in `crates/modules/rustok-modules/src/release_preparation.rs`. Enforced `can_share_metadata_with`
   to permit metadata sharing across tenants only for public platform catalog releases, and
   `derive_transition_operation_id` to generate isolated, deterministic, scope-bound `operation_id`s
   preventing shared authority or log leakage across concurrent tenant installs.
-  Verified by `crates/rustok-modules/tests/release_preparation_tests.rs` (4 passed).
+  Verified by `crates/modules/rustok-modules/tests/release_preparation_tests.rs` (4 passed).
 - [x] Bind preview, explicit confirmation where required, apply, safe
   cancellation, and fresh manual-rollback decisions to immutable receipts.
   Implemented `TransitionPreviewReceipt`, `TransitionConfirmationReceipt`,
   `TransitionApplyReceipt`, `TransitionCancellationReceipt`, and `TransitionRollbackReceipt`
-  in `crates/rustok-modules/src/transition_receipts.rs`. Enforced cryptographic
+  in `crates/modules/rustok-modules/src/transition_receipts.rs`. Enforced cryptographic
   digest binding across receipts, requiring explicit operator confirmation for `Maintenance`
   mode before `apply`, guarding cancellation before the point of no return, and enforcing
   owner reversibility for direct-predecessor rollback decisions. Verified by
-  `crates/rustok-modules/tests/transition_receipts_tests.rs` (5 passed).
+  `crates/modules/rustok-modules/tests/transition_receipts_tests.rs` (5 passed).
 - [x] Freeze the direct predecessor from exact observed serving state only when
   the production transition begins; admission/build lineage cannot supply or
   change it.
@@ -1939,11 +1939,11 @@ backend preflight.
   commit with inert release-keyed permission definitions, outbox delivery, and
   orphan collection resume as one exact idempotent request without creating a
   scoped installation.
-  `ReleaseAdmissionIntentJournal` implemented in `crates/rustok-modules/src/release_admission_journal.rs`
+  `ReleaseAdmissionIntentJournal` implemented in `crates/modules/rustok-modules/src/release_admission_journal.rs`
   with `record_staging_intent`, `bind_committed_installation`, and `scan_stale_unfinished_intents`.
   `SeaOrmArtifactInstallationStore::unfinished_admissions` now queries unfinished staging reservations
   from `module_artifact_admission_commands WHERE installation_id IS NULL`, eliminating the empty recovery scan gap.
-  Verified by `crates/rustok-modules/tests/transition_and_retention_store_sqlite_tests.rs`.
+  Verified by `crates/modules/rustok-modules/tests/transition_and_retention_store_sqlite_tests.rs`.
 - [x] Replace the installation-keyed post-admission permission registrar
   atomically: admission persists only immutable definitions keyed by exact
   release/module/digest; scoped install projects them idempotently under the
@@ -1956,9 +1956,9 @@ backend preflight.
   `(scope_key, installation_id, module_slug, release_digest, permission_key)`).
   Backed by SQLite and PostgreSQL migration with `rbac_artifact_release_permission_definitions`
   and `rbac_artifact_release_permission_translations`. Implemented in
-  `crates/rustok-rbac/src/artifact_permission_catalog.rs`, `crates/rustok-api/src/artifact_permissions.rs`,
-  and integrated in `crates/rustok-modules/src/installation.rs`.
-  Verified by `crates/rustok-rbac/tests/permission_ownership_and_continuity_tests.rs` and all 74 unit + 15 integration tests in `crates/rustok-rbac`.
+  `crates/modules/rustok-rbac/src/artifact_permission_catalog.rs`, `crates/libs/rustok-api/src/artifact_permissions.rs`,
+  and integrated in `crates/modules/rustok-modules/src/installation.rs`.
+  Verified by `crates/modules/rustok-rbac/tests/permission_ownership_and_continuity_tests.rs` and all 74 unit + 15 integration tests in `crates/modules/rustok-rbac`.
 - [x] Add the RBAC-owner permission-diff/continuity contract: unchanged stable
   identity plus exact canonical authorization fingerprint may carry only with
   a bound continuity receipt; any fingerprint change requires explicit
@@ -1975,7 +1975,7 @@ backend preflight.
   requiring explicit operator approval; diff classifies `unchanged_keys`, `modified_keys`, `added_keys`,
   and `removed_dormant_keys`. Monotonic RBAC epoch binding ensures consistency against revoked grants.
   Verified by `test_authorization_fingerprint_invariance_under_display_text_edits`,
-  `test_permission_continuity_evaluates_approval_and_diff`, and unit tests in `crates/rustok-rbac`.
+  `test_permission_continuity_evaluates_approval_and_diff`, and unit tests in `crates/modules/rustok-rbac`.
 - [x] Add one durable owner operation that derives and atomically acquires the
   canonical conflict-key set across rollback units, data/schema owners,
   dependencies/dependents, topology, and affected namespaces.
@@ -1988,7 +1988,7 @@ backend preflight.
   security epoch freshness and verifying active predecessor retention holds (`RetentionHoldLedger`,
   `RetentionTarget::SourceCasBlob` / `RetentionTarget::AdmittedPayloadCas`) before activating candidates
   (`advance_to_activating_with_ledger`, `advance_to_activating_with_db`).
-  Verified by `crates/rustok-modules/tests/transition_coordinator_tests.rs`.
+  Verified by `crates/modules/rustok-modules/tests/transition_coordinator_tests.rs`.
 - [x] Make quarantine/revocation commit one global monotonic release-security
   epoch/fence and return without enumerating scopes or waiting for external
   leases. Gate every claim/activation/transition/result commit on that epoch,
@@ -2022,11 +2022,11 @@ backend preflight.
   backfills whose every checkpoint preserves the single canonical
   representation, with uncertain-outcome recovery.
   Implemented `DataBackfillCoordinator`, `BackfillCheckpoint`, `BackfillCheckpointStore`,
-  and `InMemoryBackfillCheckpointStore` in `crates/rustok-modules/src/data_backfill.rs`.
+  and `InMemoryBackfillCheckpointStore` in `crates/modules/rustok-modules/src/data_backfill.rs`.
   Provides durable page checkpointing with payload digests, single canonical representation
   preservation, crash-safe resumption from intermediate checkpoints, and explicit uncertain-outcome
   reconciliation before advancing cursors.
-  Verified by `crates/rustok-modules/tests/data_backfill_tests.rs` (all 4 tests passing).
+  Verified by `crates/modules/rustok-modules/tests/data_backfill_tests.rs` (all 4 tests passing).
 - [x] Classify the current create-only cross-revision artifact-data copier as
   maintenance-only. Do not claim automatic dynamic data-contract evolution
   until one canonical namespace is proven safe for all N/N+1 writes and return
@@ -2065,7 +2065,7 @@ backend preflight.
   `SettingsCompatibilityGuard` wired into `apps/server/src/services/module_lifecycle.rs` (`update_module_settings`)
   evaluating active observation window checkpoints (`find_active_observing_checkpoint`). Concurrent settings writes
   must validate against both predecessor (N) and candidate (N+1) schemas via `validate_settings_intersection`.
-  Verified by `crates/rustok-modules/tests/migration_and_settings_safety_tests.rs`.
+  Verified by `crates/modules/rustok-modules/tests/migration_and_settings_safety_tests.rs`.
 - [x] Add bounded item-specific drain authorization for predecessor-incompatible
   queued work; it creates no work or traffic and revalidates revocation,
   quarantine, capability, security, and policy state before every claim.
@@ -2075,11 +2075,21 @@ backend preflight.
   Verified by `conflict_fences.rs`, `transition_coordinator.rs`, `transition_control_card.rs`, and `point_of_no_return_and_irreversibility_tests.rs`.
 - [x] Implement explicit rollback-window closure and the finalization gate.
   `ModuleTransitionCoordinator::finalize_convergence` validates the security epoch
-  and transitions state to `Converged`. The watchdog (`evaluate_transition_watchdog`),
-  server background worker (`ModuleTransitionWatchdog`), and server mutation
-  (`finalizeModuleTransition`) atomically release temporary `ActiveRolloutWindow` GC
-  retention holds, closing the rollback window and unblocking CAS garbage collection.
-  Verified by `transition_watchdog_tests.rs` and `module_graphql_native_parity.rs`.
+  and transitions state to `Converged`. `SeaOrmModuleTransitionService` is the
+  single persistence owner used by the watchdog, server background worker, and
+  `finalizeModuleTransition`. Operator finalization requires authenticated
+  `modules:manage` evidence, exact tenant scope, `expectedRevision`, and an
+  `idempotencyKey`. Checkpoint CAS, operation receipt, transactional outbox
+  evidence, and release of temporary `ActiveRolloutWindow` holds commit
+  atomically. Dynamic recovery is performed only by
+  `rollbackTenantArtifact`: it verifies the activation-recorded direct
+  predecessor and atomically changes the serving selection, advances the
+  checkpoint, releases the hold, and emits rollback evidence. Security-epoch
+  preemption fails closed without claiming recovery when no fresh
+  capability-grant decision is available.
+  Verified by `transition_service_tests.rs`,
+  `transition_watchdog_tests.rs`, and
+  `graphql_transition_lifecycle_tests.rs`.
 - [x] Integrate bounded artifact-data snapshot readiness and platform
   PostgreSQL recovery evidence without adding automatic restore.
   Verified by `data_snapshot_readiness.rs`, `control_plane.rs`, and `snapshot_readiness_and_recovery_evidence_tests.rs`.
@@ -2158,18 +2168,18 @@ backend preflight.
   bindings, or remove those declarations and every caller atomically if they
   are not target capabilities.
   Implemented `ArtifactHttpCapabilityBroker` and `SeaOrmArtifactHttpCapabilityBrokerResolver`
-  in `crates/rustok-modules` for safe outbound HTTP requests bounded by
+  in `crates/modules/rustok-modules` for safe outbound HTTP requests bounded by
   `HttpCapabilityConstraints`. Implemented `ArtifactEventCapabilityBroker` and
   `SeaOrmArtifactEventCapabilityBrokerResolver` for publishing canonical
   `DomainEvent::ModuleGuestEventEmitted` events to the platform transactional outbox.
   Mounted both capability resolvers in `apps/server/src/services/artifact_runtime.rs`
   on `ArtifactCapabilityBrokerResolverRouter`. Verified by unit and integration tests
-  `crates/rustok-modules/tests/capability_routing_tests.rs` (3 passed) and server compilation.
+  `crates/modules/rustok-modules/tests/capability_routing_tests.rs` (3 passed) and server compilation.
 - [x] In the separate production operation, revalidate the admitted release and
   sandbox evidence, then compose exact dependency/dependent closure,
   data-contract checkpoint, inactive installation, prefetch/readiness,
   selection, binding reconciliation, tenant intent, and observed serving state.
-  Implemented `DynamicLifecycleService` in `crates/rustok-modules/src/dynamic_lifecycle.rs`
+  Implemented `DynamicLifecycleService` in `crates/modules/rustok-modules/src/dynamic_lifecycle.rs`
   revalidating admitted releases against `module_admitted_oci_releases`, composing
   dependency graph, inactive installation, non-routable admission, and transactional
   operation journaling in `module_production_operations`.
@@ -2177,10 +2187,10 @@ backend preflight.
   rollback/`dynamic_artifact_data_purge`/`dynamic_artifact_settings_purge`
   semantics, first-install disabled/absent recovery, a rollback-window
   predecessor for remove, retained data on uninstall, and new audited preflight
-  on reinstall. Implemented in `crates/rustok-modules/src/dynamic_lifecycle.rs`:
+  on reinstall. Implemented in `crates/modules/rustok-modules/src/dynamic_lifecycle.rs`:
   first-install failure retains candidate in database for incident diagnosis while
   recovering serving baseline to absent; uninstall preserves data/settings intact;
-  purge requires explicit retirement. Verified by `crates/rustok-modules/tests/dynamic_lifecycle_tests.rs`.
+  purge requires explicit retirement. Verified by `crates/modules/rustok-modules/tests/dynamic_lifecycle_tests.rs`.
 - [x] Make uninstall of a disabled-selected installation atomically clear
   selected/desired state and tenant intent to absent, advance/invalidate the
   binding/work generation, and only then retire the identity. An already absent
@@ -2203,8 +2213,8 @@ backend preflight.
   installation-to-settings-instance binding/revision. Update snapshot, purge,
   restore, continuity, reinstall, and transfer paths together; keep
   native/static manifest settings as the explicitly separate contract.
-  Implemented in `crates/rustok-modules/src/artifact_settings.rs` and
-  `crates/rustok-modules/src/artifact_settings_recovery.rs`. Verified by
+  Implemented in `crates/modules/rustok-modules/src/artifact_settings.rs` and
+  `crates/modules/rustok-modules/src/artifact_settings_recovery.rs`. Verified by
   `migration_and_settings_safety_tests.rs`, `artifact_purge_and_recovery_tests.rs`,
   `snapshot_intents_and_post_purge_recovery_tests.rs`, and
   `snapshot_readiness_and_recovery_evidence_tests.rs`.
@@ -2218,14 +2228,14 @@ backend preflight.
 - [x] Implement the restricted inactive-installation executor for exact pinned
   item drain only; it creates no traffic, schedules, subscriptions, or
   follow-on work and is revoked by current security state. Implemented in
-  `crates/rustok-modules/src/queue_drain.rs` (`ArtifactQueueDrainService`).
+  `crates/modules/rustok-modules/src/queue_drain.rs` (`ArtifactQueueDrainService`).
   Verified by `queue_drain_and_security_revalidation_tests.rs`.
 - [x] Preserve declarative UI, localization, permission, command, HTTP, event,
   and schedule identities with the artifact transition. Preserved on
   `ModuleArtifactDescriptor` and verified across module lifecycle transitions.
 - [x] Prove per-scope tenant RLS, one-attempt behavior, predecessor security,
   queued-work handling, and healthy convergence. Verified by full test suite
-  in `crates/rustok-modules` (23 test binaries, 60+ integration tests passing cleanly).
+  in `crates/modules/rustok-modules` (23 test binaries, 60+ integration tests passing cleanly).
 
 ### 6. Complete Static Distribution Installation and Recovery
 
@@ -2233,16 +2243,16 @@ backend preflight.
   platform-built release with owner-loaded source/lock/package/entrypoint and
   independent approval may enter later full-composition selection; promotion
   request/approval itself stays inert. Implemented in
-  `crates/rustok-modules/src/promotion.rs` (`ModuleStaticPromotionService`) with
+  `crates/modules/rustok-modules/src/promotion.rs` (`ModuleStaticPromotionService`) with
   independent approval evidence and strict denial of external prebuilts
   (`test_external_prebuilt_strict_native_promotion_denial`).
 - [x] Bind the full server/role composition, platform-native and promoted
   modules, embedded Leptos artifacts, generated registries, browser assets,
   and declared migration/data contract to one immutable release. Implemented in
-  `crates/rustok-modules/src/distribution_release.rs` (`ModuleStaticDistributionReleaseService`).
+  `crates/modules/rustok-modules/src/distribution_release.rs` (`ModuleStaticDistributionReleaseService`).
 - [x] Bind live topology, controller authority, observations, and deployment
   receipts to the rollout operation rather than the release identity. Implemented in
-  `crates/rustok-modules/src/distribution_rollout.rs` (`ModuleStaticDistributionRolloutService`).
+  `crates/modules/rustok-modules/src/distribution_rollout.rs` (`ModuleStaticDistributionRolloutService`).
 - [x] Replace node-only topology and singular artifact observations with exact
   role/failure-domain assignments and candidate/predecessor role digests.
   Implemented in `module_static_distribution_rollout_assignments` with primary key
@@ -2268,7 +2278,7 @@ backend preflight.
 
 - [x] Expose one owner projection and command surface through the existing CLI,
   native, and public/headless-capable transports as applicable. Unified in
-  `crates/rustok-modules/src/operator.rs` under `ModuleOperatorService` and
+  `crates/modules/rustok-modules/src/operator.rs` under `ModuleOperatorService` and
   `ModuleControlPlane::operator`.
 - [x] Cover the complete lifecycle command vocabulary and status reads from
   source/prebuilt submission through admission, install/add/update/enable/
@@ -2277,7 +2287,7 @@ backend preflight.
   `dynamic_artifact_settings_purge`, retention/GC status,
   and authorized support-bundle
   retrieval without adding raw pointer/registry/delete/restore controls.
-  Verified by `crates/rustok-modules/tests/operator_projection_tests.rs`.
+  Verified by `crates/modules/rustok-modules/tests/operator_projection_tests.rs`.
 - [x] Render the WordPress-like flow from the exact canonical tokens `ready`,
   `running`, `observing`, `accepted`, `recovering`, `recovered`, `rejected`,
   `cancelled`, and `recovery_required`. Friendly labels such as "Updating" or
@@ -2306,7 +2316,7 @@ backend preflight.
 - [x] Start with a truly stateless dynamic module, then a brokered-data dynamic
   module. Verified by `test_wave_1_stateless_dynamic_module_pilot` and
   `test_wave_2_brokered_data_dynamic_module_pilot` in
-  `crates/rustok-modules/tests/evidence_gated_waves_tests.rs`.
+  `crates/modules/rustok-modules/tests/evidence_gated_waves_tests.rs`.
 - [x] Add a static composition pilot only after outside-candidate recovery and
   complete Leptos asset rollback are proven. Verified by
   `ModuleStaticDistributionRolloutService`, watchdog recovery tests, and
@@ -2486,8 +2496,8 @@ This plan is complete only when:
 - [Shared owner-operation receipt ledger](../../DECISIONS/2026-08-03-owner-operation-receipts.md)
 - [Neutral sandbox foundation](../../DECISIONS/2026-07-11-neutral-sandbox-foundation.md)
 - [Module control-plane consolidation plan](./module-control-plane-consolidation-plan.md)
-- [`rustok-modules` implementation plan](../../crates/rustok-modules/docs/implementation-plan.md)
-- [`rustok-build` implementation plan](../../crates/rustok-build/docs/implementation-plan.md)
-- [`rustok-static-distribution-worker` documentation](../../crates/rustok-static-distribution-worker/docs/README.md)
-- [`rustok-installer` implementation plan](../../crates/rustok-installer/docs/implementation-plan.md)
-- [`rustok-migrations` documentation](../../crates/rustok-migrations/README.md)
+- [`rustok-modules` implementation plan](../../crates/modules/rustok-modules/docs/implementation-plan.md)
+- [`rustok-build` implementation plan](../../crates/utils/rustok-build/docs/implementation-plan.md)
+- [`rustok-static-distribution-worker` documentation](../../crates/workers/rustok-static-distribution-worker/docs/README.md)
+- [`rustok-installer` implementation plan](../../crates/utils/rustok-installer/docs/implementation-plan.md)
+- [`rustok-migrations` documentation](../../crates/utils/rustok-migrations/README.md)

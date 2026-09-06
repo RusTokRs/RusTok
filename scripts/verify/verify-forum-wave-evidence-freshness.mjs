@@ -13,8 +13,7 @@ const evidencePath = process.env.RUSTOK_FORUM_WAVE_EVIDENCE_PATH
   ? path.resolve(process.env.RUSTOK_FORUM_WAVE_EVIDENCE_PATH)
   : path.join(
       repoRoot,
-      "crates",
-      "rustok-forum",
+      "crates", "modules", "rustok-forum",
       "contracts",
       "evidence",
       "forum-wave1-rollout-evidence.json",

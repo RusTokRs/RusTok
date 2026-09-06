@@ -186,34 +186,34 @@ const requiredRegionRouteDomAttributes = [
   "data-region-route-query-value",
 ];
 
-const pagesStorefrontRootPath = "crates/rustok-pages/storefront/src/lib.rs";
-const pagesStorefrontLeptosUiPath = "crates/rustok-pages/storefront/src/ui/leptos.rs";
-const pagesStorefrontReadmePath = "crates/rustok-pages/storefront/README.md";
+const pagesStorefrontRootPath = "crates/modules/rustok-pages/storefront/src/lib.rs";
+const pagesStorefrontLeptosUiPath = "crates/modules/rustok-pages/storefront/src/ui/leptos.rs";
+const pagesStorefrontReadmePath = "crates/modules/rustok-pages/storefront/README.md";
 
-const regionStorefrontCorePath = "crates/rustok-region/storefront/src/core.rs";
-const regionStorefrontLeptosUiPath = "crates/rustok-region/storefront/src/ui/leptos.rs";
-const regionStorefrontReadmePath = "crates/rustok-region/storefront/README.md";
+const regionStorefrontCorePath = "crates/modules/rustok-region/storefront/src/core.rs";
+const regionStorefrontLeptosUiPath = "crates/modules/rustok-region/storefront/src/ui/leptos.rs";
+const regionStorefrontReadmePath = "crates/modules/rustok-region/storefront/README.md";
 const regionStorefrontLocalePaths = [
-  "crates/rustok-region/storefront/locales/en.json",
-  "crates/rustok-region/storefront/locales/ru.json",
+  "crates/modules/rustok-region/storefront/locales/en.json",
+  "crates/modules/rustok-region/storefront/locales/ru.json",
 ];
 
 
-const productAdminCorePath = "crates/rustok-product/admin/src/core.rs";
-const productAdminLeptosUiPath = "crates/rustok-product/admin/src/ui/leptos.rs";
-const customerAdminRootPath = "crates/rustok-customer/admin/src/lib.rs";
-const customerAdminCorePath = "crates/rustok-customer/admin/src/core.rs";
-const customerAdminLegacyApiPath = "crates/rustok-customer/admin/src/api.rs";
-const customerAdminTransportPath = "crates/rustok-customer/admin/src/transport/mod.rs";
-const customerAdminNativeAdapterPath = "crates/rustok-customer/admin/src/transport/native_server_adapter.rs";
-const customerAdminLeptosUiPath = "crates/rustok-customer/admin/src/ui/leptos.rs";
-const customerAdminReadmePath = "crates/rustok-customer/admin/README.md";
+const productAdminCorePath = "crates/modules/rustok-product/admin/src/core.rs";
+const productAdminLeptosUiPath = "crates/modules/rustok-product/admin/src/ui/leptos.rs";
+const customerAdminRootPath = "crates/modules/rustok-customer/admin/src/lib.rs";
+const customerAdminCorePath = "crates/modules/rustok-customer/admin/src/core.rs";
+const customerAdminLegacyApiPath = "crates/modules/rustok-customer/admin/src/api.rs";
+const customerAdminTransportPath = "crates/modules/rustok-customer/admin/src/transport/mod.rs";
+const customerAdminNativeAdapterPath = "crates/modules/rustok-customer/admin/src/transport/native_server_adapter.rs";
+const customerAdminLeptosUiPath = "crates/modules/rustok-customer/admin/src/ui/leptos.rs";
+const customerAdminReadmePath = "crates/modules/rustok-customer/admin/README.md";
 
-const productAdminReadmePath = "crates/rustok-product/admin/README.md";
-const productStorefrontCorePath = "crates/rustok-product/storefront/src/core.rs";
-const productStorefrontTransportPath = "crates/rustok-product/storefront/src/transport/mod.rs";
-const productStorefrontLeptosUiPath = "crates/rustok-product/storefront/src/ui/leptos.rs";
-const productStorefrontReadmePath = "crates/rustok-product/storefront/README.md";
+const productAdminReadmePath = "crates/modules/rustok-product/admin/README.md";
+const productStorefrontCorePath = "crates/modules/rustok-product/storefront/src/core.rs";
+const productStorefrontTransportPath = "crates/modules/rustok-product/storefront/src/transport/mod.rs";
+const productStorefrontLeptosUiPath = "crates/modules/rustok-product/storefront/src/ui/leptos.rs";
+const productStorefrontReadmePath = "crates/modules/rustok-product/storefront/README.md";
 const requiredProductTransportDomAttributes = [
   "data-product-transport-failed-path",
   "data-product-transport-fallback-attempted",

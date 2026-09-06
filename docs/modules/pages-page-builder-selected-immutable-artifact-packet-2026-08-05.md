@@ -51,12 +51,12 @@ The current `page_bodies.content` value is not rendered by this public path. It 
 
 ## Source evidence
 
-- `crates/rustok-pages/tests/selected_immutable_published_artifact_sqlite.rs`
-- `crates/rustok-pages/contracts/evidence/pages-selected-immutable-artifact-source.json`
-- `crates/rustok-pages/scripts/verify/verify-pages-selected-immutable-artifact.mjs`
-- `crates/rustok-pages/src/services/page_builder_artifact.rs`
+- `crates/modules/rustok-pages/tests/selected_immutable_published_artifact_sqlite.rs`
+- `crates/modules/rustok-pages/contracts/evidence/pages-selected-immutable-artifact-source.json`
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-selected-immutable-artifact.mjs`
+- `crates/modules/rustok-pages/src/services/page_builder_artifact.rs`
 - `docs/modules/pages-page-builder-parity-continuation-plan.md`
-- `crates/rustok-pages/docs/implementation-plan.md`
+- `crates/modules/rustok-pages/docs/implementation-plan.md`
 
 ## Boundaries
 
@@ -75,8 +75,8 @@ This slice does not:
 Commands intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-selected-immutable-artifact.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-reviewed-artifact.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-selected-immutable-artifact.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-reviewed-artifact.mjs
 
 cargo test -p rustok-pages \
   --test selected_immutable_published_artifact_sqlite -- --nocapture

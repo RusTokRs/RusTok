@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const harnessPath = 'crates/rustok-distribution/tests/product_channel_identity_transitions_postgres.rs';
+const harnessPath = 'crates/modules/rustok-distribution/tests/product_channel_identity_transitions_postgres.rs';
 const harness = requireMarkers(harnessPath, [
   '#![cfg(feature = "mod-product")]',
   'RUSTOK_INDEX_TEST_DATABASE_URL',
@@ -98,7 +98,7 @@ forbidMarkers(harnessPath, harness, [
   'tokio::spawn',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m7-product-channel-identity-transitions-postgres-harness.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-channel-identity-transitions-postgres-harness.md', [
   'Status: `source_ready_execution_pending`',
   'Channel create',
   'Channel delete',

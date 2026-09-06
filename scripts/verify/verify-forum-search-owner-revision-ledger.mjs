@@ -8,18 +8,18 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(".");
 const failures = [];
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
-  note: "crates/rustok-forum/docs/forum-23b2g2a-search-owner-revision-ledger.md",
+  contract: "crates/modules/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
+  note: "crates/modules/rustok-forum/docs/forum-23b2g2a-search-owner-revision-ledger.md",
   migration:
-    "crates/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
-  migrationRegistry: "crates/rustok-forum/src/migrations/mod.rs",
-  owner: "crates/rustok-forum/src/services/projection_invalidation.rs",
-  outbox: "crates/rustok-outbox/src/transactional.rs",
-  outboxApi: "crates/rustok-outbox/CRATE_API.md",
-  legacyContract: "crates/rustok-forum/contracts/forum-projection-invalidation.json",
-  searchIngestion: "crates/rustok-search/src/ingestion.rs",
-  forumPlan: "crates/rustok-forum/docs/implementation-plan.md",
-  searchPlan: "crates/rustok-search/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
+  migrationRegistry: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  owner: "crates/modules/rustok-forum/src/services/projection_invalidation.rs",
+  outbox: "crates/modules/rustok-outbox/src/transactional.rs",
+  outboxApi: "crates/modules/rustok-outbox/CRATE_API.md",
+  legacyContract: "crates/modules/rustok-forum/contracts/forum-projection-invalidation.json",
+  searchIngestion: "crates/modules/rustok-search/src/ingestion.rs",
+  forumPlan: "crates/modules/rustok-forum/docs/implementation-plan.md",
+  searchPlan: "crates/modules/rustok-search/docs/implementation-plan.md",
 };
 
 function read(relativePath) {

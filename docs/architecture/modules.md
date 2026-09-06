@@ -38,9 +38,9 @@ This means:
 - Composition root: `modules.toml`
 - Runtime registration: `apps/server/src/modules/mod.rs`
 - Manifest/runtime validation: `apps/server/src/modules/manifest.rs`
-- Base module contracts: `crates/rustok-core/src/module.rs`
-- Module artifact control plane: `crates/rustok-modules`
-- Neutral sandbox execution foundation: `crates/rustok-sandbox`
+- Base module contracts: `crates/libs/rustok-core/src/module.rs`
+- Module artifact control plane: `crates/modules/rustok-modules`
+- Neutral sandbox execution foundation: `crates/workers/rustok-sandbox`
 
 ### Documentation
 
@@ -135,11 +135,11 @@ The key foundation split is stable: `rustok-api` owns API contracts,
 
 Backend module file ownership follows the same split:
 
-- `crates/rustok-<module>/src` owns domain/application code, services, ports, events,
+- `crates/modules/rustok-<module>/src` owns domain/application code, services, ports, events,
   migrations and owner-owned GraphQL/REST entrypoints;
-- `crates/rustok-<module>/contracts` owns published OpenAPI/GraphQL/FBA evidence artifacts;
-- `crates/rustok-<module>/docs` owns local implementation plan and readiness evidence;
-- `crates/rustok-<module>/cli` owns optional external command adapters and uses
+- `crates/modules/rustok-<module>/contracts` owns published OpenAPI/GraphQL/FBA evidence artifacts;
+- `crates/modules/rustok-<module>/docs` owns local implementation plan and readiness evidence;
+- `crates/modules/rustok-<module>/cli` owns optional external command adapters and uses
   `rustok-cli-core`;
 - `apps/server` mounts and composes owner-owned entrypoints, but must not become the owner
   of module services, DTOs, command providers or business policy.

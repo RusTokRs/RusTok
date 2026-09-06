@@ -69,8 +69,8 @@ After admission, the owner reuses `PageBuilderArtifactService::bind_existing_bod
 A dedicated environment-gated PostgreSQL harness source now covers the complete recovery chain without changing the older artifact-loss rebuild packet:
 
 ```text
-crates/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs
-crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-activation-recovery-postgres.mjs
+crates/modules/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs
+crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-loss-activation-recovery-postgres.mjs
 ```
 
 The source packet contains three retained scenarios:

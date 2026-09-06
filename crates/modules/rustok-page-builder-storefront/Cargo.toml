@@ -1,0 +1,26 @@
+[package]
+name = "rustok-page-builder-storefront"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos storefront renderer and feature-gated authenticated Fly inline editor"
+
+[features]
+default = []
+hydrate = [
+  "leptos/hydrate",
+  "fly-leptos?/wasm-client",
+]
+ssr = [
+  "leptos/ssr",
+  "fly-leptos?/ssr",
+]
+inline-edit = ["dep:fly-leptos"]
+
+[dependencies]
+fly = { path = "../../ui/fly" }
+fly-leptos = { path = "../../ui/fly-leptos", optional = true, default-features = false }
+rustok-page-builder = { path = "../rustok-page-builder", default-features = false }
+leptos.workspace = true
+serde.workspace = true
+serde_json.workspace = true

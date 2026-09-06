@@ -19,7 +19,7 @@ details more tightly than needed.
 
 ## Decision
 
-We place the persisted MCP management layer in `apps/server`, not in `crates/rustok-mcp`.
+We place the persisted MCP management layer in `apps/server`, not in `crates/modules/rustok-mcp`.
 
 The server now owns:
 

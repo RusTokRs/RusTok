@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "module": "customer",
+  "role": "provider",
+  "status": "boundary_ready",
+  "contract_version": "customer.read_projection.v1",
+  "ports": [
+    {
+      "name": "CustomerReadPort",
+      "owner": "customer",
+      "operations": [
+        "read_customer_projection",
+        "read_customer_projection_by_user",
+        "list_customer_projections",
+        "list_profile_enrichment"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": false,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "commerce",
+      "profile": "checkout_customer_projection",
+      "degraded_modes": [
+        "use_checkout_customer_snapshot",
+        "show_customer_refresh_required"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ]
+    },
+    {
+      "module": "order",
+      "profile": "order_customer_projection",
+      "degraded_modes": [
+        "use_order_customer_snapshot"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/modules/rustok-customer/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "runtime_fallback_smoke": "crates/modules/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json",
+    "runtime_contract_smoke": "crates/modules/rustok-customer/contracts/evidence/customer-runtime-contract-smoke.json",
+    "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "CustomerService",
+    "source": "crates/modules/rustok-customer/src/ports.rs",
+    "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/modules/rustok-customer/contracts/customer-fba-registry.json",
+    "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "read_customer_projection",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "read_customer_projection_by_user",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]
+      },
+      {
+        "operation": "list_customer_projections",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "list_profile_enrichment",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ],
+      "degraded_modes": [
+        "use_checkout_customer_snapshot",
+        "show_customer_refresh_required",
+        "use_order_customer_snapshot"
+      ]
+    },
+    "runtime_smoke": {
+      "status": "source_locked_live_runtime_pending",
+      "source": "crates/modules/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json",
+      "source_tests": "crates/modules/rustok-customer/tests/customer_service_test.rs",
+      "promotion_allowed": false,
+      "covered_operations": [
+        "read_customer_projection",
+        "read_customer_projection_by_user",
+        "list_customer_projections",
+        "list_profile_enrichment"
+      ],
+      "assertions": [
+        "tenant_scope_preserved",
+        "deadline_policy_enforced",
+        "typed_port_error_mapping"
+      ]
+    }
+  }
+}

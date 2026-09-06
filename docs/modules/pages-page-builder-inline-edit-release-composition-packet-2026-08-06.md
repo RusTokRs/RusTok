@@ -164,8 +164,8 @@ This source slice does not claim:
 - `scripts/verify/verify-release-supply-chain-contract.mjs`
 - `scripts/verify/verify-release-readiness-contract.mjs`
 - `docs/release/RELEASE_READINESS_CHECKLIST.md`
-- `crates/rustok-pages/contracts/evidence/pages-inline-edit-release-composition-source.json`
-- `crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs`
+- `crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-release-composition-source.json`
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs`
 
 ## Next cursor
 
@@ -188,7 +188,7 @@ No tests, static verifiers, formatting, Cargo checks, npm installs, Trunk builds
 Suggested commands, intentionally not run:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs
 node scripts/verify/verify-release-infra-self-test.mjs
 node scripts/verify/verify-release-supply-chain-contract.mjs
 node scripts/verify/verify-release-readiness-contract.mjs

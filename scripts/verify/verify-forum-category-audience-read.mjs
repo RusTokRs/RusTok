@@ -10,37 +10,37 @@ const requireText = (source, needle, label) => {
   }
 };
 
-const snapshotPath = 'crates/rustok-forum/src/graphql/query.rs';
+const snapshotPath = 'crates/modules/rustok-forum/src/graphql/query.rs';
 const cleanupPath =
-  'crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json';
-const transport = read('crates/rustok-forum/src/category_read_transport.rs');
+  'crates/modules/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json';
+const transport = read('crates/modules/rustok-forum/src/category_read_transport.rs');
 const visibility = read(
-  'crates/rustok-forum/src/services/category_audience_visibility.rs',
+  'crates/modules/rustok-forum/src/services/category_audience_visibility.rs',
 );
 const owner = read(
-  'crates/rustok-forum/src/services/category_audience_read.rs',
+  'crates/modules/rustok-forum/src/services/category_audience_read.rs',
 );
 const ownerInline = read(
-  'crates/rustok-forum/src/services/category_audience_read_inline.rs',
+  'crates/modules/rustok-forum/src/services/category_audience_read_inline.rs',
 );
-const services = read('crates/rustok-forum/src/services/mod.rs');
-const lib = read('crates/rustok-forum/src/lib.rs');
-const rest = read('crates/rustok-forum/src/controllers/categories.rs');
-const restTree = read('crates/rustok-forum/src/controllers/category_tree.rs');
-const graphql = read('crates/rustok-forum/src/graphql/query_runtime.rs');
+const services = read('crates/modules/rustok-forum/src/services/mod.rs');
+const lib = read('crates/modules/rustok-forum/src/lib.rs');
+const rest = read('crates/modules/rustok-forum/src/controllers/categories.rs');
+const restTree = read('crates/modules/rustok-forum/src/controllers/category_tree.rs');
+const graphql = read('crates/modules/rustok-forum/src/graphql/query_runtime.rs');
 const graphqlTree = read(
-  'crates/rustok-forum/src/graphql/category_tree_query.rs',
+  'crates/modules/rustok-forum/src/graphql/category_tree_query.rs',
 );
-const graphqlRuntime = read('crates/rustok-forum/src/graphql/runtime_data.rs');
-const graphqlModule = read('crates/rustok-forum/src/graphql/mod.rs');
+const graphqlRuntime = read('crates/modules/rustok-forum/src/graphql/runtime_data.rs');
+const graphqlModule = read('crates/modules/rustok-forum/src/graphql/mod.rs');
 const graphqlAdapter = read(
-  'crates/rustok-forum/storefront/src/transport/graphql_adapter.rs',
+  'crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs',
 );
 const nativeAdapter = read(
-  'crates/rustok-forum/storefront/src/transport/native_server_adapter.rs',
+  'crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs',
 );
 const contract = JSON.parse(
-  read('crates/rustok-forum/contracts/forum-category-audience-read.json'),
+  read('crates/modules/rustok-forum/contracts/forum-category-audience-read.json'),
 );
 const cleanup = JSON.parse(read(cleanupPath));
 

@@ -29,13 +29,13 @@ function forbid(source, marker, description) {
   if (source.includes(marker)) failures.push(`${description}: forbidden ${marker}`);
 }
 
-const runtimePath = "crates/rustok-product/src/runtime.rs";
-const libPath = "crates/rustok-product/src/lib.rs";
-const httpPortPath = "crates/rustok-product/src/storefront_http_read_port.rs";
-const tagPortPath = "crates/rustok-product/src/storefront_tag_read_port.rs";
+const runtimePath = "crates/modules/rustok-product/src/runtime.rs";
+const libPath = "crates/modules/rustok-product/src/lib.rs";
+const httpPortPath = "crates/modules/rustok-product/src/storefront_http_read_port.rs";
+const tagPortPath = "crates/modules/rustok-product/src/storefront_tag_read_port.rs";
 const hostPath = "apps/server/src/services/commerce_provider_runtime.rs";
-const registryPath = "crates/rustok-product/contracts/product-fba-registry.json";
-const planPath = "crates/rustok-product/docs/implementation-plan.md";
+const registryPath = "crates/modules/rustok-product/contracts/product-fba-registry.json";
+const planPath = "crates/modules/rustok-product/docs/implementation-plan.md";
 const runtime = read(runtimePath);
 const lib = read(libPath);
 const httpPort = read(httpPortPath);

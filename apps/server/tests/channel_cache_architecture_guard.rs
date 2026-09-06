@@ -69,7 +69,7 @@ fn channel_cache_is_registered_atomically() {
 fn native_and_rest_channel_mutations_publish_durable_invalidation() {
     let middleware_mod = source("apps/server/src/middleware/mod.rs");
     let wrapper = source("apps/server/src/middleware/channel_native_wrapper.rs");
-    let adapter = source("crates/rustok-channel/admin/src/transport/native_server_adapter.rs");
+    let adapter = source("crates/modules/rustok-channel/admin/src/transport/native_server_adapter.rs");
     let controller = source("apps/server/src/controllers/channel.rs");
 
     assert!(middleware_mod.contains("#[path = \"channel_native_wrapper.rs\"]\npub mod channel;"));
@@ -108,9 +108,9 @@ fn native_and_rest_channel_mutations_publish_durable_invalidation() {
 #[test]
 fn durable_channel_generation_is_database_owned_and_supervised() {
     let migration = source(
-        "crates/rustok-channel/src/migrations/m20260716_000009_create_channel_resolution_invalidation_state.rs",
+        "crates/modules/rustok-channel/src/migrations/m20260716_000009_create_channel_resolution_invalidation_state.rs",
     );
-    let migration_registry = source("crates/rustok-channel/src/migrations/mod.rs");
+    let migration_registry = source("crates/modules/rustok-channel/src/migrations/mod.rs");
     let runtime = source("apps/server/src/services/channel_cache_invalidation.rs");
     let bootstrap = source("apps/server/src/services/server_bootstrap.rs");
     let guardrails = source("apps/server/src/services/runtime_guardrails.rs");
@@ -162,7 +162,7 @@ fn durable_channel_generation_is_database_owned_and_supervised() {
 fn cache_workflow_retains_channel_compiled_evidence() {
     let workflow = source(".github/workflows/cache-hardening.yml");
     for required in [
-        "crates/rustok-channel/**",
+        "crates/modules/rustok-channel/**",
         "apps/server/src/services/channel_cache_invalidation*.rs",
         "apps/server/tests/channel_cache*.rs",
         "cargo check -p rustok-channel --lib",
@@ -185,7 +185,7 @@ fn cache_workflow_retains_channel_compiled_evidence() {
         );
     }
 
-    let generation = source("crates/rustok-channel/src/invalidation_generation.rs");
+    let generation = source("crates/modules/rustok-channel/src/invalidation_generation.rs");
     for required in [
         "durable_generation_converges_across_replica_readers_without_pubsub",
         "missing_generation_state_fails_closed_and_recovers_after_restore",
@@ -268,7 +268,7 @@ fn cache_workflow_retains_channel_compiled_evidence() {
         );
     }
 
-    let postgres = source("crates/rustok-channel/tests/postgres_invalidation_generation.rs");
+    let postgres = source("crates/modules/rustok-channel/tests/postgres_invalidation_generation.rs");
     for required in [
         "postgres_generation_is_transactional_concurrent_and_recoverable",
         "ConnectOptions::new(url.to_string())",

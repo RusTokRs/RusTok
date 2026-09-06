@@ -9,18 +9,18 @@ const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
-const source = read('crates/rustok-fulfillment/src/checkout_execution.rs');
+const source = read('crates/modules/rustok-fulfillment/src/checkout_execution.rs');
 const causationEvidence = JSON.parse(
   read(
-    'crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json',
+    'crates/modules/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json',
   ),
 );
 const tenantEvidence = JSON.parse(
   read(
-    'crates/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json',
+    'crates/modules/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json',
   ),
 );
-const doc = read('crates/rustok-fulfillment/docs/checkout-context-validation.md');
+const doc = read('crates/modules/rustok-fulfillment/docs/checkout-context-validation.md');
 const failures = [];
 
 const requireText = (content, value, label) => {

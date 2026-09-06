@@ -7,14 +7,14 @@ const repoRoot = process.cwd();
 const script = path.join(repoRoot, 'scripts/verify/verify-product-runtime-fallback-smoke.mjs');
 const fixtureFiles = [
   'modules.toml',
-  'crates/rustok-product/rustok-module.toml',
-  'crates/rustok-product/contracts/product-fba-registry.json',
-  'crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json',
-  'crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json',
-  'crates/rustok-product/src/ports.rs',
-  'crates/rustok-product/README.md',
-  'crates/rustok-product/docs/README.md',
-  'crates/rustok-product/docs/implementation-plan.md',
+  'crates/modules/rustok-product/rustok-module.toml',
+  'crates/modules/rustok-product/contracts/product-fba-registry.json',
+  'crates/modules/rustok-product/contracts/evidence/product-runtime-contract-smoke.json',
+  'crates/modules/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json',
+  'crates/modules/rustok-product/src/ports.rs',
+  'crates/modules/rustok-product/README.md',
+  'crates/modules/rustok-product/docs/README.md',
+  'crates/modules/rustok-product/docs/implementation-plan.md',
   'docs/modules/registry.md',
   'package.json',
 ];
@@ -51,7 +51,7 @@ assert(
 );
 
 const missingReadmeMarker = copyFixture();
-const readmePath = path.join(missingReadmeMarker, 'crates/rustok-product/README.md');
+const readmePath = path.join(missingReadmeMarker, 'crates/modules/rustok-product/README.md');
 fs.writeFileSync(
   readmePath,
   fs.readFileSync(readmePath, 'utf8').replace('ProductCatalogReadPort` / `product.catalog_read.v1`', 'ProductCatalogReadPort drift'),
@@ -64,7 +64,7 @@ assert(
 );
 
 const missingDocsMarker = copyFixture();
-const docsReadmePath = path.join(missingDocsMarker, 'crates/rustok-product/docs/README.md');
+const docsReadmePath = path.join(missingDocsMarker, 'crates/modules/rustok-product/docs/README.md');
 fs.writeFileSync(
   docsReadmePath,
   fs.readFileSync(docsReadmePath, 'utf8').replaceAll('`transport_verified`', '`transport_drifted`'),
@@ -77,7 +77,7 @@ assert(
 );
 
 const missingHarnessMarker = copyFixture();
-const portsPath = path.join(missingHarnessMarker, 'crates/rustok-product/src/ports.rs');
+const portsPath = path.join(missingHarnessMarker, 'crates/modules/rustok-product/src/ports.rs');
 fs.writeFileSync(
   portsPath,
   fs.readFileSync(portsPath, 'utf8').replace('fn product_read_ports_require_deadline_policy()', 'fn product_read_ports_policy_drift()'),
@@ -103,7 +103,7 @@ assert(
 );
 
 const missingManifestMarker = copyFixture();
-const manifestPath = path.join(missingManifestMarker, 'crates/rustok-product/rustok-module.toml');
+const manifestPath = path.join(missingManifestMarker, 'crates/modules/rustok-product/rustok-module.toml');
 fs.writeFileSync(
   manifestPath,
   fs.readFileSync(manifestPath, 'utf8').replace('contract_version = "product.catalog_read.v1"', 'contract_version = "product.catalog_read.drift"'),
@@ -133,7 +133,7 @@ assert(
 const prematureRegistryTransportVerified = copyFixture();
 const registryPath = path.join(
   prematureRegistryTransportVerified,
-  'crates/rustok-product/contracts/product-fba-registry.json',
+  'crates/modules/rustok-product/contracts/product-fba-registry.json',
 );
 const registryJson = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
 registryJson.status = 'transport_verified';
@@ -146,7 +146,7 @@ assert(
 );
 
 const prematurePlanTransportVerified = copyFixture();
-const planPath = path.join(prematurePlanTransportVerified, 'crates/rustok-product/docs/implementation-plan.md');
+const planPath = path.join(prematurePlanTransportVerified, 'crates/modules/rustok-product/docs/implementation-plan.md');
 fs.writeFileSync(
   planPath,
   fs.readFileSync(planPath, 'utf8').replace('- FBA status: `boundary_ready`', '- FBA status: `transport_verified`'),
@@ -156,7 +156,7 @@ assert(planResult.status !== 0, 'expected premature local plan transport_verifie
 assert(planResult.stderr.includes('local plan FBA status drift'), `expected local plan status failure, got ${planResult.stderr}`);
 
 const missingSyncMarker = copyFixture();
-const syncPlanPath = path.join(missingSyncMarker, 'crates/rustok-product/docs/implementation-plan.md');
+const syncPlanPath = path.join(missingSyncMarker, 'crates/modules/rustok-product/docs/implementation-plan.md');
 fs.writeFileSync(
   syncPlanPath,
   fs

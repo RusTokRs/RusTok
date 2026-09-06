@@ -3,22 +3,22 @@ name: Blog Taxonomy Category Translation Provider Retirement
 on:
   pull_request:
     paths:
-      - "crates/rustok-blog/src/lib.rs"
-      - "crates/rustok-blog/src/translation_target.rs"
-      - "crates/rustok-blog/src/translation_target_tests.rs"
-      - "crates/rustok-blog/tests/category_translation_target_postgres_test.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs"
+      - "crates/modules/rustok-blog/src/lib.rs"
+      - "crates/modules/rustok-blog/src/translation_target.rs"
+      - "crates/modules/rustok-blog/src/translation_target_tests.rs"
+      - "crates/modules/rustok-blog/tests/category_translation_target_postgres_test.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs"
       - "apps/server/src/services/module_event_dispatcher.rs"
       - ".github/workflows/blog-taxonomy-category-translation-provider-retirement.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-blog/src/lib.rs"
-      - "crates/rustok-blog/src/translation_target.rs"
-      - "crates/rustok-blog/src/translation_target_tests.rs"
-      - "crates/rustok-blog/tests/category_translation_target_postgres_test.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs"
+      - "crates/modules/rustok-blog/src/lib.rs"
+      - "crates/modules/rustok-blog/src/translation_target.rs"
+      - "crates/modules/rustok-blog/src/translation_target_tests.rs"
+      - "crates/modules/rustok-blog/tests/category_translation_target_postgres_test.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs"
       - "apps/server/src/services/module_event_dispatcher.rs"
       - ".github/workflows/blog-taxonomy-category-translation-provider-retirement.yml"
   workflow_dispatch:
@@ -56,7 +56,7 @@ jobs:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Check scoped Rust formatting
-        run: rustfmt +1.96.0 --edition 2024 --check crates/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs
+        run: rustfmt +1.96.0 --edition 2024 --check crates/modules/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs
       - name: Run Category Translation provider retirement contract
         run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_translation_provider_retirement -- --nocapture
       - name: Compile Blog owner surface with warnings denied

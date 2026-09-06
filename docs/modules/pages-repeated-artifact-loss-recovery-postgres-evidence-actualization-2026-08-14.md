@@ -18,9 +18,9 @@ This packet targets only the repeated-loss child. It does not infer the physical
 
 The retained source authority remains:
 
-- `crates/rustok-pages/contracts/evidence/pages-repeated-artifact-loss-recovery-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-repeated-artifact-loss-recovery.mjs`;
-- `crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-repeated-artifact-loss-recovery-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-repeated-artifact-loss-recovery.mjs`;
+- `crates/modules/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs`;
 - `docs/modules/pages-page-builder-repeated-artifact-loss-recovery-actualization-2026-08-07.md`.
 
 The historical source contract intentionally keeps `execution: []`, all validation flags false, and its source-contract execution nonclaims false. A later CI execution is retained separately and does not rewrite those historical source nonclaims.
@@ -34,12 +34,12 @@ The PostgreSQL packet covers four bounded scenarios:
 
 ## Exact-main execution contract
 
-`crates/rustok-pages/contracts/evidence/pages-repeated-artifact-loss-recovery-postgres-execution.json` requires:
+`crates/modules/rustok-pages/contracts/evidence/pages-repeated-artifact-loss-recovery-postgres-execution.json` requires:
 
 - PostgreSQL 16;
 - Rust 1.96.0;
 - exact event SHA checkout;
-- `node crates/rustok-pages/scripts/verify/verify-pages-repeated-artifact-loss-recovery.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-repeated-artifact-loss-recovery.mjs`;
 - `cargo test --locked -p rustok-pages --test artifact_repeated_loss_recovery_postgres -- --nocapture`;
 - `cargo check --locked -p rustok-pages --all-targets`.
 

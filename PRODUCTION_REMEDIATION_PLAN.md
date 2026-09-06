@@ -9,21 +9,21 @@ This document establishes the actionable remediation plan for findings identifie
 | Audit Finding | Priority | Status in Codebase | Assessment & Planned Action |
 |---|---|---|---|
 | **P0: Host-Global Authority Boundary (Issue #2680)** | P0 | **RESOLVED & VERIFIED** | Fixed line-wrapping in `apps/server/src/graphql/settings/mod.rs`. Verifier `node scripts/verify/verify-host-global-authority-boundary.mjs` passes with code 0. |
-| **P0: Observer Failure Reclassifies Outcome** | P0 | **RESOLVED & VERIFIED** | Implemented `observe_best_effort` in `crates/rustok-sandbox/src/runtime.rs`. Observer failures log via `tracing::error!` without reclassifying outcomes. Regression tests verified. |
+| **P0: Observer Failure Reclassifies Outcome** | P0 | **RESOLVED & VERIFIED** | Implemented `observe_best_effort` in `crates/workers/rustok-sandbox/src/runtime.rs`. Observer failures log via `tracing::error!` without reclassifying outcomes. Regression tests verified. |
 | **High: SSRF / Outbound HTTP Boundary** | P1 | **RESOLVED & VERIFIED** | Enforced HTTPS-only (unless `allow_plain_http: true`) and banned userinfo in `HttpCapabilityConstraints`. Added disabled redirects, 10MB bounded response size, and loopback/private/metadata IP rejection in `ArtifactHttpCapabilityBroker`. Verified with tests. |
 | **High: Repository Branch Ruleset on `main`** | P1 | Ruleset contract defined | Governed by `docs/ci/repository-ruleset-contract.json`. Requires configuration in GitHub repository settings by repository administrator. |
 | **High: CI Supply Chain & Permissions** | P1 | Identified in `.github/workflows/ci.yml` | Requires user authorization per repository rule 7 before modifying workflow files. |
 | **Medium: Metric Semantics (`queue_time_ms`)** | P2 | Audited | Non-queuing admission metrics verified as execution latency markers. |
 | **Medium: RustSec Advisory Exceptions (Exp. 13.09.2026)** | P2 | **VERIFIED** | Verified active and non-expired via `node scripts/verify/verify-advisory-exceptions.mjs`. |
 | **Medium: Dev Defaults in Production** | P2 | **RESOLVED & VERIFIED** | Implemented `validate_database_deployment` in `apps/server/src/host.rs` failing closed on dev credentials/sqlite when running in production. Verified with 15 host tests. |
-| **Low: Capability Phase Test Incomplete** | P3 | **RESOLVED & VERIFIED** | Expanded `test_phase_capabilities_are_explicit` in `crates/alloy/src/bridge/mod.rs` asserting all 5 phases. All 104 alloy tests passing. |
+| **Low: Capability Phase Test Incomplete** | P3 | **RESOLVED & VERIFIED** | Expanded `test_phase_capabilities_are_explicit` in `crates/modules/alloy/src/bridge/mod.rs` asserting all 5 phases. All 104 alloy tests passing. |
 
 ---
 
 ## 2. Action Items & Execution Stages
 
 ### Stage 1: Sandbox Runtime & Observer Fix (P0 / Blocker)
-- **Files**: `crates/rustok-sandbox/src/runtime.rs`
+- **Files**: `crates/workers/rustok-sandbox/src/runtime.rs`
 - **Actions**:
   1. Make execution observer error handling non-fatal to the primary execution outcome:
      - If `executor.execute` returns `Ok(outcome)`, log any observer error via `tracing::error!` and return `Ok(outcome)`.
@@ -34,8 +34,8 @@ This document establishes the actionable remediation plan for findings identifie
 
 ### Stage 2: SSRF & Outbound HTTP Hardening (P1 / High)
 - **Files**:
-  - `crates/rustok-sandbox/src/capability.rs`
-  - `crates/rustok-modules/src/capability_http.rs`
+  - `crates/workers/rustok-sandbox/src/capability.rs`
+  - `crates/modules/rustok-modules/src/capability_http.rs`
 - **Actions**:
   1. Enforce HTTPS URL scheme in `HttpCapabilityConstraints::validate`:
      - Reject plain `http` unless explicitly permitted by constraint flag.
@@ -55,7 +55,7 @@ This document establishes the actionable remediation plan for findings identifie
   2. Run and ensure `node scripts/verify/verify-host-global-authority-boundary.mjs` passes with exit code 0.
 
 ### Stage 4: Alloy Capability Phase Test Coverage (P3 / Quality)
-- **Files**: `crates/alloy/src/bridge/mod.rs`
+- **Files**: `crates/modules/alloy/src/bridge/mod.rs`
 - **Actions**:
   1. Expand `test_phase_capabilities_are_explicit` to assert `PhaseCapabilities` values across all five phases (`Before`, `After`, `OnCommit`, `Manual`, `Scheduled`).
 

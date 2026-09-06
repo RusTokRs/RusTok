@@ -120,23 +120,23 @@ rustok-seo-render = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
 rustok-web = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
-rustok-blog-storefront = { path = "../../crates/rustok-blog/storefront", default-features = false, optional = true }
-rustok-cart-storefront = { path = "../../crates/rustok-cart/storefront", default-features = false, optional = true }
-rustok-commerce-storefront = { path = "../../crates/rustok-commerce/storefront", default-features = false, optional = true }
-rustok-fulfillment-storefront = { path = "../../crates/rustok-fulfillment/storefront", default-features = false, optional = true }
-rustok-forum-storefront = { path = "../../crates/rustok-forum/storefront", default-features = false, optional = true }
-rustok-reactions-storefront = { path = "../../crates/rustok-reactions-storefront", default-features = false, optional = true }
-rustok-groups-storefront = { path = "../../crates/rustok-groups/storefront", default-features = false, optional = true }
-rustok-notifications-storefront = { path = "../../crates/rustok-notifications/storefront", default-features = false, optional = true }
-rustok-order-storefront = { path = "../../crates/rustok-order/storefront", default-features = false, optional = true }
-rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront", default-features = false, optional = true }
-rustok-navigation-storefront = { path = "../../crates/rustok-navigation/storefront", default-features = false, optional = true }
-rustok-payment-storefront = { path = "../../crates/rustok-payment/storefront", default-features = false, optional = true }
-rustok-pricing-storefront = { path = "../../crates/rustok-pricing/storefront", default-features = false, optional = true }
-rustok-product-storefront = { path = "../../crates/rustok-product/storefront", default-features = false, optional = true }
-rustok-profiles-storefront = { path = "../../crates/rustok-profiles/storefront", default-features = false, optional = true }
-rustok-region-storefront = { path = "../../crates/rustok-region/storefront", default-features = false, optional = true }
-rustok-search-storefront = { path = "../../crates/rustok-search/storefront", default-features = false, optional = true }
+rustok-blog-storefront = { path = "../../crates/modules/rustok-blog/storefront", default-features = false, optional = true }
+rustok-cart-storefront = { path = "../../crates/modules/rustok-cart/storefront", default-features = false, optional = true }
+rustok-commerce-storefront = { path = "../../crates/modules/rustok-commerce/storefront", default-features = false, optional = true }
+rustok-fulfillment-storefront = { path = "../../crates/modules/rustok-fulfillment/storefront", default-features = false, optional = true }
+rustok-forum-storefront = { path = "../../crates/modules/rustok-forum/storefront", default-features = false, optional = true }
+rustok-reactions-storefront = { path = "../../crates/modules/rustok-reactions-storefront", default-features = false, optional = true }
+rustok-groups-storefront = { path = "../../crates/modules/rustok-groups/storefront", default-features = false, optional = true }
+rustok-notifications-storefront = { path = "../../crates/modules/rustok-notifications/storefront", default-features = false, optional = true }
+rustok-order-storefront = { path = "../../crates/modules/rustok-order/storefront", default-features = false, optional = true }
+rustok-pages-storefront = { path = "../../crates/modules/rustok-pages/storefront", default-features = false, optional = true }
+rustok-navigation-storefront = { path = "../../crates/modules/rustok-navigation/storefront", default-features = false, optional = true }
+rustok-payment-storefront = { path = "../../crates/modules/rustok-payment/storefront", default-features = false, optional = true }
+rustok-pricing-storefront = { path = "../../crates/modules/rustok-pricing/storefront", default-features = false, optional = true }
+rustok-product-storefront = { path = "../../crates/modules/rustok-product/storefront", default-features = false, optional = true }
+rustok-profiles-storefront = { path = "../../crates/modules/rustok-profiles/storefront", default-features = false, optional = true }
+rustok-region-storefront = { path = "../../crates/modules/rustok-region/storefront", default-features = false, optional = true }
+rustok-search-storefront = { path = "../../crates/modules/rustok-search/storefront", default-features = false, optional = true }
 console_error_panic_hook = "0.1"
 wasm-bindgen = { version = "0.2", optional = true }
 web-sys = { version = "0.3", features = ["Document", "Element", "HtmlElement", "Location", "Window"] }

@@ -28,9 +28,9 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-notification-inbox-native-storefront-adapter.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-inbox-native-storefront-adapter.json";
 const downstreamPath =
-  "crates/rustok-forum/contracts/forum-notification-inbox-grouped-storefront-ui.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-inbox-grouped-storefront-ui.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const downstreamAbsolute = path.join(repoRoot, downstreamPath);
 const downstream = existsSync(downstreamAbsolute)
@@ -59,7 +59,7 @@ const canonicalPlan = read(contract.canonical_plan ?? "");
 const localPlan = read(contract.notifications_local_plan ?? "");
 const ownerReadme = read(contract.notifications_owner_readme ?? "");
 const liveContract = read(contract.notifications_live_contract ?? "");
-const ui = read("crates/rustok-notifications/storefront/src/ui/leptos.rs");
+const ui = read("crates/modules/rustok-notifications/storefront/src/ui/leptos.rs");
 
 if (contract.schema_version !== 1) {
   failures.push("native storefront adapter contract must use schema_version=1");

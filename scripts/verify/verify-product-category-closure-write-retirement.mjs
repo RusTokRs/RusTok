@@ -3,10 +3,10 @@
 import fs from 'node:fs';
 
 const categoriesPath =
-  'crates/rustok-product/src/services/catalog_schema_service/categories.rs';
+  'crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs';
 const effectiveFormsPath =
-  'crates/rustok-product/src/services/catalog_schema_service/effective_forms.rs';
-const contractPath = 'crates/rustok-product/docs/category-taxonomy-binding.md';
+  'crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms.rs';
+const contractPath = 'crates/modules/rustok-product/docs/category-taxonomy-binding.md';
 const retainedDirectoryWorkflowPath =
   '.github/workflows/product-taxonomy-category-directory-order.yml';
 

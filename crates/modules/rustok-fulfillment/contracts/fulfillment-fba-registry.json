@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "module": "fulfillment",
+  "role": "provider",
+  "status": "boundary_ready",
+  "contract_version": "fulfillment.shipping_selection.v1+provider_spi.v1",
+  "ports": [
+    {
+      "name": "ShippingSelectionPort",
+      "owner": "fulfillment",
+      "operations": [
+        "list_seller_shipping_options",
+        "select_shipping_option"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": true,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "commerce",
+      "profile": "checkout_shipping_orchestration",
+      "degraded_modes": [
+        "keep_previous_selection",
+        "show_shipping_handoff_retry"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/modules/rustok-fulfillment/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "FulfillmentService",
+    "source": "crates/modules/rustok-fulfillment/src/ports.rs",
+    "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/modules/rustok-fulfillment/contracts/fulfillment-fba-registry.json",
+    "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "list_seller_shipping_options",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "select_shipping_option",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ],
+      "degraded_modes": [
+        "keep_previous_selection",
+        "show_shipping_handoff_retry"
+      ]
+    }
+  },
+  "provider_spi": {
+    "status": "manual_baseline_locked",
+    "source": "crates/modules/rustok-fulfillment/src/providers.rs",
+    "default_provider_id": "manual",
+    "operations": [
+      "quote_rates",
+      "create_label",
+      "cancel",
+      "handle_tracking_webhook"
+    ],
+    "capabilities": [
+      "rate_quote",
+      "create_label",
+      "ship",
+      "cancel",
+      "tracking_webhook_ingress"
+    ],
+    "side_effect_boundary": "provider adapters execute carrier effects; FulfillmentService owns persisted lifecycle transitions",
+    "webhook_ingress": {
+      "status": "planned",
+      "idempotency_required": true,
+      "replay_required": true,
+      "adapter_operation": "handle_tracking_webhook",
+      "raw_payload_audit_required": true,
+      "owner_service_replay_guard_required": true
+    },
+    "lifecycle_owner_service": "FulfillmentService",
+    "external_adapter_registration": {
+      "status": "planned_contract_locked",
+      "registration_owner": "rustok-fulfillment",
+      "requires_descriptor_capability_match": true,
+      "requires_health_status_mapping": true,
+      "requires_degraded_mode_mapping": true,
+      "disallows_persisted_lifecycle_state_in_adapter": true
+    }
+  }
+}

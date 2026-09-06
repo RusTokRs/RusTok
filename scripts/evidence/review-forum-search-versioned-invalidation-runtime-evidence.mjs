@@ -13,9 +13,9 @@ import { dirname, resolve } from "node:path";
 
 const root = process.cwd();
 const parentPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-retained-evidence-promotion.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-retained-evidence-promotion.json";
 const aggregatePath =
   "target/forum-search-versioned-invalidation-runtime-evidence.json";
 const candidatePath =

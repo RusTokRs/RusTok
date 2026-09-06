@@ -30,9 +30,9 @@ const files = {
   watchdog: "apps/server/src/services/rbac_invalidation_generation.rs",
   mutation: "apps/server/src/services/rbac_committed_mutations.rs",
   evidence:
-    "crates/rustok-rbac/contracts/evidence/rbac-two-process-durable-recovery-source.json",
-  docs: "crates/rustok-rbac/docs/two-process-durable-recovery-evidence.md",
-  plan: "crates/rustok-rbac/docs/implementation-plan.md",
+    "crates/modules/rustok-rbac/contracts/evidence/rbac-two-process-durable-recovery-source.json",
+  docs: "crates/modules/rustok-rbac/docs/two-process-durable-recovery-evidence.md",
+  plan: "crates/modules/rustok-rbac/docs/implementation-plan.md",
   master: "docs/verification/PLATFORM_VERIFICATION_PLAN.md",
 };
 const sources = Object.fromEntries(

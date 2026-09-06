@@ -23,7 +23,7 @@ This section defines the mandatory governance baseline for code and documentatio
   - new module/crate/document names must match `modules.toml` and `docs/modules/registry.md`;
   - new names must follow the naming contract below.
 - **Ownership-review path (mandatory for cross-cutting changes):**
-  1. first update the component's local docs (`apps/*/docs` or `crates/*/docs`);
+  1. first update the component's local docs (`apps/*/docs` or `crates/modules/*/docs`);
   2. then synchronize central documents in `docs/`;
   3. when changing the module map — update `docs/modules/registry.md`;
   4. get review from the affected module's owner (or platform team for cross-cutting changes).
@@ -56,8 +56,8 @@ Mandatory formats:
 Rules:
 
 1. Do not repeat the domain name when the parent path already provides it.
-   Use `crates/rustok-product/src/service.rs`, not
-   `crates/rustok-product/src/product_service.rs`, unless the crate contains
+   Use `crates/modules/rustok-product/src/service.rs`, not
+   `crates/modules/rustok-product/src/product_service.rs`, unless the crate contains
    multiple peer services and the qualifier removes real ambiguity.
 2. Prefer role names for internal files: `service.rs`, `ports.rs`, `dto.rs`,
    `entities.rs`, `graphql.rs`, `controllers.rs`, `permissions.rs`,
@@ -112,7 +112,7 @@ Do not use different stems for the same concept in the same scope, such as
 prepared publish command.
 
 1. Do not repeat path context in internal code identifiers.
-   In `crates/rustok-product/admin/src/core.rs`, prefer
+   In `crates/modules/rustok-product/admin/src/core.rs`, prefer
    `StatusResultViewModel`, `build_status_result_view_model` and
    `parse_inventory_quantity` over
    `ProductAdminStatusMutationResultViewModel`,

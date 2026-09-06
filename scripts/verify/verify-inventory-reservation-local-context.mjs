@@ -12,13 +12,13 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  wrapper: 'crates/rustok-inventory/src/reservation_owner_context.rs',
-  legacy: 'crates/rustok-inventory/src/ports.rs',
+  wrapper: 'crates/modules/rustok-inventory/src/reservation_owner_context.rs',
+  legacy: 'crates/modules/rustok-inventory/src/ports.rs',
   evidence:
-    'crates/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source.json',
+    'crates/modules/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source.json',
   review:
-    'crates/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source-review.json',
-  document: 'crates/rustok-inventory/docs/reservation-local-context.md',
+    'crates/modules/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source-review.json',
+  document: 'crates/modules/rustok-inventory/docs/reservation-local-context.md',
 };
 const wrapper = read(paths.wrapper);
 const legacy = read(paths.legacy);

@@ -6,8 +6,8 @@ on:
       - "docs/architecture/taxonomy-flex-category-platform-plan.md"
       - "docs/architecture/database.md"
       - "DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md"
-      - "crates/rustok-blog/docs/implementation-plan-current.md"
-      - "crates/rustok-taxonomy/docs/implementation-plan.md"
+      - "crates/modules/rustok-blog/docs/implementation-plan-current.md"
+      - "crates/modules/rustok-taxonomy/docs/implementation-plan.md"
       - "scripts/verify/verify-blog-taxonomy-category-cross-owner-docs.mjs"
       - ".github/workflows/blog-taxonomy-category-cross-owner-docs.yml"
   push:
@@ -17,8 +17,8 @@ on:
       - "docs/architecture/taxonomy-flex-category-platform-plan.md"
       - "docs/architecture/database.md"
       - "DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md"
-      - "crates/rustok-blog/docs/implementation-plan-current.md"
-      - "crates/rustok-taxonomy/docs/implementation-plan.md"
+      - "crates/modules/rustok-blog/docs/implementation-plan-current.md"
+      - "crates/modules/rustok-taxonomy/docs/implementation-plan.md"
       - "scripts/verify/verify-blog-taxonomy-category-cross-owner-docs.mjs"
       - ".github/workflows/blog-taxonomy-category-cross-owner-docs.yml"
   workflow_dispatch:

@@ -38,7 +38,7 @@ function between(source, start, end, label) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-notification-visibility-composition.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-visibility-composition.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const notificationSource = read(contract.notification_source_file ?? "");
 const visibilityOwner = read(contract.visibility_owner_file ?? "");
@@ -49,7 +49,7 @@ const recipientTestSource = read(contract.recipient_test_file ?? "");
 const mentionTestSource = read(contract.recipient_mention_test_file ?? "");
 const subscriptionTestSource = read(contract.recipient_topic_subscription_test_file ?? "");
 const descriptorContract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-notification-topic-descriptor-materialization.json") ||
+  read("crates/modules/rustok-forum/contracts/forum-notification-topic-descriptor-materialization.json") ||
     "{}",
 );
 const descriptorTestSource = read(descriptorContract.runtime_test_file ?? "");

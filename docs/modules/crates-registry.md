@@ -6,7 +6,7 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Crate Registry `crates/rustok-*`
+# Crate Registry
 
 This document captures:
 
@@ -19,11 +19,16 @@ This document captures:
 
 This document describes **all crates**, not just platform modules.
 
-Terminology rule:
+Terminology and layout rules:
 
-- Platform modules receive only `Core` or `Optional` status and are defined through `modules.toml`;
+- Platform modules receive only `Core` or `Optional` status, are defined through `modules.toml`, and reside in `crates/modules/`;
 - A crate is a technical packaging form;
-- Shared libraries and support/capability crates live next to module crates.
+- Crates are organized into 5 top-level categories under `crates/`:
+  - `crates/libs/`: Platform foundation libraries (`rustok-core`, `rustok-api`, `rustok-events`, `rustok-telemetry`, `rustok-runtime`, `rustok-web`, `rustok-fba`)
+  - `crates/modules/`: Domain, system, and external integration modules
+  - `crates/ui/`: Leptos and frontend support crates
+  - `crates/utils/`: Tooling, CLI, build, installer, and migration utilities
+  - `crates/workers/`: Sandboxes, worker runtimes, and artifact controllers
 
 The source of truth for the live crate-level contract remains the local documentation of the component itself:
 
@@ -37,7 +42,7 @@ This registry serves as a summary layer: it captures ownership, public entry poi
 
 | Crate | Responsibility | Public Entry Points | Must Not Do |
 |---|---|---|---|
-| `rustok-core` | Shared foundation layer of the platform: modular model, typed primitives, RBAC/security contracts, validation helpers and base cross-module types. | `RusToKModule`, `ModuleRegistry`, `Permission`, `Resource`, `Action`, `SecurityContext`, shared helper types from `lib.rs`. | Duplicate foundation contracts in applications and modules or pull domain-owned runtime logic here. |
+| `rustok-core` | Platform foundation library (shared infra, not a domain module): modular model traits, typed primitives, security contexts, validation helpers, and base cross-module types. | `RusToKModule`, `ModuleRegistry`, `Permission`, `Resource`, `Action`, `SecurityContext`, shared helper types from `lib.rs`. | Duplicate foundation contracts in applications and modules or pull domain-owned runtime logic here. |
 | `rustok-events` | Canonical import surface for event contracts: `DomainEvent`, `EventEnvelope`, schema metadata and validation rules; `rustok-core::events` remains only a compatibility re-export path. | `DomainEvent`, `EventEnvelope`, `EventSchema`, `FieldSchema`, `EVENT_SCHEMAS`, `ValidateEvent`. | Return canonical event contract ownership back to `rustok-core` or duplicate schema registry in consumer crates. |
 | `rustok-api` | Shared host/API layer for transport adapters: tenant/auth/request/channel contexts, GraphQL helpers, pagination and permission matching. UI route/query/input/i18n contracts live outside this crate. | `AuthContext`, `TenantContext`, `RequestContext`, `PageInfo`, `PaginationInput`, `GraphQLError`, `scope_matches`, `locale_tags_match`. | Return shared HTTP/GraphQL host contracts back to `apps/server`, pull web/API-specific surface into `rustok-core` or own UI route/query/input/i18n helpers. |
 | `rustok-runtime` | Host runtime foundation helpers: typed shared-handle lookup, neutral runtime DB access, runtime composition, the canonical portable instance layout, and exact pre-staged static-role materialization shared by installer, server, CLI, agents, and workers. | `HostRuntimeContext`, `RuntimeComposition`, `InstancePlacement`, `InstanceLayout`, `bind_instance_placement`, `prepare_instance_layout`, `resolve_instance_root_from_environment`, `RoleMaterializationRequest`, `materialize_role`, `db_clone`, `require_shared`, `RuntimeHandleError`. | Own domain services, HTTP response mapping, CLI contracts, FBA metadata, UI transport, release selection, registry pulls, arbitrary process execution, or become a service locator. |
@@ -122,8 +127,8 @@ This registry serves as a summary layer: it captures ownership, public entry poi
 | `rustok-ai` | Capability crate of the AI host/orchestrator layer: Rig 0.39 provider registry and engine, `AiRouter`, task profiles, policy-governed agent tool loop, persisted provider/task/tool profiles, sessions/runs/traces/approvals, owner-neutral structured-task contracts, owner-owned GraphQL query/mutation/subscription surface, direct first-party verticals (`alloy_code`, `image_asset`, `product_copy`, `blog_draft`), bounded live streaming through `aiSessionEvents`, embedding/rerank entrypoints, provider-neutral RAG document/chunk and embedding contracts with provider-owned ingestion publication, and runtime observability. | `ProviderSlug`, `ProviderFeature`, `RigAgentDriver`, `InferenceEngine`, `AiRouter`, `AiStructuredTaskPort`, `AiStructuredTaskRequest`, `AiStructuredTaskExecution`, `AiHostRuntime`, `McpClientAdapter`, `DirectExecutionRegistry`, `AiManagementService`, `AiMigrationSource`, `RagDocument`, `RagChunk`, `RagEmbedding`, `RagIngestionPort`, `RagEmbeddingPort`, `RagEmbeddingCoordinator`, `RigRagEmbeddingProvider`, `RagRetrievalPort`, `graphql::{AiQuery, AiMutation, AiSubscription}`, `AiGraphqlRoleSlugProviderHandle`. | Expand `rustok-mcp` to a model host; place AI GraphQL resolver/DTO in `apps/server`; hide AI authorization behind `MCP_MANAGE`; make MCP a mandatory internal bus; bypass canonical domain services; duplicate AI business UI in host applications instead of capability-owned packages; pass host-wide context inside `rustok-ai`; import Translation into the AI owner. |
 | `rustok-ai-translation` | Stateless support adapter between the Translation and AI owner contracts. It owns the `machine_translation` task identity, policy/schema digest, bounded request mapping, deterministic structured-output validation, and review-required execution evidence. | `AiMachineTranslationAdapter`, `machine_translation_descriptor`, `machine_translation_policy_digest`, `MACHINE_TRANSLATION_TASK_SLUG`. | Store workflow or AI ledger state, import owner services/entities, call provider engines directly, mutate owner content, auto-approve output, or register live before the durable AI structured-execution gate passes. |
 | `rustok-ai-athanor` | First-party Athanor library adapter for the AI-owned RAG boundary; Basic RAG publishes provider-neutral chunks into Athanor-owned canonical snapshots, retrieves them through Tantivy search, and restores source/byte-range citations, while vector retrieval remains capability-gated. | `AthanorRagAdapter`, `AthanorRagConfig`, `ATHANOR_SOURCE_ID`. | Own a second storage/index implementation, expose SurrealDB/Tantivy handles through AI contracts, or enable vector retrieval before Athanor Phase 9. |
-| `flex` | Capability crate of the custom fields system: attached/standalone contracts, field definitions, registry/orchestration helpers and localized attached values; donor ownership remains with consumer modules. The crate is now also formalized as a `capability_only` ghost module in `modules.toml`. | `FlexModule`, `CustomFieldsSchema`, standalone/attached contracts, registry/orchestration helpers from `crates/flex`, module-local docs and plan. | Turn `flex` into a standalone business module, take donor persistence ownership, pull standard modules into dependency on Flex as a mandatory layer or consider server-owned transport surfaces as proof that donor contract ownership moved to `flex`. |
-| `rustok-test-utils` | Shared testing-support crate: database setup helpers, mock event bus/transport, fixtures and reusable test helpers for RusToK crates/apps. | `setup_test_db`, `MockEventBus`, `MockEventTransport`, `fixtures::*`, `helpers::*`. | Duplicate the same fixtures and mocks locally in modules instead of using the shared testing layer. |
+| `flex` | Capability crate of the custom fields system: attached/standalone contracts, field definitions, registry/orchestration helpers and localized attached values; donor ownership remains with consumer modules. The crate is now also formalized as a `capability_only` ghost module in `modules.toml`. | `FlexModule`, `CustomFieldsSchema`, standalone/attached contracts, registry/orchestration helpers from `crates/modules/flex`, module-local docs and plan. | Turn `flex` into a standalone business module, take donor persistence ownership, pull standard modules into dependency on Flex as a mandatory layer or consider server-owned transport surfaces as proof that donor contract ownership moved to `flex`. |
+| `rustok-test-utils` | Shared testing-support crate: database setup helpers, mock event bus/transport, fixtures and reusable test helpers for RusToK crates/modules/apps. | `setup_test_db`, `MockEventBus`, `MockEventTransport`, `fixtures::*`, `helpers::*`. | Duplicate the same fixtures and mocks locally in modules instead of using the shared testing layer. |
 
 ## RBAC Contract of the Runtime Registry
 

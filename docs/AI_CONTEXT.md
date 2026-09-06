@@ -19,7 +19,7 @@ Mandatory starting context for AI sessions.
 4. For backend module changes: `docs/backend/module-backend-architecture.md`,
    `docs/backend/module-backend-implementation.md` and
    `docs/backend/module-backend-verification.md`
-5. For event changes: `crates/rustok-outbox/docs/README.md` and `docs/architecture/event-flow-contract.md`
+5. For event changes: `crates/modules/rustok-outbox/docs/README.md` and `docs/architecture/event-flow-contract.md`
 
 ## Terminology
 
@@ -109,15 +109,15 @@ outbox relay. For atomic domain-event publishing, use `publish_in_tx`.
 
 ## Important Crates
 
-### `crates/rustok-core`
+### `crates/libs/rustok-core`
 
 Platform contracts: `RusToKModule`, `ModuleRegistry`, permissions, events, health, metrics.
 
-### `crates/rustok-events`
+### `crates/libs/rustok-events`
 
 Canonical event contract layer on top of the platform event model.
 
-### `crates/rustok-auth`
+### `crates/modules/rustok-auth`
 
 `Core` authentication module: JWT (HS256 and RS256), Argon2 password hashing, refresh tokens, password reset, invite, email verification tokens. It is composed through `apps/server/src/auth.rs` with RusToK-owned runtime/settings contracts.
 
@@ -131,7 +131,7 @@ Server runtime reads auth overrides only through `settings.rustok.auth` in
 `HS256` remains the default. `RS256` requires both RSA keys and must fail
 config assembly instead of silently downgrading to `HS256`.
 
-### `crates/rustok-cache`
+### `crates/modules/rustok-cache`
 
 `Core` cache management module: Redis client (single connection point), in-memory fallback (Moka), `CacheService::health()` with PING check. **Replaces** `ctx.config.cache`. Initialized in `bootstrap_app_runtime`, available via `ctx.shared_store.get::<CacheService>()`.
 
@@ -140,7 +140,7 @@ Redis URL is specified via (in priority order):
 2. env `RUSTOK_REDIS_URL`
 3. env `REDIS_URL`
 
-### `crates/rustok-email`
+### `crates/modules/rustok-email`
 
 `Core` email delivery module: SMTP via lettre and Tera templates. Factory
 `email_service_from_ctx(ctx, locale)` in `apps/server/src/services/email.rs`
@@ -151,32 +151,32 @@ Two public traits:
 - `BuiltInAuthEmailSender` in `apps/server/src/services/email.rs` — localized runtime contract for built-in auth email flows (password reset + email verification)
 - `TransactionalEmailSender` — general contract for any transactional email by template ID (`"{module}/{action}"`, e.g. `"commerce/order_confirmed"`). Modules register templates via `EmailTemplateProvider`; `SmtpEmailSender::with_provider()` connects the provider.
 
-### `crates/rustok-storage`
+### `crates/utils/rustok-storage`
 
 Infrastructure support crate for direct `object_store` use. `StorageRuntime` exposes `Arc<dyn ObjectStore>`, an optional signer, runtime diagnostics, and canonical chronological/digest key constructors. It is initialized in `bootstrap_app_runtime`; domain owners call `ObjectStore` directly and own lifecycle metadata. Local storage is the development default and S3-compatible storage is optional through the `s3` feature.
 
-### `crates/rustok-outbox`
+### `crates/modules/rustok-outbox`
 
 `Core` module transactional outbox: `TransactionalEventBus`, `OutboxTransport`, `OutboxRelay`, `SysEventsMigration`. ADR: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`.
 
 ### Backend foundation crates
 
-- `crates/rustok-runtime`: executable runtime helpers such as typed host shared-handle lookup.
-- `crates/rustok-web`: Axum HTTP boundary helpers such as JSON response mapping and HTTP error envelopes.
-- `crates/rustok-fba`: FBA provider/consumer metadata and backend topology descriptors.
-- `crates/rustok-cli-core`: stable command/provider contracts for the future `rustok-cli` and module-local `cli/` adapters.
+- `crates/libs/rustok-runtime`: executable runtime helpers such as typed host shared-handle lookup.
+- `crates/libs/rustok-web`: Axum HTTP boundary helpers such as JSON response mapping and HTTP error envelopes.
+- `crates/libs/rustok-fba`: FBA provider/consumer metadata and backend topology descriptors.
+- `crates/utils/rustok-cli-core`: stable command/provider contracts for the future `rustok-cli` and module-local `cli/` adapters.
 
 For module backend implementation, read `docs/backend/README.md`.
 
-### `crates/rustok-tenant`
+### `crates/modules/rustok-tenant`
 
 `Core` module multi-tenant lifecycle and module enablement.
 
-### `crates/rustok-rbac`
+### `crates/modules/rustok-rbac`
 
 `Core` module authorization, roles, policies and permission resolution.
 
-### `crates/rustok-content` / `commerce` / `blog` / `forum` / `pages` / `media` / `workflow`
+### `crates/modules/rustok-content` / `commerce` / `blog` / `forum` / `pages` / `media` / `workflow`
 
 Optional domain modules and their transport/UI surfaces.
 

@@ -8,16 +8,16 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(".");
 const failures = [];
 
-const facadePath = "crates/rustok-profiles/src/mutations.rs";
-const profilesLibPath = "crates/rustok-profiles/src/lib.rs";
-const profilesReadmePath = "crates/rustok-profiles/README.md";
-const graphqlPath = "crates/rustok-profiles/src/graphql/mutation.rs";
-const cliPath = "crates/rustok-profiles/cli/src/lib.rs";
+const facadePath = "crates/modules/rustok-profiles/src/mutations.rs";
+const profilesLibPath = "crates/modules/rustok-profiles/src/lib.rs";
+const profilesReadmePath = "crates/modules/rustok-profiles/README.md";
+const graphqlPath = "crates/modules/rustok-profiles/src/graphql/mutation.rs";
+const cliPath = "crates/modules/rustok-profiles/cli/src/lib.rs";
 const legacyGateContractPath =
-  "crates/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json";
+  "crates/modules/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json";
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-profile-event-aware-mutation-api.json";
-const notePath = "crates/rustok-forum/docs/forum-23a9-profile-event-aware-mutation-api.md";
+  "crates/modules/rustok-forum/contracts/forum-search-profile-event-aware-mutation-api.json";
+const notePath = "crates/modules/rustok-forum/docs/forum-23a9-profile-event-aware-mutation-api.md";
 
 const eventAwareMethods = [
   "upsert_profile_with_event",

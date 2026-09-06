@@ -25,18 +25,18 @@ function withFixture({
   mkdirSync(path.join(root, "docs", "research"), { recursive: true });
   mkdirSync(path.join(root, "docs", "verification"), { recursive: true });
   mkdirSync(path.join(root, "docs", "modules"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "rustok-cart", "docs"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "rustok-cart", "storefront", "src", "core"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "rustok-cart", "storefront", "src", "transport"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "rustok-cart", "storefront", "src", "ui"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "src", "ui"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "locales"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "rustok-pages", "storefront", "src", "ui"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "rustok-product", "storefront", "src", "ui"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "rustok-product", "storefront", "src", "transport"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "rustok-product", "admin", "src", "ui"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "rustok-customer", "admin", "src", "transport"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "rustok-customer", "admin", "src", "ui"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-cart", "docs"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-cart", "storefront", "src", "core"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-cart", "storefront", "src", "transport"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-cart", "storefront", "src", "ui"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-region", "storefront", "src", "ui"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-region", "storefront", "locales"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-pages", "storefront", "src", "ui"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-product", "storefront", "src", "ui"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-product", "storefront", "src", "transport"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-product", "admin", "src", "ui"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-customer", "admin", "src", "transport"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "modules", "rustok-customer", "admin", "src", "ui"), { recursive: true });
 
   writeFileSync(
     path.join(root, "docs", "research", "dioxus-ffa-ui-migration-plan.md"),
@@ -108,12 +108,12 @@ function withFixture({
       "- `no_ui_boundary`",
       "| Module slug | UI surfaces | FFA status | FBA status | Structural shape | Source plan |",
       "|---|---|---|---|---|---|",
-      "| `cart` | storefront | `in_progress` | `in_progress` | `" + registryShape + "` | `crates/rustok-cart/docs/implementation-plan.md` fixture |",
+      "| `cart` | storefront | `in_progress` | `in_progress` | `" + registryShape + "` | `crates/modules/rustok-cart/docs/implementation-plan.md` fixture |",
     ].join("\n"),
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-cart", "docs", "implementation-plan.md"),
+    path.join(root, "crates", "modules", "rustok-cart", "docs", "implementation-plan.md"),
     [
       "## FFA/FBA status",
       "",
@@ -134,7 +134,7 @@ function withFixture({
 
 
   writeFileSync(
-    path.join(root, "crates", "rustok-pages", "storefront", "src", "lib.rs"),
+    path.join(root, "crates", "modules", "rustok-pages", "storefront", "src", "lib.rs"),
     [
       "mod core;",
       "mod transport;",
@@ -144,18 +144,18 @@ function withFixture({
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-pages", "storefront", "src", "ui", "leptos.rs"),
+    path.join(root, "crates", "modules", "rustok-pages", "storefront", "src", "ui", "leptos.rs"),
     "#[component] fn PagesView() { Resource::new_blocking(); transport::fetch_pages(); }",
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-pages", "storefront", "README.md"),
+    path.join(root, "crates", "modules", "rustok-pages", "storefront", "README.md"),
     "src/ui/leptos.rs core.rs transport.rs",
   );
 
 
   writeFileSync(
-    path.join(root, "crates", "rustok-product", "storefront", "src", "core.rs"),
+    path.join(root, "crates", "modules", "rustok-product", "storefront", "src", "core.rs"),
     [
       "pub struct ProductTransportErrorDomEvidence;",
       "pub fn build_transport_error_dom_evidence() {}",
@@ -163,12 +163,12 @@ function withFixture({
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-product", "storefront", "src", "transport", "mod.rs"),
+    path.join(root, "crates", "modules", "rustok-product", "storefront", "src", "transport", "mod.rs"),
     "pub struct ProductTransportError; UiTransportPath NativeServer Graphql native_server graphql fallback_attempted native_error graphql_error",
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-product", "storefront", "src", "ui", "leptos.rs"),
+    path.join(root, "crates", "modules", "rustok-product", "storefront", "src", "ui", "leptos.rs"),
     [
       "build_transport_error_dom_evidence",
       "data-product-transport-failed-path",
@@ -179,12 +179,12 @@ function withFixture({
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-product", "storefront", "README.md"),
+    path.join(root, "crates", "modules", "rustok-product", "storefront", "README.md"),
     "ProductTransportError ProductTransportErrorDomEvidence data-product-transport-*",
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-product", "admin", "src", "core.rs"),
+    path.join(root, "crates", "modules", "rustok-product", "admin", "src", "core.rs"),
     [
       "ProductAdminShellViewModel",
       "build_product_admin_shell_view_model",
@@ -198,7 +198,7 @@ function withFixture({
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-product", "admin", "src", "ui", "leptos.rs"),
+    path.join(root, "crates", "modules", "rustok-product", "admin", "src", "ui", "leptos.rs"),
     [
       "build_product_admin_shell_view_model",
       "product_admin_shipping_profiles_load_view_from_result",
@@ -206,12 +206,12 @@ function withFixture({
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-product", "admin", "README.md"),
+    path.join(root, "crates", "modules", "rustok-product", "admin", "README.md"),
     "admin shell copy profile-panel state",
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-customer", "admin", "src", "core.rs"),
+    path.join(root, "crates", "modules", "rustok-customer", "admin", "src", "core.rs"),
     [
       "CustomerAdminDraftInput",
       "CustomerAdminSubmitCommand",
@@ -223,7 +223,7 @@ function withFixture({
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-customer", "admin", "src", "lib.rs"),
+    path.join(root, "crates", "modules", "rustok-customer", "admin", "src", "lib.rs"),
     [
       "mod core;",
       "mod i18n;",
@@ -235,7 +235,7 @@ function withFixture({
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-customer", "admin", "src", "transport", "mod.rs"),
+    path.join(root, "crates", "modules", "rustok-customer", "admin", "src", "transport", "mod.rs"),
     [
       "mod native_server_adapter;",
       "pub use native_server_adapter::ApiError;",
@@ -249,7 +249,7 @@ function withFixture({
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-customer", "admin", "src", "transport", "native_server_adapter.rs"),
+    path.join(root, "crates", "modules", "rustok-customer", "admin", "src", "transport", "native_server_adapter.rs"),
     [
       "#[server(prefix = \"/api/fn\", endpoint = \"customer/bootstrap\")]",
       "#[server(prefix = \"/api/fn\", endpoint = \"customer/list\")]",
@@ -262,23 +262,23 @@ function withFixture({
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-customer", "admin", "src", "ui", "leptos.rs"),
+    path.join(root, "crates", "modules", "rustok-customer", "admin", "src", "ui", "leptos.rs"),
     "transport::fetch_bootstrap transport::fetch_customers build_customer_admin_submit_command CustomerAdminDraftInput CustomerAdminSubmitCommandError::EmailRequired CustomerAdminSubmitCommandError::LocaleUnavailable",
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-customer", "admin", "README.md"),
+    path.join(root, "crates", "modules", "rustok-customer", "admin", "README.md"),
     "admin/src/core.rs submit-command admin/src/transport/mod.rs admin/src/transport/native_server_adapter.rs admin/src/ui/leptos.rs",
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-customer", "admin", "Cargo.toml"),
+    path.join(root, "crates", "modules", "rustok-customer", "admin", "Cargo.toml"),
     "[package]\nname = \"rustok-customer-admin-fixture\"\nversion = \"0.1.0\"\n",
   );
 
 
   writeFileSync(
-    path.join(root, "crates", "rustok-region", "storefront", "src", "core.rs"),
+    path.join(root, "crates", "modules", "rustok-region", "storefront", "src", "core.rs"),
     [
       "pub enum RegionErrorStatusCode { NativeUnavailable, GraphqlUnavailable }",
       "pub struct RegionErrorStatusDescriptor { pub stable_code: &'static str, pub locale_key: &'static str }",
@@ -294,12 +294,12 @@ function withFixture({
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-region", "storefront", "src", "ui", "leptos.rs"),
+    path.join(root, "crates", "modules", "rustok-region", "storefront", "src", "ui", "leptos.rs"),
     "data-region-error-status data-region-error-locale-key data-region-route-query-key data-region-route-query-value",
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-region", "storefront", "README.md"),
+    path.join(root, "crates", "modules", "rustok-region", "storefront", "README.md"),
     [
       "native_unavailable region.error.status.nativeUnavailable",
       "graphql_unavailable region.error.status.graphqlUnavailable",
@@ -310,7 +310,7 @@ function withFixture({
 
   ["en", "ru"].forEach((locale) => {
     writeFileSync(
-      path.join(root, "crates", "rustok-region", "storefront", "locales", `${locale}.json`),
+      path.join(root, "crates", "modules", "rustok-region", "storefront", "locales", `${locale}.json`),
       JSON.stringify({
         "region.error.status.nativeUnavailable": "Native unavailable",
         "region.error.status.graphqlUnavailable": "GraphQL unavailable",
@@ -519,7 +519,7 @@ test("fails when structural shape has no matching code layout", () => {
   });
 
   try {
-    rmSync(path.join(fixture.root, "crates", "rustok-cart", "storefront", "src", "ui"), { recursive: true, force: true });
+    rmSync(path.join(fixture.root, "crates", "modules", "rustok-cart", "storefront", "src", "ui"), { recursive: true, force: true });
     const result = runVerifier(fixture.root);
     assert.notEqual(result.status, 0, "Expected missing ui adapter fixture to fail");
     assert.match(result.stderr, /requires ui\/leptos\.rs or ui\/leptos\//);
@@ -536,12 +536,12 @@ test("passes when a temporary single-adapter native transport is documented as n
   });
 
   try {
-    rmSync(path.join(fixture.root, "crates", "rustok-cart", "storefront", "src", "transport"), {
+    rmSync(path.join(fixture.root, "crates", "modules", "rustok-cart", "storefront", "src", "transport"), {
       recursive: true,
       force: true,
     });
     writeFileSync(
-      path.join(fixture.root, "crates", "rustok-cart", "storefront", "src", "native.rs"),
+      path.join(fixture.root, "crates", "modules", "rustok-cart", "storefront", "src", "native.rs"),
       "// single-adapter native transport fixture\n",
     );
     const result = runVerifier(fixture.root);

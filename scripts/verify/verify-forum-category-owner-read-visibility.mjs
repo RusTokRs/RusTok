@@ -38,7 +38,7 @@ function between(source, start, end, label) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-category-owner-read-visibility.json";
+  "crates/modules/rustok-forum/contracts/forum-category-owner-read-visibility.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const visibilityOwner = read(contract.category_visibility_owner_file ?? "");
 const categoryFacade = read(contract.category_facade_file ?? "");

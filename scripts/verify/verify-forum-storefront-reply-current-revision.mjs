@@ -14,12 +14,12 @@ function requireAbsent(text, needle, message) {
   if (text.includes(needle)) throw new Error(message);
 }
 
-const revision = read("crates/rustok-forum/src/services/revision.rs");
-const audience = read("crates/rustok-forum/src/services/reply_audience_read.rs");
-const graphql = read("crates/rustok-forum/src/graphql/reply_audience_query.rs");
-const storefrontCargo = read("crates/rustok-forum/storefront/Cargo.toml");
+const revision = read("crates/modules/rustok-forum/src/services/revision.rs");
+const audience = read("crates/modules/rustok-forum/src/services/reply_audience_read.rs");
+const graphql = read("crates/modules/rustok-forum/src/graphql/reply_audience_query.rs");
+const storefrontCargo = read("crates/modules/rustok-forum/storefront/Cargo.toml");
 const contract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-storefront-reply-current-revision.json"),
+  read("crates/modules/rustok-forum/contracts/forum-storefront-reply-current-revision.json"),
 );
 
 requireContains(

@@ -19,11 +19,11 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath = path.join(
   repoRoot,
-  "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
 );
 const evaluatorContractPath = path.join(
   repoRoot,
-  "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
+  "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
 );
 const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;

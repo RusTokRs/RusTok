@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const storePath = 'crates/rustok-index/src/infrastructure/postgres/schema_registration.rs';
+const storePath = 'crates/modules/rustok-index/src/infrastructure/postgres/schema_registration.rs';
 const store = requireMarkers(storePath, [
   'pub struct PersistedSchemaSupersessionOutcome',
   'pub fn registration(&self) -> &PersistedSchemaRegistrationOutcome',
@@ -50,7 +50,7 @@ forbidMarkers(storePath, store, [
   'rustok-product',
 ]);
 
-const testsPath = 'crates/rustok-index/src/infrastructure/postgres/schema_registration_tests.rs';
+const testsPath = 'crates/modules/rustok-index/src/infrastructure/postgres/schema_registration_tests.rs';
 requireMarkers(testsPath, [
   'ordinary_registration_does_not_implicitly_retire_older_contracts',
   'staged_latest_contract_can_be_promoted_without_reinsertion',
@@ -67,28 +67,28 @@ requireMarkers(testsPath, [
   'schema_status(&db, TENANT_A, 3).await, "active"',
 ]);
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'PersistedSchemaSupersessionOutcome',
 ]);
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'PersistedSchemaSupersessionOutcome',
 ]);
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/schema_readiness.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/schema_readiness.rs', [
   'persisted.status != "active"',
   'PersistedSchemaReadinessFailure::Inactive',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_port.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/query_port.rs', [
   'if status != "active"',
   'PersistedSchemaReadinessFailure::Inactive',
 ]);
 
-requireMarkers('crates/rustok-index/src/application/source_event_id.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/source_event_id.rs', [
   'pub fn derive_index_schema_source_event_id(',
   'rustok-index-schema-source-event-id-v1',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m4-single-current-schema-supersession.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-single-current-schema-supersession.md', [
   'Status: `source_complete_execution_pending`',
   '`PostgresSchemaRegistrationStore::register_current`',
   'Inbox delivery identity is a separate boundary',

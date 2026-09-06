@@ -3,9 +3,9 @@
 import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(path, 'utf8');
-const portPath = 'crates/rustok-order/src/post_order_command.rs';
-const libPath = 'crates/rustok-order/src/lib.rs';
-const recordPath = 'crates/rustok-commerce/docs/order-post-order-command-owner-capability-2026-08-09.md';
+const portPath = 'crates/modules/rustok-order/src/post_order_command.rs';
+const libPath = 'crates/modules/rustok-order/src/lib.rs';
+const recordPath = 'crates/modules/rustok-commerce/docs/order-post-order-command-owner-capability-2026-08-09.md';
 
 const port = read(portPath);
 const lib = read(libPath);

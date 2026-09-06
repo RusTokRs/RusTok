@@ -15,15 +15,15 @@ const requireMarker = (source, marker, label) => {
 };
 
 const harnessPath = 'apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs';
-const contractPath = 'crates/rustok-index/contracts/evidence/product-refresh-postgres-iggy-source.json';
-const guidePath = 'crates/rustok-index/docs/m5-product-refresh-postgres-iggy-redelivery-evidence.md';
+const contractPath = 'crates/modules/rustok-index/contracts/evidence/product-refresh-postgres-iggy-source.json';
+const guidePath = 'crates/modules/rustok-index/docs/m5-product-refresh-postgres-iggy-redelivery-evidence.md';
 const runnerPath = '.github/workflows/index-product-refresh-redelivery-evidence.yml';
 const harness = read(harnessPath);
 const contract = JSON.parse(read(contractPath));
 const guide = read(guidePath);
 const host = read('apps/server/src/services/product_index_refresh_worker.rs');
-const bridge = read('crates/rustok-distribution/src/product_index/refresh_event.rs');
-const genericWorker = read('crates/rustok-index/src/application/source_refresh_event.rs');
+const bridge = read('crates/modules/rustok-distribution/src/product_index/refresh_event.rs');
+const genericWorker = read('crates/modules/rustok-index/src/application/source_refresh_event.rs');
 const sourceWorkflow = read('.github/workflows/index-contract-ci.yml');
 const runner = read(runnerPath);
 

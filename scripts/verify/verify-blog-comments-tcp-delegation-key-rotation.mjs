@@ -1,14 +1,14 @@
 import fs from 'node:fs';
 
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-key-rotation.json';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-76.md';
-const manifestPath = 'crates/rustok-comments/Cargo.toml';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-key-rotation.json';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-76.md';
+const manifestPath = 'crates/modules/rustok-comments/Cargo.toml';
 const lockPath = 'Cargo.lock';
-const exportPath = 'crates/rustok-comments/src/lib.rs';
-const delegationPath = 'crates/rustok-comments/src/tcp_delegation.rs';
-const transportPath = 'crates/rustok-comments/src/tcp_transport.rs';
-const serverPath = 'crates/rustok-comments/src/tcp_server.rs';
+const exportPath = 'crates/modules/rustok-comments/src/lib.rs';
+const delegationPath = 'crates/modules/rustok-comments/src/tcp_delegation.rs';
+const transportPath = 'crates/modules/rustok-comments/src/tcp_transport.rs';
+const serverPath = 'crates/modules/rustok-comments/src/tcp_server.rs';
 const runtimePath = 'apps/server/src/services/comments_provider_runtime.rs';
 
 function read(path) {

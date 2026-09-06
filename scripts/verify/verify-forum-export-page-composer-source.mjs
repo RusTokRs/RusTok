@@ -15,9 +15,9 @@ function forbid(text, marker, label) {
 }
 
 const files = {
-  planner: "crates/rustok-forum/src/export_planner.rs",
-  page: "crates/rustok-forum/src/export_page.rs",
-  inventory: "crates/rustok-forum/src/export_inventory.rs",
+  planner: "crates/modules/rustok-forum/src/export_planner.rs",
+  page: "crates/modules/rustok-forum/src/export_page.rs",
+  inventory: "crates/modules/rustok-forum/src/export_inventory.rs",
   packet: "docs/modules/forum-34-export-page-composer-actualization-2026-08-09.md",
 };
 

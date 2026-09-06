@@ -28,7 +28,7 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-posting-policy-contract.json";
+  "crates/modules/rustok-forum/contracts/forum-posting-policy-contract.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const source = read(contract.contract_file);
 const services = read(contract.service_registry);
@@ -236,7 +236,7 @@ for (const marker of [
   "no duplicate-content hashing",
   "no external or AI spam-scoring call",
   "next bounded FORUM-26 slice",
-  "canonical `crates/rustok-forum/docs/implementation-plan.md` is not replaced",
+  "canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is not replaced",
   "were not run by the implementation agent",
 ]) {
   requireText(note, marker, `FORUM-26C owner note is missing ${marker}`);

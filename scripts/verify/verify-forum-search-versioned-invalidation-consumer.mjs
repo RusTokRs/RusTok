@@ -10,20 +10,20 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-search-versioned-invalidation-consumer.json",
-  note: "crates/rustok-forum/docs/forum-23b2g2b3c-versioned-invalidation-consumer.md",
-  publisherContract: "crates/rustok-forum/contracts/forum-search-versioned-invalidation-publisher.json",
-  ingress: "crates/rustok-search/src/forum_contract_ingress.rs",
-  searchLib: "crates/rustok-search/src/lib.rs",
-  searchCargo: "crates/rustok-search/Cargo.toml",
-  inbox: "crates/rustok-search/src/forum_inbox.rs",
-  reconciler: "crates/rustok-search/src/forum_reconciliation.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-consumer.json",
+  note: "crates/modules/rustok-forum/docs/forum-23b2g2b3c-versioned-invalidation-consumer.md",
+  publisherContract: "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-publisher.json",
+  ingress: "crates/modules/rustok-search/src/forum_contract_ingress.rs",
+  searchLib: "crates/modules/rustok-search/src/lib.rs",
+  searchCargo: "crates/modules/rustok-search/Cargo.toml",
+  inbox: "crates/modules/rustok-search/src/forum_inbox.rs",
+  reconciler: "crates/modules/rustok-search/src/forum_reconciliation.rs",
   worker: "apps/server/src/services/forum_search_contract_consumer.rs",
   workerOwner: "apps/server/src/services/forum_search_inbox_worker.rs",
   bootstrap: "apps/server/src/services/server_bootstrap.rs",
-  migrations: "crates/rustok-search/src/migrations/mod.rs",
-  forumPlan: "crates/rustok-forum/docs/implementation-plan.md",
-  searchPlan: "crates/rustok-search/docs/implementation-plan.md",
+  migrations: "crates/modules/rustok-search/src/migrations/mod.rs",
+  forumPlan: "crates/modules/rustok-forum/docs/implementation-plan.md",
+  searchPlan: "crates/modules/rustok-search/docs/implementation-plan.md",
 };
 
 function target(relativePath) {

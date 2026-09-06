@@ -27,14 +27,14 @@ const requireRecordedBeforeCommit = (source, expected, label) => {
   }
 };
 
-const port = read("crates/rustok-product/src/catalog_schema_write_port.rs");
-const transaction = read("crates/rustok-product/src/services/write_transaction.rs");
-const attributes = read("crates/rustok-product/src/services/catalog_schema_service/attributes.rs");
-const categories = read("crates/rustok-product/src/services/catalog_schema_service/categories.rs");
-const schemas = read("crates/rustok-product/src/services/catalog_schema_service/schemas.rs");
-const values = read("crates/rustok-product/src/services/catalog_schema_service/values.rs");
-const effectiveForms = read("crates/rustok-product/src/services/catalog_schema_service/effective_forms.rs");
-const recheck = read("crates/rustok-commerce/docs/product-schema-write-recheck-2026-08-08.md");
+const port = read("crates/modules/rustok-product/src/catalog_schema_write_port.rs");
+const transaction = read("crates/modules/rustok-product/src/services/write_transaction.rs");
+const attributes = read("crates/modules/rustok-product/src/services/catalog_schema_service/attributes.rs");
+const categories = read("crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs");
+const schemas = read("crates/modules/rustok-product/src/services/catalog_schema_service/schemas.rs");
+const values = read("crates/modules/rustok-product/src/services/catalog_schema_service/values.rs");
+const effectiveForms = read("crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms.rs");
+const recheck = read("crates/modules/rustok-commerce/docs/product-schema-write-recheck-2026-08-08.md");
 const implStart = port.indexOf("impl ProductCatalogSchemaWritePort for ProductCatalogSchemaService");
 if (implStart < 0) failures.push("missing ProductCatalogSchemaWritePort implementation");
 const portImpl = implStart < 0 ? "" : port.slice(implStart);

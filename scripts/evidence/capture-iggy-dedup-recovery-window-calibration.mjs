@@ -16,9 +16,9 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-iggy/contracts/evidence/dedup-recovery-window-calibration-execution-contract.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dedup-recovery-window-calibration-execution-contract.json";
 const expectedSourceContract =
-  "crates/rustok-iggy/contracts/evidence/dedup-recovery-window-policy-source.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dedup-recovery-window-policy-source.json";
 const expectedRunner =
   "scripts/evidence/capture-iggy-dedup-recovery-window-calibration.mjs";
 const expectedVerifier =
@@ -26,7 +26,7 @@ const expectedVerifier =
 const expectedSourceVerifier =
   "scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs";
 const expectedEvidence =
-  "crates/rustok-iggy/contracts/evidence/dedup-recovery-window-calibration-execution.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dedup-recovery-window-calibration-execution.json";
 const expectedCase = "reviewed_configuration_covers_recovery_window";
 const expectedStatus = "iggy.dedup_recovery.sufficient";
 const testEnvironment = {

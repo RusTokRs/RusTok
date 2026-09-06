@@ -12,13 +12,13 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  ports: 'crates/rustok-inventory/src/ports.rs',
-  error: 'crates/rustok-commerce-foundation/src/error.rs',
+  ports: 'crates/modules/rustok-inventory/src/ports.rs',
+  error: 'crates/modules/rustok-commerce-foundation/src/error.rs',
   evidence:
-    'crates/rustok-inventory/contracts/evidence/inventory-port-diagnostic-safety-source.json',
+    'crates/modules/rustok-inventory/contracts/evidence/inventory-port-diagnostic-safety-source.json',
   review:
-    'crates/rustok-inventory/contracts/evidence/inventory-port-diagnostic-safety-source-review.json',
-  document: 'crates/rustok-inventory/docs/inventory-port-diagnostic-safety.md',
+    'crates/modules/rustok-inventory/contracts/evidence/inventory-port-diagnostic-safety-source-review.json',
+  document: 'crates/modules/rustok-inventory/docs/inventory-port-diagnostic-safety.md',
   broad: 'scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs',
   broadTest: 'scripts/verify/verify-ecommerce-public-port-error-safety-v2.test.mjs',
 };
@@ -425,7 +425,7 @@ for (const marker of [
   '`inventory_error_to_port_error`',
   'All fifteen current `CommerceError` variants',
   'The database payload is treated as opaque and is not logged.',
-  '`crates/rustok-inventory/src/reservation_owner_context.rs`',
+  '`crates/modules/rustok-inventory/src/reservation_owner_context.rs`',
   'The broader ecommerce mapper cleanup also remains open.',
 ]) requireText(document, marker, `${paths.document}: truthful source scope`);
 

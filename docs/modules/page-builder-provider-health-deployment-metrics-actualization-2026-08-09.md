@@ -106,18 +106,18 @@ The next source cursor is exact source/deployment observation identity plus expe
 
 Production source:
 
-- `crates/rustok-telemetry/src/page_builder_provider_metrics.rs`;
-- `crates/rustok-telemetry/src/lib.rs`;
-- `crates/rustok-page-builder/src/runtime_telemetry.rs`;
-- `crates/rustok-page-builder/Cargo.toml`.
+- `crates/libs/rustok-telemetry/src/page_builder_provider_metrics.rs`;
+- `crates/libs/rustok-telemetry/src/lib.rs`;
+- `crates/modules/rustok-page-builder/src/runtime_telemetry.rs`;
+- `crates/modules/rustok-page-builder/Cargo.toml`.
 
 Machine evidence:
 
-- `crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-metrics-source.json`.
+- `crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-metrics-source.json`.
 
 Fail-closed source guard:
 
-- `crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs`.
+- `crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs`.
 
 The guard also retains the anti-promotion boundary: Pages GraphQL/admin must still be unobserved until exact deployment observation authority exists.
 
@@ -141,6 +141,6 @@ Suggested maintainer commands, intentionally not run:
 ```bash
 cargo test -p rustok-telemetry page_builder_provider
 cargo test -p rustok-page-builder runtime_telemetry
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
 cargo check -p rustok-page-builder --all-targets
 ```

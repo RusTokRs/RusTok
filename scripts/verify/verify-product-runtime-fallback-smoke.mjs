@@ -47,18 +47,18 @@ function assertOrdered(body, markers, operation) {
   }
 }
 
-const registryPath = 'crates/rustok-product/contracts/product-fba-registry.json';
-const smokePath = 'crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json';
+const registryPath = 'crates/modules/rustok-product/contracts/product-fba-registry.json';
+const smokePath = 'crates/modules/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json';
 const registry = json(registryPath);
 const smoke = json(smokePath);
-const contractSmoke = json('crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json');
+const contractSmoke = json('crates/modules/rustok-product/contracts/evidence/product-runtime-contract-smoke.json');
 const packageJson = json('package.json');
 const workspaceModules = read('modules.toml');
-const moduleManifest = read('crates/rustok-product/rustok-module.toml');
-const ports = read('crates/rustok-product/src/ports.rs');
-const readme = read('crates/rustok-product/README.md');
-const docsReadme = read('crates/rustok-product/docs/README.md');
-const plan = read('crates/rustok-product/docs/implementation-plan.md');
+const moduleManifest = read('crates/modules/rustok-product/rustok-module.toml');
+const ports = read('crates/modules/rustok-product/src/ports.rs');
+const readme = read('crates/modules/rustok-product/README.md');
+const docsReadme = read('crates/modules/rustok-product/docs/README.md');
+const plan = read('crates/modules/rustok-product/docs/implementation-plan.md');
 const central = read('docs/modules/registry.md');
 
 if (registry.status !== 'boundary_ready') fail('product registry must be boundary_ready for fallback smoke evidence');
@@ -90,7 +90,7 @@ for (const staleMode of [
 }
 if (
   !workspaceModules.includes(
-    'product = { crate = "rustok-product", source = "path", path = "crates/rustok-product", depends_on = ["taxonomy"] }',
+    'product = { crate = "rustok-product", source = "path", path = "crates/modules/rustok-product", depends_on = ["taxonomy"] }',
   )
 ) {
   fail('modules.toml product module metadata drift');

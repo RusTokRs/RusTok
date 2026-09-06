@@ -10,28 +10,28 @@ const rootPath = configuredRoot
   : fileURLToPath(new URL('../../', import.meta.url));
 const read = (relativePath) => readFileSync(path.join(rootPath, relativePath), 'utf8');
 
-const cargo = read('crates/rustok-fulfillment/storefront/Cargo.toml');
-const transport = read('crates/rustok-fulfillment/storefront/src/transport.rs');
+const cargo = read('crates/modules/rustok-fulfillment/storefront/Cargo.toml');
+const transport = read('crates/modules/rustok-fulfillment/storefront/src/transport.rs');
 const safety = read(
-  'crates/rustok-fulfillment/storefront/src/transport/graphql_error_safety.rs',
+  'crates/modules/rustok-fulfillment/storefront/src/transport/graphql_error_safety.rs',
 );
 const adapter = read(
-  'crates/rustok-fulfillment/storefront/src/transport/graphql_adapter.rs',
+  'crates/modules/rustok-fulfillment/storefront/src/transport/graphql_adapter.rs',
 );
 const native = read(
-  'crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs',
+  'crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs',
 );
 const evidence = JSON.parse(
   read(
-    'crates/rustok-fulfillment/contracts/evidence/storefront-graphql-error-safety-source.json',
+    'crates/modules/rustok-fulfillment/contracts/evidence/storefront-graphql-error-safety-source.json',
   ),
 );
 const review = JSON.parse(
   read(
-    'crates/rustok-fulfillment/contracts/evidence/storefront-graphql-error-safety-source-review.json',
+    'crates/modules/rustok-fulfillment/contracts/evidence/storefront-graphql-error-safety-source-review.json',
   ),
 );
-const document = read('crates/rustok-fulfillment/docs/storefront-graphql-error-safety.md');
+const document = read('crates/modules/rustok-fulfillment/docs/storefront-graphql-error-safety.md');
 
 const failures = [];
 const requireText = (content, value, label) => {

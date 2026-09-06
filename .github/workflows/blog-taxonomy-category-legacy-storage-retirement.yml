@@ -3,30 +3,30 @@ name: Blog Taxonomy Category Legacy Storage Retirement
 on:
   pull_request:
     paths:
-      - "crates/rustok-blog/src/entities/blog_category.rs"
-      - "crates/rustok-blog/src/entities/mod.rs"
-      - "crates/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs"
-      - "crates/rustok-blog/src/migrations/mod.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_legacy_storage_retirement.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_dual_write.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_read_cutover.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
-      - "crates/rustok-blog/tests/post_category_name_projection.rs"
+      - "crates/modules/rustok-blog/src/entities/blog_category.rs"
+      - "crates/modules/rustok-blog/src/entities/mod.rs"
+      - "crates/modules/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs"
+      - "crates/modules/rustok-blog/src/migrations/mod.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_legacy_storage_retirement.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_dual_write.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_read_cutover.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
+      - "crates/modules/rustok-blog/tests/post_category_name_projection.rs"
       - "scripts/verify/verify-blog-taxonomy-category-dual-write.mjs"
       - ".github/workflows/blog-taxonomy-category-legacy-storage-retirement.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-blog/src/entities/blog_category.rs"
-      - "crates/rustok-blog/src/entities/mod.rs"
-      - "crates/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs"
-      - "crates/rustok-blog/src/migrations/mod.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_legacy_storage_retirement.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_dual_write.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_read_cutover.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
-      - "crates/rustok-blog/tests/post_category_name_projection.rs"
+      - "crates/modules/rustok-blog/src/entities/blog_category.rs"
+      - "crates/modules/rustok-blog/src/entities/mod.rs"
+      - "crates/modules/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs"
+      - "crates/modules/rustok-blog/src/migrations/mod.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_legacy_storage_retirement.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_dual_write.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_read_cutover.rs"
+      - "crates/modules/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
+      - "crates/modules/rustok-blog/tests/post_category_name_projection.rs"
       - "scripts/verify/verify-blog-taxonomy-category-dual-write.mjs"
       - ".github/workflows/blog-taxonomy-category-legacy-storage-retirement.yml"
   workflow_dispatch:
@@ -66,16 +66,16 @@ jobs:
       - name: Check touched Rust formatting
         run: |
           rustfmt +1.96.0 --edition 2024 --check --config skip_children=true \
-            crates/rustok-blog/src/entities/mod.rs \
-            crates/rustok-blog/src/migrations/mod.rs
+            crates/modules/rustok-blog/src/entities/mod.rs \
+            crates/modules/rustok-blog/src/migrations/mod.rs
           rustfmt +1.96.0 --edition 2024 --check \
-            crates/rustok-blog/src/entities/blog_category.rs \
-            crates/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs \
-            crates/rustok-blog/tests/category_taxonomy_legacy_storage_retirement.rs \
-            crates/rustok-blog/tests/category_taxonomy_dual_write.rs \
-            crates/rustok-blog/tests/category_taxonomy_read_cutover.rs \
-            crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs \
-            crates/rustok-blog/tests/post_category_name_projection.rs
+            crates/modules/rustok-blog/src/entities/blog_category.rs \
+            crates/modules/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs \
+            crates/modules/rustok-blog/tests/category_taxonomy_legacy_storage_retirement.rs \
+            crates/modules/rustok-blog/tests/category_taxonomy_dual_write.rs \
+            crates/modules/rustok-blog/tests/category_taxonomy_read_cutover.rs \
+            crates/modules/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs \
+            crates/modules/rustok-blog/tests/post_category_name_projection.rs
       - name: Verify canonical Category command boundary
         run: node scripts/verify/verify-blog-taxonomy-category-dual-write.mjs
       - name: Verify Category legacy storage retirement source contract

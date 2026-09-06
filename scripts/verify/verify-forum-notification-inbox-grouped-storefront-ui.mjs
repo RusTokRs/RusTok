@@ -28,11 +28,11 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-notification-inbox-grouped-storefront-ui.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-inbox-grouped-storefront-ui.json";
 const navigationPath =
-  "crates/rustok-forum/contracts/forum-notification-navigation-badge.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-navigation-badge.json";
 const groupedGraphqlPath =
-  "crates/rustok-forum/contracts/forum-notification-inbox-grouped-graphql.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-inbox-grouped-graphql.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const navigationAbsolute = path.join(repoRoot, navigationPath);
 const navigation = existsSync(navigationAbsolute)

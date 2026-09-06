@@ -72,7 +72,7 @@ jobs:
           cache-dependency-path: apps/next-admin/package-lock.json
 
       - name: Verify retained browser harness source
-        run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs
 
       - name: Install exact browser dependencies
         run: |

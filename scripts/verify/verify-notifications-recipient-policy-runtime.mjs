@@ -40,7 +40,7 @@ function reject(source, pattern, message) {
 }
 
 const contractPath =
-  "crates/rustok-notifications/contracts/notifications-recipient-policy-runtime.json";
+  "crates/modules/rustok-notifications/contracts/notifications-recipient-policy-runtime.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const profilePort = read(contract.profile_owner_port?.contract ?? "");
 const relationPorts = read(contract.relation_owner_ports?.contract ?? "");

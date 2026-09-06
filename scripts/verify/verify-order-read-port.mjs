@@ -10,28 +10,28 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const owner = read('crates/rustok-order/src/order_read.rs');
-const exports = read('crates/rustok-order/src/lib.rs');
-const graphqlRuntime = read('crates/rustok-commerce/src/graphql_runtime.rs');
+const owner = read('crates/modules/rustok-order/src/order_read.rs');
+const exports = read('crates/modules/rustok-order/src/lib.rs');
+const graphqlRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.rs');
 const graphqlOrderShim = read(
-  'crates/rustok-commerce/src/graphql/safe_query/source/rustok_order_shim.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_order_shim.rs',
 );
-const httpRuntime = read('crates/rustok-commerce/src/controllers/mod.rs');
-const adminRouter = read('crates/rustok-commerce/src/controllers/admin/mod.rs');
-const adminOrders = read('crates/rustok-commerce/src/controllers/admin/orders.rs');
+const httpRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
+const adminRouter = read('crates/modules/rustok-commerce/src/controllers/admin/mod.rs');
+const adminOrders = read('crates/modules/rustok-commerce/src/controllers/admin/orders.rs');
 const adminPostOrderReads = read(
-  'crates/rustok-commerce/src/controllers/admin/post_order_reads.rs',
+  'crates/modules/rustok-commerce/src/controllers/admin/post_order_reads.rs',
 );
-const adminReturns = read('crates/rustok-commerce/src/controllers/admin/returns.rs');
-const adminChanges = read('crates/rustok-commerce/src/controllers/admin/changes.rs');
-const storefrontOrders = read('crates/rustok-commerce/src/controllers/store/orders.rs');
+const adminReturns = read('crates/modules/rustok-commerce/src/controllers/admin/returns.rs');
+const adminChanges = read('crates/modules/rustok-commerce/src/controllers/admin/changes.rs');
+const storefrontOrders = read('crates/modules/rustok-commerce/src/controllers/store/orders.rs');
 const serverRuntime = read('apps/server/src/services/commerce_provider_runtime.rs');
 const evidence = JSON.parse(
-  read('crates/rustok-order/contracts/evidence/order-read-port-source.json'),
+  read('crates/modules/rustok-order/contracts/evidence/order-read-port-source.json'),
 );
-const note = read('crates/rustok-order/docs/order-read-port.md');
-const orderPlan = read('crates/rustok-order/docs/implementation-plan.md');
-const commercePlan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const note = read('crates/modules/rustok-order/docs/order-read-port.md');
+const orderPlan = read('crates/modules/rustok-order/docs/implementation-plan.md');
+const commercePlan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 const failures = [];
 
 const requireText = (source, value, label) => {

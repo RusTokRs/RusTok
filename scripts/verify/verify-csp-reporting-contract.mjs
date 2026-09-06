@@ -108,7 +108,7 @@ function verifyConnectionProfiles(source, secureName, developmentName, file) {
 const headersFile = "apps/server/src/middleware/security_headers.rs";
 const reportsFile = "apps/server/src/middleware/csp_reports.rs";
 const middlewareFile = "apps/server/src/middleware/mod.rs";
-const webFile = "crates/rustok-web/src/lib.rs";
+const webFile = "crates/libs/rustok-web/src/lib.rs";
 const storefrontFile = "apps/storefront/src/lib.rs";
 const appRouterFile = "apps/server/src/services/app_router.rs";
 const standaloneAdminSecurityFile = "apps/admin/src/app/security.rs";

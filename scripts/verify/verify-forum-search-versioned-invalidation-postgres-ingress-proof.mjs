@@ -18,13 +18,13 @@ const forbidAll = (text, markers, label) => {
 };
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-postgres-ingress-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-postgres-ingress-proof.json";
 const parentContractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
 const docPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d2-postgres-ingress-proof.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d2-postgres-ingress-proof.md";
 const testPath =
-  "crates/rustok-search/tests/forum_versioned_invalidation_postgres.rs";
+  "crates/modules/rustok-search/tests/forum_versioned_invalidation_postgres.rs";
 const evidencePath =
   "target/forum-search-versioned-invalidation-postgres-ingress-evidence.json";
 

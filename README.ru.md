@@ -13,8 +13,8 @@
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![Architecture: FBA/FFA](https://img.shields.io/badge/architecture-FBA%20%7C%20FFA-purple.svg)](docs/architecture/overview.md)
 [![Database: PostgreSQL / Turso](https://img.shields.io/badge/database-PostgreSQL%20%7C%20Turso-4169E1.svg)](docs/index.md)
-[![AI-Native: MCP](https://img.shields.io/badge/AI--Native-MCP%20Server-00A86B.svg)](crates/rustok-mcp/README.md)
-[![Scripting: Alloy](https://img.shields.io/badge/scripting-Alloy%20Sandbox-E02424.svg)](crates/alloy/README.md)
+[![AI-Native: MCP](https://img.shields.io/badge/AI--Native-MCP%20Server-00A86B.svg)](crates/modules/rustok-mcp/README.md)
+[![Scripting: Alloy](https://img.shields.io/badge/scripting-Alloy%20Sandbox-E02424.svg)](crates/modules/alloy/README.md)
 
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/RustokCMS/RusToK)](https://github.com/RustokCMS/RusToK/commits/main)
 [![Last Commit](https://img.shields.io/github/last-commit/RustokCMS/RusToK)](https://github.com/RustokCMS/RusToK/commits/main)
@@ -66,7 +66,7 @@
 В RusTok контекст тенанта (`tenant_id`), политики RBAC (`rustok-rbac`) и разрешение локалей (`ICU4X`) защищены на уровне **типов Rust и составных первичных ключей БД**. Каждый межмодульный вызов передаёт сквозной `PortContext` с тайм-аутами `deadline_ms`, идентификаторами трассировки OpenTelemetry (`correlation_id`, `causation_id`) и ключами идемпотентности. Заголовки идентификации от клиентов (`X-User-ID`) отбрасываются на транспортной границе и формируются строго внутри авторизационного middleware.
 
 ### 3. Alloy — Самоэволюционирующий рантайм и мгновенная интеграция
-В компилируемых приложениях любые изменения бизнес-правил требуют изменения кода, Pull Request, CI/CD деплоя и перезапуска сервера. **Alloy** ([crates/alloy](crates/alloy/README.md)) стирает грань между компилируемым и динамическим кодом:
+В компилируемых приложениях любые изменения бизнес-правил требуют изменения кода, Pull Request, CI/CD деплоя и перезапуска сервера. **Alloy** ([crates/modules/alloy](crates/modules/alloy/README.md)) стирает грань между компилируемым и динамическим кодом:
 
 - ⚡ **Новый функционал на лету**: Создание доменных фич, бизнес-правил и триггеров без пересборки бинарника и без перезапуска сервера.
 - 🧹 **Очистка «грязных» данных и бесшовная миграция**: Встроенный санитарный ETL-движок. Alloy-скрипты на лету обрабатывают битые таблицы, невалидные кодировки, даты и мусор из легаси-систем без падения основного сервера.
@@ -150,7 +150,7 @@ FFA предоставляет независимую от UI-фреймворк
 - **Headless & Companion путь**: Предоставляет те же возможности через параллельные **GraphQL**, **REST** и **gRPC** интерфейсы для Next.js, Flutter Mobile или внешних клиентов.
 
 ### 3. Реляционный индексный движок (`rustok-index`)
-RusTok решает это с помощью **`rustok-index`** ([crates/rustok-index](crates/rustok-index/README.md)) — полностью устраняя необходимость в тяжёлых JVM-кластерах (Elasticsearch/Algolia) или «хрупких» EAV-таблицах (Magento):
+RusTok решает это с помощью **`rustok-index`** ([crates/modules/rustok-index](crates/modules/rustok-index/README.md)) — полностью устраняя необходимость в тяжёлых JVM-кластерах (Elasticsearch/Algolia) или «хрупких» EAV-таблицах (Magento):
 - **Универсальное хранилище PostgreSQL (Schema-Agnostic JSONB)**: Упаковывает данные сущностей в протестированные `JSONB`-конверты (`index_entities`) с независимым графом связей (`index_links`).
 - **Динамические индексы по выражениям**: Автоматически строит частичные B-Tree индексы по скалярным выражениям и GIN-индексы по массивам.
 - **Нуль N+1 запросов**: Выполняет межмодульную фильтрацию, сортировки и курсорную пагинацию с контрольными суммами (`CursorCodec`) в едином SQL-запросе в транзакции `REPEATABLE READ`.
@@ -361,8 +361,8 @@ cargo machete
 | **Обзор архитектуры** | [docs/architecture/overview.md](docs/architecture/overview.md) |
 | **Реестр модулей** | [docs/modules/registry.md](docs/modules/registry.md) |
 | **Руководство по FBA** | [docs/backend/module-backend-architecture.md](docs/backend/module-backend-architecture.md) |
-| **Руководство по FFA** | [docs/UI/module-package-architecture.md](docs/UI/module-package-architecture.md) |
-| **Архитектура Index Engine** | [crates/rustok-index/docs/README.md](crates/rustok-index/docs/README.md) |
+| **Fluid Frontend Architecture** | [docs/UI/module-package-architecture.md](docs/UI/module-package-architecture.md) |
+| **Архитектура Index Engine** | [crates/modules/rustok-index/docs/README.md](crates/modules/rustok-index/docs/README.md) |
 | **План верификации** | [docs/verification/PLATFORM_VERIFICATION_PLAN.md](docs/verification/PLATFORM_VERIFICATION_PLAN.md) |
 | **Быстрый старт** | [docs/guides/quickstart.md](docs/guides/quickstart.md) |
 | **Руководство контрибьютора** | [CONTRIBUTING.md](CONTRIBUTING.md) |

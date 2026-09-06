@@ -4,59 +4,63 @@ members = [
     "apps/server",
     "apps/admin",
     "apps/storefront",
-    "crates/rustok-seo/admin",
-    "crates/rustok-seo/render",
-    "crates/rustok-blog/admin",
-    "crates/rustok-ai/admin",
-    "crates/rustok-mcp/admin",
-    "crates/rustok-comments/admin",
-    "crates/rustok-blog/storefront",
-    "crates/rustok-commerce/admin",
-    "crates/rustok-commerce/storefront",
-    "crates/rustok-cart/storefront",
-    "crates/rustok-payment/storefront",
-    "crates/rustok-fulfillment/admin",
-    "crates/rustok-fulfillment/storefront",
-    "crates/rustok-inventory/admin",
-    "crates/rustok-product/admin",
-    "crates/rustok-product/storefront",
-    "crates/rustok-customer/admin",
-    "crates/rustok-region/admin",
-    "crates/rustok-region/storefront",
-    "crates/rustok-order/admin",
-    "crates/rustok-order/storefront",
-    "crates/rustok-pricing/admin",
-    "crates/rustok-pricing/storefront",
-    "crates/rustok-channel/admin",
-    "crates/rustok-index/admin",
-    "crates/rustok-media/admin",
-    "crates/rustok-media/cli",
-    "crates/rustok-modules/cli",
-    "crates/rustok-profiles/cli",
-    "crates/rustok-auth/cli",
-    "crates/rustok-rbac/cli",
-    "crates/rustok-outbox/admin",
-    "crates/rustok-events-module",
-    "crates/rustok-events-module/admin",
-    "crates/rustok-iggy-connector/admin",
-    "crates/rustok-notifications/admin",
-    "crates/rustok-notifications/storefront",
-    "crates/rustok-forum/admin",
-    "crates/rustok-forum/storefront",
-    "crates/rustok-pages/admin",
-    "crates/rustok-pages/storefront",
-    "crates/rustok-navigation/storefront",
-    "crates/rustok-page-builder/admin",
-    "crates/rustok-search/admin",
-    "crates/rustok-search/storefront",
-    "crates/rustok-tenant/admin",
-  "crates/rustok-translation/admin",
-    "crates/rustok-auth/admin",
-    "crates/rustok-rbac/admin",
-    "crates/rustok-workflow/admin",
-    "crates/rustok-marketplace-seller/admin",
-    "crates/rustok-marketplace-listing/admin",
-    "crates/*",
+    "crates/libs/*",
+    "crates/ui/*",
+    "crates/utils/*",
+    "crates/workers/*",
+    "crates/modules/*",
+    "crates/modules/rustok-seo/admin",
+    "crates/modules/rustok-seo/render",
+    "crates/modules/rustok-blog/admin",
+    "crates/modules/rustok-ai/admin",
+    "crates/modules/rustok-mcp/admin",
+    "crates/modules/rustok-comments/admin",
+    "crates/modules/rustok-blog/storefront",
+    "crates/modules/rustok-commerce/admin",
+    "crates/modules/rustok-commerce/storefront",
+    "crates/modules/rustok-cart/storefront",
+    "crates/modules/rustok-payment/storefront",
+    "crates/modules/rustok-fulfillment/admin",
+    "crates/modules/rustok-fulfillment/storefront",
+    "crates/modules/rustok-inventory/admin",
+    "crates/modules/rustok-product/admin",
+    "crates/modules/rustok-product/storefront",
+    "crates/modules/rustok-customer/admin",
+    "crates/modules/rustok-region/admin",
+    "crates/modules/rustok-region/storefront",
+    "crates/modules/rustok-order/admin",
+    "crates/modules/rustok-order/storefront",
+    "crates/modules/rustok-pricing/admin",
+    "crates/modules/rustok-pricing/storefront",
+    "crates/modules/rustok-channel/admin",
+    "crates/modules/rustok-index/admin",
+    "crates/modules/rustok-media/admin",
+    "crates/modules/rustok-media/cli",
+    "crates/modules/rustok-modules/cli",
+    "crates/modules/rustok-profiles/cli",
+    "crates/modules/rustok-auth/cli",
+    "crates/modules/rustok-rbac/cli",
+    "crates/modules/rustok-outbox/admin",
+    "crates/modules/rustok-events-module",
+    "crates/modules/rustok-events-module/admin",
+    "crates/modules/rustok-iggy-connector/admin",
+    "crates/modules/rustok-notifications/admin",
+    "crates/modules/rustok-notifications/storefront",
+    "crates/modules/rustok-forum/admin",
+    "crates/modules/rustok-forum/storefront",
+    "crates/modules/rustok-pages/admin",
+    "crates/modules/rustok-pages/storefront",
+    "crates/modules/rustok-navigation/storefront",
+    "crates/modules/rustok-page-builder/admin",
+    "crates/modules/rustok-search/admin",
+    "crates/modules/rustok-search/storefront",
+    "crates/modules/rustok-tenant/admin",
+    "crates/modules/rustok-translation/admin",
+    "crates/modules/rustok-auth/admin",
+    "crates/modules/rustok-rbac/admin",
+    "crates/modules/rustok-workflow/admin",
+    "crates/modules/rustok-marketplace-seller/admin",
+    "crates/modules/rustok-marketplace-listing/admin",
     "tests/e2e-rust",
     "UI/leptos",
     "ops/benches",
@@ -64,8 +68,8 @@ members = [
 ]
 
 [patch.crates-io]
-utoipa-swagger-ui-vendored = { path = "crates/utoipa-swagger-ui-vendored" }
-leptos-shadcn-pagination = { path = "crates/leptos-shadcn-pagination" }
+utoipa-swagger-ui-vendored = { path = "crates/utils/utoipa-swagger-ui-vendored" }
+leptos-shadcn-pagination = { path = "crates/ui/leptos-shadcn-pagination" }
 
 [workspace.package]
 version = "0.1.0"
@@ -149,16 +153,16 @@ unicode-normalization = "0.1"
 leptos = "0.8.19"
 leptos_axum = "0.8.9"
 leptos_router = "0.8.13"
-leptos-auth = { path = "crates/leptos-auth", default-features = false }
+leptos-auth = { path = "crates/ui/leptos-auth", default-features = false }
 iu-leptos = { path = "UI/leptos" }
-leptos-ui = { path = "crates/leptos-ui" }
-leptos-forms = { path = "crates/leptos-forms" }
-leptos-hook-form = { path = "crates/leptos-hook-form" }
-leptos-table = { path = "crates/leptos-table" }
-leptos-zod = { path = "crates/leptos-zod" }
+leptos-ui = { path = "crates/ui/leptos-ui" }
+leptos-forms = { path = "crates/ui/leptos-forms" }
+leptos-hook-form = { path = "crates/ui/leptos-hook-form" }
+leptos-table = { path = "crates/ui/leptos-table" }
+leptos-zod = { path = "crates/ui/leptos-zod" }
 leptos-struct-table = "0.19.0"
-leptos-zustand = { path = "crates/leptos-zustand" }
-leptos-shadcn-pagination = { path = "crates/leptos-shadcn-pagination" }
+leptos-zustand = { path = "crates/ui/leptos-zustand" }
+leptos-shadcn-pagination = { path = "crates/ui/leptos-shadcn-pagination" }
 leptos-use = "0.19.0"
 leptos_i18n = { version = "0.6.1" }
 leptos_i18n_build = { version = "0.6.1", features = ["pretty_print"] }
@@ -225,127 +229,127 @@ rig-gemini-grpc = "=0.42.0"
 rig-vertexai = "=0.42.0"
 
 # Internal crates
-rustok-core = { path = "crates/rustok-core" }
-rustok-modules = { path = "crates/rustok-modules", default-features = false }
-rustok-events = { path = "crates/rustok-events" }
-rustok-events-module = { path = "crates/rustok-events-module" }
-rustok-commerce-foundation = { path = "crates/rustok-commerce-foundation" }
-rustok-commerce = { path = "crates/rustok-commerce", default-features = false }
-rustok-marketplace = { path = "crates/rustok-marketplace" }
-rustok-marketplace-seller = { path = "crates/rustok-marketplace-seller" }
-rustok-marketplace-seller-admin = { path = "crates/rustok-marketplace-seller/admin" }
-rustok-marketplace-listing = { path = "crates/rustok-marketplace-listing" }
-rustok-marketplace-listing-admin = { path = "crates/rustok-marketplace-listing/admin" }
-rustok-marketplace-allocation = { path = "crates/rustok-marketplace-allocation" }
-rustok-marketplace-commission = { path = "crates/rustok-marketplace-commission" }
-rustok-marketplace-ledger = { path = "crates/rustok-marketplace-ledger" }
-rustok-marketplace-payout = { path = "crates/rustok-marketplace-payout" }
-rustok-moderation = { path = "crates/rustok-moderation" }
-rustok-cart = { path = "crates/rustok-cart" }
-rustok-cart-storefront = { path = "crates/rustok-cart/storefront" }
-rustok-customer = { path = "crates/rustok-customer" }
-rustok-product = { path = "crates/rustok-product" }
-rustok-profiles = { path = "crates/rustok-profiles" }
-rustok-social-graph = { path = "crates/rustok-social-graph" }
-rustok-comments = { path = "crates/rustok-comments", default-features = false }
-rustok-region = { path = "crates/rustok-region" }
-rustok-pricing = { path = "crates/rustok-pricing" }
-rustok-pricing-persistence = { path = "crates/rustok-pricing-persistence" }
-rustok-tax = { path = "crates/rustok-tax" }
-rustok-inventory = { path = "crates/rustok-inventory" }
-rustok-order = { path = "crates/rustok-order" }
-rustok-order-storefront = { path = "crates/rustok-order/storefront" }
-rustok-payment = { path = "crates/rustok-payment" }
-rustok-payment-storefront = { path = "crates/rustok-payment/storefront" }
-rustok-fulfillment = { path = "crates/rustok-fulfillment" }
-rustok-fulfillment-storefront = { path = "crates/rustok-fulfillment/storefront" }
-rustok-blog = { path = "crates/rustok-blog" }
-rustok-content = { path = "crates/rustok-content" }
-rustok-content-orchestration = { path = "crates/rustok-content-orchestration" }
-rustok-pages = { path = "crates/rustok-pages" }
-rustok-navigation = { path = "crates/rustok-navigation" }
-rustok-page-builder = { path = "crates/rustok-page-builder" }
-rustok-taxonomy = { path = "crates/rustok-taxonomy" }
-rustok-index = { path = "crates/rustok-index" }
-rustok-search = { path = "crates/rustok-search" }
-rustok-seo = { path = "crates/rustok-seo" }
-rustok-seo-targets = { path = "crates/rustok-seo-targets" }
-rustok-translation-targets = { path = "crates/rustok-translation-targets" }
-rustok-translation = { path = "crates/rustok-translation" }
-rustok-seo-render = { path = "crates/rustok-seo/render" }
-rustok-seo-admin-support = { path = "crates/rustok-seo-admin-support" }
-rustok-auth = { path = "crates/rustok-auth" }
-rustok-api = { path = "crates/rustok-api", default-features = false }
-rustok-runtime = { path = "crates/rustok-runtime" }
-rustok-sandbox = { path = "crates/rustok-sandbox" }
-rustok-sandbox-transport = { path = "crates/rustok-sandbox-transport" }
-rustok-sandbox-worker = { path = "crates/rustok-sandbox-worker" }
-rustok-web = { path = "crates/rustok-web" }
-rustok-fba = { path = "crates/rustok-fba" }
-rustok-cli-core = { path = "crates/rustok-cli-core" }
-rustok-cli-registry = { path = "crates/rustok-cli-registry" }
-rustok-cli-platform = { path = "crates/rustok-cli-platform" }
-rustok-distribution = { path = "crates/rustok-distribution", default-features = false }
-rustok-migrations = { path = "crates/rustok-migrations" }
-rustok-installer = { path = "crates/rustok-installer" }
-rustok-installer-persistence = { path = "crates/rustok-installer-persistence" }
-rustok-installer-cli = { path = "crates/rustok-installer-cli" }
-rustok-build = { path = "crates/rustok-build" }
-rustok-build-publication = { path = "crates/rustok-build-publication" }
-rustok-build-source = { path = "crates/rustok-build-source" }
-rustok-artifact-node-transport = { path = "crates/rustok-artifact-node-transport" }
-rustok-artifact-node-agent = { path = "crates/rustok-artifact-node-agent" }
-rustok-module-build-transport = { path = "crates/rustok-module-build-transport" }
-rustok-module-build-worker = { path = "crates/rustok-module-build-worker" }
-rustok-module-sdk = { path = "crates/rustok-module-sdk" }
-rustok-module-template = { path = "crates/rustok-module-template" }
-rustok-modules-cli = { path = "crates/rustok-modules/cli" }
-rustok-static-distribution-worker = { path = "crates/rustok-static-distribution-worker" }
-rustok-worker-transport = { path = "crates/rustok-worker-transport" }
-rustok-graphql = { path = "crates/rustok-graphql" }
-rustok-graphql-leptos = { path = "crates/rustok-graphql-leptos" }
-rustok-ui-core = { path = "crates/rustok-ui-core" }
-rustok-ui-i18n = { path = "crates/rustok-ui-i18n" }
-rustok-ui-i18n-leptos = { path = "crates/rustok-ui-i18n-leptos" }
-rustok-ui-transport = { path = "crates/rustok-ui-transport" }
-leptos-ui-routing = { path = "crates/leptos-ui-routing" }
-rustok-cache = { path = "crates/rustok-cache" }
-rustok-channel = { path = "crates/rustok-channel" }
-rustok-email = { path = "crates/rustok-email" }
-rustok-outbox = { path = "crates/rustok-outbox" }
-rustok-notifications-api = { path = "crates/rustok-notifications-api" }
-rustok-notifications = { path = "crates/rustok-notifications" }
-rustok-iggy = { path = "crates/rustok-iggy" }
-rustok-iggy-connector = { path = "crates/rustok-iggy-connector" }
-rustok-forum = { path = "crates/rustok-forum" }
-rustok-tenant = { path = "crates/rustok-tenant" }
-rustok-rbac = { path = "crates/rustok-rbac" }
-rustok-mcp = { path = "crates/rustok-mcp" }
-rustok-ai = { path = "crates/rustok-ai" }
-rustok-ai-translation = { path = "crates/rustok-ai-translation" }
-rustok-ai-content = { path = "crates/rustok-ai-content" }
-rustok-ai-order = { path = "crates/rustok-ai-order" }
-rustok-ai-product = { path = "crates/rustok-ai-product" }
-rustok-ai-media = { path = "crates/rustok-ai-media" }
-rustok-ai-alloy = { path = "crates/rustok-ai-alloy" }
+rustok-core = { path = "crates/libs/rustok-core" }
+rustok-modules = { path = "crates/modules/rustok-modules", default-features = false }
+rustok-events = { path = "crates/libs/rustok-events" }
+rustok-events-module = { path = "crates/modules/rustok-events-module" }
+rustok-commerce-foundation = { path = "crates/modules/rustok-commerce-foundation" }
+rustok-commerce = { path = "crates/modules/rustok-commerce", default-features = false }
+rustok-marketplace = { path = "crates/modules/rustok-marketplace" }
+rustok-marketplace-seller = { path = "crates/modules/rustok-marketplace-seller" }
+rustok-marketplace-seller-admin = { path = "crates/modules/rustok-marketplace-seller/admin" }
+rustok-marketplace-listing = { path = "crates/modules/rustok-marketplace-listing" }
+rustok-marketplace-listing-admin = { path = "crates/modules/rustok-marketplace-listing/admin" }
+rustok-marketplace-allocation = { path = "crates/modules/rustok-marketplace-allocation" }
+rustok-marketplace-commission = { path = "crates/modules/rustok-marketplace-commission" }
+rustok-marketplace-ledger = { path = "crates/modules/rustok-marketplace-ledger" }
+rustok-marketplace-payout = { path = "crates/modules/rustok-marketplace-payout" }
+rustok-moderation = { path = "crates/modules/rustok-moderation" }
+rustok-cart = { path = "crates/modules/rustok-cart" }
+rustok-cart-storefront = { path = "crates/modules/rustok-cart/storefront" }
+rustok-customer = { path = "crates/modules/rustok-customer" }
+rustok-product = { path = "crates/modules/rustok-product" }
+rustok-profiles = { path = "crates/modules/rustok-profiles" }
+rustok-social-graph = { path = "crates/modules/rustok-social-graph" }
+rustok-comments = { path = "crates/modules/rustok-comments", default-features = false }
+rustok-region = { path = "crates/modules/rustok-region" }
+rustok-pricing = { path = "crates/modules/rustok-pricing" }
+rustok-pricing-persistence = { path = "crates/modules/rustok-pricing-persistence" }
+rustok-tax = { path = "crates/modules/rustok-tax" }
+rustok-inventory = { path = "crates/modules/rustok-inventory" }
+rustok-order = { path = "crates/modules/rustok-order" }
+rustok-order-storefront = { path = "crates/modules/rustok-order/storefront" }
+rustok-payment = { path = "crates/modules/rustok-payment" }
+rustok-payment-storefront = { path = "crates/modules/rustok-payment/storefront" }
+rustok-fulfillment = { path = "crates/modules/rustok-fulfillment" }
+rustok-fulfillment-storefront = { path = "crates/modules/rustok-fulfillment/storefront" }
+rustok-blog = { path = "crates/modules/rustok-blog" }
+rustok-content = { path = "crates/modules/rustok-content" }
+rustok-content-orchestration = { path = "crates/modules/rustok-content-orchestration" }
+rustok-pages = { path = "crates/modules/rustok-pages" }
+rustok-navigation = { path = "crates/modules/rustok-navigation" }
+rustok-page-builder = { path = "crates/modules/rustok-page-builder" }
+rustok-taxonomy = { path = "crates/modules/rustok-taxonomy" }
+rustok-index = { path = "crates/modules/rustok-index" }
+rustok-search = { path = "crates/modules/rustok-search" }
+rustok-seo = { path = "crates/modules/rustok-seo" }
+rustok-seo-targets = { path = "crates/modules/rustok-seo-targets" }
+rustok-translation-targets = { path = "crates/modules/rustok-translation-targets" }
+rustok-translation = { path = "crates/modules/rustok-translation" }
+rustok-seo-render = { path = "crates/modules/rustok-seo/render" }
+rustok-seo-admin-support = { path = "crates/modules/rustok-seo-admin-support" }
+rustok-auth = { path = "crates/modules/rustok-auth" }
+rustok-api = { path = "crates/libs/rustok-api", default-features = false }
+rustok-runtime = { path = "crates/libs/rustok-runtime" }
+rustok-sandbox = { path = "crates/workers/rustok-sandbox" }
+rustok-sandbox-transport = { path = "crates/workers/rustok-sandbox-transport" }
+rustok-sandbox-worker = { path = "crates/workers/rustok-sandbox-worker" }
+rustok-web = { path = "crates/libs/rustok-web" }
+rustok-fba = { path = "crates/libs/rustok-fba" }
+rustok-cli-core = { path = "crates/utils/rustok-cli-core" }
+rustok-cli-registry = { path = "crates/utils/rustok-cli-registry" }
+rustok-cli-platform = { path = "crates/utils/rustok-cli-platform" }
+rustok-distribution = { path = "crates/modules/rustok-distribution", default-features = false }
+rustok-migrations = { path = "crates/utils/rustok-migrations" }
+rustok-installer = { path = "crates/utils/rustok-installer" }
+rustok-installer-persistence = { path = "crates/utils/rustok-installer-persistence" }
+rustok-installer-cli = { path = "crates/utils/rustok-installer-cli" }
+rustok-build = { path = "crates/utils/rustok-build" }
+rustok-build-publication = { path = "crates/utils/rustok-build-publication" }
+rustok-build-source = { path = "crates/utils/rustok-build-source" }
+rustok-artifact-node-transport = { path = "crates/workers/rustok-artifact-node-transport" }
+rustok-artifact-node-agent = { path = "crates/workers/rustok-artifact-node-agent" }
+rustok-module-build-transport = { path = "crates/workers/rustok-module-build-transport" }
+rustok-module-build-worker = { path = "crates/workers/rustok-module-build-worker" }
+rustok-module-sdk = { path = "crates/utils/rustok-module-sdk" }
+rustok-module-template = { path = "crates/utils/rustok-module-template" }
+rustok-modules-cli = { path = "crates/modules/rustok-modules/cli" }
+rustok-static-distribution-worker = { path = "crates/workers/rustok-static-distribution-worker" }
+rustok-worker-transport = { path = "crates/workers/rustok-worker-transport" }
+rustok-graphql = { path = "crates/ui/rustok-graphql" }
+rustok-graphql-leptos = { path = "crates/ui/rustok-graphql-leptos" }
+rustok-ui-core = { path = "crates/ui/rustok-ui-core" }
+rustok-ui-i18n = { path = "crates/ui/rustok-ui-i18n" }
+rustok-ui-i18n-leptos = { path = "crates/ui/rustok-ui-i18n-leptos" }
+rustok-ui-transport = { path = "crates/ui/rustok-ui-transport" }
+leptos-ui-routing = { path = "crates/ui/leptos-ui-routing" }
+rustok-cache = { path = "crates/modules/rustok-cache" }
+rustok-channel = { path = "crates/modules/rustok-channel" }
+rustok-email = { path = "crates/modules/rustok-email" }
+rustok-outbox = { path = "crates/modules/rustok-outbox" }
+rustok-notifications-api = { path = "crates/modules/rustok-notifications-api" }
+rustok-notifications = { path = "crates/modules/rustok-notifications" }
+rustok-iggy = { path = "crates/modules/rustok-iggy" }
+rustok-iggy-connector = { path = "crates/modules/rustok-iggy-connector" }
+rustok-forum = { path = "crates/modules/rustok-forum" }
+rustok-tenant = { path = "crates/modules/rustok-tenant" }
+rustok-rbac = { path = "crates/modules/rustok-rbac" }
+rustok-mcp = { path = "crates/modules/rustok-mcp" }
+rustok-ai = { path = "crates/modules/rustok-ai" }
+rustok-ai-translation = { path = "crates/modules/rustok-ai-translation" }
+rustok-ai-content = { path = "crates/modules/rustok-ai-content" }
+rustok-ai-order = { path = "crates/modules/rustok-ai-order" }
+rustok-ai-product = { path = "crates/modules/rustok-ai-product" }
+rustok-ai-media = { path = "crates/modules/rustok-ai-media" }
+rustok-ai-alloy = { path = "crates/modules/rustok-ai-alloy" }
 athanor-app = { git = "https://github.com/RusTokRs/Athanor.git", rev = "a24d2d017f76c1fe702ebd81771c7e602bfc3099" }
 athanor-core = { git = "https://github.com/RusTokRs/Athanor.git", rev = "a24d2d017f76c1fe702ebd81771c7e602bfc3099" }
 athanor-domain = { git = "https://github.com/RusTokRs/Athanor.git", rev = "a24d2d017f76c1fe702ebd81771c7e602bfc3099" }
 athanor-runtime-defaults = { git = "https://github.com/RusTokRs/Athanor.git", rev = "a24d2d017f76c1fe702ebd81771c7e602bfc3099" }
-rustok-telemetry = { path = "crates/rustok-telemetry" }
-rustok-test-utils = { path = "crates/rustok-test-utils" }
-rustok-storage = { path = "crates/rustok-storage" }
-rustok-secrets = { path = "crates/rustok-secrets" }
-rustok-media = { path = "crates/rustok-media" }
-rustok-media-transport = { path = "crates/rustok-media-transport" }
-rustok-media-cli = { path = "crates/rustok-media/cli" }
-rustok-profiles-cli = { path = "crates/rustok-profiles/cli" }
-rustok-social-graph-cli = { path = "crates/rustok-social-graph-cli" }
-rustok-auth-cli = { path = "crates/rustok-auth/cli" }
-rustok-rbac-cli = { path = "crates/rustok-rbac/cli" }
-flex = { path = "crates/flex" }
-alloy = { path = "crates/alloy" }
-rustok-workflow = { path = "crates/rustok-workflow" }
+rustok-telemetry = { path = "crates/libs/rustok-telemetry" }
+rustok-test-utils = { path = "crates/utils/rustok-test-utils" }
+rustok-storage = { path = "crates/utils/rustok-storage" }
+rustok-secrets = { path = "crates/utils/rustok-secrets" }
+rustok-media = { path = "crates/modules/rustok-media" }
+rustok-media-transport = { path = "crates/modules/rustok-media-transport" }
+rustok-media-cli = { path = "crates/modules/rustok-media/cli" }
+rustok-profiles-cli = { path = "crates/modules/rustok-profiles/cli" }
+rustok-social-graph-cli = { path = "crates/modules/rustok-social-graph-cli" }
+rustok-auth-cli = { path = "crates/modules/rustok-auth/cli" }
+rustok-rbac-cli = { path = "crates/modules/rustok-rbac/cli" }
+flex = { path = "crates/modules/flex" }
+alloy = { path = "crates/modules/alloy" }
+rustok-workflow = { path = "crates/modules/rustok-workflow" }
 schemars = "1.2"
 
 [profile.dev]

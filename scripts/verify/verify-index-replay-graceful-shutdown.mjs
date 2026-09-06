@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const workerPath = 'crates/rustok-index/src/application/source_replay.rs';
+const workerPath = 'crates/modules/rustok-index/src/application/source_replay.rs';
 const worker = requireMarkers(workerPath, [
   'pub async fn run_next_page_interruptible<Check, CheckFuture>(',
   'check_replay_interruption(&mut should_interrupt).await?;',
@@ -29,7 +29,7 @@ if (worker.includes('cancel_requested') || worker.includes('StopHandle')) {
   fail(`${workerPath} generic one-page interruption must remain independent of persisted cancellation/server lifecycle`);
 }
 
-const extensionPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
+const extensionPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
 const extension = requireMarkers(extensionPath, [
   'pub async fn run_interruptible<Check>(',
   'Check: FnMut() -> bool',
@@ -77,7 +77,7 @@ for (const forbidden of [
   }
 }
 
-const ordinaryPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
+const ordinaryPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const ordinary = requireMarkers(ordinaryPath, [
   'pub async fn run(',
   'worker.run_next_page(request.page_request().clone())',
@@ -89,7 +89,7 @@ if (ordinary.includes('run_interruptible<Check>')) {
   fail(`${ordinaryPath} ordinary runner file must remain separate from the host-probe extension`);
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/replay_runtime.rs', [
   'pub async fn run_interruptible<Check>(',
   '.run_interruptible(request, should_interrupt)',
 ]);
@@ -137,14 +137,14 @@ for (const forbidden of ['stop', 'shutdown', 'probe', 'StopHandle']) {
   if (runInput.includes(forbidden)) fail(`GraphQL replay input exposes lifecycle marker ${forbidden}`);
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod source_replay_runner {',
   'include!("source_replay_runner.rs");',
   'mod graceful_shutdown;',
   'mod source_replay_graceful_shutdown_tests;',
 ]);
 
-const packetPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_graceful_shutdown_tests.rs';
+const packetPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_graceful_shutdown_tests.rs';
 const packet = requireMarkers(packetPath, [
   'host_stop_before_scan_yields_pending_and_restart_completes_with_new_attempt',
   'host_stop_after_durable_mutation_before_checkpoint_replays_as_duplicate_on_restart',
@@ -172,7 +172,7 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-index/docs/m6-replay-graceful-shutdown.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-graceful-shutdown.md', [
   'Status: `host_binding_source_complete_execution_pending`.',
   '`PostgresIndexReplayRunner::run_interruptible`',
   '`SharedIndexReplayRuntime::run_interruptible`',

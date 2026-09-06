@@ -21,7 +21,7 @@ function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-product-http-checkout-"));
   write(
     root,
-    "crates/rustok-commerce/src/controllers/mod.rs",
+    "crates/modules/rustok-commerce/src/controllers/mod.rs",
     options.missingRuntime
       ? "struct CommerceHttpRuntime {}"
       : `
@@ -35,12 +35,12 @@ function fixture(options = {}) {
     : "complete_storefront_checkout_input_with_product_port(runtime.product_catalog_read_port(),";
   write(
     root,
-    "crates/rustok-commerce/src/controllers/store/checkout.rs",
+    "crates/modules/rustok-commerce/src/controllers/store/checkout.rs",
     `pub async fn complete_cart_checkout() { ${handlerCall} }`,
   );
   write(
     root,
-    "crates/rustok-commerce/src/storefront_staged_checkout_runtime.rs",
+    "crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs",
     options.composedCatalog
       ? "pub async fn complete_storefront_checkout_input_with_product_port() { CatalogService::new; }"
       : "pub async fn complete_storefront_checkout_input_with_product_port() { product_catalog_read_port; }",
@@ -59,7 +59,7 @@ function fixture(options = {}) {
     : [];
   write(
     root,
-    "crates/rustok-product/contracts/product-fba-registry.json",
+    "crates/modules/rustok-product/contracts/product-fba-registry.json",
     JSON.stringify({
       runtime_composition: {
         source_complete_consumers: complete,
@@ -72,7 +72,7 @@ function fixture(options = {}) {
   );
   write(
     root,
-    "crates/rustok-product/docs/implementation-plan.md",
+    "crates/modules/rustok-product/docs/implementation-plan.md",
     options.omitPlan
       ? "Product plan"
       : "Commerce HTTP checkout mounted Commerce GraphQL checkout checkout consumer source cutover is complete verify-product-http-checkout-catalog-runtime.mjs",

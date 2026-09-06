@@ -8,7 +8,7 @@ status: verified
 ---
 # Rust UI Component Catalog
 
-This document captures the current shared UI surface in RusToK and the division of responsibility between `UI/*`, `crates/leptos-ui`, and app-local components.
+This document captures the current shared UI surface in RusToK and the division of responsibility between `UI/*`, `crates/ui/leptos-ui`, and app-local components.
 
 ## Sources of Shared UI
 
@@ -16,7 +16,7 @@ The repository currently has three levels of UI reuse:
 
 - `UI/tokens` — common design tokens and basic CSS variables;
 - `UI/leptos` and `UI/next/components` — parallel shared primitives for Leptos and Next.js;
-- `crates/leptos-ui` — RusToK-specific Leptos package boundary with re-exports and local helper components.
+- `crates/ui/leptos-ui` — RusToK-specific Leptos package boundary with re-exports and local helper components.
 
 App-local complex components remain inside specific host applications and are not considered part of the shared catalog until a reusable contract emerges.
 
@@ -46,9 +46,9 @@ Current set of components with an explicit shared surface:
 
 `UI/leptos/src/lib.rs` and `UI/next/components/index.ts` are the entry points for this shared primitive layer.
 
-## Leptos-Specific Package Boundary: `crates/leptos-ui`
+## Leptos-Specific Package Boundary: `crates/ui/leptos-ui`
 
-`crates/leptos-ui` holds the RusToK-specific Leptos surface for applications and module-owned UI packages. Current entry points:
+`crates/ui/leptos-ui` holds the RusToK-specific Leptos surface for applications and module-owned UI packages. Current entry points:
 
 - `Button`
 - `Input`
@@ -77,9 +77,9 @@ The following surfaces currently remain app-local and should not automatically b
 - `apps/next-admin/src/shared/ui/*`
 - `apps/next-admin` data-table and related admin-only widgets
 - `apps/admin` host-local layout/navigation components
-- module-owned admin/storefront UI inside `crates/rustok-*/admin` and `crates/rustok-*/storefront`
+- module-owned admin/storefront UI inside `crates/modules/rustok-*/admin` and `crates/modules/rustok-*/storefront`
 
-If such a component starts being reused across multiple hosts or modules, it should either be promoted to `UI/*` or formalized through `crates/leptos-ui` for the Leptos path.
+If such a component starts being reused across multiple hosts or modules, it should either be promoted to `UI/*` or formalized through `crates/ui/leptos-ui` for the Leptos path.
 
 ## Verification When Changing Shared UI
 

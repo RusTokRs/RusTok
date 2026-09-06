@@ -45,12 +45,12 @@ function functionBody(source, functionName) {
 }
 
 const paths = {
-  source: "crates/rustok-payment/src/checkout_execution/validation_errors.rs",
+  source: "crates/modules/rustok-payment/src/checkout_execution/validation_errors.rs",
   evidence:
-    "crates/rustok-payment/contracts/evidence/checkout-execution-uuid-serde-diagnostic-safety-source.json",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-execution-uuid-serde-diagnostic-safety-source.json",
   doc:
-    "crates/rustok-payment/docs/checkout-execution-uuid-serde-diagnostic-safety.md",
-  plan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-payment/docs/checkout-execution-uuid-serde-diagnostic-safety.md",
+  plan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
 const source = read(paths.source);

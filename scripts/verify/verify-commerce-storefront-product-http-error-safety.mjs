@@ -10,12 +10,12 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const router = read('crates/rustok-commerce/src/controllers/store/mod.rs');
-const mountedList = read('crates/rustok-commerce/src/controllers/store/products_owner_list.rs');
-const legacyProducts = read('crates/rustok-commerce/src/controllers/store/products.rs');
-const ownerHttp = read('crates/rustok-product/src/storefront_http_read_port.rs');
-const productPorts = read('crates/rustok-product/src/ports.rs');
-const productQueries = read('crates/rustok-product/src/services/catalog/queries.rs');
+const router = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
+const mountedList = read('crates/modules/rustok-commerce/src/controllers/store/products_owner_list.rs');
+const legacyProducts = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
+const ownerHttp = read('crates/modules/rustok-product/src/storefront_http_read_port.rs');
+const productPorts = read('crates/modules/rustok-product/src/ports.rs');
+const productQueries = read('crates/modules/rustok-product/src/services/catalog/queries.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {

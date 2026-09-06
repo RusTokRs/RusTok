@@ -15,7 +15,7 @@ const rejectText = (source, needle, label) => {
 };
 
 const contract = JSON.parse(
-  read('crates/rustok-forum/contracts/forum-reply-range-move-admin-ui.json')
+  read('crates/modules/rustok-forum/contracts/forum-reply-range-move-admin-ui.json')
 );
 if (contract.contract !== 'forum_reply_range_move_admin_ui_v1') {
   throw new Error('unexpected contract id');
@@ -64,7 +64,7 @@ rejectText(nextUi, 'listForumTopicReplies', 'Next row-order inference');
 rejectText(nextUi, 'parentReplyId', 'Next parent policy');
 
 const leptosModel = read(
-  'crates/rustok-forum/admin/src/topic_reply_range_model.rs'
+  'crates/modules/rustok-forum/admin/src/topic_reply_range_model.rs'
 );
 requireText(
   leptosModel,
@@ -83,7 +83,7 @@ requireText(
 );
 
 const leptosAdapter = read(
-  'crates/rustok-forum/admin/src/transport/topic_reply_range_graphql_adapter.rs'
+  'crates/modules/rustok-forum/admin/src/transport/topic_reply_range_graphql_adapter.rs'
 );
 requireText(
   leptosAdapter,
@@ -98,7 +98,7 @@ rejectText(
 rejectText(leptosAdapter, 'native_server', 'Leptos native fallback');
 
 const leptosUi = read(
-  'crates/rustok-forum/admin/src/ui/topic_reply_range.rs'
+  'crates/modules/rustok-forum/admin/src/ui/topic_reply_range.rs'
 );
 requireText(leptosUi, '"FORUM-21X"', 'Leptos task marker');
 requireText(leptosUi, 'type="number"', 'Leptos position inputs');
@@ -110,7 +110,7 @@ requireText(
 rejectText(leptosUi, 'fetch_topic_fork_replies', 'Leptos row-order inference');
 rejectText(leptosUi, 'parent_reply_id', 'Leptos parent policy');
 
-const transport = read('crates/rustok-forum/admin/src/transport.rs');
+const transport = read('crates/modules/rustok-forum/admin/src/transport.rs');
 requireText(
   transport,
   'topic_reply_range_graphql_adapter::move_reply_range',
@@ -122,7 +122,7 @@ rejectText(
   'transport fallback'
 );
 
-const plan = read('crates/rustok-forum/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-forum/docs/implementation-plan.md');
 requireText(plan, 'Delivered through `FORUM-21X`', 'canonical plan');
 requireText(
   plan,

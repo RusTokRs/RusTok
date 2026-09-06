@@ -133,14 +133,14 @@ test("region admin boundary verifier rejects stale central readiness board", () 
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-region-boundary-"));
-  writeFixtureFile(root, "crates/rustok-region/admin/src/lib.rs", libSource(options));
-  writeFixtureFile(root, "crates/rustok-region/admin/src/core.rs", coreSource(options));
-  writeFixtureFile(root, "crates/rustok-region/admin/src/ui/leptos.rs", uiSource(options));
-  writeFixtureFile(root, "crates/rustok-region/admin/src/transport/mod.rs", transportSource(options));
-  writeFixtureFile(root, "crates/rustok-region/admin/src/transport/native_server_adapter.rs", apiSource(options));
-  writeFixtureFile(root, "crates/rustok-region/admin/Cargo.toml", cargoSource(options));
-  if (options.legacyApi) writeFixtureFile(root, "crates/rustok-region/admin/src/api.rs", apiSource(options));
-  writeFixtureFile(root, "crates/rustok-region/docs/implementation-plan.md", implementationPlanSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-region/admin/src/lib.rs", libSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-region/admin/src/core.rs", coreSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-region/admin/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-region/admin/src/transport/mod.rs", transportSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-region/admin/src/transport/native_server_adapter.rs", apiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-region/admin/Cargo.toml", cargoSource(options));
+  if (options.legacyApi) writeFixtureFile(root, "crates/modules/rustok-region/admin/src/api.rs", apiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-region/docs/implementation-plan.md", implementationPlanSource(options));
   writeFixtureFile(root, "docs/modules/registry.md", registrySource(options));
   writeFixtureFile(root, "package.json", packageJsonSource(options));
   writeFixtureFile(root, "scripts/verify/verify-region-admin-boundary.test.mjs", verifierTestSource());

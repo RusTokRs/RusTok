@@ -28,9 +28,9 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-notification-navigation-badge.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-navigation-badge.json";
 const downstreamPath =
-  "crates/rustok-forum/contracts/forum-notification-inbox-grouped-graphql.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-inbox-grouped-graphql.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const downstreamAbsolute = path.join(repoRoot, downstreamPath);
 const downstream = existsSync(downstreamAbsolute)

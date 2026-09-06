@@ -8,17 +8,17 @@ function hasNone(text, snippets, label) { for (const s of snippets) if (text.inc
 function sameList(actual, expected) { return JSON.stringify(actual) === JSON.stringify(expected); }
 function sameSet(actual, expected) { return [...actual].sort().join('|') === [...expected].sort().join('|'); }
 
-const registryPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
-const evidencePath = 'crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json';
+const registryPath = 'crates/modules/rustok-comments/contracts/comments-fba-registry.json';
+const evidencePath = 'crates/modules/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json';
 const portBoundaryVerifierPath = 'scripts/verify/verify-comments-port-boundary.mjs';
 const portBoundarySelfTestPath = 'scripts/verify/verify-comments-port-boundary.test.mjs';
-const threadWriteEvidencePath = 'crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json';
+const threadWriteEvidencePath = 'crates/modules/rustok-comments/contracts/evidence/comments-thread-write-invariants.json';
 const threadWriteVerifierPath = 'scripts/verify/verify-comments-thread-write-invariants.mjs';
 const threadWriteSelfTestPath = 'scripts/verify/verify-comments-thread-write-invariants.test.mjs';
-const entitiesModulePath = 'crates/rustok-comments/src/entities/mod.rs';
-const classifierTestPath = 'crates/rustok-comments/src/entities/thread_insert_error_tests.rs';
-const initialMigrationPath = 'crates/rustok-comments/src/migrations/m20260328_000001_create_comments_tables.rs';
-const removedRichtextCutoverPath = 'crates/rustok-comments/src/migrations/m20260723_000008_cutover_comment_richtext.rs';
+const entitiesModulePath = 'crates/modules/rustok-comments/src/entities/mod.rs';
+const classifierTestPath = 'crates/modules/rustok-comments/src/entities/thread_insert_error_tests.rs';
+const initialMigrationPath = 'crates/modules/rustok-comments/src/migrations/m20260328_000001_create_comments_tables.rs';
+const removedRichtextCutoverPath = 'crates/modules/rustok-comments/src/migrations/m20260723_000008_cutover_comment_richtext.rs';
 const packageJsonPath = 'package.json';
 const expectedOperations = [
   'create_comment',
@@ -95,9 +95,9 @@ for (const filePath of [
   if (!fs.existsSync(filePath)) fail(`Comments source gate file is missing ${filePath}`);
 }
 
-const manifest = read('crates/rustok-comments/rustok-module.toml');
+const manifest = read('crates/modules/rustok-comments/rustok-module.toml');
 hasAll(manifest, ['[fba.provider]', 'registry = "contracts/comments-fba-registry.json"', 'contract_version = "comments.thread.v1"'], 'manifest');
-const cargo = read('crates/rustok-comments/Cargo.toml');
+const cargo = read('crates/modules/rustok-comments/Cargo.toml');
 hasAll(cargo, [
   'rustok-api.workspace = true',
   '"dep:rustok-events"',
@@ -105,9 +105,9 @@ hasAll(cargo, [
   '"dep:rustok-outbox"',
   'rustok-outbox = { workspace = true, optional = true }',
 ], 'Cargo.toml');
-const lib = read('crates/rustok-comments/src/lib.rs');
+const lib = read('crates/modules/rustok-comments/src/lib.rs');
 hasAll(lib, ['pub mod ports;', 'pub use ports::*;', 'mod public_read;'], 'lib.rs');
-const dto = read('crates/rustok-comments/src/dto.rs');
+const dto = read('crates/modules/rustok-comments/src/dto.rs');
 hasAll(dto, [
   'use rustok_api::{RichTextDocument, RichTextView};',
   'pub body: RichTextDocument',
@@ -116,7 +116,7 @@ hasAll(dto, [
   'pub body_text: String',
 ], 'comments richtext DTO');
 if (dto.includes('body_format') || dto.includes('content_json')) fail('comments DTO restored a removed richtext compatibility field');
-const bodyEntity = read('crates/rustok-comments/src/entities/comment_body.rs');
+const bodyEntity = read('crates/modules/rustok-comments/src/entities/comment_body.rs');
 if (bodyEntity.includes('body_format')) fail('comment body entity restored the removed format selector');
 const initialMigration = read(initialMigrationPath);
 hasAll(
@@ -132,7 +132,7 @@ hasNone(
 if (fs.existsSync(removedRichtextCutoverPath)) {
   fail(`removed Comments richtext cutover was restored: ${removedRichtextCutoverPath}`);
 }
-const richtext = read('crates/rustok-comments/src/richtext.rs');
+const richtext = read('crates/modules/rustok-comments/src/richtext.rs');
 hasAll(richtext, [
   'RichTextProfile::Comment',
   'serialize_comment_body',
@@ -146,12 +146,12 @@ if (
   || richtextContract?.format_selector !== false
 ) fail('comments richtext registry contract drift');
 
-const ports = read('crates/rustok-comments/src/ports.rs');
+const ports = read('crates/modules/rustok-comments/src/ports.rs');
 const providerImpl = 'impl CommentsThreadPort for InProcessCommentsThreadProvider';
 hasAll(ports, ['pub trait CommentsThreadPort', providerImpl, 'PortContext', 'PortError', 'TransactionalEventBus', 'CommentsService::with_event_bus'], 'ports.rs');
-const publicRead = read('crates/rustok-comments/src/public_read.rs');
+const publicRead = read('crates/modules/rustok-comments/src/public_read.rs');
 hasAll(publicRead, ['CommentStatus::Approved', 'DeletedAt.is_null()', 'list_public_comments_for_target'], 'public comments projection');
-const services = read('crates/rustok-comments/src/services.rs');
+const services = read('crates/modules/rustok-comments/src/services.rs');
 hasAll(services, [
   'event_bus: Option<TransactionalEventBus>',
   'pub fn with_event_bus',
@@ -226,8 +226,8 @@ if (registry.evidence.thread_write_invariants !== threadWriteEvidencePath) fail(
 if (registry.evidence.thread_write_invariants_runner !== threadWriteVerifierPath) fail('thread write verifier path drift');
 if (registry.evidence.thread_write_invariants_self_test !== threadWriteSelfTestPath) fail('thread write self-test path drift');
 if (registry.evidence.thread_insert_error_classifier_test !== classifierTestPath) fail('thread insert classifier test path drift');
-if (registry.evidence.thread_write_invariants_test !== 'crates/rustok-comments/tests/thread_write_invariants.rs') fail('thread write test path drift');
-if (registry.evidence.thread_creation_concurrency_test !== 'crates/rustok-comments/tests/thread_creation_concurrency.rs') fail('thread creation test path drift');
+if (registry.evidence.thread_write_invariants_test !== 'crates/modules/rustok-comments/tests/thread_write_invariants.rs') fail('thread write test path drift');
+if (registry.evidence.thread_creation_concurrency_test !== 'crates/modules/rustok-comments/tests/thread_creation_concurrency.rs') fail('thread creation test path drift');
 if (threadWriteEvidence.schema_version !== 3) fail('thread write evidence schema_version drift');
 if (threadWriteEvidence.module !== 'comments' || threadWriteEvidence.surface !== 'thread_write_invariants' || threadWriteEvidence.owner !== 'rustok-comments') fail('thread write evidence identity drift');
 if (threadWriteEvidence.status !== 'executable_no_run' || threadWriteEvidence.compile_policy !== 'not_run_by_request') fail('thread write evidence status drift');
@@ -247,15 +247,15 @@ if (threadWriteCases !== [
 
 const threadContract = threadWriteEvidence.production_contract ?? {};
 for (const [key, expected] of Object.entries({
-  position_owner: 'crates/rustok-comments/src/entities/comment.rs',
-  counter_and_identity_owner: 'crates/rustok-comments/src/entities/comment_thread.rs',
-  thread_service: 'crates/rustok-comments/src/services.rs',
+  position_owner: 'crates/modules/rustok-comments/src/entities/comment.rs',
+  counter_and_identity_owner: 'crates/modules/rustok-comments/src/entities/comment_thread.rs',
+  thread_service: 'crates/modules/rustok-comments/src/services.rs',
   entities_module: entitiesModulePath,
   classifier_unit_test: classifierTestPath,
-  identity_lock_entity: 'crates/rustok-comments/src/entities/comment_thread_identity_lock.rs',
-  counter_repair_migration: 'crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs',
-  identity_lock_migration: 'crates/rustok-comments/src/migrations/m20260723_000009_add_comment_thread_identity_locks.rs',
-  migration_registry: 'crates/rustok-comments/src/migrations/mod.rs',
+  identity_lock_entity: 'crates/modules/rustok-comments/src/entities/comment_thread_identity_lock.rs',
+  counter_repair_migration: 'crates/modules/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs',
+  identity_lock_migration: 'crates/modules/rustok-comments/src/migrations/m20260723_000009_add_comment_thread_identity_locks.rs',
+  migration_registry: 'crates/modules/rustok-comments/src/migrations/mod.rs',
   write_invariant_test: registry.evidence.thread_write_invariants_test,
   first_thread_test: registry.evidence.thread_creation_concurrency_test,
   postgres_environment: 'RUSTOK_COMMENTS_TEST_DATABASE_URL',
@@ -415,7 +415,7 @@ hasAll(threadWriteSelfTest, [
   'rejects missing unrelated storage error propagation',
 ], 'thread write invariant self-test');
 
-const plan = read('crates/rustok-comments/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-comments/docs/implementation-plan.md');
 hasAll(plan, [
   '- FBA status: `boundary_ready`',
   'Comments FBA registry schema v4',
@@ -444,6 +444,6 @@ hasAll(plan, [
   'test:verify:comments:fba',
 ], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
+hasAll(central, ['| `comments` |', 'crates/modules/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
 
 console.log('[verify-comments-fba] Comments FBA provider metadata, source-verified in-process port boundary, exact source-gate chain, runtime-order evidence, registered strict identity classifier harness, transactional thread writes, and first-thread identity serialization are consistent');

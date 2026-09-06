@@ -92,19 +92,19 @@ requireNormalizedMarkers('ops/benches/README.md', [
   'maximum per-sample plan-node WAL bytes',
 ]);
 
-requireNormalizedMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
+requireNormalizedMarkers('crates/modules/rustok-index/docs/partition-evidence-runbook.md', [
   'index-partition-mutation-evidence',
   'mutation.json',
   'maximum per-sample plan-node WAL bytes',
   'Every validation and EXPLAIN mutation is rolled back to a savepoint',
 ]);
 
-requireNormalizedMarkers('crates/rustok-index/docs/README.md', [
+requireNormalizedMarkers('crates/modules/rustok-index/docs/README.md', [
   'M3 partition mutation/WAL evidence runner: `complete`',
   'maintenance and cutover evidence remain open',
 ]);
 
-requireNormalizedMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireNormalizedMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- M3 partition mutation/WAL evidence runner: `complete`',
   '- [x] Add owner-operated PostgreSQL baseline/shadow mutation and WAL evidence capture.',
   '- [ ] Execute retained PostgreSQL mutation, maintenance, and cutover evidence.',

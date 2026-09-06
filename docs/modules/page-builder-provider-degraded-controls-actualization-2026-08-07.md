@@ -95,15 +95,15 @@ Observed deployment health remains open. The admin seam and new process-local ob
 Admin degraded-control source:
 
 ```text
-crates/rustok-page-builder/contracts/evidence/page-builder-admin-provider-status-source.json
-crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
+crates/modules/rustok-page-builder/contracts/evidence/page-builder-admin-provider-status-source.json
+crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
 ```
 
 Process-local runtime observation source:
 
 ```text
-crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-runtime-observation-source.json
-crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
+crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-runtime-observation-source.json
+crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
 ```
 
 ## Validation boundary

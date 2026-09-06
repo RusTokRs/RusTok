@@ -11,9 +11,9 @@ const rejectMarker = (source, marker, label) => {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 };
 
-const servicesPath = "crates/rustok-forum/src/services/mod.rs";
-const ownerPath = "crates/rustok-forum/src/services/read_model_owner.rs";
-const legacyPath = "crates/rustok-forum/src/services/read_model.rs";
+const servicesPath = "crates/modules/rustok-forum/src/services/mod.rs";
+const ownerPath = "crates/modules/rustok-forum/src/services/read_model_owner.rs";
+const legacyPath = "crates/modules/rustok-forum/src/services/read_model.rs";
 for (const path of [servicesPath, ownerPath, legacyPath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }

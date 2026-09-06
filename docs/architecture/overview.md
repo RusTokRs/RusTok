@@ -91,7 +91,7 @@ The top-level runtime contract is assembled as follows:
 - `modules.toml`
 - `apps/server/src/modules/mod.rs`
 - `apps/server/src/modules/manifest.rs`
-- `crates/rustok-core/src/module.rs`
+- `crates/libs/rustok-core/src/module.rs`
 
 ### Documentation
 

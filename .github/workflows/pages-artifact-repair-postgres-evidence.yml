@@ -5,23 +5,23 @@ on:
     branches:
       - main
     paths:
-      - "crates/rustok-pages/src/**"
-      - "crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs"
-      - "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-artifact-repair-postgres-execution.json"
-      - "crates/rustok-outbox/src/**"
+      - "crates/modules/rustok-pages/src/**"
+      - "crates/modules/rustok-pages/tests/explicit_artifact_repair_postgres.rs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-artifact-repair-postgres-execution.json"
+      - "crates/modules/rustok-outbox/src/**"
       - "docs/modules/pages-page-builder-repair-postgres-continuation-2026-08-07.md"
       - "docs/modules/pages-artifact-repair-postgres-evidence-actualization-2026-08-14.md"
   pull_request:
     paths:
-      - "crates/rustok-pages/src/**"
-      - "crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs"
-      - "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-artifact-repair-postgres-execution.json"
-      - "crates/rustok-outbox/src/**"
-      - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
+      - "crates/modules/rustok-pages/src/**"
+      - "crates/modules/rustok-pages/tests/explicit_artifact_repair_postgres.rs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-artifact-repair-postgres-execution.json"
+      - "crates/modules/rustok-outbox/src/**"
+      - "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json"
       - "docs/modules/pages-page-builder-repair-postgres-continuation-2026-08-07.md"
       - "docs/modules/pages-artifact-repair-postgres-evidence-actualization-2026-08-14.md"
       - ".github/workflows/pages-artifact-repair-postgres-evidence.yml"
@@ -80,13 +80,13 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: Verify explicit repair PostgreSQL source
-        run: node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
       - name: Validate execution contract
         shell: bash
         run: |
           node <<'NODE'
           const fs = require('node:fs');
-          const path = 'crates/rustok-pages/contracts/evidence/pages-artifact-repair-postgres-execution.json';
+          const path = 'crates/modules/rustok-pages/contracts/evidence/pages-artifact-repair-postgres-execution.json';
           const contract = JSON.parse(fs.readFileSync(path, 'utf8'));
           const fail = (message) => { console.error(message); process.exit(1); };
           if (contract.format !== 'pages_artifact_repair_postgres_execution_source_v1') fail('execution contract format drifted');
@@ -130,8 +130,8 @@ jobs:
           node <<'NODE'
           const crypto = require('node:crypto');
           const fs = require('node:fs');
-          const contractPath = 'crates/rustok-pages/contracts/evidence/pages-artifact-repair-postgres-execution.json';
-          const registryPath = 'crates/rustok-page-builder/contracts/page-builder-fba-registry.json';
+          const contractPath = 'crates/modules/rustok-pages/contracts/evidence/pages-artifact-repair-postgres-execution.json';
+          const registryPath = 'crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json';
           const contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
           const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
           const consumer = registry.consumers?.[0];

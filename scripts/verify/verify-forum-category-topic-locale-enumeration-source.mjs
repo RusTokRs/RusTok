@@ -15,11 +15,11 @@ function forbid(text, marker, label) {
 }
 
 const files = {
-  services: "crates/rustok-forum/src/services/mod.rs",
-  categoryFacade: "crates/rustok-forum/src/services/category_owner_locale_enumeration.rs",
-  topicRaw: "crates/rustok-forum/src/services/topic_locale_enumeration.rs",
-  topicFacade: "crates/rustok-forum/src/services/topic_facade_locale_enumeration.rs",
-  replyFacade: "crates/rustok-forum/src/services/reply_facade.rs",
+  services: "crates/modules/rustok-forum/src/services/mod.rs",
+  categoryFacade: "crates/modules/rustok-forum/src/services/category_owner_locale_enumeration.rs",
+  topicRaw: "crates/modules/rustok-forum/src/services/topic_locale_enumeration.rs",
+  topicFacade: "crates/modules/rustok-forum/src/services/topic_facade_locale_enumeration.rs",
+  replyFacade: "crates/modules/rustok-forum/src/services/reply_facade.rs",
   packet: "docs/modules/forum-34-category-topic-locale-enumeration-actualization-2026-08-09.md",
 };
 

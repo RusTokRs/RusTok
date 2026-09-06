@@ -8,19 +8,19 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(".");
 const failures = [];
 
-const servicesPath = "crates/rustok-profiles/src/services.rs";
-const facadePath = "crates/rustok-profiles/src/mutations.rs";
-const profilesReadmePath = "crates/rustok-profiles/README.md";
-const graphqlPath = "crates/rustok-profiles/src/graphql/mutation.rs";
-const cliPath = "crates/rustok-profiles/cli/src/lib.rs";
+const servicesPath = "crates/modules/rustok-profiles/src/services.rs";
+const facadePath = "crates/modules/rustok-profiles/src/mutations.rs";
+const profilesReadmePath = "crates/modules/rustok-profiles/README.md";
+const graphqlPath = "crates/modules/rustok-profiles/src/graphql/mutation.rs";
+const cliPath = "crates/modules/rustok-profiles/cli/src/lib.rs";
 const sourceGateContractPath =
-  "crates/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json";
+  "crates/modules/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json";
 const eventAwareContractPath =
-  "crates/rustok-forum/contracts/forum-search-profile-event-aware-mutation-api.json";
+  "crates/modules/rustok-forum/contracts/forum-search-profile-event-aware-mutation-api.json";
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-profile-legacy-mutation-deprecation.json";
+  "crates/modules/rustok-forum/contracts/forum-search-profile-legacy-mutation-deprecation.json";
 const notePath =
-  "crates/rustok-forum/docs/forum-23a10-profile-legacy-mutation-deprecation.md";
+  "crates/modules/rustok-forum/docs/forum-23a10-profile-legacy-mutation-deprecation.md";
 
 const deprecatedMethods = {
   upsert_profile: {

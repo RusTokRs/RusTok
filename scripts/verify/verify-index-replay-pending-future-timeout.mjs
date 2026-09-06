@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const helperPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_timeout.rs';
+const helperPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_timeout.rs';
 const helper = requireMarkers(helperPath, [
   'DEFAULT_INDEX_REPLAY_STORAGE_FUTURE_TIMEOUT: Duration = Duration::from_secs(30)',
   'INDEX_REPLAY_MUTATION_TIMEOUT_CODE: &str = "index_replay_mutation_timeout"',
@@ -40,7 +40,7 @@ for (const forbidden of ['StopHandle', 'request_cancel', 'cancel_requested', 'yi
   }
 }
 
-const adapterPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay.rs';
+const adapterPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay.rs';
 const adapter = requireMarkers(adapterPath, [
   'bounded_replay_checkpoint_commit, bounded_replay_checkpoint_read, bounded_replay_mutation',
   'bounded_replay_mutation(async {',
@@ -63,7 +63,7 @@ if (commitIdentity < 0 || commitTimeout <= commitIdentity) {
   fail('checkpoint commit identity validation must remain outside/before the bounded commit future');
 }
 
-const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
+const runnerPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = requireMarkers(runnerPath, [
   'let (page_result, in_page_heartbeat_count) = await_page_with_lease_heartbeats(',
   'let page = match page_result {',
@@ -91,11 +91,11 @@ if (
   fail('persisted cancellation must keep precedence over terminal page failure after a timeout');
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod source_replay_timeout;',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m6-replay-pending-future-timeouts.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-pending-future-timeouts.md', [
   'Status: `source_complete_execution_pending`.',
   '`index_replay_mutation_timeout`',
   '`index_replay_checkpoint_read_timeout`',

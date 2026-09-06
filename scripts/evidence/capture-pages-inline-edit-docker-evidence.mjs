@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json";
+  "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json";
 
 function fail(message) {
   throw new Error(`Pages inline edit Docker evidence capture failed: ${message}`);

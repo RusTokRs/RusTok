@@ -1,12 +1,12 @@
 import { readFile } from 'node:fs/promises';
 
 const paths = {
-  vocabulary: 'crates/fly-browser/src/lib.rs',
-  access: 'crates/rustok-page-builder/admin/src/capability_access.rs',
-  exports: 'crates/rustok-page-builder/admin/src/lib.rs',
-  pages: 'crates/rustok-pages/admin/src/contribution_browser_intent.rs',
-  problem: 'crates/rustok-pages/admin/src/browser_problem.rs',
-  pagesExports: 'crates/rustok-pages/admin/src/lib.rs',
+  vocabulary: 'crates/ui/fly-browser/src/lib.rs',
+  access: 'crates/modules/rustok-page-builder/admin/src/capability_access.rs',
+  exports: 'crates/modules/rustok-page-builder/admin/src/lib.rs',
+  pages: 'crates/modules/rustok-pages/admin/src/contribution_browser_intent.rs',
+  problem: 'crates/modules/rustok-pages/admin/src/browser_problem.rs',
+  pagesExports: 'crates/modules/rustok-pages/admin/src/lib.rs',
   server: 'apps/admin/src/main.rs',
 };
 

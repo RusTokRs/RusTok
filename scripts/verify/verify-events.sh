@@ -22,16 +22,16 @@ fail()   { echo -e "  ${RED}✗${NC} $1"; ERRORS=$((ERRORS + 1)); }
 warn()   { echo -e "  ${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 
 DOMAIN_CRATES=(
-    "crates/rustok-content/src"
-    "crates/rustok-commerce/src"
-    "crates/rustok-blog/src"
-    "crates/rustok-forum/src"
-    "crates/rustok-pages/src"
+    "crates/modules/rustok-content/src"
+    "crates/modules/rustok-commerce/src"
+    "crates/modules/rustok-blog/src"
+    "crates/modules/rustok-forum/src"
+    "crates/modules/rustok-pages/src"
 )
 
-EVENTS_CRATE="crates/rustok-events/src"
-CORE_CRATE="crates/rustok-core/src"
-OUTBOX_CRATE="crates/rustok-outbox/src"
+EVENTS_CRATE="crates/libs/rustok-events/src"
+CORE_CRATE="crates/libs/rustok-core/src"
+OUTBOX_CRATE="crates/modules/rustok-outbox/src"
 
 EXISTING_DOMAIN=()
 for crate in "${DOMAIN_CRATES[@]}"; do

@@ -28,7 +28,7 @@ function rejectText(source, marker, message) {
 }
 
 const contract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-notification-plan-sync.json") || "{}",
+  read("crates/modules/rustok-forum/contracts/forum-notification-plan-sync.json") || "{}",
 );
 const canonical = read(contract.canonical_plan ?? "");
 const local = read(contract.notifications_local_plan ?? "");
@@ -128,7 +128,7 @@ for (const marker of [
 }
 
 const synchronizationContract =
-  "crates/rustok-forum/contracts/forum-notification-plan-sync.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-plan-sync.json";
 for (const key of ["canonical_plan_sync", "notifications_local_plan_sync"]) {
   if (
     upstream[key]?.status !== "synchronized_by_FORUM-20AM" ||

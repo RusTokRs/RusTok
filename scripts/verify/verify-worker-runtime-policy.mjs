@@ -82,8 +82,8 @@ function requireMatchedCount(relativePath, constructorMarker, cancellationMarker
   }
 }
 
-requireMarkers("crates/rustok-worker-transport/Cargo.toml", ["tokio.workspace = true"]);
-requireMarkers("crates/rustok-worker-transport/src/lib.rs", [
+requireMarkers("crates/workers/rustok-worker-transport/Cargo.toml", ["tokio.workspace = true"]);
+requireMarkers("crates/workers/rustok-worker-transport/src/lib.rs", [
   "pub admission_timeout: Duration",
   'parse_duration_ms(prefix, "ADMISSION_TIMEOUT_MS", 250)',
   "must not exceed REQUEST_TIMEOUT_MS",
@@ -98,32 +98,32 @@ requireMarkers("crates/rustok-worker-transport/src/lib.rs", [
   "failed to install SIGTERM handler; stopping worker",
   "admission_sheds_after_bounded_wait",
 ]);
-forbidMarkers("crates/rustok-worker-transport/src/lib.rs", [
+forbidMarkers("crates/workers/rustok-worker-transport/src/lib.rs", [
   "Semaphore::new(usize::MAX)",
   "Duration::ZERO",
   "unwrap()",
 ]);
 
-requireMarkers("crates/rustok-verification-transport/src/server.rs", [
+requireMarkers("crates/workers/rustok-verification-transport/src/server.rs", [
   "admission: WorkerAdmission",
   "pub fn new(verifier: Arc<V>, admission: WorkerAdmission)",
   "let _permit = self.admission.acquire().await?;",
 ]);
 requireCount(
-  "crates/rustok-verification-transport/src/server.rs",
+  "crates/workers/rustok-verification-transport/src/server.rs",
   "self.admission.acquire().await?",
   1,
 );
-requireMarkers("crates/rustok-verification-worker/src/main.rs", [
+requireMarkers("crates/workers/rustok-verification-worker/src/main.rs", [
   "WorkerAdmission::from_listener(&listener)",
   "VerificationGrpcService::new(worker, admission)",
   ".serve_with_shutdown(listener.address, shutdown_signal())",
 ]);
-forbidMarkers("crates/rustok-verification-worker/src/main.rs", [
+forbidMarkers("crates/workers/rustok-verification-worker/src/main.rs", [
   ".serve(listener.address)",
 ]);
 
-requireMarkers("crates/rustok-module-build-transport/src/server.rs", [
+requireMarkers("crates/workers/rustok-module-build-transport/src/server.rs", [
   "pub struct ModuleBuildGrpcService",
   "admission: WorkerAdmission",
   "pub fn new(worker: Arc<W>, admission: WorkerAdmission)",
@@ -132,38 +132,38 @@ requireMarkers("crates/rustok-module-build-transport/src/server.rs", [
   ".execute_build(request)",
 ]);
 requireCount(
-  "crates/rustok-module-build-transport/src/server.rs",
+  "crates/workers/rustok-module-build-transport/src/server.rs",
   "self.admission.acquire().await?",
   1,
 );
-requireMarkers("crates/rustok-module-build-worker/src/main.rs", [
+requireMarkers("crates/workers/rustok-module-build-worker/src/main.rs", [
   "WorkerAdmission::from_listener(&listener)",
   "ModuleBuildGrpcService::new(worker, admission)",
   ".serve_with_shutdown(listener.address, shutdown_signal())",
 ]);
-forbidMarkers("crates/rustok-module-build-worker/src/main.rs", [
+forbidMarkers("crates/workers/rustok-module-build-worker/src/main.rs", [
   ".serve(listener.address)",
 ]);
-forbidMarkers("crates/rustok-module-build-worker/src/lib.rs", ["mod admission;"]);
+forbidMarkers("crates/workers/rustok-module-build-worker/src/lib.rs", ["mod admission;"]);
 
 requireMatchedCount(
-  "crates/rustok-verification-worker/src/cosign.rs",
+  "crates/workers/rustok-verification-worker/src/cosign.rs",
   "Command::new(",
   "kill_on_drop(true)",
 );
-requireMarkers("crates/rustok-module-build-worker/src/runner.rs", [
+requireMarkers("crates/workers/rustok-module-build-worker/src/runner.rs", [
   "let mut child = Command::new(&self.job_launcher_path)",
   ".kill_on_drop(true)",
   "timeout(job_timeout, child.wait())",
 ]);
 
 for (const subprocessFile of [
-  "crates/rustok-module-build-worker/src/artifact.rs",
-  "crates/rustok-module-build-worker/src/materializer.rs",
-  "crates/rustok-module-build-worker/src/policy.rs",
-  "crates/rustok-module-build-worker/src/runner.rs",
-  "crates/rustok-build-publication/src/credentials.rs",
-  "crates/rustok-build-publication/src/signing.rs",
+  "crates/workers/rustok-module-build-worker/src/artifact.rs",
+  "crates/workers/rustok-module-build-worker/src/materializer.rs",
+  "crates/workers/rustok-module-build-worker/src/policy.rs",
+  "crates/workers/rustok-module-build-worker/src/runner.rs",
+  "crates/utils/rustok-build-publication/src/credentials.rs",
+  "crates/utils/rustok-build-publication/src/signing.rs",
 ]) {
   requireMatchedCount(subprocessFile, "Command::new(", "kill_on_drop(true)");
 }

@@ -18,18 +18,18 @@ const forbidText = (source, value, label) => {
 };
 const countText = (source, value) => source.split(value).length - 1;
 
-const cargoPath = "crates/rustok-commerce/storefront/Cargo.toml";
-const transportPath = "crates/rustok-commerce/storefront/src/transport/mod.rs";
+const cargoPath = "crates/modules/rustok-commerce/storefront/Cargo.toml";
+const transportPath = "crates/modules/rustok-commerce/storefront/src/transport/mod.rs";
 const safetyPath =
-  "crates/rustok-commerce/storefront/src/transport/aggregate_error_safety.rs";
+  "crates/modules/rustok-commerce/storefront/src/transport/aggregate_error_safety.rs";
 const graphqlAdapterPath =
-  "crates/rustok-commerce/storefront/src/transport/graphql_adapter.rs";
+  "crates/modules/rustok-commerce/storefront/src/transport/graphql_adapter.rs";
 const nativeAdapterPath =
-  "crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs";
+  "crates/modules/rustok-commerce/storefront/src/transport/native_server_adapter.rs";
 const sharedAdapterPath =
-  "crates/rustok-commerce/storefront/src/transport/shared_adapter.rs";
+  "crates/modules/rustok-commerce/storefront/src/transport/shared_adapter.rs";
 const evidencePath =
-  "crates/rustok-commerce/contracts/evidence/storefront-aggregate-error-safety-source.json";
+  "crates/modules/rustok-commerce/contracts/evidence/storefront-aggregate-error-safety-source.json";
 
 const cargo = read(cargoPath);
 const transport = read(transportPath);

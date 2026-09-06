@@ -31,23 +31,23 @@ function forbidAll(source, markers, description) {
   }
 }
 
-const commerceCargo = read("crates/rustok-commerce/Cargo.toml");
+const commerceCargo = read("crates/modules/rustok-commerce/Cargo.toml");
 const commerceBehavior = read(
-  "crates/rustok-commerce/tests/product_remote_consumer_behavior.rs",
+  "crates/modules/rustok-commerce/tests/product_remote_consumer_behavior.rs",
 );
 const checkoutPlan = read(
-  "crates/rustok-commerce/src/services/checkout_plan_builder.rs",
+  "crates/modules/rustok-commerce/src/services/checkout_plan_builder.rs",
 );
-const aiCargo = read("crates/rustok-ai/Cargo.toml");
-const aiBehavior = read("crates/rustok-ai/src/direct_product_attributes.rs");
+const aiCargo = read("crates/modules/rustok-ai/Cargo.toml");
+const aiBehavior = read("crates/modules/rustok-ai/src/direct_product_attributes.rs");
 const registrySource = read(
-  "crates/rustok-product/contracts/product-fba-registry.json",
+  "crates/modules/rustok-product/contracts/product-fba-registry.json",
 );
-const plan = read("crates/rustok-product/docs/implementation-plan.md");
+const plan = read("crates/modules/rustok-product/docs/implementation-plan.md");
 const aiProductRegistrySource = read(
-  "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
+  "crates/modules/rustok-ai-product/contracts/ai-product-fba-registry.json",
 );
-const aiProductPlan = read("crates/rustok-ai-product/docs/implementation-plan.md");
+const aiProductPlan = read("crates/modules/rustok-ai-product/docs/implementation-plan.md");
 
 requireAll(commerceCargo, [
   'rustok-product-transport = { path = "../rustok-product-transport" }',
@@ -132,11 +132,11 @@ if (registry) {
   }
   if (
     behavior.commerce_test !==
-    "crates/rustok-commerce/tests/product_remote_consumer_behavior.rs"
+    "crates/modules/rustok-commerce/tests/product_remote_consumer_behavior.rs"
   ) {
     failures.push("remote consumer registry must identify the Commerce harness");
   }
-  if (behavior.ai_source_test !== "crates/rustok-ai/src/direct_product_attributes.rs") {
+  if (behavior.ai_source_test !== "crates/modules/rustok-ai/src/direct_product_attributes.rs") {
     failures.push("remote consumer registry must identify the AI source harness");
   }
   for (const failureProfile of ["unavailable", "timeout"]) {
@@ -187,7 +187,7 @@ if (aiProductRegistry) {
   if (behavior.profile !== "grpc_loopback") {
     failures.push("AI-product remote behavior must identify grpc_loopback");
   }
-  if (behavior.source !== "crates/rustok-ai/src/direct_product_attributes.rs") {
+  if (behavior.source !== "crates/modules/rustok-ai/src/direct_product_attributes.rs") {
     failures.push("AI-product remote behavior must identify the capability handler source");
   }
   for (const failureProfile of ["unavailable", "timeout"]) {

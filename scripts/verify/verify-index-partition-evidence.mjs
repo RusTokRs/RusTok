@@ -195,7 +195,7 @@ requireMarkers('.github/workflows/index-storage-smoke.yml', [
   'node --test scripts/verify/index-partition-evidence-assembly.test.mjs',
 ]);
 
-requireMarkers('crates/rustok-index/tests/module.rs', [
+requireMarkers('crates/modules/rustok-index/tests/module.rs', [
   'module_registers_canonical_storage_migrations',
   'let migrations = module.migrations();',
   'm20260727_000001_create_index_records',
@@ -204,7 +204,7 @@ requireMarkers('crates/rustok-index/tests/module.rs', [
   'migration_dependencies',
 ]);
 
-requireMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
+requireMarkers('crates/modules/rustok-index/docs/partition-evidence-runbook.md', [
   'index_partition_evidence_manifest_v1',
   'index_partition_capture_v1',
   'index_partition_evidence_packet_v1',
@@ -225,7 +225,7 @@ requireMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
   'It must not contain production `ALTER TABLE`, `DROP TABLE`, `RENAME TO`',
 ]);
 
-requireMarkers('crates/rustok-index/docs/README.md', [
+requireMarkers('crates/modules/rustok-index/docs/README.md', [
   'M3 partition evidence packet tooling: `complete`',
   'M3 partition evidence capture/assembly: `complete`',
   'The repository owner still executes and',
@@ -233,7 +233,7 @@ requireMarkers('crates/rustok-index/docs/README.md', [
   '[M3 partition evidence runbook](./partition-evidence-runbook.md)',
 ]);
 
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- M3 partition evidence packet tooling: `complete`',
   '- M3 partition evidence capture/assembly: `complete`',
   '- [x] Add immutable partition evidence manifest, measured packet validator, and',

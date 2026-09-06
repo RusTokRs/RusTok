@@ -42,9 +42,9 @@ function sameList(actual, expected) {
   return JSON.stringify(actual) === JSON.stringify(expected);
 }
 
-const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json';
-const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
-const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
+const evidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
+const registryPath = 'crates/modules/rustok-blog/contracts/blog-fba-registry.json';
 const selfTestPath = 'scripts/verify/verify-blog-ai-richtext-boundary.test.mjs';
 const packagePath = 'package.json';
 
@@ -81,8 +81,8 @@ if (
 
 const shimPath = evidence.shim?.path;
 const writerPath = evidence.writer?.path;
-if (shimPath !== 'crates/rustok-ai/src/rustok_blog.rs') fail('evidence shim path drift');
-if (writerPath !== 'crates/rustok-ai/src/direct.rs') fail('evidence writer path drift');
+if (shimPath !== 'crates/modules/rustok-ai/src/rustok_blog.rs') fail('evidence shim path drift');
+if (writerPath !== 'crates/modules/rustok-ai/src/direct.rs') fail('evidence writer path drift');
 for (const sourcePath of [shimPath, writerPath]) {
   if (sourcePath) assertExists(sourcePath);
 }

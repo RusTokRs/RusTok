@@ -30,11 +30,11 @@ const axumHostContracts = [
   ["apps/server/src/services/app_router.rs", "Router", "server composes an Axum router"],
   ["apps/server/src/services/server_runtime_context.rs", "pub struct ServerRuntimeContext", "server owns typed runtime state"],
   ["apps/server/src/services/server_runtime_context.rs", "pub fn shared_get<T>", "server runtime exposes typed shared handles"],
-  ["crates/rustok-api/src/runtime.rs", "pub struct HostRuntimeContext", "API owns the host-neutral runtime context"],
-  ["crates/rustok-api/src/runtime.rs", "pub fn with_shared_value<T>", "host runtime accepts typed values"],
-  ["crates/rustok-web/src/lib.rs", "json_response", "rustok-web owns response formatting"],
-  ["crates/rustok-runtime/src/lib.rs", "RuntimeComposition", "runtime composition is owned by rustok-runtime"],
-  ["crates/rustok-cli/src/main.rs", "run_with_environment", "CLI owns standalone command execution"],
+  ["crates/libs/rustok-api/src/runtime.rs", "pub struct HostRuntimeContext", "API owns the host-neutral runtime context"],
+  ["crates/libs/rustok-api/src/runtime.rs", "pub fn with_shared_value<T>", "host runtime accepts typed values"],
+  ["crates/libs/rustok-web/src/lib.rs", "json_response", "rustok-web owns response formatting"],
+  ["crates/libs/rustok-runtime/src/lib.rs", "RuntimeComposition", "runtime composition is owned by rustok-runtime"],
+  ["crates/utils/rustok-cli/src/main.rs", "run_with_environment", "CLI owns standalone command execution"],
 ];
 
 for (const [relativePath, marker, description] of axumHostContracts) {
@@ -42,25 +42,25 @@ for (const [relativePath, marker, description] of axumHostContracts) {
 }
 
 for (const relativePath of [
-  "crates/alloy/Cargo.toml",
-  "crates/rustok-ai/Cargo.toml",
-  "crates/rustok-blog/Cargo.toml",
-  "crates/rustok-commerce/Cargo.toml",
-  "crates/rustok-content-orchestration/Cargo.toml",
-  "crates/rustok-forum/Cargo.toml",
-  "crates/rustok-outbox/Cargo.toml",
-  "crates/rustok-pages/Cargo.toml",
+  "crates/modules/alloy/Cargo.toml",
+  "crates/modules/rustok-ai/Cargo.toml",
+  "crates/modules/rustok-blog/Cargo.toml",
+  "crates/modules/rustok-commerce/Cargo.toml",
+  "crates/modules/rustok-content-orchestration/Cargo.toml",
+  "crates/modules/rustok-forum/Cargo.toml",
+  "crates/modules/rustok-outbox/Cargo.toml",
+  "crates/modules/rustok-pages/Cargo.toml",
 ]) {
   requireNotContains(relativePath, "apps/server", `${relativePath} must not depend on the composition host`);
 }
 
 for (const [relativePath, marker, description] of [
-  ["crates/alloy/src/controllers/mod.rs", "AlloyHttpRuntime", "Alloy HTTP owns narrow runtime state"],
-  ["crates/rustok-commerce/src/controllers/mod.rs", "CommerceHttpRuntime", "commerce HTTP owns narrow runtime state"],
-  ["crates/rustok-blog/src/controllers/mod.rs", "axum_router", "blog exposes an Axum router"],
-  ["crates/rustok-pages/src/controllers/mod.rs", "axum_router", "pages exposes an Axum router"],
-  ["crates/rustok-ai/src/service/types.rs", "AiHostRuntime", "AI owns a typed runtime contract"],
-  ["crates/rustok-content-orchestration/src/lib.rs", "build_content_orchestration_service", "content orchestration exposes typed construction"],
+  ["crates/modules/alloy/src/controllers/mod.rs", "AlloyHttpRuntime", "Alloy HTTP owns narrow runtime state"],
+  ["crates/modules/rustok-commerce/src/controllers/mod.rs", "CommerceHttpRuntime", "commerce HTTP owns narrow runtime state"],
+  ["crates/modules/rustok-blog/src/controllers/mod.rs", "axum_router", "blog exposes an Axum router"],
+  ["crates/modules/rustok-pages/src/controllers/mod.rs", "axum_router", "pages exposes an Axum router"],
+  ["crates/modules/rustok-ai/src/service/types.rs", "AiHostRuntime", "AI owns a typed runtime contract"],
+  ["crates/modules/rustok-content-orchestration/src/lib.rs", "build_content_orchestration_service", "content orchestration exposes typed construction"],
 ]) {
   requireContains(relativePath, marker, description);
 }

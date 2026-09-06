@@ -4,17 +4,17 @@ import { readFileSync } from 'node:fs';
 
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
-const dto = read('crates/rustok-payment/src/dto/payment.rs');
-const service = read('crates/rustok-payment/src/services/payment.rs');
-const refundCreation = read('crates/rustok-payment/src/services/refund_creation.rs');
-const execution = read('crates/rustok-payment/src/checkout_execution.rs');
-const compensation = read('crates/rustok-payment/src/checkout_compensation.rs');
-const orchestration = read('crates/rustok-commerce/src/services/payment_orchestration.rs');
+const dto = read('crates/modules/rustok-payment/src/dto/payment.rs');
+const service = read('crates/modules/rustok-payment/src/services/payment.rs');
+const refundCreation = read('crates/modules/rustok-payment/src/services/refund_creation.rs');
+const execution = read('crates/modules/rustok-payment/src/checkout_execution.rs');
+const compensation = read('crates/modules/rustok-payment/src/checkout_compensation.rs');
+const orchestration = read('crates/modules/rustok-commerce/src/services/payment_orchestration.rs');
 const webhookLifecycle = read(
-  'crates/rustok-payment/src/services/provider_event_lifecycle.rs',
+  'crates/modules/rustok-payment/src/services/provider_event_lifecycle.rs',
 );
 const fulfillmentStage = read(
-  'crates/rustok-commerce/src/services/checkout_fulfillment_stages.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages.rs',
 );
 const failures = [];
 

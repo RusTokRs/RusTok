@@ -1,15 +1,15 @@
 import fs from "node:fs";
 
 const test = fs.readFileSync(
-  "crates/rustok-moderation/tests/application_operation_migration_contract.rs",
+  "crates/modules/rustok-moderation/tests/application_operation_migration_contract.rs",
   "utf8",
 );
 const docs = fs.readFileSync(
-  "crates/rustok-moderation/docs/application-operation-migration-contract.md",
+  "crates/modules/rustok-moderation/docs/application-operation-migration-contract.md",
   "utf8",
 );
 const migration = fs.readFileSync(
-  "crates/rustok-moderation/src/migrations/m20260807_000004_create_moderation_application_operations.rs",
+  "crates/modules/rustok-moderation/src/migrations/m20260807_000004_create_moderation_application_operations.rs",
   "utf8",
 );
 

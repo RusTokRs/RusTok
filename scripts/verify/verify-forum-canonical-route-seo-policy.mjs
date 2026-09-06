@@ -11,13 +11,13 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  seo: "crates/rustok-forum/src/seo_audience_targets.rs",
-  legacySeo: "crates/rustok-forum/src/seo_targets.rs",
+  seo: "crates/modules/rustok-forum/src/seo_audience_targets.rs",
+  legacySeo: "crates/modules/rustok-forum/src/seo_targets.rs",
   categoryHost: "apps/storefront/src/forum_category_route.rs",
   topicHost: "apps/storefront/src/forum_topic_route.rs",
-  contract: "crates/rustok-forum/contracts/forum-canonical-route-seo-policy.json",
-  contractTest: "crates/rustok-forum/tests/canonical_route_seo_policy_contract.rs",
-  docs: "crates/rustok-forum/docs/forum-24p-canonical-route-seo-policy.md",
+  contract: "crates/modules/rustok-forum/contracts/forum-canonical-route-seo-policy.json",
+  contractTest: "crates/modules/rustok-forum/tests/canonical_route_seo_policy_contract.rs",
+  docs: "crates/modules/rustok-forum/docs/forum-24p-canonical-route-seo-policy.md",
   discoveryVerifier: "scripts/verify/verify-forum-public-discovery-seo.mjs",
 };
 

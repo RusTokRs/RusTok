@@ -13,10 +13,10 @@ This file defines rules and ownership for all contributors and AI agents working
 
 ## Ownership map
 
-- **Platform foundation**: `crates/rustok-core`, `apps/server`, shared infra.
-- **Domain modules**: `crates/rustok-*` (content, commerce, pages, blog, forum, index, etc.).
+- **Platform foundation**: `crates/libs/rustok-core`, `crates/libs/*`, `apps/server`, shared infra.
+- **Domain modules**: `crates/modules/*` (content, commerce, pages, blog, forum, index, etc.).
 - **Frontends**: `apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend`.
-- **MCP server**: `crates/rustok-mcp`.
+- **MCP server**: `crates/modules/rustok-mcp`.
 - **Operational tooling**: `scripts/`, `docker-compose*.yml`, `grafana/`, `prometheus/`.
 
 Detailed module ownership and responsibilities are captured in [`docs/modules/registry.md`](docs/modules/registry.md).
@@ -32,7 +32,7 @@ Detailed module ownership and responsibilities are captured in [`docs/modules/re
 ### Placement
 
 - Platform-wide documentation lives in `docs/`.
-- Per-module/per-app documentation lives inside the component: `apps/<name>/docs/` or `crates/<name>/docs/`.
+- Per-module/per-app documentation lives inside the component: `apps/<name>/docs/` or `crates/<category>/<name>/docs/`.
 - Every app and crate must have a root `README.md` with: purpose, responsibilities, interactions, entry points, and a link to `docs/`.
 - `docs/modules/_index.md` links to all per-module documentation folders.
 
@@ -182,14 +182,14 @@ Rules mandatory for all automated agents operating in this repository:
 15. Follow the repository-wide [initial implementation and zero-legacy policy](#initial-implementation-and-zero-legacy-policy). Required current platform contracts, such as parallel GraphQL support, are intentional target surfaces and are not legacy compatibility paths.
 16. All repository artifacts, including code, documentation, commit messages, comments, examples, and generated files, must be written in **English only**. The sole exception is `README.ru.md` (localized Russian translation of the main README). Direct conversation with the user should follow the user's preferred language.
 17. **DO NOT duplicate code across modules.** If a pattern appears in 2+ modules or 2+ hosts, extract it into a shared library:
-    - UI primitives → `crates/leptos-ui/`
-    - Framework-agnostic UI route/query/input/busy contracts -> `crates/rustok-ui-core/`
-    - Routing/query helpers → `crates/leptos-ui-routing/`
-    - Framework-agnostic UI i18n → `crates/rustok-ui-i18n/`
-    - Framework-agnostic GraphQL client → `crates/rustok-graphql/`
-    - Leptos GraphQL hooks adapter → `crates/rustok-graphql-leptos/`
-    - Framework-agnostic UI transport path/error/result evidence -> `crates/rustok-ui-transport/`
-    - Framework-agnostic contracts → `crates/rustok-api/`
-    - Domain-specific cross-module UI → `crates/rustok-<capability>-<surface>-support/`
-    - Before writing reusable code, check existing libraries in `crates/leptos-*` and `crates/rustok-*/`. See [Module UI Package Implementation Guide](docs/UI/module-package-implementation.md#when-to-extract-shared-libraries) for extraction decision matrix.
+    - UI primitives → `crates/ui/leptos-ui/`
+    - Framework-agnostic UI route/query/input/busy contracts -> `crates/ui/rustok-ui-core/`
+    - Routing/query helpers → `crates/ui/leptos-ui-routing/`
+    - Framework-agnostic UI i18n → `crates/ui/rustok-ui-i18n/`
+    - Framework-agnostic GraphQL client → `crates/ui/rustok-graphql/`
+    - Leptos GraphQL hooks adapter → `crates/ui/rustok-graphql-leptos/`
+    - Framework-agnostic UI transport path/error/result evidence -> `crates/ui/rustok-ui-transport/`
+    - Framework-agnostic contracts → `crates/libs/rustok-api/`
+    - Domain-specific cross-module UI → `crates/modules/rustok-<capability>-<surface>-support/`
+    - Before writing reusable code, check existing libraries in `crates/ui/leptos-*` and `crates/libs/rustok-*/`. See [Module UI Package Implementation Guide](docs/UI/module-package-implementation.md#when-to-extract-shared-libraries) for extraction decision matrix.
 18. When diagnosing a failed GitHub Actions run, first execute `powershell -ExecutionPolicy Bypass -File scripts/ci/download-failed-logs.ps1` and inspect the refreshed local `errors/` directory. Do not rely on stale logs from an earlier run.

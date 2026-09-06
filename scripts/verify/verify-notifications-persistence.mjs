@@ -27,15 +27,15 @@ function reject(source, pattern, message) {
   if (pattern.test(source)) failures.push(message);
 }
 
-const cargoPath = "crates/rustok-notifications/Cargo.toml";
-const libPath = "crates/rustok-notifications/src/lib.rs";
-const modelPath = "crates/rustok-notifications/src/model.rs";
-const entitiesPath = "crates/rustok-notifications/src/entities.rs";
-const migrationRegistryPath = "crates/rustok-notifications/src/migrations/mod.rs";
-const migrationPath = "crates/rustok-notifications/src/migrations/m20260721_000010_create_notification_persistence.rs";
-const sqliteTestPath = "crates/rustok-notifications/tests/persistence_sqlite.rs";
-const postgresTestPath = "crates/rustok-notifications/tests/persistence_postgres.rs";
-const localPlanPath = "crates/rustok-notifications/docs/implementation-plan.md";
+const cargoPath = "crates/modules/rustok-notifications/Cargo.toml";
+const libPath = "crates/modules/rustok-notifications/src/lib.rs";
+const modelPath = "crates/modules/rustok-notifications/src/model.rs";
+const entitiesPath = "crates/modules/rustok-notifications/src/entities.rs";
+const migrationRegistryPath = "crates/modules/rustok-notifications/src/migrations/mod.rs";
+const migrationPath = "crates/modules/rustok-notifications/src/migrations/m20260721_000010_create_notification_persistence.rs";
+const sqliteTestPath = "crates/modules/rustok-notifications/tests/persistence_sqlite.rs";
+const postgresTestPath = "crates/modules/rustok-notifications/tests/persistence_postgres.rs";
+const localPlanPath = "crates/modules/rustok-notifications/docs/implementation-plan.md";
 
 const cargo = read(cargoPath);
 const lib = read(libPath);

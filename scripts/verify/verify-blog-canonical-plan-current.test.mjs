@@ -11,29 +11,29 @@ import { spawnSync } from 'node:child_process';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const verifier = path.join(repositoryRoot, 'scripts/verify/verify-blog-canonical-plan-current.mjs');
 const files = [
-  'crates/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json',
-  'crates/rustok-blog/docs/implementation-plan-current.md',
-  'crates/rustok-blog/docs/implementation-plan.md',
-  'crates/rustok-blog/docs/implementation-plan-slice-97.md',
-  'crates/rustok-blog/docs/implementation-plan-slice-98.md',
-  'crates/rustok-blog/docs/implementation-plan-slice-99.md',
-  'crates/rustok-blog/docs/implementation-plan-slice-100.md',
-  'crates/rustok-blog/docs/implementation-plan-slice-101.md',
-  'crates/rustok-blog/docs/implementation-plan-slice-102.md',
-  'crates/rustok-blog/docs/implementation-plan-slice-103.md',
-  'crates/rustok-blog/docs/implementation-plan-slice-104.md',
-  'crates/rustok-blog/docs/implementation-plan-slice-105.md',
-  'crates/rustok-blog/docs/README.md',
-  'crates/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json',
-  'crates/rustok-blog/contracts/evidence/blog-comments-tcp-server-adapter.json',
-  'crates/rustok-blog/contracts/evidence/blog-comments-tcp-listener-lifecycle.json',
-  'crates/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json',
-  'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json',
-  'crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
-  'crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
-  'crates/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
-  'crates/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json',
-  'crates/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
+  'crates/modules/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json',
+  'crates/modules/rustok-blog/docs/implementation-plan-current.md',
+  'crates/modules/rustok-blog/docs/implementation-plan.md',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-97.md',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-98.md',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-99.md',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-100.md',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-101.md',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-102.md',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-103.md',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-104.md',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-105.md',
+  'crates/modules/rustok-blog/docs/README.md',
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json',
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-server-adapter.json',
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-listener-lifecycle.json',
+  'crates/modules/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json',
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json',
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
+  'crates/modules/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
+  'crates/modules/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
+  'crates/modules/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json',
+  'crates/modules/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
 ];
 function absolute(root, relativePath) { return path.join(root, relativePath); }
 function write(root, relativePath, content) {
@@ -82,7 +82,7 @@ test('accepts the canonical Blog current implementation cursor', () => {
 
 test('rejects reopening remote transport as live current-cursor work', () => {
   const result = rejects((root) => {
-    const file = 'crates/rustok-blog/docs/implementation-plan-current.md';
+    const file = 'crates/modules/rustok-blog/docs/implementation-plan-current.md';
     const source = readFileSync(absolute(root, file), 'utf8');
     write(root, file, source.replace(
       '`remote_comments_transport = source_implemented_maintainer_execution_pending`',
@@ -95,7 +95,7 @@ test('rejects reopening remote transport as live current-cursor work', () => {
 
 test('rejects claiming another source gap without a fresh audit', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
       value.planning_result.independent_production_source_gap_identified = true;
       value.planning_result.next_source_gap = 'another_gap';
       value.planning_result.future_autonomous_source_work_requires_fresh_audit = false;
@@ -107,7 +107,7 @@ test('rejects claiming another source gap without a fresh audit', () => {
 
 test('rejects Translation PostgreSQL execution promotion without retained execution', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json', (value) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json', (value) => {
       value.source_contract.postgres_execution_observed = true;
     });
   });
@@ -117,7 +117,7 @@ test('rejects Translation PostgreSQL execution promotion without retained execut
 
 test('rejects reviving an active storefront comment form', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json', (value) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json', (value) => {
       value.source_contract.comment_form_present = true;
       value.source_contract.create_comment_surface_present = true;
     });
@@ -128,7 +128,7 @@ test('rejects reviving an active storefront comment form', () => {
 
 test('rejects a cached snapshot regression back to planned source work', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json', (value) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json', (value) => {
       value.storefront_read_degradation.cached_thread_snapshot = 'planned';
     });
   });
@@ -138,7 +138,7 @@ test('rejects a cached snapshot regression back to planned source work', () => {
 
 test('rejects reopening the tag pagination source gap', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
       value.source_tracks.tag_list_pagination.status = 'planned';
     });
   });
@@ -148,7 +148,7 @@ test('rejects reopening the tag pagination source gap', () => {
 
 test('rejects claiming database-side tag pagination', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json', (value) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-tag-pagination-source.json', (value) => {
       value.source_contract.database_side_pagination_claimed = true;
     });
   });
@@ -158,7 +158,7 @@ test('rejects claiming database-side tag pagination', () => {
 
 test('rejects metadata tags becoming canonical again', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
       value.source_tracks.tag_canonical_projection.metadata_tags_are_canonical = true;
     });
   });
@@ -168,7 +168,7 @@ test('rejects metadata tags becoming canonical again', () => {
 
 test('rejects reopening atomic tag mutation after slice 104', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
       value.source_tracks.tag_mutation_atomic_reindex.status = 'next_source_gap';
     });
   });
@@ -178,7 +178,7 @@ test('rejects reopening atomic tag mutation after slice 104', () => {
 
 test('rejects premature tag mutation runtime promotion', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json', (value) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json', (value) => {
       value.runtime_status = 'validated';
       value.execution.push({ command: 'not-run' });
     });
@@ -189,7 +189,7 @@ test('rejects premature tag mutation runtime promotion', () => {
 
 test('rejects reopening post category-name projection after slice 105', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json', (value) => {
       value.source_tracks.post_category_name_projection.status = 'planned';
     });
   });
@@ -199,7 +199,7 @@ test('rejects reopening post category-name projection after slice 105', () => {
 
 test('rejects premature post category-name runtime promotion', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json', (value) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json', (value) => {
       value.runtime_status = 'validated';
       value.execution.push({ command: 'not-run' });
     });
@@ -210,7 +210,7 @@ test('rejects premature post category-name runtime promotion', () => {
 
 test('rejects listing the historical plan before the canonical current cursor', () => {
   const result = rejects((root) => {
-    const file = 'crates/rustok-blog/docs/README.md';
+    const file = 'crates/modules/rustok-blog/docs/README.md';
     const source = readFileSync(absolute(root, file), 'utf8');
     const current = '[Current Implementation Cursor](./implementation-plan-current.md)';
     const historical = '[Historical Implementation Plan](./implementation-plan.md)';
@@ -222,7 +222,7 @@ test('rejects listing the historical plan before the canonical current cursor', 
 
 test('rejects an unrecorded advance of the historical embedded slice list', () => {
   const result = rejects((root) => {
-    const file = 'crates/rustok-blog/docs/implementation-plan.md';
+    const file = 'crates/modules/rustok-blog/docs/implementation-plan.md';
     const source = readFileSync(absolute(root, file), 'utf8');
     write(root, file, source.replace(
       '\n## Next results',
@@ -235,7 +235,7 @@ test('rejects an unrecorded advance of the historical embedded slice list', () =
 
 test('rejects remote transport operation parity regression', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-comments-tcp-server-adapter.json', (value) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-server-adapter.json', (value) => {
       value.operations = value.operations.filter((operation) => operation !== 'delete_comment');
     });
   });

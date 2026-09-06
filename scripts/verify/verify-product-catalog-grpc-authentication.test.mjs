@@ -21,12 +21,12 @@ function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-product-grpc-auth-"));
   write(
     root,
-    "crates/rustok-product-transport/Cargo.toml",
+    "crates/modules/rustok-product-transport/Cargo.toml",
     `sha2.workspace = true\nsubtle = "2"\nuuid.workspace = true`,
   );
   write(
     root,
-    "crates/rustok-product-transport/src/lib.rs",
+    "crates/modules/rustok-product-transport/src/lib.rs",
     `pub mod auth; ProductCatalogGrpcAuthenticationError ProductCatalogGrpcBearerToken ProductCatalogGrpcBearerAuthenticator ProductCatalogGrpcBearerInterceptor`,
   );
   const compare = options.missingConstantTime
@@ -37,7 +37,7 @@ function fixture(options = {}) {
     : `field("authorization", &"[REDACTED]")`;
   write(
     root,
-    "crates/rustok-product-transport/src/auth.rs",
+    "crates/modules/rustok-product-transport/src/auth.rs",
     `AUTHORIZATION_METADATA: &str = "authorization" TENANT_ID_METADATA: &str = "x-rustok-tenant-id" MAX_BEARER_TOKEN_BYTES ConstantTimeEq ${compare} ${redaction} InvalidBearerToken bearer_token_debug_is_redacted`,
   );
   const tenantInsert = options.missingTenantMetadata
@@ -45,12 +45,12 @@ function fixture(options = {}) {
     : `.insert(TENANT_ID_METADATA, tenant_id)`;
   write(
     root,
-    "crates/rustok-product-transport/src/client.rs",
+    "crates/modules/rustok-product-transport/src/client.rs",
     `authentication: Option<ProductCatalogGrpcBearerToken> pub fn with_authentication( pub fn with_bearer_token( AUTHORIZATION_METADATA TENANT_ID_METADATA Uuid::parse_str(context.tenant_id.as_str()) .insert(AUTHORIZATION_METADATA, authentication.authorization_value()) ${tenantInsert} authenticated_request_carries_bearer_and_tenant_metadata authenticated_request_rejects_invalid_tenant_metadata`,
   );
   write(
     root,
-    "crates/rustok-product-transport/src/server.rs",
+    "crates/modules/rustok-product-transport/src/server.rs",
     `pub struct ProductCatalogGrpcBearerAuthenticator pub struct ProductCatalogGrpcBearerInterceptor ProductCatalogGrpcOperation::ALL self.token.matches_authorization(authorization.as_bytes()) Uuid::parse_str(tenant_id) actor: self.actor.clone() allowed_operations: self.allowed_operations.clone() Status::unauthenticated("Product catalog service authentication failed") request.extensions_mut().insert(authority) bearer_interceptor_authenticates_tenant_and_service_actor bearer_interceptor_rejects_missing_or_wrong_token bearer_interceptor_rejects_invalid_tenant_metadata`,
   );
   const tokenRequirement = options.missingDeploymentToken
@@ -63,12 +63,12 @@ function fixture(options = {}) {
   );
   write(
     root,
-    "crates/rustok-product-transport/README.md",
+    "crates/modules/rustok-product-transport/README.md",
     `ProductCatalogGrpcBearerToken ProductCatalogGrpcBearerInterceptor Authorization: Bearer ... x-rustok-tenant-id compares the complete authorization value in constant time RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN TLS and authentication solve separate problems must use \`ProductCatalogGrpcBearerInterceptor\``,
   );
   write(
     root,
-    "crates/rustok-product/contracts/product-fba-registry.json",
+    "crates/modules/rustok-product/contracts/product-fba-registry.json",
     JSON.stringify({
       status: options.falsePromotion ? "transport_verified" : "boundary_ready",
       evidence: {
@@ -95,7 +95,7 @@ function fixture(options = {}) {
   );
   write(
     root,
-    "crates/rustok-product/docs/implementation-plan.md",
+    "crates/modules/rustok-product/docs/implementation-plan.md",
     options.missingPlan
       ? "Product plan"
       : "service-to-service bearer authentication RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN constant-time trusted service actor authentication, provider-host, and schema-preflight source are complete Product remains `boundary_ready` standalone Product catalog service host is source-complete verify-product-catalog-grpc-authentication.mjs",

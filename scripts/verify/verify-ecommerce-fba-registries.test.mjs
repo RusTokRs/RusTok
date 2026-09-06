@@ -46,18 +46,18 @@ const createFixtureRoot = ({ mutateRegistry, mutateCommerceRegistry } = {}) => {
       },
     ],
     evidence: {
-      local_plan: 'crates/rustok-pricing/docs/implementation-plan.md',
+      local_plan: 'crates/modules/rustok-pricing/docs/implementation-plan.md',
       central_board: 'docs/modules/registry.md',
       verifier: 'scripts/verify/verify-ecommerce-fba-registries.mjs',
     },
     in_process_provider_impl: {
       service: 'PricingService',
-      source: 'crates/rustok-pricing/src/ports.rs',
+      source: 'crates/modules/rustok-pricing/src/ports.rs',
       status: 'implemented',
     },
     contract_tests: {
       status: 'planned_cases_locked',
-      source: 'crates/rustok-pricing/contracts/pricing-fba-registry.json',
+      source: 'crates/modules/rustok-pricing/contracts/pricing-fba-registry.json',
       runner: 'scripts/verify/verify-ecommerce-fba-registries.mjs',
       profiles: ['in_process', 'remote_adapter_placeholder'],
       cases: [
@@ -87,7 +87,7 @@ const createFixtureRoot = ({ mutateRegistry, mutateCommerceRegistry } = {}) => {
       {
         module: moduleSlug,
         contract_version: registry.contract_version,
-        registry: 'crates/rustok-pricing/contracts/pricing-fba-registry.json',
+        registry: 'crates/modules/rustok-pricing/contracts/pricing-fba-registry.json',
         ports: ['PricingReadPort'],
         profiles: ['checkout_pricing_projection'],
         fallback_profiles: ['embedded_native', 'graphql_checkout_compat'],
@@ -104,7 +104,7 @@ const createFixtureRoot = ({ mutateRegistry, mutateCommerceRegistry } = {}) => {
       },
     ],
     evidence: {
-      local_plan: 'crates/rustok-commerce/docs/implementation-plan.md',
+      local_plan: 'crates/modules/rustok-commerce/docs/implementation-plan.md',
       central_board: 'docs/modules/registry.md',
       verifier: 'scripts/verify/verify-ecommerce-fba-registries.mjs',
     },
@@ -112,18 +112,18 @@ const createFixtureRoot = ({ mutateRegistry, mutateCommerceRegistry } = {}) => {
 
   mutateCommerceRegistry?.(commerceRegistry);
 
-  write('docs/modules/registry.md', '| `pricing` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-pricing/docs/implementation-plan.md` (`crates/rustok-pricing/contracts/pricing-fba-registry.json`) |\n| `commerce` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-commerce/docs/implementation-plan.md` (`crates/rustok-commerce/contracts/commerce-fba-registry.json`) |\n');
-  write('crates/rustok-pricing/contracts/pricing-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
-  write('crates/rustok-pricing/docs/implementation-plan.md', '# Plan\n- FBA status: `boundary_ready`\n`pricing-fba-registry.json`\n');
-  write('crates/rustok-pricing/rustok-module.toml', '[fba.provider]\nregistry = "contracts/pricing-fba-registry.json"\ncontract_version = "pricing.read_projection.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n');
-  write('crates/rustok-pricing/Cargo.toml', '[dependencies]\nrustok-api.workspace = true\n');
-  write('crates/rustok-pricing/src/lib.rs', 'pub mod ports;\npub use ports::*;\n');
-  write('crates/rustok-pricing/src/ports.rs', 'use rustok_api::{PortCallPolicy, PortContext, PortError};\ntrait PricingReadPort {\n  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PricingReadPort for crate::PricingService { fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError> { context.require_policy(PortCallPolicy::read())?; Ok(()) } }\n');
-  write('crates/rustok-commerce/contracts/commerce-fba-registry.json', `${JSON.stringify(commerceRegistry, null, 2)}\n`);
-  write('crates/rustok-commerce/rustok-module.toml', '[fba.consumer]\nregistry = "contracts/commerce-fba-registry.json"\n');
-  write('crates/rustok-commerce/docs/implementation-plan.md', '# Plan\ncommerce-fba-registry.json\ncrates/rustok-pricing/contracts/pricing-fba-registry.json\n');
-  write('crates/rustok-commerce/src/lib.rs', 'pub mod fba;\n');
-  write('crates/rustok-commerce/src/fba.rs', 'pub const COMMERCE_FBA_REGISTRY_JSON: &str = include_str!("../contracts/commerce-fba-registry.json");\n');
+  write('docs/modules/registry.md', '| `pricing` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/modules/rustok-pricing/docs/implementation-plan.md` (`crates/modules/rustok-pricing/contracts/pricing-fba-registry.json`) |\n| `commerce` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/modules/rustok-commerce/docs/implementation-plan.md` (`crates/modules/rustok-commerce/contracts/commerce-fba-registry.json`) |\n');
+  write('crates/modules/rustok-pricing/contracts/pricing-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
+  write('crates/modules/rustok-pricing/docs/implementation-plan.md', '# Plan\n- FBA status: `boundary_ready`\n`pricing-fba-registry.json`\n');
+  write('crates/modules/rustok-pricing/rustok-module.toml', '[fba.provider]\nregistry = "contracts/pricing-fba-registry.json"\ncontract_version = "pricing.read_projection.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n');
+  write('crates/modules/rustok-pricing/Cargo.toml', '[dependencies]\nrustok-api.workspace = true\n');
+  write('crates/modules/rustok-pricing/src/lib.rs', 'pub mod ports;\npub use ports::*;\n');
+  write('crates/modules/rustok-pricing/src/ports.rs', 'use rustok_api::{PortCallPolicy, PortContext, PortError};\ntrait PricingReadPort {\n  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PricingReadPort for crate::PricingService { fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError> { context.require_policy(PortCallPolicy::read())?; Ok(()) } }\n');
+  write('crates/modules/rustok-commerce/contracts/commerce-fba-registry.json', `${JSON.stringify(commerceRegistry, null, 2)}\n`);
+  write('crates/modules/rustok-commerce/rustok-module.toml', '[fba.consumer]\nregistry = "contracts/commerce-fba-registry.json"\n');
+  write('crates/modules/rustok-commerce/docs/implementation-plan.md', '# Plan\ncommerce-fba-registry.json\ncrates/modules/rustok-pricing/contracts/pricing-fba-registry.json\n');
+  write('crates/modules/rustok-commerce/src/lib.rs', 'pub mod fba;\n');
+  write('crates/modules/rustok-commerce/src/fba.rs', 'pub const COMMERCE_FBA_REGISTRY_JSON: &str = include_str!("../contracts/commerce-fba-registry.json");\n');
 
   return pathToFileURL(`${rootPath}/`);
 };
@@ -156,7 +156,7 @@ test('verifyEcommerceFbaRegistries rejects fallback-smoke drift', () => {
 test('verifyEcommerceFbaRegistries rejects evidence drift', () => {
   const root = createFixtureRoot({
     mutateRegistry(registry) {
-      registry.evidence.local_plan = 'crates/rustok-pricing/docs/old-plan.md';
+      registry.evidence.local_plan = 'crates/modules/rustok-pricing/docs/old-plan.md';
     },
   });
 
@@ -175,7 +175,7 @@ test('verifyEcommerceFbaRegistries rejects commerce local provider evidence drif
   const root = createFixtureRoot();
   const rootPath = fileURLToPath(root);
   writeFileSync(
-    join(rootPath, 'crates/rustok-commerce/docs/implementation-plan.md'),
+    join(rootPath, 'crates/modules/rustok-commerce/docs/implementation-plan.md'),
     '# Plan\ncommerce-fba-registry.json\n',
   );
 
@@ -208,7 +208,7 @@ test('verifyEcommerceFbaRegistries rejects missing read policy enforcement', () 
   const root = createFixtureRoot();
   const rootPath = fileURLToPath(root);
   writeFileSync(
-    join(rootPath, 'crates/rustok-pricing/src/ports.rs'),
+    join(rootPath, 'crates/modules/rustok-pricing/src/ports.rs'),
     'use rustok_api::{PortContext, PortError};\ntrait PricingReadPort {\n  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PricingReadPort for crate::PricingService { fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError> { Ok(()) } }\n',
   );
 
@@ -225,7 +225,7 @@ test('verifyEcommerceFbaRegistries rejects read operations that require write se
   const root = createFixtureRoot();
   const rootPath = fileURLToPath(root);
   writeFileSync(
-    join(rootPath, 'crates/rustok-pricing/src/ports.rs'),
+    join(rootPath, 'crates/modules/rustok-pricing/src/ports.rs'),
     'use rustok_api::{PortContext, PortError};\ntrait PricingReadPort {\n  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PricingReadPort for crate::PricingService { fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError> { context.require_write_semantics()?; Ok(()) } }\n',
   );
 
@@ -256,7 +256,7 @@ test('verifyEcommerceFbaRegistries rejects write operations without write semant
   });
   const rootPath = fileURLToPath(root);
   writeFileSync(
-    join(rootPath, 'crates/rustok-pricing/src/ports.rs'),
+    join(rootPath, 'crates/modules/rustok-pricing/src/ports.rs'),
     'use rustok_api::{PortContext, PortError};\ntrait PaymentCollectionPort {\n  fn create_or_reuse_collection(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PaymentCollectionPort for crate::PaymentService { fn create_or_reuse_collection(&self, context: PortContext) -> Result<(), PortError> { context.require_policy(PortCallPolicy::read())?; Ok(()) } }\n',
   );
 
@@ -274,7 +274,7 @@ const providerSpiContractVersion = 'pricing.read_projection.v1+provider_spi.v1';
 
 const providerSpiMetadata = (overrides = {}) => ({
   status: 'manual_baseline_locked',
-  source: 'crates/rustok-pricing/src/providers.rs',
+  source: 'crates/modules/rustok-pricing/src/providers.rs',
   default_provider_id: 'manual',
   lifecycle_owner_service: 'PricingService',
   operations: ['authorize'],
@@ -302,14 +302,14 @@ const compliantProviderSource = 'pub const MANUAL_PROVIDER_ID: &str = "manual";\
 const writeProviderSpiFixtureFiles = (root, providerSource = compliantProviderSource) => {
   const rootPath = fileURLToPath(root);
   writeFileSync(
-    join(rootPath, 'crates/rustok-pricing/src/lib.rs'),
+    join(rootPath, 'crates/modules/rustok-pricing/src/lib.rs'),
     'pub mod ports;\npub use ports::*;\npub mod providers;\npub use providers::*;\n',
   );
   writeFileSync(
-    join(rootPath, 'crates/rustok-pricing/rustok-module.toml'),
+    join(rootPath, 'crates/modules/rustok-pricing/rustok-module.toml'),
     '[fba.provider]\nregistry = "contracts/pricing-fba-registry.json"\ncontract_version = "pricing.read_projection.v1+provider_spi.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n',
   );
-  writeFileSync(join(rootPath, 'crates/rustok-pricing/src/providers.rs'), providerSource);
+  writeFileSync(join(rootPath, 'crates/modules/rustok-pricing/src/providers.rs'), providerSource);
 };
 
 const expectProviderSpiFailure = ({ providerSpi = providerSpiMetadata(), providerSource = compliantProviderSource, message }) => {
@@ -345,7 +345,7 @@ test('verifyEcommerceFbaRegistries rejects provider SPI sources outside owner mo
   });
   const rootPath = fileURLToPath(root);
   writeFileSync(
-    join(rootPath, 'crates/rustok-pricing/rustok-module.toml'),
+    join(rootPath, 'crates/modules/rustok-pricing/rustok-module.toml'),
     '[fba.provider]\nregistry = "contracts/pricing-fba-registry.json"\ncontract_version = "pricing.read_projection.v1+provider_spi.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n',
   );
 
@@ -434,13 +434,13 @@ const createOrderFixtureRoot = ({ withImplMetadata = false, withOwnerImpl = fals
       },
     ],
     evidence: {
-      local_plan: 'crates/rustok-order/docs/implementation-plan.md',
+      local_plan: 'crates/modules/rustok-order/docs/implementation-plan.md',
       central_board: 'docs/modules/registry.md',
       verifier: 'scripts/verify/verify-ecommerce-fba-registries.mjs',
     },
     contract_tests: {
       status: 'planned_cases_locked',
-      source: 'crates/rustok-order/contracts/order-fba-registry.json',
+      source: 'crates/modules/rustok-order/contracts/order-fba-registry.json',
       runner: 'scripts/verify/verify-ecommerce-fba-registries.mjs',
       profiles: ['in_process', 'remote_adapter_placeholder'],
       cases: [
@@ -459,7 +459,7 @@ const createOrderFixtureRoot = ({ withImplMetadata = false, withOwnerImpl = fals
   if (withImplMetadata) {
     registry.in_process_provider_impl = {
       service: 'OrderService',
-      source: 'crates/rustok-order/src/ports.rs',
+      source: 'crates/modules/rustok-order/src/ports.rs',
       status: 'implemented',
     };
   }
@@ -473,13 +473,13 @@ const createOrderFixtureRoot = ({ withImplMetadata = false, withOwnerImpl = fals
     ? '\nimpl CheckoutCompletionPort for crate::OrderService {\n  fn complete_checkout(&self, context: PortContext) -> Result<(), PortError> { context.require_write_semantics()?; Ok(()) }\n  fn read_checkout_result(&self, context: PortContext) -> Result<(), PortError> { context.require_policy(PortCallPolicy::read())?; Ok(()) }\n  fn read_order_status(&self, context: PortContext) -> Result<(), PortError> { context.require_policy(PortCallPolicy::read())?; Ok(()) }\n}\n'
     : '';
 
-  write('docs/modules/registry.md', '| `order` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-order/docs/implementation-plan.md` (`crates/rustok-order/contracts/order-fba-registry.json`) |\n| `commerce` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-commerce/docs/implementation-plan.md` (`crates/rustok-commerce/contracts/commerce-fba-registry.json`) |\n');
-  write('crates/rustok-order/contracts/order-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
-  write('crates/rustok-order/docs/implementation-plan.md', '# Plan\n- FBA status: `boundary_ready`\n`order-fba-registry.json`\n');
-  write('crates/rustok-order/rustok-module.toml', '[fba.provider]\nregistry = "contracts/order-fba-registry.json"\ncontract_version = "order.checkout_completion.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n');
-  write('crates/rustok-order/Cargo.toml', '[dependencies]\nrustok-api.workspace = true\n');
-  write('crates/rustok-order/src/lib.rs', 'pub mod ports;\npub use ports::*;\n');
-  write('crates/rustok-order/src/ports.rs', `use rustok_api::{PortContext, PortError};\ntrait CheckoutCompletionPort {\n  fn complete_checkout(&self, context: PortContext) -> Result<(), PortError>;\n  fn read_checkout_result(&self, context: PortContext) -> Result<(), PortError>;\n  fn read_order_status(&self, context: PortContext) -> Result<(), PortError>;\n}\n${implSource}`);
+  write('docs/modules/registry.md', '| `order` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/modules/rustok-order/docs/implementation-plan.md` (`crates/modules/rustok-order/contracts/order-fba-registry.json`) |\n| `commerce` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/modules/rustok-commerce/docs/implementation-plan.md` (`crates/modules/rustok-commerce/contracts/commerce-fba-registry.json`) |\n');
+  write('crates/modules/rustok-order/contracts/order-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
+  write('crates/modules/rustok-order/docs/implementation-plan.md', '# Plan\n- FBA status: `boundary_ready`\n`order-fba-registry.json`\n');
+  write('crates/modules/rustok-order/rustok-module.toml', '[fba.provider]\nregistry = "contracts/order-fba-registry.json"\ncontract_version = "order.checkout_completion.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n');
+  write('crates/modules/rustok-order/Cargo.toml', '[dependencies]\nrustok-api.workspace = true\n');
+  write('crates/modules/rustok-order/src/lib.rs', 'pub mod ports;\npub use ports::*;\n');
+  write('crates/modules/rustok-order/src/ports.rs', `use rustok_api::{PortContext, PortError};\ntrait CheckoutCompletionPort {\n  fn complete_checkout(&self, context: PortContext) -> Result<(), PortError>;\n  fn read_checkout_result(&self, context: PortContext) -> Result<(), PortError>;\n  fn read_order_status(&self, context: PortContext) -> Result<(), PortError>;\n}\n${implSource}`);
 
   const commerceRegistry = {
     schema_version: 1,
@@ -491,7 +491,7 @@ const createOrderFixtureRoot = ({ withImplMetadata = false, withOwnerImpl = fals
       {
         module: 'order',
         contract_version: registry.contract_version,
-        registry: 'crates/rustok-order/contracts/order-fba-registry.json',
+        registry: 'crates/modules/rustok-order/contracts/order-fba-registry.json',
         ports: ['CheckoutCompletionPort'],
         profiles: ['checkout_completion_orchestration'],
         fallback_profiles: ['embedded_native'],
@@ -499,16 +499,16 @@ const createOrderFixtureRoot = ({ withImplMetadata = false, withOwnerImpl = fals
       },
     ],
     evidence: {
-      local_plan: 'crates/rustok-commerce/docs/implementation-plan.md',
+      local_plan: 'crates/modules/rustok-commerce/docs/implementation-plan.md',
       central_board: 'docs/modules/registry.md',
       verifier: 'scripts/verify/verify-ecommerce-fba-registries.mjs',
     },
   };
-  write('crates/rustok-commerce/contracts/commerce-fba-registry.json', `${JSON.stringify(commerceRegistry, null, 2)}\n`);
-  write('crates/rustok-commerce/rustok-module.toml', '[fba.consumer]\nregistry = "contracts/commerce-fba-registry.json"\n');
-  write('crates/rustok-commerce/docs/implementation-plan.md', '# Plan\ncommerce-fba-registry.json\n');
-  write('crates/rustok-commerce/src/lib.rs', 'pub mod fba;\n');
-  write('crates/rustok-commerce/src/fba.rs', 'pub const COMMERCE_FBA_REGISTRY_JSON: &str = include_str!("../contracts/commerce-fba-registry.json");\n');
+  write('crates/modules/rustok-commerce/contracts/commerce-fba-registry.json', `${JSON.stringify(commerceRegistry, null, 2)}\n`);
+  write('crates/modules/rustok-commerce/rustok-module.toml', '[fba.consumer]\nregistry = "contracts/commerce-fba-registry.json"\n');
+  write('crates/modules/rustok-commerce/docs/implementation-plan.md', '# Plan\ncommerce-fba-registry.json\n');
+  write('crates/modules/rustok-commerce/src/lib.rs', 'pub mod fba;\n');
+  write('crates/modules/rustok-commerce/src/fba.rs', 'pub const COMMERCE_FBA_REGISTRY_JSON: &str = include_str!("../contracts/commerce-fba-registry.json");\n');
 
   return pathToFileURL(`${rootPath}/`);
 };

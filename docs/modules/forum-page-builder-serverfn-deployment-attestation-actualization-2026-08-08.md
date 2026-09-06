@@ -89,7 +89,7 @@ The live source revision and the reviewed RepoDigest are complementary:
 The machine-readable contract is:
 
 ```text
-crates/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json
+crates/modules/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json
 ```
 
 The runner is:

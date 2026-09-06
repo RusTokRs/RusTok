@@ -21,60 +21,60 @@ const forbidSource = (source, marker, label) => {
 };
 
 const productMigrationPath =
-  'crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs';
-const productMigrationsModPath = 'crates/rustok-product/src/migrations/mod.rs';
+  'crates/modules/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs';
+const productMigrationsModPath = 'crates/modules/rustok-product/src/migrations/mod.rs';
 const productLocaleExpansionMigrationPath =
-  'crates/rustok-product/src/migrations/m20260405_000007_expand_product_locale_storage_columns.rs';
+  'crates/modules/rustok-product/src/migrations/m20260405_000007_expand_product_locale_storage_columns.rs';
 const productTenantConsistencyMigrationPath =
-  'crates/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs';
+  'crates/modules/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs';
 const productStatusMigrationPath =
-  'crates/rustok-product/src/migrations/m20260711_000001_product_status_enum.rs';
+  'crates/modules/rustok-product/src/migrations/m20260711_000001_product_status_enum.rs';
 const productIntegrityMigrationPath =
-  'crates/rustok-product/src/migrations/m20260711_000002_enforce_product_tenant_integrity.rs';
+  'crates/modules/rustok-product/src/migrations/m20260711_000002_enforce_product_tenant_integrity.rs';
 const productValueInvariantMigrationPath =
-  'crates/rustok-product/src/migrations/m20260711_000003_enforce_catalog_value_invariants.rs';
+  'crates/modules/rustok-product/src/migrations/m20260711_000003_enforce_catalog_value_invariants.rs';
 const productChannelVisibilityMigrationPath =
-  'crates/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs';
+  'crates/modules/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs';
 const productCategoryTreeInvariantMigrationPath =
-  'crates/rustok-product/src/migrations/m20260725_000002_enforce_catalog_category_tree_invariants.rs';
+  'crates/modules/rustok-product/src/migrations/m20260725_000002_enforce_catalog_category_tree_invariants.rs';
 const productTransitionalColumnCleanupMigrationPath =
-  'crates/rustok-product/src/migrations/m20260725_000003_remove_transitional_catalog_columns.rs';
+  'crates/modules/rustok-product/src/migrations/m20260725_000003_remove_transitional_catalog_columns.rs';
 const legacyProductMigrationPaths = [
-  'crates/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
-  'crates/rustok-product/src/migrations/m20250130_000013_create_commerce_options.rs',
-  'crates/rustok-product/src/migrations/m20250130_000014_create_commerce_variants.rs',
+  'crates/modules/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
+  'crates/modules/rustok-product/src/migrations/m20250130_000013_create_commerce_options.rs',
+  'crates/modules/rustok-product/src/migrations/m20250130_000014_create_commerce_variants.rs',
 ];
-const schemaServicePath = 'crates/rustok-product/src/services/catalog_schema_service.rs';
-const schemaAttributesPath = 'crates/rustok-product/src/services/catalog_schema_service/attributes.rs';
-const schemaCategoriesPath = 'crates/rustok-product/src/services/catalog_schema_service/categories.rs';
-const schemaSchemasPath = 'crates/rustok-product/src/services/catalog_schema_service/schemas.rs';
-const schemaValuesPath = 'crates/rustok-product/src/services/catalog_schema_service/values.rs';
+const schemaServicePath = 'crates/modules/rustok-product/src/services/catalog_schema_service.rs';
+const schemaAttributesPath = 'crates/modules/rustok-product/src/services/catalog_schema_service/attributes.rs';
+const schemaCategoriesPath = 'crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs';
+const schemaSchemasPath = 'crates/modules/rustok-product/src/services/catalog_schema_service/schemas.rs';
+const schemaValuesPath = 'crates/modules/rustok-product/src/services/catalog_schema_service/values.rs';
 const schemaEffectiveFormsPath =
-  'crates/rustok-product/src/services/catalog_schema_service/effective_forms.rs';
+  'crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms.rs';
 const schemaVirtualCategoriesPath =
-  'crates/rustok-product/src/services/catalog_schema_service/virtual_categories.rs';
-const schemaResolverPath = 'crates/rustok-product/src/services/catalog_schema.rs';
-const catalogServicePath = 'crates/rustok-product/src/services/catalog.rs';
-const catalogCommandsPath = 'crates/rustok-product/src/services/catalog/commands.rs';
-const catalogQueriesPath = 'crates/rustok-product/src/services/catalog/queries.rs';
-const catalogProjectionPath = 'crates/rustok-product/src/services/catalog/projection.rs';
-const catalogHelpersPath = 'crates/rustok-product/src/services/catalog/helpers.rs';
-const catalogTagsServicePath = 'crates/rustok-product/src/services/catalog/tags.rs';
-const productManifestPath = 'crates/rustok-product/Cargo.toml';
-const inventoryBootstrapPath = 'crates/rustok-inventory/src/services/bootstrap.rs';
-const inventoryServicesModPath = 'crates/rustok-inventory/src/services/mod.rs';
-const productWriteTransactionPath = 'crates/rustok-product/src/services/write_transaction.rs';
-const productPublicErrorPath = 'crates/rustok-product/src/public_error.rs';
-const productTagsTestPath = 'crates/rustok-commerce/tests/product_taxonomy_tags.rs';
-const shippingGraphqlTestPath = 'crates/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs';
-const productEventTestPath = 'crates/rustok-commerce/tests/product_event_index_integration_test.rs';
-const commerceMutationHelpersPath = 'crates/rustok-commerce/src/graphql/mutations/helpers.rs';
+  'crates/modules/rustok-product/src/services/catalog_schema_service/virtual_categories.rs';
+const schemaResolverPath = 'crates/modules/rustok-product/src/services/catalog_schema.rs';
+const catalogServicePath = 'crates/modules/rustok-product/src/services/catalog.rs';
+const catalogCommandsPath = 'crates/modules/rustok-product/src/services/catalog/commands.rs';
+const catalogQueriesPath = 'crates/modules/rustok-product/src/services/catalog/queries.rs';
+const catalogProjectionPath = 'crates/modules/rustok-product/src/services/catalog/projection.rs';
+const catalogHelpersPath = 'crates/modules/rustok-product/src/services/catalog/helpers.rs';
+const catalogTagsServicePath = 'crates/modules/rustok-product/src/services/catalog/tags.rs';
+const productManifestPath = 'crates/modules/rustok-product/Cargo.toml';
+const inventoryBootstrapPath = 'crates/modules/rustok-inventory/src/services/bootstrap.rs';
+const inventoryServicesModPath = 'crates/modules/rustok-inventory/src/services/mod.rs';
+const productWriteTransactionPath = 'crates/modules/rustok-product/src/services/write_transaction.rs';
+const productPublicErrorPath = 'crates/modules/rustok-product/src/public_error.rs';
+const productTagsTestPath = 'crates/modules/rustok-commerce/tests/product_taxonomy_tags.rs';
+const shippingGraphqlTestPath = 'crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs';
+const productEventTestPath = 'crates/modules/rustok-commerce/tests/product_event_index_integration_test.rs';
+const commerceMutationHelpersPath = 'crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs';
 const commerceSafeOrderHelpersPath =
-  'crates/rustok-commerce/src/graphql/mutations/safe_order_helpers.rs';
-const commerceCatalogMutationPath = 'crates/rustok-commerce/src/graphql/mutations/catalog.rs';
-const commerceGraphqlModulePath = 'crates/rustok-commerce/src/graphql/mod.rs';
-const commerceGraphqlQueryPath = 'crates/rustok-commerce/src/graphql/query.rs';
-const commerceProductCatalogPath = 'crates/rustok-commerce/src/graphql/product_catalog.rs';
+  'crates/modules/rustok-commerce/src/graphql/mutations/safe_order_helpers.rs';
+const commerceCatalogMutationPath = 'crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs';
+const commerceGraphqlModulePath = 'crates/modules/rustok-commerce/src/graphql/mod.rs';
+const commerceGraphqlQueryPath = 'crates/modules/rustok-commerce/src/graphql/query.rs';
+const commerceProductCatalogPath = 'crates/modules/rustok-commerce/src/graphql/product_catalog.rs';
 
 const productMigration = read(productMigrationPath);
 const productMigrationsMod = read(productMigrationsModPath);
@@ -134,13 +134,13 @@ const commerceCatalogMutation = read(commerceCatalogMutationPath);
 const commerceGraphqlModule = read(commerceGraphqlModulePath);
 const commerceGraphqlQuery = read(commerceGraphqlQueryPath);
 const commerceProductCatalog = read(commerceProductCatalogPath);
-const plan = read('crates/rustok-product/docs/implementation-plan.md');
-const docsReadme = read('crates/rustok-product/docs/README.md');
-const productReadme = read('crates/rustok-product/README.md');
+const plan = read('crates/modules/rustok-product/docs/implementation-plan.md');
+const docsReadme = read('crates/modules/rustok-product/docs/README.md');
+const productReadme = read('crates/modules/rustok-product/README.md');
 const databaseDocs = read('docs/architecture/database.md');
-const commerceReadme = read('crates/rustok-commerce/README.md');
-const commerceDocsReadme = read('crates/rustok-commerce/docs/README.md');
-const commerceCrateApi = read('crates/rustok-commerce/CRATE_API.md');
+const commerceReadme = read('crates/modules/rustok-commerce/README.md');
+const commerceDocsReadme = read('crates/modules/rustok-commerce/docs/README.md');
+const commerceCrateApi = read('crates/modules/rustok-commerce/CRATE_API.md');
 const packageJson = json('package.json');
 
 for (const table of [
@@ -641,7 +641,7 @@ for (const marker of [
   'Product-to-Index projection',
   'must not depend on an Index projection',
 ]) {
-  requireSource(docsReadme, marker, 'crates/rustok-product/docs/README.md');
+  requireSource(docsReadme, marker, 'crates/modules/rustok-product/docs/README.md');
 }
 for (const marker of [
   'Product-owned relation storage for taxonomy-backed tags (`product_tags`)',
@@ -653,7 +653,7 @@ for (const marker of [
   '`storefrontPricingProduct`',
   'Product-owned catalog search metadata',
 ]) {
-  requireSource(productReadme, marker, 'crates/rustok-product/README.md');
+  requireSource(productReadme, marker, 'crates/modules/rustok-product/README.md');
 }
 for (const marker of [
   '`rustok-taxonomy` + `product_tags`',
@@ -663,7 +663,7 @@ for (const marker of [
   'Transport-level validation for `shipping_profile_slug`',
   'active shipping profiles from the typed',
 ]) {
-  requireSource(docsReadme, marker, 'crates/rustok-product/docs/README.md');
+  requireSource(docsReadme, marker, 'crates/modules/rustok-product/docs/README.md');
 }
 for (const marker of [
   'Expose first-class `shipping_profile_slug` on product and variant create/update/read contracts',
@@ -672,7 +672,7 @@ for (const marker of [
   'deliverability-aware cart and checkout contracts',
   'nullable `seller_id` as the canonical marketplace identity key',
 ]) {
-  requireSource(commerceReadme, marker, 'crates/rustok-commerce/README.md');
+  requireSource(commerceReadme, marker, 'crates/modules/rustok-commerce/README.md');
 }
 for (const marker of [
   'For shipping profiles, the metadata-backed baseline is no longer the sole source of truth',
@@ -681,14 +681,14 @@ for (const marker of [
   'line items, `cart_shipping_selections`, order line items and fulfillment metadata store canonical language-agnostic seller identity (`seller_id`)',
   'Generic catalog roots `product` / `storefrontProduct` should now be treated only as a catalog-authoritative surface',
 ]) {
-  requireSource(commerceDocsReadme, marker, 'crates/rustok-commerce/docs/README.md');
+  requireSource(commerceDocsReadme, marker, 'crates/modules/rustok-commerce/docs/README.md');
 }
 for (const marker of [
   'Product create/update/list/detail contracts now expose first-class `tags`',
   '`metadata.tags` is no longer part of the supported public contract',
   'Owner service, DTO and entity contracts are imported directly from `rustok-product`',
 ]) {
-  requireSource(commerceCrateApi, marker, 'crates/rustok-commerce/CRATE_API.md');
+  requireSource(commerceCrateApi, marker, 'crates/modules/rustok-commerce/CRATE_API.md');
 }
 for (const marker of [
   '`product_attributes`, `product_attribute_translations`, `product_attribute_options`',
@@ -709,7 +709,7 @@ for (const marker of [
   'detached-value marker contract',
   'no-compile schema guardrail',
 ]) {
-  requireSource(plan, marker, 'crates/rustok-product/docs/implementation-plan.md');
+  requireSource(plan, marker, 'crates/modules/rustok-product/docs/implementation-plan.md');
 }
 
 const scripts = packageJson.scripts ?? {};

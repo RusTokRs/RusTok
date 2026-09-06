@@ -10,10 +10,10 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const source = read('crates/rustok-commerce/src/controllers/admin/fulfillments.rs');
-const fulfillmentErrors = read('crates/rustok-fulfillment/src/error.rs');
+const source = read('crates/modules/rustok-commerce/src/controllers/admin/fulfillments.rs');
+const fulfillmentErrors = read('crates/modules/rustok-fulfillment/src/error.rs');
 const orchestrationErrors = read(
-  'crates/rustok-commerce/src/services/fulfillment_orchestration.rs',
+  'crates/modules/rustok-commerce/src/services/fulfillment_orchestration.rs',
 );
 const failures = [];
 

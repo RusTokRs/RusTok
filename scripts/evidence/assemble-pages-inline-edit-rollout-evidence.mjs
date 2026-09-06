@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const contractPath = path.join(
   repoRoot,
-  "crates/rustok-pages/contracts/evidence/pages-inline-edit-rollout-execution-contract.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-rollout-execution-contract.json",
 );
 const contract = JSON.parse(readFileSync(contractPath, "utf8"));
 const sha256Pattern = /^[0-9a-f]{64}$/u;

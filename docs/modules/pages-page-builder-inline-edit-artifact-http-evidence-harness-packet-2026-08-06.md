@@ -24,7 +24,7 @@ The tooling is source only. It does not run automatically and no execution resul
 The locked contract is:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json
+crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json
 ```
 
 It owns:
@@ -166,7 +166,7 @@ It cannot contain Authorization, Cookie or Set-Cookie. Duplicate case-insensitiv
 The aggregate reuses the existing inspector output:
 
 ```text
-crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs
+crates/modules/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs
 ```
 
 The input must have:
@@ -277,7 +277,7 @@ node scripts/evidence/capture-pages-inline-edit-http-evidence.mjs \
   --locale en \
   --output target/pages-inline-edit-http.json
 
-node crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs \
+node crates/modules/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs \
   --artifact EXPLICIT_ANONYMOUS_ARTIFACT \
   --output target/pages-anonymous-storefront-ssr-artifact.json
 

@@ -28,7 +28,7 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-audience-plan-sync.json";
+  "crates/modules/rustok-forum/contracts/forum-audience-plan-sync.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const plan = read(contract.canonical_plan);
 const crateApi = read(contract.crate_api);
@@ -126,7 +126,7 @@ for (const { file, source } of taskContracts) {
 
 for (const marker of [
   '"downstream_plan_sync_task": "FORUM-20BA"',
-  '"downstream_plan_sync_contract": "crates/rustok-forum/contracts/forum-audience-plan-sync.json"',
+  '"downstream_plan_sync_contract": "crates/modules/rustok-forum/contracts/forum-audience-plan-sync.json"',
 ]) {
   requireText(upstream, marker, `FORUM-20AZ handoff is missing ${marker}`);
 }

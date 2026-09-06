@@ -32,7 +32,7 @@ The runtime authorization harness is source-ready but unexecuted.
 
 The deployment attestation harness is source-ready but unexecuted.
 
-These facts supersede the stale discovery-only claims that Forum still has `blocks = []`, no renderers/property editors, `adapter_state = "pending"`, or that the next source cursor is to define the Forum Fly adapter. Current `crates/rustok-forum/rustok-module.toml` instead advertises real `forum.topic_list`, `forum.topic_detail` and `forum.reply_stream` block/component identities, dedicated preview renderers, owner schema references and:
+These facts supersede the stale discovery-only claims that Forum still has `blocks = []`, no renderers/property editors, `adapter_state = "pending"`, or that the next source cursor is to define the Forum Fly adapter. Current `crates/modules/rustok-forum/rustok-module.toml` instead advertises real `forum.topic_list`, `forum.topic_detail` and `forum.reply_stream` block/component identities, dedicated preview renderers, owner schema references and:
 
 ```text
 adapter_state = "fly_contract_ready"
@@ -84,11 +84,11 @@ The repository already used `pages_reference_consumer_gate` as the explicit bloc
 
 New source contract:
 
-- `crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json`.
+- `crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json`.
 
 New source guard:
 
-- `crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs`.
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs`.
 
 The gate requires the existing Pages `1.1` Page Builder contract, exact `all_on`, `publish_off`, `preview_off` and `builder_off` profiles, and Pages-owned read availability in every profile. It binds acceptance to the existing source guards plus maintainer-run exact-source deployment, metadata-isolation, sanitizer/resource-limit, cache-generation, authenticated authoring, anonymous exclusion and degraded-profile evidence.
 
@@ -124,7 +124,7 @@ No tests, verifiers, Cargo commands, builds, HTTP requests, browsers, workflows 
 Suggested maintainer source check, intentionally not run:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs
 ```
 
 The existing Pages/Page Builder/Forum verification commands referenced by the gate remain maintainer-owned execution evidence.

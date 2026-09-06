@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const root = new URL('../../', import.meta.url);
 const source = readFileSync(
-  new URL('crates/rustok-auth/admin/src/transport/native_server_adapter.rs', root),
+  new URL('crates/modules/rustok-auth/admin/src/transport/native_server_adapter.rs', root),
   'utf8',
 );
 const fail = (message) => {

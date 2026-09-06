@@ -19,16 +19,16 @@ const requireMarkers = (relative, markers) => {
 };
 
 const migrationPath =
-  'crates/rustok-index/src/migrations/m20260803_000004_create_index_reconciliation_recovery.rs';
+  'crates/modules/rustok-index/src/migrations/m20260803_000004_create_index_reconciliation_recovery.rs';
 const recoveryPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_recovery.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_recovery.rs';
 const operatorPath = 'apps/server/src/services/index_reconciliation_operator.rs';
 const schedulerPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs';
 const docsPath =
-  'crates/rustok-index/docs/m6-reconciliation-dead-letter-requeue.md';
+  'crates/modules/rustok-index/docs/m6-reconciliation-dead-letter-requeue.md';
 const serverDocsPath = 'apps/server/docs/index-reconciliation-operator-runtime.md';
-const planPath = 'crates/rustok-index/docs/implementation-plan.md';
+const planPath = 'crates/modules/rustok-index/docs/implementation-plan.md';
 
 requireMarkers(migrationPath, [
   'ADD COLUMN retry_epoch INTEGER NOT NULL DEFAULT 0',

@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const queryPath = 'crates/rustok-index/src/domain/query.rs';
+const queryPath = 'crates/modules/rustok-index/src/domain/query.rs';
 const query = requireMarkers(queryPath, [
   'IsNull(FieldPath, bool)',
   'TextLike(FieldPath, String)',
@@ -28,7 +28,7 @@ if (query.indexOf('TextLike(FieldPath, String)') < query.indexOf('IsNull(FieldPa
   fail(`${queryPath} must append TextLike after existing filter variants to preserve postcard discriminants`);
 }
 
-requireMarkers('crates/rustok-index/src/application/validation.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/validation.rs', [
   'const MAX_TEXT_LIKE_PATTERN_BYTES: usize = 1024;',
   'TextLikePatternTooLong { maximum: usize, actual: usize }',
   'TextLikePatternContainsNul',
@@ -42,7 +42,7 @@ requireMarkers('crates/rustok-index/src/application/validation.rs', [
   "character == '\\\\'",
 ]);
 
-const ordinary = requireMarkers('crates/rustok-index/src/application/postgres_query_sql.rs', [
+const ordinary = requireMarkers('crates/modules/rustok-index/src/application/postgres_query_sql.rs', [
   'FilterExpr::TextLike(path, pattern) => compile_text_like(plan, path, pattern, bindings)',
   'fn compile_text_like(',
   'compile_many_exists(plan, field, bindings, |sql, bindings|',
@@ -53,7 +53,7 @@ if (ordinary.includes('rustok-product')) {
   fail('ordinary TextLike compiler must remain Product-agnostic');
 }
 
-const localized = requireMarkers('crates/rustok-index/src/application/postgres_localized_query.rs', [
+const localized = requireMarkers('crates/modules/rustok-index/src/application/postgres_localized_query.rs', [
   'FilterExpr::TextLike(path, pattern)',
   'PostgresBindValue::Text(pattern.clone())',
   ' LIKE {pattern} ESCAPE E\'',
@@ -63,19 +63,19 @@ if (localized.includes('product_title_search_condition')) {
   fail('localized TextLike compiler must not depend on Product owner code');
 }
 
-requireMarkers('crates/rustok-index/src/application/reference.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/reference.rs', [
   'FilterExpr::TextLike(path, pattern)',
   'fn text_like_matches(value: &str, pattern: &str) -> bool',
   "'%' => tokens.push(TextLikeToken::AnyMany)",
   "'_' => tokens.push(TextLikeToken::AnyOne)",
   'text_like_matches_postgres_wildcards_and_escape',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests/reference_fixture.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests/reference_fixture.rs', [
   'FilterExpr::TextLike(path, pattern)',
   'fn text_like_matches(value: &str, pattern: &str) -> bool',
 ]);
 
-const ownerPath = 'crates/rustok-product/src/services/catalog/queries.rs';
+const ownerPath = 'crates/modules/rustok-product/src/services/catalog/queries.rs';
 const owner = requireMarkers(ownerPath, [
   'let pattern = format!("%{search}%");',
   'FROM product_translations pt',
@@ -88,7 +88,7 @@ if (owner.slice(searchStart).includes('pt.locale')) {
   fail(`${ownerPath} title search became locale-scoped; revisit localized Storefront parity in the same PR`);
 }
 
-requireMarkers('crates/rustok-product/src/services/catalog/types.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/catalog/types.rs', [
   'pub struct StorefrontProductListQuery',
   'pub search: Option<String>',
   'search: normalize_optional_text(search)',

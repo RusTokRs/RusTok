@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const eventsPath = 'crates/rustok-events/src/contract.rs';
+const eventsPath = 'crates/libs/rustok-events/src/contract.rs';
 const events = requireMarkers(eventsPath, [
   'pub fn new_with_envelope_id_and_causation<E>(',
   'envelope_id: Uuid',
@@ -35,7 +35,7 @@ if (constructorPosition < 0 || identityPosition <= constructorPosition || caused
   fail(`${eventsPath} must delegate exact identity and causation to registered envelope construction`);
 }
 
-const outboxPath = 'crates/rustok-outbox/src/transactional.rs';
+const outboxPath = 'crates/modules/rustok-outbox/src/transactional.rs';
 const outbox = requireMarkers(outboxPath, [
   'pub async fn publish_contract_once_direct_in_tx_with_envelope_id_and_causation<C, E>(',
   'ContractEventEnvelope::new_with_envelope_id_and_causation(',
@@ -57,7 +57,7 @@ if (publishPosition < 0 || buildPosition <= publishPosition || writePosition <= 
   fail(`${outboxPath} must construct the exact caused envelope before canonical write-once admission`);
 }
 
-const transportPath = 'crates/rustok-outbox/src/transport.rs';
+const transportPath = 'crates/modules/rustok-outbox/src/transport.rs';
 const transport = requireMarkers(transportPath, [
   'stored.causation_id() != expected.causation_id()',
   'OnConflict::column(entity::Column::Id)',
@@ -73,14 +73,14 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-outbox/tests/contract_write_once.rs', [
+requireMarkers('crates/modules/rustok-outbox/tests/contract_write_once.rs', [
   'exact_caused_replay_keeps_one_row_and_preserves_causation',
   'caused_write_once_rejects_causation_reuse_conflict',
   'assert_eq!(envelope.causation_id(), Some(root_event_id));',
   'ContractEventWriteOnceError::Conflict',
 ]);
 
-requireMarkers('crates/rustok-outbox/docs/contract-write-once-causation.md', [
+requireMarkers('crates/modules/rustok-outbox/docs/contract-write-once-causation.md', [
   'Status: `source_complete_owner_execution_pending`',
   '`refresh_id`, reserved as the typed envelope and Index inbox identity',
   '`root_event_id`, the exact Product lifecycle predecessor',
@@ -91,8 +91,8 @@ requireMarkers('crates/rustok-outbox/docs/contract-write-once-causation.md', [
 ]);
 
 for (const relative of [
-  'crates/rustok-events/src/contract.rs',
-  'crates/rustok-outbox/src/transactional.rs',
+  'crates/libs/rustok-events/src/contract.rs',
+  'crates/modules/rustok-outbox/src/transactional.rs',
 ]) {
   const source = read(relative);
   for (const forbidden of [

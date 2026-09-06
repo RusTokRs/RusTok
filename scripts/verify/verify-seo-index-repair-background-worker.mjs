@@ -17,17 +17,17 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const applications = read('crates/rustok-seo/src/services/applications.rs');
-const bulkModule = read('crates/rustok-seo/src/services/bulk.rs');
+const applications = read('crates/modules/rustok-seo/src/services/applications.rs');
+const bulkModule = read('crates/modules/rustok-seo/src/services/bulk.rs');
 const compatibilityPoller = read(
-  'crates/rustok-seo/src/services/bulk_io_bounded_compat.rs',
+  'crates/modules/rustok-seo/src/services/bulk_io_bounded_compat.rs',
 );
-const worker = read('crates/rustok-seo/src/services/index_repair_background.rs');
-const migrations = read('crates/rustok-seo/src/migrations/mod.rs');
+const worker = read('crates/modules/rustok-seo/src/services/index_repair_background.rs');
+const migrations = read('crates/modules/rustok-seo/src/migrations/mod.rs');
 const migration = read(
-  'crates/rustok-seo/src/migrations/m20260724_000008_create_seo_index_repair_jobs.rs',
+  'crates/modules/rustok-seo/src/migrations/m20260724_000008_create_seo_index_repair_jobs.rs',
 );
-const graphql = read('crates/rustok-seo/src/graphql/mod.rs');
+const graphql = read('crates/modules/rustok-seo/src/graphql/mod.rs');
 const hostLifecycle = read('apps/server/src/services/app_lifecycle.rs');
 
 requireText(

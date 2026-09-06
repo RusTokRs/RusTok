@@ -18,10 +18,10 @@ const forbidText = (source, value, label) => {
   if (normalizeWs(source).includes(normalizeWs(value))) failures.push(`${label}: forbidden ${value}`);
 };
 
-const applications = read('crates/rustok-seo/src/services/applications.rs');
-const bulkModule = read('crates/rustok-seo/src/services/bulk.rs');
-const worker = read('crates/rustok-seo/src/services/sitemap_background.rs');
-const graphql = read('crates/rustok-seo/src/graphql/mod.rs');
+const applications = read('crates/modules/rustok-seo/src/services/applications.rs');
+const bulkModule = read('crates/modules/rustok-seo/src/services/bulk.rs');
+const worker = read('crates/modules/rustok-seo/src/services/sitemap_background.rs');
+const graphql = read('crates/modules/rustok-seo/src/graphql/mod.rs');
 
 requireText(
   bulkModule,

@@ -15,35 +15,35 @@ mod contract_tests {
     use rustok_api::{Action, Resource};
     use rustok_auth::AUTH_USER_PERMISSIONS;
 
-    const AUTH_README: &str = include_str!("../../../../crates/rustok-auth/README.md");
-    const CACHE_README: &str = include_str!("../../../../crates/rustok-cache/README.md");
-    const CHANNEL_README: &str = include_str!("../../../../crates/rustok-channel/README.md");
-    const EMAIL_README: &str = include_str!("../../../../crates/rustok-email/README.md");
-    const INDEX_README: &str = include_str!("../../../../crates/rustok-index/README.md");
-    const SEARCH_README: &str = include_str!("../../../../crates/rustok-search/README.md");
-    const OUTBOX_README: &str = include_str!("../../../../crates/rustok-outbox/README.md");
-    const TENANT_README: &str = include_str!("../../../../crates/rustok-tenant/README.md");
-    const RBAC_README: &str = include_str!("../../../../crates/rustok-rbac/README.md");
-    const CONTENT_README: &str = include_str!("../../../../crates/rustok-content/README.md");
-    const CART_README: &str = include_str!("../../../../crates/rustok-cart/README.md");
-    const CUSTOMER_README: &str = include_str!("../../../../crates/rustok-customer/README.md");
-    const PROFILES_README: &str = include_str!("../../../../crates/rustok-profiles/README.md");
-    const REGION_README: &str = include_str!("../../../../crates/rustok-region/README.md");
-    const ORDER_README: &str = include_str!("../../../../crates/rustok-order/README.md");
-    const PAYMENT_README: &str = include_str!("../../../../crates/rustok-payment/README.md");
+    const AUTH_README: &str = include_str!("../../../../crates/modules/rustok-auth/README.md");
+    const CACHE_README: &str = include_str!("../../../../crates/modules/rustok-cache/README.md");
+    const CHANNEL_README: &str = include_str!("../../../../crates/modules/rustok-channel/README.md");
+    const EMAIL_README: &str = include_str!("../../../../crates/modules/rustok-email/README.md");
+    const INDEX_README: &str = include_str!("../../../../crates/modules/rustok-index/README.md");
+    const SEARCH_README: &str = include_str!("../../../../crates/modules/rustok-search/README.md");
+    const OUTBOX_README: &str = include_str!("../../../../crates/modules/rustok-outbox/README.md");
+    const TENANT_README: &str = include_str!("../../../../crates/modules/rustok-tenant/README.md");
+    const RBAC_README: &str = include_str!("../../../../crates/modules/rustok-rbac/README.md");
+    const CONTENT_README: &str = include_str!("../../../../crates/modules/rustok-content/README.md");
+    const CART_README: &str = include_str!("../../../../crates/modules/rustok-cart/README.md");
+    const CUSTOMER_README: &str = include_str!("../../../../crates/modules/rustok-customer/README.md");
+    const PROFILES_README: &str = include_str!("../../../../crates/modules/rustok-profiles/README.md");
+    const REGION_README: &str = include_str!("../../../../crates/modules/rustok-region/README.md");
+    const ORDER_README: &str = include_str!("../../../../crates/modules/rustok-order/README.md");
+    const PAYMENT_README: &str = include_str!("../../../../crates/modules/rustok-payment/README.md");
     const FULFILLMENT_README: &str =
-        include_str!("../../../../crates/rustok-fulfillment/README.md");
-    const COMMERCE_README: &str = include_str!("../../../../crates/rustok-commerce/README.md");
-    const BLOG_README: &str = include_str!("../../../../crates/rustok-blog/README.md");
-    const FORUM_README: &str = include_str!("../../../../crates/rustok-forum/README.md");
-    const MEDIA_README: &str = include_str!("../../../../crates/rustok-media/README.md");
-    const PAGES_README: &str = include_str!("../../../../crates/rustok-pages/README.md");
-    const SEO_README: &str = include_str!("../../../../crates/rustok-seo/README.md");
-    const TAXONOMY_README: &str = include_str!("../../../../crates/rustok-taxonomy/README.md");
-    const WORKFLOW_README: &str = include_str!("../../../../crates/rustok-workflow/README.md");
-    const ALLOY_README: &str = include_str!("../../../../crates/alloy/README.md");
-    const FLEX_README: &str = include_str!("../../../../crates/flex/README.md");
-    const FLEX_MUTATION: &str = include_str!("../../../../crates/flex/src/graphql/mutation.rs");
+        include_str!("../../../../crates/modules/rustok-fulfillment/README.md");
+    const COMMERCE_README: &str = include_str!("../../../../crates/modules/rustok-commerce/README.md");
+    const BLOG_README: &str = include_str!("../../../../crates/modules/rustok-blog/README.md");
+    const FORUM_README: &str = include_str!("../../../../crates/modules/rustok-forum/README.md");
+    const MEDIA_README: &str = include_str!("../../../../crates/modules/rustok-media/README.md");
+    const PAGES_README: &str = include_str!("../../../../crates/modules/rustok-pages/README.md");
+    const SEO_README: &str = include_str!("../../../../crates/modules/rustok-seo/README.md");
+    const TAXONOMY_README: &str = include_str!("../../../../crates/modules/rustok-taxonomy/README.md");
+    const WORKFLOW_README: &str = include_str!("../../../../crates/modules/rustok-workflow/README.md");
+    const ALLOY_README: &str = include_str!("../../../../crates/modules/alloy/README.md");
+    const FLEX_README: &str = include_str!("../../../../crates/modules/flex/README.md");
+    const FLEX_MUTATION: &str = include_str!("../../../../crates/modules/flex/src/graphql/mutation.rs");
 
     #[test]
     fn registry_module_readmes_define_interactions_section() {

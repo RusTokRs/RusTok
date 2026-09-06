@@ -86,15 +86,15 @@ The existing unprefixed `/modules/pages?slug=` shape remains parseable as a lega
 
 ## Source evidence
 
-- `crates/rustok-pages/src/migrations/m20260805_000010_create_page_route_aliases.rs`;
-- `crates/rustok-pages/src/entities/page_route_alias.rs`;
-- `crates/rustok-pages/src/services/page/route.rs`;
-- `crates/rustok-pages/src/services/page/metadata.rs`;
-- `crates/rustok-pages/src/services/page/persistence.rs`;
-- `crates/rustok-pages/src/seo_targets.rs`;
-- `crates/rustok-pages/tests/page_published_slug_route_alias_sqlite.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-published-slug-route-alias-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-published-slug-route-alias.mjs`.
+- `crates/modules/rustok-pages/src/migrations/m20260805_000010_create_page_route_aliases.rs`;
+- `crates/modules/rustok-pages/src/entities/page_route_alias.rs`;
+- `crates/modules/rustok-pages/src/services/page/route.rs`;
+- `crates/modules/rustok-pages/src/services/page/metadata.rs`;
+- `crates/modules/rustok-pages/src/services/page/persistence.rs`;
+- `crates/modules/rustok-pages/src/seo_targets.rs`;
+- `crates/modules/rustok-pages/tests/page_published_slug_route_alias_sqlite.rs`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-published-slug-route-alias-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-published-slug-route-alias.mjs`.
 
 ## Boundaries
 
@@ -123,7 +123,7 @@ The existing `NodeUpdated` event remains the route-generation invalidation cause
 Suggested commands, intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-published-slug-route-alias.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-published-slug-route-alias.mjs
 cargo test -p rustok-pages \
   --test page_published_slug_route_alias_sqlite -- --nocapture
 cargo check -p rustok-pages --all-targets

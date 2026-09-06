@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root = process.env.SEARCH_FBA_ROOT || process.cwd();
-const registryPath = 'crates/rustok-search/contracts/search-fba-registry.json';
-const tracePath = 'crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json';
+const registryPath = 'crates/modules/rustok-search/contracts/search-fba-registry.json';
+const tracePath = 'crates/modules/rustok-search/contracts/evidence/search-runtime-invocation-trace.json';
 function resolve(repoPath) { return path.join(root, repoPath); }
 function read(repoPath) { return fs.readFileSync(resolve(repoPath), 'utf8'); }
 function json(repoPath) { return JSON.parse(read(repoPath)); }
@@ -59,7 +59,7 @@ assert(registry.contract_tests.runtime_invocation_trace?.status === trace.status
 const registryOps = registry.contract_tests.cases.map((c) => c.operation);
 sameSet(trace.cases.map((c) => c.operation), registryOps, 'invocation trace operation set');
 
-const portsSource = read('crates/rustok-search/src/ports.rs');
+const portsSource = read('crates/modules/rustok-search/src/ports.rs');
 for (const marker of [
   'context.require_policy(PortCallPolicy::read())?',
   'request.locale.get_or_insert_with(|| context.locale.clone())',
@@ -98,9 +98,9 @@ for (const testCase of trace.cases) {
   }
 }
 
-const readme = read('crates/rustok-search/README.md');
+const readme = read('crates/modules/rustok-search/README.md');
 assert(readme.includes('contracts/evidence/search-runtime-invocation-trace.json'), 'README missing invocation trace evidence');
-const plan = read('crates/rustok-search/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-search/docs/implementation-plan.md');
 assert(plan.includes('search-runtime-invocation-trace.json'), 'implementation plan missing invocation trace evidence');
 const central = read('docs/modules/registry.md');
 assert(central.includes('search-runtime-invocation-trace.json'), 'central readiness board missing invocation trace evidence');

@@ -34,11 +34,11 @@ function functionSlice(source, name, nextName) {
   return source.slice(start, end < 0 ? source.length : end);
 }
 
-const shared = read("crates/rustok-commerce/src/controllers/products.rs");
-const mounted = read("crates/rustok-commerce/src/controllers/admin/products.rs");
-const router = read("crates/rustok-commerce/src/controllers/admin/mod.rs");
-const runtime = read("crates/rustok-commerce/src/controllers/mod.rs");
-const ownerPort = read("crates/rustok-product/src/catalog_command_port.rs");
+const shared = read("crates/modules/rustok-commerce/src/controllers/products.rs");
+const mounted = read("crates/modules/rustok-commerce/src/controllers/admin/products.rs");
+const router = read("crates/modules/rustok-commerce/src/controllers/admin/mod.rs");
+const runtime = read("crates/modules/rustok-commerce/src/controllers/mod.rs");
+const ownerPort = read("crates/modules/rustok-product/src/catalog_command_port.rs");
 
 for (const required of [
   "async fn delete_product(",

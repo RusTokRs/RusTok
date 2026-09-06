@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const catalogPath = 'crates/rustok-index/src/infrastructure/postgres/query_admission.rs';
+const catalogPath = 'crates/modules/rustok-index/src/infrastructure/postgres/query_admission.rs';
 const catalog = requireMarkers(catalogPath, [
   'required_link_targets: BTreeMap<SchemaRef, String>',
   'pub fn link_availability_len(&self) -> usize',
@@ -59,7 +59,7 @@ forbidMarkers(catalogPath, catalog, [
   'QueryPlanFingerprint',
 ]);
 
-const portPath = 'crates/rustok-index/src/infrastructure/postgres/query_port.rs';
+const portPath = 'crates/modules/rustok-index/src/infrastructure/postgres/query_port.rs';
 const port = requireMarkers(portPath, [
   'let mut compiled = page_query.compiled().clone()',
   '.apply_link_target_availability(query, compiled)',
@@ -74,7 +74,7 @@ if (availabilityOffset < 0 || entityOffset < 0 || availabilityOffset >= entityOf
   fail('query_port.rs must apply link availability before generic entity admission');
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_runtime.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/query_runtime.rs', [
   'LinkAvailabilitySchemaMissing',
   'for (schema, owner_module) in admissions.link_availability_iter()',
   'registry.registry().get(schema).is_none()',
@@ -82,14 +82,14 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_runtime.rs
   'admissions.ensure_runtime_schema(registered.schema.reference.clone())?',
   'dangling_link_availability_schema_fails_composition',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'register_postgres_index_query_link_target_availability',
 ]);
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'register_postgres_index_query_link_target_availability',
 ]);
 
-const ownerPath = 'crates/rustok-distribution/src/product_index/query_admission.rs';
+const ownerPath = 'crates/modules/rustok-distribution/src/product_index/query_admission.rs';
 const owner = requireMarkers(ownerPath, [
   'register_postgres_index_query_link_target_availability',
   'let product_schema = product_schema_ref()?',
@@ -104,13 +104,13 @@ if ((owner.match(/register_postgres_index_query_link_target_availability\(/g) ??
 }
 forbidMarkers(ownerPath, owner, ['index_entities', 'index_links', '$1']);
 
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'assert_eq!(admissions.len(), 2)',
   'assert_eq!(admissions.len(), 3)',
   'assert_eq!(admissions.link_availability_len(), 1)',
 ]);
 
-const compilerPath = 'crates/rustok-index/src/application/postgres_query_sql.rs';
+const compilerPath = 'crates/modules/rustok-index/src/application/postgres_query_sql.rs';
 const compiler = read(compilerPath);
 forbidMarkers(compilerPath, compiler, [
   'availability_link',
@@ -121,7 +121,7 @@ forbidMarkers(compilerPath, compiler, [
 ]);
 
 const freshnessDoc = requireMarkers(
-  'crates/rustok-index/docs/m7-product-materialized-query-freshness.md',
+  'crates/modules/rustok-index/docs/m7-product-materialized-query-freshness.md',
   [
     'Status: `source_complete_link_target_availability_equivalence_execution_pending`',
     'Query-path-scoped linked-target availability',
@@ -133,7 +133,7 @@ const freshnessDoc = requireMarkers(
     'Remaining M7 evidence',
   ],
 );
-forbidMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.md', freshnessDoc, [
+forbidMarkers('crates/modules/rustok-index/docs/m7-product-materialized-query-freshness.md', freshnessDoc, [
   'next unblocked M7 source-design gap',
   'define and retain fail-closed linked-target availability semantics',
   'retain PostgreSQL cases for linked filtering and many aggregate ordering',

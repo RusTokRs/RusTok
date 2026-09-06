@@ -18,7 +18,7 @@ Status: `forum-ffa-fba-promotion-review-source-ready / maintainer-execution-pend
 
 The review layer consists of:
 
-- `crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json`;
+- `crates/modules/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json`;
 - `scripts/evidence/review-forum-page-builder-ffa-fba-promotion.mjs`;
 - `scripts/evidence/review-forum-page-builder-ffa-fba-promotion.test.mjs`;
 - `scripts/verify/verify-forum-page-builder-ffa-fba-promotion-review.mjs`.
@@ -46,7 +46,7 @@ Status: `forum-ffa-fba-promotion-execution-source-ready / maintainer-live-execut
 
 The execution layer consists of:
 
-- `crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-execution-source.json`;
+- `crates/modules/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-execution-source.json`;
 - `scripts/evidence/execute-forum-page-builder-ffa-fba-promotion.mjs`;
 - `scripts/evidence/execute-forum-page-builder-ffa-fba-promotion.test.mjs`;
 - `scripts/verify/verify-forum-page-builder-ffa-fba-promotion-execution.mjs`.

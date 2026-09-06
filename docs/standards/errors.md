@@ -596,10 +596,10 @@ pub async fn process_order(
 ## Resources
 
 ### Implementation
-- [Error Context](../crates/rustok-core/src/error/context.rs)
-- [Error Response](../crates/rustok-core/src/error/response.rs)
-- [Content Errors](../crates/rustok-content/src/error.rs)
-- [Commerce Errors](../crates/rustok-commerce/src/error.rs)
+- [Error Context](../crates/libs/rustok-core/src/error/context.rs)
+- [Error Response](../crates/libs/rustok-core/src/error/response.rs)
+- [Content Errors](../crates/modules/rustok-content/src/error.rs)
+- [Commerce Errors](../crates/modules/rustok-commerce/src/error.rs)
 
 ### External References
 - [RFC 7807 - Problem Details for HTTP APIs](https://tools.ietf.org/html/rfc7807)

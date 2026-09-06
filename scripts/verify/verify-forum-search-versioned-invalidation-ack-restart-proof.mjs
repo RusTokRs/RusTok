@@ -18,16 +18,16 @@ const forbidAll = (text, markers, label) => {
 };
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-ack-restart-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-ack-restart-proof.json";
 const parentContractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
 const docPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d3-ack-restart-proof.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d3-ack-restart-proof.md";
 const testPath =
   "apps/server/tests/forum_versioned_invalidation_ack_restart_iggy.rs";
-const searchCargoPath = "crates/rustok-search/Cargo.toml";
+const searchCargoPath = "crates/modules/rustok-search/Cargo.toml";
 const serverCargoPath = "apps/server/Cargo.toml";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const evidencePath =
   "target/forum-search-versioned-invalidation-ack-restart-evidence.json";
 const productionGroup = "rustok-search-forum-projection-v1";

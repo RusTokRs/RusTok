@@ -143,23 +143,21 @@ Update documentation when:
 
 ### Apps
 
-- **apps/server**: Main Axum backend API
-- **apps/admin**: Leptos admin host (standalone profile via Trunk, SSR-first contract in docs)
-- **apps/storefront**: Leptos storefront host (standalone profile via Trunk, SSR-first contract in docs)
+- **apps/server**: Main Axum backend API (Composition Root)
+- **apps/admin**: Leptos admin host (SSR-first contract)
+- **apps/storefront**: Leptos storefront host (SSR-first contract)
 - **apps/next-admin**: Next.js admin host
 - **apps/next-frontend**: Next.js storefront
 - **rustok_mobile/apps/rustok_admin_mobile**: Flutter admin mobile host (experimental rollout)
-- **crates/rustok-mcp**: MCP adapter crate (includes stdio server binary `rustok-mcp-server`)
 
-### Crates (Modules)
+### Crates Workspace Layout (`crates/`)
 
-Core modules in `crates/`:
-- **rustok-core**: Platform foundation (auth, events, RBAC)
-- **rustok-commerce**: Ecommerce umbrella/root module and compatibility surface
-- **rustok-content**: CMS core (nodes, categories)
-- **rustok-blog**: Blogging features
-- **rustok-index**: CQRS read models
-- **rustok-telemetry**: Observability and logging
+Crates are categorized into 5 dedicated directories:
+- **`crates/libs/`**: Platform foundation libraries (`rustok-core`, `rustok-api`, `rustok-events`, `rustok-telemetry`, `rustok-runtime`, `rustok-web`, `rustok-fba`)
+- **`crates/modules/`**: Domain, system, and integration modules (`rustok-auth`, `rustok-commerce`, `rustok-product`, `rustok-content`, `rustok-blog`, `rustok-index`, `rustok-mcp`, `alloy`, etc.)
+- **`crates/ui/`**: Leptos and frontend support crates (`leptos-ui`, `rustok-ui-core`, `rustok-ui-i18n`, `rustok-graphql`, etc.)
+- **`crates/utils/`**: Tooling, CLI, migrations, and shared utilities (`rustok-cli`, `rustok-build`, `rustok-migrations`, `rustok-secrets`, `rustok-installer`, `rustok-module-sdk`, etc.)
+- **`crates/workers/`**: Execution plane, sandboxes, and artifact reconciliation workers (`rustok-sandbox`, `rustok-module-build-worker`, `rustok-artifact-node-agent`, etc.)
 
 ### Development Workflow
 

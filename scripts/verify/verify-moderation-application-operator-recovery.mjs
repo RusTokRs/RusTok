@@ -1,17 +1,17 @@
 import fs from "node:fs";
 
 const recovery = fs.readFileSync(
-  "crates/rustok-moderation/src/application_recovery.rs",
+  "crates/modules/rustok-moderation/src/application_recovery.rs",
   "utf8",
 );
-const domain = fs.readFileSync("crates/rustok-moderation/src/domain.rs", "utf8");
-const moderationLib = fs.readFileSync("crates/rustok-moderation/src/lib.rs", "utf8");
-const ports = fs.readFileSync("crates/rustok-moderation/src/ports.rs", "utf8");
+const domain = fs.readFileSync("crates/modules/rustok-moderation/src/domain.rs", "utf8");
+const moderationLib = fs.readFileSync("crates/modules/rustok-moderation/src/lib.rs", "utf8");
+const ports = fs.readFileSync("crates/modules/rustok-moderation/src/ports.rs", "utf8");
 const dispatcher = fs.readFileSync(
-  "crates/rustok-moderation/src/application_dispatch.rs",
+  "crates/modules/rustok-moderation/src/application_dispatch.rs",
   "utf8",
 );
-const forumCargo = fs.readFileSync("crates/rustok-forum/Cargo.toml", "utf8");
+const forumCargo = fs.readFileSync("crates/modules/rustok-forum/Cargo.toml", "utf8");
 
 function requireText(source, needle, message) {
   if (!source.includes(needle)) throw new Error(message);

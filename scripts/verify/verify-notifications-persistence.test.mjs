@@ -71,30 +71,30 @@ const validEntities = `
 `;
 
 const files = {
-  "crates/rustok-notifications/Cargo.toml": `
+  "crates/modules/rustok-notifications/Cargo.toml": `
     sea-orm.workspace = true
     sea-orm-migration.workspace = true
     serde.workspace = true
   `,
-  "crates/rustok-notifications/src/lib.rs": `
+  "crates/modules/rustok-notifications/src/lib.rs": `
     pub mod entities;
     pub mod migrations;
     pub mod model;
     fn migrations() { migrations::migrations(); migrations::migration_dependencies(); }
   `,
-  "crates/rustok-notifications/src/model.rs": `
+  "crates/modules/rustok-notifications/src/model.rs": `
     DeriveActiveEnum
     NotificationState NotificationPriorityValue NotificationChannel DeliveryStatus
     NotificationJobStatus FanoutItemStatus NotificationDeliveryMode DigestMode
     DigestJobStatus PushPlatform PushSubscriptionStatus
   `,
-  "crates/rustok-notifications/src/entities.rs": validEntities,
-  "crates/rustok-notifications/src/migrations/mod.rs": `
+  "crates/modules/rustok-notifications/src/entities.rs": validEntities,
+  "crates/modules/rustok-notifications/src/migrations/mod.rs": `
     m20260721_000010_create_notification_persistence
     m20250101_000002_create_users
   `,
-  "crates/rustok-notifications/src/migrations/m20260721_000010_create_notification_persistence.rs": validMigration,
-  "crates/rustok-notifications/tests/persistence_sqlite.rs": `
+  "crates/modules/rustok-notifications/src/migrations/m20260721_000010_create_notification_persistence.rs": validMigration,
+  "crates/modules/rustok-notifications/tests/persistence_sqlite.rs": `
     source-event recipient dedupe must hold
     recipient tenant mismatch must fail
     actor tenant mismatch must fail
@@ -103,7 +103,7 @@ const files = {
     leased delivery needs lease fields
     push endpoint hash must be normalized
   `,
-  "crates/rustok-notifications/tests/persistence_postgres.rs": `
+  "crates/modules/rustok-notifications/tests/persistence_postgres.rs": `
     NOTIFICATIONS_TEST_DATABASE_URL
     CREATE SCHEMA
     DROP SCHEMA IF EXISTS
@@ -112,7 +112,7 @@ const files = {
     pg-read-without-seen
     pg-oversized
   `,
-  "crates/rustok-notifications/docs/implementation-plan.md": `
+  "crates/modules/rustok-notifications/docs/implementation-plan.md": `
     ### Delivered in \`NOTIFY-01A\`
     Remaining: global server migrator registration.
   `,
@@ -127,7 +127,7 @@ try {
   }
 
   write(
-    "crates/rustok-notifications/src/migrations/m20260721_000010_create_notification_persistence.rs",
+    "crates/modules/rustok-notifications/src/migrations/m20260721_000010_create_notification_persistence.rs",
     validMigration.replace("FOREIGN KEY (tenant_id, recipient_id) REFERENCES users(tenant_id, id)", ""),
   );
   const compositeFk = run();
@@ -135,22 +135,22 @@ try {
     throw new Error(`composite-FK fixture did not fail correctly:\n${compositeFk.stdout}\n${compositeFk.stderr}`);
   }
   write(
-    "crates/rustok-notifications/src/migrations/m20260721_000010_create_notification_persistence.rs",
+    "crates/modules/rustok-notifications/src/migrations/m20260721_000010_create_notification_persistence.rs",
     validMigration,
   );
 
   write(
-    "crates/rustok-notifications/src/entities.rs",
+    "crates/modules/rustok-notifications/src/entities.rs",
     `${validEntities}\npub struct Leak { pub email_address: String, pub raw_payload: String }`,
   );
   const privateData = run();
   if (privateData.status === 0 || !privateData.stderr.includes("forbidden contact/rendered/source-private")) {
     throw new Error(`private-data fixture did not fail correctly:\n${privateData.stdout}\n${privateData.stderr}`);
   }
-  write("crates/rustok-notifications/src/entities.rs", validEntities);
+  write("crates/modules/rustok-notifications/src/entities.rs", validEntities);
 
   write(
-    "crates/rustok-notifications/src/migrations/m20260721_000010_create_notification_persistence.rs",
+    "crates/modules/rustok-notifications/src/migrations/m20260721_000010_create_notification_persistence.rs",
     `${validMigration}\nendpoint TEXT`,
   );
   const rawEndpoint = run();

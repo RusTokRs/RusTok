@@ -11,17 +11,17 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const contractPath =
-  'crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json';
+  'crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json';
 const runnerPath = 'scripts/evidence/capture-fulfillment-lifecycle-transport-parity.mjs';
 const verifierPath =
   'scripts/verify/verify-fulfillment-lifecycle-transport-parity-capture.mjs';
 const evidencePath =
-  'crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution.json';
+  'crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution.json';
 const sourceEvidencePath =
-  'crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json';
+  'crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json';
 const runbookPath =
-  'crates/rustok-fulfillment/docs/fulfillment-lifecycle-transport-parity-capture.md';
-const planPath = 'crates/rustok-fulfillment/docs/implementation-plan.md';
+  'crates/modules/rustok-fulfillment/docs/fulfillment-lifecycle-transport-parity-capture.md';
+const planPath = 'crates/modules/rustok-fulfillment/docs/implementation-plan.md';
 
 const contract = JSON.parse(read(contractPath));
 const runner = read(runnerPath);
@@ -40,12 +40,12 @@ const sameRecord = (left, right) => JSON.stringify(left) === JSON.stringify(righ
 
 const expectedSourceFiles = [
   'apps/server/src/controllers/graphql.rs',
-  'crates/rustok-commerce/src/graphql/query.rs',
-  'crates/rustok-commerce/src/graphql/safe_query.rs',
-  'crates/rustok-commerce/src/graphql_runtime.rs',
-  'crates/rustok-commerce/src/controllers/admin/fulfillments.rs',
-  'crates/rustok-fulfillment/src/fulfillment_read.rs',
-  'crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json',
+  'crates/modules/rustok-commerce/src/graphql/query.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query.rs',
+  'crates/modules/rustok-commerce/src/graphql_runtime.rs',
+  'crates/modules/rustok-commerce/src/controllers/admin/fulfillments.rs',
+  'crates/modules/rustok-fulfillment/src/fulfillment_read.rs',
+  'crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json',
 ];
 const expectedRequiredEnvironment = [
   'RUSTOK_FULFILLMENT_PARITY_GRAPHQL_URL',

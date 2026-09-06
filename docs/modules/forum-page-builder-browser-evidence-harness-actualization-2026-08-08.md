@@ -13,7 +13,7 @@ This slice retains the browser-execution source needed for that next step. It do
 The canonical browser contract is:
 
 ```text
-crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json
+crates/modules/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json
 ```
 
 A successful maintainer execution writes only:

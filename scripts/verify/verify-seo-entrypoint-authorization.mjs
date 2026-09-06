@@ -26,13 +26,13 @@ const sliceBetween = (source, start, end, label) => {
   return source.slice(startIndex, endIndex);
 };
 
-const authorization = read('crates/rustok-seo/src/authorization.rs');
-const applications = read('crates/rustok-seo/src/services/applications.rs');
+const authorization = read('crates/modules/rustok-seo/src/authorization.rs');
+const applications = read('crates/modules/rustok-seo/src/services/applications.rs');
 const lifecycle = read('apps/server/src/services/app_lifecycle.rs');
-const controllers = read('crates/rustok-seo/src/controllers/mod.rs');
-const graphql = read('crates/rustok-seo/src/graphql/mod.rs');
+const controllers = read('crates/modules/rustok-seo/src/controllers/mod.rs');
+const graphql = read('crates/modules/rustok-seo/src/graphql/mod.rs');
 const nativeAdmin = read(
-  'crates/rustok-seo/admin/src/transport/native_server_adapter.rs',
+  'crates/modules/rustok-seo/admin/src/transport/native_server_adapter.rs',
 );
 
 for (const [value, label] of [

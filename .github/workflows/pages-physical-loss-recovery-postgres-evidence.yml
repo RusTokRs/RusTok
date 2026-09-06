@@ -5,40 +5,40 @@ on:
     branches:
       - main
     paths:
-      - "crates/rustok-pages/src/**"
-      - "crates/rustok-pages/tests/explicit_artifact_binding_replacement_sqlite.rs"
-      - "crates/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs"
-      - "crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs"
-      - "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs"
-      - "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs"
-      - "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json"
-      - "crates/rustok-pages/docs/explicit-immutable-artifact-loss-activation-recovery.md"
-      - "crates/rustok-pages/docs/implementation-plan.md"
-      - "crates/rustok-page-builder/src/**"
-      - "crates/rustok-outbox/src/**"
+      - "crates/modules/rustok-pages/src/**"
+      - "crates/modules/rustok-pages/tests/explicit_artifact_binding_replacement_sqlite.rs"
+      - "crates/modules/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs"
+      - "crates/modules/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs"
+      - "crates/modules/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs"
+      - "crates/modules/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json"
+      - "crates/modules/rustok-pages/docs/explicit-immutable-artifact-loss-activation-recovery.md"
+      - "crates/modules/rustok-pages/docs/implementation-plan.md"
+      - "crates/modules/rustok-page-builder/src/**"
+      - "crates/modules/rustok-outbox/src/**"
       - "docs/modules/pages-page-builder-multilocale-activation-recovery-actualization-2026-08-07.md"
       - "docs/modules/pages-page-builder-repeated-artifact-loss-recovery-actualization-2026-08-07.md"
       - "docs/modules/pages-physical-loss-recovery-postgres-evidence-actualization-2026-08-15.md"
   pull_request:
     paths:
-      - "crates/rustok-pages/src/**"
-      - "crates/rustok-pages/tests/explicit_artifact_binding_replacement_sqlite.rs"
-      - "crates/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs"
-      - "crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs"
-      - "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs"
-      - "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs"
-      - "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json"
-      - "crates/rustok-pages/docs/explicit-immutable-artifact-loss-activation-recovery.md"
-      - "crates/rustok-pages/docs/implementation-plan.md"
-      - "crates/rustok-page-builder/src/**"
-      - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
-      - "crates/rustok-outbox/src/**"
+      - "crates/modules/rustok-pages/src/**"
+      - "crates/modules/rustok-pages/tests/explicit_artifact_binding_replacement_sqlite.rs"
+      - "crates/modules/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs"
+      - "crates/modules/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs"
+      - "crates/modules/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs"
+      - "crates/modules/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json"
+      - "crates/modules/rustok-pages/docs/explicit-immutable-artifact-loss-activation-recovery.md"
+      - "crates/modules/rustok-pages/docs/implementation-plan.md"
+      - "crates/modules/rustok-page-builder/src/**"
+      - "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json"
+      - "crates/modules/rustok-outbox/src/**"
       - "docs/modules/pages-page-builder-multilocale-activation-recovery-actualization-2026-08-07.md"
       - "docs/modules/pages-page-builder-repeated-artifact-loss-recovery-actualization-2026-08-07.md"
       - "docs/modules/pages-physical-loss-recovery-postgres-evidence-actualization-2026-08-15.md"
@@ -100,15 +100,15 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - name: Verify explicit binding-replacement source
-        run: node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
       - name: Verify multi-locale physical-loss source
-        run: node crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs
       - name: Validate execution contract
         shell: bash
         run: |
           node <<'NODE'
           const fs = require('node:fs');
-          const path = 'crates/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json';
+          const path = 'crates/modules/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json';
           const contract = JSON.parse(fs.readFileSync(path, 'utf8'));
           const fail = (message) => { console.error(message); process.exit(1); };
           if (contract.format !== 'pages_physical_loss_recovery_postgres_execution_source_v1') fail('execution contract format drifted');
@@ -158,8 +158,8 @@ jobs:
           node <<'NODE'
           const crypto = require('node:crypto');
           const fs = require('node:fs');
-          const contractPath = 'crates/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json';
-          const registryPath = 'crates/rustok-page-builder/contracts/page-builder-fba-registry.json';
+          const contractPath = 'crates/modules/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json';
+          const registryPath = 'crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json';
           const contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
           const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
           const consumer = registry.consumers?.[0];

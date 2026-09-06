@@ -274,12 +274,12 @@ if (totalSites > maxRegisteredSites) {
   );
 }
 
-const legacyCanvas = "crates/rustok-page-builder/admin/src/editor/admin_canvas.rs";
+const legacyCanvas = "crates/modules/rustok-page-builder/admin/src/editor/admin_canvas.rs";
 if (exists(legacyCanvas)) {
   failures.push(`${legacyCanvas}: dead legacy canvas must not be restored`);
 }
 
-requireMarkers("crates/rustok-ui-core/src/css.rs", [
+requireMarkers("crates/ui/rustok-ui-core/src/css.rs", [
   "normalize_css_hex_color",
   "css_hex_accent_class",
   "css_background_accent_class",
@@ -289,7 +289,7 @@ requireMarkers("crates/rustok-ui-core/src/css.rs", [
   "bg-gradient-to-b from-sky-500 to-amber-500",
   "#fff;background:url(https://attacker.invalid/x)",
 ]);
-requireMarkers("crates/rustok-forum/src/entities/forum_category.rs", [
+requireMarkers("crates/modules/rustok-forum/src/entities/forum_category.rs", [
   "async fn before_save",
   "ActiveValue::Set(Some(color))",
   "normalize_category_color",
@@ -298,35 +298,35 @@ requireMarkers("crates/rustok-forum/src/entities/forum_category.rs", [
   "DbErr::Custom",
   "#fff;background:url(https://attacker.invalid/x)",
 ]);
-requireMarkers("crates/rustok-forum/storefront/src/core.rs", [
+requireMarkers("crates/modules/rustok-forum/storefront/src/core.rs", [
   "pub accent_class: &'static str",
   "pub fn forum_storefront_accent_class",
   "css_hex_accent_class(color)",
   "accent_class: forum_storefront_accent_class",
 ]);
-forbidMarkers("crates/rustok-forum/storefront/src/core.rs", [
+forbidMarkers("crates/modules/rustok-forum/storefront/src/core.rs", [
   "accent_style",
   "forum_storefront_accent_style",
   "background:{value}",
 ]);
-requireMarkers("crates/rustok-forum/storefront/src/ui/leptos.rs", [
+requireMarkers("crates/modules/rustok-forum/storefront/src/ui/leptos.rs", [
   "card.accent_class",
   "absolute inset-y-0 left-0 w-1.5",
 ]);
-forbidMarkers("crates/rustok-forum/storefront/src/ui/leptos.rs", [
+forbidMarkers("crates/modules/rustok-forum/storefront/src/ui/leptos.rs", [
   "style=card.accent_style",
   "card.accent_style",
 ]);
-requireMarkers("crates/rustok-page-builder/admin/src/editor/palette_layers.rs", [
+requireMarkers("crates/modules/rustok-page-builder/admin/src/editor/palette_layers.rs", [
   "fn layer_indent_class",
   '0 => "pl-2"',
   '_ => "pl-[120px]"',
   "layer_indent_uses_a_bounded_class_scale",
 ]);
-forbidMarkers("crates/rustok-page-builder/admin/src/editor/palette_layers.rs", [
+forbidMarkers("crates/modules/rustok-page-builder/admin/src/editor/palette_layers.rs", [
   'style=format!("padding-left:',
 ]);
-requireMarkers("crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs", [
+requireMarkers("crates/modules/rustok-page-builder/admin/src/editor/isolated_canvas.rs", [
   "struct ViewportSvgGeometry",
   "fn viewport_svg_geometry",
   "data-fly-svg-viewport",
@@ -337,29 +337,29 @@ requireMarkers("crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs",
   "fn overlay_geometry",
   "overlay_geometry_uses_svg_coordinates_without_css_text",
 ]);
-forbidMarkers("crates/rustok-page-builder/admin/src/editor/isolated_canvas.rs", [
+forbidMarkers("crates/modules/rustok-page-builder/admin/src/editor/isolated_canvas.rs", [
   "style=",
   "transform:scale",
   "fn overlay_style",
 ]);
-requireMarkers("crates/rustok-page-builder/admin/src/editor/resize_handles.rs", [
+requireMarkers("crates/modules/rustok-page-builder/admin/src/editor/resize_handles.rs", [
   "struct SvgRectGeometry",
   "fn svg_handle_position",
   "fn resize_handle_cursor_class",
   "<circle",
   "resize_geometry_uses_svg_attributes_and_bounded_cursor_classes",
 ]);
-forbidMarkers("crates/rustok-page-builder/admin/src/editor/resize_handles.rs", [
+forbidMarkers("crates/modules/rustok-page-builder/admin/src/editor/resize_handles.rs", [
   "fn rect_style",
   "fn handle_style",
   "style=move ||",
 ]);
 
-requireMarkers("crates/rustok-forum/admin/src/ui/leptos.rs", [
+requireMarkers("crates/modules/rustok-forum/admin/src/ui/leptos.rs", [
   "css_background_accent_class(vm.accent_style.as_str())",
   "absolute inset-y-0 left-0 w-1.5",
 ]);
-forbidMarkers("crates/rustok-forum/admin/src/ui/leptos.rs", [
+forbidMarkers("crates/modules/rustok-forum/admin/src/ui/leptos.rs", [
   "style=vm.accent_style",
 ]);
 requireMarkers("apps/admin/src/features/modules/components/modules_list.rs", [

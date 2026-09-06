@@ -3,17 +3,17 @@ name: Taxonomy Module Route Match Contract
 on:
   pull_request:
     paths:
-      - "crates/rustok-taxonomy/src/module_term_lookup.rs"
-      - "crates/rustok-taxonomy/src/lib.rs"
-      - "crates/rustok-taxonomy/tests/module_route_match.rs"
+      - "crates/modules/rustok-taxonomy/src/module_term_lookup.rs"
+      - "crates/modules/rustok-taxonomy/src/lib.rs"
+      - "crates/modules/rustok-taxonomy/tests/module_route_match.rs"
       - ".github/workflows/taxonomy-module-route-match.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-taxonomy/src/module_term_lookup.rs"
-      - "crates/rustok-taxonomy/src/lib.rs"
-      - "crates/rustok-taxonomy/tests/module_route_match.rs"
+      - "crates/modules/rustok-taxonomy/src/module_term_lookup.rs"
+      - "crates/modules/rustok-taxonomy/src/lib.rs"
+      - "crates/modules/rustok-taxonomy/tests/module_route_match.rs"
       - ".github/workflows/taxonomy-module-route-match.yml"
   workflow_dispatch:
 

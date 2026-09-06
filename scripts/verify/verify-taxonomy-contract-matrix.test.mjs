@@ -51,12 +51,12 @@ const taxonomyDependency = '[dependencies]\ntaxonomy = { version_req = ">=0.1.0"
 function writeBaseline(root, kinds = ["Tag"]) {
   write(
     root,
-    "crates/rustok-blog/rustok-module.toml",
+    "crates/modules/rustok-blog/rustok-module.toml",
     `[module]\nslug = "blog"\n${taxonomyDependency}`,
   );
   write(
     root,
-    "crates/rustok-blog/CRATE_API.md",
+    "crates/modules/rustok-blog/CRATE_API.md",
     [
       "Canonical tag identity now lives in shared `rustok-taxonomy`",
       "rustok-blog keeps `blog_post_tags` as the module-owned relation table",
@@ -66,12 +66,12 @@ function writeBaseline(root, kinds = ["Tag"]) {
 
   write(
     root,
-    "crates/rustok-forum/rustok-module.toml",
+    "crates/modules/rustok-forum/rustok-module.toml",
     `[module]\nslug = "forum"\n${taxonomyDependency}`,
   );
   write(
     root,
-    "crates/rustok-forum/docs/README.md",
+    "crates/modules/rustok-forum/docs/README.md",
     [
       "tag attachments via `forum_topic_tags` with shared vocabulary in `rustok-taxonomy`",
       "uses `rustok-taxonomy` as a shared dictionary for tag identity",
@@ -81,12 +81,12 @@ function writeBaseline(root, kinds = ["Tag"]) {
 
   write(
     root,
-    "crates/rustok-product/rustok-module.toml",
+    "crates/modules/rustok-product/rustok-module.toml",
     `[module]\nslug = "product"\n${taxonomyDependency}`,
   );
   write(
     root,
-    "crates/rustok-product/README.md",
+    "crates/modules/rustok-product/README.md",
     [
       "Product-owned relation storage for taxonomy-backed tags (`product_tags`).",
       "Depends on `rustok-taxonomy` for shared scope-aware tag dictionary",
@@ -96,12 +96,12 @@ function writeBaseline(root, kinds = ["Tag"]) {
 
   write(
     root,
-    "crates/rustok-profiles/rustok-module.toml",
+    "crates/modules/rustok-profiles/rustok-module.toml",
     `[module]\nslug = "profiles"\n${taxonomyDependency}`,
   );
   write(
     root,
-    "crates/rustok-profiles/README.md",
+    "crates/modules/rustok-profiles/README.md",
     [
       "Own profile-to-taxonomy relation storage via `profile_tags`.",
       "Depends on `rustok-taxonomy` for shared scope-aware tags while keeping `profile_tags` module-owned.",
@@ -130,7 +130,7 @@ function writeBaseline(root, kinds = ["Tag"]) {
 
   write(
     root,
-    "crates/rustok-taxonomy/src/dto.rs",
+    "crates/modules/rustok-taxonomy/src/dto.rs",
     [
       "pub enum TaxonomyTermKind {",
       ...kinds.map((kind) => `    ${kind},`),
@@ -140,7 +140,7 @@ function writeBaseline(root, kinds = ["Tag"]) {
   );
   write(
     root,
-    "crates/rustok-taxonomy/tests/localized_route_lookup.rs",
+    "crates/modules/rustok-taxonomy/tests/localized_route_lookup.rs",
     [
       "public_route_lookup_uses_registry_authority_over_unregistered_legacy_alias",
       "owner_batch_collapses_equivalent_labels_and_normalizes_scope_and_locale",
@@ -154,7 +154,7 @@ function writeBaseline(root, kinds = ["Tag"]) {
   );
   write(
     root,
-    "crates/rustok-taxonomy/tests/route_key_registry.rs",
+    "crates/modules/rustok-taxonomy/tests/route_key_registry.rs",
     [
       "hard_delete_removes_lookup_and_allows_route_identity_reuse",
       "database_primary_key_rejects_second_route_owner",
@@ -165,7 +165,7 @@ function writeBaseline(root, kinds = ["Tag"]) {
     root,
     ".github/workflows/taxonomy-lookup-contract.yml",
     [
-      '- "crates/rustok-taxonomy/src/dto.rs"',
+      '- "crates/modules/rustok-taxonomy/src/dto.rs"',
       "cargo test --locked -p rustok-taxonomy --test localized_route_lookup --test route_key_registry",
       "",
     ].join("\n"),
@@ -176,14 +176,14 @@ function writeBaseline(root, kinds = ["Tag"]) {
     [
       '- "DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md"',
       '- "docs/architecture/taxonomy-flex-category-platform-plan.md"',
-      '- "crates/rustok-blog/rustok-module.toml"',
-      '- "crates/rustok-blog/CRATE_API.md"',
-      '- "crates/rustok-forum/rustok-module.toml"',
-      '- "crates/rustok-forum/docs/README.md"',
-      '- "crates/rustok-product/rustok-module.toml"',
-      '- "crates/rustok-product/README.md"',
-      '- "crates/rustok-profiles/rustok-module.toml"',
-      '- "crates/rustok-profiles/README.md"',
+      '- "crates/modules/rustok-blog/rustok-module.toml"',
+      '- "crates/modules/rustok-blog/CRATE_API.md"',
+      '- "crates/modules/rustok-forum/rustok-module.toml"',
+      '- "crates/modules/rustok-forum/docs/README.md"',
+      '- "crates/modules/rustok-product/rustok-module.toml"',
+      '- "crates/modules/rustok-product/README.md"',
+      '- "crates/modules/rustok-profiles/rustok-module.toml"',
+      '- "crates/modules/rustok-profiles/README.md"',
       '- "scripts/verify/verify-taxonomy-contract-matrix.mjs"',
       '- "scripts/verify/verify-taxonomy-contract-matrix.test.mjs"',
       "run: node scripts/verify/verify-taxonomy-contract-matrix.test.mjs",
@@ -219,7 +219,7 @@ try {
 
   write(
     root,
-    "crates/rustok-product/rustok-module.toml",
+    "crates/modules/rustok-product/rustok-module.toml",
     '[module]\nslug = "product"\n[dependencies]\noutbox = { version_req = ">=0.1.0" }\n',
   );
   expectFailure(
@@ -231,7 +231,7 @@ try {
 
   write(
     root,
-    "crates/rustok-forum/docs/README.md",
+    "crates/modules/rustok-forum/docs/README.md",
     "uses `rustok-taxonomy` as a shared dictionary for tag identity\n",
   );
   expectFailure(
@@ -258,14 +258,14 @@ try {
     ".github/workflows/taxonomy-ownership-boundary.yml",
     [
       '- "docs/architecture/taxonomy-flex-category-platform-plan.md"',
-      '- "crates/rustok-blog/rustok-module.toml"',
-      '- "crates/rustok-blog/CRATE_API.md"',
-      '- "crates/rustok-forum/rustok-module.toml"',
-      '- "crates/rustok-forum/docs/README.md"',
-      '- "crates/rustok-product/rustok-module.toml"',
-      '- "crates/rustok-product/README.md"',
-      '- "crates/rustok-profiles/rustok-module.toml"',
-      '- "crates/rustok-profiles/README.md"',
+      '- "crates/modules/rustok-blog/rustok-module.toml"',
+      '- "crates/modules/rustok-blog/CRATE_API.md"',
+      '- "crates/modules/rustok-forum/rustok-module.toml"',
+      '- "crates/modules/rustok-forum/docs/README.md"',
+      '- "crates/modules/rustok-product/rustok-module.toml"',
+      '- "crates/modules/rustok-product/README.md"',
+      '- "crates/modules/rustok-profiles/rustok-module.toml"',
+      '- "crates/modules/rustok-profiles/README.md"',
       '- "scripts/verify/verify-taxonomy-contract-matrix.mjs"',
       '- "scripts/verify/verify-taxonomy-contract-matrix.test.mjs"',
       "run: node scripts/verify/verify-taxonomy-contract-matrix.test.mjs",

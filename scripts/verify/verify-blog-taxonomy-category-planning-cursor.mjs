@@ -17,32 +17,32 @@ const rejectMarker = (source, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`must not contain ${label}`);
 };
 
-const currentCursorPath = 'crates/rustok-blog/docs/implementation-plan-current.md';
-const crateReadmePath = 'crates/rustok-blog/README.md';
-const docsReadmePath = 'crates/rustok-blog/docs/README.md';
-const entitiesPath = 'crates/rustok-blog/src/entities/mod.rs';
+const currentCursorPath = 'crates/modules/rustok-blog/docs/implementation-plan-current.md';
+const crateReadmePath = 'crates/modules/rustok-blog/README.md';
+const docsReadmePath = 'crates/modules/rustok-blog/docs/README.md';
+const entitiesPath = 'crates/modules/rustok-blog/src/entities/mod.rs';
 
 for (const path of [
   currentCursorPath,
   crateReadmePath,
   docsReadmePath,
   entitiesPath,
-  'crates/rustok-blog/docs/implementation-plan-slice-98.md',
-  'crates/rustok-blog/src/migrations/m20260824_000020_backfill_blog_categories_to_taxonomy.rs',
-  'crates/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs',
-  'crates/rustok-blog/src/entities/blog_category_translation.rs',
-  'crates/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-98.md',
+  'crates/modules/rustok-blog/src/migrations/m20260824_000020_backfill_blog_categories_to_taxonomy.rs',
+  'crates/modules/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs',
+  'crates/modules/rustok-blog/src/entities/blog_category_translation.rs',
+  'crates/modules/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs',
 ]) {
   requireFile(path);
 }
 
 for (const path of [
-  'crates/rustok-blog/src/translation_target.rs',
-  'crates/rustok-blog/src/translation_target_tests.rs',
-  'crates/rustok-blog/src/translation_evidence.rs',
-  'crates/rustok-blog/src/entities/translation_change.rs',
-  'crates/rustok-blog/tests/category_translation_target_postgres_test.rs',
-  'crates/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json',
+  'crates/modules/rustok-blog/src/translation_target.rs',
+  'crates/modules/rustok-blog/src/translation_target_tests.rs',
+  'crates/modules/rustok-blog/src/translation_evidence.rs',
+  'crates/modules/rustok-blog/src/entities/translation_change.rs',
+  'crates/modules/rustok-blog/tests/category_translation_target_postgres_test.rs',
+  'crates/modules/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json',
   'scripts/verify/verify-blog-category-translation-postgres-source.mjs',
 ]) {
   requireAbsent(path);

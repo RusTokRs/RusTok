@@ -9,13 +9,13 @@ const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
-const moduleSource = read('crates/rustok-commerce/src/graphql/mutations/mod.rs');
-const facadeSource = read('crates/rustok-commerce/src/graphql/mutations/safe_order_helpers.rs');
+const moduleSource = read('crates/modules/rustok-commerce/src/graphql/mutations/mod.rs');
+const facadeSource = read('crates/modules/rustok-commerce/src/graphql/mutations/safe_order_helpers.rs');
 const layeredSource = read(
-  'crates/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs',
 );
-const orderErrors = read('crates/rustok-order/src/error.rs');
-const commerceErrors = read('crates/rustok-commerce-foundation/src/error.rs');
+const orderErrors = read('crates/modules/rustok-order/src/error.rs');
+const commerceErrors = read('crates/modules/rustok-commerce-foundation/src/error.rs');
 const failures = [];
 
 const requireText = (source, value, label) => {

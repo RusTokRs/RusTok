@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 
 const freshnessScriptPath = path.resolve("scripts/verify/verify-forum-wave-evidence-freshness.mjs");
 const readinessScriptPath = path.resolve(
-  "crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs",
+  "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs",
 );
 const waveAdmissionVerifier = "node scripts/verify/verify-forum-page-builder-wave-admission.mjs";
 const requiredGates = [
@@ -273,7 +273,7 @@ function readinessFixture(packet) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-forum-builder-readiness-"));
   writeFixture(
     root,
-    "crates/rustok-forum/rustok-module.toml",
+    "crates/modules/rustok-forum/rustok-module.toml",
     `
 page_builder = true
 contract_version = "1.0"
@@ -306,12 +306,12 @@ read_surfaces_guarantee = "forum_owned_list_read_topic_paths_stay_available_when
   );
   writeFixture(
     root,
-    "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/docs/implementation-plan.md",
     "## Current state\n## FFA/FBA status\nPage Builder readiness\n## Immediate next action\n## Open results\n",
   );
   writeFixture(
     root,
-    "crates/rustok-forum/contracts/evidence/fw2-fallback-static-matrix.json",
+    "crates/modules/rustok-forum/contracts/evidence/fw2-fallback-static-matrix.json",
     JSON.stringify(
       {
         schema: "rustok.forum.fw2_fallback_static_matrix.v1",
@@ -342,17 +342,17 @@ read_surfaces_guarantee = "forum_owned_list_read_topic_paths_stay_available_when
   );
   writeFixture(
     root,
-    "crates/rustok-forum/src/controllers/mod.rs",
+    "crates/modules/rustok-forum/src/controllers/mod.rs",
     "forum-read-source-marker\nforum-moderation-route-marker\n",
   );
   writeFixture(
     root,
-    "crates/rustok-forum/src/services/moderation.rs",
+    "crates/modules/rustok-forum/src/services/moderation.rs",
     "forum-moderation-service-marker\n",
   );
   writeFixture(
     root,
-    "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
+    "crates/modules/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
     JSON.stringify(packet, null, 2),
   );
   return root;

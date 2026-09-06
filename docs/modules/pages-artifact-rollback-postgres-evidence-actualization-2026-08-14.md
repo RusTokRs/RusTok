@@ -16,8 +16,8 @@ Before this permanent workflow was introduced, branch-only PostgreSQL run `31766
 
 That run passed:
 
-- `node crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`;
-- `node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs`;
 - `cargo test --locked -p rustok-pages --test publish_rollback_outbox_cache_postgres -- --nocapture` against PostgreSQL 16;
 - `cargo check --locked -p rustok-pages --all-targets`.
 

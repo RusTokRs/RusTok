@@ -10,14 +10,14 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const controller = read('crates/rustok-commerce/src/controllers/store/products.rs');
-const httpRuntime = read('crates/rustok-commerce/src/controllers/mod.rs');
-const apiPorts = read('crates/rustok-api/src/ports.rs');
-const webErrors = read('crates/rustok-web/src/lib.rs');
-const commerceErrors = read('crates/rustok-commerce-foundation/src/error.rs');
-const shippingOwnerPort = read('crates/rustok-fulfillment/src/shipping_option_read.rs');
-const fulfillmentService = read('crates/rustok-fulfillment/src/services/fulfillment.rs');
-const storefrontShipping = read('crates/rustok-commerce/src/storefront_shipping.rs');
+const controller = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
+const httpRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
+const apiPorts = read('crates/libs/rustok-api/src/ports.rs');
+const webErrors = read('crates/libs/rustok-web/src/lib.rs');
+const commerceErrors = read('crates/modules/rustok-commerce-foundation/src/error.rs');
+const shippingOwnerPort = read('crates/modules/rustok-fulfillment/src/shipping_option_read.rs');
+const fulfillmentService = read('crates/modules/rustok-fulfillment/src/services/fulfillment.rs');
+const storefrontShipping = read('crates/modules/rustok-commerce/src/storefront_shipping.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {

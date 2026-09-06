@@ -35,7 +35,7 @@ function section(source, startMarker, endMarker) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-notification-inbox-mark-unread.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-inbox-mark-unread.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const owner = read(contract.notifications_owner_file ?? "");
 const entities = read(contract.notifications_entity_file ?? "");

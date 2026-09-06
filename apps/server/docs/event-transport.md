@@ -86,7 +86,7 @@ Settings and runtime locations:
 - global profile storage and validation:
   `apps/server/src/services/event_delivery_settings_service.rs`
 - connector-owned settings and readiness:
-  `crates/rustok-iggy-connector` with the server adapter in
+  `crates/modules/rustok-iggy-connector` with the server adapter in
   `apps/server/src/services/iggy_connector_settings_service.rs`
 - transport assembly: `apps/server/src/services/event_transport_factory.rs`
 - GraphQL control plane: `apps/server/src/graphql/settings/`

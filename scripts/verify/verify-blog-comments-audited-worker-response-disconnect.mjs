@@ -18,9 +18,9 @@ const sourcePath =
 const storePath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_postgres_audit.rs';
 const planPath =
-  'crates/rustok-blog/docs/implementation-plan-slice-86.md';
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-86.md';
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-audited-worker-response-disconnect.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-audited-worker-response-disconnect.json';
 
 const source = read(sourcePath);
 const productionStore = read(storePath);
@@ -54,7 +54,7 @@ const preserved = {
     '5037a166d35e32be327941f6ba480546d1cef0bb',
   'apps/server/tests/blog_comments_schedule_audit_postgres.rs':
     '4ebe3a285495a8cbeb69729a9ca7f3452456785d',
-  'crates/rustok-blog/docs/implementation-plan-slice-85.md':
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-85.md':
     'f8a3ad0216ae534e9e913e966fe0141adba22c94',
 };
 

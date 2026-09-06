@@ -3,11 +3,11 @@
 import { readFile } from 'node:fs/promises';
 
 const files = {
-  source: 'crates/rustok-index/src/infrastructure/postgres/drift_candidate_reader.rs',
-  postgresMod: 'crates/rustok-index/src/infrastructure/postgres/mod.rs',
-  lib: 'crates/rustok-index/src/lib.rs',
-  doc: 'crates/rustok-index/docs/m6-postgres-drift-candidate-reader.md',
-  plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
+  source: 'crates/modules/rustok-index/src/infrastructure/postgres/drift_candidate_reader.rs',
+  postgresMod: 'crates/modules/rustok-index/src/infrastructure/postgres/mod.rs',
+  lib: 'crates/modules/rustok-index/src/lib.rs',
+  doc: 'crates/modules/rustok-index/docs/m6-postgres-drift-candidate-reader.md',
+  plan: 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
 

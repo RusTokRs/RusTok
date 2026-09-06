@@ -4,16 +4,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-canonical-promotion-packet.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-canonical-promotion-packet.json";
 const reviewContractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-promotion.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-promotion.json";
 const docsPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d19-link-forum-03-canonical-promotion-packet.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d19-link-forum-03-canonical-promotion-packet.md";
 const builderPath =
   "scripts/evidence/prepare-link-forum-03-canonical-promotion-packet.mjs";
 const verifierPath =
   "scripts/verify/verify-link-forum-03-canonical-promotion-packet.mjs";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const candidatePath =
   "target/link-forum-03-forum-index-search-complete-promotion-candidate.json";
 const completePath =

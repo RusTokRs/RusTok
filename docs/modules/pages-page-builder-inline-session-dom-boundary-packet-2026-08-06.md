@@ -68,7 +68,7 @@ No tests, static verifiers, formatting, Cargo commands, WASM builds, server buil
 Suggested checks, intentionally not run:
 
 ```bash
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs
 cargo test -p rustok-page-builder-storefront inline_dom_identity_excludes_grant_session_and_authorization_proof
 cargo check -p rustok-page-builder-storefront --features inline-edit,ssr
 cargo check -p rustok-page-builder-storefront --target wasm32-unknown-unknown --features inline-edit,hydrate

@@ -10,12 +10,12 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const facade = read('crates/rustok-commerce/src/graphql/mutations/safe_helpers.rs');
+const facade = read('crates/modules/rustok-commerce/src/graphql/mutations/safe_helpers.rs');
 const typed = read(
-  'crates/rustok-commerce/src/graphql/mutations/typed_line_item_helpers.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/typed_line_item_helpers.rs',
 );
 const layered = read(
-  'crates/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs',
 );
 const failures = [];
 

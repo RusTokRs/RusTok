@@ -13,19 +13,19 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const serverRuntime = read('apps/server/src/services/commerce_provider_runtime.rs');
-const httpRuntime = read('crates/rustok-commerce/src/controllers/mod.rs');
-const adminRest = read('crates/rustok-commerce/src/controllers/admin/shipping.rs');
-const storefrontRest = read('crates/rustok-commerce/src/controllers/store/products.rs');
-const graphqlRuntime = read('crates/rustok-commerce/src/graphql_runtime.rs');
+const httpRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
+const adminRest = read('crates/modules/rustok-commerce/src/controllers/admin/shipping.rs');
+const storefrontRest = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
+const graphqlRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.rs');
 const safeQuery = readCommerceSafeQuerySource(read);
-const commerceStorefrontTransport = read('crates/rustok-commerce/storefront/src/transport/mod.rs');
+const commerceStorefrontTransport = read('crates/modules/rustok-commerce/storefront/src/transport/mod.rs');
 const commerceNativeAdapter = read(
-  'crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs',
+  'crates/modules/rustok-commerce/storefront/src/transport/native_server_adapter.rs',
 );
-const fulfillmentStorefrontTransport = read('crates/rustok-fulfillment/storefront/src/transport.rs');
+const fulfillmentStorefrontTransport = read('crates/modules/rustok-fulfillment/storefront/src/transport.rs');
 const evidence = JSON.parse(
   read(
-    'crates/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-source.json',
+    'crates/modules/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-source.json',
   ),
 );
 

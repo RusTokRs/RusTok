@@ -31,7 +31,7 @@ const requirePattern = (relative, pattern, description) => {
   return source;
 };
 
-const testPath = 'crates/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests.rs';
+const testPath = 'crates/modules/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests.rs';
 const test = requireMarkers(testPath, [
   'RUSTOK_INDEX_TEST_DATABASE_URL',
   'CREATE SCHEMA',
@@ -60,7 +60,7 @@ for (const forbidden of [
   if (test.includes(forbidden)) fail(`${testPath} contains forbidden marker ${forbidden}`);
 }
 
-const referencePath = 'crates/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests/reference_fixture.rs';
+const referencePath = 'crates/modules/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests/reference_fixture.rs';
 requireMarkers(referencePath, [
   'CursorCodec::decode_scoped_for_query',
   'CursorCodec::encode_for_query',
@@ -82,19 +82,19 @@ requireMarkers(referencePath, [
 requirePattern(referencePath, /plan\s*\.outer_projection\(\)/u, 'plan.outer_projection()');
 requirePattern(referencePath, /plan\s*\.many_projections\b/u, 'plan.many_projections');
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod postgres_reference_equivalence_tests;',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-postgres-reference-equivalence.mjs'",
 ]);
-requireNormalizedMarkers('crates/rustok-index/docs/m4-postgres-reference-equivalence.md', [
+requireNormalizedMarkers('crates/modules/rustok-index/docs/m4-postgres-reference-equivalence.md', [
   'Status: `fixture_capture_and_admission_source_complete_owner_execution_pending`',
   'compares the complete `IndexQueryPage`',
   'does not introduce Testcontainers or a second database stack',
   'Not run by the implementation agent',
 ]);
-requireNormalizedMarkers('crates/rustok-index/docs/m4-query-planner.md', [
+requireNormalizedMarkers('crates/modules/rustok-index/docs/m4-query-planner.md', [
   'M4 PostgreSQL/reference fixture source: `source_complete_owner_execution_pending`',
   'M4 live PostgreSQL/reference execution evidence: `open_owner_action`',
   'The canonical checklist remains open until the owner runs the PostgreSQL/reference fixture through capture',

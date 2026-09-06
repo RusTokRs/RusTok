@@ -42,17 +42,17 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-customer/admin/src/lib.rs";
-const corePath = "crates/rustok-customer/admin/src/core.rs";
-const transportModPath = "crates/rustok-customer/admin/src/transport/mod.rs";
-const nativeAdapterPath = "crates/rustok-customer/admin/src/transport/native_server_adapter.rs";
-const uiPath = "crates/rustok-customer/admin/src/ui/leptos.rs";
-const cargoPath = "crates/rustok-customer/admin/Cargo.toml";
-const readmePath = "crates/rustok-customer/admin/README.md";
-const localPlanPath = "crates/rustok-customer/docs/implementation-plan.md";
+const libPath = "crates/modules/rustok-customer/admin/src/lib.rs";
+const corePath = "crates/modules/rustok-customer/admin/src/core.rs";
+const transportModPath = "crates/modules/rustok-customer/admin/src/transport/mod.rs";
+const nativeAdapterPath = "crates/modules/rustok-customer/admin/src/transport/native_server_adapter.rs";
+const uiPath = "crates/modules/rustok-customer/admin/src/ui/leptos.rs";
+const cargoPath = "crates/modules/rustok-customer/admin/Cargo.toml";
+const readmePath = "crates/modules/rustok-customer/admin/README.md";
+const localPlanPath = "crates/modules/rustok-customer/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
-const profilePresentationPath = "crates/rustok-profiles/src/presentation.rs";
-const profileLoaderPath = "crates/rustok-profiles/src/loader.rs";
+const profilePresentationPath = "crates/modules/rustok-profiles/src/presentation.rs";
+const profileLoaderPath = "crates/modules/rustok-profiles/src/loader.rs";
 
 for (const filePath of [
   libPath,
@@ -70,8 +70,8 @@ for (const filePath of [
   assertExists(filePath, `${filePath}: expected customer admin boundary file`);
 }
 assertMissing(
-  "crates/rustok-customer/admin/src/api.rs",
-  "crates/rustok-customer/admin/src/api.rs: pre-FFA api facade must stay removed",
+  "crates/modules/rustok-customer/admin/src/api.rs",
+  "crates/modules/rustok-customer/admin/src/api.rs: pre-FFA api facade must stay removed",
 );
 
 const lib = readRepo(libPath);

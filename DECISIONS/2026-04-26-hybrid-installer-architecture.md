@@ -20,7 +20,7 @@ their schema artifacts from the database.
 
 RusTok uses a hybrid installer model:
 
-1. `crates/rustok-installer` becomes a shared installer-core and the source of
+1. `crates/utils/rustok-installer` becomes a shared installer-core and the source of
    truth for install plan, state machine, preflight policy, secret references,
    receipts, and checksum/idempotency contract.
 2. A standalone typed `rustok-cli install ...` interface will be the canonical

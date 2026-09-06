@@ -41,107 +41,107 @@ expectNotExists(
 );
 
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "const MAX_STANDALONE_FIELDS_PER_SCHEMA: usize = 50;",
   "standalone schema field-count persistence guardrail",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "validate_standalone_uuid(input.schema_id, \"schema_id\")?;",
   "create-entry schema_id nil UUID validation",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "validate_optional_standalone_uuid(actor_id, \"actor_id\")?;",
   "actor_id nil UUID validation on orchestration boundaries",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "standalone flex entries cannot attach to flex_entry; max relation depth is 1",
   "max relation depth guardrail for standalone Flex entries",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "validate_definition_shape(def)?;",
   "field-definition shape validation before adapter writes",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "regex::Regex::new(pattern)",
   "regex validation for pattern rules",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "definition.field_type.requires_options()",
   "select option presence validation",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "CustomFieldsSchema::new(vec![definition.clone()])",
   "default value validation through core schema rules",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "if !is_valid_locale_key(locale) || value.trim().is_empty()",
   "localized map locale/value normalization validation",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "position must be unique within standalone schema fields_config",
   "unique field position validation for deterministic standalone schema ordering",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "status must already be normalized without surrounding whitespace",
   "status normalization guardrail",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "pub fn normalize_and_validate_standalone_entry",
   "owner-owned standalone entry normalization and validation helper",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "schema.apply_defaults(&mut data);",
   "standalone entry default application in owner helper",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "schema.strip_unknown(&mut data);",
   "standalone entry unknown-key stripping in owner helper",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "pub fn split_standalone_entry_data",
   "owner-owned standalone entry shared/localized payload split helper",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "pub fn effective_standalone_entry_data",
   "owner-owned standalone entry read payload resolver",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "pub fn merge_standalone_entry_patch",
   "owner-owned PATCH-style standalone entry merge helper",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "pub fn parse_standalone_fields_config",
   "owner-owned standalone fields_config parser",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "pub fn build_standalone_custom_fields_schema",
   "owner-owned standalone custom fields schema builder",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "pub fn serialize_standalone_fields_config",
   "owner-owned standalone fields_config serializer",
 );
 expectContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   "pub fn standalone_localized_field_keys",
   "owner-owned standalone localized field-key resolver",
 );
@@ -153,7 +153,7 @@ for (const snippet of [
   "pub fn standalone_entry_view_from_source",
 ]) {
   expectContains(
-    "crates/flex/src/standalone.rs",
+    "crates/modules/flex/src/standalone.rs",
     snippet,
     "owner-owned standalone row-to-view mapping helper",
   );
@@ -286,37 +286,37 @@ if (fs.existsSync(path.join(workspaceRoot, "apps/server/src/services/flex_standa
   );
 }
 expectContains(
-  "crates/flex/src/rest.rs",
+  "crates/modules/flex/src/rest.rs",
   "pub struct CreateFlexSchemaRequest",
   "owner-owned standalone REST request DTOs",
 );
 expectContains(
-  "crates/flex/src/rest.rs",
+  "crates/modules/flex/src/rest.rs",
   "impl From<FlexSchemaView> for FlexSchemaResponse",
   "owner-owned standalone REST schema response mapping",
 );
 expectContains(
-  "crates/flex/src/rest.rs",
+  "crates/modules/flex/src/rest.rs",
   "impl From<FlexEntryView> for FlexEntryResponse",
   "owner-owned standalone REST entry response mapping",
 );
 expectContains(
-  "crates/flex/src/rest.rs",
+  "crates/modules/flex/src/rest.rs",
   "impl DeleteFlexResponse",
   "owner-owned standalone REST delete response helper",
 );
 expectContains(
-  "crates/flex/src/rest.rs",
+  "crates/modules/flex/src/rest.rs",
   "pub fn success() -> Self",
   "owner-owned standalone REST delete success factory",
 );
 expectContains(
-  "crates/flex/src/rest.rs",
+  "crates/modules/flex/src/rest.rs",
   "pub fn into_command(self) -> Result<CreateFlexSchemaCommand, FieldDefinitionsConfigParseError>",
   "owner-owned standalone REST create-schema command mapping",
 );
 expectContains(
-  "crates/flex/src/rest.rs",
+  "crates/modules/flex/src/rest.rs",
   "pub fn into_command(self, schema_id: Uuid) -> CreateFlexEntryCommand",
   "owner-owned standalone REST create-entry command mapping",
 );
@@ -351,7 +351,7 @@ expectContains(
   "OpenAPI schema registration uses owner-owned Flex REST DTOs",
 );
 expectNotContains(
-  "crates/flex/src/standalone.rs",
+  "crates/modules/flex/src/standalone.rs",
   ".update_schema(tenant_id, actor_id, schema_id, input)\n        .update_schema(",
   "duplicate update_schema delegation chain",
 );
@@ -371,7 +371,7 @@ for (const snippet of [
   "pub fn field_definition_deleted_event",
 ]) {
   expectContains(
-    "crates/flex/src/registry.rs",
+    "crates/modules/flex/src/registry.rs",
     snippet,
     "owner-owned attached field-definition lifecycle helper",
   );
@@ -462,7 +462,7 @@ for (const model of [
   }
 }
 expectMatch(
-  "crates/flex/docs/implementation-plan.md",
+  "crates/modules/flex/docs/implementation-plan.md",
   /standalone contract validators now .*schema descriptions/s,
   "Phase 5 implementation-plan checkpoint for latest no-compile validator hardening",
 );

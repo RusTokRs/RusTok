@@ -38,8 +38,8 @@ for (const manifest of uiManifests) {
 }
 
 for (const relative of [
-  'crates/rustok-product/storefront/Cargo.toml',
-  'crates/rustok-pricing/storefront/Cargo.toml',
+  'crates/modules/rustok-product/storefront/Cargo.toml',
+  'crates/modules/rustok-pricing/storefront/Cargo.toml',
 ]) {
   const source = fs.readFileSync(path.join(root, relative), 'utf8');
   if (/^rustok-core\s*=/m.test(source)) {

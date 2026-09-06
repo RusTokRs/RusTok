@@ -18,24 +18,24 @@ const forbidAll = (text, markers, label) => {
 };
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-assembler.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-assembler.json";
 const docPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d17-complete-link-evidence-assembler.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d17-complete-link-evidence-assembler.md";
 const assemblerPath =
   "scripts/evidence/assemble-link-forum-03-complete-forum-search-evidence.mjs";
 const verifierPath =
   "scripts/verify/verify-link-forum-03-complete-forum-search-evidence.mjs";
 const outputPath =
   "target/link-forum-03-forum-index-search-complete-evidence.json";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const d13ContractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-evidence-assembler.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-evidence-assembler.json";
 const d14ContractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-translation-moderation-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-translation-moderation-proof.json";
 const d15ContractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-private-trusted-exclusion-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-private-trusted-exclusion-proof.json";
 const d16ContractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-topic-move-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-topic-move-proof.json";
 const d13ArtifactPath =
   "target/link-forum-03-forum-index-search-ordering-visibility-evidence.json";
 const d14ArtifactPath =

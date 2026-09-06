@@ -38,14 +38,14 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-region/admin/src/lib.rs";
-const corePath = "crates/rustok-region/admin/src/core.rs";
-const uiPath = "crates/rustok-region/admin/src/ui/leptos.rs";
-const transportPath = "crates/rustok-region/admin/src/transport/mod.rs";
-const legacyApiPath = "crates/rustok-region/admin/src/api.rs";
-const nativeServerAdapterPath = "crates/rustok-region/admin/src/transport/native_server_adapter.rs";
-const cargoPath = "crates/rustok-region/admin/Cargo.toml";
-const implementationPlanPath = "crates/rustok-region/docs/implementation-plan.md";
+const libPath = "crates/modules/rustok-region/admin/src/lib.rs";
+const corePath = "crates/modules/rustok-region/admin/src/core.rs";
+const uiPath = "crates/modules/rustok-region/admin/src/ui/leptos.rs";
+const transportPath = "crates/modules/rustok-region/admin/src/transport/mod.rs";
+const legacyApiPath = "crates/modules/rustok-region/admin/src/api.rs";
+const nativeServerAdapterPath = "crates/modules/rustok-region/admin/src/transport/native_server_adapter.rs";
+const cargoPath = "crates/modules/rustok-region/admin/Cargo.toml";
+const implementationPlanPath = "crates/modules/rustok-region/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 const verifierTestPath = "scripts/verify/verify-region-admin-boundary.test.mjs";

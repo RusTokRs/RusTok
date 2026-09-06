@@ -3,20 +3,20 @@ import './verify-fly-internal-links.mjs';
 import { readFile } from 'node:fs/promises';
 
 const files = {
-  flyCodec: 'crates/fly/src/codec.rs',
-  flyCommandFacade: 'crates/fly/src/command.rs',
-  flyCommandModel: 'crates/fly/src/command/model.rs',
-  flyCommandEditor: 'crates/fly/src/command/editor.rs',
-  manifest: 'crates/rustok-page-builder/rustok-module.toml',
-  canvasDocument: 'crates/rustok-page-builder/admin/src/editor/canvas_document.rs',
-  canvasRuntime: 'crates/rustok-page-builder/admin/src/editor/canvas_runtime.js',
-  canvasProtocol: 'crates/rustok-page-builder/admin/src/editor/canvas_protocol.rs',
-  facade: 'crates/rustok-page-builder/admin/src/transport/mod.rs',
-  controller: 'crates/rustok-page-builder/admin/src/model.rs',
-  pagesBuilder: 'crates/rustok-pages/admin/src/builder.rs',
-  pagesComposition: 'crates/rustok-pages/admin/src/composition.rs',
-  localeEn: 'crates/rustok-page-builder/admin/locales/en.json',
-  localeRu: 'crates/rustok-page-builder/admin/locales/ru.json',
+  flyCodec: 'crates/ui/fly/src/codec.rs',
+  flyCommandFacade: 'crates/ui/fly/src/command.rs',
+  flyCommandModel: 'crates/ui/fly/src/command/model.rs',
+  flyCommandEditor: 'crates/ui/fly/src/command/editor.rs',
+  manifest: 'crates/modules/rustok-page-builder/rustok-module.toml',
+  canvasDocument: 'crates/modules/rustok-page-builder/admin/src/editor/canvas_document.rs',
+  canvasRuntime: 'crates/modules/rustok-page-builder/admin/src/editor/canvas_runtime.js',
+  canvasProtocol: 'crates/modules/rustok-page-builder/admin/src/editor/canvas_protocol.rs',
+  facade: 'crates/modules/rustok-page-builder/admin/src/transport/mod.rs',
+  controller: 'crates/modules/rustok-page-builder/admin/src/model.rs',
+  pagesBuilder: 'crates/modules/rustok-pages/admin/src/builder.rs',
+  pagesComposition: 'crates/modules/rustok-pages/admin/src/composition.rs',
+  localeEn: 'crates/modules/rustok-page-builder/admin/locales/en.json',
+  localeRu: 'crates/modules/rustok-page-builder/admin/locales/ru.json',
 };
 
 const source = Object.fromEntries(

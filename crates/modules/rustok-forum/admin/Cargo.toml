@@ -1,0 +1,51 @@
+[package]
+name = "rustok-forum-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin UI package for the rustok-forum module"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+csr = ["leptos/csr"]
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "rustok-api/server",
+  "dep:rustok-core",
+  "dep:rustok-forum",
+  "dep:rustok-outbox",
+  "dep:uuid",
+]
+
+[dependencies]
+fly = { path = "../../../ui/fly" }
+fly-ui = { path = "../../../ui/fly-ui" }
+rustok-ui-core.workspace = true
+rustok-ui-transport.workspace = true
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+leptos-auth.workspace = true
+leptos-ui.workspace = true
+rustok-graphql.workspace = true
+rustok-api = { workspace = true, default-features = false }
+rustok-core = { workspace = true, optional = true }
+rustok-forum = { path = "..", optional = true }
+rustok-outbox = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
+
+rustok-ui-i18n-leptos.workspace = true
+rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }
+leptos-ui-routing.workspace = true
+rustok-seo-admin-support.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+
+[build-dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+toml.workspace = true

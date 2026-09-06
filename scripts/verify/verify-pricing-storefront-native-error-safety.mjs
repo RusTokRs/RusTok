@@ -10,13 +10,13 @@ const rootPath = configuredRoot
   : fileURLToPath(new URL("../../", import.meta.url));
 const read = (relativePath) => readFileSync(path.join(rootPath, relativePath), "utf8");
 
-const cargo = read("crates/rustok-pricing/storefront/Cargo.toml");
+const cargo = read("crates/modules/rustok-pricing/storefront/Cargo.toml");
 const source = read(
-  "crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-pricing/storefront/src/transport/native_server_adapter.rs",
 );
 const evidence = JSON.parse(
   read(
-    "crates/rustok-pricing/contracts/evidence/storefront-native-error-safety-source.json",
+    "crates/modules/rustok-pricing/contracts/evidence/storefront-native-error-safety-source.json",
   ),
 );
 

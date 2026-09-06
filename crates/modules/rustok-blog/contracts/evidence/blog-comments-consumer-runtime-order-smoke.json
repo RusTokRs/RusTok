@@ -1,0 +1,123 @@
+{
+  "schema_version": 2,
+  "module": "blog",
+  "role": "consumer",
+  "provider": "comments",
+  "generated_from": "crates/modules/rustok-blog/contracts/blog-fba-registry.json",
+  "runner": "scripts/verify/verify-consumer-fba-runtime-order.mjs",
+  "status": "executable_no_compile",
+  "compile_policy": "not_run_by_request",
+  "source_contract": {
+    "consumer_service": "crates/modules/rustok-blog/src/services/comment.rs",
+    "consumer_error_mapping": "crates/modules/rustok-blog/src/services/comment.rs",
+    "provider_registry": "crates/modules/rustok-comments/contracts/comments-fba-registry.json"
+  },
+  "fallback_smoke": {
+    "status": "planned",
+    "profiles": [
+      "embedded_native"
+    ],
+    "degraded_modes": [
+      "hide_comment_form",
+      "show_cached_thread_snapshot"
+    ]
+  },
+  "runtime_order": [
+    {
+      "operation": "create_comment",
+      "function": "create_comment",
+      "markers": [
+        "ensure_post_exists",
+        "comments_thread_port",
+        "create_comment",
+        "comments_write_port_context",
+        "DomainCreateCommentInput",
+        "body: input.content",
+        "map_comment_record"
+      ]
+    },
+    {
+      "operation": "list_comments_for_target",
+      "function": "list_for_post_with_locale_fallback",
+      "markers": [
+        "ensure_post_exists",
+        "comments_thread_port",
+        "list_comments_for_target",
+        "comments_read_port_context",
+        "map_comment_list_item"
+      ]
+    },
+    {
+      "operation": "update_comment",
+      "function": "update_comment",
+      "markers": [
+        "DomainUpdateCommentInput",
+        "body: input.content",
+        "comments_thread_port",
+        "update_comment",
+        "comments_write_port_context",
+        "map_comment_record"
+      ]
+    },
+    {
+      "operation": "set_comment_status",
+      "function": "moderate_comment",
+      "markers": [
+        "enforce_scope",
+        "comments_thread_port",
+        "get_comment",
+        "comments_read_port_context",
+        "ensure_blog_target",
+        "set_comment_status",
+        "comments_write_port_context",
+        "map_comment_record"
+      ]
+    },
+    {
+      "operation": "delete_comment",
+      "function": "delete_comment",
+      "markers": [
+        "comments_thread_port",
+        "get_comment",
+        "comments_read_port_context",
+        "ensure_blog_target",
+        "comments_thread_port",
+        "delete_comment",
+        "comments_write_port_context"
+      ]
+    }
+  ],
+  "source_assertions": [
+    {
+      "name": "blog target ownership",
+      "path": "crates/modules/rustok-blog/src/services/comment.rs",
+      "markers": [
+        "const TARGET_TYPE_BLOG_POST",
+        "Self::ensure_blog_target",
+        "BlogError::comment_not_found"
+      ]
+    },
+    {
+      "name": "typed richtext comments consumer",
+      "path": "crates/modules/rustok-blog/src/dto/comment.rs",
+      "markers": [
+        "pub content: RichTextDocument",
+        "pub content: Option<RichTextDocument>",
+        "pub content: RichTextView",
+        "pub content_text: String"
+      ]
+    },
+    {
+      "name": "typed comments port error mapping",
+      "path": "crates/modules/rustok-blog/src/services/comment.rs",
+      "markers": [
+        "PortErrorKind::Validation",
+        "PortErrorKind::NotFound",
+        "PortErrorKind::Forbidden",
+        "PortErrorKind::Unavailable",
+        "PortErrorKind::Timeout",
+        "with_error_code(error.code)"
+      ]
+    }
+  ]
+}

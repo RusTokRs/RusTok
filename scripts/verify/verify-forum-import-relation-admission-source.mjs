@@ -15,13 +15,13 @@ function forbid(text, marker, label) {
 }
 
 const files = {
-  lib: "crates/rustok-forum/src/lib.rs",
-  mapping: "crates/rustok-forum/src/import_mapping.rs",
-  writePreparation: "crates/rustok-forum/src/import_write_preparation.rs",
-  relationPreparation: "crates/rustok-forum/src/import_relation_preparation.rs",
-  mentions: "crates/rustok-forum/src/mentions.rs",
-  relationOwner: "crates/rustok-forum/src/services/mention_relation.rs",
-  categoryProjectionOwner: "crates/rustok-forum/src/services/category_projection_owner.rs",
+  lib: "crates/modules/rustok-forum/src/lib.rs",
+  mapping: "crates/modules/rustok-forum/src/import_mapping.rs",
+  writePreparation: "crates/modules/rustok-forum/src/import_write_preparation.rs",
+  relationPreparation: "crates/modules/rustok-forum/src/import_relation_preparation.rs",
+  mentions: "crates/modules/rustok-forum/src/mentions.rs",
+  relationOwner: "crates/modules/rustok-forum/src/services/mention_relation.rs",
+  categoryProjectionOwner: "crates/modules/rustok-forum/src/services/category_projection_owner.rs",
   packet: "docs/modules/forum-34-import-relation-admission-actualization-2026-08-09.md",
 };
 

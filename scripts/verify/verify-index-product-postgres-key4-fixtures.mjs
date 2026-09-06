@@ -12,13 +12,13 @@ const fail = (message) => {
 };
 
 const productFixtures = [
-  'crates/rustok-distribution/tests/product_locale_absence_postgres.rs',
-  'crates/rustok-distribution/tests/product_materialized_query_freshness_postgres.rs',
-  'crates/rustok-distribution/tests/product_channel_convergence_postgres.rs',
-  'crates/rustok-distribution/tests/product_channel_identity_transitions_postgres.rs',
-  'crates/rustok-distribution/tests/product_linked_target_recreate_postgres.rs',
-  'crates/rustok-distribution/tests/product_linked_target_availability_equivalence_postgres.rs',
-  'crates/rustok-distribution/tests/product_linked_target_replay_redelivery_postgres.rs',
+  'crates/modules/rustok-distribution/tests/product_locale_absence_postgres.rs',
+  'crates/modules/rustok-distribution/tests/product_materialized_query_freshness_postgres.rs',
+  'crates/modules/rustok-distribution/tests/product_channel_convergence_postgres.rs',
+  'crates/modules/rustok-distribution/tests/product_channel_identity_transitions_postgres.rs',
+  'crates/modules/rustok-distribution/tests/product_linked_target_recreate_postgres.rs',
+  'crates/modules/rustok-distribution/tests/product_linked_target_availability_equivalence_postgres.rs',
+  'crates/modules/rustok-distribution/tests/product_linked_target_replay_redelivery_postgres.rs',
 ];
 
 for (const relative of productFixtures) {
@@ -34,11 +34,11 @@ for (const relative of productFixtures) {
   }
 }
 
-const productSource = read('crates/rustok-distribution/src/product_index/mod.rs');
+const productSource = read('crates/modules/rustok-distribution/src/product_index/mod.rs');
 if (!productSource.includes('PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4')) {
   fail('current Product routing key is not 4');
 }
-const productBridge = read('crates/rustok-distribution/src/product_index/product.rs');
+const productBridge = read('crates/modules/rustok-distribution/src/product_index/product.rs');
 for (const marker of [
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
   'assert_eq!(schema.fields.len(), 15);',
@@ -53,9 +53,9 @@ if (productBridge.includes('SchemaVersion::new(3)')) {
 }
 
 for (const relative of [
-  'crates/rustok-distribution/tests/product_linked_target_recreate_postgres.rs',
-  'crates/rustok-distribution/tests/product_linked_target_availability_equivalence_postgres.rs',
-  'crates/rustok-distribution/tests/product_linked_target_replay_redelivery_postgres.rs',
+  'crates/modules/rustok-distribution/tests/product_linked_target_recreate_postgres.rs',
+  'crates/modules/rustok-distribution/tests/product_linked_target_availability_equivalence_postgres.rs',
+  'crates/modules/rustok-distribution/tests/product_linked_target_replay_redelivery_postgres.rs',
 ]) {
   const source = read(relative);
   if (!source.includes('SchemaVersion::new(2)')) {
@@ -64,8 +64,8 @@ for (const relative of [
 }
 
 for (const relative of [
-  'crates/rustok-distribution/tests/product_linked_target_recreate_postgres.rs',
-  'crates/rustok-distribution/tests/product_linked_target_availability_equivalence_postgres.rs',
+  'crates/modules/rustok-distribution/tests/product_linked_target_recreate_postgres.rs',
+  'crates/modules/rustok-distribution/tests/product_linked_target_availability_equivalence_postgres.rs',
 ]) {
   const source = read(relative);
   if (!source.includes('SchemaVersion::INITIAL')) {

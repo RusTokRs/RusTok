@@ -3,10 +3,10 @@
 import fs from 'node:fs';
 
 const categoriesPath =
-  'crates/rustok-product/src/services/catalog_schema_service/categories.rs';
-const contractPath = 'crates/rustok-product/docs/category-taxonomy-binding.md';
-const localeContractPath = 'crates/rustok-product/docs/category-locale-contract.md';
-const ownerSyncPath = 'crates/rustok-taxonomy/src/owner_category_sync.rs';
+  'crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs';
+const contractPath = 'crates/modules/rustok-product/docs/category-taxonomy-binding.md';
+const localeContractPath = 'crates/modules/rustok-product/docs/category-locale-contract.md';
+const ownerSyncPath = 'crates/modules/rustok-taxonomy/src/owner_category_sync.rs';
 
 const failures = [];
 const need = (source, marker, label = marker) => {

@@ -34,7 +34,7 @@ What is missing for the FBA registry node is retained **executed evidence**, not
 
 This continuation adds:
 
-- `crates/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-execution-source.json`;
+- `crates/modules/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-execution-source.json`;
 - `scripts/evidence/record-page-builder-static-sanitization-execution.mjs`;
 - `scripts/verify/verify-page-builder-static-sanitization-execution.mjs`;
 - `.github/workflows/page-builder-static-sanitization-evidence.yml`.

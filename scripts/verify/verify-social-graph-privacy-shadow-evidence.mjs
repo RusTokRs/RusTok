@@ -31,7 +31,7 @@ const requireOrder = (relative, source, markers) => {
   }
 };
 
-const metricsPath = 'crates/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs';
+const metricsPath = 'crates/libs/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs';
 const metrics = requireMarkers(metricsPath, [
   'collector_started_timestamp_seconds: IntGauge',
   'rustok_social_graph_index_privacy_shadow_collector_started_timestamp_seconds',
@@ -222,7 +222,7 @@ requireMarkers(testPath, [
   'false negative evidence is reviewable but cannot pass policy',
 ]);
 
-const contractPath = 'crates/rustok-social-graph/contracts/social-graph-index-privacy-shadow-evidence.json';
+const contractPath = 'crates/modules/rustok-social-graph/contracts/social-graph-index-privacy-shadow-evidence.json';
 const contract = JSON.parse(read(contractPath));
 if (contract.schema_version !== 1) fail(`${contractPath} must use schema_version 1`);
 if (contract.status !== 'source_complete_owner_execution_pending') {
@@ -257,7 +257,7 @@ for (const label of ['tenant_id', 'source_user_id', 'target_user_id', 'relation_
   }
 }
 
-const notificationContractPath = 'crates/rustok-social-graph/contracts/social-graph-notification-policy.json';
+const notificationContractPath = 'crates/modules/rustok-social-graph/contracts/social-graph-notification-policy.json';
 const notificationContract = JSON.parse(read(notificationContractPath));
 if (notificationContract.index_privacy_shadow_evidence !== contractPath) {
   fail(`${notificationContractPath} must bind the privacy-shadow evidence contract`);
@@ -272,7 +272,7 @@ if (notificationContract.verification?.evidence_verifier !== 'scripts/verify/ver
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-social-graph-privacy-shadow-evidence.mjs'",
 ]);
-requireMarkers('crates/rustok-index/docs/m4-social-graph-privacy-consumer.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-social-graph-privacy-consumer.md', [
   'Status: `source_complete_metrics_evidence_tooling_execution_pending`',
   '`start.prom`',
   '`end.prom`',
@@ -284,7 +284,7 @@ requireMarkers('crates/rustok-index/docs/m4-social-graph-privacy-consumer.md', [
   'Authoritative cutover remains blocked',
   'Not run by the implementation agent',
 ]);
-requireMarkers('crates/rustok-telemetry/CRATE_API.md', [
+requireMarkers('crates/libs/rustok-telemetry/CRATE_API.md', [
   '`rustok_social_graph_index_privacy_shadow_collector_started_timestamp_seconds`',
   'restart detection',
 ]);

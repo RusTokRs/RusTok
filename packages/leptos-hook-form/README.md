@@ -30,7 +30,7 @@ Target apps:
 ## Runtime implementations
 
 ### 1) Leptos (Rust)
-Rust helpers live in `crates/leptos-hook-form`.
+Rust helpers live in `crates/ui/leptos-hook-form`.
 
 Exports:
 - `FormState`, `FieldError`

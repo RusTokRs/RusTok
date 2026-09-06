@@ -1,15 +1,15 @@
 import fs from "node:fs";
 
 const test = fs.readFileSync(
-  "crates/rustok-distribution/tests/forum_moderation_lost_response_postgres.rs",
+  "crates/modules/rustok-distribution/tests/forum_moderation_lost_response_postgres.rs",
   "utf8",
 );
 const docs = fs.readFileSync(
-  "crates/rustok-moderation/docs/forum-lost-response-postgres-contract.md",
+  "crates/modules/rustok-moderation/docs/forum-lost-response-postgres-contract.md",
   "utf8",
 );
 const distributionCargo = fs.readFileSync(
-  "crates/rustok-distribution/Cargo.toml",
+  "crates/modules/rustok-distribution/Cargo.toml",
   "utf8",
 );
 

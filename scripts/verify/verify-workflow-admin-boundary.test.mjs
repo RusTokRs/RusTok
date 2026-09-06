@@ -108,21 +108,21 @@ ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-workflow-boundary-"));
-  writeFixtureFile(root, "crates/rustok-workflow/admin/src/lib.rs", libSource(options));
-  writeFixtureFile(root, "crates/rustok-workflow/admin/src/core/mod.rs", coreModSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-workflow/admin/src/lib.rs", libSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-workflow/admin/src/core/mod.rs", coreModSource(options));
   for (const leaf of ["presentation", "navigation", "transport_context", "error", "command"]) {
-    writeFixtureFile(root, `crates/rustok-workflow/admin/src/core/${leaf}.rs`, coreLeafSource());
+    writeFixtureFile(root, `crates/modules/rustok-workflow/admin/src/core/${leaf}.rs`, coreLeafSource());
   }
-  writeFixtureFile(root, "crates/rustok-workflow/admin/src/ui/leptos.rs", uiSource(options));
-  writeFixtureFile(root, "crates/rustok-workflow/admin/src/transport/mod.rs", transportModSource(options));
-  writeFixtureFile(root, "crates/rustok-workflow/admin/src/transport/native_server_adapter.rs", nativeAdapterSource());
-  writeFixtureFile(root, "crates/rustok-workflow/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
-  writeFixtureFile(root, "crates/rustok-workflow/admin/Cargo.toml", cargoSource());
+  writeFixtureFile(root, "crates/modules/rustok-workflow/admin/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-workflow/admin/src/transport/mod.rs", transportModSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-workflow/admin/src/transport/native_server_adapter.rs", nativeAdapterSource());
+  writeFixtureFile(root, "crates/modules/rustok-workflow/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-workflow/admin/Cargo.toml", cargoSource());
   if (options.includeLegacyApiFile) {
-    writeFixtureFile(root, "crates/rustok-workflow/admin/src/api.rs", "pub async fn fetch_workflows() {}");
+    writeFixtureFile(root, "crates/modules/rustok-workflow/admin/src/api.rs", "pub async fn fetch_workflows() {}");
   }
   if (options.includeLegacyTransportFile) {
-    writeFixtureFile(root, "crates/rustok-workflow/admin/src/transport.rs", "pub async fn fetch_workflows() {}");
+    writeFixtureFile(root, "crates/modules/rustok-workflow/admin/src/transport.rs", "pub async fn fetch_workflows() {}");
   }
   return root;
 }

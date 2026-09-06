@@ -5,17 +5,17 @@ import { readFileSync } from "node:fs";
 
 const paths = {
   contract:
-    "crates/rustok-forum/contracts/forum-topic-slug-rename-graphql-transport.json",
-  ownerContract: "crates/rustok-forum/contracts/forum-topic-slug-rename-owner.json",
-  docs: "crates/rustok-forum/docs/forum-24f-topic-slug-rename-graphql-transport.md",
-  ownerDocs: "crates/rustok-forum/docs/forum-24d-topic-slug-rename-owner.md",
-  graphql: "crates/rustok-forum/src/graphql/topic_slug_rename_mutation.rs",
-  graphqlMod: "crates/rustok-forum/src/graphql/mod.rs",
-  owner: "crates/rustok-forum/src/services/topic_owner.rs",
-  routeOwner: "crates/rustok-forum/src/services/topic_route.rs",
-  schemaTest: "crates/rustok-forum/tests/topic_slug_rename_graphql_contract.rs",
-  ownerRuntimeTest: "crates/rustok-forum/tests/topic_slug_rename_sqlite.rs",
-  docsIndex: "crates/rustok-forum/docs/README.md",
+    "crates/modules/rustok-forum/contracts/forum-topic-slug-rename-graphql-transport.json",
+  ownerContract: "crates/modules/rustok-forum/contracts/forum-topic-slug-rename-owner.json",
+  docs: "crates/modules/rustok-forum/docs/forum-24f-topic-slug-rename-graphql-transport.md",
+  ownerDocs: "crates/modules/rustok-forum/docs/forum-24d-topic-slug-rename-owner.md",
+  graphql: "crates/modules/rustok-forum/src/graphql/topic_slug_rename_mutation.rs",
+  graphqlMod: "crates/modules/rustok-forum/src/graphql/mod.rs",
+  owner: "crates/modules/rustok-forum/src/services/topic_owner.rs",
+  routeOwner: "crates/modules/rustok-forum/src/services/topic_route.rs",
+  schemaTest: "crates/modules/rustok-forum/tests/topic_slug_rename_graphql_contract.rs",
+  ownerRuntimeTest: "crates/modules/rustok-forum/tests/topic_slug_rename_sqlite.rs",
+  docsIndex: "crates/modules/rustok-forum/docs/README.md",
 };
 
 const read = (path) => readFileSync(path, "utf8");

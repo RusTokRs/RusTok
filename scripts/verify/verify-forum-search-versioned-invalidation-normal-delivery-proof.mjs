@@ -18,25 +18,25 @@ const forbidAll = (text, markers, label) => {
 };
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-normal-delivery-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-normal-delivery-proof.json";
 const parentContractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
 const docPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d10-normal-delivery-proof.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d10-normal-delivery-proof.md";
 const testPath =
   "apps/server/tests/forum_versioned_invalidation_normal_delivery_iggy.rs";
 const evidencePath =
   "target/forum-search-versioned-invalidation-normal-delivery-evidence.json";
 const projectionInvalidationPath =
-  "crates/rustok-forum/src/services/projection_invalidation.rs";
-const ingressPath = "crates/rustok-search/src/forum_contract_ingress.rs";
-const reconciliationPath = "crates/rustok-search/src/forum_reconciliation.rs";
+  "crates/modules/rustok-forum/src/services/projection_invalidation.rs";
+const ingressPath = "crates/modules/rustok-search/src/forum_contract_ingress.rs";
+const reconciliationPath = "crates/modules/rustok-search/src/forum_reconciliation.rs";
 const ownerCheckpointPath =
-  "crates/rustok-search/src/forum_owner_checkpoint.rs";
-const projectorPath = "crates/rustok-search/src/forum_projector.rs";
+  "crates/modules/rustok-search/src/forum_owner_checkpoint.rs";
+const projectorPath = "crates/modules/rustok-search/src/forum_projector.rs";
 const storefrontExecutionPath =
-  "crates/rustok-search/src/forum_storefront_execution.rs";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
+  "crates/modules/rustok-search/src/forum_storefront_execution.rs";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 
 const contract = JSON.parse(read(contractPath));
 assert.equal(

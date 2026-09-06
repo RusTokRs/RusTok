@@ -36,13 +36,13 @@ const validModel = `
 `;
 
 const files = {
-  "crates/rustok-notifications-api/src/lib.rs": `
+  "crates/modules/rustok-notifications-api/src/lib.rs": `
     pub struct NotificationSourceSlug;
     pub struct NotificationTypeKey;
     pub struct NotificationTemplateKey;
     pub struct NotificationTargetRoute;
   `,
-  "crates/rustok-notifications-api/src/keys.rs": `
+  "crates/modules/rustok-notifications-api/src/keys.rs": `
     const SOURCE_SLUG_MAX_BYTES: usize = 64;
     const SEMANTIC_KEY_MAX_BYTES: usize = 96;
     const AUDIENCE_CURSOR_MAX_BYTES: usize = 512;
@@ -50,8 +50,8 @@ const files = {
     enum NotificationKeyError { InvalidRoute }
     fn safe(segment: &str) -> bool { segment != "." && segment != ".." }
   `,
-  "crates/rustok-notifications-api/src/model.rs": validModel,
-  "crates/rustok-notifications-api/src/provider.rs": `
+  "crates/modules/rustok-notifications-api/src/model.rs": validModel,
+  "crates/modules/rustok-notifications-api/src/provider.rs": `
     trait NotificationSourceProvider {
       fn describe_event();
       fn resolve_audience();
@@ -62,14 +62,14 @@ const files = {
     fn notification_source_registry_from_extensions() {}
     enum Error { DuplicateSource }
   `,
-  "crates/rustok-notifications/src/lib.rs": `
+  "crates/modules/rustok-notifications/src/lib.rs": `
     fn dependencies() -> &'static [&'static str] { &["outbox"] }
     fn register() { ensure_notification_source_registry(); }
   `,
-  "crates/rustok-notifications/src/service.rs": `
+  "crates/modules/rustok-notifications/src/service.rs": `
     let registry = value.unwrap_or_else(|| Arc::new(NotificationSourceRegistry::default()));
   `,
-  "crates/rustok-notifications/rustok-module.toml": `
+  "crates/modules/rustok-notifications/rustok-module.toml": `
     [module]
     slug = "notifications"
     [provides.admin_ui]
@@ -77,13 +77,13 @@ const files = {
     [provides.storefront_ui]
     leptos_crate = "rustok-notifications-storefront"
   `,
-  "crates/rustok-notifications/admin/src/core.rs": "struct NotificationsAdminStatus;",
-  "crates/rustok-notifications/admin/src/transport.rs": "fn load() { NotificationsAdminStatus::foundation(); }",
-  "crates/rustok-notifications/admin/src/ui/leptos.rs": "fn NotificationsAdmin() {}",
-  "crates/rustok-notifications/storefront/src/core.rs": "struct State { unread_count: Option<u32> } const STATE: State = State { unread_count: None };",
-  "crates/rustok-notifications/storefront/src/transport.rs": "fn load() { NotificationStorefrontState::foundation(); }",
-  "crates/rustok-notifications/storefront/src/ui/leptos.rs": "fn NotificationsView() {}",
-  "crates/rustok-forum/docs/implementation-plan.md": "### Delivered in `NOTIFY-00A`",
+  "crates/modules/rustok-notifications/admin/src/core.rs": "struct NotificationsAdminStatus;",
+  "crates/modules/rustok-notifications/admin/src/transport.rs": "fn load() { NotificationsAdminStatus::foundation(); }",
+  "crates/modules/rustok-notifications/admin/src/ui/leptos.rs": "fn NotificationsAdmin() {}",
+  "crates/modules/rustok-notifications/storefront/src/core.rs": "struct State { unread_count: Option<u32> } const STATE: State = State { unread_count: None };",
+  "crates/modules/rustok-notifications/storefront/src/transport.rs": "fn load() { NotificationStorefrontState::foundation(); }",
+  "crates/modules/rustok-notifications/storefront/src/ui/leptos.rs": "fn NotificationsView() {}",
+  "crates/modules/rustok-forum/docs/implementation-plan.md": "### Delivered in `NOTIFY-00A`",
 };
 
 try {
@@ -105,7 +105,7 @@ try {
   rmSync(path.join(fixtureRoot, "crates/demo"), { recursive: true, force: true });
 
   write(
-    "crates/rustok-notifications/storefront/src/transport.rs",
+    "crates/modules/rustok-notifications/storefront/src/transport.rs",
     "fn load() { NotificationStorefrontState::foundation(); let unread = Some(1); }",
   );
   const shadowUnread = run();
@@ -113,12 +113,12 @@ try {
     throw new Error(`shadow-unread fixture did not fail correctly:\n${shadowUnread.stdout}\n${shadowUnread.stderr}`);
   }
   write(
-    "crates/rustok-notifications/storefront/src/transport.rs",
+    "crates/modules/rustok-notifications/storefront/src/transport.rs",
     "fn load() { NotificationStorefrontState::foundation(); }",
   );
 
   write(
-    "crates/rustok-notifications-api/src/model.rs",
+    "crates/modules/rustok-notifications-api/src/model.rs",
     `${validModel}\nstruct Event { pub source_revision: u64 }`,
   );
   const publicRevision = run();
@@ -127,7 +127,7 @@ try {
   }
 
   write(
-    "crates/rustok-notifications-api/src/model.rs",
+    "crates/modules/rustok-notifications-api/src/model.rs",
     `${validModel}\nstruct Page { pub recipients: Vec<u64> }`,
   );
   const publicRecipients = run();

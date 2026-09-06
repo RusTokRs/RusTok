@@ -128,7 +128,7 @@ metadata with one explicit shared principal kind:
 - the owner crate remains independent of Axum and the `rustok-api/server` feature.
 
 The contract is documented in
-`crates/rustok-rbac/docs/explicit-principal-kind.md`. Same-SHA API/auth-resolver/
+`crates/modules/rustok-rbac/docs/explicit-principal-kind.md`. Same-SHA API/auth-resolver/
 RBAC/Admin/server compilation, focused tests, source verifiers and live negative
 transport evidence remain required before this correction is verified.
 
@@ -160,7 +160,7 @@ permission, session, OAuth client or cache-key labels.
 
 Alert thresholds and Redis outage/restart, missed PubSub, generation regression
 and canonical role-repair procedures are owned in
-`crates/rustok-rbac/docs/README.md`. Source guard
+`crates/modules/rustok-rbac/docs/README.md`. Source guard
 `scripts/verify/verify-rbac-invalidation-observability.mjs` locks registry,
 worker, documentation and cursor synchronization. Compilation, test execution,
 two-replica Redis recovery and one complete authorization incident trace remain

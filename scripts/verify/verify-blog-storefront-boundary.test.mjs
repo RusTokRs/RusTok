@@ -34,11 +34,11 @@ function evidenceSource({ evidenceFalseContractDrift = false } = {}) {
     boundary: "storefront-post-richtext-view",
     status: "locally_verified",
     scope: [
-      "crates/rustok-blog/storefront/src/core.rs",
-      "crates/rustok-blog/storefront/src/model.rs",
-      "crates/rustok-blog/storefront/src/transport/graphql_adapter.rs",
-      "crates/rustok-blog/storefront/src/transport/native_server_adapter.rs",
-      "crates/rustok-blog/storefront/src/ui/leptos.rs",
+      "crates/modules/rustok-blog/storefront/src/core.rs",
+      "crates/modules/rustok-blog/storefront/src/model.rs",
+      "crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs",
+      "crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs",
+      "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
     ],
     contract: {
       graphql_owner_view: true,
@@ -91,7 +91,7 @@ function fixture(options = {}) {
 
   writeFixtureFile(
     root,
-    "crates/rustok-blog/storefront/src/lib.rs",
+    "crates/modules/rustok-blog/storefront/src/lib.rs",
     `${options.legacyApi ? "mod api;" : ""}
 ${pagination ? "mod comments_pagination;" : ""}
 mod transport;
@@ -100,14 +100,14 @@ pub use ui::BlogView;
   );
   writeFixtureFile(
     root,
-    "crates/rustok-blog/storefront/src/core.rs",
+    "crates/modules/rustok-blog/storefront/src/core.rs",
     options.leptosCore
       ? "use leptos::prelude::*;"
       : "pub struct BlogStorefrontFetchRequest;",
   );
   writeFixtureFile(
     root,
-    "crates/rustok-blog/storefront/src/comments_pagination.rs",
+    "crates/modules/rustok-blog/storefront/src/comments_pagination.rs",
     pagination
       ? `use rustok_ui_core::UiRouteQueryIntent;
 const COMMENTS_PAGE_QUERY_KEY: &str = "commentsPage";
@@ -121,7 +121,7 @@ fn comments_page_query_intent() { UiRouteQueryIntent::clear(COMMENTS_PAGE_QUERY_
   );
   writeFixtureFile(
     root,
-    "crates/rustok-blog/storefront/src/model.rs",
+    "crates/modules/rustok-blog/storefront/src/model.rs",
     options.missingComments
       ? "pub struct StorefrontBlogData;"
       : canonicalRichtext
@@ -144,7 +144,7 @@ ${options.localRenderer ? "let _: RichTextDocument; content.document; render_ric
       : "<PublicCommentsList comments=public_comments />;";
   writeFixtureFile(
     root,
-    "crates/rustok-blog/storefront/src/ui/leptos.rs",
+    "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
     `use leptos_ui::RichTextHtml;
 ${pagination ? `use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY);
 use_route_query_writer();
@@ -161,7 +161,7 @@ fn PublicCommentsList() {}
 
   writeFixtureFile(
     root,
-    "crates/rustok-blog/storefront/src/transport/mod.rs",
+    "crates/modules/rustok-blog/storefront/src/transport/mod.rs",
     pagination
       ? `pub mod graphql_adapter;
 pub mod native_server_adapter;
@@ -178,7 +178,7 @@ graphql_adapter::fetch_blog(request);`,
   );
   writeFixtureFile(
     root,
-    "crates/rustok-blog/storefront/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs",
     `#[server(prefix = "/api/fn", endpoint = "blog/storefront-data")]
 expect_context::<HostRuntimeContext>()
 shared_get::<TransactionalEventBus>()
@@ -200,7 +200,7 @@ ${canonicalRichtext ? "content: Some(post.content)\ncontent_plain_text: Some(pos
   );
   writeFixtureFile(
     root,
-    "crates/rustok-blog/storefront/src/transport/graphql_adapter.rs",
+    "crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs",
     `use rustok_graphql::GraphqlRequest;
 const STOREFRONT_BLOG_QUERY: &str = "${canonicalRichtext ? "content { document html } contentPlainText" : " excerpt body bodyFormat "} ${options.missingComments ? "" : pagination ? "$commentsPage: Int! $commentsPerPage: Int! publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage)" : "publicComments(locale: $locale"}";
 const CREATE_BLOG_COMMENT_MUTATION: &str = "mutation";
@@ -208,27 +208,27 @@ ${pagination ? "bounded_comments_request_page(comments_page); comments_per_page:
   );
   writeFixtureFile(
     root,
-    "crates/rustok-blog/src/graphql/types.rs",
+    "crates/modules/rustok-blog/src/graphql/types.rs",
     options.missingComments
       ? "pub struct GqlPost;"
       : `${options.nullableGraphqlRichtext ? "pub content: Option<RichTextView>; pub content_plain_text: Option<String>;" : "pub content: RichTextView; pub content_plain_text: String;"} #[graphql(complex)] pub struct GqlPost; async fn public_comments() { runtime.comment_service(db.clone(), event_bus.clone()); list_public_comments_with_snapshot(runtime.public_comments_snapshot_store()); GqlPublicCommentList; }`,
   );
   if (options.legacyApi) {
-    writeFixtureFile(root, "crates/rustok-blog/storefront/src/api.rs", "legacy api");
+    writeFixtureFile(root, "crates/modules/rustok-blog/storefront/src/api.rs", "legacy api");
   }
   writeFixtureFile(
     root,
-    "crates/rustok-blog/storefront/Cargo.toml",
+    "crates/modules/rustok-blog/storefront/Cargo.toml",
     "[package]\nname = \"rustok-blog-storefront-fixture\"\nversion = \"0.1.0\"\n[dependencies]\nleptos-ui.workspace = true\n",
   );
   writeFixtureFile(
     root,
-    "crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json",
+    "crates/modules/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json",
     evidenceSource(options),
   );
   writeFixtureFile(
     root,
-    "crates/rustok-blog/docs/implementation-plan.md",
+    "crates/modules/rustok-blog/docs/implementation-plan.md",
     `verify-blog-storefront-boundary.mjs public comments ${
       pagination ? "storefront comment pagination" : ""
     } server-rendered \`RichTextView\` HTML exactly one shared \`RichTextHtml\` sink`,

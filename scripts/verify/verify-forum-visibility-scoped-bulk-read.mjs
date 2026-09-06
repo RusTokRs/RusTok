@@ -25,26 +25,26 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-const ownerPath = "crates/rustok-forum/src/services/read_tracking_audience.rs";
-const storefrontOwnerPath = "crates/rustok-forum/src/services/storefront_read_state_bulk.rs";
-const servicesPath = "crates/rustok-forum/src/services/mod.rs";
-const libPath = "crates/rustok-forum/src/lib.rs";
-const contextPath = "crates/rustok-forum/src/topic_read_transport.rs";
-const restPath = "crates/rustok-forum/src/controllers/read_state.rs";
-const graphqlPath = "crates/rustok-forum/src/graphql/read_state.rs";
-const runtimePath = "crates/rustok-forum/src/graphql/runtime_data.rs";
-const storefrontGraphqlPath = "crates/rustok-forum/src/graphql/storefront_read_state.rs";
-const storefrontSelectorPath = "crates/rustok-forum/storefront/src/transport/mod.rs";
-const storefrontGraphqlAdapterPath = "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs";
-const storefrontNativeAdapterPath = "crates/rustok-forum/storefront/src/transport/native_server_adapter_bulk.rs";
-const sqliteTestPath = "crates/rustok-forum/tests/topic_visibility_bulk_read_state_sqlite.rs";
-const transportTestPath = "crates/rustok-forum/tests/read_state_transport_contract.rs";
-const storefrontTestPath = "crates/rustok-forum/tests/storefront_read_state_contract.rs";
-const contractPath = "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
-const upstreamPath = "crates/rustok-forum/contracts/forum-projection-invalidation.json";
-const rebuildPath = "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
-const approvedReplyPath = "crates/rustok-forum/contracts/forum-approved-reply-search.json";
-const notePath = "crates/rustok-forum/docs/forum-20bl-visibility-scoped-bulk-read.md";
+const ownerPath = "crates/modules/rustok-forum/src/services/read_tracking_audience.rs";
+const storefrontOwnerPath = "crates/modules/rustok-forum/src/services/storefront_read_state_bulk.rs";
+const servicesPath = "crates/modules/rustok-forum/src/services/mod.rs";
+const libPath = "crates/modules/rustok-forum/src/lib.rs";
+const contextPath = "crates/modules/rustok-forum/src/topic_read_transport.rs";
+const restPath = "crates/modules/rustok-forum/src/controllers/read_state.rs";
+const graphqlPath = "crates/modules/rustok-forum/src/graphql/read_state.rs";
+const runtimePath = "crates/modules/rustok-forum/src/graphql/runtime_data.rs";
+const storefrontGraphqlPath = "crates/modules/rustok-forum/src/graphql/storefront_read_state.rs";
+const storefrontSelectorPath = "crates/modules/rustok-forum/storefront/src/transport/mod.rs";
+const storefrontGraphqlAdapterPath = "crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs";
+const storefrontNativeAdapterPath = "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_bulk.rs";
+const sqliteTestPath = "crates/modules/rustok-forum/tests/topic_visibility_bulk_read_state_sqlite.rs";
+const transportTestPath = "crates/modules/rustok-forum/tests/read_state_transport_contract.rs";
+const storefrontTestPath = "crates/modules/rustok-forum/tests/storefront_read_state_contract.rs";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json";
+const upstreamPath = "crates/modules/rustok-forum/contracts/forum-projection-invalidation.json";
+const rebuildPath = "crates/modules/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json";
+const approvedReplyPath = "crates/modules/rustok-forum/contracts/forum-approved-reply-search.json";
+const notePath = "crates/modules/rustok-forum/docs/forum-20bl-visibility-scoped-bulk-read.md";
 
 const owner = read(ownerPath);
 const storefrontOwner = read(storefrontOwnerPath);

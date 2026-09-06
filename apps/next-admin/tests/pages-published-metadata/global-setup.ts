@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 const contractPath = path.join(
   repoRoot,
-  'crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json'
+  'crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json'
 );
 
 type BrowserContract = {

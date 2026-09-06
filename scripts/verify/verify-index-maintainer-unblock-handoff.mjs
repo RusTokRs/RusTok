@@ -40,13 +40,13 @@ function fencedBlockAfter(source, marker, language, label) {
   return source.slice(bodyStart + 1, bodyEnd).trim();
 }
 
-const handoffPath = 'crates/rustok-index/docs/maintainer-unblock-handoff-2026-08-09.md';
-const repairPath = 'crates/rustok-index/docs/m6-repair-retained-evidence-admission.md';
-const eventPath = 'crates/rustok-events/docs/event-contract-digest-admission.md';
-const familyPath = 'crates/rustok-product/docs/index-refresh-event-family.md';
-const storefrontPath = 'crates/rustok-index/docs/m7-product-storefront-parity-gate.md';
-const currentPlanPath = 'crates/rustok-index/docs/implementation-plan-current-2026-08-09.md';
-const readmePath = 'crates/rustok-index/docs/README.md';
+const handoffPath = 'crates/modules/rustok-index/docs/maintainer-unblock-handoff-2026-08-09.md';
+const repairPath = 'crates/modules/rustok-index/docs/m6-repair-retained-evidence-admission.md';
+const eventPath = 'crates/libs/rustok-events/docs/event-contract-digest-admission.md';
+const familyPath = 'crates/modules/rustok-product/docs/index-refresh-event-family.md';
+const storefrontPath = 'crates/modules/rustok-index/docs/m7-product-storefront-parity-gate.md';
+const currentPlanPath = 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-09.md';
+const readmePath = 'crates/modules/rustok-index/docs/README.md';
 const aggregatePath = 'scripts/verify/verify-index-query-contract.mjs';
 
 const handoff = requireMarkers(handoffPath, [
@@ -62,7 +62,7 @@ const handoff = requireMarkers(handoffPath, [
 
 const repair = requireMarkers(repairPath, [
   'Status: `source_complete_owner_execution_pending`.',
-  'crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json',
+  'crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json',
   'scripts/evidence/capture-index-repair-postgres.mjs',
   'scripts/verify/verify-index-repair-retained-evidence.mjs',
   'status = postgres_runtime_executed',

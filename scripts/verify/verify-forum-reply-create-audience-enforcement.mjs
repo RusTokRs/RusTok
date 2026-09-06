@@ -28,7 +28,7 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-reply-create-audience-enforcement.json";
+  "crates/modules/rustok-forum/contracts/forum-reply-create-audience-enforcement.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const upstream = JSON.parse(read(contract.policy_contract ?? "") || "{}");
 const authorization = read(contract.authorization_service ?? "");
@@ -40,7 +40,7 @@ const crateRoot = read(contract.crate_root ?? "");
 const test = read(contract.runtime_test_file ?? "");
 const note = read(contract.owner_note ?? "");
 const topicLocalContractPath =
-  "crates/rustok-forum/contracts/forum-topic-reply-create-audience-policy.json";
+  "crates/modules/rustok-forum/contracts/forum-topic-reply-create-audience-policy.json";
 const topicLocalContract = existsSync(path.join(repoRoot, topicLocalContractPath))
   ? JSON.parse(read(topicLocalContractPath) || "{}")
   : null;

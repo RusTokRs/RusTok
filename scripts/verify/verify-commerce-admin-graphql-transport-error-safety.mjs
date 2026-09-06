@@ -23,16 +23,16 @@ const requireCount = (source, value, expected, label) => {
 };
 
 const paths = {
-  safety: "crates/rustok-commerce/admin/src/transport/graphql_error_safety.rs",
-  orderChange: "crates/rustok-commerce/admin/src/transport/order_change.rs",
-  shippingProfile: "crates/rustok-commerce/admin/src/transport/shipping_profile.rs",
-  promotion: "crates/rustok-commerce/admin/src/transport/promotion.rs",
+  safety: "crates/modules/rustok-commerce/admin/src/transport/graphql_error_safety.rs",
+  orderChange: "crates/modules/rustok-commerce/admin/src/transport/order_change.rs",
+  shippingProfile: "crates/modules/rustok-commerce/admin/src/transport/shipping_profile.rs",
+  promotion: "crates/modules/rustok-commerce/admin/src/transport/promotion.rs",
   evidence:
-    "crates/rustok-commerce/contracts/evidence/admin-graphql-transport-error-safety-source.json",
+    "crates/modules/rustok-commerce/contracts/evidence/admin-graphql-transport-error-safety-source.json",
   review:
-    "crates/rustok-commerce/contracts/evidence/admin-graphql-transport-error-safety-source-review.json",
-  doc: "crates/rustok-commerce/docs/admin-graphql-transport-error-safety.md",
-  plan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-commerce/contracts/evidence/admin-graphql-transport-error-safety-source-review.json",
+  doc: "crates/modules/rustok-commerce/docs/admin-graphql-transport-error-safety.md",
+  plan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
 const safety = read(paths.safety);

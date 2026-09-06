@@ -6,19 +6,19 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-source.json";
+  "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-source.json";
 const testPath =
-  "crates/rustok-social-graph/tests/index_raw_poison_publish_mark_ambiguity.rs";
-const cargoPath = "crates/rustok-social-graph/Cargo.toml";
-const receiptPath = "crates/rustok-iggy-connector/src/consumer_poison_receipt.rs";
-const transportPath = "crates/rustok-iggy/src/transport.rs";
+  "crates/modules/rustok-social-graph/tests/index_raw_poison_publish_mark_ambiguity.rs";
+const cargoPath = "crates/modules/rustok-social-graph/Cargo.toml";
+const receiptPath = "crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs";
+const transportPath = "crates/modules/rustok-iggy/src/transport.rs";
 const workerPath = "apps/server/src/services/social_graph_index_worker.rs";
 const expectedVerifier =
   "scripts/verify/verify-social-graph-index-raw-poison-publish-mark-ambiguity.mjs";
 const expectedDocumentation =
-  "crates/rustok-social-graph/docs/index-raw-poison-publish-mark-ambiguity-evidence.md";
+  "crates/modules/rustok-social-graph/docs/index-raw-poison-publish-mark-ambiguity-evidence.md";
 const expectedProfilesCheckpoint =
-  "crates/rustok-profiles/docs/poison-publish-mark-ambiguity-checkpoint.md";
+  "crates/modules/rustok-profiles/docs/poison-publish-mark-ambiguity-checkpoint.md";
 const expectedScenarios = [
   {
     case: "dedup_enabled_closes_publish_mark_ambiguity_without_physical_duplicate",

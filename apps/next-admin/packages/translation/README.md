@@ -45,6 +45,6 @@ contributes only the route, GraphQL executor injection, and shell composition.
 - Translation operation, response, and page-prop types
 
 See the
-[Translation implementation plan](../../../../crates/rustok-translation/docs/implementation-plan.md)
+[Translation implementation plan](../../../../crates/modules/rustok-translation/docs/implementation-plan.md)
 and the
 [Next admin host contract](../../docs/README.md).

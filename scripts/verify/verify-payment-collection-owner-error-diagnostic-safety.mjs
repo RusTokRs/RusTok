@@ -46,12 +46,12 @@ function functionBody(source, functionName) {
 }
 
 const paths = {
-  error: 'crates/rustok-payment/src/error.rs',
-  mapper: 'crates/rustok-payment/src/ports.rs',
+  error: 'crates/modules/rustok-payment/src/error.rs',
+  mapper: 'crates/modules/rustok-payment/src/ports.rs',
   evidence:
-    'crates/rustok-payment/contracts/evidence/payment-collection-owner-error-diagnostic-safety-source.json',
-  doc: 'crates/rustok-payment/docs/payment-collection-owner-error-diagnostic-safety.md',
-  plan: 'crates/rustok-commerce/docs/implementation-plan.md',
+    'crates/modules/rustok-payment/contracts/evidence/payment-collection-owner-error-diagnostic-safety-source.json',
+  doc: 'crates/modules/rustok-payment/docs/payment-collection-owner-error-diagnostic-safety.md',
+  plan: 'crates/modules/rustok-commerce/docs/implementation-plan.md',
 };
 
 const errorSource = read(paths.error);

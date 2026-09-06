@@ -182,9 +182,9 @@ fn normalize(input: Input) {
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-search-ui-boundary-"));
-  writeFixtureFile(root, "crates/rustok-search/admin/src/lib.rs", `${options.legacyAdminModApi ? "mod api;\n" : ""}mod core;\nmod transport;\nmod ui;\npub use ui::leptos::SearchAdmin;\npub use ui::leptos::SearchCatalogFilterOption;\n`);
-  writeFixtureFile(root, "crates/rustok-search/admin/src/model.rs", uiModel());
-  writeFixtureFile(root, "crates/rustok-search/admin/src/core.rs", `${adminCore(options)}
+  writeFixtureFile(root, "crates/modules/rustok-search/admin/src/lib.rs", `${options.legacyAdminModApi ? "mod api;\n" : ""}mod core;\nmod transport;\nmod ui;\npub use ui::leptos::SearchAdmin;\npub use ui::leptos::SearchCatalogFilterOption;\n`);
+  writeFixtureFile(root, "crates/modules/rustok-search/admin/src/model.rs", uiModel());
+  writeFixtureFile(root, "crates/modules/rustok-search/admin/src/core.rs", `${adminCore(options)}
 pub struct SearchPreviewFormInput<'a> {
   pub channel_id: &'a str,
   pub category_ids: &'a str,
@@ -198,7 +198,7 @@ fn build(input: SearchPreviewFormInput) {
   let _ = sort_attribute_code: optional_text(input.sort_attribute_code);
 }
 `);
-  writeFixtureFile(root, "crates/rustok-search/admin/src/ui/leptos.rs", `${adminUi(options)}
+  writeFixtureFile(root, "crates/modules/rustok-search/admin/src/ui/leptos.rs", `${adminUi(options)}
 fn catalog_controls() {
   pub struct SearchCatalogFilterOption {}
   let _ = category_options: Vec<SearchCatalogFilterOption>;
@@ -220,16 +220,16 @@ fn catalog_controls() {
   let _ = "search-admin-sort-attribute-options";
 }
 `);
-  writeFixtureFile(root, "crates/rustok-search/admin/src/transport/mod.rs", "mod native_server_adapter;\npub type TransportError = native_server_adapter::ApiError;\npub async fn fetch_bootstrap() {}\npub async fn fetch_search_preview() { let _ = native_server_adapter::fetch_search_preview; }\npub async fn fetch_search_analytics() {}\npub async fn fetch_dictionary_snapshot() {}\npub async fn update_search_settings() {}\n");
-  writeFixtureFile(root, "crates/rustok-search/admin/src/transport/native_server_adapter.rs", "pub enum ApiError {}\npub struct SearchAttributeFilterInput {}\n#[server]\npub async fn endpoint() {}\nexpect_context::<HostRuntimeContext>();\nshared_get::<rustok_outbox::TransactionalEventBus>();\npub fn fetch_search_preview() { let _ = channel_id: filters.channel_id; let _ = parse_optional_uuid(input.channel_id.as_deref()); let _ = normalize_uuid_values(\"category_ids\", input.category_ids); let _ = normalize_attribute_filters(input.attribute_filters); let _ = normalize_attribute_code(input.sort_attribute_code); let _ = sort_desc: input.sort_desc.unwrap_or(false); let _ = label: bucket.label; let _ = count: bucket.count; }\n");
+  writeFixtureFile(root, "crates/modules/rustok-search/admin/src/transport/mod.rs", "mod native_server_adapter;\npub type TransportError = native_server_adapter::ApiError;\npub async fn fetch_bootstrap() {}\npub async fn fetch_search_preview() { let _ = native_server_adapter::fetch_search_preview; }\npub async fn fetch_search_analytics() {}\npub async fn fetch_dictionary_snapshot() {}\npub async fn update_search_settings() {}\n");
+  writeFixtureFile(root, "crates/modules/rustok-search/admin/src/transport/native_server_adapter.rs", "pub enum ApiError {}\npub struct SearchAttributeFilterInput {}\n#[server]\npub async fn endpoint() {}\nexpect_context::<HostRuntimeContext>();\nshared_get::<rustok_outbox::TransactionalEventBus>();\npub fn fetch_search_preview() { let _ = channel_id: filters.channel_id; let _ = parse_optional_uuid(input.channel_id.as_deref()); let _ = normalize_uuid_values(\"category_ids\", input.category_ids); let _ = normalize_attribute_filters(input.attribute_filters); let _ = normalize_attribute_code(input.sort_attribute_code); let _ = sort_desc: input.sort_desc.unwrap_or(false); let _ = label: bucket.label; let _ = count: bucket.count; }\n");
   if (options.legacyAdminApi) {
-    writeFixtureFile(root, "crates/rustok-search/admin/src/api.rs", "pub async fn fetch_search_preview() {}\n");
+    writeFixtureFile(root, "crates/modules/rustok-search/admin/src/api.rs", "pub async fn fetch_search_preview() {}\n");
   }
 
-  writeFixtureFile(root, "crates/rustok-search/storefront/src/lib.rs", "mod core;\nmod transport;\nmod ui;\npub use ui::leptos::SearchView;\npub use ui::leptos::SearchCatalogFilterOption;\n");
-  writeFixtureFile(root, "crates/rustok-search/storefront/src/model.rs", uiModel());
-  writeFixtureFile(root, "crates/rustok-search/storefront/src/core.rs", storefrontCore(options));
-  writeFixtureFile(root, "crates/rustok-search/storefront/src/ui/leptos.rs", `${storefrontUi(options)}
+  writeFixtureFile(root, "crates/modules/rustok-search/storefront/src/lib.rs", "mod core;\nmod transport;\nmod ui;\npub use ui::leptos::SearchView;\npub use ui::leptos::SearchCatalogFilterOption;\n");
+  writeFixtureFile(root, "crates/modules/rustok-search/storefront/src/model.rs", uiModel());
+  writeFixtureFile(root, "crates/modules/rustok-search/storefront/src/core.rs", storefrontCore(options));
+  writeFixtureFile(root, "crates/modules/rustok-search/storefront/src/ui/leptos.rs", `${storefrontUi(options)}
 fn catalog_route_controls() {
   pub struct SearchCatalogFilterOption {}
   let _ = category_options: Vec<SearchCatalogFilterOption>;
@@ -250,14 +250,14 @@ fn catalog_route_controls() {
   let _ = ("sort_attribute_code", submission.sort_attribute_code.as_str());
 }
 `);
-  writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/mod.rs", "pub mod graphql_adapter;\npub mod native_server_adapter;\npub async fn fetch_search() { let _ = native_server_adapter::fetch_search; let _ = graphql_adapter::fetch_search; }\npub async fn fetch_suggestions() { let _ = native_server_adapter::fetch_suggestions; let _ = graphql_adapter::fetch_suggestions; }\n");
-  writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/native_server_adapter.rs", "pub fn fetch_storefront_search_server() {}\npub fn fetch_storefront_suggestions_server() {}\npub fn fetch_search() {}\npub fn fetch_suggestions() {}\n");
-  writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub struct SearchAttributeFilterInput {}\nconst QUERY: &str = \"facets { name buckets { value label count } }\";\npub fn fetch_storefront_search_graphql() { let _ = channel_id: filters.channel_id; let _ = category_ids: (!filters.category_ids.is_empty()).then_some(filters.category_ids); let _ = attribute_filters: (!filters.attribute_filters.is_empty()); let _ = sort_attribute_code: filters.sort_attribute_code; let _ = sort_desc: filters.sort_desc.then_some(true); }\npub fn fetch_storefront_suggestions_graphql() {}\npub fn fetch_search() {}\npub fn fetch_suggestions() {}\n");
-  writeFixtureFile(root, "crates/rustok-search/src/engine.rs", searchEngine(options));
-  writeFixtureFile(root, "crates/rustok-search/src/pg_engine.rs", pgEngine(options));
-  writeFixtureFile(root, "crates/rustok-search/src/dictionaries.rs", dictionaries());
-  writeFixtureFile(root, "crates/rustok-search/src/graphql/types.rs", graphqlTypes());
-  writeFixtureFile(root, "crates/rustok-search/src/graphql/query.rs", graphqlQuery());
+  writeFixtureFile(root, "crates/modules/rustok-search/storefront/src/transport/mod.rs", "pub mod graphql_adapter;\npub mod native_server_adapter;\npub async fn fetch_search() { let _ = native_server_adapter::fetch_search; let _ = graphql_adapter::fetch_search; }\npub async fn fetch_suggestions() { let _ = native_server_adapter::fetch_suggestions; let _ = graphql_adapter::fetch_suggestions; }\n");
+  writeFixtureFile(root, "crates/modules/rustok-search/storefront/src/transport/native_server_adapter.rs", "pub fn fetch_storefront_search_server() {}\npub fn fetch_storefront_suggestions_server() {}\npub fn fetch_search() {}\npub fn fetch_suggestions() {}\n");
+  writeFixtureFile(root, "crates/modules/rustok-search/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub struct SearchAttributeFilterInput {}\nconst QUERY: &str = \"facets { name buckets { value label count } }\";\npub fn fetch_storefront_search_graphql() { let _ = channel_id: filters.channel_id; let _ = category_ids: (!filters.category_ids.is_empty()).then_some(filters.category_ids); let _ = attribute_filters: (!filters.attribute_filters.is_empty()); let _ = sort_attribute_code: filters.sort_attribute_code; let _ = sort_desc: filters.sort_desc.then_some(true); }\npub fn fetch_storefront_suggestions_graphql() {}\npub fn fetch_search() {}\npub fn fetch_suggestions() {}\n");
+  writeFixtureFile(root, "crates/modules/rustok-search/src/engine.rs", searchEngine(options));
+  writeFixtureFile(root, "crates/modules/rustok-search/src/pg_engine.rs", pgEngine(options));
+  writeFixtureFile(root, "crates/modules/rustok-search/src/dictionaries.rs", dictionaries());
+  writeFixtureFile(root, "crates/modules/rustok-search/src/graphql/types.rs", graphqlTypes());
+  writeFixtureFile(root, "crates/modules/rustok-search/src/graphql/query.rs", graphqlQuery());
   writeFixtureFile(root, "apps/next-admin/packages/search/src/index.tsx", `
 export type SearchCatalogFilterOption = { value: string; label: string };
 export type SearchAdminPageProps = {
@@ -363,7 +363,7 @@ async function Page({ params }) {
   return module.render({ locale, enabledModules, tenantSlug, tenantId: getStorefrontTenantId() });
 }
 `);
-  writeFixtureFile(root, "crates/rustok-product/admin/src/model.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/model.rs", `
 pub struct ProductCatalogSearchOption {
   pub value: String,
   pub label: String,
@@ -373,7 +373,7 @@ pub struct ProductCatalogSearchOptions {
   pub attribute_options: Vec<ProductCatalogSearchOption>,
 }
 `);
-  writeFixtureFile(root, "crates/rustok-product/admin/src/transport.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport.rs", `
 use crate::model::{ProductCatalogSearchOption, ProductCatalogSearchOptions};
 ${options.omitProductLeptosMetadata ? "" : `pub async fn fetch_catalog_search_options() {
   if let Ok(options) = native_server_adapter::fetch_catalog_search_options(locale.clone()) { return Ok(options); }
@@ -384,7 +384,7 @@ ${options.omitProductLeptosMetadata ? "" : `pub async fn fetch_catalog_search_op
   let _ = items.filter(|attribute| attribute.is_filterable || attribute.is_sortable);
 }`}
 `);
-  writeFixtureFile(root, "crates/rustok-product/admin/src/transport/native_server_adapter.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs", `
 pub async fn fetch_catalog_search_options(locale: String) {
   product_admin_catalog_search_options_native(locale);
 }
@@ -397,7 +397,7 @@ async fn product_admin_catalog_search_options_native(locale: String) {
   let _ = items.filter(|attribute| attribute.is_filterable || attribute.is_sortable);
 }
 `);
-  writeFixtureFile(root, "crates/rustok-product/admin/src/lib.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/lib.rs", `
 pub use model::{ProductCatalogSearchOption, ProductCatalogSearchOptions};
 pub use legacy_transport::*;
 `);
@@ -424,7 +424,7 @@ fn compose() {
   let _ = attribute_options=attribute_options;
 }
 `);
-  writeFixtureFile(root, "crates/rustok-product/storefront/src/model.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/model.rs", `
 pub struct ProductCatalogSearchOption {
   pub value: String,
   pub label: String,
@@ -434,14 +434,14 @@ pub struct ProductCatalogSearchOptions {
   pub attribute_options: Vec<ProductCatalogSearchOption>,
 }
 `);
-  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/mod.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/transport/mod.rs", `
 use crate::model::{ProductCatalogSearchOption, ProductCatalogSearchOptions};
 pub async fn fetch_catalog_search_options(locale: String) {
   let native_locale = locale.clone();
   execute_selected_transport("product", selected_transport_path(), move || native_server_adapter::fetch_catalog_search_options(native_locale), move || graphql_adapter::fetch_catalog_search_options(locale))
 }
 `);
-  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/native_server_adapter.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/transport/native_server_adapter.rs", `
 pub async fn fetch_catalog_search_options(locale: String) {
   storefront_catalog_search_options_native(locale);
 }
@@ -455,15 +455,15 @@ async fn storefront_catalog_search_options_native(locale: String) {
   let _ = items.filter(|attribute| attribute.is_filterable || attribute.is_sortable);
 }
 `);
-  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/graphql_adapter.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs", `
 const QUERY: &str = "query StorefrontCatalogSearchOptions($locale: String!) { storefrontCatalogSearchOptions(locale: $locale) { categoryOptions { value label } attributeOptions { value label } } }";
 pub async fn fetch_catalog_search_options() {}
 `);
-  writeFixtureFile(root, "crates/rustok-product/storefront/src/lib.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/lib.rs", `
 pub use model::{ProductCatalogSearchOption, ProductCatalogSearchOptions};
 pub use transport::fetch_catalog_search_options;
 `);
-  writeFixtureFile(root, "crates/rustok-commerce/src/graphql/query.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-commerce/src/graphql/query.rs", `
 async fn storefront_catalog_search_options(ctx: Context, locale: String) {
   require_module_enabled(ctx, PRODUCT_MODULE_SLUG);
   require_storefront_channel_enabled(ctx);
@@ -475,7 +475,7 @@ async fn storefront_catalog_search_options(ctx: Context, locale: String) {
   let _ = items.filter(|attribute| attribute.is_filterable || attribute.is_sortable);
 }
 `);
-  writeFixtureFile(root, "crates/rustok-commerce/src/graphql/types.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-commerce/src/graphql/types.rs", `
 pub struct GqlProductCatalogSearchOption {}
 pub struct GqlProductCatalogSearchOptions {}
 `);

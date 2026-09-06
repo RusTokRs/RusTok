@@ -22,7 +22,7 @@ import path from 'node:path';
 
 const repoRoot = path.resolve(__dirname, '../../../..');
 const contractPath =
-  'crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json';
+  'crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json';
 const contract = JSON.parse(
   readFileSync(path.join(repoRoot, contractPath), 'utf8')
 ) as BrowserContract;

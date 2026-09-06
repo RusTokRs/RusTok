@@ -1,28 +1,28 @@
 import fs from "node:fs";
 
 const command = fs.readFileSync(
-  "crates/rustok-groups/src/membership_enforcement_command.rs",
+  "crates/modules/rustok-groups/src/membership_enforcement_command.rs",
   "utf8",
 );
 const resolver = fs.readFileSync(
-  "crates/rustok-groups/src/membership_enforcement.rs",
+  "crates/modules/rustok-groups/src/membership_enforcement.rs",
   "utf8",
 );
-const ports = fs.readFileSync("crates/rustok-groups/src/ports.rs", "utf8");
+const ports = fs.readFileSync("crates/modules/rustok-groups/src/ports.rs", "utf8");
 const registry = fs.readFileSync(
-  "crates/rustok-groups/contracts/groups-fba-registry.json",
+  "crates/modules/rustok-groups/contracts/groups-fba-registry.json",
   "utf8",
 );
 const migration = fs.readFileSync(
-  "crates/rustok-groups/src/migrations/m20260808_000009_extend_group_domain_events_for_membership_enforcement.rs",
+  "crates/modules/rustok-groups/src/migrations/m20260808_000009_extend_group_domain_events_for_membership_enforcement.rs",
   "utf8",
 );
 const plan = fs.readFileSync(
-  "crates/rustok-groups/docs/implementation-plan.md",
+  "crates/modules/rustok-groups/docs/implementation-plan.md",
   "utf8",
 );
 const docs = fs.readFileSync(
-  "crates/rustok-groups/docs/membership-enforcement-command-contract.md",
+  "crates/modules/rustok-groups/docs/membership-enforcement-command-contract.md",
   "utf8",
 );
 

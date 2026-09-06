@@ -49,15 +49,15 @@ function functionBody(source, functionName) {
 }
 
 const paths = {
-  root: "crates/rustok-payment/src/checkout_execution.rs",
+  root: "crates/modules/rustok-payment/src/checkout_execution.rs",
   diagnostics:
-    "crates/rustok-payment/src/checkout_execution/diagnostic_safety.rs",
-  portImpl: "crates/rustok-payment/src/checkout_execution/port_impl.rs",
+    "crates/modules/rustok-payment/src/checkout_execution/diagnostic_safety.rs",
+  portImpl: "crates/modules/rustok-payment/src/checkout_execution/port_impl.rs",
   evidence:
-    "crates/rustok-payment/contracts/evidence/checkout-execution-local-porterror-diagnostic-safety-source.json",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-execution-local-porterror-diagnostic-safety-source.json",
   doc:
-    "crates/rustok-payment/docs/checkout-execution-local-porterror-diagnostic-safety.md",
-  plan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-payment/docs/checkout-execution-local-porterror-diagnostic-safety.md",
+  plan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
 const rootSource = read(paths.root);

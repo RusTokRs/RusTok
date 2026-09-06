@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 
 const test = readFileSync(
-  "crates/rustok-iggy-connector/tests/consumer_poison_receipt_postgres.rs",
+  "crates/modules/rustok-iggy-connector/tests/consumer_poison_receipt_postgres.rs",
   "utf8",
 );
 const failures = [];

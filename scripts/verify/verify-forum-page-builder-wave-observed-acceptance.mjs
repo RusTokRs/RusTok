@@ -35,8 +35,8 @@ function requireText(source, marker, label) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json";
-const wavePath = "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json";
+const wavePath = "crates/modules/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json";
 const runnerPath = "scripts/evidence/accept-forum-page-builder-wave.mjs";
 const testsPath = "scripts/evidence/accept-forum-page-builder-wave.test.mjs";
 const lineagePath = "scripts/verify/verify-forum-wave-admission-lineage.mjs";

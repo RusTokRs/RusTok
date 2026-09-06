@@ -21,19 +21,19 @@ artifact-loss-rebuild-postgres-harness-source-ready
 Harness:
 
 ```text
-crates/rustok-pages/tests/artifact_loss_rebuild_postgres.rs
+crates/modules/rustok-pages/tests/artifact_loss_rebuild_postgres.rs
 ```
 
 Machine evidence:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-artifact-loss-rebuild-postgres-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-artifact-loss-rebuild-postgres-source.json
 ```
 
 Fail-closed source guard:
 
 ```text
-crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-rebuild-postgres.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-loss-rebuild-postgres.mjs
 ```
 
 ## PostgreSQL fixture
@@ -191,10 +191,10 @@ pages_artifact_loss_rebuild_postgres_source_unvalidated
 Suggested commands, intentionally not run here:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-rebuild-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-loss-rebuild-postgres.mjs
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-pages --test artifact_loss_rebuild_postgres -- --nocapture
-node crates/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance-postgres.mjs
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-pages --test publish_rebuild_provenance_postgres -- --nocapture
 cargo check -p rustok-pages --all-targets

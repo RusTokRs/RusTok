@@ -28,7 +28,7 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-category-visibility-policy.json";
+  "crates/modules/rustok-forum/contracts/forum-category-visibility-policy.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const visibility = read(contract.enum_file ?? "");
 const entity = read(contract.entity_file ?? "");
@@ -41,7 +41,7 @@ const crate = read(contract.crate_file ?? "");
 const testSource = read(contract.test_file ?? "");
 const plan = read(contract.canonical_plan ?? "");
 const topicVisibilityContract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-topic-visibility-scope.json") || "{}",
+  read("crates/modules/rustok-forum/contracts/forum-topic-visibility-scope.json") || "{}",
 );
 
 if (contract.schema_version !== 1) {

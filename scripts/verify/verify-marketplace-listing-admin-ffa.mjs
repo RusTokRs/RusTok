@@ -8,22 +8,22 @@ const root = process.cwd();
 const files = {
   workspace: "Cargo.toml",
   adminHost: "apps/admin/Cargo.toml",
-  permissions: "crates/rustok-api/src/permissions.rs",
-  owner: "crates/rustok-marketplace-listing/src/lib.rs",
-  ownerPorts: "crates/rustok-marketplace-listing/src/ports.rs",
-  ownerGraphql: "crates/rustok-marketplace-listing/src/graphql.rs",
-  sellerGraphql: "crates/rustok-marketplace-seller/src/graphql.rs",
-  sellerPorts: "crates/rustok-marketplace-seller/src/ports.rs",
-  sellerManifest: "crates/rustok-marketplace-seller/rustok-module.toml",
-  apiRuntime: "crates/rustok-api/src/runtime.rs",
-  manifest: "crates/rustok-marketplace-listing/rustok-module.toml",
+  permissions: "crates/libs/rustok-api/src/permissions.rs",
+  owner: "crates/modules/rustok-marketplace-listing/src/lib.rs",
+  ownerPorts: "crates/modules/rustok-marketplace-listing/src/ports.rs",
+  ownerGraphql: "crates/modules/rustok-marketplace-listing/src/graphql.rs",
+  sellerGraphql: "crates/modules/rustok-marketplace-seller/src/graphql.rs",
+  sellerPorts: "crates/modules/rustok-marketplace-seller/src/ports.rs",
+  sellerManifest: "crates/modules/rustok-marketplace-seller/rustok-module.toml",
+  apiRuntime: "crates/libs/rustok-api/src/runtime.rs",
+  manifest: "crates/modules/rustok-marketplace-listing/rustok-module.toml",
   serverRuntime: "apps/server/src/services/commerce_provider_runtime.rs",
   serverManifest: "apps/server/Cargo.toml",
-  model: "crates/rustok-marketplace-listing/admin/src/model.rs",
-  transport: "crates/rustok-marketplace-listing/admin/src/transport.rs",
-  native: "crates/rustok-marketplace-listing/admin/src/transport/native_server_adapter.rs",
-  graphql: "crates/rustok-marketplace-listing/admin/src/transport/graphql_adapter.rs",
-  ui: "crates/rustok-marketplace-listing/admin/src/ui/leptos.rs",
+  model: "crates/modules/rustok-marketplace-listing/admin/src/model.rs",
+  transport: "crates/modules/rustok-marketplace-listing/admin/src/transport.rs",
+  native: "crates/modules/rustok-marketplace-listing/admin/src/transport/native_server_adapter.rs",
+  graphql: "crates/modules/rustok-marketplace-listing/admin/src/transport/graphql_adapter.rs",
+  ui: "crates/modules/rustok-marketplace-listing/admin/src/ui/leptos.rs",
 };
 
 const failures = [];
@@ -46,16 +46,16 @@ const source = Object.fromEntries(
   Object.entries(files).map(([key, file]) => [key, read(file)]),
 );
 
-contains(source.workspace, '"crates/rustok-marketplace-listing/admin"', files.workspace);
+contains(source.workspace, '"crates/modules/rustok-marketplace-listing/admin"', files.workspace);
 contains(
   source.workspace,
-  'rustok-marketplace-listing-admin = { path = "crates/rustok-marketplace-listing/admin" }',
+  'rustok-marketplace-listing-admin = { path = "crates/modules/rustok-marketplace-listing/admin" }',
   files.workspace,
 );
 for (const marker of [
   "rustok-marketplace-listing-admin/hydrate",
   "rustok-marketplace-listing-admin/ssr",
-  'rustok-marketplace-listing-admin = { path = "../../crates/rustok-marketplace-listing/admin"',
+  'rustok-marketplace-listing-admin = { path = "../../crates/modules/rustok-marketplace-listing/admin"',
 ]) contains(source.adminHost, marker, files.adminHost);
 
 for (const marker of [

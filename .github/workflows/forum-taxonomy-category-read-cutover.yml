@@ -3,21 +3,21 @@ name: Forum Taxonomy Category Read Cutover Contract
 on:
   pull_request:
     paths:
-      - "crates/rustok-forum/src/services/category_owner.rs"
-      - "crates/rustok-forum/src/services/category_visibility_list.rs"
-      - "crates/rustok-forum/src/services/category_taxonomy_read.rs"
-      - "crates/rustok-forum/tests/category_taxonomy_read_cutover.rs"
-      - "crates/rustok-taxonomy/src/owner_category_read.rs"
+      - "crates/modules/rustok-forum/src/services/category_owner.rs"
+      - "crates/modules/rustok-forum/src/services/category_visibility_list.rs"
+      - "crates/modules/rustok-forum/src/services/category_taxonomy_read.rs"
+      - "crates/modules/rustok-forum/tests/category_taxonomy_read_cutover.rs"
+      - "crates/modules/rustok-taxonomy/src/owner_category_read.rs"
       - ".github/workflows/forum-taxonomy-category-read-cutover.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-forum/src/services/category_owner.rs"
-      - "crates/rustok-forum/src/services/category_visibility_list.rs"
-      - "crates/rustok-forum/src/services/category_taxonomy_read.rs"
-      - "crates/rustok-forum/tests/category_taxonomy_read_cutover.rs"
-      - "crates/rustok-taxonomy/src/owner_category_read.rs"
+      - "crates/modules/rustok-forum/src/services/category_owner.rs"
+      - "crates/modules/rustok-forum/src/services/category_visibility_list.rs"
+      - "crates/modules/rustok-forum/src/services/category_taxonomy_read.rs"
+      - "crates/modules/rustok-forum/tests/category_taxonomy_read_cutover.rs"
+      - "crates/modules/rustok-taxonomy/src/owner_category_read.rs"
       - ".github/workflows/forum-taxonomy-category-read-cutover.yml"
   workflow_dispatch:
 

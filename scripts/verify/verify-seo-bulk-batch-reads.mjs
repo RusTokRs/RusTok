@@ -11,14 +11,14 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const exists = (relativePath) => existsSync(fileURLToPath(new URL(relativePath, root)));
 
-const applications = read('crates/rustok-seo/src/services/applications.rs');
-const services = read('crates/rustok-seo/src/services/mod.rs');
-const bulkModule = read('crates/rustok-seo/src/services/bulk.rs');
-const legacy = read('crates/rustok-seo/src/services/bulk_legacy.rs');
-const readModel = read('crates/rustok-seo/src/services/bulk_read_model.rs');
-const applyExecution = read('crates/rustok-seo/src/services/bulk_bounded_execution.rs');
-const ioExecution = read('crates/rustok-seo/src/services/bulk_io_bounded_execution.rs');
-const ioCompatibility = read('crates/rustok-seo/src/services/bulk_io_bounded_compat.rs');
+const applications = read('crates/modules/rustok-seo/src/services/applications.rs');
+const services = read('crates/modules/rustok-seo/src/services/mod.rs');
+const bulkModule = read('crates/modules/rustok-seo/src/services/bulk.rs');
+const legacy = read('crates/modules/rustok-seo/src/services/bulk_legacy.rs');
+const readModel = read('crates/modules/rustok-seo/src/services/bulk_read_model.rs');
+const applyExecution = read('crates/modules/rustok-seo/src/services/bulk_bounded_execution.rs');
+const ioExecution = read('crates/modules/rustok-seo/src/services/bulk_io_bounded_execution.rs');
+const ioCompatibility = read('crates/modules/rustok-seo/src/services/bulk_io_bounded_compat.rs');
 const failures = [];
 
 const requireText = (source, value, label) => {
@@ -34,10 +34,10 @@ requireText(bulkModule, 'include!("bulk_bounded_execution.rs");', 'bounded apply
 requireText(bulkModule, 'include!("bulk_io_bounded_execution.rs");', 'bounded IO include');
 requireText(bulkModule, 'include!("bulk_io_bounded_compat.rs");', 'bounded IO compatibility include');
 requireText(legacy, 'pub async fn execute_next_bulk_job(', 'legacy implementation preservation');
-if (exists('crates/rustok-seo/src/services/applications/bulk_reads.rs')) {
+if (exists('crates/modules/rustok-seo/src/services/applications/bulk_reads.rs')) {
   failures.push('application-local bulk reader must be removed after shared extraction');
 }
-if (exists('crates/rustok-seo/src/services/bulk_batch_execution.rs')) {
+if (exists('crates/modules/rustok-seo/src/services/bulk_batch_execution.rs')) {
   failures.push('superseded unbounded batch execution file must be removed');
 }
 

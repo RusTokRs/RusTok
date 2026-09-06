@@ -12,14 +12,14 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const services = read('crates/rustok-commerce/src/services/mod.rs');
-const facade = read('crates/rustok-commerce/src/services/checkout_compensation_error_safe.rs');
-const retained = read('crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs');
-const owner = read('crates/rustok-payment/src/checkout_compensation_context.rs');
+const services = read('crates/modules/rustok-commerce/src/services/mod.rs');
+const facade = read('crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs');
+const retained = read('crates/modules/rustok-commerce/src/services/checkout_compensation_owner_ports.rs');
+const owner = read('crates/modules/rustok-payment/src/checkout_compensation_context.rs');
 const evidence = JSON.parse(read(
-  'crates/rustok-commerce/contracts/evidence/checkout-payment-compensation-error-safety-source-review.json',
+  'crates/modules/rustok-commerce/contracts/evidence/checkout-payment-compensation-error-safety-source-review.json',
 ));
-const doc = read('crates/rustok-commerce/docs/checkout-payment-compensation-error-safety.md');
+const doc = read('crates/modules/rustok-commerce/docs/checkout-payment-compensation-error-safety.md');
 
 requireText(services, '#[path = "checkout_compensation_error_safe.rs"]\nmod checkout_compensation;', 'mounted facade');
 for (const marker of [

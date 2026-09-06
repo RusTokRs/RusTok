@@ -13,27 +13,27 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const lib = read('crates/rustok-commerce/src/lib.rs');
+const lib = read('crates/modules/rustok-commerce/src/lib.rs');
 const mountedRuntime = read(
-  'crates/rustok-commerce/src/storefront_checkout_runtime_mounted.rs',
+  'crates/modules/rustok-commerce/src/storefront_checkout_runtime_mounted.rs',
 );
-const legacyRuntime = read('crates/rustok-commerce/src/storefront_checkout_runtime.rs');
+const legacyRuntime = read('crates/modules/rustok-commerce/src/storefront_checkout_runtime.rs');
 const stagedRuntime = read(
-  'crates/rustok-commerce/src/storefront_staged_checkout_runtime.rs',
+  'crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs',
 );
 const graphqlCheckout = read(
-  'crates/rustok-commerce/src/graphql/mutations/checkout.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/checkout.rs',
 );
 const restCheckout = read(
-  'crates/rustok-commerce/src/controllers/store/checkout.rs',
+  'crates/modules/rustok-commerce/src/controllers/store/checkout.rs',
 );
 const nativeCheckout = read(
-  'crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs',
+  'crates/modules/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs',
 );
 const journaledCheckout = read(
-  'crates/rustok-commerce/src/services/journaled_checkout.rs',
+  'crates/modules/rustok-commerce/src/services/journaled_checkout.rs',
 );
-const orderPorts = read('crates/rustok-order/src/ports.rs');
+const orderPorts = read('crates/modules/rustok-order/src/ports.rs');
 
 for (const [source, value, label] of [
   [lib, '#[path = "storefront_checkout_runtime_mounted.rs"]', 'commerce root mounted storefront runtime'],

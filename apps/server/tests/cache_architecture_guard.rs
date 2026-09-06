@@ -21,7 +21,7 @@ fn variable_payload_caches_use_weighted_capacity() {
         "apps/server/src/services/rbac_runtime.rs",
         "apps/server/src/middleware/locale.rs",
         "apps/server/src/middleware/channel.rs",
-        "crates/rustok-seo/src/services/mod.rs",
+        "crates/modules/rustok-seo/src/services/mod.rs",
     ];
 
     for relative in weighted_caches {
@@ -38,7 +38,7 @@ fn database_backed_hot_misses_are_coalesced() {
     for relative in [
         "apps/server/src/middleware/locale.rs",
         "apps/server/src/middleware/channel.rs",
-        "crates/rustok-seo/src/services/redirects.rs",
+        "crates/modules/rustok-seo/src/services/redirects.rs",
     ] {
         let source = source(relative);
         assert!(
@@ -96,7 +96,7 @@ fn redis_rate_limit_operations_are_bounded_and_redacted() {
 
 #[test]
 fn weighted_backend_uses_cache_service_owned_redis_client() {
-    let weighted = source("crates/rustok-cache/src/weighted.rs");
+    let weighted = source("crates/modules/rustok-cache/src/weighted.rs");
     assert!(
         weighted.contains("SharedClientRedisCacheBackend::new"),
         "weighted backend must reuse the CacheService-owned Redis client"
@@ -113,7 +113,7 @@ fn weighted_backend_uses_cache_service_owned_redis_client() {
 
 #[test]
 fn default_backend_factory_uses_the_service_owned_redis_client() {
-    let service = source("crates/rustok-cache/src/service.rs");
+    let service = source("crates/modules/rustok-cache/src/service.rs");
 
     assert!(
         service.contains("self.backend_shared_client(prefix, ttl, max_capacity)"),
@@ -137,8 +137,8 @@ fn default_backend_factory_uses_the_service_owned_redis_client() {
 
 #[test]
 fn generic_invalidation_and_loader_inputs_are_bounded() {
-    let service = source("crates/rustok-cache/src/service.rs");
-    let policy = source("crates/rustok-cache/src/policy.rs");
+    let service = source("crates/modules/rustok-cache/src/service.rs");
+    let policy = source("crates/modules/rustok-cache/src/policy.rs");
 
     for required in [
         "MAX_CACHE_INVALIDATION_CHANNEL_BYTES",
@@ -170,9 +170,9 @@ fn generic_invalidation_and_loader_inputs_are_bounded() {
 
 #[test]
 fn shared_fallback_health_does_not_mask_primary_degradation() {
-    let fallback = source("crates/rustok-cache/src/fallback.rs");
-    let weighted = source("crates/rustok-cache/src/weighted.rs");
-    let shared = source("crates/rustok-cache/src/shared_backend.rs");
+    let fallback = source("crates/modules/rustok-cache/src/fallback.rs");
+    let weighted = source("crates/modules/rustok-cache/src/weighted.rs");
+    let shared = source("crates/modules/rustok-cache/src/shared_backend.rs");
 
     assert!(
         fallback.contains("self.primary.health().await"),
@@ -190,15 +190,15 @@ fn shared_fallback_health_does_not_mask_primary_degradation() {
 
 #[test]
 fn stale_refresh_is_bounded_deduplicated_and_atomic() {
-    let core_context = source("crates/rustok-core/src/context.rs");
-    let core_atomic = source("crates/rustok-core/src/cache_atomic.rs");
-    let refresh = source("crates/rustok-cache/src/refresh.rs");
-    let observability = source("crates/rustok-cache/src/observability.rs");
-    let shared = source("crates/rustok-cache/src/shared_backend.rs");
-    let fallback = source("crates/rustok-cache/src/fallback.rs");
-    let weighted = source("crates/rustok-cache/src/weighted.rs");
-    let service = source("crates/rustok-cache/src/service.rs");
-    let atomic_cas = source("crates/rustok-cache/tests/atomic_cas.rs");
+    let core_context = source("crates/libs/rustok-core/src/context.rs");
+    let core_atomic = source("crates/libs/rustok-core/src/cache_atomic.rs");
+    let refresh = source("crates/modules/rustok-cache/src/refresh.rs");
+    let observability = source("crates/modules/rustok-cache/src/observability.rs");
+    let shared = source("crates/modules/rustok-cache/src/shared_backend.rs");
+    let fallback = source("crates/modules/rustok-cache/src/fallback.rs");
+    let weighted = source("crates/modules/rustok-cache/src/weighted.rs");
+    let service = source("crates/modules/rustok-cache/src/service.rs");
+    let atomic_cas = source("crates/modules/rustok-cache/tests/atomic_cas.rs");
 
     for required in [
         "MAX_CACHE_REFRESH_KEY_BYTES",
@@ -277,7 +277,7 @@ fn stale_refresh_is_bounded_deduplicated_and_atomic() {
 
 #[test]
 fn invalidation_recovery_is_two_phase_and_monotonic() {
-    let invalidation = source("crates/rustok-cache/src/invalidation.rs");
+    let invalidation = source("crates/modules/rustok-cache/src/invalidation.rs");
     assert!(
         invalidation.contains("UnverifiedFirst"),
         "unseeded invalidation consumers must not trust the first observed generation"
@@ -298,8 +298,8 @@ fn invalidation_recovery_is_two_phase_and_monotonic() {
 
 #[test]
 fn generation_fallback_is_trusted_monotonic_and_bounded() {
-    let generation = source("crates/rustok-cache/src/generation.rs");
-    let backend_generation = source("crates/rustok-cache/src/backend_generation.rs");
+    let generation = source("crates/modules/rustok-cache/src/generation.rs");
+    let backend_generation = source("crates/modules/rustok-cache/src/backend_generation.rs");
     assert!(
         generation.contains("NoLocalSnapshot"),
         "Redis generation failure without a trusted local snapshot must fail closed"
@@ -336,7 +336,7 @@ fn generation_fallback_is_trusted_monotonic_and_bounded() {
 
 #[test]
 fn typed_loading_invalidates_raced_incompatible_values() {
-    let typed = source("crates/rustok-cache/src/typed.rs");
+    let typed = source("crates/modules/rustok-cache/src/typed.rs");
     assert!(
         typed.contains("incompatible_value_racing_after_initial_probe_is_invalidated"),
         "typed loading must retain race regression coverage"
@@ -349,7 +349,7 @@ fn typed_loading_invalidates_raced_incompatible_values() {
 
 #[test]
 fn distributed_lease_deadline_is_usable_after_confirmation() {
-    let lease = source("crates/rustok-cache/src/lease.rs");
+    let lease = source("crates/modules/rustok-cache/src/lease.rs");
     assert!(
         lease.contains("OperationTimeoutNotLessThanTtl"),
         "lease operation timeout must remain strictly below lease TTL"
@@ -366,8 +366,8 @@ fn distributed_lease_deadline_is_usable_after_confirmation() {
 
 #[test]
 fn cache_values_and_keys_have_bounded_versioned_contracts() {
-    let key = source("crates/rustok-cache/src/key.rs");
-    let envelope = source("crates/rustok-cache/src/envelope.rs");
+    let key = source("crates/modules/rustok-cache/src/key.rs");
+    let envelope = source("crates/modules/rustok-cache/src/envelope.rs");
 
     for required in [
         "MAX_CACHE_KEY_BYTES",

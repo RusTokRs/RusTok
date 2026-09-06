@@ -10,11 +10,11 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const changes = read('crates/rustok-commerce/src/controllers/admin/changes.rs');
-const orchestration = read('crates/rustok-commerce/src/services/order_change_orchestration.rs');
-const postOrder = read('crates/rustok-commerce/src/services/post_order.rs');
+const changes = read('crates/modules/rustok-commerce/src/controllers/admin/changes.rs');
+const orchestration = read('crates/modules/rustok-commerce/src/services/order_change_orchestration.rs');
+const postOrder = read('crates/modules/rustok-commerce/src/services/post_order.rs');
 const paymentOrchestration = read(
-  'crates/rustok-commerce/src/services/payment_orchestration.rs',
+  'crates/modules/rustok-commerce/src/services/payment_orchestration.rs',
 );
 const failures = [];
 

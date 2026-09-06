@@ -7,7 +7,7 @@
 
 RusToK already had:
 
-- MCP identity/tool-policy foundation in `crates/rustok-mcp`;
+- MCP identity/tool-policy foundation in `crates/modules/rustok-mcp`;
 - persisted MCP clients/tokens/policies/audit plus management API in `apps/server`.
 
 What was still missing was the actual bridge between these layers: a way to resolve a persisted MCP
@@ -27,7 +27,7 @@ authorization semantics, and security guidance:
 
 We keep the boundary split in two layers:
 
-1. `crates/rustok-mcp` owns generic runtime hooks only:
+1. `crates/modules/rustok-mcp` owns generic runtime hooks only:
    - `McpSessionContext`
    - `McpAccessResolver`
    - `McpRuntimeBinding`

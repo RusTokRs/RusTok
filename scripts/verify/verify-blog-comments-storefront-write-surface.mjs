@@ -9,17 +9,17 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const failures = [];
 const files = {
-  evidence: 'crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
-  fallback: 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json',
-  blogRegistry: 'crates/rustok-blog/contracts/blog-fba-registry.json',
-  commentsRegistry: 'crates/rustok-comments/contracts/comments-fba-registry.json',
-  readme: 'crates/rustok-blog/storefront/README.md',
-  ui: 'crates/rustok-blog/storefront/src/ui/leptos.rs',
-  graphql: 'crates/rustok-blog/storefront/src/transport/graphql_adapter.rs',
-  native: 'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs',
-  facade: 'crates/rustok-blog/storefront/src/transport/mod.rs',
-  model: 'crates/rustok-blog/storefront/src/model.rs',
-  plan: 'crates/rustok-blog/docs/implementation-plan-slice-100.md',
+  evidence: 'crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
+  fallback: 'crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json',
+  blogRegistry: 'crates/modules/rustok-blog/contracts/blog-fba-registry.json',
+  commentsRegistry: 'crates/modules/rustok-comments/contracts/comments-fba-registry.json',
+  readme: 'crates/modules/rustok-blog/storefront/README.md',
+  ui: 'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
+  graphql: 'crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs',
+  native: 'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs',
+  facade: 'crates/modules/rustok-blog/storefront/src/transport/mod.rs',
+  model: 'crates/modules/rustok-blog/storefront/src/model.rs',
+  plan: 'crates/modules/rustok-blog/docs/implementation-plan-slice-100.md',
 };
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);

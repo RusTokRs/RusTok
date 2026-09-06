@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const nextAdminRoot = path.join(repositoryRoot, 'apps/next-admin');
-const fixtureRoot = path.join(repositoryRoot, 'crates/fly/fixtures/grapesjs');
+const fixtureRoot = path.join(repositoryRoot, 'crates/ui/fly/fixtures/grapesjs');
 const manifestPath = path.join(fixtureRoot, 'manifest.json');
 const seedFile = process.env.FLY_GRAPESJS_CAPTURE_SEED || 'baseline.json';
 const outputFile = process.env.FLY_GRAPESJS_CAPTURE_OUTPUT || 'browser-current.json';

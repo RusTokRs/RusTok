@@ -23,15 +23,15 @@ function requireText(source, marker, message) {
   if (!source.includes(marker)) failures.push(message);
 }
 
-const controlsPath = "crates/rustok-product/storefront/src/catalog_controls.rs";
-const ownerTypesPath = "crates/rustok-product/src/services/catalog/types.rs";
-const ownerQueriesPath = "crates/rustok-product/src/services/catalog/queries.rs";
-const nativePath = "crates/rustok-product/storefront/src/transport/catalog_list_native.rs";
-const graphqlAdapterPath = "crates/rustok-product/storefront/src/transport/graphql_adapter.rs";
-const graphqlResolverPath = "crates/rustok-commerce/src/graphql/product_catalog.rs";
-const graphqlRootPath = "crates/rustok-commerce/src/graphql/mod.rs";
-const uiPath = "crates/rustok-product/storefront/src/ui/leptos.rs";
-const planPath = "crates/rustok-product/docs/implementation-plan.md";
+const controlsPath = "crates/modules/rustok-product/storefront/src/catalog_controls.rs";
+const ownerTypesPath = "crates/modules/rustok-product/src/services/catalog/types.rs";
+const ownerQueriesPath = "crates/modules/rustok-product/src/services/catalog/queries.rs";
+const nativePath = "crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs";
+const graphqlAdapterPath = "crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs";
+const graphqlResolverPath = "crates/modules/rustok-commerce/src/graphql/product_catalog.rs";
+const graphqlRootPath = "crates/modules/rustok-commerce/src/graphql/mod.rs";
+const uiPath = "crates/modules/rustok-product/storefront/src/ui/leptos.rs";
+const planPath = "crates/modules/rustok-product/docs/implementation-plan.md";
 
 const controls = read(controlsPath);
 const ownerTypes = read(ownerTypesPath);

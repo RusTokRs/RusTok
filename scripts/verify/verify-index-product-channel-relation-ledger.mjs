@@ -19,7 +19,7 @@ const requireMarkers = (relative, markers) => {
 };
 
 const migrationPath =
-  'crates/rustok-product/src/migrations/m20260807_000008_add_product_sales_channel_index_relation_snapshots.rs';
+  'crates/modules/rustok-product/src/migrations/m20260807_000008_add_product_sales_channel_index_relation_snapshots.rs';
 const migration = requireMarkers(migrationPath, [
   'CREATE TABLE product_sales_channel_index_relation_snapshots',
   'relation_epoch BIGINT NOT NULL',
@@ -50,7 +50,7 @@ for (const forbidden of [
   }
 }
 
-const servicePath = 'crates/rustok-product/src/services/index_channel_relation.rs';
+const servicePath = 'crates/modules/rustok-product/src/services/index_channel_relation.rs';
 const service = requireMarkers(servicePath, [
   'pub const MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS: usize = 1024;',
   'pub const MAX_PRODUCT_SALES_CHANNEL_RELATION_PAGE: usize = 256;',
@@ -88,32 +88,32 @@ for (const forbidden of [
   }
 }
 
-const cargo = read('crates/rustok-product/Cargo.toml');
+const cargo = read('crates/modules/rustok-product/Cargo.toml');
 for (const forbidden of ['rustok-channel', 'rustok-index']) {
   if (cargo.includes(forbidden)) {
     fail(`rustok-product must not gain a ${forbidden} dependency for relation ownership`);
   }
 }
 
-requireMarkers('crates/rustok-product/src/migrations/mod.rs', [
+requireMarkers('crates/modules/rustok-product/src/migrations/mod.rs', [
   'mod m20260807_000008_add_product_sales_channel_index_relation_snapshots;',
   'Box::new(m20260807_000008_add_product_sales_channel_index_relation_snapshots::Migration)',
   'mod m20260807_000011_add_product_sales_channel_relation_freshness;',
 ]);
-requireMarkers('crates/rustok-product/src/services/mod.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/mod.rs', [
   'mod index_channel_relation;',
   'mod index_channel_relation_freshness;',
   'ProductSalesChannelIndexRelationStore',
   'ProductSalesChannelIndexRelationFreshnessStore',
 ]);
-requireMarkers('crates/rustok-product/src/lib.rs', [
+requireMarkers('crates/modules/rustok-product/src/lib.rs', [
   'ProductSalesChannelIndexRelationRecord',
   'ProductSalesChannelIndexRelationStore',
   'ProductSalesChannelIndexRelationFreshnessStore',
   'MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS',
 ]);
 
-const ledgerDoc = requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-ledger.md', [
+const ledgerDoc = requireMarkers('crates/modules/rustok-product/docs/index-sales-channel-relation-ledger.md', [
   'Status: `canonical_graph_and_freshness_source_complete_runtime_evidence_pending`',
   '`product_sales_channel_index_relation_snapshots`',
   '`ProductSalesChannelIndexRelationStore::replace`',
@@ -130,12 +130,12 @@ for (const legacy of ['Product v1', 'Product v2', 'Product v3', 'new Product sch
   if (ledgerDoc.includes(legacy)) fail(`relation ledger doc retains legacy compatibility text: ${legacy}`);
 }
 
-requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-relation-admission.md', [
   'current Product Index graph contains the Product-to-SalesChannel link',
   '`product_index_graph_projection_snapshots.projection_epoch`',
   'Product-owned freshness witness',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
   'Product-owned Product-to-SalesChannel relation snapshots',
   'one canonical Product Index source',
   'Product-SalesChannel freshness witness',

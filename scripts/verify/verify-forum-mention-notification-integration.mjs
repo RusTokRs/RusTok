@@ -8,7 +8,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
   : path.resolve(scriptDir, "../..");
-const contractPath = "crates/rustok-forum/contracts/forum-mention-notification-integration.json";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-mention-notification-integration.json";
 const failures = [];
 
 function read(relativePath) {
@@ -50,7 +50,7 @@ const socialGraphContract = JSON.parse(read(contract.social_graph_policy_contrac
 if (contract.schema_version !== 1) {
   failures.push(`${contractPath}: expected schema_version 1`);
 }
-if (contract.canonical_plan !== "crates/rustok-forum/docs/implementation-plan.md") {
+if (contract.canonical_plan !== "crates/modules/rustok-forum/docs/implementation-plan.md") {
   failures.push(`${contractPath}: canonical Forum plan link drifted`);
 }
 if (contract.execution_status !== "source_locked_pending_maintainer_execution") {

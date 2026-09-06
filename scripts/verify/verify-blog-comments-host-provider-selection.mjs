@@ -1,12 +1,12 @@
 import fs from 'node:fs';
 
-const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-host-provider-selection.json';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-70.md';
+const evidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-host-provider-selection.json';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-70.md';
 const selectorPath = 'apps/server/src/services/comments_provider_runtime.rs';
 const servicesPath = 'apps/server/src/services/mod.rs';
-const distributionPath = 'crates/rustok-distribution/Cargo.toml';
-const graphqlConsumerPath = 'crates/rustok-blog/src/graphql/runtime_data.rs';
-const httpConsumerPath = 'crates/rustok-blog/src/controllers/mod.rs';
+const distributionPath = 'crates/modules/rustok-distribution/Cargo.toml';
+const graphqlConsumerPath = 'crates/modules/rustok-blog/src/graphql/runtime_data.rs';
+const httpConsumerPath = 'crates/modules/rustok-blog/src/controllers/mod.rs';
 const graphqlHostPath = 'apps/server/src/services/graphql_schema.rs';
 const nativeHostPath = 'apps/server/src/services/app_router.rs';
 

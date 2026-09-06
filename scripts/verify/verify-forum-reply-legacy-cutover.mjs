@@ -10,23 +10,23 @@ const requireText = (source, needle, label) => {
   }
 };
 
-const snapshotPath = 'crates/rustok-forum/src/graphql/query.rs';
+const snapshotPath = 'crates/modules/rustok-forum/src/graphql/query.rs';
 const cleanupPath =
-  'crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json';
-const query = read('crates/rustok-forum/src/graphql/query_runtime.rs');
-const graphqlModule = read('crates/rustok-forum/src/graphql/mod.rs');
+  'crates/modules/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json';
+const query = read('crates/modules/rustok-forum/src/graphql/query_runtime.rs');
+const graphqlModule = read('crates/modules/rustok-forum/src/graphql/mod.rs');
 const graphqlAdapter = read(
-  'crates/rustok-forum/storefront/src/transport/graphql_adapter.rs',
+  'crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs',
 );
 const nativeAdapter = read(
-  'crates/rustok-forum/storefront/src/transport/native_server_adapter.rs',
+  'crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs',
 );
-const selector = read('crates/rustok-forum/storefront/src/transport/mod.rs');
+const selector = read('crates/modules/rustok-forum/storefront/src/transport/mod.rs');
 const contract = JSON.parse(
-  read('crates/rustok-forum/contracts/forum-reply-legacy-cutover.json'),
+  read('crates/modules/rustok-forum/contracts/forum-reply-legacy-cutover.json'),
 );
 const categoryContract = JSON.parse(
-  read('crates/rustok-forum/contracts/forum-category-audience-read.json'),
+  read('crates/modules/rustok-forum/contracts/forum-category-audience-read.json'),
 );
 const cleanup = JSON.parse(read(cleanupPath));
 
@@ -106,14 +106,14 @@ if (selector.includes('reply_audience_adapter')) {
 }
 if (
   exists(
-    'crates/rustok-forum/storefront/src/transport/graphql_reply_audience_adapter.rs',
+    'crates/modules/rustok-forum/storefront/src/transport/graphql_reply_audience_adapter.rs',
   )
 ) {
   throw new Error('temporary GraphQL reply adapter must be removed');
 }
 if (
   exists(
-    'crates/rustok-forum/storefront/src/transport/native_reply_audience_adapter.rs',
+    'crates/modules/rustok-forum/storefront/src/transport/native_reply_audience_adapter.rs',
   )
 ) {
   throw new Error('temporary native reply adapter must be removed');
@@ -154,7 +154,7 @@ if (contract.graphql_snapshot_cleanup_contract !== cleanupPath) {
 }
 if (
   contract.downstream_completion !==
-  'crates/rustok-forum/contracts/forum-category-audience-read.json'
+  'crates/modules/rustok-forum/contracts/forum-category-audience-read.json'
 ) {
   throw new Error('reply handoff must point to category-read completion');
 }

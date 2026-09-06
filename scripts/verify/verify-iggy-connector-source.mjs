@@ -28,10 +28,10 @@ const assertNotContains = (text, pattern, description) => {
   if (found) fail(description);
 };
 
-const libPath = "crates/rustok-iggy-connector/src/lib.rs";
-const planPath = "crates/rustok-iggy-connector/docs/implementation-plan.md";
-const docsPath = "crates/rustok-iggy-connector/docs/README.md";
-const readmePath = "crates/rustok-iggy-connector/README.md";
+const libPath = "crates/modules/rustok-iggy-connector/src/lib.rs";
+const planPath = "crates/modules/rustok-iggy-connector/docs/implementation-plan.md";
+const docsPath = "crates/modules/rustok-iggy-connector/docs/README.md";
+const readmePath = "crates/modules/rustok-iggy-connector/README.md";
 const registryPath = "docs/modules/implementation-plans-registry.md";
 
 for (const filePath of [libPath, planPath, docsPath, readmePath, registryPath]) assertExists(filePath);

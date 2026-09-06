@@ -21,7 +21,7 @@ A new module `rustok-channel` is introduced with the following properties:
 
 - the module has `Core` status in the platform taxonomy;
 - the module is simultaneously marked as `experimental` in terms of solution maturity;
-- domain logic, storage, services, and documentation live in `crates/rustok-channel`;
+- domain logic, storage, services, and documentation live in `crates/modules/rustok-channel`;
 - `apps/server` knows the module, registers it, and uses it for wiring/runtime resolution, but does not own its domain logic;
 - UI, if and when it appears, should live alongside the module according to the general module-owned UI rule.
 

@@ -13,7 +13,7 @@ const files = {
   doc: "apps/server/docs/index-drift-source-page-diagnosis.md",
   transportDoc: "apps/server/docs/index-drift-source-page-graphql-transport.md",
   operatorDoc: "apps/server/docs/index-reconciliation-operator-runtime.md",
-  plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
   aggregate: "scripts/verify/verify-index-query-contract.mjs",
 };
 

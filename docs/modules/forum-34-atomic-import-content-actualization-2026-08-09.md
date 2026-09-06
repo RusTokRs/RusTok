@@ -4,13 +4,13 @@ Status: `source-ready / maintainer-execution-open / deleted-tombstone-admission-
 
 ## Cursor and fresh recheck
 
-FORUM-34A through FORUM-34N are merged before this slice. 34O started from `b821161ab07bf45d3c8c57d4ff44d5935b27a464` after Commerce-only PR #3416. While the slice was being prepared, `main` first advanced through Pages-only PR #3417 and then through the Alloy/module-control-plane merge plus Commerce PR #3418 to `4699fee7c4aa820f8956e097eebf7eabbb14f3c8`. None of those commits changes `crates/rustok-forum` source. The working branch is rebased onto the final fresh `main` before PR review.
+FORUM-34A through FORUM-34N are merged before this slice. 34O started from `b821161ab07bf45d3c8c57d4ff44d5935b27a464` after Commerce-only PR #3416. While the slice was being prepared, `main` first advanced through Pages-only PR #3417 and then through the Alloy/module-control-plane merge plus Commerce PR #3418 to `4699fee7c4aa820f8956e097eebf7eabbb14f3c8`. None of those commits changes `crates/modules/rustok-forum` source. The working branch is rebased onto the final fresh `main` before PR review.
 
 The canonical Forum implementation-plan ledger still carries the stale FORUM-34 `planned` cursor. This dated packet records the truthful source cursor without replacing that large roadmap wholesale.
 
 ### Fresh shared-runner recheck
 
-The new Alloy work adds `AlloyReleaseImporter` under `crates/alloy/src/runner/import.rs`, so the earlier assumption about runner availability was rechecked rather than carried forward blindly.
+The new Alloy work adds `AlloyReleaseImporter` under `crates/modules/alloy/src/runner/import.rs`, so the earlier assumption about runner availability was rechecked rather than carried forward blindly.
 
 That importer is explicitly scoped to one exact eligible **published Rhai release**: it loads immutable release/workspace bytes, imports an Alloy draft through `ScriptRegistry`, and owns Alloy-specific draft lineage/idempotency conflicts. It is not a neutral owner-data migration runner or a generic checkpoint/replay contract that Forum can implement.
 

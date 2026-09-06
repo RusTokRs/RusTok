@@ -251,8 +251,8 @@ fn lifecycle_operation_status_model_is_exposed_through_recovery_surface() {
     let types_rs = repo_root.join("apps/server/src/graphql/types.rs");
     let queries_rs = repo_root.join("apps/server/src/graphql/queries.rs");
     let mutations_rs = repo_root.join("apps/server/src/graphql/mutations.rs");
-    let operation_store_rs = repo_root.join("crates/rustok-modules/src/operation_store.rs");
-    let lifecycle_writer_rs = repo_root.join("crates/rustok-modules/src/lifecycle_writer.rs");
+    let operation_store_rs = repo_root.join("crates/modules/rustok-modules/src/operation_store.rs");
+    let lifecycle_writer_rs = repo_root.join("crates/modules/rustok-modules/src/lifecycle_writer.rs");
     let admin_api_rs = repo_root.join("apps/admin/src/features/modules/transport/types.rs");
     let types = fs::read_to_string(&types_rs).expect("graphql/types.rs should be readable");
     let queries = fs::read_to_string(&queries_rs).expect("graphql/queries.rs should be readable");

@@ -51,7 +51,7 @@ Page Builder behavior is unchanged. The slice changes only Pages lifecycle, rout
 ## Suggested maintainer validation
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs
 cargo test -p rustok-pages \
   --test page_delete_route_tombstone_sqlite -- --nocapture
 cargo test -p rustok-pages \

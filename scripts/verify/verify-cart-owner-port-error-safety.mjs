@@ -11,9 +11,9 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const failures = [];
 
-const lib = read('crates/rustok-cart/src/lib.rs');
-const guarded = read('crates/rustok-cart/src/guarded_ports.rs');
-const owner = read('crates/rustok-cart/src/owner_ports.rs');
+const lib = read('crates/modules/rustok-cart/src/lib.rs');
+const guarded = read('crates/modules/rustok-cart/src/guarded_ports.rs');
+const owner = read('crates/modules/rustok-cart/src/owner_ports.rs');
 
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);

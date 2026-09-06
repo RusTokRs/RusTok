@@ -5,16 +5,16 @@ const root = process.cwd();
 const failures = [];
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 const files = {
-  apiCargo: "crates/rustok-moderation-api/Cargo.toml",
-  apiModel: "crates/rustok-moderation-api/src/model.rs",
-  apiProvider: "crates/rustok-moderation-api/src/provider.rs",
-  ownerCargo: "crates/rustok-moderation/Cargo.toml",
-  ownerDomain: "crates/rustok-moderation/src/domain.rs",
-  ownerPorts: "crates/rustok-moderation/src/ports.rs",
-  ownerService: "crates/rustok-moderation/src/service.rs",
-  decide: "crates/rustok-moderation/src/commands/case_decide.rs",
-  entity: "crates/rustok-moderation/src/entities/moderation_decision_effect.rs",
-  migration: "crates/rustok-moderation/src/migrations/m20260723_000003_create_moderation_decision_effects.rs",
+  apiCargo: "crates/modules/rustok-moderation-api/Cargo.toml",
+  apiModel: "crates/modules/rustok-moderation-api/src/model.rs",
+  apiProvider: "crates/modules/rustok-moderation-api/src/provider.rs",
+  ownerCargo: "crates/modules/rustok-moderation/Cargo.toml",
+  ownerDomain: "crates/modules/rustok-moderation/src/domain.rs",
+  ownerPorts: "crates/modules/rustok-moderation/src/ports.rs",
+  ownerService: "crates/modules/rustok-moderation/src/service.rs",
+  decide: "crates/modules/rustok-moderation/src/commands/case_decide.rs",
+  entity: "crates/modules/rustok-moderation/src/entities/moderation_decision_effect.rs",
+  migration: "crates/modules/rustok-moderation/src/migrations/m20260723_000003_create_moderation_decision_effects.rs",
 };
 
 for (const relative of Object.values(files)) {

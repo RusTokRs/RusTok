@@ -96,7 +96,7 @@ requireNormalizedMarkers('ops/benches/README.md', [
   'ordinary `VACUUM (ANALYZE)`',
 ]);
 
-requireNormalizedMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
+requireNormalizedMarkers('crates/modules/rustok-index/docs/partition-evidence-runbook.md', [
   'index-partition-maintenance-evidence',
   'maintenance.json',
   'evidence-only maintenance schema',
@@ -104,12 +104,12 @@ requireNormalizedMarkers('crates/rustok-index/docs/partition-evidence-runbook.md
   'canonical and retained snapshot-shadow relations remain unchanged',
 ]);
 
-requireNormalizedMarkers('crates/rustok-index/docs/README.md', [
+requireNormalizedMarkers('crates/modules/rustok-index/docs/README.md', [
   'M3 partition maintenance evidence runner: `complete`',
   'cutover evidence remains open',
 ]);
 
-requireNormalizedMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireNormalizedMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- M3 partition maintenance evidence runner: `complete`',
   '- [x] Add owner-operated PostgreSQL ordinary-VACUUM maintenance evidence capture.',
   '- [ ] Execute retained PostgreSQL mutation, maintenance, and cutover evidence.',

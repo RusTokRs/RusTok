@@ -74,18 +74,18 @@ function requireOrder(source, markers, label) {
 }
 
 const paths = {
-  validation: "crates/rustok-payment/src/checkout_execution/validation_errors.rs",
-  helpers: "crates/rustok-payment/src/checkout_execution/provider_helpers.rs",
-  capture: "crates/rustok-payment/src/checkout_execution/capture_provider.rs",
+  validation: "crates/modules/rustok-payment/src/checkout_execution/validation_errors.rs",
+  helpers: "crates/modules/rustok-payment/src/checkout_execution/provider_helpers.rs",
+  capture: "crates/modules/rustok-payment/src/checkout_execution/capture_provider.rs",
   evidence:
-    "crates/rustok-payment/contracts/evidence/checkout-execution-checkpoint-encoding-diagnostic-safety-source.json",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-execution-checkpoint-encoding-diagnostic-safety-source.json",
   localEvidence:
-    "crates/rustok-payment/contracts/evidence/checkout-execution-local-persistence-diagnostic-safety-source.json",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-execution-local-persistence-diagnostic-safety-source.json",
   reasonEvidence:
-    "crates/rustok-payment/contracts/evidence/checkout-execution-reconciliation-reason-diagnostic-safety-source.json",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-execution-reconciliation-reason-diagnostic-safety-source.json",
   doc:
-    "crates/rustok-payment/docs/checkout-execution-checkpoint-encoding-diagnostic-safety.md",
-  plan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-payment/docs/checkout-execution-checkpoint-encoding-diagnostic-safety.md",
+  plan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
 const validation = read(paths.validation);

@@ -13,10 +13,10 @@ const defaultRoot = process.cwd();
 
 export function verifyCommerceOrderIdentityBoundary({ root = defaultRoot } = {}) {
   const files = {
-    creation: "crates/rustok-commerce/src/services/checkout_order_creation.rs",
-    compensation: "crates/rustok-commerce/src/services/checkout_compensation.rs",
-    orderPorts: "crates/rustok-order/src/ports.rs",
-    orderRegistry: "crates/rustok-order/contracts/order-fba-registry.json",
+    creation: "crates/modules/rustok-commerce/src/services/checkout_order_creation.rs",
+    compensation: "crates/modules/rustok-commerce/src/services/checkout_compensation.rs",
+    orderPorts: "crates/modules/rustok-order/src/ports.rs",
+    orderRegistry: "crates/modules/rustok-order/contracts/order-fba-registry.json",
   };
   const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
   const creation = read(files.creation);

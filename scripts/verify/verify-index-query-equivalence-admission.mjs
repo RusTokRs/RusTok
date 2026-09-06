@@ -80,14 +80,14 @@ requireMarkers('ops/benches/Cargo.toml', [
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-query-equivalence-admission.mjs'",
 ]);
-requireMarkers('crates/rustok-index/docs/m4-postgres-reference-equivalence.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-postgres-reference-equivalence.md', [
   'Status: `fixture_capture_and_admission_source_complete_owner_execution_pending`',
   '`index-query-equivalence-admission`',
   '`production_lifecycle_authorized: false`',
   'receipt parent must already exist',
   'Not run by the implementation agent',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- [x] Add retained v4 plan/SQL snapshots and synchronized source guards.',
   '- [ ] Execute PostgreSQL/reference-engine equivalence capture and admit retained live evidence.',
 ]);

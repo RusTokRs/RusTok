@@ -10,17 +10,17 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const adminRouter = read('crates/rustok-commerce/src/controllers/admin/mod.rs');
-const controller = read('crates/rustok-commerce/src/controllers/admin/changes.rs');
-const httpRuntime = read('crates/rustok-commerce/src/controllers/mod.rs');
-const orchestration = read('crates/rustok-commerce/src/services/order_change_orchestration.rs');
-const ownerCommand = read('crates/rustok-order/src/post_order_command.rs');
-const ownerLib = read('crates/rustok-order/src/lib.rs');
-const graphql = read('crates/rustok-commerce/src/graphql/mutations/fulfillment.rs');
-const graphqlRuntime = read('crates/rustok-commerce/src/graphql_runtime.rs');
-const plan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const adminRouter = read('crates/modules/rustok-commerce/src/controllers/admin/mod.rs');
+const controller = read('crates/modules/rustok-commerce/src/controllers/admin/changes.rs');
+const httpRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
+const orchestration = read('crates/modules/rustok-commerce/src/services/order_change_orchestration.rs');
+const ownerCommand = read('crates/modules/rustok-order/src/post_order_command.rs');
+const ownerLib = read('crates/modules/rustok-order/src/lib.rs');
+const graphql = read('crates/modules/rustok-commerce/src/graphql/mutations/fulfillment.rs');
+const graphqlRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.rs');
+const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 const record = read(
-  'crates/rustok-commerce/docs/rest-admin-order-change-apply-owner-port-cutover-2026-08-10.md',
+  'crates/modules/rustok-commerce/docs/rest-admin-order-change-apply-owner-port-cutover-2026-08-10.md',
 );
 const failures = [];
 

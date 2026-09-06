@@ -93,7 +93,7 @@ assert(
 
 const docsRows = fixtures.docsSyncMatrix ?? [];
 const requiredDocs = [
-  "crates/rustok-seo/docs/README.md",
+  "crates/modules/rustok-seo/docs/README.md",
   "apps/next-frontend/docs/README.md",
   "apps/next-admin/docs/README.md",
   "apps/storefront/docs/README.md",

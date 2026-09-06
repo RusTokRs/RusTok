@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 const schema = JSON.parse(readFileSync(
-  new URL('../../crates/rustok-index/docs/storage-decision.schema.json', import.meta.url),
+  new URL('../../crates/modules/rustok-index/docs/storage-decision.schema.json', import.meta.url),
   'utf8',
 ));
 

@@ -5,10 +5,10 @@ on:
     paths:
       - "docs/modules/translation-implementation-plan.md"
       - "docs/modules/translation-surfaces.json"
-      - "crates/rustok-translation/docs/README.md"
-      - "crates/rustok-translation/docs/implementation-plan.md"
-      - "crates/rustok-blog/docs/implementation-plan-current.md"
-      - "crates/rustok-taxonomy/src/translation_target.rs"
+      - "crates/modules/rustok-translation/docs/README.md"
+      - "crates/modules/rustok-translation/docs/implementation-plan.md"
+      - "crates/modules/rustok-blog/docs/implementation-plan-current.md"
+      - "crates/modules/rustok-taxonomy/src/translation_target.rs"
       - "scripts/verify/verify-blog-taxonomy-category-translation-docs.mjs"
       - ".github/workflows/blog-taxonomy-category-translation-docs.yml"
   push:
@@ -17,10 +17,10 @@ on:
     paths:
       - "docs/modules/translation-implementation-plan.md"
       - "docs/modules/translation-surfaces.json"
-      - "crates/rustok-translation/docs/README.md"
-      - "crates/rustok-translation/docs/implementation-plan.md"
-      - "crates/rustok-blog/docs/implementation-plan-current.md"
-      - "crates/rustok-taxonomy/src/translation_target.rs"
+      - "crates/modules/rustok-translation/docs/README.md"
+      - "crates/modules/rustok-translation/docs/implementation-plan.md"
+      - "crates/modules/rustok-blog/docs/implementation-plan-current.md"
+      - "crates/modules/rustok-taxonomy/src/translation_target.rs"
       - "scripts/verify/verify-blog-taxonomy-category-translation-docs.mjs"
       - ".github/workflows/blog-taxonomy-category-translation-docs.yml"
   workflow_dispatch:

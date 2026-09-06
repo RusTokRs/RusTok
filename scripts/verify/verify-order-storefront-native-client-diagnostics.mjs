@@ -23,20 +23,20 @@ const requireCount = (source, value, expected, label) => {
 };
 
 const paths = {
-  transport: "crates/rustok-order/storefront/src/transport.rs",
-  adapter: "crates/rustok-order/storefront/src/transport/native_server_adapter.rs",
+  transport: "crates/modules/rustok-order/storefront/src/transport.rs",
+  adapter: "crates/modules/rustok-order/storefront/src/transport/native_server_adapter.rs",
   context:
-    "crates/rustok-order/storefront/src/transport/native_server_adapter/native_client_error_safety.rs",
+    "crates/modules/rustok-order/storefront/src/transport/native_server_adapter/native_client_error_safety.rs",
   serverFunctions:
-    "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/modules/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
   graphqlSafety:
-    "crates/rustok-order/storefront/src/transport/graphql_error_safety.rs",
+    "crates/modules/rustok-order/storefront/src/transport/graphql_error_safety.rs",
   evidence:
-    "crates/rustok-order/contracts/evidence/storefront-native-client-diagnostics-source.json",
+    "crates/modules/rustok-order/contracts/evidence/storefront-native-client-diagnostics-source.json",
   review:
-    "crates/rustok-order/contracts/evidence/storefront-native-client-diagnostics-source-review.json",
-  doc: "crates/rustok-order/docs/storefront-native-client-diagnostics.md",
-  commercePlan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-order/contracts/evidence/storefront-native-client-diagnostics-source-review.json",
+  doc: "crates/modules/rustok-order/docs/storefront-native-client-diagnostics.md",
+  commercePlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
   runtimeGuard: "scripts/verify/verify-order-storefront-runtime-error-diagnostics.mjs",
   graphqlGuard: "scripts/verify/verify-order-storefront-graphql-error-safety.mjs",
 };

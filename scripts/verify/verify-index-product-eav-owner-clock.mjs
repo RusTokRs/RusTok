@@ -18,14 +18,14 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const valuesPath = 'crates/rustok-product/src/services/catalog_schema_service/values.rs';
+const valuesPath = 'crates/modules/rustok-product/src/services/catalog_schema_service/values.rs';
 requireMarkers(valuesPath, [
   'pub async fn save_product_attribute_values(',
   'pub async fn clear_detached_product_attribute_values(',
   'DomainEvent::ProductAttributeValuesChanged { product_id }',
 ]);
 
-const transactionPath = 'crates/rustok-product/src/services/write_transaction.rs';
+const transactionPath = 'crates/modules/rustok-product/src/services/write_transaction.rs';
 const transaction = requireMarkers(transactionPath, [
   'let product_attribute_id = product_index_revision_touch_target(&event);',
   'self.bump_product_index_revision(tenant_id, product_id)',
@@ -46,22 +46,22 @@ if (bumpPosition < 0 || publishPosition <= bumpPosition || localePosition <= pub
   fail(`${transactionPath} must bump Product source state before publishing and capture locale refresh after the durable root event id`);
 }
 
-requireMarkers('crates/rustok-product/src/migrations/m20260730_000001_add_product_index_revision.rs', [
+requireMarkers('crates/modules/rustok-product/src/migrations/m20260730_000001_add_product_index_revision.rs', [
   'CREATE TRIGGER trg_products_bump_index_revision',
   'NEW.index_revision := OLD.index_revision + 1',
   "RAISE EXCEPTION 'product index revision exhausted",
 ]);
-requireMarkers('crates/rustok-product/src/migrations/m20260807_000010_canonicalize_product_index_graph_projection.rs', [
+requireMarkers('crates/modules/rustok-product/src/migrations/m20260807_000010_canonicalize_product_index_graph_projection.rs', [
   'CREATE TRIGGER trg_products_index_graph_projection_update',
   'AFTER UPDATE OF index_revision ON products',
   'rustok_product_reconcile_index_graph_projection',
 ]);
-requireMarkers('crates/rustok-product/src/migrations/m20260807_000012_add_product_sales_channel_relation_convergence.rs', [
+requireMarkers('crates/modules/rustok-product/src/migrations/m20260807_000012_add_product_sales_channel_relation_convergence.rs', [
   'CREATE TRIGGER trg_products_enqueue_channel_relation_convergence_update',
   'AFTER UPDATE OF metadata, tenant_id, id ON products',
 ]);
 
-requireMarkers('crates/rustok-product/docs/index-locale-refresh-ledger.md', [
+requireMarkers('crates/modules/rustok-product/docs/index-locale-refresh-ledger.md', [
   'Product EAV value commands now use the same Product locale-refresh boundary',
   '`ProductAttributeValuesChanged` event first advances the Product Index clock',
   '`products.index_revision` remains the single Product owner input watermark',

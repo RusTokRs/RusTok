@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const storePath = 'crates/rustok-index/src/infrastructure/postgres/mutation_store.rs';
+const storePath = 'crates/modules/rustok-index/src/infrastructure/postgres/mutation_store.rs';
 const store = requireMarkers(storePath, [
   'pub struct MutationDelivery',
   'pub enum MutationApplyOutcome',
@@ -68,7 +68,7 @@ for (const forbidden of [
 }
 
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mutation_store_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mutation_store_tests.rs', [
   'atomically_upserts_entity_links_and_terminal_inbox_state',
   'exact_redelivery_is_duplicate_but_payload_reuse_conflicts',
   'tombstone_and_source_version_guards_prevent_stale_resurrection',
@@ -76,19 +76,19 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/mutation_store_t
   'tenant_and_locale_identity_do_not_collide',
 ]);
 
-requireMarkers('crates/rustok-index/src/application/validation.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/validation.rs', [
   'pub fn validate_mutation',
   'IndexMutation::Upsert',
   'IndexMutation::Delete',
   'validate_entity_key',
 ]);
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'pub mod infrastructure;',
   'PostgresMutationStore',
   'MutationDelivery',
   'MutationApplyOutcome',
 ]);
-requireMarkers('crates/rustok-index/Cargo.toml', [
+requireMarkers('crates/modules/rustok-index/Cargo.toml', [
   'sea-orm.workspace = true',
   'serde_json.workspace = true',
 ]);

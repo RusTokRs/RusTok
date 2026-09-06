@@ -11,12 +11,12 @@ const rootPath = configuredRoot
 const read = (relativePath) => readFileSync(path.join(rootPath, relativePath), 'utf8');
 
 const serverCargo = read('apps/server/Cargo.toml');
-const distributionCargo = read('crates/rustok-distribution/Cargo.toml');
-const distributionSource = read('crates/rustok-distribution/src/lib.rs');
-const commerceCargo = read('crates/rustok-commerce/Cargo.toml');
+const distributionCargo = read('crates/modules/rustok-distribution/Cargo.toml');
+const distributionSource = read('crates/modules/rustok-distribution/src/lib.rs');
+const commerceCargo = read('crates/modules/rustok-commerce/Cargo.toml');
 const providerRuntime = read('apps/server/src/services/commerce_provider_runtime.rs');
 const evidence = JSON.parse(
-  read('crates/rustok-commerce/contracts/evidence/server-ai-optional-dependency-source.json'),
+  read('crates/modules/rustok-commerce/contracts/evidence/server-ai-optional-dependency-source.json'),
 );
 
 const failures = [];

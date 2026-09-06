@@ -17,19 +17,19 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const transportPath = "crates/rustok-product/storefront/src/transport/mod.rs";
+const transportPath = "crates/modules/rustok-product/storefront/src/transport/mod.rs";
 const policyPath =
-  "crates/rustok-product/storefront/src/transport/graphql_error_safety.rs";
+  "crates/modules/rustok-product/storefront/src/transport/graphql_error_safety.rs";
 const adapterPath =
-  "crates/rustok-product/storefront/src/transport/graphql_adapter.rs";
+  "crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs";
 const nativePath =
-  "crates/rustok-product/storefront/src/transport/native_server_adapter.rs";
+  "crates/modules/rustok-product/storefront/src/transport/native_server_adapter.rs";
 const evidencePath =
-  "crates/rustok-product/contracts/evidence/storefront-graphql-error-safety-source.json";
+  "crates/modules/rustok-product/contracts/evidence/storefront-graphql-error-safety-source.json";
 const reviewPath =
-  "crates/rustok-product/contracts/evidence/storefront-graphql-error-safety-source-review.json";
+  "crates/modules/rustok-product/contracts/evidence/storefront-graphql-error-safety-source-review.json";
 const documentPath =
-  "crates/rustok-product/docs/storefront-graphql-error-safety.md";
+  "crates/modules/rustok-product/docs/storefront-graphql-error-safety.md";
 
 const transport = read(transportPath);
 const policy = read(policyPath);

@@ -2,7 +2,7 @@
 
 > **MANDATORY FOR AI AGENTS — Read these guides BEFORE any code changes:**
 >
-> **Module UI Package Guides (for `crates/rustok-*/admin` packages):**
+> **Module UI Package Guides (for `crates/modules/rustok-*/admin` packages):**
 > - [Architecture Guide](../../../docs/UI/module-package-architecture.md) — explains **FFA** (Fluid Frontend Architecture), `core/transport/ui` split, dual-path model
 > - [Implementation Guide](../../../docs/UI/module-package-implementation.md) — **internal libraries** (`leptos-ui`, `leptos-ui-routing`, `rustok-graphql`, etc.), **i18n rules**, file structure, forbidden patterns
 > - [Verification Guide](../../../docs/UI/module-package-verification.md) — verification commands, common errors
@@ -38,7 +38,7 @@ a Leptos render/bind adapter. This split is enforced by a quick verifier
 `/modules/workflow`. The host still composes only the workflow detail editor, execution history,
 and version history through `src/features/workflow/`; its native server-function adapter uses
 `HostRuntimeContext`. The outstanding ownership transfer must move that remaining detail
-surface atomically into `crates/rustok-workflow/admin/` and delete the host feature; no second
+surface atomically into `crates/modules/rustok-workflow/admin/` and delete the host feature; no second
 transport path is to be introduced.
 
 The host-owned `/modules` control plane also receives only a narrow database snapshot from
@@ -132,6 +132,10 @@ call a native adapter directly.
 - For `apps/admin` this is considered the final repo-side contract: no new client-owned lifecycle is needed here going forward, only targeted verification mapping and periodic reconciliation of `/modules` UX with the server-driven policy surface.
 - Toggle/install/uninstall/upgrade module composition must not have a local SSR SQL lifecycle duplicate: the host uses canonical server GraphQL/control-plane entrypoints. Install, uninstall, and upgrade first read the owner-issued composition revision, forward that positive revision with a fresh UUID idempotency key, and never supply tenant or actor identity. The owner atomically commits composition CAS, build enqueue, and the durable receipt; an exact retry returns the original build. The host neither computes the composition digest nor parses the distinct build execution identity.
 - For module toggle, `apps/admin` maintains a GraphQL-only entrypoint contract (without a native fallback toggle path): each submission carries a fresh UUID idempotency key, while the authenticated server derives tenant, actor, and permission. Error taxonomy, dependency/core checks, correlation, and journal semantics (`module_operations`) are defined by the server lifecycle service, not by local Leptos logic. The Leptos SSR adapter and UI must propagate `BAD_USER_INPUT`/`IDEMPOTENCY_CONFLICT`/`MODULE_HOOK_FAILED`/`INTERNAL_ERROR`, `correlation_id`, `requested_by`, `status`, `retryable_issue`, and related recovery fields without client-side remap.
+- Transition finalization forwards the owner-issued checkpoint revision with a
+  fresh UUID idempotency key. The transition card does not expose a status-only
+  recovery action; dynamic rollback starts from the selected active
+  installation so the owner can verify and activate its retained predecessor.
 - Module-control-plane GraphQL reads fail closed on transport or owner errors.
   The admin host does not synthesize registry, installation, tenant intent, or
   marketplace facts from its generated navigation registry. Native marketplace
@@ -186,7 +190,7 @@ npm.cmd run tw:build
 
 `apps/admin/input.css` uses Tailwind v4 `@import "tailwindcss"` and explicit `@source` entries. `tailwind.config.js`
 must include `apps/admin/src`, shared Leptos UI crates and module-owned admin UI packages
-`crates/**/admin/src/**/*.rs`. If `dist/output.css` is missing or the source globs do not cover module UI packages,
+`crates/modules/**/admin/src/**/*.rs`. If `dist/output.css` is missing or the source globs do not cover module UI packages,
 the shell will load partially or without styles. This does not change the production target: the architectural path for Leptos admin remains
 SSR/hydrate over `apps/server`, and CSR is needed for standalone debug and testing module-owned UI packages.
 

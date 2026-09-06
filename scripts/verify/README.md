@@ -37,13 +37,13 @@ node scripts/verify/verify-api-surface-contract.mjs
 node scripts/verify/verify-axum-runtime.mjs
 node scripts/verify/export-reference-artifacts.mjs artifacts/reference
 node scripts/verify/verify-reference-artifacts.mjs artifacts/reference
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-error-catalog-binding.mjs pages
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs pages
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-error-catalog-binding.mjs pages
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs pages
 node scripts/verify/verify-ecommerce-fba-registries.mjs
 ```
 
@@ -76,13 +76,13 @@ node scripts/verify/verify-ecommerce-fba-registries.mjs
 | AI Rig-only cutover drift check | `node scripts/verify/verify-ai-rig-cutover.mjs` |
 | Tenant admin FFA boundary check | `node scripts/verify/verify-tenant-admin-boundary.mjs` |
 | Lifecycle bypass helper prohibition in production | `node scripts/verify/verify-module-lifecycle-bypass-usage.mjs` |
-| Provider/consumer parity check for page-builder contract | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs` |
-| Machine-readable registry page-builder vs manifests check | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs` |
-| Required fallback/toggle profiles for page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs` |
-| Toggle profile value consistency for page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs` |
-| Full baseline gate page-builder FBA before Wave 0/Wave 1 | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs` |
-| Error catalog drift between provider/consumer manifest, backend and UI adapters | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-error-catalog-binding.mjs pages` |
-| Consumer module readiness check (`pages/forum`) | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs <slug>` |
+| Provider/consumer parity check for page-builder contract | `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs` |
+| Machine-readable registry page-builder vs manifests check | `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs` |
+| Required fallback/toggle profiles for page-builder | `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs` |
+| Toggle profile value consistency for page-builder | `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs` |
+| Full baseline gate page-builder FBA before Wave 0/Wave 1 | `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs` |
+| Error catalog drift between provider/consumer manifest, backend and UI adapters | `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-error-catalog-binding.mjs pages` |
+| Consumer module readiness check (`pages/forum`) | `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs <slug>` |
 | Ecommerce FBA provider registries and locked contract-test metadata | `node scripts/verify/verify-ecommerce-fba-registries.mjs` |
 
 Alternatively, the same checks are available via `npm run`:
@@ -141,7 +141,7 @@ What it does:
 - requires neutral `PortContext`/`PortError`, per-operation port declarations and an in-process provider implementation marker if declared in the registry;
 - checks `contract_tests.status = planned_cases_locked`, presence of `in_process` + `remote_adapter_placeholder` profiles, a case for each port operation and baseline assertions `typed_port_error_mapping`/`context_deadline_preserved`;
 - verifies that the planned fallback-smoke profile set covers all consumer fallback profiles so future runtime evidence does not diverge from provider/consumer metadata;
-- verifies `crates/rustok-commerce/contracts/commerce-fba-registry.json` against provider registries so checkout orchestration does not reference outdated contract versions, profiles, degraded modes or fallback profiles.
+- verifies `crates/modules/rustok-commerce/contracts/commerce-fba-registry.json` against provider registries so checkout orchestration does not reference outdated contract versions, profiles, degraded modes or fallback profiles.
 
 Unit guardrail for the verifier itself: `node scripts/verify/verify-ecommerce-fba-registries.test.mjs` or `npm run test:verify:ecommerce:fba-registries`.
 
@@ -529,7 +529,7 @@ What it checks:
 **Page Builder FBA baseline** — Machine-readable registry anti-drift
 
 What it checks:
-- `crates/rustok-page-builder/contracts/page-builder-fba-registry.json` exists and has `schema_version = 1`;
+- `crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json` exists and has `schema_version = 1`;
 - provider metadata (`contract`, `builder_contract_version`, `consumer_min_version`, capabilities) matches `rustok-page-builder/rustok-module.toml`;
 - the selected consumer (`pages` or `forum`) matches the registry by `contract_version`, `builder_contract_version`, `consumer_min_version` and capabilities;
 - consumer version is not below provider `consumer_min_version`.
@@ -671,7 +671,7 @@ Modes:
 
 Important: anti-bypass audit does not require "blindly moving everything to modules". Candidate review is done manually, considering the allowed platform/core layer and frontend-library layer.
 
-**Severity:** MEDIUM→HIGH. Goal — systematically catch drift and record migration-task with correct target layer: domain logic → `crates/rustok-<domain>`, platform/core orchestration → `apps/server` + `crates/rustok-core`, frontend duplication → custom frontend libraries.
+**Severity:** MEDIUM→HIGH. Goal — systematically catch drift and record migration-task with correct target layer: domain logic → `crates/modules/rustok-<domain>`, platform/core orchestration → `apps/server` + `crates/libs/rustok-core`, frontend duplication → custom frontend libraries.
 
 ---
 ### `verify-flex-multilingual-contract.mjs`
@@ -681,7 +681,7 @@ What it looks for:
 - cleanup migration `m20260410_000001_cleanup_flex_attached_legacy_inline_metadata` is wired into the canonical server migrator;
 - standalone runtime does not revert to inline localized fallback in `flex_entries.data`;
 - attached runtime does not revert to inline localized fallback in donor `metadata`;
-- `crates/flex` docs continue to document migration-based cleanup as the canonical path.
+- `crates/modules/flex` docs continue to document migration-based cleanup as the canonical path.
 
 **Severity:** HIGH. Reverting to inline localized fallback would again scatter the single multilingual storage contract.
 

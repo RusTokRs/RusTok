@@ -11,12 +11,12 @@ const forbid = (source, marker, label) => {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 };
 
-const runtime = read('crates/rustok-commerce/src/controllers/mod.rs');
-const shipping = read('crates/rustok-commerce/src/controllers/admin/shipping.rs');
-const owner = read('crates/rustok-fulfillment/src/shipping_option_admin_command.rs');
-const plan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const runtime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
+const shipping = read('crates/modules/rustok-commerce/src/controllers/admin/shipping.rs');
+const owner = read('crates/modules/rustok-fulfillment/src/shipping_option_admin_command.rs');
+const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 const record = read(
-  'crates/rustok-commerce/docs/admin-shipping-option-command-owner-port-cutover-2026-08-09.md',
+  'crates/modules/rustok-commerce/docs/admin-shipping-option-command-owner-port-cutover-2026-08-09.md',
 );
 
 for (const marker of [

@@ -9,8 +9,8 @@ const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(scriptPath), "../..");
 
 const centralPlanPath = "docs/modules/translation-implementation-plan.md";
-const moduleReadmePath = "crates/rustok-translation/docs/README.md";
-const modulePlanPath = "crates/rustok-translation/docs/implementation-plan.md";
+const moduleReadmePath = "crates/modules/rustok-translation/docs/README.md";
+const modulePlanPath = "crates/modules/rustok-translation/docs/implementation-plan.md";
 const registryPath = "docs/modules/translation-surfaces.json";
 
 function read(relativePath) {
@@ -101,18 +101,18 @@ function main() {
   }
 
   for (const retiredPath of [
-    "crates/rustok-blog/src/translation_target.rs",
-    "crates/rustok-blog/src/translation_target_tests.rs",
-    "crates/rustok-blog/src/translation_evidence.rs",
-    "crates/rustok-blog/tests/category_translation_target_postgres_test.rs",
-    "crates/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json",
+    "crates/modules/rustok-blog/src/translation_target.rs",
+    "crates/modules/rustok-blog/src/translation_target_tests.rs",
+    "crates/modules/rustok-blog/src/translation_evidence.rs",
+    "crates/modules/rustok-blog/tests/category_translation_target_postgres_test.rs",
+    "crates/modules/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json",
     "scripts/verify/verify-blog-category-translation-postgres-source.mjs",
   ]) {
     assertMissing(retiredPath);
   }
 
-  if (!fs.existsSync(path.join(repoRoot, "crates/rustok-taxonomy/src/translation_target.rs"))) {
-    throw new Error("crates/rustok-taxonomy/src/translation_target.rs: canonical Translation owner source is missing");
+  if (!fs.existsSync(path.join(repoRoot, "crates/modules/rustok-taxonomy/src/translation_target.rs"))) {
+    throw new Error("crates/modules/rustok-taxonomy/src/translation_target.rs: canonical Translation owner source is missing");
   }
 
   console.log("OK  Blog Category Translation docs/registry use canonical Taxonomy ownership");

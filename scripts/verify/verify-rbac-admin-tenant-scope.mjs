@@ -4,15 +4,15 @@ import { readFileSync } from 'node:fs';
 
 const root = new URL('../../', import.meta.url);
 const source = readFileSync(
-  new URL('crates/rustok-rbac/admin/src/transport/native_server_adapter.rs', root),
+  new URL('crates/modules/rustok-rbac/admin/src/transport/native_server_adapter.rs', root),
   'utf8',
 );
 const owner = readFileSync(
-  new URL('crates/rustok-rbac/src/control_plane.rs', root),
+  new URL('crates/modules/rustok-rbac/src/control_plane.rs', root),
   'utf8',
 );
 const cargo = readFileSync(
-  new URL('crates/rustok-rbac/admin/Cargo.toml', root),
+  new URL('crates/modules/rustok-rbac/admin/Cargo.toml', root),
   'utf8',
 );
 const fail = (message) => {

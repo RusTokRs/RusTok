@@ -6,23 +6,23 @@ import { resolve } from "node:path";
 
 const root = process.cwd();
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-private-trusted-exclusion-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-private-trusted-exclusion-proof.json";
 const testPath =
   "apps/server/tests/forum_versioned_invalidation_private_trusted_exclusion.rs";
 const docPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d15-private-trusted-exclusion-proof.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d15-private-trusted-exclusion-proof.md";
 const categoryOwnerPath =
-  "crates/rustok-forum/src/services/category_audience_owner.rs";
+  "crates/modules/rustok-forum/src/services/category_audience_owner.rs";
 const topicOwnerPath =
-  "crates/rustok-forum/src/services/topic_audience_owner.rs";
+  "crates/modules/rustok-forum/src/services/topic_audience_owner.rs";
 const audienceVisibilityPath =
-  "crates/rustok-forum/src/services/topic_audience_visibility.rs";
+  "crates/modules/rustok-forum/src/services/topic_audience_visibility.rs";
 const routeVisibilityPath =
-  "crates/rustok-forum/src/services/topic_visibility.rs";
+  "crates/modules/rustok-forum/src/services/topic_visibility.rs";
 const publicDiscoveryPath =
-  "crates/rustok-forum/src/services/public_discovery.rs";
+  "crates/modules/rustok-forum/src/services/public_discovery.rs";
 const channelAuthorityPath =
-  "crates/rustok-search/src/storefront_channel_authority.rs";
+  "crates/modules/rustok-search/src/storefront_channel_authority.rs";
 
 function read(path) {
   return readFileSync(resolve(root, path), "utf8");

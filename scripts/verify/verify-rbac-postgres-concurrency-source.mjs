@@ -26,12 +26,12 @@ const forbidText = (source, value, label) => {
 const files = {
   harness: "apps/server/tests/rbac_postgres_concurrency.rs",
   committed: "apps/server/src/services/rbac_committed_mutations.rs",
-  generation: "crates/rustok-rbac/src/invalidation_generation.rs",
-  testDb: "crates/rustok-test-utils/src/db.rs",
+  generation: "crates/modules/rustok-rbac/src/invalidation_generation.rs",
+  testDb: "crates/utils/rustok-test-utils/src/db.rs",
   evidence:
-    "crates/rustok-rbac/contracts/evidence/rbac-postgres-concurrency-source.json",
-  docs: "crates/rustok-rbac/docs/postgres-concurrency-evidence.md",
-  plan: "crates/rustok-rbac/docs/implementation-plan.md",
+    "crates/modules/rustok-rbac/contracts/evidence/rbac-postgres-concurrency-source.json",
+  docs: "crates/modules/rustok-rbac/docs/postgres-concurrency-evidence.md",
+  plan: "crates/modules/rustok-rbac/docs/implementation-plan.md",
   master: "docs/verification/PLATFORM_VERIFICATION_PLAN.md",
 };
 const sources = Object.fromEntries(

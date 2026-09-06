@@ -8,7 +8,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const failures = [];
 const files = {
   contract:
-    "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-runner-test-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-runner-test-source.json",
   runner: "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs",
   test: "scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs",
   workflow: ".github/workflows/pages-page-builder-provider-health.yml",

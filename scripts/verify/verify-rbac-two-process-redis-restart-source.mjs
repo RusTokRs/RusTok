@@ -28,9 +28,9 @@ const files = {
   invalidation: "apps/server/src/services/rbac_cache_invalidation.rs",
   mutation: "apps/server/src/services/rbac_committed_mutations.rs",
   evidence:
-    "crates/rustok-rbac/contracts/evidence/rbac-two-process-redis-restart-source.json",
-  docs: "crates/rustok-rbac/docs/two-process-redis-restart-evidence.md",
-  plan: "crates/rustok-rbac/docs/implementation-plan.md",
+    "crates/modules/rustok-rbac/contracts/evidence/rbac-two-process-redis-restart-source.json",
+  docs: "crates/modules/rustok-rbac/docs/two-process-redis-restart-evidence.md",
+  plan: "crates/modules/rustok-rbac/docs/implementation-plan.md",
   master: "docs/verification/PLATFORM_VERIFICATION_PLAN.md",
 };
 const sources = Object.fromEntries(

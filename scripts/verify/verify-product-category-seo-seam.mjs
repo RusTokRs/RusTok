@@ -3,13 +3,13 @@
 import fs from 'node:fs';
 
 const migrationPath =
-  'crates/rustok-product/src/migrations/m20260829_000017_add_product_category_seo_translations.rs';
-const migrationsModPath = 'crates/rustok-product/src/migrations/mod.rs';
+  'crates/modules/rustok-product/src/migrations/m20260829_000017_add_product_category_seo_translations.rs';
+const migrationsModPath = 'crates/modules/rustok-product/src/migrations/mod.rs';
 const categoriesPath =
-  'crates/rustok-product/src/services/catalog_schema_service/categories.rs';
-const contractPath = 'crates/rustok-product/docs/category-taxonomy-binding.md';
-const localeContractPath = 'crates/rustok-product/docs/category-locale-contract.md';
-const planPath = 'crates/rustok-taxonomy/docs/implementation-plan.md';
+  'crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs';
+const contractPath = 'crates/modules/rustok-product/docs/category-taxonomy-binding.md';
+const localeContractPath = 'crates/modules/rustok-product/docs/category-locale-contract.md';
+const planPath = 'crates/modules/rustok-taxonomy/docs/implementation-plan.md';
 
 const failures = [];
 const need = (source, marker, label = marker) => {

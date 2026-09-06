@@ -17,14 +17,14 @@ function writeFixtureFile(root, relativePath, content) {
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-rbac-boundary-"));
-  writeFixtureFile(root, "crates/rustok-rbac/admin/src/lib.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-rbac/admin/src/lib.rs", `
 mod core;
 ${options.includeApiModule ? "mod api;" : "mod transport;"}
 mod ui;
 
 pub use ui::leptos::RbacAdmin;
 `);
-  writeFixtureFile(root, "crates/rustok-rbac/admin/src/core.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-rbac/admin/src/core.rs", `
 ${options.includeLeptos ? "use leptos::prelude::*;" : ""}
 pub(crate) struct RbacAdminOverviewViewModel;
 pub(crate) fn build_rbac_admin_overview_view_model() -> RbacAdminOverviewViewModel { RbacAdminOverviewViewModel }
@@ -35,7 +35,7 @@ mod tests {
     fn overview_view_model_formats_bootstrap_without_framework_runtime() {}
 }
 `);
-  writeFixtureFile(root, "crates/rustok-rbac/admin/src/ui/leptos.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-rbac/admin/src/ui/leptos.rs", `
 use crate::core::{build_rbac_admin_overview_view_model, format_rbac_admin_bootstrap_error};
 use crate::transport;
 
@@ -48,7 +48,7 @@ pub fn RbacAdmin() {
     ${options.serverInUi ? "#[server] async fn bad() {}" : ""}
 }
 `);
-  writeFixtureFile(root, "crates/rustok-rbac/admin/src/transport/mod.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-rbac/admin/src/transport/mod.rs", `
 mod native_server_adapter;
 pub enum RbacAdminTransportError { NativeServer(String) }
 pub async fn fetch_bootstrap() {
@@ -57,17 +57,17 @@ pub async fn fetch_bootstrap() {
 ${options.graphqlInTransport ? "fn graphql_fallback() {}" : ""}
 ${options.serverInFacade ? "#[server] async fn bad() {}" : ""}
 `);
-  writeFixtureFile(root, "crates/rustok-rbac/admin/src/transport/native_server_adapter.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-rbac/admin/src/transport/native_server_adapter.rs", `
 use leptos::prelude::*;
 use rustok_core::ModuleRegistry;
 use rustok_api::infer_user_role_from_permissions;
 #[server]
 pub async fn fetch_bootstrap_native() -> Result<(), ServerFnError> { Ok(()) }
 `);
-  writeFixtureFile(root, "crates/rustok-rbac/docs/implementation-plan.md", "native-only\nverify-rbac-admin-boundary.mjs\n");
+  writeFixtureFile(root, "crates/modules/rustok-rbac/docs/implementation-plan.md", "native-only\nverify-rbac-admin-boundary.mjs\n");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-rbac-admin-boundary.mjs\n");
   if (options.legacyApiFile) {
-    writeFixtureFile(root, "crates/rustok-rbac/admin/src/api.rs", "pub async fn fetch_bootstrap() {}\n");
+    writeFixtureFile(root, "crates/modules/rustok-rbac/admin/src/api.rs", "pub async fn fetch_bootstrap() {}\n");
   }
   return root;
 }

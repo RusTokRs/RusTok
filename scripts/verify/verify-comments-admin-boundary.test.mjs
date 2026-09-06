@@ -17,14 +17,14 @@ function writeFixtureFile(root, relativePath, content) {
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-comments-boundary-"));
-  writeFixtureFile(root, "crates/rustok-comments/admin/src/lib.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-comments/admin/src/lib.rs", `
 mod core;
 ${options.includeApiModule ? "mod api;" : "mod transport;"}
 mod ui;
 
 pub use ui::leptos::CommentsAdmin;
 `);
-  writeFixtureFile(root, "crates/rustok-comments/admin/src/core.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-comments/admin/src/core.rs", `
 ${options.includeLeptos ? "use leptos::prelude::*;" : ""}
 pub(crate) struct CommentThreadsRequest;
 pub(crate) struct SetCommentStatusCommand;
@@ -39,7 +39,7 @@ pub(crate) struct UiRouteQueryIntent;
 pub(crate) fn comments_admin_select_thread_query_intent() -> UiRouteQueryIntent { UiRouteQueryIntent }
 pub(crate) fn comments_admin_locale_query_intent() -> UiRouteQueryIntent { UiRouteQueryIntent }
 `);
-  writeFixtureFile(root, "crates/rustok-comments/admin/src/ui/leptos.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-comments/admin/src/ui/leptos.rs", `
 use crate::core::{comments_admin_locale_query_intent, comments_admin_select_thread_query_intent};
 use crate::transport;
 use leptos_ui::RichTextHtml;
@@ -57,7 +57,7 @@ pub fn CommentsAdmin() {
 }
 fn apply_query_intent() {}
 `);
-  writeFixtureFile(root, "crates/rustok-comments/admin/src/transport/mod.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-comments/admin/src/transport/mod.rs", `
 pub(crate) mod native_server_adapter;
 pub(crate) enum CommentsAdminTransportPath { NativeServerFunction }
 pub(crate) const ACTIVE_TRANSPORT_PATH: CommentsAdminTransportPath = CommentsAdminTransportPath::NativeServerFunction;
@@ -67,7 +67,7 @@ pub async fn fetch_threads() {
 ${options.graphqlInTransport ? "fn graphql_fallback() {}" : ""}
 ${options.serverInFacade ? "#[server] async fn bad() {}" : ""}
 `);
-  writeFixtureFile(root, "crates/rustok-comments/admin/src/transport/native_server_adapter.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-comments/admin/src/transport/native_server_adapter.rs", `
 use leptos::prelude::*;
 struct HostRuntimeContext;
 struct CommentsService;
@@ -86,7 +86,7 @@ pub async fn comments_set_comment_status_native() -> Result<(), ServerFnError> {
 }
 pub async fn fetch_threads() { let _ = comments_threads_native; }
 `);
-  writeFixtureFile(root, "crates/rustok-comments/admin/Cargo.toml", `
+  writeFixtureFile(root, "crates/modules/rustok-comments/admin/Cargo.toml", `
 [features]
 ssr = ["leptos/ssr", "rustok-api/server"]
 
@@ -94,7 +94,7 @@ ssr = ["leptos/ssr", "rustok-api/server"]
 rustok-api = { workspace = true, default-features = false }
 leptos-ui.workspace = true
 `);
-  writeFixtureFile(root, "crates/rustok-comments/docs/implementation-plan.md", `
+  writeFixtureFile(root, "crates/modules/rustok-comments/docs/implementation-plan.md", `
 native-only comments admin exception
 Host-neutral native admin transport
 HostRuntimeContext
@@ -104,7 +104,7 @@ shared \`RichTextHtml\`
 `);
   writeFixtureFile(root, "docs/modules/registry.md", "verify-comments-admin-boundary.mjs Comments moderation renders server-derived richtext through the shared `RichTextHtml` boundary\n");
   if (options.legacyApiFile) {
-    writeFixtureFile(root, "crates/rustok-comments/admin/src/api.rs", "pub async fn fetch_threads() {}\n");
+    writeFixtureFile(root, "crates/modules/rustok-comments/admin/src/api.rs", "pub async fn fetch_threads() {}\n");
   }
   return root;
 }

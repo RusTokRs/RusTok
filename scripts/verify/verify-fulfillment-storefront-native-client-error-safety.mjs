@@ -23,22 +23,22 @@ const requireCount = (source, value, expected, label) => {
 };
 
 const paths = {
-  transport: "crates/rustok-fulfillment/storefront/src/transport.rs",
-  adapter: "crates/rustok-fulfillment/storefront/src/transport/native_server_adapter.rs",
+  transport: "crates/modules/rustok-fulfillment/storefront/src/transport.rs",
+  adapter: "crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter.rs",
   safety:
-    "crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/native_client_error_safety.rs",
+    "crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter/native_client_error_safety.rs",
   serverFunctions:
-    "crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs",
   graphqlAdapter:
-    "crates/rustok-fulfillment/storefront/src/transport/graphql_adapter.rs",
+    "crates/modules/rustok-fulfillment/storefront/src/transport/graphql_adapter.rs",
   graphqlSafety:
-    "crates/rustok-fulfillment/storefront/src/transport/graphql_error_safety.rs",
+    "crates/modules/rustok-fulfillment/storefront/src/transport/graphql_error_safety.rs",
   evidence:
-    "crates/rustok-fulfillment/contracts/evidence/storefront-native-client-error-safety-source.json",
+    "crates/modules/rustok-fulfillment/contracts/evidence/storefront-native-client-error-safety-source.json",
   review:
-    "crates/rustok-fulfillment/contracts/evidence/storefront-native-client-error-safety-source-review.json",
-  doc: "crates/rustok-fulfillment/docs/storefront-native-error-safety.md",
-  commercePlan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-fulfillment/contracts/evidence/storefront-native-client-error-safety-source-review.json",
+  doc: "crates/modules/rustok-fulfillment/docs/storefront-native-error-safety.md",
+  commercePlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
   nativeGuard: "scripts/verify/verify-fulfillment-storefront-native-error-safety.mjs",
   graphqlGuard: "scripts/verify/verify-fulfillment-storefront-graphql-error-safety.mjs",
 };

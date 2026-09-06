@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const target = resolve(
   __dirname,
-  '../../crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs',
+  '../../crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs',
 );
 
 const result = spawnSync(process.execPath, [target, ...process.argv.slice(2)], {

@@ -29,13 +29,13 @@ const between = (source, start, end, label) => {
 };
 
 const paths = {
-  facade: "crates/rustok-product/admin/src/catalog_transport.rs",
+  facade: "crates/modules/rustok-product/admin/src/catalog_transport.rs",
   wrappers:
-    "crates/rustok-product/admin/src/transport/graphql_fallback_mutations.rs",
+    "crates/modules/rustok-product/admin/src/transport/graphql_fallback_mutations.rs",
   safety:
-    "crates/rustok-product/admin/src/transport/graphql_fallback_mutation_error_safety.rs",
-  legacy: "crates/rustok-product/admin/src/transport.rs",
-  graphql: "crates/rustok-product/admin/src/transport/graphql_adapter.rs",
+    "crates/modules/rustok-product/admin/src/transport/graphql_fallback_mutation_error_safety.rs",
+  legacy: "crates/modules/rustok-product/admin/src/transport.rs",
+  graphql: "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs",
   primaryMutationGuard:
     "scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs",
   categoryReadGuard:
@@ -45,11 +45,11 @@ const paths = {
   catalogOptionsGuard:
     "scripts/verify/verify-product-admin-catalog-options-error-safety.mjs",
   evidence:
-    "crates/rustok-product/contracts/evidence/admin-fallback-graphql-mutation-error-safety-source.json",
+    "crates/modules/rustok-product/contracts/evidence/admin-fallback-graphql-mutation-error-safety-source.json",
   review:
-    "crates/rustok-product/contracts/evidence/admin-fallback-graphql-mutation-error-safety-source-review.json",
-  doc: "crates/rustok-product/docs/admin-fallback-graphql-mutation-error-safety.md",
-  masterPlan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-product/contracts/evidence/admin-fallback-graphql-mutation-error-safety-source-review.json",
+  doc: "crates/modules/rustok-product/docs/admin-fallback-graphql-mutation-error-safety.md",
+  masterPlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
 const facade = read(paths.facade);

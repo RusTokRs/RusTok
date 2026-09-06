@@ -22,7 +22,7 @@ Document the runtime purpose, expected format, and default behavior for this env
 
 ## Evidence
 
-- `crates/rustok-outbox/tests/integration.rs:301`
+- `crates/modules/rustok-outbox/tests/integration.rs:301`
 
 ## Notes
 

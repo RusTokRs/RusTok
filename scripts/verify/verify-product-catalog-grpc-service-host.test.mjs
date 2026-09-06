@@ -22,7 +22,7 @@ function fixture(options = {}) {
   write(root, "Cargo.toml", `members = ["crates/*"]`);
   write(
     root,
-    "crates/rustok-product-catalog-service/Cargo.toml",
+    "crates/modules/rustok-product-catalog-service/Cargo.toml",
     `name = "rustok-product-catalog-service"
 rustok-api.workspace = true
 rustok-outbox.workspace = true
@@ -62,7 +62,7 @@ let mut server = Server::builder();`;
   const secretLeak = options.leakedSecret ? "bearer_token = %token" : "";
   write(
     root,
-    "crates/rustok-product-catalog-service/src/main.rs",
+    "crates/modules/rustok-product-catalog-service/src/main.rs",
     `
 ${ownerComposition}
 ${authentication}
@@ -87,13 +87,13 @@ secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_tar
   );
   write(
     root,
-    "crates/rustok-product-catalog-service/README.md",
+    "crates/modules/rustok-product-catalog-service/README.md",
     `standalone provider-side deployment unit CatalogService ProductCatalogGrpcService ProductCatalogGrpcBearerInterceptor OutboxTransport read-only does not run migrations at startup ## Schema preflight products product_variants sys_events before tonic starts listening does not silently continue with partial readiness RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR cargo run -p rustok-product-catalog-service does not claim this command was executed boundary_ready`,
   );
 
   write(
     root,
-    "crates/rustok-product/contracts/product-fba-registry.json",
+    "crates/modules/rustok-product/contracts/product-fba-registry.json",
     JSON.stringify({
       status: options.falsePromotion ? "transport_verified" : "boundary_ready",
       evidence: {
@@ -103,7 +103,7 @@ secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_tar
       external_transport: {
         provider_host_crate: "rustok-product-catalog-service",
         provider_host_source:
-          "crates/rustok-product-catalog-service/src/main.rs",
+          "crates/modules/rustok-product-catalog-service/src/main.rs",
         provider_host_binary: "rustok-product-catalog-service",
         provider_host_database: "postgresql",
         provider_host_transport_security: "tls_or_explicit_loopback",
@@ -128,7 +128,7 @@ secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_tar
   );
   write(
     root,
-    "crates/rustok-product/docs/implementation-plan.md",
+    "crates/modules/rustok-product/docs/implementation-plan.md",
     options.missingPlan
       ? "Product plan"
       : "standalone Product catalog service host is source-complete rustok-product-catalog-service OutboxTransport TLS-by-default schema preflight is source-complete products product_variants sys_events Schema-preflight execution evidence remains open provider-host execution evidence remains open Product remains `boundary_ready` cargo run -p rustok-product-catalog-service verify-product-catalog-grpc-service-host.mjs",

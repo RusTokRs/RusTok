@@ -22,7 +22,7 @@ fail()   { echo -e "  ${RED}вњ—${NC} $1"; ERRORS=$((ERRORS + 1)); }
 warn()   { echo -e "  ${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 
 SERVER_SRC="apps/server/src"
-CORE_SRC="crates/rustok-core/src"
+CORE_SRC="crates/libs/rustok-core/src"
 
 # в”Ђв”Ђв”Ђ 1. Password hashing: Argon2 в”Ђв”Ђв”Ђ
 header "1. Password hashing: Argon2 (not MD5/SHA256/bcrypt)"
@@ -141,9 +141,9 @@ fi
 header "6. SSRF protection (external HTTP requests)"
 
 # Check for HTTP client usage without URL validation
-http_clients=$(grep -rn 'reqwest::Client\|reqwest::get\|hyper::Client\|http_client' "$SERVER_SRC" "crates/rustok-core/src" "crates/alloy/src" --include="*.rs" 2>/dev/null | grep -v "test\|// " || true)
+http_clients=$(grep -rn 'reqwest::Client\|reqwest::get\|hyper::Client\|http_client' "$SERVER_SRC" "crates/libs/rustok-core/src" "crates/modules/alloy/src" --include="*.rs" 2>/dev/null | grep -v "test\|// " || true)
 if [[ -n "$http_clients" ]]; then
-    url_validation=$(grep -rn 'allowlist\|whitelist\|allowed_hosts\|validate_url\|is_safe_url' "$SERVER_SRC" "crates/rustok-core/src" "crates/alloy/src" --include="*.rs" 2>/dev/null || true)
+    url_validation=$(grep -rn 'allowlist\|whitelist\|allowed_hosts\|validate_url\|is_safe_url' "$SERVER_SRC" "crates/libs/rustok-core/src" "crates/modules/alloy/src" --include="*.rs" 2>/dev/null || true)
     if [[ -n "$url_validation" ]]; then
         pass "URL validation/allowlist found for external requests"
     else

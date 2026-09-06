@@ -41,8 +41,8 @@ function assertOrdered(body, markers, label) {
 }
 
 function verifyAi({ read, json }) {
-  const registryPath = 'crates/rustok-ai/contracts/ai-fba-registry.json';
-  const smokePath = 'crates/rustok-ai/contracts/evidence/ai-orchestrator-runtime-order-smoke.json';
+  const registryPath = 'crates/modules/rustok-ai/contracts/ai-fba-registry.json';
+  const smokePath = 'crates/modules/rustok-ai/contracts/evidence/ai-orchestrator-runtime-order-smoke.json';
   const registry = json(registryPath);
   const smoke = json(smokePath);
   if (!['in_progress', 'boundary_ready'].includes(registry.status) || registry.role !== 'capability_orchestrator') fail('ai registry identity/status drift');
@@ -69,8 +69,8 @@ function verifyAi({ read, json }) {
 }
 
 function verifyPageBuilder({ read, json }) {
-  const registryPath = 'crates/rustok-page-builder/contracts/page-builder-fba-registry.json';
-  const smokePath = 'crates/rustok-page-builder/contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json';
+  const registryPath = 'crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json';
+  const smokePath = 'crates/modules/rustok-page-builder/contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json';
   const registry = json(registryPath);
   const smoke = json(smokePath);
   if (!['in_progress', 'boundary_ready'].includes(registry.status) || registry.provider.module_slug !== 'page_builder') fail('page-builder registry identity/status drift');
@@ -79,7 +79,7 @@ function verifyPageBuilder({ read, json }) {
   if (!sameSet(smoke.fallback_profiles, registry.fallback_profiles)) fail('page-builder fallback profile drift');
   if (!sameSet(smoke.capabilities.map((entry) => entry.capability), registry.provider.capabilities)) fail('page-builder capability set drift');
 
-  const service = read('crates/rustok-page-builder/src/service.rs');
+  const service = read('crates/modules/rustok-page-builder/src/service.rs');
   const guardedStart = service.indexOf('impl<S> PageBuilderCapabilityService for CapabilityGuardedService<S>');
   const authorizedStart = service.indexOf('impl<S> AuthorizedPageBuilderHandlers<S>');
   for (const entry of smoke.capabilities) {

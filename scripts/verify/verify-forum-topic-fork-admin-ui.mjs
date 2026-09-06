@@ -5,15 +5,15 @@ import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(path, 'utf8');
 const contract = JSON.parse(
-  read('crates/rustok-forum/contracts/forum-topic-fork-admin-ui.json')
+  read('crates/modules/rustok-forum/contracts/forum-topic-fork-admin-ui.json')
 );
-const rustModel = read('crates/rustok-forum/admin/src/topic_fork_model.rs');
-const rustTransport = read('crates/rustok-forum/admin/src/transport.rs');
+const rustModel = read('crates/modules/rustok-forum/admin/src/topic_fork_model.rs');
+const rustTransport = read('crates/modules/rustok-forum/admin/src/transport.rs');
 const rustAdapter = read(
-  'crates/rustok-forum/admin/src/transport/topic_fork_graphql_adapter.rs'
+  'crates/modules/rustok-forum/admin/src/transport/topic_fork_graphql_adapter.rs'
 );
-const rustUi = read('crates/rustok-forum/admin/src/ui/topic_fork.rs');
-const rustRoot = read('crates/rustok-forum/admin/src/ui/root.rs');
+const rustUi = read('crates/modules/rustok-forum/admin/src/ui/topic_fork.rs');
+const rustRoot = read('crates/modules/rustok-forum/admin/src/ui/root.rs');
 const nextModel = read('apps/next-admin/packages/forum/src/core/topic-fork.ts');
 const nextApi = read('apps/next-admin/packages/forum/src/api/forum.ts');
 const nextComponent = read(
@@ -21,7 +21,7 @@ const nextComponent = read(
 );
 const nextPage = read('apps/next-admin/src/app/dashboard/forum/fork/page.tsx');
 const nextNav = read('apps/next-admin/packages/forum/src/nav.ts');
-const docs = read('crates/rustok-forum/docs/forum-21w-topic-fork-admin-ui.md');
+const docs = read('crates/modules/rustok-forum/docs/forum-21w-topic-fork-admin-ui.md');
 
 assert.equal(contract.contract, 'forum_topic_fork_admin_ui_v1');
 assert.equal(contract.task, 'FORUM-21W');

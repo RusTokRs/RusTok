@@ -14,8 +14,8 @@ function requireAbsent(text, marker, message) {
   if (text.includes(marker)) throw new Error(message);
 }
 
-const queryPath = "crates/rustok-search/src/graphql/forum_projection_reconciliation.rs";
-const graphqlModPath = "crates/rustok-search/src/graphql/mod.rs";
+const queryPath = "crates/modules/rustok-search/src/graphql/forum_projection_reconciliation.rs";
+const graphqlModPath = "crates/modules/rustok-search/src/graphql/mod.rs";
 const serverSchemaPath = "apps/server/src/graphql/schema.rs";
 const packetPath =
   "docs/modules/forum-33-shared-search-reconciliation-actualization-2026-08-09.md";

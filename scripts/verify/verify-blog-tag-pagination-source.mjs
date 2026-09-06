@@ -9,11 +9,11 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const failures = [];
 const files = {
-  evidence: 'crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
-  service: 'crates/rustok-blog/src/services/tag.rs',
-  dto: 'crates/rustok-blog/src/dto/tag.rs',
-  slice: 'crates/rustok-blog/docs/implementation-plan-slice-102.md',
-  current: 'crates/rustok-blog/docs/implementation-plan-current.md',
+  evidence: 'crates/modules/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
+  service: 'crates/modules/rustok-blog/src/services/tag.rs',
+  dto: 'crates/modules/rustok-blog/src/dto/tag.rs',
+  slice: 'crates/modules/rustok-blog/docs/implementation-plan-slice-102.md',
+  current: 'crates/modules/rustok-blog/docs/implementation-plan-current.md',
 };
 
 function read(relativePath) {

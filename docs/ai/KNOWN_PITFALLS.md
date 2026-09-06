@@ -28,7 +28,7 @@ Short list of typical mistakes before making code changes.
 - Do not invent package-local FBA metadata JSON when `rustok-fba` owns the descriptor shape.
 - Do not put CLI command parsing, stdout or process exit behavior in domain crates; module command adapters use `rustok-cli-core` and stay outside the production server runtime.
 - Do not hide adapters in the wrong place: module domain/application code lives in
-  `crates/rustok-<module>/src`, evidence artifacts live in `contracts/`, local status
+  `crates/modules/rustok-<module>/src`, evidence artifacts live in `contracts/`, local status
   lives in `docs/implementation-plan.md`, CLI adapters live in module-local `cli/`, and
   `apps/server` only composes owner-owned entrypoints.
 - Before writing module backend code, read `docs/backend/module-backend-architecture.md`, `docs/backend/module-backend-implementation.md` and `docs/backend/module-backend-verification.md`.

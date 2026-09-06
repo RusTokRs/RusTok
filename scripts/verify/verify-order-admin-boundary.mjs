@@ -38,17 +38,17 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-order/admin/src/lib.rs";
-const coreModPath = "crates/rustok-order/admin/src/core/mod.rs";
-const coreRequestsPath = "crates/rustok-order/admin/src/core/requests.rs";
-const coreCommandsPath = "crates/rustok-order/admin/src/core/commands.rs";
-const coreDetailFormPath = "crates/rustok-order/admin/src/core/detail_form.rs";
-const corePresentationPath = "crates/rustok-order/admin/src/core/presentation.rs";
-const uiPath = "crates/rustok-order/admin/src/ui/leptos.rs";
-const helpersPath = "crates/rustok-order/admin/src/helpers.rs";
-const transportPath = "crates/rustok-order/admin/src/transport/mod.rs";
-const graphqlAdapterPath = "crates/rustok-order/admin/src/transport/graphql_adapter.rs";
-const implementationPlanPath = "crates/rustok-order/docs/implementation-plan.md";
+const libPath = "crates/modules/rustok-order/admin/src/lib.rs";
+const coreModPath = "crates/modules/rustok-order/admin/src/core/mod.rs";
+const coreRequestsPath = "crates/modules/rustok-order/admin/src/core/requests.rs";
+const coreCommandsPath = "crates/modules/rustok-order/admin/src/core/commands.rs";
+const coreDetailFormPath = "crates/modules/rustok-order/admin/src/core/detail_form.rs";
+const corePresentationPath = "crates/modules/rustok-order/admin/src/core/presentation.rs";
+const uiPath = "crates/modules/rustok-order/admin/src/ui/leptos.rs";
+const helpersPath = "crates/modules/rustok-order/admin/src/helpers.rs";
+const transportPath = "crates/modules/rustok-order/admin/src/transport/mod.rs";
+const graphqlAdapterPath = "crates/modules/rustok-order/admin/src/transport/graphql_adapter.rs";
+const implementationPlanPath = "crates/modules/rustok-order/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 
 for (const filePath of [
@@ -92,7 +92,7 @@ for (const marker of [/pub async fn fetch_/, /pub async fn mark_/, /pub async fn
 }
 
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "LocalResource", "WriteSignal", "web_sys::"]) {
-  assertNotContains(core, marker, `crates/rustok-order/admin/src/core/: core must stay Leptos/server-function free (${marker})`);
+  assertNotContains(core, marker, `crates/modules/rustok-order/admin/src/core/: core must stay Leptos/server-function free (${marker})`);
 }
 for (const marker of [
   "OrderListRequest",
@@ -116,14 +116,14 @@ for (const marker of [
   "OrderAdminDetailFormState",
   "order_detail_form_state",
 ]) {
-  assertContains(core, marker, `crates/rustok-order/admin/src/core/: expected core-owned FFA helper ${marker}`);
+  assertContains(core, marker, `crates/modules/rustok-order/admin/src/core/: expected core-owned FFA helper ${marker}`);
 }
 
 assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must import core-owned helpers`);
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must call the module-owned transport facade`);
 assertContains(ui, "action_hint", `${uiPath}: UI must consume core-owned presentation helpers`);
 assertContains(ui, "use crate::helpers::{apply_order_detail, clear_order_detail, handle_action_result};", `${uiPath}: Leptos-specific helpers should stay limited to signal/side-effect helpers`);
-assertContains(readRepo("crates/rustok-order/admin/src/helpers.rs"), "order_detail_form_state", `${helpersPath}: signal helpers must consume core-owned detail form-state mapping`);
+assertContains(readRepo("crates/modules/rustok-order/admin/src/helpers.rs"), "order_detail_form_state", `${helpersPath}: signal helpers must consume core-owned detail form-state mapping`);
 for (const marker of [
   "order_list_request",
   "prepare_mark_paid_command",

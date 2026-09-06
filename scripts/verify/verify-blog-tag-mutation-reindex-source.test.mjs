@@ -11,14 +11,14 @@ import { spawnSync } from 'node:child_process';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const verifier = path.join(repositoryRoot, 'scripts/verify/verify-blog-tag-mutation-reindex-source.mjs');
 const files = [
-  'crates/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json',
-  'crates/rustok-taxonomy/src/module_term_mutation.rs',
-  'crates/rustok-taxonomy/src/lib.rs',
-  'crates/rustok-blog/src/services/tag.rs',
-  'crates/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs',
-  'crates/rustok-blog/tests/taxonomy_tags.rs',
-  'crates/rustok-blog/docs/implementation-plan-slice-104.md',
-  'crates/rustok-blog/docs/implementation-plan-current.md',
+  'crates/modules/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json',
+  'crates/modules/rustok-taxonomy/src/module_term_mutation.rs',
+  'crates/modules/rustok-taxonomy/src/lib.rs',
+  'crates/modules/rustok-blog/src/services/tag.rs',
+  'crates/modules/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs',
+  'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-104.md',
+  'crates/modules/rustok-blog/docs/implementation-plan-current.md',
 ];
 function absolute(root, relativePath) { return path.join(root, relativePath); }
 function write(root, relativePath, content) {
@@ -66,7 +66,7 @@ test('accepts atomic Blog tag mutation/reindex source', () => {
 
 test('rejects restoring manual relation pre-delete', () => {
   const result = rejects((root) => {
-    const file = 'crates/rustok-blog/src/services/tag.rs';
+    const file = 'crates/modules/rustok-blog/src/services/tag.rs';
     const source = readFileSync(absolute(root, file), 'utf8');
     write(root, file, source.replace(
       'let txn = self.db.begin().await.map_err(BlogError::from)?;\n        delete_module_term_in_tx(',
@@ -79,7 +79,7 @@ test('rejects restoring manual relation pre-delete', () => {
 
 test('rejects moving reindex outside update transaction', () => {
   const result = rejects((root) => {
-    const file = 'crates/rustok-blog/src/services/tag.rs';
+    const file = 'crates/modules/rustok-blog/src/services/tag.rs';
     const source = readFileSync(absolute(root, file), 'utf8');
     write(root, file, source.replace(
       'publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;',
@@ -92,7 +92,7 @@ test('rejects moving reindex outside update transaction', () => {
 
 test('rejects weakening Taxonomy module-scope recheck', () => {
   const result = rejects((root) => {
-    const file = 'crates/rustok-taxonomy/src/module_term_mutation.rs';
+    const file = 'crates/modules/rustok-taxonomy/src/module_term_mutation.rs';
     const source = readFileSync(absolute(root, file), 'utf8');
     write(root, file, source.replaceAll('taxonomy_term::Column::ScopeValue.eq(&module_scope)', 'taxonomy_term::Column::ScopeValue.is_not_null()'));
   });
@@ -102,7 +102,7 @@ test('rejects weakening Taxonomy module-scope recheck', () => {
 
 test('rejects premature runtime promotion', () => {
   const result = rejects((root) => {
-    mutateJson(root, 'crates/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json', (value) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/evidence/blog-tag-mutation-reindex-source.json', (value) => {
       value.runtime_status = 'validated';
       value.execution.push({ command: 'not-actually-run' });
     });

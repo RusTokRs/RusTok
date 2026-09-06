@@ -4,22 +4,22 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-topic-merge-vote-reconciliation.json",
-  docs: "crates/rustok-forum/docs/forum-21f-topic-merge-vote-reconciliation.md",
-  entity: "crates/rustok-forum/src/entities/forum_topic_merge_vote_reconciliation.rs",
-  entitiesMod: "crates/rustok-forum/src/entities/mod.rs",
-  error: "crates/rustok-forum/src/error.rs",
-  lib: "crates/rustok-forum/src/lib.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-vote-reconciliation.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21f-topic-merge-vote-reconciliation.md",
+  entity: "crates/modules/rustok-forum/src/entities/forum_topic_merge_vote_reconciliation.rs",
+  entitiesMod: "crates/modules/rustok-forum/src/entities/mod.rs",
+  error: "crates/modules/rustok-forum/src/error.rs",
+  lib: "crates/modules/rustok-forum/src/lib.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260803_000014_add_forum_topic_merge_vote_reconciliations.rs",
-  migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
-  owner: "crates/rustok-forum/src/services/topic_merge_vote_reconciliation.rs",
-  lock: "crates/rustok-forum/src/services/topic_vote_lock.rs",
-  servicesMod: "crates/rustok-forum/src/services/mod.rs",
-  vote: "crates/rustok-forum/src/services/vote.rs",
-  searchProjection: "crates/rustok-forum/src/search_projection.rs",
-  test: "crates/rustok-forum/tests/topic_merge_vote_reconciliation_sqlite.rs",
-  plan: "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/src/migrations/m20260803_000014_add_forum_topic_merge_vote_reconciliations.rs",
+  migrationsMod: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  owner: "crates/modules/rustok-forum/src/services/topic_merge_vote_reconciliation.rs",
+  lock: "crates/modules/rustok-forum/src/services/topic_vote_lock.rs",
+  servicesMod: "crates/modules/rustok-forum/src/services/mod.rs",
+  vote: "crates/modules/rustok-forum/src/services/vote.rs",
+  searchProjection: "crates/modules/rustok-forum/src/search_projection.rs",
+  test: "crates/modules/rustok-forum/tests/topic_merge_vote_reconciliation_sqlite.rs",
+  plan: "crates/modules/rustok-forum/docs/implementation-plan.md",
   verifier: "scripts/verify/verify-forum-topic-merge-vote-reconciliation.mjs",
 };
 

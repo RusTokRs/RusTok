@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const dryRunPath = 'crates/rustok-index/src/replay_dry_run.rs';
+const dryRunPath = 'crates/modules/rustok-index/src/replay_dry_run.rs';
 const dryRun = requireMarkers(dryRunPath, [
   'const MAX_DRY_RUN_PAGES: usize = 1_024;',
   'pub struct IndexReplayDryRunRequest',
@@ -72,7 +72,7 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-index/tests/replay_dry_run_contract.rs', [
+requireMarkers('crates/modules/rustok-index/tests/replay_dry_run_contract.rs', [
   'dry_run_rejects_nil_event_id_before_accepting_the_page',
   'IndexReplayDryRunError::NilEventId',
   'dry_run_rejects_page_local_duplicate_event_id',
@@ -84,7 +84,7 @@ requireMarkers('crates/rustok-index/tests/replay_dry_run_contract.rs', [
   'IndexReplayDryRunRuntimeCompositionError::AlreadyMaterialized',
 ]);
 
-const replayRuntimePath = 'crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
+const replayRuntimePath = 'crates/modules/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
 const replayRuntime = requireMarkers(replayRuntimePath, [
   'DryRun(#[from] IndexReplayDryRunRuntimeCompositionError)',
   'materialize_index_replay_dry_run_runtime(extensions)?;',
@@ -97,21 +97,21 @@ for (const forbidden of ['tokio::spawn', '.execute(', '.begin()']) {
   }
 }
 
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'bounded side-effect-free',
   'pub mod replay_dry_run;',
   'pub use replay_dry_run::*;',
 ]);
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'mod source_timeout;',
   'pub use source_timeout::register_index_source;',
 ]);
-requireMarkers('crates/rustok-index/src/application/source_timeout.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/source_timeout.rs', [
   'const DEFAULT_INDEX_SOURCE_CALL_TIMEOUT: Duration = Duration::from_secs(30);',
   'const INDEX_SOURCE_SCAN_TIMEOUT_CODE: &str = "index_source_scan_timeout";',
   'TimedIndexSource::new(source, DEFAULT_INDEX_SOURCE_CALL_TIMEOUT)',
 ]);
-requireMarkers('crates/rustok-index/src/application/source_continuation.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/source_continuation.rs', [
   'locale: Option<LocaleKey>',
   'pub fn for_locale(',
   'IndexSourceContinuationError::LocaleScopeMismatch',
@@ -140,7 +140,7 @@ requireMarkers('apps/server/src/graphql/index_replay.rs', [
   '.run(',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-bounded-replay-dry-run.md', [
   'Status: `source_complete_locale_transport_execution_pending`',
   '`IndexReplayDryRunRequest::for_locale`',
   '`SharedIndexReplayDryRunRuntime::run`',
@@ -157,10 +157,10 @@ requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
   'schema-wide or exact-locale invocation',
   'maintainer-run',
 ]);
-requireMarkers('crates/rustok-index/docs/README.md', [
+requireMarkers('crates/modules/rustok-index/docs/README.md', [
   '[M6 Bounded Replay Dry-run](./m6-bounded-replay-dry-run.md)',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add in-page interruption/timeouts, dry-run, and targeted/full/shadow rebuild modes.',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [

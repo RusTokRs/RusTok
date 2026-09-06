@@ -68,7 +68,7 @@ fn targeted_permission_invalidations_use_bounded_key_epochs() {
 #[test]
 fn permission_epoch_exhaustion_is_fail_closed() {
     let runtime = source("apps/server/src/services/rbac_runtime.rs");
-    let core = source("crates/rustok-rbac/src/services/relation_permission_resolver.rs");
+    let core = source("crates/modules/rustok-rbac/src/services/relation_permission_resolver.rs");
 
     for required in [
         "RBAC_PERMISSION_CACHE_EPOCH_EXHAUSTED",

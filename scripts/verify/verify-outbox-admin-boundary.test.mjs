@@ -18,14 +18,14 @@ function writeFixtureFile(root, relativePath, content) {
 function createFixture(overrides = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "outbox-admin-boundary-"));
   const files = {
-    "crates/rustok-outbox/admin/src/lib.rs": `
+    "crates/modules/rustok-outbox/admin/src/lib.rs": `
 mod core;
 mod i18n;
 mod transport;
 pub mod ui;
 pub use ui::leptos::OutboxAdmin;
 `,
-    "crates/rustok-outbox/admin/src/core.rs": `
+    "crates/modules/rustok-outbox/admin/src/core.rs": `
 use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutboxAdminBootstrap { pub tenant_slug: Option<String>, pub health: String, pub counters: Vec<OutboxCounterSnapshot>, pub relay_notes: Vec<String> }
@@ -36,7 +36,7 @@ pub fn outbox_info_cards(bootstrap: &OutboxAdminBootstrap, text: &OutboxAdminShe
   vec![bootstrap.tenant_slug.clone().unwrap_or_else(|| text.global_tenant_label.clone())]
 }
 `,
-    "crates/rustok-outbox/admin/src/transport/mod.rs": `
+    "crates/modules/rustok-outbox/admin/src/transport/mod.rs": `
 mod native_server_adapter;
 use crate::core::OutboxAdminBootstrap;
 pub enum OutboxTransportError { ServerFn(String) }
@@ -44,14 +44,14 @@ pub async fn fetch_bootstrap() -> Result<OutboxAdminBootstrap, OutboxTransportEr
   native_server_adapter::fetch_bootstrap_native().await.map_err(|error| OutboxTransportError::ServerFn(error.to_string()))
 }
 `,
-    "crates/rustok-outbox/admin/src/transport/native_server_adapter.rs": `
+    "crates/modules/rustok-outbox/admin/src/transport/native_server_adapter.rs": `
 use leptos::prelude::*;
 use crate::core::OutboxAdminBootstrap;
 pub async fn fetch_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError> { outbox_bootstrap_native().await }
 #[server(prefix = "/api/fn", endpoint = "outbox/bootstrap")]
 async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError> { todo!() }
 `,
-    "crates/rustok-outbox/admin/src/ui/leptos.rs": `
+    "crates/modules/rustok-outbox/admin/src/ui/leptos.rs": `
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_api::UiRouteContext;
@@ -66,7 +66,7 @@ pub fn OutboxAdmin() -> impl IntoView {
   view! { <div>{move || async move { let bootstrap = transport::fetch_bootstrap().await.unwrap(); outbox_info_cards(&bootstrap, &text); }}</div> }
 }
 `,
-    "crates/rustok-outbox/docs/implementation-plan.md": "npm run verify:outbox:admin-boundary\n",
+    "crates/modules/rustok-outbox/docs/implementation-plan.md": "npm run verify:outbox:admin-boundary\n",
     "docs/modules/registry.md": "| `outbox` | npm run verify:outbox:admin-boundary |\n",
   };
 
@@ -97,7 +97,7 @@ test("accepts the module-owned outbox admin core/transport/ui boundary", () => {
 
 test("rejects UI calls that bypass the transport facade", () => {
   const root = createFixture({
-    "crates/rustok-outbox/admin/src/ui/leptos.rs": `
+    "crates/modules/rustok-outbox/admin/src/ui/leptos.rs": `
 use leptos::prelude::*;
 use crate::transport::native_server_adapter;
 #[component]
@@ -117,7 +117,7 @@ pub fn OutboxAdmin() -> impl IntoView {
 
 test("rejects Leptos/server-function leakage into the core layer", () => {
   const root = createFixture({
-    "crates/rustok-outbox/admin/src/core.rs": `
+    "crates/modules/rustok-outbox/admin/src/core.rs": `
 use leptos::prelude::*;
 pub struct OutboxAdminBootstrap;
 pub fn outbox_info_cards() { let _ = use_context::<String>(); }
@@ -134,7 +134,7 @@ pub fn outbox_info_cards() { let _ = use_context::<String>(); }
 
 test("rejects server functions outside the native adapter", () => {
   const root = createFixture({
-    "crates/rustok-outbox/admin/src/transport/mod.rs": `
+    "crates/modules/rustok-outbox/admin/src/transport/mod.rs": `
 mod native_server_adapter;
 pub enum OutboxTransportError { ServerFn(String) }
 #[server] async fn bad() {}

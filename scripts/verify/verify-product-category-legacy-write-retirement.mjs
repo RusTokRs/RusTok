@@ -3,10 +3,10 @@
 import fs from 'node:fs';
 
 const categoriesPath =
-  'crates/rustok-product/src/services/catalog_schema_service/categories.rs';
-const contractPath = 'crates/rustok-product/docs/category-taxonomy-binding.md';
-const localeContractPath = 'crates/rustok-product/docs/category-locale-contract.md';
-const planPath = 'crates/rustok-taxonomy/docs/implementation-plan.md';
+  'crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs';
+const contractPath = 'crates/modules/rustok-product/docs/category-taxonomy-binding.md';
+const localeContractPath = 'crates/modules/rustok-product/docs/category-locale-contract.md';
+const planPath = 'crates/modules/rustok-taxonomy/docs/implementation-plan.md';
 const retainedSeoWorkflowPath = '.github/workflows/product-category-seo-seam.yml';
 
 const failures = [];

@@ -14,11 +14,11 @@ function forbid(text, marker, label) {
   if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
 }
 
-const contract = read("crates/rustok-forum/src/attachment_relation.rs");
-const lib = read("crates/rustok-forum/src/lib.rs");
-const mediaPorts = read("crates/rustok-media/src/ports.rs");
-const mediaDto = read("crates/rustok-media/src/dto.rs");
-const categoryPresentation = read("crates/rustok-forum/src/category_presentation.rs");
+const contract = read("crates/modules/rustok-forum/src/attachment_relation.rs");
+const lib = read("crates/modules/rustok-forum/src/lib.rs");
+const mediaPorts = read("crates/modules/rustok-media/src/ports.rs");
+const mediaDto = read("crates/modules/rustok-media/src/dto.rs");
+const categoryPresentation = read("crates/modules/rustok-forum/src/category_presentation.rs");
 const packet = read(
   "docs/modules/forum-14-attachment-relation-admission-actualization-2026-08-10.md",
 );

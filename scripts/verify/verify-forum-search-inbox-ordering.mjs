@@ -25,17 +25,17 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-const inboxPath = "crates/rustok-search/src/forum_inbox.rs";
-const ingestionPath = "crates/rustok-search/src/ingestion.rs";
-const manifestPath = "crates/rustok-search/Cargo.toml";
+const inboxPath = "crates/modules/rustok-search/src/forum_inbox.rs";
+const ingestionPath = "crates/modules/rustok-search/src/ingestion.rs";
+const manifestPath = "crates/modules/rustok-search/Cargo.toml";
 const migrationPath =
-  "crates/rustok-search/src/migrations/m20260730_000009_create_search_projection_inbox.rs";
-const migrationRegistryPath = "crates/rustok-search/src/migrations/mod.rs";
-const libPath = "crates/rustok-search/src/lib.rs";
-const rustTestPath = "crates/rustok-search/tests/forum_projection_inbox_contract.rs";
-const contractPath = "crates/rustok-forum/contracts/forum-search-inbox-ordering.json";
-const approvedReplyPath = "crates/rustok-forum/contracts/forum-approved-reply-search.json";
-const notePath = "crates/rustok-forum/docs/forum-20bp-search-inbox-ordering.md";
+  "crates/modules/rustok-search/src/migrations/m20260730_000009_create_search_projection_inbox.rs";
+const migrationRegistryPath = "crates/modules/rustok-search/src/migrations/mod.rs";
+const libPath = "crates/modules/rustok-search/src/lib.rs";
+const rustTestPath = "crates/modules/rustok-search/tests/forum_projection_inbox_contract.rs";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-search-inbox-ordering.json";
+const approvedReplyPath = "crates/modules/rustok-forum/contracts/forum-approved-reply-search.json";
+const notePath = "crates/modules/rustok-forum/docs/forum-20bp-search-inbox-ordering.md";
 
 const inbox = read(inboxPath);
 const ingestion = read(ingestionPath);

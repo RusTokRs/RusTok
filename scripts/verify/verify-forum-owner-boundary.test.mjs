@@ -54,16 +54,16 @@ function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-forum-owner-boundary-"));
   writeFixture(
     root,
-    "crates/rustok-forum/src/services/mod.rs",
+    "crates/modules/rustok-forum/src/services/mod.rs",
     options.publicRawModules
       ? "pub mod topic;\npub mod reply;\nmod topic_facade;\nmod reply_facade;\npub use topic_facade::TopicService;\npub use reply_facade::ReplyService;\n"
       : options.ownerReexport
         ? "mod topic;\nmod reply;\nmod topic_owner;\nmod reply_owner;\npub use topic_owner::TopicService;\npub use reply_owner::ReplyService;\n"
         : "mod topic;\nmod reply;\nmod topic_owner;\nmod reply_owner;\nmod topic_facade;\nmod reply_facade;\npub use topic_facade::TopicService;\npub use reply_facade::ReplyService;\n",
   );
-  writeFixture(root, "crates/rustok-forum/src/services/topic_facade.rs", topicFacade(options));
-  writeFixture(root, "crates/rustok-forum/src/services/reply_facade.rs", replyFacade(options));
-  writeFixture(root, "crates/rustok-forum/src/lib.rs", "pub use services::{ReplyService, TopicService};\n");
+  writeFixture(root, "crates/modules/rustok-forum/src/services/topic_facade.rs", topicFacade(options));
+  writeFixture(root, "crates/modules/rustok-forum/src/services/reply_facade.rs", replyFacade(options));
+  writeFixture(root, "crates/modules/rustok-forum/src/lib.rs", "pub use services::{ReplyService, TopicService};\n");
   if (options.externalRawImport) {
     writeFixture(
       root,

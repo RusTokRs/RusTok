@@ -15,7 +15,7 @@ function requireAbsent(text, needle, message) {
 }
 
 const contractPath =
-  "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json";
+  "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json";
 const configPath = "apps/next-admin/playwright.page-builder-accessibility.config.ts";
 const setupPath = "apps/next-admin/tests/page-builder-accessibility/global-setup.ts";
 const runnerPath = "apps/next-admin/tests/page-builder-accessibility/browser-evidence.spec.ts";
@@ -30,12 +30,12 @@ const runner = read(runnerPath);
 const packet = read(packetPath);
 const browserWorkflow = read(".github/workflows/browser-e2e.yml");
 const packageJson = JSON.parse(read("apps/next-admin/package.json"));
-const pageManager = read("crates/rustok-page-builder/admin/src/editor/page_manager.rs");
+const pageManager = read("crates/modules/rustok-page-builder/admin/src/editor/page_manager.rs");
 const capabilityControls = read(
-  "crates/rustok-page-builder/admin/src/editor/capability_controls.rs",
+  "crates/modules/rustok-page-builder/admin/src/editor/capability_controls.rs",
 );
 const renderedEvidence = read(
-  "crates/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs",
+  "crates/modules/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs",
 );
 
 if (contract.status !== "source_ready_maintainer_execution_pending") {

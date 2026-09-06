@@ -48,35 +48,35 @@ pub async fn hydrate_category_cover_for_read(media_port: Option<&dyn MediaPublic
 ${options.rawMediaAccess ? "rustok_media::entities::media;" : ""}
 ${options.arbitraryUrl ? "cover_url: String" : ""}
 `;
-  writeFixture(root, "crates/rustok-forum/src/category_presentation.rs", contract);
+  writeFixture(root, "crates/modules/rustok-forum/src/category_presentation.rs", contract);
   writeFixture(
     root,
-    "crates/rustok-forum/src/error.rs",
+    "crates/modules/rustok-forum/src/error.rs",
     options.missingTypedError
       ? "pub enum ForumError { Validation }"
       : "pub enum ForumError { CapabilityUnavailable } pub const fn stable_code() {}",
   );
   writeFixture(
     root,
-    "crates/rustok-forum/src/entities/forum_category.rs",
+    "crates/modules/rustok-forum/src/entities/forum_category.rs",
     options.unvalidatedIcon ? "pub icon: Option<String>" : "normalize_category_icon_key(icon);",
   );
   for (const filePath of [
-    "crates/rustok-forum/src/dto/category.rs",
-    "crates/rustok-forum/src/dto/category_tree.rs",
-    "crates/rustok-forum/src/services/category.rs",
-    "crates/rustok-forum/src/services/category_owner.rs",
+    "crates/modules/rustok-forum/src/dto/category.rs",
+    "crates/modules/rustok-forum/src/dto/category_tree.rs",
+    "crates/modules/rustok-forum/src/services/category.rs",
+    "crates/modules/rustok-forum/src/services/category_owner.rs",
   ]) {
     writeFixture(root, filePath, "category boundary\n");
   }
   writeFixture(
     root,
-    "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/docs/implementation-plan.md",
     "Delivered in `FORUM-13A`\nDelivered in `FORUM-13B`\nMedia keeps lifecycle ownership.\nremaining quarantine/deletion owner state\n",
   );
   writeFixture(
     root,
-    "crates/rustok-forum/CRATE_API.md",
+    "crates/modules/rustok-forum/CRATE_API.md",
     "CategoryCoverMediaCandidate\nresolve_category_cover_for_write\nhydrate_category_cover_for_read\nFORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE\n",
   );
   return root;

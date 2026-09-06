@@ -287,7 +287,7 @@ docker-compose -f docker-compose.observability.yml down -v
 
 ### Internal Docs
 - [SPRINT_3_START.md](./SPRINT_3_START.md) - Sprint 3 overview
-- [crates/rustok-telemetry/src/otel.rs](./crates/rustok-telemetry/src/otel.rs) - Implementation
+- [crates/libs/rustok-telemetry/src/otel.rs](./crates/libs/rustok-telemetry/src/otel.rs) - Implementation
 
 ### External Resources
 - [OpenTelemetry Rust](https://docs.rs/opentelemetry/)

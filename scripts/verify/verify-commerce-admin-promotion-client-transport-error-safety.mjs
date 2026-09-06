@@ -46,19 +46,19 @@ function functionBody(source, functionName) {
 }
 
 const paths = {
-  routing: "crates/rustok-commerce/admin/src/transport/mod.rs",
-  facade: "crates/rustok-commerce/admin/src/transport/promotion.rs",
+  routing: "crates/modules/rustok-commerce/admin/src/transport/mod.rs",
+  facade: "crates/modules/rustok-commerce/admin/src/transport/promotion.rs",
   safety:
-    "crates/rustok-commerce/admin/src/transport/promotion_client_error_safety.rs",
-  native: "crates/rustok-commerce/admin/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/promotion_client_error_safety.rs",
+  native: "crates/modules/rustok-commerce/admin/src/transport/native_server_adapter.rs",
   nativeSsr:
-    "crates/rustok-commerce/admin/src/transport/native_server_adapter_ssr.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/native_server_adapter_ssr.rs",
   evidence:
-    "crates/rustok-commerce/contracts/evidence/admin-promotion-client-transport-error-safety-source.json",
+    "crates/modules/rustok-commerce/contracts/evidence/admin-promotion-client-transport-error-safety-source.json",
   review:
-    "crates/rustok-commerce/contracts/evidence/admin-promotion-client-transport-error-safety-source-review.json",
-  doc: "crates/rustok-commerce/docs/admin-promotion-client-transport-error-safety.md",
-  commercePlan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-commerce/contracts/evidence/admin-promotion-client-transport-error-safety-source-review.json",
+  doc: "crates/modules/rustok-commerce/docs/admin-promotion-client-transport-error-safety.md",
+  commercePlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
   nativeGuard:
     "scripts/verify/verify-commerce-admin-promotion-native-error-safety.mjs",
 };

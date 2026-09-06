@@ -37,14 +37,14 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-ai/admin/src/lib.rs";
-const uiPath = "crates/rustok-ai/admin/src/ui/leptos.rs";
-const corePath = "crates/rustok-ai/admin/src/core.rs";
-const transportModPath = "crates/rustok-ai/admin/src/transport/mod.rs";
-const nativeAdapterPath = "crates/rustok-ai/admin/src/transport/native_server_adapter.rs";
-const graphqlAdapterPath = "crates/rustok-ai/admin/src/transport/graphql_adapter.rs";
-const runtimeFactoryPath = "crates/rustok-ai/src/service/types.rs";
-const cargoPath = "crates/rustok-ai/admin/Cargo.toml";
+const libPath = "crates/modules/rustok-ai/admin/src/lib.rs";
+const uiPath = "crates/modules/rustok-ai/admin/src/ui/leptos.rs";
+const corePath = "crates/modules/rustok-ai/admin/src/core.rs";
+const transportModPath = "crates/modules/rustok-ai/admin/src/transport/mod.rs";
+const nativeAdapterPath = "crates/modules/rustok-ai/admin/src/transport/native_server_adapter.rs";
+const graphqlAdapterPath = "crates/modules/rustok-ai/admin/src/transport/graphql_adapter.rs";
+const runtimeFactoryPath = "crates/modules/rustok-ai/src/service/types.rs";
+const cargoPath = "crates/modules/rustok-ai/admin/Cargo.toml";
 
 assertExists(libPath, `${libPath}: expected AI admin crate root file`);
 assertExists(uiPath, `${uiPath}: expected AI admin Leptos adapter file`);
@@ -54,8 +54,8 @@ assertExists(nativeAdapterPath, `${nativeAdapterPath}: expected AI admin native 
 assertExists(graphqlAdapterPath, `${graphqlAdapterPath}: expected AI admin GraphQL/headless adapter file`);
 assertExists(runtimeFactoryPath, `${runtimeFactoryPath}: expected AI-owned runtime factory`);
 assertExists(cargoPath, `${cargoPath}: expected AI admin package manifest`);
-if (existsSync(repoPath("crates/rustok-ai/admin/src/api.rs"))) {
-  fail("crates/rustok-ai/admin/src/api.rs: pre-FFA api facade must stay removed");
+if (existsSync(repoPath("crates/modules/rustok-ai/admin/src/api.rs"))) {
+  fail("crates/modules/rustok-ai/admin/src/api.rs: pre-FFA api facade must stay removed");
 }
 
 const lib = readRepo(libPath);

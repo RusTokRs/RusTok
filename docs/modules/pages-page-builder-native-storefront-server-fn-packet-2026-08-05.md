@@ -12,7 +12,7 @@ This slice adds that retained source packet. It does not claim that Cargo, the t
 
 ## Registered route harness: ready, unvalidated
 
-`crates/rustok-pages/storefront/tests/native_storefront_server_fn_sqlite.rs` links the production `rustok-pages-storefront` crate so the `#[server(prefix = "/api/fn", endpoint = "pages/storefront-data")]` registration is present. It mounts the same wildcard Axum shape used by the server host:
+`crates/modules/rustok-pages/storefront/tests/native_storefront_server_fn_sqlite.rs` links the production `rustok-pages-storefront` crate so the `#[server(prefix = "/api/fn", endpoint = "pages/storefront-data")]` registration is present. It mounts the same wildcard Axum shape used by the server host:
 
 ```text
 POST /api/fn/{*fn_name}
@@ -72,9 +72,9 @@ The server host also remains unchanged and continues to mount `/api/fn/{*fn_name
 
 Machine evidence is recorded in:
 
-- `crates/rustok-pages/contracts/evidence/pages-native-storefront-server-fn-source.json`;
-- `crates/rustok-pages/storefront/tests/native_storefront_server_fn_sqlite.rs`;
-- `crates/rustok-pages/scripts/verify/verify-pages-native-storefront-server-fn.mjs`.
+- `crates/modules/rustok-pages/contracts/evidence/pages-native-storefront-server-fn-source.json`;
+- `crates/modules/rustok-pages/storefront/tests/native_storefront_server_fn_sqlite.rs`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-server-fn.mjs`.
 
 The execution list is empty and every validation flag is false.
 
@@ -103,7 +103,7 @@ This slice does not:
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-server-fn.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-server-fn.mjs
 cargo test -p rustok-pages-storefront --features ssr --test native_storefront_server_fn_sqlite -- --nocapture
 cargo check -p rustok-pages-storefront --features ssr --all-targets
 cargo check -p rustok-pages --all-targets

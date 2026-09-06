@@ -50,14 +50,14 @@ function functionBody(source, functionName) {
 
 const paths = {
   diagnostics:
-    "crates/rustok-payment/src/checkout_execution/diagnostic_safety.rs",
+    "crates/modules/rustok-payment/src/checkout_execution/diagnostic_safety.rs",
   validationErrors:
-    "crates/rustok-payment/src/checkout_execution/validation_errors.rs",
+    "crates/modules/rustok-payment/src/checkout_execution/validation_errors.rs",
   evidence:
-    "crates/rustok-payment/contracts/evidence/checkout-execution-admission-diagnostic-safety-source.json",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-execution-admission-diagnostic-safety-source.json",
   doc:
-    "crates/rustok-payment/docs/checkout-execution-admission-diagnostic-safety.md",
-  plan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-payment/docs/checkout-execution-admission-diagnostic-safety.md",
+  plan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
 const diagnostics = read(paths.diagnostics);

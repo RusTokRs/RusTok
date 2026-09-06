@@ -3,8 +3,8 @@
 import fs from 'node:fs';
 
 const migration =
-  'crates/rustok-blog/src/migrations/m20260824_000020_backfill_blog_categories_to_taxonomy.rs';
-const registry = 'crates/rustok-blog/src/migrations/mod.rs';
+  'crates/modules/rustok-blog/src/migrations/m20260824_000020_backfill_blog_categories_to_taxonomy.rs';
+const registry = 'crates/modules/rustok-blog/src/migrations/mod.rs';
 const contracts = 'docs/migrations/backfill-contracts.json';
 const source = fs.readFileSync(migration, 'utf8');
 const registrySource = fs.readFileSync(registry, 'utf8');

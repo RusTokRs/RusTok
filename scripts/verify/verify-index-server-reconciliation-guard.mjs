@@ -23,7 +23,7 @@ const operatorPath = 'apps/server/src/services/index_reconciliation_operator.rs'
 const diagnosisPath = 'apps/server/src/services/index_drift_diagnosis_operator.rs';
 const pagePath = 'apps/server/src/services/index_drift_source_page_diagnosis.rs';
 const keyringPath = 'apps/server/src/services/index_source_continuation_runtime.rs';
-const continuationPath = 'crates/rustok-index/src/application/source_continuation.rs';
+const continuationPath = 'crates/modules/rustok-index/src/application/source_continuation.rs';
 const exactGraphqlPath = 'apps/server/src/graphql/index_drift_diagnosis.rs';
 const pageGraphqlPath = 'apps/server/src/graphql/index_drift_source_page_diagnosis.rs';
 const graphqlSchemaPath = 'apps/server/src/graphql/schema.rs';
@@ -31,9 +31,9 @@ const docsPath = 'apps/server/docs/index-reconciliation-operator-runtime.md';
 const exactDocsPath = 'apps/server/docs/index-drift-diagnosis-graphql-transport.md';
 const pageDocsPath = 'apps/server/docs/index-drift-source-page-diagnosis.md';
 const pageTransportDocsPath = 'apps/server/docs/index-drift-source-page-graphql-transport.md';
-const planPath = 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md';
+const planPath = 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md';
 const recheckPath =
-  'crates/rustok-index/docs/implementation-recheck-2026-08-05-explicit-absence-watermark.md';
+  'crates/modules/rustok-index/docs/implementation-recheck-2026-08-05-explicit-absence-watermark.md';
 
 const composition = requireMarkers(compositionPath, [
   '#[path = "index_reconciliation_operator.rs"]',

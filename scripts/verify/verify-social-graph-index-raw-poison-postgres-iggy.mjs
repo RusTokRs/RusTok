@@ -3,9 +3,9 @@
 import { readFileSync } from "node:fs";
 
 const contractPath =
-  "crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-source.json";
-const cargoPath = "crates/rustok-social-graph/Cargo.toml";
-const testPath = "crates/rustok-social-graph/tests/index_raw_poison_postgres_iggy.rs";
+  "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-source.json";
+const cargoPath = "crates/modules/rustok-social-graph/Cargo.toml";
+const testPath = "crates/modules/rustok-social-graph/tests/index_raw_poison_postgres_iggy.rs";
 const workerPath = "apps/server/src/services/social_graph_index_worker.rs";
 
 const contract = JSON.parse(readFileSync(contractPath, "utf8"));

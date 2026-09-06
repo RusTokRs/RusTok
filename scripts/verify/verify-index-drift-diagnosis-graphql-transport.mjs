@@ -9,7 +9,7 @@ const files = {
   operator: "apps/server/src/services/index_drift_diagnosis_operator.rs",
   doc: "apps/server/docs/index-drift-diagnosis-graphql-transport.md",
   operatorDoc: "apps/server/docs/index-reconciliation-operator-runtime.md",
-  plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
 };
 
 const content = Object.fromEntries(

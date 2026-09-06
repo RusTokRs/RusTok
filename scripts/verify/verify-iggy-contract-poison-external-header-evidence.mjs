@@ -4,13 +4,13 @@ import { readFileSync } from "node:fs";
 
 const contract = JSON.parse(
   readFileSync(
-    "crates/rustok-iggy/contracts/evidence/contract-poison-external-iggy-header-source.json",
+    "crates/modules/rustok-iggy/contracts/evidence/contract-poison-external-iggy-header-source.json",
     "utf8",
   ),
 );
-const cargo = readFileSync("crates/rustok-iggy/Cargo.toml", "utf8");
+const cargo = readFileSync("crates/modules/rustok-iggy/Cargo.toml", "utf8");
 const test = readFileSync(
-  "crates/rustok-iggy/tests/contract_poison_external_iggy_header.rs",
+  "crates/modules/rustok-iggy/tests/contract_poison_external_iggy_header.rs",
   "utf8",
 );
 const failures = [];
@@ -124,7 +124,7 @@ if (
 }
 if (
   contract.source_path !==
-  "crates/rustok-iggy/tests/contract_poison_external_iggy_header.rs"
+  "crates/modules/rustok-iggy/tests/contract_poison_external_iggy_header.rs"
 ) {
   failures.push("physical header source path drift");
 }

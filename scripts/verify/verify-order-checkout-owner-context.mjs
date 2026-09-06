@@ -12,16 +12,16 @@ const read = (relativePath) => readFileSync(path.join(root, relativePath), "utf8
 const failures = [];
 
 const paths = {
-  shared: "crates/rustok-order/src/checkout_owner_context.rs",
-  settlement: "crates/rustok-order/src/checkout_payment_settlement.rs",
-  compensation: "crates/rustok-order/src/checkout_compensation.rs",
-  compensationLocal: "crates/rustok-order/src/checkout_compensation_local_context.rs",
-  lib: "crates/rustok-order/src/lib.rs",
-  doc: "crates/rustok-order/docs/checkout-owner-context.md",
+  shared: "crates/modules/rustok-order/src/checkout_owner_context.rs",
+  settlement: "crates/modules/rustok-order/src/checkout_payment_settlement.rs",
+  compensation: "crates/modules/rustok-order/src/checkout_compensation.rs",
+  compensationLocal: "crates/modules/rustok-order/src/checkout_compensation_local_context.rs",
+  lib: "crates/modules/rustok-order/src/lib.rs",
+  doc: "crates/modules/rustok-order/docs/checkout-owner-context.md",
   settlementEvidence:
-    "crates/rustok-order/contracts/evidence/checkout-payment-settlement-diagnostic-safety-source.json",
+    "crates/modules/rustok-order/contracts/evidence/checkout-payment-settlement-diagnostic-safety-source.json",
   compensationEvidence:
-    "crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source.json",
+    "crates/modules/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source.json",
 };
 
 const shared = read(paths.shared);

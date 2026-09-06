@@ -12,12 +12,12 @@ const scriptPath = path.resolve(
 );
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-mention-notification-integration.json",
-  forumSource: "crates/rustok-forum/src/notification_source.rs",
-  candidateService: "crates/rustok-notifications/src/candidate.rs",
-  candidateContract: "crates/rustok-notifications/contracts/notifications-candidate-policy.json",
+  contract: "crates/modules/rustok-forum/contracts/forum-mention-notification-integration.json",
+  forumSource: "crates/modules/rustok-forum/src/notification_source.rs",
+  candidateService: "crates/modules/rustok-notifications/src/candidate.rs",
+  candidateContract: "crates/modules/rustok-notifications/contracts/notifications-candidate-policy.json",
   recipientPolicy: "apps/server/src/services/notification_recipient_policy.rs",
-  socialGraphContract: "crates/rustok-social-graph/contracts/social-graph-notification-policy.json",
+  socialGraphContract: "crates/modules/rustok-social-graph/contracts/social-graph-notification-policy.json",
 };
 
 function writeFixture(root, relativePath, content) {
@@ -50,7 +50,7 @@ function fixture(options = {}) {
       {
         schema_version: 1,
         slice: "FORUM-12E/NOTIFY-03B-03H/NOTIFY-07C",
-        canonical_plan: "crates/rustok-forum/docs/implementation-plan.md",
+        canonical_plan: "crates/modules/rustok-forum/docs/implementation-plan.md",
         owner: "rustok-forum",
         forum_source_provider: paths.forumSource,
         notifications_candidate_service: paths.candidateService,

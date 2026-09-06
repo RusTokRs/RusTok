@@ -3,19 +3,19 @@
 import { readFileSync } from "node:fs";
 
 const files = {
-  cargo: readFileSync("crates/rustok-iggy/Cargo.toml", "utf8"),
-  lib: readFileSync("crates/rustok-iggy/src/lib.rs", "utf8"),
+  cargo: readFileSync("crates/modules/rustok-iggy/Cargo.toml", "utf8"),
+  lib: readFileSync("crates/modules/rustok-iggy/src/lib.rs", "utf8"),
   consumer: readFileSync(
-    "crates/rustok-iggy/src/contract_consumer.rs",
+    "crates/modules/rustok-iggy/src/contract_consumer.rs",
     "utf8",
   ),
   failure: readFileSync(
-    "crates/rustok-iggy/src/contract_decode_failure.rs",
+    "crates/modules/rustok-iggy/src/contract_decode_failure.rs",
     "utf8",
   ),
-  crateApi: readFileSync("crates/rustok-iggy/CRATE_API.md", "utf8"),
+  crateApi: readFileSync("crates/modules/rustok-iggy/CRATE_API.md", "utf8"),
   plan: readFileSync(
-    "crates/rustok-iggy/docs/implementation-plan.md",
+    "crates/modules/rustok-iggy/docs/implementation-plan.md",
     "utf8",
   ),
 };

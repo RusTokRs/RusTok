@@ -10,21 +10,21 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const adminModule = read('crates/rustok-commerce/src/controllers/admin/mod.rs');
+const adminModule = read('crates/modules/rustok-commerce/src/controllers/admin/mod.rs');
 const mountedOrders = read(
-  'crates/rustok-commerce/src/controllers/admin/orders_owner_ports.rs',
+  'crates/modules/rustok-commerce/src/controllers/admin/orders_owner_ports.rs',
 );
-const commerceRuntime = read('crates/rustok-commerce/src/controllers/mod.rs');
-const orderRoot = read('crates/rustok-order/src/lib.rs');
-const orderCommand = read('crates/rustok-order/src/admin_command.rs');
-const paymentRoot = read('crates/rustok-payment/src/lib.rs');
-const paymentOrderRead = read('crates/rustok-payment/src/order_read.rs');
-const fulfillmentRead = read('crates/rustok-fulfillment/src/fulfillment_read.rs');
+const commerceRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
+const orderRoot = read('crates/modules/rustok-order/src/lib.rs');
+const orderCommand = read('crates/modules/rustok-order/src/admin_command.rs');
+const paymentRoot = read('crates/modules/rustok-payment/src/lib.rs');
+const paymentOrderRead = read('crates/modules/rustok-payment/src/order_read.rs');
+const fulfillmentRead = read('crates/modules/rustok-fulfillment/src/fulfillment_read.rs');
 const serverComposition = read(
   'apps/server/src/services/commerce_provider_runtime.rs',
 );
 const note = read(
-  'crates/rustok-commerce/docs/admin-order-owner-port-cutover-2026-08-08.md',
+  'crates/modules/rustok-commerce/docs/admin-order-owner-port-cutover-2026-08-08.md',
 );
 
 const failures = [];

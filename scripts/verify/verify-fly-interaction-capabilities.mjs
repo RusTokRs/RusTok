@@ -1,12 +1,12 @@
 import { readFile } from 'node:fs/promises';
 
 const paths = {
-  flyLib: 'crates/fly/src/lib.rs',
-  flyError: 'crates/fly/src/error.rs',
-  capability: 'crates/fly/src/interaction_capability.rs',
-  capabilityGate: 'crates/fly/src/interaction_capability_gate.rs',
-  actionModel: 'crates/fly/src/action/model.rs',
-  componentVisit: 'crates/fly/src/component_visit.rs',
+  flyLib: 'crates/ui/fly/src/lib.rs',
+  flyError: 'crates/ui/fly/src/error.rs',
+  capability: 'crates/ui/fly/src/interaction_capability.rs',
+  capabilityGate: 'crates/ui/fly/src/interaction_capability_gate.rs',
+  actionModel: 'crates/ui/fly/src/action/model.rs',
+  componentVisit: 'crates/ui/fly/src/component_visit.rs',
 };
 
 const source = Object.fromEntries(await Promise.all(

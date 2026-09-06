@@ -31,8 +31,8 @@ const cargoPath = "apps/server/Cargo.toml";
 const moduleRegistryPath = "apps/server/src/services/mod.rs";
 const runtimePath = "apps/server/src/services/payment_provider_runtime.rs";
 const attachmentPath = "apps/server/src/services/commerce_provider_runtime.rs";
-const paymentRegistryPath = "crates/rustok-payment/contracts/payment-fba-registry.json";
-const planPath = "crates/rustok-commerce/docs/implementation-plan.md";
+const paymentRegistryPath = "crates/modules/rustok-payment/contracts/payment-fba-registry.json";
+const planPath = "crates/modules/rustok-commerce/docs/implementation-plan.md";
 const packagePath = "package.json";
 
 const cargo = read(cargoPath);

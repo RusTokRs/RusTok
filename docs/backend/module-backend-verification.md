@@ -33,8 +33,8 @@ For FFA/FBA status changes, update both:
 For backend layout changes, also inspect the physical placement:
 
 ```bash
-rg -n "clap|std::process::exit|println!|eprintln!" crates/rustok-MODULE/src -g "*.rs"
-rg -n "apps::server|ServerRuntimeContext|HostRuntimeContext" crates/rustok-MODULE -g "*.rs"
+rg -n "clap|std::process::exit|println!|eprintln!" crates/modules/rustok-MODULE/src -g "*.rs"
+rg -n "apps::server|ServerRuntimeContext|HostRuntimeContext" crates/modules/rustok-MODULE -g "*.rs"
 ```
 
 Expected result:

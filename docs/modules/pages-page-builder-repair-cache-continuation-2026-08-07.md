@@ -27,19 +27,19 @@ explicit-artifact-repair-cache-harness-source-ready
 New harness:
 
 ```text
-crates/rustok-pages/tests/explicit_artifact_repair_cache_postgres.rs
+crates/modules/rustok-pages/tests/explicit_artifact_repair_cache_postgres.rs
 ```
 
 Machine evidence:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-cache-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-cache-source.json
 ```
 
 Fail-closed source guard:
 
 ```text
-crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-cache.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-cache.mjs
 ```
 
 The harness is environment-gated by `RUSTOK_PAGES_TEST_DATABASE_URL` with `DATABASE_URL` fallback and accepts PostgreSQL URLs only. It creates an isolated schema, applies the real `OutboxModule` and `PagesModule` migrations, seeds only the Pages module enablement fixture, and drops the schema after the scenario.
@@ -165,13 +165,13 @@ pages_explicit_artifact_repair_cache_source_unvalidated
 Suggested commands, intentionally not run here:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-cache.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-cache.mjs
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-pages --test explicit_artifact_repair_cache_postgres -- --nocapture
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-pages --test explicit_artifact_repair_postgres -- --nocapture
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-failures.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-failures.mjs
 cargo test -p rustok-pages --test explicit_artifact_repair_failures_sqlite -- --nocapture
 cargo check -p rustok-pages --all-targets
 ```

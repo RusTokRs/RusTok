@@ -22,7 +22,7 @@ fail()   { echo -e "  ${RED}✗${NC} $1"; ERRORS=$((ERRORS + 1)); }
 warn()   { echo -e "  ${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 
 SERVER_SRC="apps/server/src"
-CORE_SRC="crates/rustok-core/src"
+CORE_SRC="crates/libs/rustok-core/src"
 
 # ═══════════════════════════════════════════
 # MODULE SYSTEM
@@ -59,7 +59,7 @@ if [[ -f "modules.toml" ]]; then
     pass "modules.toml exists"
 
     # Check if code references modules.toml or has dependencies()
-    dep_fns=$(grep -rn 'fn dependencies' "$CORE_SRC" "crates/rustok-*/src" --include="*.rs" 2>/dev/null | grep -v "test\|// " || true)
+    dep_fns=$(grep -rn 'fn dependencies' "$CORE_SRC" "crates/modules/rustok-*/src" --include="*.rs" 2>/dev/null | grep -v "test\|// " || true)
     if [[ -n "$dep_fns" ]]; then
         dep_count=$(echo "$dep_fns" | wc -l)
         pass "$dep_count module(s) implement dependencies() trait"
@@ -139,7 +139,7 @@ fi
 # ─── 6. MCP: typed tool responses ───
 header "6. MCP: McpToolResponse (not raw JSON)"
 
-MCP_DIRS=("crates/rustok-core/src" "apps/server/src")
+MCP_DIRS=("crates/libs/rustok-core/src" "apps/server/src")
 mcp_found=false
 
 for mdir in "${MCP_DIRS[@]}"; do
@@ -182,7 +182,7 @@ fi
 # ─── 7. Service layer: trait-based DI ───
 header "7. Service layer: trait-based dependency injection"
 
-trait_di=$(grep -rn 'Arc<dyn\|Box<dyn\|impl.*Repository\|impl.*Service' "$CORE_SRC" "crates/rustok-*/src" --include="*.rs" 2>/dev/null | grep -v "test\|// \|///\|mod " | head -20 || true)
+trait_di=$(grep -rn 'Arc<dyn\|Box<dyn\|impl.*Repository\|impl.*Service' "$CORE_SRC" "crates/modules/rustok-*/src" --include="*.rs" 2>/dev/null | grep -v "test\|// \|///\|mod " | head -20 || true)
 concrete_di=$(grep -rn 'Arc<.*Service>\|Arc<.*Repository>' "$SERVER_SRC" --include="*.rs" 2>/dev/null | grep -v "dyn\|test\|// " || true)
 
 if [[ -n "$trait_di" ]]; then
@@ -199,7 +199,7 @@ fi
 # ─── 8. Migration naming convention ───
 header "8. Migration naming convention"
 
-MIGRATION_DIR="crates/rustok-migrations/src"
+MIGRATION_DIR="crates/utils/rustok-migrations/src"
 if [[ -d "$MIGRATION_DIR" ]]; then
     bad_names=$(find "$MIGRATION_DIR" -name "*.rs" -not -name "lib.rs" -not -name "mod.rs" | while read -r f; do
         basename_f=$(basename "$f")
@@ -227,7 +227,7 @@ if [[ -f "Cargo.toml" ]]; then
         echo -e "    Workspace entries: ~$member_count"
 
         # Check for path dependencies outside workspace
-        path_deps_outside=$(grep -rn 'path\s*=' crates/*/Cargo.toml apps/*/Cargo.toml 2>/dev/null | grep -v "crates/\|apps/\|UI/\|benches\|xtask" | grep -v "^\." || true)
+        path_deps_outside=$(grep -rn 'path\s*=' crates/*/*/Cargo.toml apps/*/Cargo.toml 2>/dev/null | grep -v "crates/\|apps/\|UI/\|benches\|xtask" | grep -v "^\." || true)
         if [[ -n "$path_deps_outside" ]]; then
             warn "Path dependencies outside workspace:"
             echo "$path_deps_outside" | head -5
@@ -240,7 +240,7 @@ fi
 # ─── 10. Telemetry: single initialization ───
 header "10. Telemetry: single initialization"
 
-telemetry_init=$(grep -rn 'init_subscriber\|init_telemetry\|init_tracing\|TracingSubscriber\|tracing_subscriber::fmt' "$SERVER_SRC" "$CORE_SRC" "crates/rustok-telemetry/src" --include="*.rs" 2>/dev/null | grep -v "test\|// " || true)
+telemetry_init=$(grep -rn 'init_subscriber\|init_telemetry\|init_tracing\|TracingSubscriber\|tracing_subscriber::fmt' "$SERVER_SRC" "$CORE_SRC" "crates/libs/rustok-telemetry/src" --include="*.rs" 2>/dev/null | grep -v "test\|// " || true)
 if [[ -n "$telemetry_init" ]]; then
     init_count=$(echo "$telemetry_init" | wc -l)
     if [[ $init_count -eq 1 ]]; then

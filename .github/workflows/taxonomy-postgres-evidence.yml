@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - "crates/rustok-core/**"
-      - "crates/rustok-migrations/**"
-      - "crates/rustok-outbox/**"
-      - "crates/rustok-taxonomy/**"
-      - "crates/rustok-translation-targets/**"
+      - "crates/libs/rustok-core/**"
+      - "crates/utils/rustok-migrations/**"
+      - "crates/modules/rustok-outbox/**"
+      - "crates/modules/rustok-taxonomy/**"
+      - "crates/modules/rustok-translation-targets/**"
       - "scripts/verify/run-taxonomy-postgres-evidence-source-contract.mjs"
       - "scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs"
       - "scripts/verify/verify-taxonomy-translation-target-postgres.mjs"
@@ -18,11 +18,11 @@ on:
     branches:
       - main
     paths:
-      - "crates/rustok-core/**"
-      - "crates/rustok-migrations/**"
-      - "crates/rustok-outbox/**"
-      - "crates/rustok-taxonomy/**"
-      - "crates/rustok-translation-targets/**"
+      - "crates/libs/rustok-core/**"
+      - "crates/utils/rustok-migrations/**"
+      - "crates/modules/rustok-outbox/**"
+      - "crates/modules/rustok-taxonomy/**"
+      - "crates/modules/rustok-translation-targets/**"
       - "scripts/verify/run-taxonomy-postgres-evidence-source-contract.mjs"
       - "scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs"
       - "scripts/verify/verify-taxonomy-translation-target-postgres.mjs"

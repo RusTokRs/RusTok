@@ -14,8 +14,8 @@ function sameArray(actual, expected, label) {
   if (a !== e) fail(`${label} drift: expected ${e}, got ${a}`);
 }
 
-const contractPath = 'crates/alloy/contracts/alloy-runtime-contract.json';
-const evidencePath = 'crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json';
+const contractPath = 'crates/modules/alloy/contracts/alloy-runtime-contract.json';
+const evidencePath = 'crates/modules/alloy/contracts/evidence/alloy-runtime-static-matrix.json';
 const contract = json(contractPath);
 const evidence = json(evidencePath);
 
@@ -129,7 +129,7 @@ if (evidence.generated_from !== contractPath || evidence.status !== contract.sta
 sameArray(evidence.cases.map(c => c.name), ['script_list_pagination_status_contract', 'execution_history_transport_contract', 'documentation_sync_contract', 'sandbox_limits_timeout_contract', 'scheduler_hook_runtime_contract', 'script_crud_validation_contract', 'execution_command_revision_contract', 'lifecycle_command_revision_contract', 'source_revision_ledger_read_contract', 'workspace_payload_contract', 'review_revision_contract', 'test_command_revision_contract', 'release_stage_revision_contract', 'release_capability_declaration_contract'], 'evidence cases');
 sameArray(evidence.cases.find(c => c.name === 'lifecycle_command_revision_contract')?.assertions, ['rest_activate_pause_require_expected_revision', 'rest_delete_requires_attributable_idempotent_command', 'graphql_status_mutations_require_expected_revision', 'graphql_delete_requires_attributable_idempotent_command', 'deletion_tombstone_persists_audit_receipt_and_replays_only_exactly', 'deletion_initializes_fixed_retain_until_window', 'expiry_reaper_collects_evidence_with_content_free_receipt', 'post_expiry_collection_erases_review_reasons_and_test_diagnostics', 'legal_hold_is_excluded_from_automatic_collection', 'legal_hold_owner_lifecycle_is_revision_guarded_and_idempotent', 'legal_hold_transports_are_tenant_bound_and_source_free', 'generic_mcp_does_not_expose_script_mutation'], 'lifecycle evidence assertions');
 
-const dto = read('crates/alloy/src/api/dto.rs');
+const dto = read('crates/modules/alloy/src/api/dto.rs');
 hasAll(dto, [
   'ScriptStatus::parse(status)',
   'Unsupported script status filter: {status}',
@@ -149,7 +149,7 @@ hasAll(dto, [
   'pub created_at: String'
 ], 'api dto');
 
-const memory = read('crates/alloy/src/storage/memory.rs');
+const memory = read('crates/modules/alloy/src/storage/memory.rs');
 hasAll(memory, [
   'ScriptQuery::ByStatus(status) => guard',
   '.filter(|script| script.status == status)',
@@ -177,7 +177,7 @@ hasAll(memory, [
   'a deleted draft ID cannot be reused while immutable evidence is retained'
 ], 'in-memory storage');
 
-const sea = read('crates/alloy/src/storage/sea_orm.rs');
+const sea = read('crates/modules/alloy/src/storage/sea_orm.rs');
 hasAll(sea, [
   'ScriptQuery::ByStatus(status) => select.filter(Column::Status.eq(status.as_str()))',
   '.order_by_asc(Column::Name)',
@@ -216,14 +216,14 @@ hasAll(sea, [
   'alloy_script_tombstones'
 ], 'sea orm storage');
 
-const revisionMigration = read('crates/alloy/src/migrations/m20260718_000003_create_script_revisions.rs');
+const revisionMigration = read('crates/modules/alloy/src/migrations/m20260718_000003_create_script_revisions.rs');
 hasAll(revisionMigration, [
   'alloy_script_revisions',
   'SourceProvenance',
   'uidx_alloy_script_revisions_script_revision',
   'idx_alloy_script_revisions_tenant_script_revision'
 ], 'Alloy revision ledger migration');
-const scriptsMigration = read('crates/alloy/src/migration.rs');
+const scriptsMigration = read('crates/modules/alloy/src/migration.rs');
 hasAll(scriptsMigration, [
   'alloy_script_tombstones',
   'idx_alloy_script_tombstones_deleted_at',
@@ -239,7 +239,7 @@ hasAll(scriptsMigration, [
   'ScriptTombstones'
 ], 'Alloy retired script identity migration');
 
-const provenance = read('crates/alloy/src/model/provenance.rs');
+const provenance = read('crates/modules/alloy/src/model/provenance.rs');
 hasAll(provenance, [
   'pub enum AuthoringOrigin',
   'pub struct SourceProvenance',
@@ -252,10 +252,10 @@ hasAll(provenance, [
 if (/pub\s+(?:prompt|tool_arguments|completion|tool_result)\s*:\s*String/.test(provenance)) {
   fail('Alloy source provenance must not persist raw prompt or tool content');
 }
-const provenanceHttp = read('crates/alloy/src/controllers/mod.rs');
-const provenanceGraphql = read('crates/alloy/src/graphql/mutation.rs');
-const provenanceRemoteMcp = read('crates/alloy/src/authoring.rs');
-const provenanceImport = read('crates/alloy/src/model/import.rs');
+const provenanceHttp = read('crates/modules/alloy/src/controllers/mod.rs');
+const provenanceGraphql = read('crates/modules/alloy/src/graphql/mutation.rs');
+const provenanceRemoteMcp = read('crates/modules/alloy/src/authoring.rs');
+const provenanceImport = read('crates/modules/alloy/src/model/import.rs');
 hasAll(provenanceHttp, [
   'SourceProvenance::http("alloy_create_script")',
   'SourceProvenance::http("alloy_update_script")'
@@ -273,7 +273,7 @@ hasAll(provenanceImport, [
   'self.script.source_provenance != SourceProvenance::release_import()'
 ], 'release import source provenance composition');
 
-const review = read('crates/alloy/src/model/review.rs');
+const review = read('crates/modules/alloy/src/model/review.rs');
 hasAll(review, [
   'pub struct ReviewCommand',
   'pub struct ReviewDecision',
@@ -283,13 +283,13 @@ hasAll(review, [
   'request_digest',
   'fn validate_transition'
 ], 'Alloy review contract');
-const reviewMigration = read('crates/alloy/src/migrations/m20260718_000004_create_script_reviews.rs');
+const reviewMigration = read('crates/modules/alloy/src/migrations/m20260718_000004_create_script_reviews.rs');
 hasAll(reviewMigration, [
   'alloy_script_reviews',
   'uidx_alloy_script_reviews_idempotency',
   'idx_alloy_script_reviews_tenant_revision_created'
 ], 'Alloy review migration');
-const testRun = read('crates/alloy/src/model/test_run.rs');
+const testRun = read('crates/modules/alloy/src/model/test_run.rs');
 hasAll(testRun, [
   'pub struct TestCommand',
   'pub struct TestRun',
@@ -299,13 +299,13 @@ hasAll(testRun, [
   'IdempotencyConflict',
   'LeaseLost'
 ], 'Alloy test command contract');
-const testMigration = read('crates/alloy/src/migrations/m20260718_000005_create_script_test_runs.rs');
+const testMigration = read('crates/modules/alloy/src/migrations/m20260718_000005_create_script_test_runs.rs');
 hasAll(testMigration, [
   'alloy_script_test_runs',
   'uidx_alloy_script_test_runs_idempotency',
   'idx_alloy_script_test_runs_tenant_revision_created'
 ], 'Alloy test run migration');
-const testRunner = read('crates/alloy/src/runner/test.rs');
+const testRunner = read('crates/modules/alloy/src/runner/test.rs');
 hasAll(testRunner, [
   'pub struct RevisionedTestRunner',
   '.claim_test_run(command)',
@@ -313,7 +313,7 @@ hasAll(testRunner, [
   '.complete_test_run(lease.run.id, lease.lease_token, completion)',
   'sandbox work and records a terminal result afterward'
 ], 'Alloy revision-pinned test runner');
-const release = read('crates/alloy/src/model/release.rs');
+const release = read('crates/modules/alloy/src/model/release.rs');
 hasAll(release, [
   'pub struct AlloyReleaseStageCommand',
   'expected_revision',
@@ -323,7 +323,7 @@ hasAll(release, [
   'pub fn review_evidence_digest',
   'pub fn review_reference'
 ], 'Alloy release stage contract');
-const releaseRunner = read('crates/alloy/src/runner/release.rs');
+const releaseRunner = read('crates/modules/alloy/src/runner/release.rs');
 hasAll(releaseRunner, [
   'pub trait AlloyReleaseGovernance',
   'pub struct RevisionedReleaseStager',
@@ -341,7 +341,7 @@ hasAll(releaseRunner, [
   'ModuleAlloyAuthoredStageCommand',
   '.stage_alloy_authored('
 ], 'Alloy revision-pinned release stager');
-const releaseGraphql = read('crates/alloy/src/graphql/mutation.rs');
+const releaseGraphql = read('crates/modules/alloy/src/graphql/mutation.rs');
 hasAll(releaseGraphql, [
   'async fn stage_release',
   'require_release_admin(ctx).await?',
@@ -349,7 +349,7 @@ hasAll(releaseGraphql, [
   'AlloyReleaseStageCommand',
   'idempotency_key: input.idempotency_key'
 ], 'Alloy GraphQL release transport');
-const governance = read('crates/rustok-modules/src/governance.rs');
+const governance = read('crates/modules/rustok-modules/src/governance.rs');
 hasAll(governance, [
   'AlloyAuthored',
   'pub struct ModuleAlloyAuthoredStageCommand',
@@ -360,7 +360,7 @@ hasAll(governance, [
   'PublishRequestMissingAlloyAuthoredStage',
   'PublishRequestMissingAlloyPlatformAdmission'
 ], 'owner Alloy publication stage');
-const alloyArtifact = read('crates/alloy/src/artifact.rs');
+const alloyArtifact = read('crates/modules/alloy/src/artifact.rs');
 hasAll(alloyArtifact, [
   'rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE',
   'canonical_bytes()',
@@ -375,7 +375,7 @@ hasAll(alloyArtifact, [
   'release_capability_declarations_match_literal_source_tool_use',
   'release_capability_validation_rejects_dynamic_and_shadowed_helpers'
 ], 'Alloy workspace artifact package');
-const installation = read('crates/rustok-modules/src/installation.rs');
+const installation = read('crates/modules/rustok-modules/src/installation.rs');
 hasAll(installation, [
   'pub payload_media_type: String',
   'admission.media_type AS payload_media_type',
@@ -383,24 +383,24 @@ hasAll(installation, [
   'valid_media_type_for(self.descriptor.payload_kind, &self.payload_media_type)',
   'fn valid_media_type_for(kind: ArtifactPayloadKind, media_type: &str)'
 ], 'durable artifact payload media type');
-const moduleArtifact = read('crates/rustok-modules/src/artifact.rs');
+const moduleArtifact = read('crates/modules/rustok-modules/src/artifact.rs');
 hasAll(moduleArtifact, [
   'pub fn supports_media_type(self, media_type: &str) -> bool',
   'MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE | rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE'
 ], 'Rhai artifact media type allowlist');
-const reviewGraphql = read('crates/alloy/src/graphql/mutation.rs');
+const reviewGraphql = read('crates/modules/alloy/src/graphql/mutation.rs');
 hasAll(reviewGraphql, [
   'async fn review_script',
   'let auth = require_admin(ctx).await?',
   'actor_id: auth.user_id.to_string()',
   'ReviewCommand {'
 ], 'Alloy GraphQL review transport');
-const reviewQuery = read('crates/alloy/src/graphql/query.rs');
+const reviewQuery = read('crates/modules/alloy/src/graphql/query.rs');
 hasAll(reviewQuery, [
   'async fn script_reviews',
   '.list_reviews(script_id, revision)'
 ], 'Alloy GraphQL review history');
-const reviewHttp = read('crates/alloy/src/controllers/mod.rs');
+const reviewHttp = read('crates/modules/alloy/src/controllers/mod.rs');
 hasAll(reviewHttp, [
   'fn scripts_manage_auth(',
   'scripts_manage_actor(auth, &tenant, "Alloy script review")?',
@@ -428,7 +428,7 @@ hasAll(reviewGraphql, [
   'TestCommand {'
 ], 'Alloy GraphQL test transport');
 
-const engineConfig = read('crates/rustok-sandbox/src/rhai/config.rs');
+const engineConfig = read('crates/workers/rustok-sandbox/src/rhai/config.rs');
 hasAll(engineConfig, [
   'max_operations: 50_000',
   'timeout: Duration::from_millis(100)',
@@ -446,7 +446,7 @@ hasAll(engineConfig, [
   'pub fn limits(&self) -> RhaiLimits'
 ], 'engine config sandbox limits');
 
-const engineRuntime = read('crates/rustok-sandbox/src/rhai/engine.rs');
+const engineRuntime = read('crates/workers/rustok-sandbox/src/rhai/engine.rs');
 hasAll(engineRuntime, [
   'engine.on_progress(move |_|',
   'TIMEOUT_MARKER',
@@ -458,14 +458,14 @@ hasAll(engineRuntime, [
   'RhaiError::ResourceLimit'
 ], 'engine runtime timeout and native limit mapping');
 
-const alloyEngineAdapter = read('crates/alloy/src/engine/runtime.rs');
+const alloyEngineAdapter = read('crates/modules/alloy/src/engine/runtime.rs');
 hasAll(alloyEngineAdapter, [
   'Alloy-specific adapter over the neutral Rhai execution kernel',
   'inner: RhaiEngine',
   '.map_err(ScriptError::from)'
 ], 'Alloy sandbox adapter');
 
-const brokeredHttpRhai = read('crates/rustok-sandbox/src/rhai.rs');
+const brokeredHttpRhai = read('crates/workers/rustok-sandbox/src/rhai.rs');
 hasAll(brokeredHttpRhai, [
   'pub struct RhaiCapabilityBridge',
   'impl RhaiHostExtension for RhaiCapabilityBridge',
@@ -474,9 +474,9 @@ hasAll(brokeredHttpRhai, [
   '"platform.http"'
 ], 'neutral brokered HTTP bridge');
 if (brokeredHttpRhai.includes('reqwest::')) fail('neutral Rhai bridge must not own a direct HTTP client');
-if (read('crates/alloy/Cargo.toml').includes('reqwest')) fail('Alloy must not depend on a direct HTTP client');
+if (read('crates/modules/alloy/Cargo.toml').includes('reqwest')) fail('Alloy must not depend on a direct HTTP client');
 
-const gqlMutation = read('crates/alloy/src/graphql/mutation.rs');
+const gqlMutation = read('crates/modules/alloy/src/graphql/mutation.rs');
 hasAll(gqlMutation, [
   'fn validate_cron_trigger(trigger: &ScriptTriggerInput) -> Result<()>',
   'require_admin(ctx).await?',
@@ -490,7 +490,7 @@ hasAll(gqlMutation, [
   'script.author_id = Some(auth.user_id.to_string());'
 ], 'GraphQL CRUD validation');
 
-const controllers = read('crates/alloy/src/controllers/mod.rs');
+const controllers = read('crates/modules/alloy/src/controllers/mod.rs');
 hasAll(controllers, [
   'validate_trigger(&req.trigger)?',
   '.compile(&req.name, source, &mut scope)',
@@ -503,8 +503,8 @@ hasAll(controllers, [
   'script.tenant_id = tenant.id;',
   'script.author_id = Some(actor_id);'
 ], 'host-composed REST CRUD validation');
-if (read('crates/alloy/src/api/mod.rs').includes('handlers') || read('crates/alloy/src/api/mod.rs').includes('routes')) fail('generic Alloy HTTP router must not remain exported');
-if (fs.existsSync('crates/alloy/src/api/handlers.rs') || fs.existsSync('crates/alloy/src/api/routes.rs')) fail('generic Alloy HTTP router files must be removed');
+if (read('crates/modules/alloy/src/api/mod.rs').includes('handlers') || read('crates/modules/alloy/src/api/mod.rs').includes('routes')) fail('generic Alloy HTTP router must not remain exported');
+if (fs.existsSync('crates/modules/alloy/src/api/handlers.rs') || fs.existsSync('crates/modules/alloy/src/api/routes.rs')) fail('generic Alloy HTTP router files must be removed');
 hasAll(dto, [
   'pub struct ScriptRevisionRequest',
   'pub expected_version: u32'
@@ -514,7 +514,7 @@ hasAll(controllers, [
   'script.version != request.expected_version',
   'ScriptError::RevisionConflict'
 ], 'REST lifecycle revision validation');
-const workspace = read('crates/rustok-sandbox/src/rhai_workspace.rs');
+const workspace = read('crates/workers/rustok-sandbox/src/rhai_workspace.rs');
 hasAll(workspace, [
   'pub const MAX_RHAI_WORKSPACE_FILES: usize = 64',
   'pub const MAX_RHAI_WORKSPACE_FILE_BYTES: usize = 128 * 1024',
@@ -537,7 +537,7 @@ hasAll(workspace, [
   'pub fn canonical_bytes',
   'canonical_workspace_digest_is_independent_of_file_order'
 ], 'bounded neutral Rhai workspace');
-const sandboxRhai = read('crates/rustok-sandbox/src/rhai.rs');
+const sandboxRhai = read('crates/workers/rustok-sandbox/src/rhai.rs');
 hasAll(sandboxRhai, [
   'fn resolve_source(request: &SandboxRequest, engine: &mut Engine)',
   'RHAI_WORKSPACE_MEDIA_TYPE',
@@ -545,7 +545,7 @@ hasAll(sandboxRhai, [
   '.configure_rhai_engine_for_entrypoint(engine, &request.payload.entrypoint)',
   '.executable_source(&request.payload.entrypoint)'
 ], 'Rhai owner workspace resolution boundary');
-const alloyDraft = read('crates/alloy/src/sandbox_request.rs');
+const alloyDraft = read('crates/modules/alloy/src/sandbox_request.rs');
 hasAll(alloyDraft, [
   'RHAI_WORKSPACE_MEDIA_TYPE',
   'pub async fn execute_test',
@@ -583,14 +583,14 @@ hasAll(gqlMutation, [
   'actor_id: auth.user_id.to_string()',
   '.delete(ScriptDeletionCommand {'
 ], 'GraphQL attributable delete command');
-const deletionModel = read('crates/alloy/src/model/deletion.rs');
+const deletionModel = read('crates/modules/alloy/src/model/deletion.rs');
 hasAll(deletionModel, [
   'DELETED_EVIDENCE_RETENTION_DAYS: i64 = 30',
   'pub fn deleted_evidence_retention',
   'RetentionPolicy::RetainUntil',
   'Client deletion requests never choose the'
 ], 'Alloy fixed deletion retention policy');
-const retentionModel = read('crates/alloy/src/model/retention.rs');
+const retentionModel = read('crates/modules/alloy/src/model/retention.rs');
 hasAll(retentionModel, [
   'pub enum ScriptEvidenceRetentionAction',
   'ApplyLegalHold',
@@ -602,14 +602,14 @@ hasAll(retentionModel, [
   'starts a new owner-selected `retain_until` window',
   'a_legal_hold_clears_the_deadline_and_release_starts_a_new_window'
 ], 'Alloy legal-hold retention model');
-const storageTraits = read('crates/alloy/src/storage/traits.rs');
+const storageTraits = read('crates/modules/alloy/src/storage/traits.rs');
 hasAll(storageTraits, [
   'async fn delete(&self, command: ScriptDeletionCommand)',
   'async fn get_deleted_evidence_retention',
   'async fn update_deleted_evidence_retention',
   'async fn purge_expired_evidence(&self, now: DateTime<Utc>, limit: u16)'
 ], 'owner attributable delete contract');
-const memoryStorage = read('crates/alloy/src/storage/memory.rs');
+const memoryStorage = read('crates/modules/alloy/src/storage/memory.rs');
 hasAll(memoryStorage, [
   'async fn delete(&self, command: ScriptDeletionCommand)',
   'script.version != command.expected_revision',
@@ -625,7 +625,7 @@ hasAll(memoryStorage, [
   'Test diagnostic that must be erased after expiry.',
   'legal_hold_requires_a_retention_revision_and_blocks_collection_until_release'
 ], 'memory attributable delete contract');
-const seaOrmStorage = read('crates/alloy/src/storage/sea_orm.rs');
+const seaOrmStorage = read('crates/modules/alloy/src/storage/sea_orm.rs');
 hasAll(seaOrmStorage, [
   'async fn delete(&self, command: ScriptDeletionCommand)',
   'Column::Version.eq',
@@ -646,7 +646,7 @@ hasAll(seaOrmStorage, [
   'Test diagnostic that must be erased after expiry.',
   'legal_hold_is_durable_tenant_scoped_and_excluded_from_collection'
 ], 'SeaORM attributable delete contract');
-const coreRetention = read('crates/rustok-core/src/retention.rs');
+const coreRetention = read('crates/libs/rustok-core/src/retention.rs');
 hasAll(coreRetention, [
   'pub enum RetentionPolicy',
   'Self::LegalHold => "legal_hold"',
@@ -665,19 +665,19 @@ hasAll(gqlMutation, [
   'ScriptEvidenceRetentionCommand',
   'actor_id: auth.user_id.to_string()'
 ], 'Alloy GraphQL legal-hold mutation');
-const gqlQuery = read('crates/alloy/src/graphql/query.rs');
+const gqlQuery = read('crates/modules/alloy/src/graphql/query.rs');
 hasAll(gqlQuery, [
   'async fn deleted_evidence_retention',
   '.get_deleted_evidence_retention(script_id)'
 ], 'Alloy GraphQL legal-hold query');
-const gqlTypes = read('crates/alloy/src/graphql/types.rs');
+const gqlTypes = read('crates/modules/alloy/src/graphql/types.rs');
 hasAll(gqlTypes, [
   'pub enum GqlRetentionPolicy',
   'pub enum GqlEvidenceRetentionAction',
   'pub struct UpdateDeletedEvidenceRetentionInput',
   'pub struct GqlDeletedEvidenceRetention'
 ], 'Alloy GraphQL legal-hold types');
-const remoteAlloyAuthoring = read('crates/rustok-mcp/src/alloy_authoring.rs');
+const remoteAlloyAuthoring = read('crates/modules/rustok-mcp/src/alloy_authoring.rs');
 hasAll(remoteAlloyAuthoring, [
   'TOOL_ALLOY_GET_DELETED_EVIDENCE_RETENTION',
   'TOOL_ALLOY_CHANGE_DELETED_EVIDENCE_RETENTION',
@@ -691,7 +691,7 @@ hasAll(remoteAlloyController, [
   '.change_deleted_evidence_retention(&actor_id, parse_remote_alloy_args(arguments)?)',
   'source_bearing_alloy_authoring'
 ], 'remote MCP legal-hold transport');
-const mcpAlloyTools = read('crates/rustok-mcp/src/alloy_tools.rs');
+const mcpAlloyTools = read('crates/modules/rustok-mcp/src/alloy_tools.rs');
 for (const forbidden of [
   'alloy_list_scripts',
   'alloy_get_script',
@@ -712,20 +712,20 @@ hasAll(mcpAlloyTools, [
   'TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD',
   'TOOL_ALLOY_APPLY_MODULE_SCAFFOLD'
 ], 'generic MCP Alloy scaffold-only surface');
-const orchestrator = read('crates/alloy/src/runner/orchestrator.rs');
+const orchestrator = read('crates/modules/alloy/src/runner/orchestrator.rs');
 hasAll(orchestrator, [
   'pub async fn run_manual_snapshot',
   'second registry lookup cannot replace the admitted source revision'
 ], 'Alloy manual snapshot execution');
 
-const executor = read('crates/alloy/src/runner/executor.rs');
+const executor = read('crates/modules/alloy/src/runner/executor.rs');
 hasAll(executor, [
   'self.runtime.execute(script, &ctx_with_entity).await',
   'self.record_execution(&result, &ctx_with_entity).await',
   'execution_log.record_result(result, ctx).await'
 ], 'executor sandbox outcome and audit persistence');
 
-const scheduler = read('crates/alloy/src/scheduler/runner.rs');
+const scheduler = read('crates/modules/alloy/src/scheduler/runner.rs');
 hasAll(scheduler, [
   'job.running = true',
   'self.mark_finished(script_id).await',
@@ -740,7 +740,7 @@ hasAll(scheduler, [
   'scheduler_tick_collects_expired_deleted_evidence'
 ], 'scheduler phase tenant and running flag contract');
 
-const hookExecutor = read('crates/alloy/src/integration/hook_executor.rs');
+const hookExecutor = read('crates/modules/alloy/src/integration/hook_executor.rs');
 hasAll(hookExecutor, [
   'pub enum BeforeHookResult',
   'Continue(HashMap<String, Dynamic>)',
@@ -752,7 +752,7 @@ hasAll(hookExecutor, [
   'Vec<crate::runner::ExecutionResult>'
 ], 'hook executor typed outcome contract');
 
-const controllerRoutes = read('crates/alloy/src/controllers/mod.rs');
+const controllerRoutes = read('crates/modules/alloy/src/controllers/mod.rs');
 hasAll(controllerRoutes, [
   'pub const EXECUTION_HISTORY_ROUTES',
   '"/api/alloy/executions"',
@@ -761,7 +761,7 @@ hasAll(controllerRoutes, [
   'list_script_executions'
 ], 'host HTTP controller routes');
 
-const graphql = read('crates/alloy/src/graphql/query.rs');
+const graphql = read('crates/modules/alloy/src/graphql/query.rs');
 hasAll(graphql, [
   'async fn script_execution_history',
   'async fn recent_script_executions',
@@ -769,11 +769,11 @@ hasAll(graphql, [
   'execution_history_graphql_fields_match_public_schema_contract'
 ], 'graphql query');
 
-const readme = read('crates/alloy/README.md');
+const readme = read('crates/modules/alloy/README.md');
 hasAll(readme, [contractPath, evidencePath, 'npm run verify:alloy:runtime-contract'], 'crate README');
-const docs = read('crates/alloy/docs/README.md');
+const docs = read('crates/modules/alloy/docs/README.md');
 hasAll(docs, [contractPath, evidencePath, 'npm run verify:alloy:runtime-contract'], 'local docs');
-const plan = read('crates/alloy/docs/implementation-plan.md');
+const plan = read('crates/modules/alloy/docs/implementation-plan.md');
 hasAll(plan, [contractPath, evidencePath, 'verify-alloy-runtime-contract.mjs', 'npm run verify:alloy:runtime-contract'], 'local plan');
 
 console.log('[verify-alloy-runtime-contract] Alloy runtime contract metadata, static evidence, source guards and docs are consistent');

@@ -1,0 +1,60 @@
+---
+id: doc://crates/modules/rustok-forum/docs/forum-12b2-owner-write-integration.md
+kind: implementation_record
+language: en
+status: delivered
+owners:
+  - rustok-forum
+  - rustok-notifications-program
+last_reviewed: 2026-08-01
+---
+
+# FORUM-12B2 owner write integration
+
+FORUM-12B2 composes the crate-private mention and quote projection seam into the
+active topic and reply owner commands. It does not expose that seam to REST,
+GraphQL or another module.
+
+## Transaction boundary
+
+For topic and reply create/edit commands the owner path now follows this order:
+
+1. authorize and canonicalize the source body;
+2. resolve mention handles through `ProfilesReader` and prepare the projection
+   before opening the owner transaction;
+3. write the canonical topic translation or reply body;
+4. call `MentionRelationService::persist_in_tx` in the same transaction;
+5. run the existing counters and semantic event writes;
+6. commit.
+
+`persist_in_tx` re-reads the just-written source body and fails closed if it no
+longer matches the prepared fingerprint. A failure rolls back the source body,
+relation revision, counters and existing event writes together.
+
+## Owner routing
+
+The public `TopicService` and `ReplyService` facades continue to route through
+module-owned owner services. Raw compatibility services remain crate-private.
+Relation-aware topic methods live directly in `topic.rs`; relation-aware reply
+edit methods live directly in `reply.rs`, while reply create remains in
+`reply_owner.rs`. This direct-module layout preserves access to private write
+helpers without widening the crate API.
+
+## Canonical document boundary
+
+Create and edit commands project user and typed audience mentions by walking the
+canonical `RichTextDocument`. Relation revisions are written only by the active
+owner command; migrations do not seed placeholder identities.
+
+Quote command DTOs are intentionally unchanged in this slice, so active commands
+pass an empty quote set. Sealed mention events, outbox publication and bounded
+owner reads are delivered separately in FORUM-12C; Notifications delivery remains
+downstream NOTIFY scope.
+
+## Guardrail
+
+`contracts/forum-mention-write-boundary.json` is the machine-readable boundary.
+`scripts/verify/verify-forum-mention-integration.mjs` verifies owner delegation,
+source-write ordering, same-transaction persistence and transport isolation.
+
+Maintainer verification was not executed while publishing this slice.

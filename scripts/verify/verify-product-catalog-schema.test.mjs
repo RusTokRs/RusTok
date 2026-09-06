@@ -7,54 +7,54 @@ const repoRoot = process.cwd();
 const script = path.join(repoRoot, 'scripts/verify/verify-product-catalog-schema.mjs');
 const fixtureRoots = [];
 const fixtureFiles = [
-  'crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs',
-  'crates/rustok-product/src/migrations/mod.rs',
-  'crates/rustok-product/src/migrations/m20260405_000007_expand_product_locale_storage_columns.rs',
-  'crates/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs',
-  'crates/rustok-product/src/migrations/m20260711_000001_product_status_enum.rs',
-  'crates/rustok-product/src/migrations/m20260711_000002_enforce_product_tenant_integrity.rs',
-  'crates/rustok-product/src/migrations/m20260711_000003_enforce_catalog_value_invariants.rs',
-  'crates/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs',
-  'crates/rustok-product/src/migrations/m20260725_000002_enforce_catalog_category_tree_invariants.rs',
-  'crates/rustok-product/src/migrations/m20260725_000003_remove_transitional_catalog_columns.rs',
-  'crates/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
-  'crates/rustok-product/src/migrations/m20250130_000013_create_commerce_options.rs',
-  'crates/rustok-product/src/migrations/m20250130_000014_create_commerce_variants.rs',
-  'crates/rustok-product/src/services/catalog_schema_service.rs',
-  'crates/rustok-product/src/services/catalog_schema_service/attributes.rs',
-  'crates/rustok-product/src/services/catalog_schema_service/categories.rs',
-  'crates/rustok-product/src/services/catalog_schema_service/schemas.rs',
-  'crates/rustok-product/src/services/catalog_schema_service/values.rs',
-  'crates/rustok-product/src/services/catalog_schema_service/effective_forms.rs',
-  'crates/rustok-product/src/services/catalog_schema_service/virtual_categories.rs',
-  'crates/rustok-product/src/services/catalog_schema.rs',
-  'crates/rustok-product/src/services/catalog.rs',
-  'crates/rustok-product/src/services/catalog/commands.rs',
-  'crates/rustok-product/src/services/catalog/queries.rs',
-  'crates/rustok-product/src/services/catalog/projection.rs',
-  'crates/rustok-product/src/services/catalog/helpers.rs',
-  'crates/rustok-product/src/services/catalog/tags.rs',
-  'crates/rustok-product/Cargo.toml',
-  'crates/rustok-inventory/src/services/bootstrap.rs',
-  'crates/rustok-inventory/src/services/mod.rs',
-  'crates/rustok-product/src/services/write_transaction.rs',
-  'crates/rustok-product/src/public_error.rs',
-  'crates/rustok-commerce/tests/product_taxonomy_tags.rs',
-  'crates/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs',
-  'crates/rustok-commerce/tests/product_event_index_integration_test.rs',
-  'crates/rustok-commerce/src/graphql/mutations/helpers.rs',
-  'crates/rustok-commerce/src/graphql/mutations/safe_order_helpers.rs',
-  'crates/rustok-commerce/src/graphql/mutations/catalog.rs',
-  'crates/rustok-commerce/src/graphql/mod.rs',
-  'crates/rustok-commerce/src/graphql/query.rs',
-  'crates/rustok-commerce/src/graphql/product_catalog.rs',
-  'crates/rustok-product/docs/implementation-plan.md',
-  'crates/rustok-product/README.md',
-  'crates/rustok-product/docs/README.md',
+  'crates/modules/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs',
+  'crates/modules/rustok-product/src/migrations/mod.rs',
+  'crates/modules/rustok-product/src/migrations/m20260405_000007_expand_product_locale_storage_columns.rs',
+  'crates/modules/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs',
+  'crates/modules/rustok-product/src/migrations/m20260711_000001_product_status_enum.rs',
+  'crates/modules/rustok-product/src/migrations/m20260711_000002_enforce_product_tenant_integrity.rs',
+  'crates/modules/rustok-product/src/migrations/m20260711_000003_enforce_catalog_value_invariants.rs',
+  'crates/modules/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs',
+  'crates/modules/rustok-product/src/migrations/m20260725_000002_enforce_catalog_category_tree_invariants.rs',
+  'crates/modules/rustok-product/src/migrations/m20260725_000003_remove_transitional_catalog_columns.rs',
+  'crates/modules/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
+  'crates/modules/rustok-product/src/migrations/m20250130_000013_create_commerce_options.rs',
+  'crates/modules/rustok-product/src/migrations/m20250130_000014_create_commerce_variants.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema_service.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema_service/attributes.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema_service/schemas.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema_service/values.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema_service/virtual_categories.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema.rs',
+  'crates/modules/rustok-product/src/services/catalog.rs',
+  'crates/modules/rustok-product/src/services/catalog/commands.rs',
+  'crates/modules/rustok-product/src/services/catalog/queries.rs',
+  'crates/modules/rustok-product/src/services/catalog/projection.rs',
+  'crates/modules/rustok-product/src/services/catalog/helpers.rs',
+  'crates/modules/rustok-product/src/services/catalog/tags.rs',
+  'crates/modules/rustok-product/Cargo.toml',
+  'crates/modules/rustok-inventory/src/services/bootstrap.rs',
+  'crates/modules/rustok-inventory/src/services/mod.rs',
+  'crates/modules/rustok-product/src/services/write_transaction.rs',
+  'crates/modules/rustok-product/src/public_error.rs',
+  'crates/modules/rustok-commerce/tests/product_taxonomy_tags.rs',
+  'crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs',
+  'crates/modules/rustok-commerce/tests/product_event_index_integration_test.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/safe_order_helpers.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs',
+  'crates/modules/rustok-commerce/src/graphql/mod.rs',
+  'crates/modules/rustok-commerce/src/graphql/query.rs',
+  'crates/modules/rustok-commerce/src/graphql/product_catalog.rs',
+  'crates/modules/rustok-product/docs/implementation-plan.md',
+  'crates/modules/rustok-product/README.md',
+  'crates/modules/rustok-product/docs/README.md',
   'docs/architecture/database.md',
-  'crates/rustok-commerce/README.md',
-  'crates/rustok-commerce/docs/README.md',
-  'crates/rustok-commerce/CRATE_API.md',
+  'crates/modules/rustok-commerce/README.md',
+  'crates/modules/rustok-commerce/docs/README.md',
+  'crates/modules/rustok-commerce/CRATE_API.md',
   'package.json',
 ];
 
@@ -109,7 +109,7 @@ assert(
 const missingValueOptions = copyFixture();
 replaceInFixture(
   missingValueOptions,
-  'crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs',
+  'crates/modules/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs',
   'CREATE TABLE IF NOT EXISTS product_attribute_value_options',
   'CREATE TABLE IF NOT EXISTS product_attribute_value_options_drift',
 );
@@ -123,7 +123,7 @@ assert(
 const localeWidthDrift = copyFixture();
 replaceInFixture(
   localeWidthDrift,
-  'crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs',
+  'crates/modules/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs',
   'locale VARCHAR(32) NOT NULL',
   'locale VARCHAR(5) NOT NULL',
 );
@@ -137,7 +137,7 @@ assert(
 const legacyLocaleDrift = copyFixture();
 replaceInFixture(
   legacyLocaleDrift,
-  'crates/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
+  'crates/modules/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
   '.string_len(32)',
   '.string_len(5)',
 );
@@ -151,7 +151,7 @@ assert(
 const missingLocaleExpansionMigration = copyFixture();
 replaceInFixture(
   missingLocaleExpansionMigration,
-  'crates/rustok-product/src/migrations/mod.rs',
+  'crates/modules/rustok-product/src/migrations/mod.rs',
   'mod m20260405_000007_expand_product_locale_storage_columns;',
   '// locale expansion migration drift',
 );
@@ -165,7 +165,7 @@ assert(
 const missingTenantConsistencyMigration = copyFixture();
 replaceInFixture(
   missingTenantConsistencyMigration,
-  'crates/rustok-product/src/migrations/mod.rs',
+  'crates/modules/rustok-product/src/migrations/mod.rs',
   'mod m20260701_000002_add_product_catalog_tenant_consistency_constraints;',
   '// tenant consistency migration drift',
 );
@@ -179,7 +179,7 @@ assert(
 const missingProductTagTenantForeignKey = copyFixture();
 replaceInFixture(
   missingProductTagTenantForeignKey,
-  'crates/rustok-product/src/migrations/m20260711_000002_enforce_product_tenant_integrity.rs',
+  'crates/modules/rustok-product/src/migrations/m20260711_000002_enforce_product_tenant_integrity.rs',
   'FOREIGN KEY (tenant_id, term_id)\n            REFERENCES taxonomy_terms(tenant_id, id)',
   'FOREIGN KEY (tenant_id, term_id)\n            REFERENCES taxonomy_terms_drift(tenant_id, id)',
 );
@@ -193,7 +193,7 @@ assert(
 const missingPrimaryCategoryInvariant = copyFixture();
 replaceInFixture(
   missingPrimaryCategoryInvariant,
-  'crates/rustok-product/src/migrations/m20260711_000003_enforce_catalog_value_invariants.rs',
+  'crates/modules/rustok-product/src/migrations/m20260711_000003_enforce_catalog_value_invariants.rs',
   'cannot migrate product_categories: multiple primary assignments exist',
   'primary-category migration preflight drift',
 );
@@ -207,7 +207,7 @@ assert(
 const missingChannelVisibilityIndex = copyFixture();
 replaceInFixture(
   missingChannelVisibilityIndex,
-  'crates/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs',
+  'crates/modules/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs',
   'metadata jsonb_path_ops',
   'metadata jsonb_ops',
 );
@@ -221,7 +221,7 @@ assert(
 const missingCategoryTreeConstraint = copyFixture();
 replaceInFixture(
   missingCategoryTreeConstraint,
-  'crates/rustok-product/src/migrations/m20260725_000002_enforce_catalog_category_tree_invariants.rs',
+  'crates/modules/rustok-product/src/migrations/m20260725_000002_enforce_catalog_category_tree_invariants.rs',
   'trg_catalog_categories_validate_tree',
   'trg_catalog_categories_tree_drift',
 );
@@ -237,7 +237,7 @@ assert(
 const missingTransitionalColumnCleanup = copyFixture();
 replaceInFixture(
   missingTransitionalColumnCleanup,
-  'crates/rustok-product/src/migrations/m20260725_000003_remove_transitional_catalog_columns.rs',
+  'crates/modules/rustok-product/src/migrations/m20260725_000003_remove_transitional_catalog_columns.rs',
   'ALTER COLUMN media_id SET NOT NULL',
   'ALTER COLUMN media_id DROP NOT NULL',
 );
@@ -256,7 +256,7 @@ assert(
 const missingTenantAwareValueOptionInsert = copyFixture();
 replaceInFixture(
   missingTenantAwareValueOptionInsert,
-  'crates/rustok-product/src/services/catalog_schema_service.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema_service.rs',
   'INSERT INTO product_attribute_value_options (tenant_id, value_id, option_id)',
   'INSERT INTO product_attribute_value_options (value_id, option_id)',
 );
@@ -270,7 +270,7 @@ assert(
 const missingBatchPriceInsert = copyFixture();
 replaceInFixture(
   missingBatchPriceInsert,
-  'crates/rustok-product/src/services/catalog/commands.rs',
+  'crates/modules/rustok-product/src/services/catalog/commands.rs',
   'PricingBootstrapService::create_initial_prices_in_tx(&txn, initial_prices)',
   'PricingBootstrapService::create_initial_prices_one_by_one(&txn, initial_prices)',
 );
@@ -284,7 +284,7 @@ assert(
 const directSchemaTransaction = copyFixture();
 replaceInFixture(
   directSchemaTransaction,
-  'crates/rustok-product/src/services/catalog_schema_service/attributes.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema_service/attributes.rs',
   'ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?',
   'self.db.begin().await?',
 );
@@ -301,7 +301,7 @@ assert(
 const missingCatalogTagComponent = copyFixture();
 replaceInFixture(
   missingCatalogTagComponent,
-  'crates/rustok-product/src/services/catalog/tags.rs',
+  'crates/modules/rustok-product/src/services/catalog/tags.rs',
   'TaxonomyTermKind::Tag,',
   'TaxonomyTermKind::TagDrift,',
 );
@@ -315,7 +315,7 @@ assert(
 const missingCategoryComponent = copyFixture();
 replaceInFixture(
   missingCategoryComponent,
-  'crates/rustok-product/src/services/catalog_schema_service/categories.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs',
   'DomainEvent::CatalogCategoryCreated { category_id }',
   'DomainEvent::CatalogCategoryCreationDrift { category_id }',
 );
@@ -329,7 +329,7 @@ assert(
 const missingInventoryBootstrap = copyFixture();
 replaceInFixture(
   missingInventoryBootstrap,
-  'crates/rustok-inventory/src/services/bootstrap.rs',
+  'crates/modules/rustok-inventory/src/services/bootstrap.rs',
   'create_initial_records_in_tx',
   'create_initial_records_drift',
 );
@@ -343,7 +343,7 @@ assert(
 const missingMutationActorBinding = copyFixture();
 replaceInFixture(
   missingMutationActorBinding,
-  'crates/rustok-commerce/src/graphql/mutations/catalog.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs',
   'product_mutation_actor(ctx)?',
   'product_mutation_actor_drift(ctx)?',
 );
@@ -357,7 +357,7 @@ assert(
 const missingDetachedReadMarker = copyFixture();
 replaceInFixture(
   missingDetachedReadMarker,
-  'crates/rustok-product/src/services/catalog_schema_service/values.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema_service/values.rs',
   'record.detached = detached_attribute_ids.contains(&record.attribute_id);',
   'record.detached = row.detached;',
 );
@@ -371,7 +371,7 @@ assert(
 const missingTagMetadataTest = copyFixture();
 replaceInFixture(
   missingTagMetadataTest,
-  'crates/rustok-commerce/tests/product_taxonomy_tags.rs',
+  'crates/modules/rustok-commerce/tests/product_taxonomy_tags.rs',
   'product_tags_are_synced_into_product_tags_without_metadata_mirror',
   'product_tags_drifted',
 );
@@ -385,7 +385,7 @@ assert(
 const missingShippingProfileTest = copyFixture();
 replaceInFixture(
   missingShippingProfileTest,
-  'crates/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs',
+  'crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs',
   'admin_graphql_rejects_unknown_shipping_profile_references',
   'admin_graphql_shipping_profile_drift',
 );
@@ -399,7 +399,7 @@ assert(
 const missingConsumerDocsMarker = copyFixture();
 replaceInFixture(
   missingConsumerDocsMarker,
-  'crates/rustok-commerce/CRATE_API.md',
+  'crates/modules/rustok-commerce/CRATE_API.md',
   'Product create/update/list/detail contracts now expose first-class `tags`',
   'Product create/update/list/detail contracts drifted',
 );
@@ -413,7 +413,7 @@ assert(
 const missingSchemaValidation = copyFixture();
 replaceInFixture(
   missingSchemaValidation,
-  'crates/rustok-product/src/services/catalog_schema_service/values.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema_service/values.rs',
   'attribute {} is outside the product effective schema',
   'attribute outside schema drift',
 );
@@ -427,7 +427,7 @@ assert(
 const missingPlanBacklog = copyFixture();
 replaceInFixture(
   missingPlanBacklog,
-  'crates/rustok-product/docs/implementation-plan.md',
+  'crates/modules/rustok-product/docs/implementation-plan.md',
   'DB-level tenant consistency audit',
   'tenant consistency drift',
 );
@@ -441,7 +441,7 @@ assert(
 const missingCatalogFilterUiPlan = copyFixture();
 replaceInFixture(
   missingCatalogFilterUiPlan,
-  'crates/rustok-product/docs/implementation-plan.md',
+  'crates/modules/rustok-product/docs/implementation-plan.md',
   '[x] Connect storefront/admin UI controls to optional catalog filters/sorts.',
   '[ ] Connect storefront/admin UI controls to optional catalog filters/sorts.',
 );

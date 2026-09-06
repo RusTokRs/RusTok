@@ -12,15 +12,15 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  query: 'crates/rustok-commerce/src/graphql/query.rs',
-  safeSource: 'crates/rustok-commerce/src/graphql/safe_query/source.rs',
+  query: 'crates/modules/rustok-commerce/src/graphql/query.rs',
+  safeSource: 'crates/modules/rustok-commerce/src/graphql/safe_query/source.rs',
   customerShim:
-    'crates/rustok-commerce/src/graphql/safe_query/source/rustok_customer_shim.rs',
-  customerReadContext: 'crates/rustok-customer/src/read_context.rs',
-  customerPorts: 'crates/rustok-customer/src/ports.rs',
+    'crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_customer_shim.rs',
+  customerReadContext: 'crates/modules/rustok-customer/src/read_context.rs',
+  customerPorts: 'crates/modules/rustok-customer/src/ports.rs',
   evidence:
-    'crates/rustok-commerce/contracts/evidence/graphql-query-customer-error-safety-source-review.json',
-  document: 'crates/rustok-commerce/docs/graphql-query-customer-error-safety.md',
+    'crates/modules/rustok-commerce/contracts/evidence/graphql-query-customer-error-safety-source-review.json',
+  document: 'crates/modules/rustok-commerce/docs/graphql-query-customer-error-safety.md',
 };
 
 const query = read(paths.query);
@@ -261,7 +261,7 @@ for (const [key, expected] of Object.entries({
 
 for (const marker of [
   'Status: `source_closed_unvalidated`',
-  'The compatibility resolver source in `crates/rustok-commerce/src/graphql/query.rs` remains unchanged',
+  'The compatibility resolver source in `crates/modules/rustok-commerce/src/graphql/query.rs` remains unchanged',
   'derives the compatibility sentinel only from `PortErrorKind::NotFound`',
   '`CUSTOMER_TEMPORARILY_UNAVAILABLE`',
   'Owner code strings are therefore no longer a control-flow boundary',

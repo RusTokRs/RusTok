@@ -1,19 +1,19 @@
 import fs from "node:fs";
 
 const test = fs.readFileSync(
-  "crates/rustok-forum/tests/moderation_effect_contract_postgres.rs",
+  "crates/modules/rustok-forum/tests/moderation_effect_contract_postgres.rs",
   "utf8",
 );
 const docs = fs.readFileSync(
-  "crates/rustok-forum/docs/forum-moderation-effect-postgres-contract.md",
+  "crates/modules/rustok-forum/docs/forum-moderation-effect-postgres-contract.md",
   "utf8",
 );
 const adapter = fs.readFileSync(
-  "crates/rustok-forum/src/moderation_subject.rs",
+  "crates/modules/rustok-forum/src/moderation_subject.rs",
   "utf8",
 );
 const replyOwner = fs.readFileSync(
-  "crates/rustok-forum/src/services/reply_owner.rs",
+  "crates/modules/rustok-forum/src/services/reply_owner.rs",
   "utf8",
 );
 

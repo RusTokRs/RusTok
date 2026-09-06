@@ -60,11 +60,11 @@ export function verifyOwnerFbaRuntimeOrder({ root = defaultRoot, modules = owner
   const json = (repoPath) => JSON.parse(read(repoPath));
 
   for (const module of modules) {
-    const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
-    const smokePath = `crates/rustok-${module}/contracts/evidence/${module}-provider-runtime-order-smoke.json`;
+    const registryPath = `crates/modules/rustok-${module}/contracts/${module}-fba-registry.json`;
+    const smokePath = `crates/modules/rustok-${module}/contracts/evidence/${module}-provider-runtime-order-smoke.json`;
     const registry = json(registryPath);
     const smoke = json(smokePath);
-    const source = read(`crates/rustok-${module}/src/ports.rs`);
+    const source = read(`crates/modules/rustok-${module}/src/ports.rs`);
     const implementationSource = providerImplementationSource(source, registry, module);
     const fallback = registryFallback(registry);
 

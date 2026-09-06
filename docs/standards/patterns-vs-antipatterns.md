@@ -41,7 +41,7 @@ Each section contains: what to do correctly (✅), what is forbidden (❌), why,
 | 1.1 | Module implements `RusToKModule` trait and registers in `build_registry()` | Module connects directly in `app.rs` bypassing registry | Bypasses lifecycle, health checks, per-tenant toggle | [architecture/modules.md](../architecture/modules.md) |
 | 1.2 | Core modules return `ModuleKind::Core`, optional ones return `ModuleKind::Optional` | All modules have the same `kind()` | Core modules cannot be disabled, a formal boundary is needed | [architecture/principles.md](../architecture/principles.md) |
 | 1.3 | `dependencies()` in `RusToKModule` matches `depends_on` in `modules.toml` | Dependencies defined only in Cargo.toml or only in modules.toml | Runtime check doesn't catch desync, module enables without dependency | [modules/manifest.md](../modules/manifest.md) |
-| 1.4 | Business logic in domain crates (`crates/rustok-*`), controllers are thin | Business logic in controllers/resolvers | Duplication between REST and GraphQL, untestability | [architecture/overview.md](../architecture/overview.md) |
+| 1.4 | Business logic in domain crates (`crates/modules/rustok-*`), controllers are thin | Business logic in controllers/resolvers | Duplication between REST and GraphQL, untestability | [architecture/overview.md](../architecture/overview.md) |
 | 1.5 | Modules interact via EventBus, not direct calls | Direct calls between domain modules | Coupling, violation of event-driven principle | [architecture/overview.md](../architecture/overview.md) |
 | 1.6 | Write path — normalized tables, Read path — denormalized index | One set of tables for write and read | Violates CQRS-lite, slow storefront | [architecture/overview.md §CQRS-lite](../architecture/overview.md) |
 | 1.7 | Explicit Axum bootstrap, router assembly and lifecycle handles | A parallel host lifecycle | Bypasses the established initialization, middleware and shutdown chain | [ai/KNOWN_PITFALLS.md §Axum Runtime](../ai/KNOWN_PITFALLS.md) |
@@ -149,7 +149,7 @@ Each section contains: what to do correctly (✅), what is forbidden (❌), why,
 |---|-------------|---------------|--------|--------|
 | 8.1.1 | `rustok-graphql` for Rust FFA GraphQL adapters; host-injected Apollo executor for Next UI packages | Manual fetch + manual JSON parsing | No typing, manual error handling | — |
 | 8.1.2 | `leptos-auth` for auth state management | Manual JWT management in localStorage | Race conditions, no refresh logic | — |
-| 8.1.3 | Host-local state; adopt `leptos-zustand` only after its shared runtime contract is approved | Adding an unimplemented shared-state dependency to avoid prop drilling | `leptos-zustand` currently provides serializable DTOs, not a state container | [plan](../../crates/leptos-zustand/docs/implementation-plan.md) |
+| 8.1.3 | Host-local state; adopt `leptos-zustand` only after its shared runtime contract is approved | Adding an unimplemented shared-state dependency to avoid prop drilling | `leptos-zustand` currently provides serializable DTOs, not a state container | [plan](../../crates/ui/leptos-zustand/docs/implementation-plan.md) |
 | 8.1.4 | `leptos-hook-form` for forms | Manual form state + onChange handlers | Boilerplate, no validation | — |
 | 8.1.5 | `iu-leptos` components from design system | Custom components with own styles | Visual inconsistency | — |
 | 8.1.6 | SSR for storefront (SEO) | CSR-only storefront | No SEO, slow First Contentful Paint | — |

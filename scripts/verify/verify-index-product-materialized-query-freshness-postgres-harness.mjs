@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const harnessPath = 'crates/rustok-distribution/tests/product_materialized_query_freshness_postgres.rs';
+const harnessPath = 'crates/modules/rustok-distribution/tests/product_materialized_query_freshness_postgres.rs';
 const harness = requireMarkers(harnessPath, [
   '#![cfg(feature = "mod-product")]',
   'RUSTOK_INDEX_TEST_DATABASE_URL',
@@ -95,7 +95,7 @@ forbidMarkers(harnessPath, harness, [
   'PostgresIndexQueryPort::with_admissions',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness-postgres-harness.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-materialized-query-freshness-postgres-harness.md', [
   'Status: `source_ready_execution_pending`',
   'delayed scalar mutation',
   'physically present in `index_entities`',

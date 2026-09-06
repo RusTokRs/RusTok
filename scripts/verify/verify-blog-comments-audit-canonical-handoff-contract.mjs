@@ -18,10 +18,10 @@ const sourcePath =
 const runtimePath =
   'apps/server/src/services/comments_provider_runtime.rs';
 const planPath =
-  'crates/rustok-blog/docs/implementation-plan-slice-87.md';
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-87.md';
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-audit-canonical-handoff-contract.json';
-const relayPath = 'crates/rustok-outbox/src/relay.rs';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-audit-canonical-handoff-contract.json';
+const relayPath = 'crates/modules/rustok-outbox/src/relay.rs';
 
 const source = read(sourcePath);
 const runtime = read(runtimePath);
@@ -53,18 +53,18 @@ function gitBlobSha(relativePath) {
 const preserved = {
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_postgres_audit.rs':
     '8a27f5ec3938f2b4efe16c6acafb93cb3faadcf6',
-  'crates/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs':
+  'crates/modules/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs':
     '305f4f80abcdd6da62d11f8c21eb8ab5101bd002',
-  'crates/rustok-blog/docs/implementation-plan-slice-86.md':
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-86.md':
     '52ddf0aabe1632578437c0d327022d3519615a60',
   [relayPath]: '4e77aa064a1425668787eabb9ed63b76499d1e5b',
-  'crates/rustok-outbox/docs/implementation-plan.md':
+  'crates/modules/rustok-outbox/docs/implementation-plan.md':
     '93b04248364dbf3b352c49dd4f5c068c05df622c',
-  'crates/rustok-events/src/lib.rs':
+  'crates/libs/rustok-events/src/lib.rs':
     '949039a7a6e876141577d3633ec41cc35fa4c7b7',
-  'crates/rustok-events/src/contract.rs':
+  'crates/libs/rustok-events/src/contract.rs':
     'c192ad15c1c99ce511d0ceae5616c49b161714ab',
-  'crates/rustok-events/contracts/event-contract-digests.json':
+  'crates/libs/rustok-events/contracts/event-contract-digests.json':
     '270df1b67a5a679b3fdcec1cf851478dd7fb3d57',
   'apps/server/Cargo.toml':
     '5037a166d35e32be327941f6ba480546d1cef0bb',

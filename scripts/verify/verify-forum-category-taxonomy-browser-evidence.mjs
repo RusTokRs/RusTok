@@ -18,17 +18,17 @@ const testPath =
   "apps/next-admin/tests/forum-category-taxonomy/browser-evidence.spec.ts";
 const configPath = "apps/next-admin/playwright.forum-category-taxonomy.config.ts";
 const contractPath =
-  "crates/rustok-forum/contracts/evidence/forum-category-taxonomy-browser-execution-contract.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-category-taxonomy-browser-execution-contract.json";
 const workflowPath = ".github/workflows/forum-category-taxonomy-browser-evidence.yml";
 const testSource = read(testPath);
 const config = read(configPath);
 const contract = JSON.parse(read(contractPath));
 const workflow = read(workflowPath);
 const packageJson = JSON.parse(read("apps/next-admin/package.json"));
-const adminRoot = read("crates/rustok-forum/admin/src/ui/root.rs");
-const adminUi = read("crates/rustok-forum/admin/src/ui/category_dnd.rs");
-const storefrontUi = read("crates/rustok-forum/storefront/src/ui/leptos.rs");
-const treeOwner = read("crates/rustok-forum/src/services/category_taxonomy_tree_read.rs");
+const adminRoot = read("crates/modules/rustok-forum/admin/src/ui/root.rs");
+const adminUi = read("crates/modules/rustok-forum/admin/src/ui/category_dnd.rs");
+const storefrontUi = read("crates/modules/rustok-forum/storefront/src/ui/leptos.rs");
+const treeOwner = read("crates/modules/rustok-forum/src/services/category_taxonomy_tree_read.rs");
 const routeMount = read("apps/storefront/src/forum_category_route.rs");
 
 if (contract.status !== "source_ready_maintainer_execution_pending") {
@@ -203,12 +203,12 @@ for (const path of [
   configPath,
   testPath,
   "apps/storefront/src/forum_category_route.rs",
-  "crates/rustok-forum/admin/src/ui/root.rs",
-  "crates/rustok-forum/admin/src/ui/category_dnd.rs",
-  "crates/rustok-forum/storefront/src/ui/leptos.rs",
-  "crates/rustok-forum/src/services/category_taxonomy_tree_read.rs",
+  "crates/modules/rustok-forum/admin/src/ui/root.rs",
+  "crates/modules/rustok-forum/admin/src/ui/category_dnd.rs",
+  "crates/modules/rustok-forum/storefront/src/ui/leptos.rs",
+  "crates/modules/rustok-forum/src/services/category_taxonomy_tree_read.rs",
   contractPath,
-  "crates/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md",
+  "crates/modules/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md",
   "scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs",
 ]) {
   need(

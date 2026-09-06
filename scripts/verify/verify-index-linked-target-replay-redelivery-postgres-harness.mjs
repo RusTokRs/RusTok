@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const harnessPath = 'crates/rustok-distribution/tests/product_linked_target_replay_redelivery_postgres.rs';
+const harnessPath = 'crates/modules/rustok-distribution/tests/product_linked_target_replay_redelivery_postgres.rs';
 const harness = requireMarkers(harnessPath, [
   '#![cfg(feature = "mod-product")]',
   'replay_checkpoint_failure_duplicate_retry_and_late_stale_target_keep_graph_authoritative',
@@ -76,7 +76,7 @@ forbidMarkers(harnessPath, harness, [
   'PostgresIndexReplayCheckpointStore::new',
 ]);
 
-const replayWorkerPath = 'crates/rustok-index/src/application/source_replay.rs';
+const replayWorkerPath = 'crates/modules/rustok-index/src/application/source_replay.rs';
 requireMarkers(replayWorkerPath, [
   'pub struct IndexReplayWorker',
   '.apply_replay_mutation(',
@@ -86,7 +86,7 @@ requireMarkers(replayWorkerPath, [
   'IndexReplayMutationOutcome::StaleIgnored => stale_count += 1',
   'CheckpointCommitFailed',
 ]);
-const replaySinkPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay.rs';
+const replaySinkPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay.rs';
 requireMarkers(replaySinkPath, [
   'impl IndexReplayMutationSink for PostgresMutationStore',
   'MutationDelivery::from_event(source_name, mutation.clone())',
@@ -95,7 +95,7 @@ requireMarkers(replaySinkPath, [
   'MutationApplyOutcome::StaleIgnored { .. } =>',
   'IndexReplayMutationOutcome::StaleIgnored',
 ]);
-const mutationStorePath = 'crates/rustok-index/src/infrastructure/postgres/mutation_store.rs';
+const mutationStorePath = 'crates/modules/rustok-index/src/infrastructure/postgres/mutation_store.rs';
 requireMarkers(mutationStorePath, [
   '"applied" => Ok(MutationApplyOutcome::Duplicate {',
   'source_version: stored_source_version,',
@@ -106,12 +106,12 @@ requireMarkers(mutationStorePath, [
   'self.lock_entity_key(transaction, mutation, backend).await?',
   'self.delete_existing_links(transaction, mutation, backend)',
 ]);
-requireMarkers('crates/rustok-index/src/application/source_replay_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/source_replay_tests.rs', [
   'checkpoint_failure_replays_the_same_event_delivery',
   'interruption_before_checkpoint_replays_applied_mutation_without_advancing_cursor',
   'vec![event_id, event_id]',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-linked-target-replay-redelivery-postgres-harness.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-linked-target-replay-redelivery-postgres-harness.md', [
   'Status: `source_ready_execution_pending`',
   'Crash after mutation durability, before checkpoint',
   'Worker restart and exact redelivery',

@@ -35,12 +35,12 @@ function withFixture({
     [
       "| Module slug | UI surfaces | FFA status | FBA status | Structural shape | Source plan |",
       "|---|---|---|---|---|---|",
-      `| \`demo\` | admin | \`${boardFfa}\` | \`${boardFba}\` | \`${boardShape}\` | \`crates/rustok-demo/docs/implementation-plan.md\` fixture |`,
+      `| \`demo\` | admin | \`${boardFfa}\` | \`${boardFba}\` | \`${boardShape}\` | \`crates/modules/rustok-demo/docs/implementation-plan.md\` fixture |`,
     ].join("\n"),
   );
   writeFixtureFile(
     root,
-    "crates/rustok-demo/docs/implementation-plan.md",
+    "crates/modules/rustok-demo/docs/implementation-plan.md",
     [
       "## FFA/FBA status",
       `- FFA status: \`${localFfa}\``,
@@ -48,10 +48,10 @@ function withFixture({
       `- Structural shape: \`${localShape}\``,
     ].join("\n"),
   );
-  writeFixtureFile(root, "crates/rustok-demo/admin/src/core.rs", coreSource);
-  writeFixtureFile(root, "crates/rustok-demo/admin/src/transport/mod.rs", "pub async fn fetch_demo() {}\n");
+  writeFixtureFile(root, "crates/modules/rustok-demo/admin/src/core.rs", coreSource);
+  writeFixtureFile(root, "crates/modules/rustok-demo/admin/src/transport/mod.rs", "pub async fn fetch_demo() {}\n");
   if (includeUi) {
-    writeFixtureFile(root, "crates/rustok-demo/admin/src/ui/leptos.rs", uiSource);
+    writeFixtureFile(root, "crates/modules/rustok-demo/admin/src/ui/leptos.rs", uiSource);
   }
   writeFixtureFile(
     root,

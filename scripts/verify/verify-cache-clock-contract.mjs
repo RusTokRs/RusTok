@@ -2,11 +2,11 @@
 import fs from "node:fs";
 
 const files = {
-  lib: "crates/rustok-cache/src/lib.rs",
-  clock: "crates/rustok-cache/src/clock.rs",
-  negative: "crates/rustok-cache/src/negative.rs",
-  typed: "crates/rustok-cache/src/typed.rs",
-  refresh: "crates/rustok-cache/src/refresh.rs",
+  lib: "crates/modules/rustok-cache/src/lib.rs",
+  clock: "crates/modules/rustok-cache/src/clock.rs",
+  negative: "crates/modules/rustok-cache/src/negative.rs",
+  typed: "crates/modules/rustok-cache/src/typed.rs",
+  refresh: "crates/modules/rustok-cache/src/refresh.rs",
   hardening: ".github/workflows/hardening-gates.yml",
   master: "scripts/verify/verify-all.sh",
   readme: "scripts/verify/README.md",

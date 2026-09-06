@@ -45,5 +45,5 @@ they are not deployment cron jobs and are not configured in this guide.
 ## Related Documents
 
 - [Axum Runtime and Operations CLI Boundary](../../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md)
-- [rustok-media Documentation](../../crates/rustok-media/docs/README.md)
+- [rustok-media Documentation](../../crates/modules/rustok-media/docs/README.md)
 - [Observability](./observability-quickstart.md)

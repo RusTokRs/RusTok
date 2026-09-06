@@ -11,15 +11,15 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  projection: "crates/rustok-forum/src/search_projection.rs",
-  engine: "crates/rustok-search/src/engine.rs",
+  projection: "crates/modules/rustok-forum/src/search_projection.rs",
+  engine: "crates/modules/rustok-search/src/engine.rs",
   searchEvidence:
-    "crates/rustok-search/contracts/evidence/search-canonical-url-contract.json",
+    "crates/modules/rustok-search/contracts/evidence/search-canonical-url-contract.json",
   contract:
-    "crates/rustok-forum/contracts/forum-search-canonical-route-cutover.json",
+    "crates/modules/rustok-forum/contracts/forum-search-canonical-route-cutover.json",
   contractTest:
-    "crates/rustok-forum/tests/search_canonical_route_cutover_contract.rs",
-  docs: "crates/rustok-forum/docs/forum-24q-search-canonical-route-cutover.md",
+    "crates/modules/rustok-forum/tests/search_canonical_route_cutover_contract.rs",
+  docs: "crates/modules/rustok-forum/docs/forum-24q-search-canonical-route-cutover.md",
   searchVerifier: "scripts/verify/verify-search-canonical-url-contract.mjs",
 };
 

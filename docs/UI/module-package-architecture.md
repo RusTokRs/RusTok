@@ -158,8 +158,8 @@ If module business UI ends up inside `apps/admin/src/` (outside of
 
 ### Module UI packages own their domain surface
 
-A module-owned UI package lives in `crates/rustok-<module>/admin/` or
-`crates/rustok-<module>/storefront/`. The host mounts it through manifest-driven wiring
+A module-owned UI package lives in `crates/modules/rustok-<module>/admin/` or
+`crates/modules/rustok-<module>/storefront/`. The host mounts it through manifest-driven wiring
 (`rustok-module.toml`) and passes context — it never pulls internal logic out of the package.
 
 A UI package must not place another module's logic inside itself. If it needs data from

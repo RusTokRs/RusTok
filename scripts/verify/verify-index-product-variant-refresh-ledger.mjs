@@ -19,7 +19,7 @@ const requireMarkers = (relative, markers) => {
 };
 
 const migrationPath =
-  'crates/rustok-product/src/migrations/m20260806_000006_add_product_variant_index_refresh_ledger.rs';
+  'crates/modules/rustok-product/src/migrations/m20260806_000006_add_product_variant_index_refresh_ledger.rs';
 const migration = requireMarkers(migrationPath, [
   'ALTER TABLE product_variant_index_tombstones',
   'ADD COLUMN product_id UUID NULL',
@@ -39,12 +39,12 @@ if (migration.includes('REFERENCES products')) {
   fail(`${migrationPath} must preserve hard-delete identities without a live Product foreign key`);
 }
 
-requireMarkers('crates/rustok-product/src/migrations/mod.rs', [
+requireMarkers('crates/modules/rustok-product/src/migrations/mod.rs', [
   'mod m20260806_000006_add_product_variant_index_refresh_ledger;',
   'Box::new(m20260806_000006_add_product_variant_index_refresh_ledger::Migration)',
 ]);
 
-const sourcePath = 'crates/rustok-product/src/services/index_refresh.rs';
+const sourcePath = 'crates/modules/rustok-product/src/services/index_refresh.rs';
 const source = requireMarkers(sourcePath, [
   'MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE: usize = 256',
   'pub struct ProductIndexVariantRefreshRecord',
@@ -77,7 +77,7 @@ for (const forbidden of [
   }
 }
 
-const transactionPath = 'crates/rustok-product/src/services/write_transaction.rs';
+const transactionPath = 'crates/modules/rustok-product/src/services/write_transaction.rs';
 const transaction = requireMarkers(transactionPath, [
   '.publish_in_tx_with_envelope_id(',
   'record_product_locale_refreshes_in_tx(',
@@ -97,23 +97,23 @@ if (
   fail(`${transactionPath} must publish root, record locale, then record variant rows`);
 }
 
-requireMarkers('crates/rustok-product/src/services/mod.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/mod.rs', [
   'MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE',
   'ProductIndexVariantRefreshRecord',
   'ProductIndexVariantRefreshSource',
 ]);
-requireMarkers('crates/rustok-product/src/lib.rs', [
+requireMarkers('crates/modules/rustok-product/src/lib.rs', [
   'MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE',
   'ProductIndexVariantRefreshRecord',
   'ProductIndexVariantRefreshSource',
 ]);
 
-const cargo = read('crates/rustok-product/Cargo.toml');
+const cargo = read('crates/modules/rustok-product/Cargo.toml');
 if (cargo.includes('rustok-index')) {
   fail('rustok-product must not depend on rustok-index');
 }
 
-requireMarkers('crates/rustok-product/docs/index-variant-refresh-ledger.md', [
+requireMarkers('crates/modules/rustok-product/docs/index-variant-refresh-ledger.md', [
   'Status: `owner_source_complete_wire_and_consumer_pending`',
   'Historical tombstones created before this migration keep `product_id = NULL`',
   '`refresh_id` derived from tenant, Product, root event and variant identity',

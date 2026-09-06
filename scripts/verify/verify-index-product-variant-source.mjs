@@ -24,7 +24,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const modulePath = 'crates/rustok-distribution/src/product_index/mod.rs';
+const modulePath = 'crates/modules/rustok-distribution/src/product_index/mod.rs';
 const moduleSource = requireMarkers(modulePath, [
   'mod product;',
   '#[path = "../product_variant_index.rs"]',
@@ -34,7 +34,7 @@ const moduleSource = requireMarkers(modulePath, [
 ]);
 forbidMarkers(modulePath, moduleSource, ['mod graph;', 'graph::', 'four_schemas']);
 
-const sourcePath = 'crates/rustok-distribution/src/product_variant_index.rs';
+const sourcePath = 'crates/modules/rustok-distribution/src/product_variant_index.rs';
 const source = requireMarkers(sourcePath, [
   'PRODUCT_VARIANT_INDEX_SOURCE: &str = "product-variant-postgres-primary"',
   'PRODUCT_VARIANT_EVENT_DOMAIN: &str = "rustok-product.product-variant-replay"',
@@ -78,7 +78,7 @@ forbidMarkers(sourcePath, source, [
 ]);
 
 const migrationPath =
-  'crates/rustok-product/src/migrations/m20260730_000002_add_product_variant_index_revision.rs';
+  'crates/modules/rustok-product/src/migrations/m20260730_000002_add_product_variant_index_revision.rs';
 requireMarkers(migrationPath, [
   'ALTER TABLE product_variants',
   'ADD COLUMN index_revision BIGINT NOT NULL DEFAULT 1',
@@ -87,7 +87,7 @@ requireMarkers(migrationPath, [
   'BEFORE UPDATE ON product_variants',
 ]);
 requireMarkers(
-  'crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs',
+  'crates/modules/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs',
   [
     'CREATE TABLE product_variant_index_tombstones',
     'rustok_product_variant_capture_index_tombstone',

@@ -3,7 +3,7 @@
 import { readFile } from "node:fs/promises";
 
 const files = {
-  producer: "crates/rustok-index/src/application/drift_digest.rs",
+  producer: "crates/modules/rustok-index/src/application/drift_digest.rs",
   runtime: "apps/server/src/services/index_drift_source_page_diagnosis.rs",
   diagnosis: "apps/server/src/services/index_drift_diagnosis_operator.rs",
   composition: "apps/server/src/services/index_replay_runtime_composition.rs",
@@ -13,7 +13,7 @@ const files = {
   doc: "apps/server/docs/index-drift-source-page-diagnosis.md",
   transportDoc: "apps/server/docs/index-drift-source-page-graphql-transport.md",
   operatorDoc: "apps/server/docs/index-reconciliation-operator-runtime.md",
-  plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
   aggregate: "scripts/verify/verify-index-query-contract.mjs",
 };
 

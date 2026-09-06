@@ -10,21 +10,21 @@ const root = path.resolve(
 const read = (relativePath) =>
   readFileSync(path.join(root, relativePath), 'utf8');
 
-const eventContractPath = 'crates/rustok-events/src/contract.rs';
-const eventApiPath = 'crates/rustok-events/CRATE_API.md';
-const outboxTransportPath = 'crates/rustok-outbox/src/transport.rs';
-const outboxTransactionalPath = 'crates/rustok-outbox/src/transactional.rs';
-const outboxLibPath = 'crates/rustok-outbox/src/lib.rs';
-const outboxApiPath = 'crates/rustok-outbox/CRATE_API.md';
-const outboxTestPath = 'crates/rustok-outbox/tests/contract_write_once.rs';
+const eventContractPath = 'crates/libs/rustok-events/src/contract.rs';
+const eventApiPath = 'crates/libs/rustok-events/CRATE_API.md';
+const outboxTransportPath = 'crates/modules/rustok-outbox/src/transport.rs';
+const outboxTransactionalPath = 'crates/modules/rustok-outbox/src/transactional.rs';
+const outboxLibPath = 'crates/modules/rustok-outbox/src/lib.rs';
+const outboxApiPath = 'crates/modules/rustok-outbox/CRATE_API.md';
+const outboxTestPath = 'crates/modules/rustok-outbox/tests/contract_write_once.rs';
 const publicationPath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_publication.rs';
 const writerPath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_canonical_writer.rs';
 const runtimePath = 'apps/server/src/services/comments_provider_runtime.rs';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-89.md';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-89.md';
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-audit-canonical-writer.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-audit-canonical-writer.json';
 const temporaryWorkflowPath =
   '.github/workflows/tmp-blog-comments-canonical-writer-check.yml';
 

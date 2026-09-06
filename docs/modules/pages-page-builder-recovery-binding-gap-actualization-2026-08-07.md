@@ -24,9 +24,9 @@ This document supersedes the stale repair/rebuild cursor wording in `docs/module
 Merged packet:
 
 ```text
-crates/rustok-pages/tests/publish_rebuild_provenance_postgres.rs
-crates/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance-postgres.mjs
-crates/rustok-pages/contracts/evidence/pages-publish-rebuild-provenance-postgres-source.json
+crates/modules/rustok-pages/tests/publish_rebuild_provenance_postgres.rs
+crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance-postgres.mjs
+crates/modules/rustok-pages/contracts/evidence/pages-publish-rebuild-provenance-postgres-source.json
 ```
 
 Status:
@@ -51,9 +51,9 @@ The packet is source-ready for:
 Merged packet:
 
 ```text
-crates/rustok-pages/tests/artifact_loss_rebuild_postgres.rs
-crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-rebuild-postgres.mjs
-crates/rustok-pages/contracts/evidence/pages-artifact-loss-rebuild-postgres-source.json
+crates/modules/rustok-pages/tests/artifact_loss_rebuild_postgres.rs
+crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-loss-rebuild-postgres.mjs
+crates/modules/rustok-pages/contracts/evidence/pages-artifact-loss-rebuild-postgres-source.json
 ```
 
 Status:

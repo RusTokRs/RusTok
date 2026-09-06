@@ -75,7 +75,7 @@ const createFixtureRoot = ({
     module: moduleSlug,
     packet: 'provider-spi-contract-static-matrix',
     status: 'static_matrix_locked',
-    generated_from: 'crates/rustok-payment/contracts/payment-fba-registry.json',
+    generated_from: 'crates/modules/rustok-payment/contracts/payment-fba-registry.json',
     runner: 'scripts/verify/verify-ecommerce-provider-spi-evidence.mjs',
     contract_version: registry.contract_version,
     provider_spi_status: registry.provider_spi.status,
@@ -119,9 +119,9 @@ const createFixtureRoot = ({
     module: moduleSlug,
     packet: 'provider-spi-runtime-mode-smoke',
     status: 'runtime_mode_smoke_locked',
-    generated_from: 'crates/rustok-payment/contracts/payment-fba-registry.json',
+    generated_from: 'crates/modules/rustok-payment/contracts/payment-fba-registry.json',
     runner: 'scripts/verify/verify-ecommerce-provider-spi-evidence.mjs',
-    source_contract: 'crates/rustok-payment/src/providers.rs',
+    source_contract: 'crates/modules/rustok-payment/src/providers.rs',
     execution_scope: 'no_compile_static_runtime_contract_evidence',
     promotion_gate: 'does_not_raise_boundary_ready_without_live_adapter_execution',
     runtime_mode_cases: [
@@ -204,7 +204,7 @@ const createFixtureRoot = ({
     module: moduleSlug,
     packet: 'provider-spi-live-adapter-execution-contract',
     status: 'live_adapter_contract_locked',
-    generated_from: 'crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json',
+    generated_from: 'crates/modules/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json',
     runner: 'scripts/verify/verify-ecommerce-provider-spi-evidence.mjs',
     execution_scope: 'contract_locked_runtime_execution_pending',
     adapter_profile: 'external_gateway_adapter',
@@ -262,7 +262,7 @@ const createFixtureRoot = ({
     module: moduleSlug,
     packet: 'provider-spi-live-adapter-runtime-evidence',
     status: 'concrete_external_adapter_contract_executed',
-    generated_from: 'crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-contract.json',
+    generated_from: 'crates/modules/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-contract.json',
     runner: 'scripts/verify/verify-ecommerce-provider-spi-evidence.mjs',
     adapter_profile: 'external_gateway_adapter',
     evidence_status: 'runtime_contract_executed',
@@ -319,19 +319,19 @@ const createFixtureRoot = ({
   };
   mutateLiveAdapterEvidence?.(liveAdapterEvidence);
 
-  write('crates/rustok-payment/contracts/payment-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
-  write('crates/rustok-payment/contracts/evidence/payment-provider-spi-static-matrix.json', `${JSON.stringify(evidence, null, 2)}\n`);
-  write('crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json', `${JSON.stringify(runtimeSmoke, null, 2)}\n`);
-  write('crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-contract.json', `${JSON.stringify(liveAdapterContract, null, 2)}\n`);
-  write('crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-evidence.json', `${JSON.stringify(liveAdapterEvidence, null, 2)}\n`);
+  write('crates/modules/rustok-payment/contracts/payment-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
+  write('crates/modules/rustok-payment/contracts/evidence/payment-provider-spi-static-matrix.json', `${JSON.stringify(evidence, null, 2)}\n`);
+  write('crates/modules/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json', `${JSON.stringify(runtimeSmoke, null, 2)}\n`);
+  write('crates/modules/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-contract.json', `${JSON.stringify(liveAdapterContract, null, 2)}\n`);
+  write('crates/modules/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-evidence.json', `${JSON.stringify(liveAdapterEvidence, null, 2)}\n`);
   write(
-    'crates/rustok-payment/src/providers.rs',
-    providerSource ?? readFileSync(join(process.cwd(), 'crates/rustok-payment/src/providers.rs'), 'utf8'),
+    'crates/modules/rustok-payment/src/providers.rs',
+    providerSource ?? readFileSync(join(process.cwd(), 'crates/modules/rustok-payment/src/providers.rs'), 'utf8'),
   );
   for (const sourcePath of [
-    'crates/rustok-commerce/src/services/checkout.rs',
-    'crates/rustok-commerce/src/services/payment_orchestration.rs',
-    'crates/rustok-commerce/src/services/journaled_payment_provider.rs',
+    'crates/modules/rustok-commerce/src/services/checkout.rs',
+    'crates/modules/rustok-commerce/src/services/payment_orchestration.rs',
+    'crates/modules/rustok-commerce/src/services/journaled_payment_provider.rs',
   ]) {
     write(sourcePath, readFileSync(join(process.cwd(), ...sourcePath.split('/')), 'utf8'));
   }

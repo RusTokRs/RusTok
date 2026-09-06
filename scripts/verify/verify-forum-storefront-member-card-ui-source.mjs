@@ -18,15 +18,15 @@ function count(text, marker) {
   return text.split(marker).length - 1;
 }
 
-const leptos = read("crates/rustok-forum/storefront/src/ui/leptos.rs");
-const memberCard = read("crates/rustok-forum/storefront/src/ui/member_card.rs");
-const uiMod = read("crates/rustok-forum/storefront/src/ui/mod.rs");
-const model = read("crates/rustok-forum/storefront/src/model.rs");
-const graphql = read("crates/rustok-forum/storefront/src/transport/graphql_adapter.rs");
-const native = read("crates/rustok-forum/storefront/src/transport/native_server_adapter.rs");
-const cargo = read("crates/rustok-forum/storefront/Cargo.toml");
-const en = read("crates/rustok-forum/storefront/locales/en.json");
-const ru = read("crates/rustok-forum/storefront/locales/ru.json");
+const leptos = read("crates/modules/rustok-forum/storefront/src/ui/leptos.rs");
+const memberCard = read("crates/modules/rustok-forum/storefront/src/ui/member_card.rs");
+const uiMod = read("crates/modules/rustok-forum/storefront/src/ui/mod.rs");
+const model = read("crates/modules/rustok-forum/storefront/src/model.rs");
+const graphql = read("crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs");
+const native = read("crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs");
+const cargo = read("crates/modules/rustok-forum/storefront/Cargo.toml");
+const en = read("crates/modules/rustok-forum/storefront/locales/en.json");
+const ru = read("crates/modules/rustok-forum/storefront/locales/ru.json");
 const packet = read(
   "docs/modules/forum-15-storefront-member-card-ui-actualization-2026-08-10.md",
 );

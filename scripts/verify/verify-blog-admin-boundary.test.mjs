@@ -276,46 +276,46 @@ async fn blog_admin_moderate_comment_native() {
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-blog-boundary-"));
-  writeFixtureFile(root, "crates/rustok-blog/admin/src/lib.rs", libSource(options));
-  writeFixtureFile(root, "crates/rustok-blog/admin/src/core.rs", coreSource(options));
-  writeFixtureFile(root, "crates/rustok-blog/admin/src/model.rs", "pub struct BlogPostDraft; pub struct BlogPostDetail;");
-  writeFixtureFile(root, "crates/rustok-blog/admin/src/ui/leptos.rs", uiSource(options));
-  writeFixtureFile(root, "crates/rustok-blog/admin/src/ui/richtext.rs", richtextAdapterSource(options));
-  writeFixtureFile(root, "crates/leptos-ui/src/richtext.rs", sharedRichtextAdapterSource(options));
-  writeFixtureFile(root, "crates/rustok-blog/admin/src/moderation.rs", moderationSource(options));
-  writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/mod.rs", transportSource(options));
-  writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
-  writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/moderation_adapter.rs", moderationAdapterSource(options));
-  writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/lib.rs", libSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/core.rs", coreSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/model.rs", "pub struct BlogPostDraft; pub struct BlogPostDetail;");
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/richtext.rs", richtextAdapterSource(options));
+  writeFixtureFile(root, "crates/ui/leptos-ui/src/richtext.rs", sharedRichtextAdapterSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/moderation.rs", moderationSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/transport/mod.rs", transportSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/transport/moderation_adapter.rs", moderationAdapterSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
   writeFixtureFile(root, "apps/admin/Cargo.toml", 'csr = ["rustok-blog-admin/csr"]\nhydrate = ["rustok-blog-admin/hydrate"]\nssr = ["rustok-blog-admin/ssr"]');
-  writeFixtureFile(root, "crates/rustok-blog/src/graphql/types.rs", options.omitModeration ? "pub struct GqlPost;" : "async fn moderation_comments() {} Permission::BLOG_POSTS_MANAGE GqlModerationCommentList");
-  writeFixtureFile(root, "crates/rustok-blog/src/graphql/mutation.rs", options.omitModeration ? "pub struct BlogMutation;" : "async fn moderate_comment() {} Permission::BLOG_POSTS_MANAGE ModerateCommentInput");
-  writeFixtureFile(root, "crates/rustok-blog/src/graphql/rate_limit.rs", options.omitModeration ? "enum Surface {}" : "ModerateComment moderateComment Permission::BLOG_POSTS_MANAGE");
+  writeFixtureFile(root, "crates/modules/rustok-blog/src/graphql/types.rs", options.omitModeration ? "pub struct GqlPost;" : "async fn moderation_comments() {} Permission::BLOG_POSTS_MANAGE GqlModerationCommentList");
+  writeFixtureFile(root, "crates/modules/rustok-blog/src/graphql/mutation.rs", options.omitModeration ? "pub struct BlogMutation;" : "async fn moderate_comment() {} Permission::BLOG_POSTS_MANAGE ModerateCommentInput");
+  writeFixtureFile(root, "crates/modules/rustok-blog/src/graphql/rate_limit.rs", options.omitModeration ? "enum Surface {}" : "ModerateComment moderateComment Permission::BLOG_POSTS_MANAGE");
   if (options.includeLegacyApiFile) {
-    writeFixtureFile(root, "crates/rustok-blog/admin/src/api.rs", "pub async fn fetch_posts() {}");
+    writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/api.rs", "pub async fn fetch_posts() {}");
   }
-  writeFixtureFile(root, "crates/rustok-blog/docs/implementation-plan.md", `verify-blog-admin-boundary.mjs ${options.omitModeration ? "" : "moderation"}`);
+  writeFixtureFile(root, "crates/modules/rustok-blog/docs/implementation-plan.md", `verify-blog-admin-boundary.mjs ${options.omitModeration ? "" : "moderation"}`);
   const localeCatalog = { "blog.form.body": "Body" };
   if (options.legacyLocaleKeys) {
     localeCatalog["blog.form.bodyFormat"] = "Body format";
     localeCatalog["blog.form.rawWarning"] = "Raw payload warning";
   }
-  writeFixtureFile(root, "crates/rustok-blog/admin/locales/en.json", JSON.stringify(localeCatalog));
-  writeFixtureFile(root, "crates/rustok-blog/admin/locales/ru.json", JSON.stringify(localeCatalog));
-  writeFixtureFile(root, "crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json", JSON.stringify({
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/locales/en.json", JSON.stringify(localeCatalog));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/locales/ru.json", JSON.stringify(localeCatalog));
+  writeFixtureFile(root, "crates/modules/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json", JSON.stringify({
     schema_version: 3,
     module: "blog",
     surface: "leptos_admin_article_richtext_boundary",
     status: "source_verified_no_compile",
     compile_policy: "not_run_by_request",
     sources: {
-      core: "crates/rustok-blog/admin/src/core.rs",
-      ui: "crates/rustok-blog/admin/src/ui/leptos.rs",
-      adapter: "crates/rustok-blog/admin/src/ui/richtext.rs",
-      shared_adapter: "crates/leptos-ui/src/richtext.rs",
+      core: "crates/modules/rustok-blog/admin/src/core.rs",
+      ui: "crates/modules/rustok-blog/admin/src/ui/leptos.rs",
+      adapter: "crates/modules/rustok-blog/admin/src/ui/richtext.rs",
+      shared_adapter: "crates/ui/leptos-ui/src/richtext.rs",
       locales: {
-        en: "crates/rustok-blog/admin/locales/en.json",
-        ru: "crates/rustok-blog/admin/locales/ru.json"
+        en: "crates/modules/rustok-blog/admin/locales/en.json",
+        ru: "crates/modules/rustok-blog/admin/locales/ru.json"
       }
     },
     required_markers: {

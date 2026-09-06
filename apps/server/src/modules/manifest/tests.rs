@@ -334,7 +334,7 @@ screenshots = [
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -392,7 +392,7 @@ fn catalog_modules_error_for_blog_manifest(contents: &str) -> ManifestError {
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -531,8 +531,8 @@ trust_level = "verified"
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
-    manifest.modules.get_mut("content").unwrap().path = Some("crates/rustok-content".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
+    manifest.modules.get_mut("content").unwrap().path = Some("crates/modules/rustok-content".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -589,7 +589,7 @@ fn catalog_modules_require_rustok_module_manifest_for_path_modules() {
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -635,7 +635,7 @@ showcase_admin_surfaces = ["next-admin"]
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -685,7 +685,7 @@ showAuthor = { type = "boolean", default = true }
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -732,7 +732,7 @@ postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -782,7 +782,7 @@ postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -834,7 +834,7 @@ layout = { type = "string", default = "grid", options = ["grid", "list"] }
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -886,7 +886,7 @@ layout = { type = "string", default = "hero", options = ["grid", "list"] }
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -937,7 +937,7 @@ seo = { type = "object", object_keys = ["metaTitle", "metaDescription", "indexab
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -996,7 +996,7 @@ featuredPostIds = { type = "array", item_type = "string", default = [] }
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -1050,7 +1050,7 @@ seo = { type = "object", item_type = "string" }
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -1101,7 +1101,7 @@ seo = { type = "object", properties = { metaTitle = { type = "string" }, indexab
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -1159,7 +1159,7 @@ contentBlocks = { type = "array", items = { type = "object", properties = { kind
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
     ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
@@ -1228,8 +1228,8 @@ trust_level = "verified"
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
-    manifest.modules.get_mut("content").unwrap().path = Some("crates/rustok-content".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
+    manifest.modules.get_mut("content").unwrap().path = Some("crates/modules/rustok-content".to_string());
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
     unsafe {
@@ -1290,8 +1290,8 @@ trust_level = "verified"
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "content", "comments", "blog", "forum", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
-    manifest.modules.get_mut("forum").unwrap().path = Some("crates/rustok-forum".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
+    manifest.modules.get_mut("forum").unwrap().path = Some("crates/modules/rustok-forum".to_string());
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
     unsafe {
@@ -1351,8 +1351,8 @@ trust_level = "verified"
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
-    manifest.modules.get_mut("content").unwrap().path = Some("crates/rustok-content".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
+    manifest.modules.get_mut("content").unwrap().path = Some("crates/modules/rustok-content".to_string());
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
     unsafe {
@@ -1396,7 +1396,7 @@ trust_level = "verified"
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
     unsafe {
@@ -1444,7 +1444,7 @@ leptos_crate = "rustok-pages-storefront"
 
     let mut manifest =
         manifest_with_modules(&["index", "outbox", "pages", "content", "tenant", "rbac"]);
-    manifest.modules.get_mut("pages").unwrap().path = Some("crates/rustok-pages".to_string());
+    manifest.modules.get_mut("pages").unwrap().path = Some("crates/modules/rustok-pages".to_string());
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
     unsafe {
@@ -1513,7 +1513,7 @@ next_messages_path = "../../apps/next-admin/packages/blog/messages"
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
     unsafe {
@@ -1564,7 +1564,7 @@ leptos_locales_path = "admin/locales"
     let mut manifest = manifest_with_modules(&[
         "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
     ]);
-    manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+    manifest.modules.get_mut("blog").unwrap().path = Some("crates/modules/rustok-blog".to_string());
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
     unsafe {
@@ -1629,7 +1629,7 @@ leptos_locales_path = "storefront/locales"
 
     let mut manifest =
         manifest_with_modules(&["index", "outbox", "pages", "content", "tenant", "rbac"]);
-    manifest.modules.get_mut("pages").unwrap().path = Some("crates/rustok-pages".to_string());
+    manifest.modules.get_mut("pages").unwrap().path = Some("crates/modules/rustok-pages".to_string());
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
     unsafe {
@@ -1682,7 +1682,7 @@ leptos_locales_path = "storefront/locales"
 
     let mut manifest =
         manifest_with_modules(&["index", "outbox", "forum", "content", "tenant", "rbac"]);
-    manifest.modules.get_mut("forum").unwrap().path = Some("crates/rustok-forum".to_string());
+    manifest.modules.get_mut("forum").unwrap().path = Some("crates/modules/rustok-forum".to_string());
 
     let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
     unsafe {

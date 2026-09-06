@@ -73,7 +73,7 @@ requireMarkers(shadowTransportPath, [
   'self.operator.run_shadow(context, request).await?',
 ]);
 
-const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
+const runnerPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = read(runnerPath);
 for (const forbidden of ['IndexReplayMode::Shadow', 'SideEffectFreeScan', 'SharedIndexReplayDryRunRuntime']) {
   if (runner.includes(forbidden)) {
@@ -81,21 +81,21 @@ for (const forbidden of ['IndexReplayMode::Shadow', 'SideEffectFreeScan', 'Share
   }
 }
 
-requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-bounded-replay-dry-run.md', [
   'Status: `source_complete_locale_transport_execution_pending`',
   '`IndexReplayOperatorRuntime::run_shadow`',
   'same request-bound `modules:manage` authorization boundary',
   '`runIndexReplayShadow`',
   'schema-wide or exact-locale invocation',
 ]);
-requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-mode-contract.md', [
   'Status: `source_complete_targeted_graphql_execution_pending`.',
   '`Shadow` host dispatch remains `IndexReplayOperatorRuntime::run_shadow`',
   '`runIndexReplayShadow` remains a dedicated transport',
   'one current unversioned envelope',
   '## Targeted GraphQL transport',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.',
   'Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.',
   'Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.',

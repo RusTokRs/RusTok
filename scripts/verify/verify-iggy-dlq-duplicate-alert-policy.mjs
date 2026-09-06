@@ -6,17 +6,17 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json";
 const runtimeContractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json";
-const sourcePath = "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs";
-const runtimeSourcePath = "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs";
-const summaryPath = "crates/rustok-iggy/src/dlq_duplicate_inspection.rs";
-const libPath = "crates/rustok-iggy/src/lib.rs";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json";
+const sourcePath = "crates/modules/rustok-iggy/src/dlq_duplicate_alert_policy.rs";
+const runtimeSourcePath = "crates/modules/rustok-iggy/src/dlq_duplicate_alert_runtime.rs";
+const summaryPath = "crates/modules/rustok-iggy/src/dlq_duplicate_inspection.rs";
+const libPath = "crates/modules/rustok-iggy/src/lib.rs";
 const expectedVerifier = "scripts/verify/verify-iggy-dlq-duplicate-alert-policy.mjs";
-const expectedDocumentation = "crates/rustok-iggy/docs/dlq-duplicate-alert-policy.md";
+const expectedDocumentation = "crates/modules/rustok-iggy/docs/dlq-duplicate-alert-policy.md";
 const expectedProfilesCheckpoint =
-  "crates/rustok-profiles/docs/poison-duplicate-alert-policy-checkpoint.md";
+  "crates/modules/rustok-profiles/docs/poison-duplicate-alert-policy-checkpoint.md";
 const expectedExports = [
   "DlqDuplicateAlertPolicy",
   "DlqDuplicateAlertLevel",
