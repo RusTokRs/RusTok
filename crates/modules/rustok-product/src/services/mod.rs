@@ -17,6 +17,7 @@ pub use catalog::{
     ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,
     ProductTranslationExactLocaleError, ProductTranslationExactLocaleRecord,
     ProductTranslationExactLocaleResult, ProductTranslationExactLocaleSnapshot,
+    ProductTranslationExactResourcePage, ProductTranslationExactResourceSummary,
     StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection,
 };

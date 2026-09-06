@@ -12,6 +12,7 @@ pub use translation::{
     ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,
     ProductTranslationExactLocaleError, ProductTranslationExactLocaleRecord,
     ProductTranslationExactLocaleResult, ProductTranslationExactLocaleSnapshot,
+    ProductTranslationExactResourcePage, ProductTranslationExactResourceSummary,
 };
 pub use types::{
     AdminProductList, AdminProductListItem, AdminProductListQuery,
@@ -43,7 +44,9 @@ use rustok_pricing_persistence::{BootstrapService as PricingBootstrapService, In
 
 use crate::ProductCatalogSchemaService;
 
-use super::write_transaction::ProductWriteTransaction;
+use super::write_transaction::{
+    ProductWriteTransaction, current_product_operation_id, record_product_operation_result,
+};
 use helpers::*;
 
 const PRODUCT_SCOPE_VALUE: &str = "product";
