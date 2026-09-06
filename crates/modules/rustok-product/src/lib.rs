@@ -28,6 +28,7 @@ mod seo_targets;
 pub mod services;
 mod storefront_http_read_port;
 mod storefront_tag_read_port;
+mod translation_target;
 
 pub use catalog_command_port::ProductCatalogCommandPort;
 pub use catalog_schema_read_port::{
@@ -70,6 +71,7 @@ pub use services::{
     ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,
     ProductTranslationExactLocaleError, ProductTranslationExactLocaleRecord,
     ProductTranslationExactLocaleResult, ProductTranslationExactLocaleSnapshot,
+    ProductTranslationExactResourcePage, ProductTranslationExactResourceSummary,
     StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection, product_attribute_boolean_term,
     product_attribute_date_term, product_attribute_datetime_term, product_attribute_decimal_term,
@@ -84,6 +86,7 @@ pub use storefront_tag_read_port::{
     ProductStorefrontTagHydration, ProductStorefrontTagHydrationItem,
     ProductStorefrontTagHydrationRequest, ProductStorefrontTagReadPort,
 };
+pub use translation_target::ProductTranslationTargetProvider;
 
 /// Typed marker proving that `ProductModule` participated in runtime extension registration.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
