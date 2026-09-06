@@ -19,7 +19,6 @@ on:
       - "crates/rustok-blog/docs/category-hierarchy-contract.md"
       - "scripts/verify/verify-blog-category-hierarchy-command.mjs"
       - "crates/rustok-blog/Cargo.toml"
-      - "Cargo.lock"
       - ".github/workflows/blog-category-hierarchy-contract.yml"
   push:
     branches:
@@ -41,7 +40,6 @@ on:
       - "crates/rustok-blog/docs/category-hierarchy-contract.md"
       - "scripts/verify/verify-blog-category-hierarchy-command.mjs"
       - "crates/rustok-blog/Cargo.toml"
-      - "Cargo.lock"
       - ".github/workflows/blog-category-hierarchy-contract.yml"
   workflow_dispatch:
 
@@ -49,7 +47,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:

@@ -5,8 +5,6 @@ on:
     branches:
       - main
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
       - "crates/rustok-pages/src/**"
       - "crates/rustok-pages/admin/src/**"
       - "crates/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs"
@@ -23,7 +21,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages-artifact-rollback-postgres-evidence-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:

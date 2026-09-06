@@ -25,7 +25,6 @@ on:
       - "crates/rustok-taxonomy/Cargo.toml"
       - "crates/rustok-content/src/locale.rs"
       - "crates/rustok-api/src/locale.rs"
-      - "Cargo.lock"
       - ".github/workflows/taxonomy-lookup-contract.yml"
   push:
     branches:
@@ -53,7 +52,6 @@ on:
       - "crates/rustok-taxonomy/Cargo.toml"
       - "crates/rustok-content/src/locale.rs"
       - "crates/rustok-api/src/locale.rs"
-      - "Cargo.lock"
       - ".github/workflows/taxonomy-lookup-contract.yml"
   workflow_dispatch:
 
@@ -61,7 +59,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:

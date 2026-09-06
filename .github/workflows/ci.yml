@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - "**"
+      - main
   pull_request:
     branches:
       - "**"
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:
@@ -32,6 +32,7 @@ jobs:
   fmt:
     name: Formatting
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: dtolnay/rust-toolchain@stable
@@ -42,6 +43,7 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: dtolnay/rust-toolchain@stable
@@ -55,6 +57,7 @@ jobs:
   check:
     name: Cargo Check (${{ matrix.rust }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -74,6 +77,7 @@ jobs:
   platform-contract:
     name: Platform Contract
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: check
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -87,6 +91,7 @@ jobs:
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: dtolnay/rust-toolchain@stable
@@ -98,6 +103,7 @@ jobs:
   deny:
     name: Cargo Deny
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       CARGO_HOME: ${{ github.workspace }}/.cargo
     steps:
@@ -117,6 +123,7 @@ jobs:
   typos:
     name: Spell Check (Typos)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: crate-ci/typos@master
@@ -124,6 +131,7 @@ jobs:
   doc:
     name: Documentation
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: dtolnay/rust-toolchain@stable
@@ -135,6 +143,7 @@ jobs:
   udeps:
     name: Unused Dependencies
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       RUSTFLAGS: ""
       CARGO_ENCODED_RUSTFLAGS: ""
@@ -150,6 +159,7 @@ jobs:
   coverage:
     name: Tests & Coverage (Nextest)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: check
     services:
       postgres:
@@ -209,6 +219,7 @@ jobs:
   sbom:
     name: SBOM
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: check
     permissions:
       contents: read
@@ -235,6 +246,7 @@ jobs:
   build-crates:
     name: Build Workspace
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: check
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -245,6 +257,7 @@ jobs:
   build-server:
     name: Build Server
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: check
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -260,6 +273,7 @@ jobs:
   build-storefront:
     name: Build Storefront
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: check
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -270,6 +284,7 @@ jobs:
   migration-smoke:
     name: Migration Smoke (PostgreSQL)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: check
     services:
       postgres:
@@ -301,6 +316,7 @@ jobs:
   doc-tests:
     name: Doc Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: check
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -311,6 +327,7 @@ jobs:
   next-apps:
     name: Next.js (${{ matrix.app }})
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -343,6 +360,7 @@ jobs:
   reference-artifacts:
     name: Reference Artifacts Export
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: build-server
     services:
       postgres:
@@ -408,6 +426,7 @@ jobs:
   server-library-docs-snapshot:
     name: Server Library Docs Snapshot Freshness
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Validate server library docs snapshot
@@ -416,6 +435,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [fmt, clippy, check, platform-contract, audit, deny, typos, doc, udeps, coverage, sbom, build-crates, build-server, build-storefront, migration-smoke, doc-tests, next-apps, server-library-docs-snapshot, reference-artifacts]
     if: always()
     steps:

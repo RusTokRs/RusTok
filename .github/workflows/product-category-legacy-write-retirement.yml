@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: product-category-legacy-write-retirement-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:

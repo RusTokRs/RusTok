@@ -4,8 +4,6 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
       - "apps/server/Cargo.toml"
       - "apps/server/src/**"
       - "apps/server/tests/rbac_mutation_api_architecture_guard.rs"
@@ -46,8 +44,6 @@ on:
     branches:
       - main
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
       - "apps/server/Cargo.toml"
       - "apps/server/src/**"
       - "apps/server/tests/rbac_mutation_api_architecture_guard.rs"
@@ -89,7 +85,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-runtime-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:

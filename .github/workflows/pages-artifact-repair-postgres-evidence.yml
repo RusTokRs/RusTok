@@ -5,8 +5,6 @@ on:
     branches:
       - main
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
       - "crates/rustok-pages/src/**"
       - "crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs"
       - "crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs"
@@ -17,8 +15,6 @@ on:
       - "docs/modules/pages-artifact-repair-postgres-evidence-actualization-2026-08-14.md"
   pull_request:
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
       - "crates/rustok-pages/src/**"
       - "crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs"
       - "crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs"
@@ -35,7 +31,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages-artifact-repair-postgres-evidence-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:

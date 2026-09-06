@@ -1,8 +1,8 @@
 # Documentation `rustok-core`
 
-`rustok-core` is the base foundation crate of the platform. It defines shared typed
-contracts, errors, security primitives and other invariants that
-the remaining RusToK modules rely on.
+`rustok-core` is the base foundation crate (shared library) of the platform, not
+a platform module (`RusToKModule`). It defines shared typed contracts, errors, security primitives
+and other invariants that the remaining RusToK modules rely on.
 
 ## Purpose
 
@@ -31,8 +31,8 @@ the remaining RusToK modules rely on.
 
 ## Verification
 
-- `cargo xtask module validate core`
-- `cargo xtask module test core`
+- `cargo test -p rustok-core`
+- `cargo check -p rustok-core`
 - targeted tests for typed primitives, validation helpers, security contracts, event observability contracts and dispatcher retry/latency contracts
 
 ## Related documents

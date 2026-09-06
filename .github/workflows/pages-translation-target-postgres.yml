@@ -3,7 +3,6 @@ name: Pages Translation Target PostgreSQL Evidence
 on:
   pull_request:
     paths:
-      - "Cargo.lock"
       - "crates/rustok-pages/**"
       - "crates/rustok-translation-targets/**"
       - "crates/rustok-outbox/**"
@@ -14,7 +13,6 @@ on:
     branches:
       - main
     paths:
-      - "Cargo.lock"
       - "crates/rustok-pages/**"
       - "crates/rustok-translation-targets/**"
       - "crates/rustok-outbox/**"
@@ -27,7 +25,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages-translation-target-postgres
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:

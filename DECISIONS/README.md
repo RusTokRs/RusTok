@@ -14,6 +14,7 @@ column identifies the current canonical decision.
 
 | ADR | Title | Status |
 | --- | --- | --- |
+| [2026-09-06](./2026-09-06-crates-workspace-layout-split.md) | Categorized workspace layout for crates | Accepted |
 | [2026-08-22](./2026-08-22-module-command-context-evidence.md) | Typed module command-context evidence | Accepted |
 | [2026-08-20](./2026-08-20-static-module-lifecycle-revision.md) | Static module lifecycle revision aggregate | Accepted |
 | [2026-08-15](./2026-08-15-shared-retention-policy.md) | Shared retention policy | Accepted |

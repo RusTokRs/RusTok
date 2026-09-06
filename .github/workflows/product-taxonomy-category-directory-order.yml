@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: product-taxonomy-category-directory-order-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:

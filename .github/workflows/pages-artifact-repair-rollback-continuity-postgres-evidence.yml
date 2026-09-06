@@ -5,8 +5,6 @@ on:
     branches:
       - main
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
       - "crates/rustok-pages/src/**"
       - "crates/rustok-pages/tests/artifact_repair_rollback_continuity_postgres.rs"
       - "crates/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs"
@@ -19,8 +17,6 @@ on:
       - "docs/modules/pages-artifact-repair-rollback-continuity-postgres-evidence-actualization-2026-08-15.md"
   pull_request:
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
       - "crates/rustok-pages/src/**"
       - "crates/rustok-pages/tests/artifact_repair_rollback_continuity_postgres.rs"
       - "crates/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs"
@@ -39,7 +35,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages-artifact-repair-rollback-continuity-postgres-evidence-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:

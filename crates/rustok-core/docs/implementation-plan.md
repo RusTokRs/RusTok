@@ -42,8 +42,8 @@ needed and keeps no compatibility exports for their former locations.
 ## Verification
 
 - Contract tests cover every public use case.
-- `cargo xtask module validate core`
-- `cargo xtask module test core`
+- `cargo test -p rustok-core`
+- `cargo check -p rustok-core`
 - Targeted primitives, validation, security, RT JSON sanitization, cache/
   resilience, event observability, dispatcher retry/backpressure, and public
   compatibility tests.
@@ -52,6 +52,5 @@ needed and keeps no compatibility exports for their former locations.
 
 1. Keep domain behavior in its owner module and shared contracts in their
    canonical foundation crate.
-2. Update the root README, local docs, and `rustok-module.toml` with a core
-   contract change.
+2. Update the root README and local docs with a core contract change.
 3. Update consumer docs whenever a shared behavior changes live semantics.

@@ -3,7 +3,7 @@ name: Pages Page Builder Provider Health
 on:
   push:
     branches:
-      - "**"
+      - main
     paths:
       - ".github/workflows/pages-page-builder-provider-health.yml"
       - "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json"
@@ -131,7 +131,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:

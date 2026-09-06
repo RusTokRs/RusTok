@@ -3,7 +3,6 @@ name: Groups Forum Provider ACL Runtime Evidence
 on:
   pull_request:
     paths:
-      - "Cargo.lock"
       - "apps/server/Cargo.toml"
       - "apps/server/src/services/forum_audience_group_facts.rs"
       - "apps/server/src/services/forum_audience_group_facts/owner_backed_tests.rs"
@@ -23,7 +22,6 @@ on:
     branches:
       - main
     paths:
-      - "Cargo.lock"
       - "apps/server/Cargo.toml"
       - "apps/server/src/services/forum_audience_group_facts.rs"
       - "apps/server/src/services/forum_audience_group_facts/owner_backed_tests.rs"
@@ -45,7 +43,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: groups-forum-provider-acl-runtime-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:

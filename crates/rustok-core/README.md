@@ -2,7 +2,8 @@
 
 ## Purpose
 
-`rustok-core` owns the minimal platform-wide runtime contracts used across RusToK.
+`rustok-core` is a Platform Foundation Crate (shared library), not a platform module (`RusToKModule`).
+It owns the minimal platform-wide runtime contracts used across RusToK.
 Transport-neutral module port contracts are owned by `rustok-api`; `rustok-core`
 does not define or re-export `Port*` types.
 
@@ -38,5 +39,5 @@ does not define or re-export `Port*` types.
 
 ## Docs
 
-- [Module docs](./docs/README.md)
+- [Crate docs](./docs/README.md)
 - [Platform docs index](../../docs/index.md)

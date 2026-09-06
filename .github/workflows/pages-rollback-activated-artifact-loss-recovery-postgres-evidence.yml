@@ -5,8 +5,6 @@ on:
     branches:
       - main
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
       - "crates/rustok-pages/src/**"
       - "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs"
       - "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs"
@@ -19,8 +17,6 @@ on:
       - "docs/modules/pages-rollback-activated-artifact-loss-recovery-postgres-evidence-actualization-2026-08-14.md"
   pull_request:
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
       - "crates/rustok-pages/src/**"
       - "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs"
       - "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs"
@@ -39,7 +35,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages-rollback-activated-artifact-loss-postgres-evidence-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:
