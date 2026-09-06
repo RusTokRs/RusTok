@@ -49,6 +49,28 @@ owner transaction; stale security epochs fail closed and retain evidence when
 no fresh capability grant exists. Leptos and Next admin clients consume the
 same revision/idempotency finalization contract.
 
+The same closeout made transition queries an explicit owner API. Server
+lifecycle and settings guards no longer read `TransitionCheckpointStore`
+directly or ignore storage failures; they use exact-tenant owner queries and
+fail closed. SQLite UUID parent/foreign-key storage is consistently BLOB-backed,
+numeric persistence uses checked conversions, and the write-path verifier now
+rejects host transition-table writes, direct transition-service construction,
+and reintroduction of the deleted status-only recovery transport.
+
+Verified on the current tree by:
+
+- `cargo clippy --locked -p rustok-modules --tests -- -D warnings`.
+- `cargo test --locked -p rustok-modules --lib` (295 passed) and the targeted
+  transition, rollback, data, executor, policy-cache, operations-tool, Rhai,
+  and source-object integration suites (43 passed).
+- `cargo check --locked -p rustok-server -p rustok-admin` and the server
+  GraphQL transition lifecycle/parity suites.
+- `cargo test --locked -p rustok-events`, including canonical committed event
+  digest verification.
+- The architecture, module control-plane write-path, event digest admission,
+  index refresh event-family, and Fly internal-link repository verifiers.
+- `npm run lint -- --quiet` and `npm run typecheck` in `apps/next-admin`.
+
 On 2026-09-04, Separately Signed Operations-Tool Release and Maintenance Operation Ledger were delivered per Section 1 (Item 1782) of the Rollback Plan:
 - `crates/modules/rustok-modules/src/migrations/m20260904_000053_module_operations_tool.rs` created persistent tables:
   - `module_operations_tool_releases`: Ed25519-signed release metadata (`package_digest`, `controller_digest`, `reconciler_digest`, `agent_digest`, `protocol_revision`, `signer_key_digest`).

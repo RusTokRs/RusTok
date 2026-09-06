@@ -30,7 +30,8 @@ around the owner contracts.
   Activation creates both atomically; direct-predecessor rollback updates the
   checkpoint and serving selection in one transaction; convergence requires a
   revision-guarded, idempotent owner command and emits transactional outbox
-  evidence.
+  evidence. Tenant lifecycle and settings guards read this state through the
+  owner service and fail closed when it is unavailable.
 - Expose a transport-neutral marketplace catalog port for host-composed local
   and remote providers, plus an owner lifecycle snapshot for registry owners,
   requests, releases, validation gates, events, moderation policy, and

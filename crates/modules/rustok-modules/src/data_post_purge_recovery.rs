@@ -20,20 +20,23 @@ use crate::data::{placeholder, revision_value, uuid_value};
 pub enum PostPurgeRecoveryError {
     #[error("Database error: {0}")]
     Storage(String),
-    #[error("Namespace for `{module_slug}` (rev {revision}) is not in purged state; recovery requires a valid purge tombstone")]
-    NamespaceNotPurged {
-        module_slug: String,
-        revision: u64,
-    },
+    #[error(
+        "Namespace for `{module_slug}` (rev {revision}) is not in purged state; recovery requires a valid purge tombstone"
+    )]
+    NamespaceNotPurged { module_slug: String, revision: u64 },
     #[error("Snapshot `{0}` is not in ready status or not found")]
     SnapshotNotReady(Uuid),
-    #[error("Recovery operation `{recovery_id}` not found or invalid state: expected `{expected}`, found `{actual}`")]
+    #[error(
+        "Recovery operation `{recovery_id}` not found or invalid state: expected `{expected}`, found `{actual}`"
+    )]
     InvalidRecoveryState {
         recovery_id: Uuid,
         expected: String,
         actual: String,
     },
-    #[error("CAS cutover conflict: namespace was modified concurrently or tombstone revision changed")]
+    #[error(
+        "CAS cutover conflict: namespace was modified concurrently or tombstone revision changed"
+    )]
     CasCutoverConflict,
 }
 

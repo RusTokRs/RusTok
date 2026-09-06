@@ -48,7 +48,8 @@ pub fn evaluate_data_upgrade_decision(evidence: &DataUpgradeEvidence) -> DataUpg
             is_irreversible: true,
             rollback_allowed: false,
             can_auto_converge: false,
-            reason: "Point of no return has been committed; rollback is permanently closed".to_string(),
+            reason: "Point of no return has been committed; rollback is permanently closed"
+                .to_string(),
         };
     }
 
@@ -80,7 +81,8 @@ pub fn evaluate_data_upgrade_decision(evidence: &DataUpgradeEvidence) -> DataUpg
             is_irreversible: false,
             rollback_allowed: true,
             can_auto_converge: false,
-            reason: "Cross-revision dynamic data-contract evolution is maintenance-only".to_string(),
+            reason: "Cross-revision dynamic data-contract evolution is maintenance-only"
+                .to_string(),
         };
     }
 

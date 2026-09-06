@@ -99,6 +99,14 @@ Platform-scope artifact and static-distribution events use the root event
 contract's nil-tenant sentinel only through its explicit event allow-list;
 tenant-scoped events fail closed if that sentinel is supplied.
 
+`SeaOrmModuleTransitionService` is the sole host-facing transition query and
+convergence boundary. Its reads enforce exact tenant scope, including the
+platform `None` scope, and host lifecycle/settings guards propagate owner read
+failures instead of treating missing evidence as permission to mutate. SQLite
+stores the service's UUID identities as BLOB values consistently across parent
+and foreign-key columns; revisions, security epochs, and retry counters use
+checked conversions at both persistence edges.
+
 Secret values never cross the artifact capability response. The sandbox-visible
 `platform.secrets.acquire_handle` operation returns only logical reference and
 revision. A host adapter that needs the value must use

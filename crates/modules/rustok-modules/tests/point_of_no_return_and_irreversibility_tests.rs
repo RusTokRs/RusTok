@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use rustok_modules::{
     ConflictKeyKind, DataUpgradeEvidence, DataUpgradePhase, MigrationPreflightReceipt,
-    ModuleTransitionCoordinator, ModuleTransitionState, SecurityEpochRegistry, StartTransitionInput,
-    TransitionCoordinatorError, UpdateMode, evaluate_data_upgrade_decision,
+    ModuleTransitionCoordinator, ModuleTransitionState, SecurityEpochRegistry,
+    StartTransitionInput, TransitionCoordinatorError, UpdateMode, evaluate_data_upgrade_decision,
 };
 use uuid::Uuid;
 
@@ -19,9 +19,12 @@ fn sample_preflight(is_additive_safe: bool) -> MigrationPreflightReceipt {
         } else {
             UpdateMode::Maintenance
         },
-        source_schema_digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-        target_schema_digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111".to_string(),
-        migration_plan_digest: "sha256:2222222222222222222222222222222222222222222222222222222222222222".to_string(),
+        source_schema_digest:
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+        target_schema_digest:
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111".to_string(),
+        migration_plan_digest:
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222".to_string(),
         is_additive_safe,
         settings_guard_installed: true,
         denial_reasons: vec![],
@@ -42,9 +45,9 @@ fn test_data_upgrade_phase_derivation_from_owner_evidence() {
     };
     let decision_safe = evaluate_data_upgrade_decision(&evidence_safe);
     assert_eq!(decision_safe.phase, DataUpgradePhase::Compatible);
-    assert_eq!(decision_safe.is_irreversible, false);
-    assert_eq!(decision_safe.rollback_allowed, true);
-    assert_eq!(decision_safe.can_auto_converge, true);
+    assert!(!decision_safe.is_irreversible);
+    assert!(decision_safe.rollback_allowed);
+    assert!(decision_safe.can_auto_converge);
 
     // 2. Settings incompatibility: one-sided settings forces maintenance pre-cutover
     let evidence_bad_settings = DataUpgradeEvidence {
@@ -55,9 +58,12 @@ fn test_data_upgrade_phase_derivation_from_owner_evidence() {
         point_of_no_return_committed: false,
     };
     let decision_bad_settings = evaluate_data_upgrade_decision(&evidence_bad_settings);
-    assert_eq!(decision_bad_settings.phase, DataUpgradePhase::MaintenancePreCutover);
-    assert_eq!(decision_bad_settings.is_irreversible, false);
-    assert_eq!(decision_bad_settings.can_auto_converge, false);
+    assert_eq!(
+        decision_bad_settings.phase,
+        DataUpgradePhase::MaintenancePreCutover
+    );
+    assert!(!decision_bad_settings.is_irreversible);
+    assert!(!decision_bad_settings.can_auto_converge);
 
     // 3. Destructive migration steps: requires explicit point of no return before execution
     let preflight_destructive = sample_preflight(false);
@@ -69,9 +75,12 @@ fn test_data_upgrade_phase_derivation_from_owner_evidence() {
         point_of_no_return_committed: false,
     };
     let decision_destructive = evaluate_data_upgrade_decision(&evidence_destructive);
-    assert_eq!(decision_destructive.phase, DataUpgradePhase::MaintenancePreCutover);
-    assert_eq!(decision_destructive.is_irreversible, false);
-    assert_eq!(decision_destructive.can_auto_converge, false);
+    assert_eq!(
+        decision_destructive.phase,
+        DataUpgradePhase::MaintenancePreCutover
+    );
+    assert!(!decision_destructive.is_irreversible);
+    assert!(!decision_destructive.can_auto_converge);
 
     // 4. Point of no return committed: irreversibility enforced, rollback forbidden
     let evidence_ponr = DataUpgradeEvidence {
@@ -83,9 +92,9 @@ fn test_data_upgrade_phase_derivation_from_owner_evidence() {
     };
     let decision_ponr = evaluate_data_upgrade_decision(&evidence_ponr);
     assert_eq!(decision_ponr.phase, DataUpgradePhase::PointOfNoReturn);
-    assert_eq!(decision_ponr.is_irreversible, true);
-    assert_eq!(decision_ponr.rollback_allowed, false);
-    assert_eq!(decision_ponr.can_auto_converge, false);
+    assert!(decision_ponr.is_irreversible);
+    assert!(!decision_ponr.rollback_allowed);
+    assert!(!decision_ponr.can_auto_converge);
 }
 
 #[test]
@@ -99,8 +108,11 @@ fn test_commit_point_of_no_return_enforces_fences_and_strictly_forbids_rollback(
         operation_id,
         module_slug: module_slug.clone(),
         tenant_id: Some(tenant_id),
-        predecessor_digest: Some("sha256:predecessor00000000000000000000000000000000000000000000000000000".to_string()),
-        candidate_digest: "sha256:candidate00000000000000000000000000000000000000000000000000000".to_string(),
+        predecessor_digest: Some(
+            "sha256:predecessor00000000000000000000000000000000000000000000000000000".to_string(),
+        ),
+        candidate_digest: "sha256:candidate00000000000000000000000000000000000000000000000000000"
+            .to_string(),
         affected_nodes: vec!["node-a".to_string()],
         preflight_receipt: sample_preflight(true),
         requested_mode: UpdateMode::Automatic,
@@ -110,10 +122,17 @@ fn test_commit_point_of_no_return_enforces_fences_and_strictly_forbids_rollback(
         .expect("start transition");
 
     // Advance to Observing state
-    coordinator.advance_to_prestaging(&security_registry).expect("prestaging");
-    coordinator.advance_to_activating(&security_registry, Duration::from_secs(30)).expect("activating");
+    coordinator
+        .advance_to_prestaging(&security_registry)
+        .expect("prestaging");
+    coordinator
+        .advance_to_activating(&security_registry, Duration::from_secs(30))
+        .expect("activating");
 
-    assert!(matches!(coordinator.state(), ModuleTransitionState::Observing { .. }));
+    assert!(matches!(
+        coordinator.state(),
+        ModuleTransitionState::Observing { .. }
+    ));
 
     // Commit Point of No Return before destructive effect
     let affected_nodes = vec!["node-a".to_string()];
@@ -126,7 +145,10 @@ fn test_commit_point_of_no_return_enforces_fences_and_strictly_forbids_rollback(
         .expect("commit point of no return succeeds");
 
     // 1. Verify state changed to PointOfNoReturn
-    assert!(matches!(coordinator.state(), ModuleTransitionState::PointOfNoReturn { .. }));
+    assert!(matches!(
+        coordinator.state(),
+        ModuleTransitionState::PointOfNoReturn { .. }
+    ));
 
     // 2. Verify traffic, job, and write fences are enforced
     let fences = coordinator.checkpoint().fences.keys();
@@ -139,7 +161,9 @@ fn test_commit_point_of_no_return_enforces_fences_and_strictly_forbids_rollback(
         "JobQueue fence must be present"
     );
     assert!(
-        fences.iter().any(|k| k.kind == ConflictKeyKind::DataMigrationOwner),
+        fences
+            .iter()
+            .any(|k| k.kind == ConflictKeyKind::DataMigrationOwner),
         "DataMigrationOwner (write) fence must be present"
     );
 
@@ -160,5 +184,8 @@ fn test_commit_point_of_no_return_enforces_fences_and_strictly_forbids_rollback(
     coordinator
         .advance_point_of_no_return_to_converged(&security_registry)
         .expect("converge past point of no return");
-    assert!(matches!(coordinator.state(), ModuleTransitionState::Converged { .. }));
+    assert!(matches!(
+        coordinator.state(),
+        ModuleTransitionState::Converged { .. }
+    ));
 }

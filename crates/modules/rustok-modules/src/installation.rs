@@ -436,7 +436,7 @@ pub trait ArtifactRegistry: Send + Sync {
 #[async_trait]
 pub trait ArtifactBlobStore: Send + Sync {
     async fn put_verified(&self, digest: &str, bytes: &[u8])
-        -> Result<(), ModuleInstallationError>;
+    -> Result<(), ModuleInstallationError>;
     async fn get_verified(&self, digest: &str) -> Result<Vec<u8>, ModuleInstallationError>;
 }
 
@@ -3130,17 +3130,15 @@ impl SeaOrmArtifactInstallationStore {
                 "rollback target does not match the activation transition predecessor".into(),
             ));
         }
-        let transition_checkpoint = TransitionCheckpointStore::load_checkpoint(
-            &transaction,
-            transition_operation_id,
-        )
-        .await
-        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
-        .ok_or_else(|| {
-            ModuleInstallationError::AdmissionRevisionConflict(
-                "rollback source transition checkpoint is unavailable".into(),
-            )
-        })?;
+        let transition_checkpoint =
+            TransitionCheckpointStore::load_checkpoint(&transaction, transition_operation_id)
+                .await
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+                .ok_or_else(|| {
+                    ModuleInstallationError::AdmissionRevisionConflict(
+                        "rollback source transition checkpoint is unavailable".into(),
+                    )
+                })?;
         if transition_checkpoint.module_slug != source_slug
             || transition_checkpoint.tenant_id != tenant_id
         {
@@ -5434,54 +5432,64 @@ mod tests {
             )
         };
         assert!(valid().is_ok());
-        assert!(validate_lifecycle_command(
-            Uuid::nil(),
-            &ModuleInstallationScope::Platform,
-            1,
-            &lifecycle_context(None),
-            "operator request",
-        )
-        .is_err());
-        assert!(validate_lifecycle_command(
-            installation_id,
-            &ModuleInstallationScope::Tenant {
-                tenant_id: Uuid::nil(),
-            },
-            1,
-            &lifecycle_context(None),
-            "operator request",
-        )
-        .is_err());
-        assert!(validate_lifecycle_command(
-            installation_id,
-            &ModuleInstallationScope::Platform,
-            1,
-            &ModuleCommandContext {
-                actor_id: Uuid::nil(),
-                ..lifecycle_context(None)
-            },
-            "operator request",
-        )
-        .is_err());
-        assert!(validate_lifecycle_command(
-            installation_id,
-            &ModuleInstallationScope::Platform,
-            1,
-            &ModuleCommandContext {
-                idempotency_key: Uuid::nil(),
-                ..lifecycle_context(None)
-            },
-            "operator request",
-        )
-        .is_err());
-        assert!(validate_lifecycle_command(
-            installation_id,
-            &ModuleInstallationScope::Platform,
-            u64::MAX,
-            &lifecycle_context(None),
-            "operator request",
-        )
-        .is_err());
+        assert!(
+            validate_lifecycle_command(
+                Uuid::nil(),
+                &ModuleInstallationScope::Platform,
+                1,
+                &lifecycle_context(None),
+                "operator request",
+            )
+            .is_err()
+        );
+        assert!(
+            validate_lifecycle_command(
+                installation_id,
+                &ModuleInstallationScope::Tenant {
+                    tenant_id: Uuid::nil(),
+                },
+                1,
+                &lifecycle_context(None),
+                "operator request",
+            )
+            .is_err()
+        );
+        assert!(
+            validate_lifecycle_command(
+                installation_id,
+                &ModuleInstallationScope::Platform,
+                1,
+                &ModuleCommandContext {
+                    actor_id: Uuid::nil(),
+                    ..lifecycle_context(None)
+                },
+                "operator request",
+            )
+            .is_err()
+        );
+        assert!(
+            validate_lifecycle_command(
+                installation_id,
+                &ModuleInstallationScope::Platform,
+                1,
+                &ModuleCommandContext {
+                    idempotency_key: Uuid::nil(),
+                    ..lifecycle_context(None)
+                },
+                "operator request",
+            )
+            .is_err()
+        );
+        assert!(
+            validate_lifecycle_command(
+                installation_id,
+                &ModuleInstallationScope::Platform,
+                u64::MAX,
+                &lifecycle_context(None),
+                "operator request",
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -6121,10 +6129,12 @@ mod tests {
         let digest = sha256_digest(b"retained artifact payload");
         let policy = SnapshotArtifactBlobRetentionPolicy::new(now, HashMap::new());
 
-        assert!(!policy
-            .may_delete(&digest)
-            .await
-            .expect("missing retention rule fails closed"));
+        assert!(
+            !policy
+                .may_delete(&digest)
+                .await
+                .expect("missing retention rule fails closed")
+        );
 
         let policy = SnapshotArtifactBlobRetentionPolicy::new(
             now,
@@ -6139,10 +6149,12 @@ mod tests {
             )]),
         );
 
-        assert!(policy
-            .may_delete(&digest)
-            .await
-            .expect("expired unprotected rule allows deletion"));
+        assert!(
+            policy
+                .may_delete(&digest)
+                .await
+                .expect("expired unprotected rule allows deletion")
+        );
     }
 
     #[tokio::test]
@@ -6747,9 +6759,11 @@ mod tests {
             i64::try_get(&checkpoint_operation, "", "revision").expect("checkpoint revision"),
             3
         );
-        assert!(String::try_get(&checkpoint_operation, "", "request_digest")
-            .expect("checkpoint request digest")
-            .starts_with("sha256:"));
+        assert!(
+            String::try_get(&checkpoint_operation, "", "request_digest")
+                .expect("checkpoint request digest")
+                .starts_with("sha256:")
+        );
         assert_eq!(
             String::try_get(&checkpoint_operation, "", "actor_id").expect("checkpoint actor"),
             checkpoint_actor_id.to_string()

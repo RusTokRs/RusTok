@@ -12,7 +12,10 @@ async fn transition_graphql_contract_matches_the_owner_command_shape() {
         Uuid::new_v4()
     );
     let mut options = ConnectOptions::new(url);
-    options.max_connections(1).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
     let db = Database::connect(options).await.expect("test database");
     let schema = Schema::build(RootQuery, RootMutation, EmptySubscription)
         .data(db)

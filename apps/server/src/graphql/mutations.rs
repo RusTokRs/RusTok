@@ -1668,11 +1668,7 @@ impl RootMutation {
                         "Transition revision is outside the supported range",
                     )
                 })?,
-                context: module_command_context(
-                    auth.user_id,
-                    Some(tenant.id),
-                    idempotency_key,
-                ),
+                context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
                 actor_can_manage_modules: true,
             })
             .await

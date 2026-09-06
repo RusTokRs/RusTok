@@ -5,6 +5,7 @@ use rustok_modules::{
     ModuleControlPlane, ModuleTransitionCheckpoint, ModuleTransitionFinalizeCommand,
     ModuleTransitionServiceError, ModuleTransitionState, ModulesModule, RetentionHoldKind,
     RetentionHoldRecord, RetentionHoldStore, RetentionTarget, TransitionCheckpointStore,
+    TransitionStoreError,
 };
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
@@ -16,7 +17,10 @@ async fn setup_db() -> DatabaseConnection {
         Uuid::new_v4()
     );
     let mut options = ConnectOptions::new(url);
-    options.max_connections(1).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
     let db = Database::connect(options).await.expect("test database");
     let manager = SchemaManager::new(&db);
     for migration in rustok_outbox::OutboxModule.migrations() {
@@ -104,13 +108,45 @@ async fn finalize_is_revision_guarded_idempotent_and_releases_holds_atomically()
     ));
     assert_eq!(first.released_holds, 1);
 
-    let replay = service.finalize(command).await.expect("idempotent replay");
+    let replay = service
+        .finalize(command.clone())
+        .await
+        .expect("idempotent replay");
     assert!(!replay.created);
     assert_eq!(replay.checkpoint, first.checkpoint);
-    assert!(RetentionHoldStore::list_active_holds(&db)
-        .await
-        .expect("holds")
-        .is_empty());
+
+    let mut conflicting_replay = command.clone();
+    conflicting_replay.expected_revision = 2;
+    assert!(matches!(
+        service
+            .finalize(conflicting_replay)
+            .await
+            .expect_err("an idempotency key cannot identify a different payload"),
+        ModuleTransitionServiceError::IdempotencyConflict
+    ));
+
+    let stale_command = ModuleTransitionFinalizeCommand {
+        operation_id,
+        expected_revision: 1,
+        context: context(Uuid::new_v4()),
+        actor_can_manage_modules: true,
+    };
+    assert!(matches!(
+        service
+            .finalize(stale_command)
+            .await
+            .expect_err("a stale revision cannot overwrite the terminal checkpoint"),
+        ModuleTransitionServiceError::RevisionConflict {
+            expected: 1,
+            current: 2
+        }
+    ));
+    assert!(
+        RetentionHoldStore::list_active_holds(&db)
+            .await
+            .expect("holds")
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -142,5 +178,61 @@ async fn finalize_denies_unauthorized_commands_without_mutation() {
             .expect("checkpoint")
             .revision,
         1
+    );
+}
+
+#[tokio::test]
+async fn transition_queries_are_exactly_tenant_scoped() {
+    let db = setup_db().await;
+    let tenant_id = Uuid::new_v4();
+    let mut tenant_checkpoint = checkpoint(Uuid::new_v4());
+    tenant_checkpoint.tenant_id = Some(tenant_id);
+    TransitionCheckpointStore::save_checkpoint(&db, &tenant_checkpoint)
+        .await
+        .expect("tenant checkpoint");
+
+    let service = ModuleControlPlane::new(db).transitions();
+    assert_eq!(
+        service
+            .active_checkpoint_for_module("checkout", Some(tenant_id))
+            .await
+            .expect("tenant query")
+            .expect("tenant checkpoint")
+            .operation_id,
+        tenant_checkpoint.operation_id
+    );
+    assert!(
+        service
+            .active_checkpoint_for_module("checkout", Some(Uuid::new_v4()))
+            .await
+            .expect("other tenant query")
+            .is_none()
+    );
+    assert!(
+        service
+            .active_checkpoint_for_module("checkout", None)
+            .await
+            .expect("platform query")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn checkpoint_store_rejects_values_outside_the_database_contract() {
+    let db = setup_db().await;
+    let mut invalid = checkpoint(Uuid::new_v4());
+    invalid.revision = u64::MAX;
+
+    assert!(matches!(
+        TransitionCheckpointStore::save_checkpoint(&db, &invalid)
+            .await
+            .expect_err("an overflowing revision must fail before persistence"),
+        TransitionStoreError::CorruptData(_)
+    ));
+    assert!(
+        TransitionCheckpointStore::load_checkpoint(&db, invalid.operation_id)
+            .await
+            .expect("checkpoint lookup")
+            .is_none()
     );
 }

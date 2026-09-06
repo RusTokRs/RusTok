@@ -430,7 +430,7 @@ This board defines the canonical transition class, data ownership boundary, pred
 
 | Module slug | Transition Class | Data Boundary Owner | Predecessor Standby | Rollback Eligibility | Recovery Invariants & Guards |
 |---|---|---|---|---|---|
-| `rustok-modules` | `StatefulSchema` | `module_transition_checkpoints`, `module_retention_holds` | Standby DB + CAS Holds | `AutomaticSingleAttempt` | Monotonic Epoch, Zero-Flapping, CAS Hold Ledger |
+| `rustok-modules` | `StatefulSchema` | `module_transition_checkpoints`, `module_retention_holds` | Standby DB + CAS Holds | `AutomaticSingleAttempt` | Exact-tenant owner reads; revision/idempotency CAS; atomic checkpoint, hold release, and outbox; stale epochs fail closed; Zero-Flapping |
 | `cache` | `Stateless` | In-memory Redis keys | Hot-Standby Slot | `AutomaticSingleAttempt` | Safe eviction, no persistent DB migration |
 | `channel` | `Stateless` | Host route mappings | Hot-Standby Slot | `AutomaticSingleAttempt` | Revert traffic pointer without schema effects |
 | `email` | `Stateless` | SMTP/API transport credentials | Hot-Standby Slot | `AutomaticSingleAttempt` | In-flight queue drainage |
