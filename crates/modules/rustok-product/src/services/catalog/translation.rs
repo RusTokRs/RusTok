@@ -63,6 +63,21 @@ pub struct ProductTranslationExactLocaleSnapshot {
     pub target: Option<ProductTranslationExactLocaleRecord>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProductTranslationExactResourceSummary {
+    pub product_id: Uuid,
+    pub product_status: entities::product::ProductStatus,
+    pub resource_revision: String,
+    pub exact_locales: Vec<String>,
+    pub source: ProductTranslationExactLocaleRecord,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProductTranslationExactResourcePage {
+    pub resources: Vec<ProductTranslationExactResourceSummary>,
+    pub next_after: Option<Uuid>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProductTranslationExactLocaleApply {
     pub source_locale: String,
@@ -74,6 +89,7 @@ pub struct ProductTranslationExactLocaleApply {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProductTranslationExactLocaleApplyReceipt {
+    pub operation_id: Option<Uuid>,
     pub product_id: Uuid,
     pub resource_revision: String,
     pub target_revision: String,
@@ -81,6 +97,114 @@ pub struct ProductTranslationExactLocaleApplyReceipt {
 }
 
 impl CatalogService {
+    /// Lists Product resources that own the requested exact source locale.
+    ///
+    /// Archived Products are excluded from translation inventory. Ordering and
+    /// pagination use Product UUIDs, while every summary revision is derived
+    /// from the complete exact-locale Product state owned by this service.
+    pub async fn list_product_translation_exact_resources(
+        &self,
+        tenant_id: Uuid,
+        source_locale: &str,
+        after: Option<Uuid>,
+        limit: u16,
+    ) -> ProductTranslationExactLocaleResult<ProductTranslationExactResourcePage> {
+        let source_locale = canonical_translation_locale(source_locale)?;
+        if limit == 0 {
+            return Err(CommerceError::Validation(
+                "Product translation resource page limit must be positive".to_string(),
+            )
+            .into());
+        }
+
+        let mut query = entities::product_translation::Entity::find()
+            .inner_join(entities::product::Entity)
+            .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
+            .filter(entities::product_translation::Column::Locale.eq(source_locale.clone()))
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .filter(
+                entities::product::Column::Status.ne(entities::product::ProductStatus::Archived),
+            )
+            .order_by_asc(entities::product_translation::Column::ProductId);
+        if let Some(after) = after {
+            query = query.filter(entities::product_translation::Column::ProductId.gt(after));
+        }
+
+        let mut source_rows = query
+            .limit(u64::from(limit) + 1)
+            .all(&self.db)
+            .await?;
+        let has_more = source_rows.len() > usize::from(limit);
+        if has_more {
+            source_rows.truncate(usize::from(limit));
+        }
+        let next_after = has_more
+            .then(|| source_rows.last().map(|row| row.product_id))
+            .flatten();
+        if source_rows.is_empty() {
+            return Ok(ProductTranslationExactResourcePage {
+                resources: Vec::new(),
+                next_after: None,
+            });
+        }
+
+        let product_ids = source_rows
+            .iter()
+            .map(|row| row.product_id)
+            .collect::<Vec<_>>();
+        let products = entities::product::Entity::find()
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .filter(entities::product::Column::Id.is_in(product_ids.clone()))
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|product| (product.id, product))
+            .collect::<HashMap<_, _>>();
+        let translations = load_product_translations_for_products(&self.db, tenant_id, &product_ids)
+            .await?
+            .into_iter()
+            .fold(
+                HashMap::<Uuid, Vec<entities::product_translation::Model>>::new(),
+                |mut grouped, translation| {
+                    grouped
+                        .entry(translation.product_id)
+                        .or_default()
+                        .push(translation);
+                    grouped
+                },
+            );
+
+        let resources = source_rows
+            .into_iter()
+            .map(|source| {
+                let product = products.get(&source.product_id).ok_or_else(|| {
+                    CommerceError::ProductNotFound(source.product_id)
+                })?;
+                let exact = translations.get(&source.product_id).ok_or_else(|| {
+                    ProductTranslationExactLocaleError::SourceLocaleNotFound {
+                        product_id: source.product_id,
+                        locale: source_locale.clone(),
+                    }
+                })?;
+                Ok(ProductTranslationExactResourceSummary {
+                    product_id: source.product_id,
+                    product_status: product.status.clone(),
+                    resource_revision: product_translation_resource_revision(product, exact),
+                    exact_locales: exact
+                        .iter()
+                        .map(|translation| translation.locale.clone())
+                        .collect(),
+                    source: ProductTranslationExactLocaleRecord::from(source),
+                })
+            })
+            .collect::<ProductTranslationExactLocaleResult<Vec<_>>>()?;
+
+        Ok(ProductTranslationExactResourcePage {
+            resources,
+            next_after,
+        })
+    }
+
     /// Reads one exact Product source locale and one exact target locale without
     /// consulting runtime fallback. Revisions are stable SHA-256 owner digests
     /// suitable for the neutral Translation target CAS contract.
@@ -105,8 +229,9 @@ impl CatalogService {
     /// The Product row is locked first so concurrent calls through this owner
     /// primitive serialize on one resource. Only the requested
     /// `product_translations` row is inserted or updated; sibling locale rows
-    /// are never deleted or rewritten. The ProductUpdated outbox event is
-    /// published through the normal Product write transaction before commit.
+    /// are never deleted or rewritten. The ProductUpdated outbox event and any
+    /// active Product owner-operation receipt are completed in the same write
+    /// transaction before commit.
     pub async fn apply_product_translation_exact_locale(
         &self,
         tenant_id: Uuid,
@@ -210,14 +335,17 @@ impl CatalogService {
             DomainEvent::ProductUpdated { product_id },
         )
         .await?;
-        txn.commit().await?;
-
-        Ok(ProductTranslationExactLocaleApplyReceipt {
+        let receipt = ProductTranslationExactLocaleApplyReceipt {
+            operation_id: current_product_operation_id(),
             product_id,
             resource_revision,
             target_revision,
             target,
-        })
+        };
+        record_product_operation_result(&receipt)?;
+        txn.commit().await?;
+
+        Ok(receipt)
     }
 }
 
@@ -247,6 +375,26 @@ where
     Ok(entities::product_translation::Entity::find()
         .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
         .filter(entities::product_translation::Column::ProductId.eq(product_id))
+        .order_by_asc(entities::product_translation::Column::Locale)
+        .all(db)
+        .await?)
+}
+
+async fn load_product_translations_for_products<C>(
+    db: &C,
+    tenant_id: Uuid,
+    product_ids: &[Uuid],
+) -> ProductTranslationExactLocaleResult<Vec<entities::product_translation::Model>>
+where
+    C: ConnectionTrait,
+{
+    if product_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(entities::product_translation::Entity::find()
+        .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
+        .filter(entities::product_translation::Column::ProductId.is_in(product_ids.to_vec()))
+        .order_by_asc(entities::product_translation::Column::ProductId)
         .order_by_asc(entities::product_translation::Column::Locale)
         .all(db)
         .await?)
