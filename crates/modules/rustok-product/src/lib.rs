@@ -67,6 +67,8 @@ pub use services::{
     ProductSalesChannelIndexRelationFreshnessStore,
     ProductSalesChannelIndexRelationFreshnessWriteOutcome, ProductSalesChannelIndexRelationRecord,
     ProductSalesChannelIndexRelationStore, ProductSalesChannelIndexRelationWriteOutcome,
+    ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,
+    ProductTranslationExactLocaleRecord, ProductTranslationExactLocaleSnapshot,
     StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection, product_attribute_boolean_term,
     product_attribute_date_term, product_attribute_datetime_term, product_attribute_decimal_term,
