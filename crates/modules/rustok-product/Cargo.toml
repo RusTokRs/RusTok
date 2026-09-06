@@ -31,6 +31,8 @@ url = "2.5"
 utoipa.workspace = true
 uuid.workspace = true
 validator.workspace = true
+sha2.workspace = true
+hex.workspace = true
 
 [dev-dependencies]
 rustok-test-utils.workspace = true
