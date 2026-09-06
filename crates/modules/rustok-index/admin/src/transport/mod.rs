@@ -4,9 +4,14 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-pub use native_server_adapter::fetch_bootstrap_native;
+pub use native_server_adapter::{
+    cancel_job_native, fetch_bootstrap_native, retry_job_native, trigger_replay_native,
+};
 
-use crate::model::IndexAdminBootstrap;
+use crate::model::{
+    CancelActionResult, CancelJobInput, IndexAdminBootstrap, ReplayActionResult,
+    RetryActionResult, RetryJobInput, TriggerReplayInput,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IndexAdminTransportError {
@@ -32,3 +37,22 @@ impl From<leptos::prelude::ServerFnError> for IndexAdminTransportError {
 pub async fn fetch_bootstrap() -> Result<IndexAdminBootstrap, IndexAdminTransportError> {
     fetch_bootstrap_native().await.map_err(Into::into)
 }
+
+pub async fn trigger_replay(
+    input: TriggerReplayInput,
+) -> Result<ReplayActionResult, IndexAdminTransportError> {
+    trigger_replay_native(input).await.map_err(Into::into)
+}
+
+pub async fn cancel_job(
+    input: CancelJobInput,
+) -> Result<CancelActionResult, IndexAdminTransportError> {
+    cancel_job_native(input).await.map_err(Into::into)
+}
+
+pub async fn retry_job(
+    input: RetryJobInput,
+) -> Result<RetryActionResult, IndexAdminTransportError> {
+    retry_job_native(input).await.map_err(Into::into)
+}
+

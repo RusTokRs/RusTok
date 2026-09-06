@@ -17,13 +17,22 @@ fn index_admin_binds_authenticated_authority_to_the_resolved_tenant() {
         SOURCE
             .matches("leptos_axum::extract::<AuthContext>()")
             .count(),
-        1
+        4,
+        "all four native server endpoints must extract AuthContext"
     );
     assert_eq!(
         SOURCE
             .matches("leptos_axum::extract::<TenantContext>()")
             .count(),
-        1
+        4,
+        "all four native server endpoints must extract TenantContext"
+    );
+    assert_eq!(
+        SOURCE
+            .matches("require_index_admin_tenant_scope(auth.tenant_id, tenant.id)?;")
+            .count(),
+        4,
+        "all four native server endpoints must enforce require_index_admin_tenant_scope"
     );
     assert!(SOURCE.contains("if auth_tenant_id == resolved_tenant_id"));
     assert!(SOURCE.contains("Index admin access is denied"));
