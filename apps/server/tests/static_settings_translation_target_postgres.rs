@@ -1,4 +1,8 @@
-use std::{collections::{BTreeMap, BTreeSet, HashMap}, future::Future, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    future::Future,
+    time::Duration,
+};
 
 use rustok_api::TenantLocale;
 use rustok_migrations::Migrator;
@@ -271,14 +275,7 @@ async fn seed_tenant(database: &DatabaseConnection, tenant_id: Uuid) -> TestResu
 
 async fn seed_source_settings(database: &DatabaseConnection, tenant_id: Uuid) -> TestResult<()> {
     let idempotency_key = Uuid::new_v4();
-    StaticTenantLifecycleStore::claim(
-        database,
-        tenant_id,
-        MODULE_SLUG,
-        0,
-        idempotency_key,
-    )
-    .await?;
+    StaticTenantLifecycleStore::claim(database, tenant_id, MODULE_SLUG, 0, idempotency_key).await?;
 
     let write_result = database
         .execute_raw(Statement::from_sql_and_values(
@@ -294,24 +291,15 @@ async fn seed_source_settings(database: &DatabaseConnection, tenant_id: Uuid) ->
         ))
         .await;
     if let Err(error) = write_result {
-        let _ = StaticTenantLifecycleStore::release(
-            database,
-            tenant_id,
-            MODULE_SLUG,
-            idempotency_key,
-        )
-        .await;
+        let _ =
+            StaticTenantLifecycleStore::release(database, tenant_id, MODULE_SLUG, idempotency_key)
+                .await;
         return Err(error.into());
     }
 
-    let revision = StaticTenantLifecycleStore::advance(
-        database,
-        tenant_id,
-        MODULE_SLUG,
-        0,
-        idempotency_key,
-    )
-    .await?;
+    let revision =
+        StaticTenantLifecycleStore::advance(database, tenant_id, MODULE_SLUG, 0, idempotency_key)
+            .await?;
     StaticTenantLifecycleStore::release(database, tenant_id, MODULE_SLUG, idempotency_key).await?;
     if revision != 1 {
         return Err(format!("unexpected seeded Settings owner revision: {revision}").into());
@@ -348,7 +336,10 @@ fn patch_for_snapshot(
     suffix: &str,
 ) -> TestResult<TranslationPatchRequest> {
     let revisions = identity.revisions_for_snapshot(snapshot)?;
-    let field = snapshot.fields.first().ok_or("Settings source field is missing")?;
+    let field = snapshot
+        .fields
+        .first()
+        .ok_or("Settings source field is missing")?;
     Ok(TranslationPatchRequest {
         identity: identity.resource().clone(),
         source_locale: TenantLocale::new(snapshot.source_locale.clone())?,
