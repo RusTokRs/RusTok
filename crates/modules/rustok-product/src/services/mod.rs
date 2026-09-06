@@ -17,6 +17,7 @@ pub use catalog::{
     ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,
     ProductTranslationExactLocaleError, ProductTranslationExactLocaleRecord,
     ProductTranslationExactLocaleResult, ProductTranslationExactLocaleSnapshot,
+    ProductTranslationExactResourcePage, ProductTranslationExactResourceSummary,
     StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection,
 };
@@ -46,8 +47,7 @@ pub use index_channel_relation_convergence::{
 };
 pub use index_channel_relation_freshness::{
     MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES, ProductSalesChannelIndexRelationFreshnessError,
-    ProductSalesChannelIndexRelationFreshnessRecord,
-    ProductSalesChannelIndexRelationFreshnessStore,
+    ProductSalesChannelIndexRelationFreshnessRecord, ProductSalesChannelIndexRelationFreshnessStore,
     ProductSalesChannelIndexRelationFreshnessWriteOutcome,
 };
 pub use index_refresh::{
