@@ -5,8 +5,14 @@ pub mod helpers;
 mod projection;
 mod queries;
 mod tags;
+mod translation;
 pub mod types;
 
+pub use translation::{
+    ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,
+    ProductTranslationExactLocaleError, ProductTranslationExactLocaleRecord,
+    ProductTranslationExactLocaleResult, ProductTranslationExactLocaleSnapshot,
+};
 pub use types::{
     AdminProductList, AdminProductListItem, AdminProductListQuery,
     MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter, ProductTagState,
