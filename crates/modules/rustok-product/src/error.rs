@@ -11,12 +11,6 @@ pub enum CommerceError {
     #[error("Product not found: {0}")]
     ProductNotFound(Uuid),
 
-    #[error("Product translation source locale not found: {locale} for product {product_id}")]
-    TranslationSourceLocaleNotFound { product_id: Uuid, locale: String },
-
-    #[error("Product translation {revision} revision conflict")]
-    TranslationRevisionConflict { revision: &'static str },
-
     #[error("Duplicate handle: {handle} already exists for locale {locale}")]
     DuplicateHandle { handle: String, locale: String },
 
