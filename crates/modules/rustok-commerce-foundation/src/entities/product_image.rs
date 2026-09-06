@@ -9,7 +9,6 @@ pub struct Model {
     pub product_id: Uuid,
     pub media_id: Uuid,
     pub position: i32,
-    pub alt_text: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -184,7 +184,6 @@ impl CatalogService {
             },
         )?;
 
-        // Group prices by variant_id
         let mut prices_by_variant: HashMap<
             Uuid,
             Vec<rustok_pricing_persistence::entities::price::Model>,
@@ -446,6 +445,9 @@ mod tests {
             image_translation(image_id, "fr", None),
         ];
 
-        assert_eq!(resolve_image_alt_text(&translations, "fr", Some("en")), None);
+        assert_eq!(
+            resolve_image_alt_text(&translations, "fr", Some("en")),
+            None
+        );
     }
 }
