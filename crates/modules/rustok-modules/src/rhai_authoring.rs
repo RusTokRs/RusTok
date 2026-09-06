@@ -56,7 +56,9 @@ pub enum RhaiAuthoringError {
     BlobStore(String),
     #[error("Serialization error: {0}")]
     Serialization(String),
-    #[error("Idempotency conflict: package already exists for script `{alloy_script_id}` revision `{alloy_revision}` with differing content")]
+    #[error(
+        "Idempotency conflict: package already exists for script `{alloy_script_id}` revision `{alloy_revision}` with differing content"
+    )]
     IdempotencyConflict {
         alloy_script_id: Uuid,
         alloy_revision: u32,
@@ -180,15 +182,15 @@ impl RhaiAuthoringService {
         }
 
         // 4. Validate schema references
-        if let Some(ref digest) = command.settings_schema_digest {
-            if !command.schema_documents.iter().any(|s| &s.digest == digest) {
-                return Err(RhaiAuthoringError::SchemaDigestNotFound(digest.clone()));
-            }
+        if let Some(ref digest) = command.settings_schema_digest
+            && !command.schema_documents.iter().any(|s| &s.digest == digest)
+        {
+            return Err(RhaiAuthoringError::SchemaDigestNotFound(digest.clone()));
         }
-        if let Some(ref digest) = command.data_schema_digest {
-            if !command.schema_documents.iter().any(|s| &s.digest == digest) {
-                return Err(RhaiAuthoringError::SchemaDigestNotFound(digest.clone()));
-            }
+        if let Some(ref digest) = command.data_schema_digest
+            && !command.schema_documents.iter().any(|s| &s.digest == digest)
+        {
+            return Err(RhaiAuthoringError::SchemaDigestNotFound(digest.clone()));
         }
 
         // 5. Compute deterministic canonical bounded-workspace source object
@@ -323,11 +325,7 @@ impl RhaiAuthoringService {
         }
 
         // 8. Publish canonical bytes into create-only source-CAS
-        let blob_exists = self
-            .blob_store
-            .get_verified(&source_digest)
-            .await
-            .is_ok();
+        let blob_exists = self.blob_store.get_verified(&source_digest).await.is_ok();
 
         let created = if !blob_exists {
             self.blob_store

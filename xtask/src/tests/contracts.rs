@@ -3006,7 +3006,10 @@ fn validate_module_ui_surface_contract_rejects_declared_missing_subcrate() {
 fn validate_module_ui_surface_contract_accepts_wired_existing_admin_subcrate() {
     validate_module_ui_surface_contract(
         "blog",
-        &super::workspace_root().join("crates").join("modules").join("rustok-blog"),
+        &super::workspace_root()
+            .join("crates")
+            .join("modules")
+            .join("rustok-blog"),
         "admin",
         Some("rustok-blog-admin"),
     )

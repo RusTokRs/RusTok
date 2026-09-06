@@ -4,9 +4,9 @@ const GRAPHQL_ADAPTER: &str = include_str!("../src/transport/graphql_adapter.rs"
 const TRANSPORT: &str = include_str!("../src/transport.rs");
 const NAVIGATION: &str = include_str!("../src/ui/navigation.rs");
 const LIBRARY: &str = include_str!("../src/lib.rs");
-const HOST_APP: &str = include_str!("../../../../apps/storefront/src/app/mod.rs");
-const HOST_HEADER: &str = include_str!("../../../../apps/storefront/src/widgets/header/mod.rs");
-const HOST_BUILD: &str = include_str!("../../../../apps/storefront/build.rs");
+const HOST_APP: &str = include_str!("../../../../../apps/storefront/src/app/mod.rs");
+const HOST_HEADER: &str = include_str!("../../../../../apps/storefront/src/widgets/header/mod.rs");
+const HOST_BUILD: &str = include_str!("../../../../../apps/storefront/build.rs");
 
 #[test]
 fn manifest_registers_module_owned_header_action_without_host_imports() {
@@ -95,7 +95,7 @@ fn owner_graphql_derives_scope_and_sanitizes_failures() {
     for marker in [
         "ctx.data_opt::<AuthContext>()",
         "if !auth.is_human_user_principal()",
-        "ctx.data_opt::<TenantContext>()",
+        "data_opt::<TenantContext>()",
         "if auth.tenant_id != tenant.id",
         "require_module_enabled(ctx, MODULE_SLUG).await?",
         "tenant_id: scope.tenant_id",

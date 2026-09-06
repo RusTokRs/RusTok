@@ -13,13 +13,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::ModuleCommandContext;
 use crate::data::configure_tenant_scope;
 use crate::operation_store::{StaticTenantLifecycleStore, StaticTenantLifecycleStoreError};
 use crate::static_settings_localization::{
-    StaticSettingsLocalizedSourceSnapshot, StaticSettingsLocalizationError,
-    StaticSettingsLocalizationRegistry, StaticSettingsLocalizationService,
+    StaticSettingsLocalizationError, StaticSettingsLocalizationRegistry,
+    StaticSettingsLocalizationService, StaticSettingsLocalizedSourceSnapshot,
 };
-use crate::ModuleCommandContext;
 
 const OWNER_SLUG: &str = "modules.static_settings_source_locale";
 const ASSIGN_OPERATION: &str = "assign_source_locale";
@@ -144,13 +144,10 @@ impl StaticSettingsSourceLocaleService {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(|error| database_error(error.to_string()))?;
-        let owner_before = StaticTenantLifecycleStore::snapshot(
-            &transaction,
-            tenant_id,
-            registry.module_slug(),
-        )
-        .await
-        .map_err(map_owner_error)?;
+        let owner_before =
+            StaticTenantLifecycleStore::snapshot(&transaction, tenant_id, registry.module_slug())
+                .await
+                .map_err(map_owner_error)?;
         if owner_before.active_idempotency_key.is_some() {
             return Err(StaticSettingsSourceLocaleError::OwnerOperationInProgress(
                 registry.module_slug().to_string(),
@@ -168,18 +165,15 @@ impl StaticSettingsSourceLocaleService {
                 )
             })?;
         ensure_stored_locale_is_canonical(&record.locale)?;
-        let latest_base_projection_revision = load_latest_base_projection_revision(
-            &transaction,
-            tenant_id,
-            registry.module_slug(),
-        )
-        .await?
-        .ok_or_else(|| {
-            StaticSettingsSourceLocaleError::InconsistentState(
-                "source-locale provenance exists without base-projection change evidence"
-                    .to_string(),
-            )
-        })?;
+        let latest_base_projection_revision =
+            load_latest_base_projection_revision(&transaction, tenant_id, registry.module_slug())
+                .await?
+                .ok_or_else(|| {
+                    StaticSettingsSourceLocaleError::InconsistentState(
+                        "source-locale provenance exists without base-projection change evidence"
+                            .to_string(),
+                    )
+                })?;
         if record.base_projection_revision != latest_base_projection_revision {
             return Err(StaticSettingsSourceLocaleError::SourceLocaleStale {
                 module_slug: registry.module_slug().to_string(),
@@ -188,13 +182,10 @@ impl StaticSettingsSourceLocaleService {
             });
         }
 
-        let owner_after = StaticTenantLifecycleStore::snapshot(
-            &transaction,
-            tenant_id,
-            registry.module_slug(),
-        )
-        .await
-        .map_err(map_owner_error)?;
+        let owner_after =
+            StaticTenantLifecycleStore::snapshot(&transaction, tenant_id, registry.module_slug())
+                .await
+                .map_err(map_owner_error)?;
         if owner_after.active_idempotency_key.is_some()
             || owner_after.revision != owner_before.revision
         {
@@ -272,14 +263,8 @@ impl StaticSettingsSourceLocaleService {
             Ok(transaction) => transaction,
             Err(error) => {
                 let error = database_error(error);
-                abandon_claim_and_fail(
-                    &self.db,
-                    registry.module_slug(),
-                    &command,
-                    lease,
-                    &error,
-                )
-                .await?;
+                abandon_claim_and_fail(&self.db, registry.module_slug(), &command, lease, &error)
+                    .await?;
                 return Err(error);
             }
         };
@@ -288,14 +273,15 @@ impl StaticSettingsSourceLocaleService {
             configure_tenant_scope(&transaction, command.tenant_id)
                 .await
                 .map_err(|error| database_error(error.to_string()))?;
-            let next_owner_revision = command
-                .expected_owner_revision
-                .checked_add(1)
-                .ok_or_else(|| {
-                    StaticSettingsSourceLocaleError::InconsistentState(
-                        "static Settings owner revision overflow".to_string(),
-                    )
-                })?;
+            let next_owner_revision =
+                command
+                    .expected_owner_revision
+                    .checked_add(1)
+                    .ok_or_else(|| {
+                        StaticSettingsSourceLocaleError::InconsistentState(
+                            "static Settings owner revision overflow".to_string(),
+                        )
+                    })?;
 
             persist_source_locale(
                 &transaction,
@@ -356,14 +342,8 @@ impl StaticSettingsSourceLocaleService {
             }
             Err(error) => {
                 let _ = transaction.rollback().await;
-                abandon_claim_and_fail(
-                    &self.db,
-                    registry.module_slug(),
-                    &command,
-                    lease,
-                    &error,
-                )
-                .await?;
+                abandon_claim_and_fail(&self.db, registry.module_slug(), &command, lease, &error)
+                    .await?;
                 Err(error)
             }
         }
@@ -606,13 +586,11 @@ fn positive_revision(
 }
 
 fn revision_value(revision: u64) -> Result<sea_orm::Value, StaticSettingsSourceLocaleError> {
-    i64::try_from(revision)
-        .map(Into::into)
-        .map_err(|_| {
-            StaticSettingsSourceLocaleError::InconsistentState(
-                "revision exceeds storage range".to_string(),
-            )
-        })
+    i64::try_from(revision).map(Into::into).map_err(|_| {
+        StaticSettingsSourceLocaleError::InconsistentState(
+            "revision exceeds storage range".to_string(),
+        )
+    })
 }
 
 fn map_owner_error(error: StaticTenantLifecycleStoreError) -> StaticSettingsSourceLocaleError {

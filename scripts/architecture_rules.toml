@@ -51,4 +51,8 @@ explicitly_allowed_paths = [
   "rustok_commerce::entities",
   "rustok_content::entities",
   "rustok_outbox::entity",
+  # Server integration tests seed owner tables directly to exercise durable
+  # reconciliation and locale-generation behavior at the database boundary.
+  "rustok_seo::entities",
+  "rustok_tenant::entities",
 ]

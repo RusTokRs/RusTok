@@ -1,4 +1,5 @@
 use chrono::{Duration, Utc};
+use rustok_core::MigrationSource;
 use rustok_modules::{
     ConflictFenceSet, ModuleTransitionCheckpoint, ModuleTransitionState, RetentionHoldKind,
     RetentionHoldRecord, RetentionHoldStore, RetentionTarget, SecurityEpochRegistry,
@@ -23,6 +24,12 @@ async fn setup_test_db() -> DatabaseConnection {
         .expect("sqlite in-memory connection");
 
     let manager = SchemaManager::new(&db);
+    for migration in rustok_outbox::OutboxModule.migrations() {
+        migration
+            .up(&manager)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in rustok_modules::migrations::migrations() {
         migration
             .up(&manager)
@@ -168,7 +175,7 @@ async fn test_watchdog_active_window_not_prematurely_converged() {
 }
 
 #[tokio::test]
-async fn test_watchdog_epoch_preemption_triggers_single_attempt_recovery() {
+async fn test_watchdog_epoch_preemption_fails_closed_without_claiming_recovery() {
     let db = setup_test_db().await;
     let mut registry = SecurityEpochRegistry::new();
     let stale_epoch = registry.current_epoch();
@@ -205,7 +212,7 @@ async fn test_watchdog_epoch_preemption_triggers_single_attempt_recovery() {
     assert_eq!(updated[0].operation_id, operation_id);
     assert!(matches!(
         updated[0].state,
-        ModuleTransitionState::RecoveredToPredecessor { .. }
+        ModuleTransitionState::FailedClosed { .. }
     ));
-    assert_eq!(updated[0].recovery_attempt_count, 1);
+    assert_eq!(updated[0].recovery_attempt_count, 0);
 }

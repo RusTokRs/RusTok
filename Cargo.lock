@@ -3157,7 +3157,7 @@ dependencies = [
  "convert_case 0.6.0",
  "pathdiff",
  "serde_core",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "winnow 1.0.4",
 ]
 
@@ -8048,9 +8048,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema"
-version = "0.52.1"
+version = "0.53.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93e842fa72fd1e50ca4676a527641c13f5ee0d423ac699bfe1cd2afa3a4fdbac"
+checksum = "ca2ea2207f8ccb34b6d4d041fe9deb08fff3cbc43750012caa2c3d1e860188e4"
 dependencies = [
  "ahash",
  "bytecount",
@@ -8060,12 +8060,12 @@ dependencies = [
  "fraction 0.17.0",
  "getrandom 0.3.4",
  "itoa",
- "jsonschema-regex 0.52.1",
+ "jsonschema-regex 0.53.0",
  "jsonschema-value",
  "num-cmp",
  "num-traits",
  "percent-encoding",
- "referencing 0.52.1",
+ "referencing 0.53.0",
  "regex",
  "serde",
  "serde_json",
@@ -8085,22 +8085,23 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-regex"
-version = "0.52.1"
+version = "0.53.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5d90ea83fa606c96f0b4737ecedf1fa6b624272022edc42039565f8d8af0b78"
+checksum = "5426a01d944d044c9c5e459f603419d1b539358f5496b1041df45a7a86d2d38f"
 dependencies = [
  "regex-syntax",
 ]
 
 [[package]]
 name = "jsonschema-value"
-version = "0.52.1"
+version = "0.53.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da4ab4cbe58181a117d8c3582844ce20b07184319b51ba6d756596c1c451aebc"
+checksum = "65b6ec7deaeaab6320efc3084d8a9e91d5b4985ee36ffffef45dbff9516ff7a8"
 dependencies = [
  "ahash",
  "bytecount",
  "fraction 0.17.0",
+ "getrandom 0.3.4",
  "num-cmp",
  "num-traits",
  "serde_json",
@@ -9279,7 +9280,7 @@ dependencies = [
  "serde_json",
  "syn 2.0.119",
  "tinystr",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
 ]
 
 [[package]]
@@ -9300,7 +9301,7 @@ dependencies = [
  "serde_yaml",
  "syn 2.0.119",
  "tinystr",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
 ]
 
 [[package]]
@@ -11129,9 +11130,9 @@ dependencies = [
 
 [[package]]
 name = "oxipng"
-version = "10.2.0"
+version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f80e5d92fd65b00e3953760e6a7616264a509b6bbee22502e0226774204da1a3"
+checksum = "52a88e3e5c2ad82e691b219e2b45a90eb5a51d26a434c7e191563e957a48e07a"
 dependencies = [
  "indexmap 2.14.0",
  "libdeflater",
@@ -11541,9 +11542,9 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "playwright-rs"
-version = "0.16.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbb9639a7304dd20737039d32d72b237d2a6ddbe01cdc3ab31d9b51896bdb723"
+checksum = "5881d0216c69c013b88c1670791c3d807b4c553d4b4f3f9a35acf9554403360b"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -12833,9 +12834,9 @@ dependencies = [
 
 [[package]]
 name = "referencing"
-version = "0.52.1"
+version = "0.53.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d38a014525040cdc9893361b7419bcf1f43b7ba7055eabaf6d91d6b75caa8b3f"
+checksum = "fb406ba984c08d1b91781d7507d103296cf6dec3256c33c388b468957f4b43bb"
 dependencies = [
  "ahash",
  "fluent-uri",
@@ -13904,7 +13905,7 @@ dependencies = [
  "serde_json",
  "serde_urlencoded",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tower",
  "tracing",
  "uuid",
@@ -13924,7 +13925,7 @@ dependencies = [
  "bytes",
  "chrono",
  "futures-util",
- "jsonschema 0.52.1",
+ "jsonschema 0.53.0",
  "once_cell",
  "reqwest 0.13.4",
  "rhai",
@@ -14016,7 +14017,7 @@ dependencies = [
  "rustok-ai",
  "serde_json",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "uuid",
 ]
 
@@ -14350,7 +14351,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tracing",
  "uuid",
 ]
@@ -14826,7 +14827,7 @@ dependencies = [
  "serde_yaml",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tracing",
  "ulid 3.0.0",
  "url",
@@ -14981,7 +14982,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "hex",
- "jsonschema 0.52.1",
+ "jsonschema 0.53.0",
  "rustok-api",
  "rustok-telemetry",
  "schemars 1.2.2",
@@ -15061,7 +15062,7 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tower",
  "tracing",
  "url",
@@ -15092,7 +15093,7 @@ dependencies = [
  "rustok-ui-transport",
  "serde",
  "serde_json",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "uuid",
 ]
 
@@ -15446,6 +15447,7 @@ dependencies = [
  "rustok-api",
  "rustok-inventory",
  "rustok-outbox",
+ "rustok-product",
  "rustok-ui-core",
  "rustok-ui-i18n-leptos",
  "serde",
@@ -15940,10 +15942,10 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tonic",
  "uuid",
- "wasmparser 0.257.1",
+ "wasmparser 0.258.0",
  "wit-parser 0.258.0",
 ]
 
@@ -15978,7 +15980,7 @@ dependencies = [
  "ed25519-dalek",
  "futures-util",
  "hex",
- "jsonschema 0.52.1",
+ "jsonschema 0.53.0",
  "object_store 0.14.1",
  "oci-distribution",
  "pubgrub",
@@ -16000,7 +16002,7 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "url",
  "uuid",
 ]
@@ -16023,7 +16025,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "uuid",
 ]
 
@@ -16260,7 +16262,7 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
 ]
 
 [[package]]
@@ -16325,7 +16327,7 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tower",
  "tracing",
  "url",
@@ -16354,7 +16356,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "url",
  "uuid",
 ]
@@ -17285,7 +17287,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-stream",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tonic",
  "tower",
  "tower-http 0.7.1",
@@ -17354,7 +17356,7 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tonic",
  "uuid",
 ]
@@ -17432,7 +17434,7 @@ dependencies = [
  "serde_urlencoded",
  "sha2 0.11.0",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tracing",
  "uuid",
  "wasm-bindgen",
@@ -19727,7 +19729,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
@@ -20180,9 +20182,9 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "1.1.4+spec-1.1.0"
+version = "1.1.5+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3aace63f4bbcdfc2c965b059de67119c89c4017a70d633be6c104910f67056f5"
+checksum = "12c0ba9680044b4ce98d391a62094047eada0d64860b80166c39f4a6b5640785"
 dependencies = [
  "indexmap 2.14.0",
  "serde_core",
@@ -21658,19 +21660,6 @@ dependencies = [
 
 [[package]]
 name = "wasmparser"
-version = "0.257.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d92fc335fb6d48f46bda1d8b26b69e28320c15ac3272208333833d6e217e2b4a"
-dependencies = [
- "bitflags 2.13.1",
- "hashbrown 0.17.1",
- "indexmap 2.14.0",
- "semver",
- "serde",
-]
-
-[[package]]
-name = "wasmparser"
 version = "0.258.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9a61719f93a87b16d325921e251800c4833f8fab50fa21c7de73aed50086313"
@@ -21679,6 +21668,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "indexmap 2.14.0",
  "semver",
+ "serde",
 ]
 
 [[package]]
@@ -22586,7 +22576,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "url",
 ]
 

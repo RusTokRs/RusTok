@@ -14,9 +14,7 @@
 //! - `dynamic_artifact_settings_purge`: Explicit guarded deletion of settings for retired installations only.
 
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -111,13 +109,21 @@ pub enum DynamicLifecycleError {
     InstallationNotFound(Uuid),
     #[error("Installation is already retired: {0}")]
     InstallationAlreadyRetired(Uuid),
-    #[error("Installation is not in expected lifecycle status: expected `{expected}`, found `{actual}`")]
+    #[error(
+        "Installation is not in expected lifecycle status: expected `{expected}`, found `{actual}`"
+    )]
     StatusMismatch { expected: String, actual: String },
-    #[error("Stale work generation: command generation {0} does not match active work generation {1}")]
+    #[error(
+        "Stale work generation: command generation {0} does not match active work generation {1}"
+    )]
     StaleWorkGeneration(u64, u64),
-    #[error("Purge denied: installation `{0}` is not retired (purge is strictly prohibited for active or unretired installations)")]
+    #[error(
+        "Purge denied: installation `{0}` is not retired (purge is strictly prohibited for active or unretired installations)"
+    )]
     PurgeDeniedInstallationNotRetired(Uuid),
-    #[error("Foreign publisher denied: publisher `{candidate}` cannot inherit retained data/settings from original publisher `{original}` for slug `{slug}`")]
+    #[error(
+        "Foreign publisher denied: publisher `{candidate}` cannot inherit retained data/settings from original publisher `{original}` for slug `{slug}`"
+    )]
     PublisherContinuityViolation {
         slug: String,
         original: String,
@@ -268,29 +274,37 @@ impl DynamicLifecycleService {
 
         let work_generation = match backend {
             DbBackend::Postgres => {
-                let generation: i64 = row.try_get("", "work_generation")
+                let generation: i64 = row
+                    .try_get("", "work_generation")
                     .map_err(|e| DynamicLifecycleError::Database(e.to_string()))?;
                 generation as u64
             }
             _ => {
-                let generation: i32 = row.try_get("", "work_generation")
+                let generation: i32 = row
+                    .try_get("", "work_generation")
                     .map_err(|e| DynamicLifecycleError::Database(e.to_string()))?;
                 generation as u64
             }
         };
 
         let retired = match backend {
-            DbBackend::Postgres => row.try_get::<bool>("", "retired")
+            DbBackend::Postgres => row
+                .try_get::<bool>("", "retired")
                 .map_err(|e| DynamicLifecycleError::Database(e.to_string()))?,
-            _ => row.try_get::<i32>("", "retired")
-                .map_err(|e| DynamicLifecycleError::Database(e.to_string()))? != 0,
+            _ => {
+                row.try_get::<i32>("", "retired")
+                    .map_err(|e| DynamicLifecycleError::Database(e.to_string()))?
+                    != 0
+            }
         };
 
         let updated_at: DateTime<Utc> = match backend {
-            DbBackend::Postgres => row.try_get("", "updated_at")
+            DbBackend::Postgres => row
+                .try_get("", "updated_at")
                 .map_err(|e| DynamicLifecycleError::Database(e.to_string()))?,
             _ => {
-                let text: String = row.try_get("", "updated_at")
+                let text: String = row
+                    .try_get("", "updated_at")
                     .map_err(|e| DynamicLifecycleError::Database(e.to_string()))?;
                 DateTime::parse_from_rfc3339(&text)
                     .map(|dt| dt.with_timezone(&Utc))
@@ -337,7 +351,9 @@ impl DynamicLifecycleService {
             ))
             .await
             .map_err(|e| DynamicLifecycleError::Database(e.to_string()))?
-            .ok_or_else(|| DynamicLifecycleError::ReleaseNotAdmitted(command.release_digest.clone()))?;
+            .ok_or_else(|| {
+                DynamicLifecycleError::ReleaseNotAdmitted(command.release_digest.clone())
+            })?;
 
         let slug: String = release_row
             .try_get("", "slug")
@@ -355,12 +371,16 @@ impl DynamicLifecycleService {
             .try_get("", "payload_media_type")
             .map_err(|e| DynamicLifecycleError::Database(e.to_string()))?;
 
-        let descriptor: ModuleArtifactDescriptor = serde_json::from_str(&descriptor_json)
-            .map_err(|e| DynamicLifecycleError::Database(format!("Invalid descriptor JSON: {e}")))?;
+        let descriptor: ModuleArtifactDescriptor =
+            serde_json::from_str(&descriptor_json).map_err(|e| {
+                DynamicLifecycleError::Database(format!("Invalid descriptor JSON: {e}"))
+            })?;
 
         // 2. Check publisher continuity on reinstall
         let (data_owner_id, settings_instance_id) = match command.reinstall_choice {
-            Some(ReinstallChoice::AttachRetained { continuity_token: _ }) => {
+            Some(ReinstallChoice::AttachRetained {
+                continuity_token: _,
+            }) => {
                 // Find existing retired installation for this slug
                 let (scope_kind, tenant_id) = match &command.scope {
                     ModuleInstallationScope::Platform => ("platform", None),
@@ -398,31 +418,35 @@ impl DynamicLifecycleService {
                         .try_get("", "publisher_identity")
                         .unwrap_or(None);
 
-                    if let Some(ref orig) = orig_publisher {
-                        if orig != &command.publisher_identity {
-                            return Err(DynamicLifecycleError::PublisherContinuityViolation {
-                                slug,
-                                original: orig.clone(),
-                                candidate: command.publisher_identity.clone(),
-                            });
-                        }
+                    if let Some(ref orig) = orig_publisher
+                        && orig != &command.publisher_identity
+                    {
+                        return Err(DynamicLifecycleError::PublisherContinuityViolation {
+                            slug,
+                            original: orig.clone(),
+                            candidate: command.publisher_identity.clone(),
+                        });
                     }
 
                     let owner_id = match backend {
-                        DbBackend::Postgres => retired_row.try_get::<Uuid>("", "data_owner_id")
+                        DbBackend::Postgres => retired_row
+                            .try_get::<Uuid>("", "data_owner_id")
                             .map_err(|e| DynamicLifecycleError::Database(e.to_string()))?,
                         _ => {
-                            let s: String = retired_row.try_get("", "data_owner_id")
+                            let s: String = retired_row
+                                .try_get("", "data_owner_id")
                                 .map_err(|e| DynamicLifecycleError::Database(e.to_string()))?;
                             Uuid::parse_str(&s).unwrap()
                         }
                     };
 
                     let settings_id = match backend {
-                        DbBackend::Postgres => retired_row.try_get::<Uuid>("", "settings_instance_id")
+                        DbBackend::Postgres => retired_row
+                            .try_get::<Uuid>("", "settings_instance_id")
                             .map_err(|e| DynamicLifecycleError::Database(e.to_string()))?,
                         _ => {
-                            let s: String = retired_row.try_get("", "settings_instance_id")
+                            let s: String = retired_row
+                                .try_get("", "settings_instance_id")
                                 .map_err(|e| DynamicLifecycleError::Database(e.to_string()))?;
                             Uuid::parse_str(&s).unwrap()
                         }
@@ -517,8 +541,14 @@ impl DynamicLifecycleService {
                     stage_id, installation_id, payload_digest, media_type, size_bytes, \
                     verification_evidence, status, revision, committed_at \
                  ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {})",
-                adm_placeholders.0, adm_placeholders.1, adm_placeholders.2, adm_placeholders.3,
-                adm_placeholders.4, adm_placeholders.5, adm_placeholders.6, adm_placeholders.7,
+                adm_placeholders.0,
+                adm_placeholders.1,
+                adm_placeholders.2,
+                adm_placeholders.3,
+                adm_placeholders.4,
+                adm_placeholders.5,
+                adm_placeholders.6,
+                adm_placeholders.7,
                 adm_placeholders.8
             ),
             vec![
@@ -551,7 +581,10 @@ impl DynamicLifecycleService {
                 "INSERT INTO module_artifact_work_generations (\
                     installation_id, work_generation, retired, retired_at, updated_at \
                  ) VALUES ({}, {}, {}, {}, {})",
-                gen_placeholders.0, gen_placeholders.1, gen_placeholders.2, gen_placeholders.3,
+                gen_placeholders.0,
+                gen_placeholders.1,
+                gen_placeholders.2,
+                gen_placeholders.3,
                 gen_placeholders.4
             ),
             vec![
@@ -645,7 +678,9 @@ impl DynamicLifecycleService {
         // 1. Verify work generation and non-retired state
         let work_gen = self.get_work_generation(command.installation_id).await?;
         if work_gen.retired {
-            return Err(DynamicLifecycleError::InstallationAlreadyRetired(command.installation_id));
+            return Err(DynamicLifecycleError::InstallationAlreadyRetired(
+                command.installation_id,
+            ));
         }
         if work_gen.work_generation != command.expected_work_generation {
             return Err(DynamicLifecycleError::StaleWorkGeneration(
@@ -752,7 +787,9 @@ impl DynamicLifecycleService {
         // 1. Verify work generation and non-retired state
         let work_gen = self.get_work_generation(command.installation_id).await?;
         if work_gen.retired {
-            return Err(DynamicLifecycleError::InstallationAlreadyRetired(command.installation_id));
+            return Err(DynamicLifecycleError::InstallationAlreadyRetired(
+                command.installation_id,
+            ));
         }
         if work_gen.work_generation != command.expected_work_generation {
             return Err(DynamicLifecycleError::StaleWorkGeneration(
@@ -840,7 +877,9 @@ impl DynamicLifecycleService {
         // 1. Verify work generation and non-retired state
         let work_gen = self.get_work_generation(command.installation_id).await?;
         if work_gen.retired {
-            return Err(DynamicLifecycleError::InstallationAlreadyRetired(command.installation_id));
+            return Err(DynamicLifecycleError::InstallationAlreadyRetired(
+                command.installation_id,
+            ));
         }
         if work_gen.work_generation != command.expected_work_generation {
             return Err(DynamicLifecycleError::StaleWorkGeneration(
@@ -900,7 +939,7 @@ impl DynamicLifecycleService {
                     "UPDATE module_artifact_work_generations \
                      SET work_generation = {}, retired = {}, retired_at = {}, updated_at = {} \
                      WHERE installation_id = {} AND work_generation = {}",
-                    p.0, p.1, p.2, p.3, p.4, (work_gen.work_generation as i64).to_string()
+                    p.0, p.1, p.2, p.3, p.4, work_gen.work_generation as i64
                 ),
                 vec![
                     (next_work_generation as i64).into(),

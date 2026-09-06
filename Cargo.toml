@@ -141,7 +141,7 @@ criterion = { version = "0.8", features = ["html_reports"] }
 
 # Property-based testing
 proptest = "1.11"
-playwright-rs = "0.16"
+playwright-rs = "0.17"
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }
@@ -208,7 +208,7 @@ jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 rand = "0.10.1"
 password-hash = "0.6"
 sha2 = "0.11"
-wasmparser = "0.257"
+wasmparser = "0.258"
 wit-parser = "0.258"
 wit-bindgen = "0.61.1"
 oci-distribution = "0.11.0"

@@ -228,6 +228,18 @@
       "localizedMetadataFallbackLabel": "Резервная локаль метаданных",
       "localizedMetadataSave": "Сохранить локализованные метаданные"
     },
+    "internalLink": {
+      "title": "Internal page link",
+      "description": "Link the selected component to another page in this project using locale-aware routing.",
+      "empty": "Select a component to configure an internal page link.",
+      "targetLabel": "Target page",
+      "basePathLabel": "Base path",
+      "queryLabel": "Query string",
+      "fragmentLabel": "Fragment",
+      "fallbackLabel": "Fallback URL",
+      "save": "Save internal link",
+      "remove": "Remove internal link"
+    },
     "ssrAssets": {
       "title": "SSR-ресурсы",
       "description": "Создавайте, удаляйте и назначайте ресурсы проекта через защищённый ревизией SSR endpoint намерений.",

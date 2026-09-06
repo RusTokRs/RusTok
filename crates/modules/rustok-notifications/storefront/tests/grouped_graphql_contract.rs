@@ -4,7 +4,7 @@ const OWNER_CARGO: &str = include_str!("../../Cargo.toml");
 const STOREFRONT_GRAPHQL: &str = include_str!("../src/transport/graphql_adapter.rs");
 const STOREFRONT_TRANSPORT: &str = include_str!("../src/transport.rs");
 const STOREFRONT_UI: &str = include_str!("../src/ui/leptos.rs");
-const SERVER_CARGO: &str = include_str!("../../../../apps/server/Cargo.toml");
+const SERVER_CARGO: &str = include_str!("../../../../../apps/server/Cargo.toml");
 
 #[test]
 fn manifest_composes_owner_runtime_data_without_host_registry_code() {
@@ -41,7 +41,7 @@ fn grouped_owner_queries_derive_identity_and_delegate_to_storefront_port() {
         "if !auth.is_human_user_principal()",
         "if auth.tenant_id != tenant.id",
         "actor: auth.port_actor()",
-        ".with_deadline(GRAPHQL_READ_DEADLINE)",
+        ".with_deadline(deadline)",
         ".with_channel(\"storefront\")",
     ] {
         assert!(

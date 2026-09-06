@@ -42,15 +42,21 @@ pub enum ExecutorReadinessError {
     InvalidFingerprint(String),
     #[error("Invalid pool identity: {0}")]
     InvalidPoolIdentity(String),
-    #[error("Isolated worker execution is required by owner policy, but pool placement is in-process (in-process fallback is strictly prohibited)")]
+    #[error(
+        "Isolated worker execution is required by owner policy, but pool placement is in-process (in-process fallback is strictly prohibited)"
+    )]
     IsolatedWorkerRequired,
     #[error("Missing or invalid placement attestation for isolated worker pool")]
     MissingWorkerAttestation,
     #[error("Missing declared capability route: {0}")]
     MissingCapabilityRoute(String),
-    #[error("Engine or configuration changed: previous readiness receipt invalidated (receipt fingerprint `{0}` != active fingerprint `{1}`)")]
+    #[error(
+        "Engine or configuration changed: previous readiness receipt invalidated (receipt fingerprint `{0}` != active fingerprint `{1}`)"
+    )]
     EngineFingerprintMismatch(String, String),
-    #[error("Stale pool generation: receipt generation {0} does not match current pool generation {1} (smoke readiness must repeat on generation change)")]
+    #[error(
+        "Stale pool generation: receipt generation {0} does not match current pool generation {1} (smoke readiness must repeat on generation change)"
+    )]
     StalePoolGeneration(u64, u64),
     #[error("Smoke binding execution failed: {0}")]
     SmokeExecutionFailed(String),
@@ -85,7 +91,9 @@ impl RuntimeFingerprint {
         hasher.update(
             format!(
                 "isolated_worker_image:{}\n",
-                self.isolated_worker_image_digest.as_deref().unwrap_or("none")
+                self.isolated_worker_image_digest
+                    .as_deref()
+                    .unwrap_or("none")
             )
             .as_bytes(),
         );
@@ -110,12 +118,12 @@ impl RuntimeFingerprint {
                 "engine_config_revision must not be empty".to_string(),
             ));
         }
-        if let Some(ref image) = self.isolated_worker_image_digest {
-            if !valid_digest(image) {
-                return Err(ExecutorReadinessError::InvalidFingerprint(
-                    "isolated_worker_image_digest must be a valid sha256 digest".to_string(),
-                ));
-            }
+        if let Some(ref image) = self.isolated_worker_image_digest
+            && !valid_digest(image)
+        {
+            return Err(ExecutorReadinessError::InvalidFingerprint(
+                "isolated_worker_image_digest must be a valid sha256 digest".to_string(),
+            ));
         }
         if self.target_cpu_contract.trim().is_empty() {
             return Err(ExecutorReadinessError::InvalidFingerprint(
@@ -226,7 +234,11 @@ impl VerifiedPayloadCache {
         }
     }
 
-    pub fn get(&self, payload_digest: &str, fingerprint_digest: &str) -> Option<CachedPreparedPayload> {
+    pub fn get(
+        &self,
+        payload_digest: &str,
+        fingerprint_digest: &str,
+    ) -> Option<CachedPreparedPayload> {
         self.entries
             .read()
             .unwrap()
@@ -235,7 +247,10 @@ impl VerifiedPayloadCache {
     }
 
     pub fn put(&self, entry: CachedPreparedPayload) {
-        let key = (entry.payload_digest.clone(), entry.runtime_fingerprint.clone());
+        let key = (
+            entry.payload_digest.clone(),
+            entry.runtime_fingerprint.clone(),
+        );
         self.entries.write().unwrap().insert(key, entry);
     }
 
@@ -503,7 +518,12 @@ impl ExecutorReadinessService {
                     (receipt.pool_generation as i64).into(),
                     placement_str.into(),
                     (receipt.placement_policy_revision as i64).into(),
-                    (if receipt.capability_routes_verified { 1i32 } else { 0i32 }).into(),
+                    (if receipt.capability_routes_verified {
+                        1i32
+                    } else {
+                        0i32
+                    })
+                    .into(),
                     (if receipt.smoke_passed { 1i32 } else { 0i32 }).into(),
                     receipt.evaluated_at.to_rfc3339().into(),
                 ],
@@ -511,7 +531,7 @@ impl ExecutorReadinessService {
             _ => {
                 return Err(ExecutorReadinessError::Store(
                     "Unsupported database backend".to_string(),
-                ))
+                ));
             }
         };
 
@@ -570,7 +590,7 @@ impl ExecutorReadinessService {
             _ => {
                 return Err(ExecutorReadinessError::Store(
                     "Unsupported database backend".to_string(),
-                ))
+                ));
             }
         };
 
@@ -585,24 +605,52 @@ impl ExecutorReadinessService {
             None => return Ok(None),
         };
 
-        let id_str: String = row.try_get("", "id").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
-        let op_str: String = row.try_get("", "operation_id").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
-        let inst_str: String = row.try_get("", "installation_id").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
-        let placement_str: String = row.try_get("", "placement").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
-        let pool_gen: i64 = row.try_get("", "pool_generation").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
-        let pol_rev: i64 = row.try_get("", "placement_policy_revision").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
+        let id_str: String = row
+            .try_get("", "id")
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
+        let op_str: String = row
+            .try_get("", "operation_id")
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
+        let inst_str: String = row
+            .try_get("", "installation_id")
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
+        let placement_str: String = row
+            .try_get("", "placement")
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
+        let pool_gen: i64 = row
+            .try_get("", "pool_generation")
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
+        let pol_rev: i64 = row
+            .try_get("", "placement_policy_revision")
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
         let routes_verified = match backend {
-            DbBackend::Postgres => row.try_get::<bool>("", "capability_routes_verified").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            _ => row.try_get::<i32>("", "capability_routes_verified").map_err(|e| ExecutorReadinessError::Store(e.to_string()))? != 0,
+            DbBackend::Postgres => row
+                .try_get::<bool>("", "capability_routes_verified")
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            _ => {
+                row.try_get::<i32>("", "capability_routes_verified")
+                    .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?
+                    != 0
+            }
         };
         let smoke_passed = match backend {
-            DbBackend::Postgres => row.try_get::<bool>("", "smoke_passed").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            _ => row.try_get::<i32>("", "smoke_passed").map_err(|e| ExecutorReadinessError::Store(e.to_string()))? != 0,
+            DbBackend::Postgres => row
+                .try_get::<bool>("", "smoke_passed")
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            _ => {
+                row.try_get::<i32>("", "smoke_passed")
+                    .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?
+                    != 0
+            }
         };
         let evaluated_at = match backend {
-            DbBackend::Postgres => row.try_get::<DateTime<Utc>>("", "evaluated_at").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            DbBackend::Postgres => row
+                .try_get::<DateTime<Utc>>("", "evaluated_at")
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
             _ => {
-                let s: String = row.try_get("", "evaluated_at").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
+                let s: String = row
+                    .try_get("", "evaluated_at")
+                    .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
                 DateTime::parse_from_rfc3339(&s)
                     .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?
                     .with_timezone(&Utc)
@@ -615,13 +663,24 @@ impl ExecutorReadinessService {
         };
 
         Ok(Some(ExecutorSmokeReceipt {
-            id: Uuid::parse_str(&id_str).map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            operation_id: Uuid::parse_str(&op_str).map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            installation_id: Uuid::parse_str(&inst_str).map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            release_digest: row.try_get("", "release_digest").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            payload_digest: row.try_get("", "payload_digest").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            runtime_fingerprint: row.try_get("", "runtime_fingerprint").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
-            pool_id: row.try_get("", "pool_id").map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            id: Uuid::parse_str(&id_str)
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            operation_id: Uuid::parse_str(&op_str)
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            installation_id: Uuid::parse_str(&inst_str)
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            release_digest: row
+                .try_get("", "release_digest")
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            payload_digest: row
+                .try_get("", "payload_digest")
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            runtime_fingerprint: row
+                .try_get("", "runtime_fingerprint")
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
+            pool_id: row
+                .try_get("", "pool_id")
+                .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?,
             pool_generation: pool_gen as u64,
             placement,
             placement_policy_revision: pol_rev as u64,
@@ -655,7 +714,12 @@ impl ExecutorReadinessService {
 
             // Candidate check
             let candidate_receipt = self
-                .get_receipt(candidate_release_digest, &pool.pool_id, pool.pool_generation, &fp)
+                .get_receipt(
+                    candidate_release_digest,
+                    &pool.pool_id,
+                    pool.pool_generation,
+                    &fp,
+                )
                 .await?;
             match candidate_receipt {
                 Some(r) if r.is_valid_for(pool) => {}

@@ -442,6 +442,18 @@ const MODULE_ARTIFACT_ACTIVATED_FIELDS: &[FieldSchema] = &[
     field!("predecessor_installation_id", "uuid", optional),
     field!("revision", "uint64"),
 ];
+const MODULE_TRANSITION_FINALIZED_FIELDS: &[FieldSchema] = &[
+    field!("operation_id", "uuid"),
+    field!("module_slug", "string"),
+    field!("revision", "uint64"),
+    field!("released_holds", "uint64"),
+];
+const MODULE_TRANSITION_FAILED_CLOSED_FIELDS: &[FieldSchema] = &[
+    field!("operation_id", "uuid"),
+    field!("module_slug", "string"),
+    field!("revision", "uint64"),
+    field!("failure_reason", "string"),
+];
 const MODULE_ARTIFACT_REVISION_FIELDS: &[FieldSchema] = &[
     field!("installation_id", "uuid"),
     field!("revision", "uint64"),
@@ -1576,6 +1588,18 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "A module artifact installation was rolled back.",
         fields: MODULE_ARTIFACT_ROLLED_BACK_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.transition.finalized",
+        version: 1,
+        description: "A module transition closed its rollout window and converged.",
+        fields: MODULE_TRANSITION_FINALIZED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.transition.failed_closed",
+        version: 1,
+        description: "A module transition was contained without claiming recovery.",
+        fields: MODULE_TRANSITION_FAILED_CLOSED_FIELDS,
     },
     EventSchema {
         event_type: "module.artifact.uninstalled",

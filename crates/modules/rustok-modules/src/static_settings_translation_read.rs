@@ -178,12 +178,8 @@ impl StaticSettingsTranslationReadService {
             .await
             .map_err(|error| database_error(error.to_string()))?;
 
-        let current_high_water = load_high_watermark(
-            &transaction,
-            request.tenant_id,
-            registry.module_slug(),
-        )
-        .await?;
+        let current_high_water =
+            load_high_watermark(&transaction, request.tenant_id, registry.module_slug()).await?;
         match (request.after_seq, current_high_water) {
             (Some(after_seq), Some(current)) if after_seq > current => {
                 return Err(StaticSettingsTranslationReadError::InvalidCursorBounds);
@@ -274,17 +270,16 @@ impl StaticSettingsTranslationReadService {
         configure_tenant_scope(&transaction, tenant_id)
             .await
             .map_err(|error| database_error(error.to_string()))?;
-        let owner_before = StaticTenantLifecycleStore::snapshot(
-            &transaction,
-            tenant_id,
-            registry.module_slug(),
-        )
-        .await
-        .map_err(map_owner_error)?;
+        let owner_before =
+            StaticTenantLifecycleStore::snapshot(&transaction, tenant_id, registry.module_slug())
+                .await
+                .map_err(map_owner_error)?;
         if owner_before.active_idempotency_key.is_some() {
-            return Err(StaticSettingsTranslationReadError::OwnerOperationInProgress(
-                registry.module_slug().to_string(),
-            ));
+            return Err(
+                StaticSettingsTranslationReadError::OwnerOperationInProgress(
+                    registry.module_slug().to_string(),
+                ),
+            );
         }
         if owner_before.revision != authoritative.source.owner_revision {
             return Err(StaticSettingsTranslationReadError::SnapshotUnstable);
@@ -300,13 +295,10 @@ impl StaticSettingsTranslationReadService {
         let owner_change_seq =
             load_high_watermark(&transaction, tenant_id, registry.module_slug()).await?;
 
-        let owner_after = StaticTenantLifecycleStore::snapshot(
-            &transaction,
-            tenant_id,
-            registry.module_slug(),
-        )
-        .await
-        .map_err(map_owner_error)?;
+        let owner_after =
+            StaticTenantLifecycleStore::snapshot(&transaction, tenant_id, registry.module_slug())
+                .await
+                .map_err(map_owner_error)?;
         if owner_after.active_idempotency_key.is_some()
             || owner_after.revision != owner_before.revision
         {
@@ -372,7 +364,9 @@ async fn load_high_watermark<C: ConnectionTrait>(
             )
         })?;
     let value: Option<i64> = row.try_get("", "max_change_seq").map_err(database_error)?;
-    value.map(|value| positive_u64(value, "change_seq")).transpose()
+    value
+        .map(|value| positive_u64(value, "change_seq"))
+        .transpose()
 }
 
 async fn load_change_rows<C: ConnectionTrait>(
@@ -431,10 +425,14 @@ fn parse_change_row(
     let locale: Option<String> = row.try_get("", "locale").map_err(database_error)?;
 
     let change_kind = match change_kind.as_str() {
-        "base_projection" if field_id.is_none() && locale.is_none() && target_revision.is_none() => {
+        "base_projection"
+            if field_id.is_none() && locale.is_none() && target_revision.is_none() =>
+        {
             StaticSettingsChangeKind::BaseProjection
         }
-        "localized_target" if field_id.is_some() && locale.is_some() && target_revision.is_some() => {
+        "localized_target"
+            if field_id.is_some() && locale.is_some() && target_revision.is_some() =>
+        {
             if field_id.as_deref().is_some_and(str::is_empty) {
                 return Err(StaticSettingsTranslationReadError::InconsistentState(
                     "localized-target change contains an empty field identity".to_string(),
@@ -546,14 +544,11 @@ fn ensure_stored_locale_is_canonical(
     })
 }
 
-fn positive_u64(
-    value: i64,
-    field: &str,
-) -> Result<u64, StaticSettingsTranslationReadError> {
+fn positive_u64(value: i64, field: &str) -> Result<u64, StaticSettingsTranslationReadError> {
     if value <= 0 {
-        return Err(StaticSettingsTranslationReadError::InconsistentState(format!(
-            "{field} must be positive"
-        )));
+        return Err(StaticSettingsTranslationReadError::InconsistentState(
+            format!("{field} must be positive"),
+        ));
     }
     u64::try_from(value).map_err(|_| {
         StaticSettingsTranslationReadError::InconsistentState(format!(

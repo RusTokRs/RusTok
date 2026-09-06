@@ -228,6 +228,18 @@
       "localizedMetadataFallbackLabel": "Metadata fallback locale",
       "localizedMetadataSave": "Save localized metadata"
     },
+    "internalLink": {
+      "title": "Internal page link",
+      "description": "Link the selected component to another page in this project using locale-aware routing.",
+      "empty": "Select a component to configure an internal page link.",
+      "targetLabel": "Target page",
+      "basePathLabel": "Base path",
+      "queryLabel": "Query string",
+      "fragmentLabel": "Fragment",
+      "fallbackLabel": "Fallback URL",
+      "save": "Save internal link",
+      "remove": "Remove internal link"
+    },
     "ssrAssets": {
       "title": "SSR assets",
       "description": "Create, remove, and assign project assets through the revision-protected SSR intent endpoint.",

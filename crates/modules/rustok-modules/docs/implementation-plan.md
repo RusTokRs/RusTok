@@ -35,6 +35,42 @@ boundary and the module-owned admin transport for backend write/build logic.
 
 ## Current verification evidence
 
+On 2026-09-06, dynamic transition persistence was consolidated behind
+`SeaOrmModuleTransitionService`. Activation now aborts unless its checkpoint
+and predecessor retention hold are persisted. Explicit convergence requires
+authenticated `modules:manage` evidence, exact tenant scope, revision CAS, and
+idempotency; its operation receipt, checkpoint, hold release, and outbox event
+commit atomically. `rollbackTenantArtifact` is the sole dynamic serving
+recovery command and now verifies the activation-recorded direct predecessor
+before atomically updating both admissions, the transition checkpoint, and its
+hold. The former `triggerModuleRecovery` transport was deleted because it
+claimed recovery without changing serving state. Watchdog convergence uses the
+owner transaction; stale security epochs fail closed and retain evidence when
+no fresh capability grant exists. Leptos and Next admin clients consume the
+same revision/idempotency finalization contract.
+
+The same closeout made transition queries an explicit owner API. Server
+lifecycle and settings guards no longer read `TransitionCheckpointStore`
+directly or ignore storage failures; they use exact-tenant owner queries and
+fail closed. SQLite UUID parent/foreign-key storage is consistently BLOB-backed,
+numeric persistence uses checked conversions, and the write-path verifier now
+rejects host transition-table writes, direct transition-service construction,
+and reintroduction of the deleted status-only recovery transport.
+
+Verified on the current tree by:
+
+- `cargo clippy --locked -p rustok-modules --tests -- -D warnings`.
+- `cargo test --locked -p rustok-modules --lib` (295 passed) and the targeted
+  transition, rollback, data, executor, policy-cache, operations-tool, Rhai,
+  and source-object integration suites (43 passed).
+- `cargo check --locked -p rustok-server -p rustok-admin` and the server
+  GraphQL transition lifecycle/parity suites.
+- `cargo test --locked -p rustok-events`, including canonical committed event
+  digest verification.
+- The architecture, module control-plane write-path, event digest admission,
+  index refresh event-family, and Fly internal-link repository verifiers.
+- `npm run lint -- --quiet` and `npm run typecheck` in `apps/next-admin`.
+
 On 2026-09-04, Separately Signed Operations-Tool Release and Maintenance Operation Ledger were delivered per Section 1 (Item 1782) of the Rollback Plan:
 - `crates/modules/rustok-modules/src/migrations/m20260904_000053_module_operations_tool.rs` created persistent tables:
   - `module_operations_tool_releases`: Ed25519-signed release metadata (`package_digest`, `controller_digest`, `reconciler_digest`, `agent_digest`, `protocol_revision`, `signer_key_digest`).
@@ -242,33 +278,6 @@ and fails closed when rollback is prohibited. Focused test
 TypeScript typecheck (`npm --prefix apps/next-admin run typecheck`), ESLint
 (`npm --prefix apps/next-admin run lint`), the write-path verifier, UI i18n parity, and
 server tests all passed.
-
-On 2026-09-02, the autonomous transition watchdog and global transition query
-contracts were delivered. `rustok-modules` gained `evaluate_transition_watchdog`,
-automatic convergence on expired observation deadlines, and automatic pruning of
-`ActiveRolloutWindow` GC retention holds. `apps/server` mounted the background
-`ModuleTransitionWatchdog` service tied to graceful `StopHandle` cancellation and
-exposed the `activeModuleTransitions` GraphQL query. Both Next Admin and Leptos
-Admin wired continuous polling of active transitions so `TransitionControlCard`
-mounts automatically without manual URL parameters. Focused watchdog tests in
-`crates/modules/rustok-modules/tests/transition_watchdog_tests.rs` (3 passed), server parity
-check (`cargo check -p rustok-server --test module_graphql_native_parity`), Next Admin
-typecheck/lint, Leptos Admin check (`cargo check -p rustok-admin --lib`), the write-path
-verifier, and UI i18n parity all passed.
-
-On 2026-09-02, Next Admin completed full transport and presentation parity with
-Leptos Admin for the module control plane. The Next Admin frontend now directly
-consumes canonical GraphQL queries/mutations and REST catalog governance endpoints,
-mounts `TransitionControlCard` with observation windows and emergency rollback,
-mounts `MetadataChecklistView` and `GovernanceForm`, and edits tenant settings via
-`ModuleSettingsDialog` with CAS revision checks. Parity integration test
-`apps/server/tests/module_graphql_native_parity.rs` verifies checkpoints, recovery,
-convergence finalization, and retention holds against the server schema.
-TypeScript typecheck (`npm --prefix apps/next-admin run typecheck`), ESLint
-(`npm --prefix apps/next-admin run lint`), the write-path verifier
-(`node scripts/verify/verify-module-control-plane-write-path.mjs`), UI i18n parity
-(`npm run verify:i18n:ui`), and Rust checks (`cargo check -p rustok-modules --lib`
-and `cargo check -p rustok-server --test module_graphql_native_parity`) all passed.
 
 On 2026-09-01, the command-context sweep preserved the authenticated context
 through isolated build queued/completed events, admission reverification,

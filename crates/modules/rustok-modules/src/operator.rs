@@ -11,17 +11,15 @@
 //! - Authorized diagnostic support-bundle retrieval with zero raw pointers/keys/passwords/bypass controls.
 
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    ConflictFenceSet, DynamicLifecycleService, ModuleInstallationScope,
-    RetentionHoldRecord, UpdateMode,
+    ConflictFenceSet, DynamicLifecycleService, ModuleInstallationScope, RetentionHoldRecord,
+    UpdateMode,
 };
 
 /// Canonical presentation state tokens.
@@ -193,7 +191,9 @@ pub struct ModuleSupportBundle {
 pub enum ModuleOperatorError {
     #[error("Module installation not found for slug `{0}`")]
     InstallationNotFound(String),
-    #[error("Module version conflict: publisher `{publisher}` / module `{slug}` version `{version}` already bound to a different digest")]
+    #[error(
+        "Module version conflict: publisher `{publisher}` / module `{slug}` version `{version}` already bound to a different digest"
+    )]
     VersionConflict {
         publisher: String,
         slug: String,
@@ -273,9 +273,8 @@ impl ModuleOperatorService {
             let existing_digest: String = row
                 .try_get("", "release_digest")
                 .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-            let existing_publisher: Option<String> = row
-                .try_get("", "publisher_identity")
-                .unwrap_or(None);
+            let existing_publisher: Option<String> =
+                row.try_get("", "publisher_identity").unwrap_or(None);
 
             if existing_digest != candidate_release_digest {
                 let pub_id = existing_publisher.unwrap_or_else(|| publisher.to_string());
@@ -343,47 +342,52 @@ impl ModuleOperatorService {
             .await
             .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
 
-        let (current_identity, predecessor_identity, data_owner_id, settings_instance_id) = match inst_row {
-            Some(row) => {
-                let manifest_digest: String = row
-                    .try_get("", "manifest_digest")
-                    .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                let version: String = row
-                    .try_get("", "version")
-                    .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                let payload_digest: String = row
-                    .try_get("", "payload_digest")
-                    .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                let owner_id = match backend {
-                    DbBackend::Postgres => row.try_get::<Uuid>("", "data_owner_id")
-                        .map_err(|e| ModuleOperatorError::Database(e.to_string()))?,
-                    _ => {
-                        let s: String = row.try_get("", "data_owner_id")
-                            .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                        Uuid::parse_str(&s).unwrap_or_else(|_| Uuid::new_v4())
-                    }
-                };
-                let settings_id = match backend {
-                    DbBackend::Postgres => row.try_get::<Uuid>("", "settings_instance_id")
-                        .map_err(|e| ModuleOperatorError::Database(e.to_string()))?,
-                    _ => {
-                        let s: String = row.try_get("", "settings_instance_id")
-                            .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
-                        Uuid::parse_str(&s).unwrap_or_else(|_| Uuid::new_v4())
-                    }
-                };
+        let (current_identity, predecessor_identity, data_owner_id, settings_instance_id) =
+            match inst_row {
+                Some(row) => {
+                    let manifest_digest: String = row
+                        .try_get("", "manifest_digest")
+                        .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
+                    let version: String = row
+                        .try_get("", "version")
+                        .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
+                    let payload_digest: String = row
+                        .try_get("", "payload_digest")
+                        .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
+                    let owner_id = match backend {
+                        DbBackend::Postgres => row
+                            .try_get::<Uuid>("", "data_owner_id")
+                            .map_err(|e| ModuleOperatorError::Database(e.to_string()))?,
+                        _ => {
+                            let s: String = row
+                                .try_get("", "data_owner_id")
+                                .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
+                            Uuid::parse_str(&s).unwrap_or_else(|_| Uuid::new_v4())
+                        }
+                    };
+                    let settings_id = match backend {
+                        DbBackend::Postgres => row
+                            .try_get::<Uuid>("", "settings_instance_id")
+                            .map_err(|e| ModuleOperatorError::Database(e.to_string()))?,
+                        _ => {
+                            let s: String = row
+                                .try_get("", "settings_instance_id")
+                                .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
+                            Uuid::parse_str(&s).unwrap_or_else(|_| Uuid::new_v4())
+                        }
+                    };
 
-                let coord = ModuleReleaseCoordinate::Dynamic {
-                    publisher_identity: "platform".to_string(),
-                    module_slug: slug.to_string(),
-                    version,
-                    release_digest: manifest_digest.clone(),
-                    payload_digest,
-                };
-                (Some(coord.clone()), Some(coord), owner_id, settings_id)
-            }
-            None => (None, None, Uuid::new_v4(), Uuid::new_v4()),
-        };
+                    let coord = ModuleReleaseCoordinate::Dynamic {
+                        publisher_identity: "platform".to_string(),
+                        module_slug: slug.to_string(),
+                        version,
+                        release_digest: manifest_digest.clone(),
+                        payload_digest,
+                    };
+                    (Some(coord.clone()), Some(coord), owner_id, settings_id)
+                }
+                None => (None, None, Uuid::new_v4(), Uuid::new_v4()),
+            };
 
         let (has_schema_migration, is_irreversible) = match &candidate_coordinate {
             Some(ModuleReleaseCoordinate::Static { .. }) => (true, false),
@@ -521,59 +525,63 @@ impl ModuleOperatorService {
 
                 let work_generation = match backend {
                     DbBackend::Postgres => {
-                        let g: i64 = row.try_get("", "work_generation")
+                        let g: i64 = row
+                            .try_get("", "work_generation")
                             .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
                         g as u64
                     }
                     _ => {
-                        let g: i32 = row.try_get("", "work_generation")
+                        let g: i32 = row
+                            .try_get("", "work_generation")
                             .map_err(|e| ModuleOperatorError::Database(e.to_string()))?;
                         g as u64
                     }
                 };
 
                 let retired = match backend {
-                    DbBackend::Postgres => row.try_get::<bool>("", "retired")
+                    DbBackend::Postgres => row
+                        .try_get::<bool>("", "retired")
                         .map_err(|e| ModuleOperatorError::Database(e.to_string()))?,
-                    _ => row.try_get::<i32>("", "retired")
-                        .map_err(|e| ModuleOperatorError::Database(e.to_string()))? != 0,
-                };
-
-                let (presentation_state, containment_outcome, diagnostics, recovery_action) = if retired {
-                    (
-                        CanonicalPresentationState::Cancelled,
-                        Some(ContainmentOutcome::Stopped),
-                        vec!["Installation is retired".to_string()],
-                        Some("Reinstall or purge data".to_string()),
-                    )
-                } else {
-                    match adm_status.as_str() {
-                        "active" => (
-                            CanonicalPresentationState::Accepted,
-                            None,
-                            Vec::new(),
-                            None,
-                        ),
-                        "inactive" => (
-                            CanonicalPresentationState::Ready,
-                            None,
-                            vec!["Inactive installation prepared".to_string()],
-                            Some("Enable when ready".to_string()),
-                        ),
-                        "failed" => (
-                            CanonicalPresentationState::RecoveryRequired,
-                            Some(ContainmentOutcome::Fenced),
-                            vec!["Installation failed preflight or activation".to_string()],
-                            Some("Investigate diagnostics and trigger recovery".to_string()),
-                        ),
-                        _ => (
-                            CanonicalPresentationState::Observing,
-                            None,
-                            Vec::new(),
-                            None,
-                        ),
+                    _ => {
+                        row.try_get::<i32>("", "retired")
+                            .map_err(|e| ModuleOperatorError::Database(e.to_string()))?
+                            != 0
                     }
                 };
+
+                let (presentation_state, containment_outcome, diagnostics, recovery_action) =
+                    if retired {
+                        (
+                            CanonicalPresentationState::Cancelled,
+                            Some(ContainmentOutcome::Stopped),
+                            vec!["Installation is retired".to_string()],
+                            Some("Reinstall or purge data".to_string()),
+                        )
+                    } else {
+                        match adm_status.as_str() {
+                            "active" => {
+                                (CanonicalPresentationState::Accepted, None, Vec::new(), None)
+                            }
+                            "inactive" => (
+                                CanonicalPresentationState::Ready,
+                                None,
+                                vec!["Inactive installation prepared".to_string()],
+                                Some("Enable when ready".to_string()),
+                            ),
+                            "failed" => (
+                                CanonicalPresentationState::RecoveryRequired,
+                                Some(ContainmentOutcome::Fenced),
+                                vec!["Installation failed preflight or activation".to_string()],
+                                Some("Investigate diagnostics and trigger recovery".to_string()),
+                            ),
+                            _ => (
+                                CanonicalPresentationState::Observing,
+                                None,
+                                Vec::new(),
+                                None,
+                            ),
+                        }
+                    };
 
                 let coord = ModuleReleaseCoordinate::Dynamic {
                     publisher_identity: "platform".to_string(),
@@ -589,12 +597,15 @@ impl ModuleOperatorService {
                     presentation_state,
                     display_label: presentation_state.display_label().to_string(),
                     containment_outcome,
-                    current_identity: if presentation_state == CanonicalPresentationState::Accepted {
+                    current_identity: if presentation_state == CanonicalPresentationState::Accepted
+                    {
                         Some(coord.clone())
                     } else {
                         None
                     },
-                    candidate_identity: if presentation_state != CanonicalPresentationState::Accepted {
+                    candidate_identity: if presentation_state
+                        != CanonicalPresentationState::Accepted
+                    {
                         Some(coord.clone())
                     } else {
                         None
@@ -611,7 +622,9 @@ impl ModuleOperatorService {
                 module_slug: slug.to_string(),
                 scope: scope.clone(),
                 presentation_state: CanonicalPresentationState::Ready,
-                display_label: CanonicalPresentationState::Ready.display_label().to_string(),
+                display_label: CanonicalPresentationState::Ready
+                    .display_label()
+                    .to_string(),
                 containment_outcome: None,
                 current_identity: None,
                 candidate_identity: None,

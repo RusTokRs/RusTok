@@ -22,11 +22,10 @@ pub mod data_backfill;
 pub mod data_copier;
 pub mod data_object_migration;
 pub mod data_post_purge_recovery;
+mod data_snapshot;
 pub mod data_snapshot_intents;
 pub mod data_snapshot_readiness;
 pub mod data_upgrade;
-pub mod dynamic_lifecycle;
-mod data_snapshot;
 mod definition;
 mod dependency;
 mod dispatcher;
@@ -34,30 +33,31 @@ mod distribution;
 mod distribution_bootstrap;
 mod distribution_release;
 mod distribution_rollout;
+pub mod dynamic_lifecycle;
 mod event_delivery;
 mod execution_audit;
+mod executor;
 pub mod executor_readiness;
 pub mod external_prebuilt_ingress;
-mod executor;
+pub mod gc;
 mod governance;
 mod infrastructure;
 mod installation;
 mod lifecycle;
 mod lifecycle_writer;
-pub mod gc;
 mod marketplace;
 mod marketplace_content;
 mod mcp;
 mod migration_preflight;
 pub mod migrations;
-pub mod oci_admission;
-pub mod operations_tool;
-pub mod operator;
 #[cfg(feature = "oci-distribution")]
 mod oci;
+pub mod oci_admission;
 #[cfg(feature = "oci-distribution")]
 mod oci_transport;
 mod operation_store;
+pub mod operations_tool;
+pub mod operator;
 mod policy;
 mod policy_cache;
 mod policy_revision_consumer;
@@ -70,9 +70,9 @@ mod reconciliation;
 mod recovery;
 mod release_admission_journal;
 mod release_preparation;
-pub mod rhai_authoring;
 mod resolution;
 mod retention;
+pub mod rhai_authoring;
 mod runtime;
 mod runtime_handles;
 mod schedule_delivery;
@@ -89,6 +89,7 @@ mod static_settings_source_locale;
 pub mod static_settings_translation_read;
 mod transition_coordinator;
 mod transition_receipts;
+mod transition_service;
 mod transition_store;
 mod trust;
 pub mod wave_rollout;
@@ -122,53 +123,16 @@ pub use data_snapshot_readiness::{
 pub use data_upgrade::{
     DataUpgradeDecision, DataUpgradeEvidence, DataUpgradePhase, evaluate_data_upgrade_decision,
 };
-pub use migration_preflight::{
-    MigrationPreflightInput, MigrationPreflightReceipt, UpdateMode, evaluate_migration_preflight,
-};
-pub use queue_drain::{
-    ArtifactQueueDrainError, ArtifactQueueDrainReceipt, ArtifactQueueDrainRequest,
-    ArtifactQueueDrainService,
-};
-pub use release_admission_journal::{
-    ReleaseAdmissionIntentJournal, ReleaseAdmissionIntentRecord, ReleaseAdmissionJournalError,
-};
-pub use rhai_authoring::{
-    RhaiAuthoringError, RhaiAuthoringPackageCommand, RhaiAuthoringPublishableRelease,
-    RhaiAuthoringService, RhaiOciPayload, RhaiSourceCasReceipt,
-};
-pub use executor_readiness::{
-    CachedPreparedPayload, EvaluateReadinessCommand, ExecutorPoolIdentity,
-    ExecutorReadinessError, ExecutorReadinessService, ExecutorSmokeReceipt,
-    OwnerPlacementPolicy, ReleaseReadinessTarget, RuntimeFingerprint,
-    VerifiedPayloadCache,
-};
 pub use dynamic_lifecycle::{
     DynamicLifecycleAction, DynamicLifecycleError, DynamicLifecycleService,
-    ExecuteDataPurgeCommand, ExecuteDisableCommand, ExecuteEnableCommand,
-    ExecuteInstallCommand, ExecuteInstallResult, ExecuteSettingsPurgeCommand,
-    ExecuteUninstallCommand, ExecuteUninstallResult, ProductionOperationStatus,
-    ReinstallChoice, WorkGenerationRecord,
+    ExecuteDataPurgeCommand, ExecuteDisableCommand, ExecuteEnableCommand, ExecuteInstallCommand,
+    ExecuteInstallResult, ExecuteSettingsPurgeCommand, ExecuteUninstallCommand,
+    ExecuteUninstallResult, ProductionOperationStatus, ReinstallChoice, WorkGenerationRecord,
 };
-pub use operator::{
-    CanonicalPresentationState, ContainmentOutcome, ModuleBlastRadius, ModuleOperatorError,
-    ModuleOperatorService, ModuleReleaseCoordinate, ModuleStatusProjection,
-    ModuleSupportBundle, ModuleVersionDiff, TransitionEligibility,
-    TransitionPreviewProjection,
-};
-pub use operations_tool::{
-    OperationsToolAssignment, OperationsToolComponent, OperationsToolError,
-    OperationsToolMaintenanceOperation, OperationsToolProtocolMatrix, OperationsToolRelease,
-    OperationsToolReleasePayload, OperationsToolService, OperationsToolSupervisorReport,
-    StartOperationsToolMaintenanceCommand, VerifiedOperationsToolRelease,
-    CURRENT_OPERATIONS_TOOL_PROTOCOL, OPERATIONS_TOOL_RELEASE_CONTRACT,
-};
-pub use wave_rollout::{
-    WaveAssignmentPhase, WaveCohort, WaveNodeAssignment, WaveRollbackReceipt,
-    WaveRolloutCoordinator, WaveRolloutError, WaveRolloutState,
-};
-pub use retention::{
-    ArtifactObjectState, RetentionError, RetentionHoldKind, RetentionHoldLedger,
-    RetentionHoldRecord, RetentionTarget,
+pub use executor_readiness::{
+    CachedPreparedPayload, EvaluateReadinessCommand, ExecutorPoolIdentity, ExecutorReadinessError,
+    ExecutorReadinessService, ExecutorSmokeReceipt, OwnerPlacementPolicy, ReleaseReadinessTarget,
+    RuntimeFingerprint, VerifiedPayloadCache,
 };
 pub use gc::{
     ArtifactDataObjectGcAdapter, BrowserAssetGcAdapter, BuildAttemptGcAdapter, BuildAttemptStatus,
@@ -177,6 +141,36 @@ pub use gc::{
     GcTargetKind, GcTombstoneRecord, GcTombstoneStatus, NodeSlotGcAdapter, OciArtifactGcAdapter,
     OperationsToolGcAdapter, PlatformExecutableCasGcAdapter, SnapshotRestoreCopyGcAdapter,
     SourceCasGcAdapter,
+};
+pub use migration_preflight::{
+    MigrationPreflightInput, MigrationPreflightReceipt, UpdateMode, evaluate_migration_preflight,
+};
+pub use operations_tool::{
+    CURRENT_OPERATIONS_TOOL_PROTOCOL, OPERATIONS_TOOL_RELEASE_CONTRACT, OperationsToolAssignment,
+    OperationsToolComponent, OperationsToolError, OperationsToolMaintenanceOperation,
+    OperationsToolProtocolMatrix, OperationsToolRelease, OperationsToolReleasePayload,
+    OperationsToolService, OperationsToolSupervisorReport, StartOperationsToolMaintenanceCommand,
+    VerifiedOperationsToolRelease,
+};
+pub use operator::{
+    CanonicalPresentationState, ContainmentOutcome, ModuleBlastRadius, ModuleOperatorError,
+    ModuleOperatorService, ModuleReleaseCoordinate, ModuleStatusProjection, ModuleSupportBundle,
+    ModuleVersionDiff, TransitionEligibility, TransitionPreviewProjection,
+};
+pub use queue_drain::{
+    ArtifactQueueDrainError, ArtifactQueueDrainReceipt, ArtifactQueueDrainRequest,
+    ArtifactQueueDrainService,
+};
+pub use release_admission_journal::{
+    ReleaseAdmissionIntentJournal, ReleaseAdmissionIntentRecord, ReleaseAdmissionJournalError,
+};
+pub use retention::{
+    ArtifactObjectState, RetentionError, RetentionHoldKind, RetentionHoldLedger,
+    RetentionHoldRecord, RetentionTarget,
+};
+pub use rhai_authoring::{
+    RhaiAuthoringError, RhaiAuthoringPackageCommand, RhaiAuthoringPublishableRelease,
+    RhaiAuthoringService, RhaiOciPayload, RhaiSourceCasReceipt,
 };
 pub use security_epoch::{
     GlobalSecurityEpoch, SecurityEpochConflictError, SecurityEpochRecord, SecurityEpochRegistry,
@@ -187,14 +181,21 @@ pub use settings_guard::{
 };
 pub use transition_coordinator::{
     ModuleTransitionCheckpoint, ModuleTransitionCoordinator, ModuleTransitionFinalizeCommand,
-    ModuleTransitionRecoveryCommand, ModuleTransitionState, StartTransitionInput,
-    TransitionCoordinatorError, evaluate_transition_watchdog,
+    ModuleTransitionState, StartTransitionInput, TransitionCoordinatorError,
 };
 pub use transition_receipts::{
     TransitionApplyReceipt, TransitionCancellationReceipt, TransitionConfirmationReceipt,
     TransitionPreviewReceipt, TransitionReceiptError, TransitionRollbackReceipt,
 };
+pub use transition_service::{
+    ModuleTransitionFinalizeReceipt, ModuleTransitionServiceError, SeaOrmModuleTransitionService,
+    evaluate_transition_watchdog,
+};
 pub use transition_store::{RetentionHoldStore, TransitionCheckpointStore, TransitionStoreError};
+pub use wave_rollout::{
+    WaveAssignmentPhase, WaveCohort, WaveNodeAssignment, WaveRollbackReceipt,
+    WaveRolloutCoordinator, WaveRolloutError, WaveRolloutState,
+};
 
 use async_trait::async_trait;
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleKind, RusToKModule};
@@ -612,16 +613,6 @@ pub use settings::{
     ModuleSettingSpec, ModuleSettingsValidationError, normalize_module_settings,
     validate_module_settings_schema,
 };
-pub use static_settings_localization::{
-    StaticLocalizedSettingApplyCommand, StaticLocalizedSettingRecord,
-    StaticSettingsLocalizedSourceSnapshot, StaticSettingsLocalizationError,
-    StaticSettingsLocalizationRegistry, StaticSettingsLocalizationService,
-};
-pub use static_settings_source_locale::{
-    StaticSettingsAuthoritativeSourceSnapshot, StaticSettingsSourceLocaleAssignCommand,
-    StaticSettingsSourceLocaleError, StaticSettingsSourceLocaleRecord,
-    StaticSettingsSourceLocaleService,
-};
 pub use static_package::{
     StaticModuleCatalogContract, StaticModuleCatalogValidationError,
     StaticModuleEntrypointContract, StaticModuleEntrypointValidationError, StaticModuleEntrypoints,
@@ -635,6 +626,16 @@ pub use static_package::{
     validate_static_module_catalog_contract, validate_static_module_http_provides_contract,
     validate_static_module_package_contract, validate_static_module_registry_contracts,
     validate_static_module_topology_contract, validate_static_module_ui_i18n_contract,
+};
+pub use static_settings_localization::{
+    StaticLocalizedSettingApplyCommand, StaticLocalizedSettingRecord,
+    StaticSettingsLocalizationError, StaticSettingsLocalizationRegistry,
+    StaticSettingsLocalizationService, StaticSettingsLocalizedSourceSnapshot,
+};
+pub use static_settings_source_locale::{
+    StaticSettingsAuthoritativeSourceSnapshot, StaticSettingsSourceLocaleAssignCommand,
+    StaticSettingsSourceLocaleError, StaticSettingsSourceLocaleRecord,
+    StaticSettingsSourceLocaleService,
 };
 pub use trust::{
     TrustEvidenceKind, TrustEvidenceReference, TrustPolicyRevision, TrustVerificationDecision,

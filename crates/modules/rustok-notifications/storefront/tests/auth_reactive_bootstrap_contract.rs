@@ -1,4 +1,4 @@
-const AUTH_CONTEXT: &str = include_str!("../../../leptos-auth/src/context.rs");
+const AUTH_CONTEXT: &str = include_str!("../../../../ui/leptos-auth/src/context.rs");
 const STOREFRONT_TRANSPORT: &str = include_str!("../src/transport.rs");
 const STOREFRONT_UI: &str = include_str!("../src/ui/leptos.rs");
 
@@ -40,7 +40,7 @@ fn bootstrap_reuses_one_exact_context_snapshot_and_clears_scope_feedback() {
         "async fn load_inbox_snapshot(",
         "context: NotificationStorefrontTransportContext",
         "load_notification_unread_count_selected(context.clone())",
-        "load_notification_group_summaries_selected(context,",
+        "load_notification_group_summaries_selected(",
         "Effect::new(move |_|",
         "let _ = transport_context.get();",
         "set_refresh_feedback.set(None);",

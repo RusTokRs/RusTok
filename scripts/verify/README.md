@@ -671,7 +671,7 @@ Modes:
 
 Important: anti-bypass audit does not require "blindly moving everything to modules". Candidate review is done manually, considering the allowed platform/core layer and frontend-library layer.
 
-**Severity:** MEDIUM→HIGH. Goal — systematically catch drift and record migration-task with correct target layer: domain logic → `crates/rustok-<domain>`, platform/core orchestration → `apps/server` + `crates/libs/rustok-core`, frontend duplication → custom frontend libraries.
+**Severity:** MEDIUM→HIGH. Goal — systematically catch drift and record migration-task with correct target layer: domain logic → `crates/modules/rustok-<domain>`, platform/core orchestration → `apps/server` + `crates/libs/rustok-core`, frontend duplication → custom frontend libraries.
 
 ---
 ### `verify-flex-multilingual-contract.mjs`

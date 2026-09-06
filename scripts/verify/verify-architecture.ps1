@@ -17,3 +17,4 @@ if (-not $python) {
 }
 
 & $python "scripts/architecture_dependency_guard.py"
+exit $LASTEXITCODE

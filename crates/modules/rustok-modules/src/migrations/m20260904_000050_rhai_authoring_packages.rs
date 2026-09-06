@@ -78,9 +78,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let statements = &[
-            "DROP TABLE IF EXISTS module_artifact_rhai_authoring_packages",
-        ];
+        let statements = &["DROP TABLE IF EXISTS module_artifact_rhai_authoring_packages"];
 
         for sql in statements {
             manager

@@ -11,7 +11,7 @@ async-trait.workspace = true
 base64.workspace = true
 hex.workspace = true
 oci-distribution.workspace = true
-rustok-modules.workspace = true
+rustok-modules = { workspace = true, features = ["oci-distribution"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

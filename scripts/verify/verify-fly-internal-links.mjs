@@ -40,7 +40,7 @@ requireMarkers('flyLib', [
   'mod component_visit;',
   'mod interaction_route;',
   'mod safe_url;',
-  'pub use component_visit::{visit_project_components, ComponentVisit};',
+  'pub use component_visit::{ComponentVisit, visit_project_components};',
 ], 'Fly traversal, route, and URL infrastructure');
 requireMarkers('componentVisit', [
   'pub struct ComponentVisit',
