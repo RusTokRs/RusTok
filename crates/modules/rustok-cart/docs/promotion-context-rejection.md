@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This source slice closes the remaining structured-context gap for canonical
 `CartPromotionPort` preview/apply call-context rejection in
-`crates/rustok-cart/src/promotion_guard.rs`.
+`crates/modules/rustok-cart/src/promotion_guard.rs`.
 
 The earlier promotion error-safety work already retained owner, correlation id,
 tenant, channel, owner operation, internal cause, and stable public envelopes.
@@ -50,7 +50,7 @@ This slice does not change:
 - the static public message `cart promotion request context is invalid`;
 - cart not-found, line-item not-found, conflict, storage-unavailable, or tax
   recalculation public envelopes;
-- the legacy compatibility provider in `crates/rustok-cart/src/ports.rs`;
+- the legacy compatibility provider in `crates/modules/rustok-cart/src/ports.rs`;
 - FBA or FFA status.
 
 ## Static evidence

@@ -12,9 +12,9 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const failures = [];
 
-const wrapper = read('crates/rustok-seo/src/services/diagnostics.rs');
-const legacy = read('crates/rustok-seo/src/services/diagnostics_legacy.rs');
-const batch = read('crates/rustok-seo/src/services/diagnostics_batch.rs');
+const wrapper = read('crates/modules/rustok-seo/src/services/diagnostics.rs');
+const legacy = read('crates/modules/rustok-seo/src/services/diagnostics_legacy.rs');
+const batch = read('crates/modules/rustok-seo/src/services/diagnostics_batch.rs');
 
 const requireText = (content, value, label) => {
   if (!content.includes(value)) failures.push(`${label}: missing ${value}`);

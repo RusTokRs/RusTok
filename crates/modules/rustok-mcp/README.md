@@ -82,7 +82,7 @@ and returns source-redacted or source-free results. Those names are guarded from
 generic MCP.
 
 `alloy_scaffold_module` stages a reviewed design scaffold for
-`crates/rustok-<slug>`; it records requested transport surfaces in documentation
+`crates/modules/rustok-<slug>`; it records requested transport surfaces in documentation
 but never creates fake GraphQL or REST handlers. The actual workspace write is
 separated into `alloy_apply_module_scaffold` with explicit confirmation.
 
@@ -113,7 +113,7 @@ separated into `alloy_apply_module_scaffold` with explicit confirmation.
 - owner-owned admin UI slice for persisted Alloy scaffold drafts, MCP audit events, clients,
   policies, and safe token previews:
   - Next package `apps/next-admin/packages/rustok-mcp`
-  - Leptos FFA package `crates/rustok-mcp/admin`
+  - Leptos FFA package `crates/modules/rustok-mcp/admin`
   - Next host route `/dashboard/mcp` and Leptos host route `/mcp` only mount the owner packages and
     do not own MCP transport logic
 - owner-defined `McpManagementPort` with an `apps/server` provider that delegates client,
@@ -212,7 +212,7 @@ persisted drafts from `apps/server` instead of process-local in-memory state.
 ## Interactions
 
 - embedded binary target `rustok-mcp-server`
-- `crates/rustok-core` for registry/services
+- `crates/libs/rustok-core` for registry/services
 - domain and capability crates through their service layers
 - Alloy scaffold contracts when scaffold tools are enabled
 - `apps/server` for persisted MCP clients/tokens/policies/audit and runtime bridge wiring

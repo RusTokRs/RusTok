@@ -4,16 +4,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  activation: "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
-  rollback: "crates/rustok-pages/src/services/page/rollback.rs",
-  test: "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs",
-  repeatedTest: "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json",
-  pagesPlan: "crates/rustok-pages/docs/implementation-plan.md",
-  fba: "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+  activation: "crates/modules/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+  rollback: "crates/modules/rustok-pages/src/services/page/rollback.rs",
+  test: "crates/modules/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs",
+  repeatedTest: "crates/modules/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json",
+  pagesPlan: "crates/modules/rustok-pages/docs/implementation-plan.md",
+  fba: "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
 };
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);

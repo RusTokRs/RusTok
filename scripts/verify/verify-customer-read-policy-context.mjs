@@ -9,9 +9,9 @@ const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
-const customer = read('crates/rustok-customer/src/ports.rs');
-const commerceQuery = read('crates/rustok-commerce/src/graphql/query.rs');
-const document = read('crates/rustok-customer/docs/read-port-policy-context.md');
+const customer = read('crates/modules/rustok-customer/src/ports.rs');
+const commerceQuery = read('crates/modules/rustok-commerce/src/graphql/query.rs');
+const document = read('crates/modules/rustok-customer/docs/read-port-policy-context.md');
 const failures = [];
 
 const requireText = (source, value, label) => {

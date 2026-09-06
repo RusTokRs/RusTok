@@ -42,13 +42,13 @@ Thus old redirects remain auditable history while every formerly public route pr
 
 ## Source evidence
 
-- `crates/rustok-pages/src/migrations/m20260806_000011_create_page_route_publications.rs`;
-- `crates/rustok-pages/src/entities/page_route_publication.rs`;
-- `crates/rustok-pages/src/services/page/route.rs`;
-- `crates/rustok-pages/src/services/page/lifecycle.rs`;
-- `crates/rustok-pages/tests/page_delete_route_tombstone_sqlite.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-delete-route-tombstone-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs`.
+- `crates/modules/rustok-pages/src/migrations/m20260806_000011_create_page_route_publications.rs`;
+- `crates/modules/rustok-pages/src/entities/page_route_publication.rs`;
+- `crates/modules/rustok-pages/src/services/page/route.rs`;
+- `crates/modules/rustok-pages/src/services/page/lifecycle.rs`;
+- `crates/modules/rustok-pages/tests/page_delete_route_tombstone_sqlite.rs`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-delete-route-tombstone-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs`.
 
 ## Deliberate limits
 
@@ -61,7 +61,7 @@ It does not claim historical backfill, PostgreSQL execution, mounted host execut
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs
 cargo test -p rustok-pages \
   --test page_delete_route_tombstone_sqlite -- --nocapture
 cargo test -p rustok-pages \

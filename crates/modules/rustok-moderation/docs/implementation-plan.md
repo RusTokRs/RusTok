@@ -19,7 +19,7 @@ Moderation module implementation.
 Standard rules.
 
 ---
-id: doc://crates/rustok-moderation/docs/implementation-plan.md
+id: doc://crates/modules/rustok-moderation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress

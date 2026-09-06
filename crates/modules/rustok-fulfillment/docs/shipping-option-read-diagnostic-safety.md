@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice closes the payload-diagnostic gap in the owner projection-read boundary implemented by `crates/rustok-fulfillment/src/shipping_option_read.rs`:
+This slice closes the payload-diagnostic gap in the owner projection-read boundary implemented by `crates/modules/rustok-fulfillment/src/shipping_option_read.rs`:
 
 - storefront active-list;
 - storefront/admin single lookup;
@@ -33,8 +33,8 @@ Owner failures retain only a closed static variant and aggregate text, UUID, and
 
 ## Evidence
 
-- `crates/rustok-fulfillment/contracts/evidence/shipping-option-read-diagnostic-safety-source.json`
-- `crates/rustok-fulfillment/contracts/evidence/shipping-option-read-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-fulfillment/contracts/evidence/shipping-option-read-diagnostic-safety-source.json`
+- `crates/modules/rustok-fulfillment/contracts/evidence/shipping-option-read-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-fulfillment-shipping-option-read-port.mjs`
 
 ## Remaining gaps

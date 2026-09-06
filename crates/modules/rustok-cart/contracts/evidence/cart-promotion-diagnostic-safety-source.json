@@ -5,8 +5,8 @@
       "read_cart_promotion_preview",
       "apply_cart_promotion"
     ],
-    "canonical_guard": "crates/rustok-cart/src/promotion_guard.rs",
-    "documentation": "crates/rustok-cart/docs/promotion-diagnostic-safety.md",
+    "canonical_guard": "crates/modules/rustok-cart/src/promotion_guard.rs",
+    "documentation": "crates/modules/rustok-cart/docs/promotion-diagnostic-safety.md",
     "verifier": "scripts/verify/verify-cart-promotion-port-error-safety.mjs"
   },
   "source_contract": {

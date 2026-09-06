@@ -11,11 +11,11 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const boundary = read(
-  'crates/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs',
 );
-const facade = read('crates/rustok-commerce/src/graphql/safe_query.rs');
-const sourceShim = read('crates/rustok-commerce/src/graphql/safe_query/source.rs');
-const resolverSource = read('crates/rustok-commerce/src/graphql/query.rs');
+const facade = read('crates/modules/rustok-commerce/src/graphql/safe_query.rs');
+const sourceShim = read('crates/modules/rustok-commerce/src/graphql/safe_query/source.rs');
+const resolverSource = read('crates/modules/rustok-commerce/src/graphql/query.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {

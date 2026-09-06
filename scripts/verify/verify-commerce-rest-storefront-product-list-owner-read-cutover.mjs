@@ -10,15 +10,15 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const router = read('crates/rustok-commerce/src/controllers/store/mod.rs');
-const mounted = read('crates/rustok-commerce/src/controllers/store/products_owner_list.rs');
-const legacy = read('crates/rustok-commerce/src/controllers/store/products.rs');
-const owner = read('crates/rustok-product/src/storefront_http_read_port.rs');
-const runtime = read('crates/rustok-product/src/runtime.rs');
-const lib = read('crates/rustok-product/src/lib.rs');
-const plan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const router = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
+const mounted = read('crates/modules/rustok-commerce/src/controllers/store/products_owner_list.rs');
+const legacy = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
+const owner = read('crates/modules/rustok-product/src/storefront_http_read_port.rs');
+const runtime = read('crates/modules/rustok-product/src/runtime.rs');
+const lib = read('crates/modules/rustok-product/src/lib.rs');
+const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 const record = read(
-  'crates/rustok-commerce/docs/rest-storefront-product-list-owner-read-cutover-2026-08-10.md',
+  'crates/modules/rustok-commerce/docs/rest-storefront-product-list-owner-read-cutover-2026-08-10.md',
 );
 const failures = [];
 

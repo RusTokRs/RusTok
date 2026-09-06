@@ -85,8 +85,8 @@ all execution evidence remain open.
 ## Static evidence
 
 - `scripts/verify/verify-pricing-write-local-context.mjs`
-- `crates/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source.json`
-- `crates/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source.json`
+- `crates/modules/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source-review.json`
 
 Intended maintainer validation:
 

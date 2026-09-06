@@ -17,6 +17,6 @@ This owner surface does not publish HTTP, GraphQL, native server-function, admin
 
 ## Evidence
 
-Source-ready SQLite coverage is in `tests/inbox_selected_state_sqlite.rs`. The static source contract is `scripts/verify/verify-forum-notification-inbox-selected-state.mjs` and the machine-readable Forum contract is `crates/rustok-forum/contracts/forum-notification-inbox-selected-state.json`.
+Source-ready SQLite coverage is in `tests/inbox_selected_state_sqlite.rs`. The static source contract is `scripts/verify/verify-forum-notification-inbox-selected-state.mjs` and the machine-readable Forum contract is `crates/modules/rustok-forum/contracts/forum-notification-inbox-selected-state.json`.
 
 Tests, formatting, Cargo commands, verifiers, workflows, and CI were not run by the implementation agent.

@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This slice closes only the non-`PortError` public conversion in the compatibility function
 `enrich_cart_delivery_groups` from
-`crates/rustok-commerce/src/storefront_shipping.rs`.
+`crates/modules/rustok-commerce/src/storefront_shipping.rs`.
 
 The function already delegated to `enrich_cart_delivery_groups_typed`, logged the typed
 `FulfillmentError` through the bounded diagnostic introduced by the preceding shipping-enrichment
@@ -87,7 +87,7 @@ The broad canonical correlation-safe mapper cleanup remains unchecked.
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/storefront-shipping-public-envelope-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/storefront-shipping-public-envelope-safety-source-review.json`
 - `scripts/verify/verify-commerce-storefront-shipping-public-envelope-safety.mjs`
 
 ## Validation disclosure

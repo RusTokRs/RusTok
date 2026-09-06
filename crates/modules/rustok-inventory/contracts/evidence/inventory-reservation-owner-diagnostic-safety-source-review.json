@@ -2,15 +2,15 @@
   "schema_version": 1,
   "status": "inventory_reservation_owner_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-inventory/src/reservation_owner_context.rs",
-    "crates/rustok-inventory/src/ports.rs",
-    "crates/rustok-inventory/src/lib.rs",
+    "crates/modules/rustok-inventory/src/reservation_owner_context.rs",
+    "crates/modules/rustok-inventory/src/ports.rs",
+    "crates/modules/rustok-inventory/src/lib.rs",
     "scripts/verify/verify-inventory-reservation-owner-context.mjs",
     "scripts/verify/verify-inventory-reservation-local-context.mjs",
-    "crates/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source.json",
-    "crates/rustok-inventory/docs/reservation-owner-context.md",
-    "crates/rustok-inventory/docs/reservation-local-context.md",
-    "crates/rustok-inventory/docs/implementation-plan.md"
+    "crates/modules/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source.json",
+    "crates/modules/rustok-inventory/docs/reservation-owner-context.md",
+    "crates/modules/rustok-inventory/docs/reservation-local-context.md",
+    "crates/modules/rustok-inventory/docs/implementation-plan.md"
   ],
   "review_findings": {
     "public_facade_preserved": true,

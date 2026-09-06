@@ -12,7 +12,7 @@ This slice closes that source cursor without changing production behavior.
 
 ## Registered route admission packet: ready, unvalidated
 
-`crates/rustok-pages/storefront/tests/native_storefront_channel_admission_sqlite.rs` mounts the real server-function registry through the same wildcard Axum shape used by the server host:
+`crates/modules/rustok-pages/storefront/tests/native_storefront_channel_admission_sqlite.rs` mounts the real server-function registry through the same wildcard Axum shape used by the server host:
 
 ```text
 POST /api/fn/{*fn_name}
@@ -69,9 +69,9 @@ The channel owner retains the current compatibility policy that an absent module
 
 Machine evidence is recorded in:
 
-- `crates/rustok-pages/contracts/evidence/pages-native-storefront-channel-admission-source.json`;
-- `crates/rustok-pages/storefront/tests/native_storefront_channel_admission_sqlite.rs`;
-- `crates/rustok-pages/scripts/verify/verify-pages-native-storefront-channel-admission.mjs`.
+- `crates/modules/rustok-pages/contracts/evidence/pages-native-storefront-channel-admission-source.json`;
+- `crates/modules/rustok-pages/storefront/tests/native_storefront_channel_admission_sqlite.rs`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-channel-admission.mjs`.
 
 The execution list is empty and every validation flag remains false. Tests, Cargo, formatting, verifiers, SQLite/Axum, the Leptos route, workflows and CI were not run.
 
@@ -96,7 +96,7 @@ The next source packet should exercise the registered native route with a verifi
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-channel-admission.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-channel-admission.mjs
 cargo test -p rustok-pages-storefront --features ssr --test native_storefront_channel_admission_sqlite -- --nocapture
 cargo check -p rustok-pages-storefront --features ssr --all-targets
 cargo check -p rustok-channel --all-targets

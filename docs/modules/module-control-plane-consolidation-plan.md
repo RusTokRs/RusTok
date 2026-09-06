@@ -13,9 +13,9 @@ status: verified
 This is the canonical cross-component implementation plan for the RusToK module
 platform. It coordinates work owned locally by:
 
-- `crates/rustok-modules`;
-- `crates/rustok-sandbox`;
-- `crates/alloy`;
+- `crates/modules/rustok-modules`;
+- `crates/workers/rustok-sandbox`;
+- `crates/modules/alloy`;
 - `apps/server`;
 - module management transports and admin hosts;
 - the isolated module build worker.
@@ -1499,9 +1499,9 @@ of an admitted blob.
   It must run with scoped registry/trust access, resource limits, and no module
   runtime capabilities. The owner commits its decision with admission metadata
   and outbox only after every required check passes.
-- Worker implementation lives in `crates/rustok-verification-worker/`. The
+- Worker implementation lives in `crates/workers/rustok-verification-worker/`. The
   typed tonic gRPC listener/client lives in
-  `crates/rustok-verification-transport/` so the owner port remains independent
+  `crates/workers/rustok-verification-transport/` so the owner port remains independent
   of a concrete transport. `ModuleInstaller` requires a `TrustVerifier` and
   policy revisions at construction, calls it before CAS stage/publish, and
   commits the resulting decision as admission evidence. Worker unavailability,
@@ -1943,7 +1943,7 @@ current owner/server cutover. Both default and `--no-default-features`
 diagnostic output after the local build cache was cleared, so they do not count
 as passing server checks. The unrelated dirty `rustok-translation` source still
 contains its earlier unresolved `hash_manifest` reference in
-`crates/rustok-translation/src/progress.rs`; no foreign translation code was
+`crates/modules/rustok-translation/src/progress.rs`; no foreign translation code was
 changed here. The matching `cargo test` target still cannot reach its test
 binary on this host: the unrelated `rustok-storefront` and `rustok-admin`
 cdylib links exhaust linker memory (`LNK1102`). These are environment/worktree
@@ -3550,13 +3550,13 @@ workers, transports, and UI.
   `EffectiveModulePolicyService`; they consume the canonical owner decision and
   no longer reconstruct enablement from `tenant_modules` in routing code.
 - [x] Invalidate/cache decisions using explicit revision dependencies.
-  `crates/rustok-modules` implements the canonical `ModuleEffectivePolicyCache`
+  `crates/modules/rustok-modules` implements the canonical `ModuleEffectivePolicyCache`
   with fail-closed validation bound to `EffectivePolicyCacheIdentity::matches`.
   `ServerRuntimeContext` and `EffectiveModulePolicyService` expose cached policy
   resolution (`resolve_snapshot_cached`, `resolve_cached`) and tenant invalidation.
   Outbox transition events (`module.effective_policy_revision_changed`) trigger
   cache invalidation to prevent stale policy reads across cluster nodes. Verified by
-  `crates/rustok-modules/tests/policy_cache_tests.rs` (5 passed).
+  `crates/modules/rustok-modules/tests/policy_cache_tests.rs` (5 passed).
 - [x] Define the first fail-closed cache identity slice. A resolved owner
   decision produces an `EffectivePolicyCacheIdentity` containing the exact
   tenant and content-addressed policy revision; neither tenant identity, TTL,

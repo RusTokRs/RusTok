@@ -3,11 +3,11 @@
 import { readFile } from 'node:fs/promises';
 
 const files = {
-  source: 'crates/rustok-index/src/application/drift_candidates.rs',
-  applicationMod: 'crates/rustok-index/src/application/mod.rs',
-  doc: 'crates/rustok-index/docs/m6-bounded-drift-candidates.md',
-  plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
-  recheck: 'crates/rustok-index/docs/implementation-recheck-2026-08-06-bounded-drift-candidates.md',
+  source: 'crates/modules/rustok-index/src/application/drift_candidates.rs',
+  applicationMod: 'crates/modules/rustok-index/src/application/mod.rs',
+  doc: 'crates/modules/rustok-index/docs/m6-bounded-drift-candidates.md',
+  plan: 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md',
+  recheck: 'crates/modules/rustok-index/docs/implementation-recheck-2026-08-06-bounded-drift-candidates.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
 

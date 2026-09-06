@@ -34,7 +34,7 @@ authorization, or PostgreSQL cross-consumer evidence.
 
 ## Evidence
 
-- machine contract: `crates/rustok-forum/contracts/forum-notification-plan-sync.json`;
+- machine contract: `crates/modules/rustok-forum/contracts/forum-notification-plan-sync.json`;
 - source verifier: `scripts/verify/verify-forum-notification-plan-sync.mjs`;
 - synchronized documents are named by the machine contract.
 

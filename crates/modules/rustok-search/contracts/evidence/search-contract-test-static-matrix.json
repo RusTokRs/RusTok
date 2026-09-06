@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_from": "crates/rustok-search/contracts/search-fba-registry.json",
+  "generated_from": "crates/modules/rustok-search/contracts/search-fba-registry.json",
   "runner": "scripts/verify/verify-search-fba.mjs",
   "status": "planned_cases_locked",
   "cases": [
@@ -41,6 +41,6 @@
       "disable_preview",
       "show_last_diagnostics_snapshot"
     ],
-    "evidence": "crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json"
+    "evidence": "crates/modules/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json"
   }
 }

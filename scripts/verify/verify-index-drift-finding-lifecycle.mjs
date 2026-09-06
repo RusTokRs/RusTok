@@ -3,17 +3,17 @@
 import { readFile } from 'node:fs/promises';
 
 const files = {
-  app: 'crates/rustok-index/src/application/drift_finding_lifecycle.rs',
-  appMod: 'crates/rustok-index/src/application/mod.rs',
-  store: 'crates/rustok-index/src/infrastructure/postgres/drift_finding_lifecycle.rs',
-  postgresMod: 'crates/rustok-index/src/infrastructure/postgres/mod.rs',
-  migration: 'crates/rustok-index/src/migrations/m20260806_000006_add_index_finding_lifecycle_audit.rs',
-  migrationsMod: 'crates/rustok-index/src/migrations/mod.rs',
-  lib: 'crates/rustok-index/src/lib.rs',
-  doc: 'crates/rustok-index/docs/m6-drift-finding-lifecycle.md',
-  repairDoc: 'crates/rustok-index/docs/m6-targeted-drift-repair.md',
-  concreteDoc: 'crates/rustok-index/docs/m6-missing-entity-repair-composition.md',
-  plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
+  app: 'crates/modules/rustok-index/src/application/drift_finding_lifecycle.rs',
+  appMod: 'crates/modules/rustok-index/src/application/mod.rs',
+  store: 'crates/modules/rustok-index/src/infrastructure/postgres/drift_finding_lifecycle.rs',
+  postgresMod: 'crates/modules/rustok-index/src/infrastructure/postgres/mod.rs',
+  migration: 'crates/modules/rustok-index/src/migrations/m20260806_000006_add_index_finding_lifecycle_audit.rs',
+  migrationsMod: 'crates/modules/rustok-index/src/migrations/mod.rs',
+  lib: 'crates/modules/rustok-index/src/lib.rs',
+  doc: 'crates/modules/rustok-index/docs/m6-drift-finding-lifecycle.md',
+  repairDoc: 'crates/modules/rustok-index/docs/m6-targeted-drift-repair.md',
+  concreteDoc: 'crates/modules/rustok-index/docs/m6-missing-entity-repair-composition.md',
+  plan: 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
 

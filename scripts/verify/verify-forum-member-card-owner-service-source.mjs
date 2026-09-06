@@ -14,12 +14,12 @@ function forbid(text, marker, label) {
   if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
 }
 
-const owner = read("crates/rustok-forum/src/services/member_card.rs");
-const userStats = read("crates/rustok-forum/src/services/user_stats.rs");
-const graphql = read("crates/rustok-forum/src/graphql/member_card_query.rs");
-const storefrontCargo = read("crates/rustok-forum/storefront/Cargo.toml");
-const storefrontModel = read("crates/rustok-forum/storefront/src/model.rs");
-const storefrontUi = read("crates/rustok-forum/storefront/src/ui/leptos.rs");
+const owner = read("crates/modules/rustok-forum/src/services/member_card.rs");
+const userStats = read("crates/modules/rustok-forum/src/services/user_stats.rs");
+const graphql = read("crates/modules/rustok-forum/src/graphql/member_card_query.rs");
+const storefrontCargo = read("crates/modules/rustok-forum/storefront/Cargo.toml");
+const storefrontModel = read("crates/modules/rustok-forum/storefront/src/model.rs");
+const storefrontUi = read("crates/modules/rustok-forum/storefront/src/ui/leptos.rs");
 const packet = read(
   "docs/modules/forum-15-member-card-owner-service-actualization-2026-08-10.md",
 );

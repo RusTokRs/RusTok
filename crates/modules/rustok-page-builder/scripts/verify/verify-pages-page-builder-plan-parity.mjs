@@ -7,20 +7,20 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
-  : path.resolve(scriptDir, "..", "..", "..", "..");
+  : path.resolve(scriptDir, "..", "..", "..", "..", "..");
 
 const sharedPlanPath = "docs/modules/pages-page-builder-parity-continuation-plan.md";
-const localPlanPath = "crates/rustok-page-builder/docs/implementation-plan.md";
+const localPlanPath = "crates/modules/rustok-page-builder/docs/implementation-plan.md";
 const centralPlanPath = "docs/modules/page-builder-implementation-plan.md";
 const parityActualizationPath = "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md";
 const basePlanReconciliationPath = "docs/modules/pages-page-builder-base-plan-reconciliation-actualization-2026-08-10.md";
 const rolloutActualizationPath = "docs/modules/pages-page-builder-rollout-plan-actualization-2026-08-08.md";
-const gatePath = "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json";
-const gateAcceptancePath = "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json";
-const forumManifestPath = "crates/rustok-forum/rustok-module.toml";
-const forumWavePath = "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json";
-const forumWaveAdmissionPath = "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json";
-const forumWaveObservedAcceptancePath = "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json";
+const gatePath = "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json";
+const gateAcceptancePath = "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json";
+const forumManifestPath = "crates/modules/rustok-forum/rustok-module.toml";
+const forumWavePath = "crates/modules/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json";
+const forumWaveAdmissionPath = "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json";
+const forumWaveObservedAcceptancePath = "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json";
 const failures = [];
 
 function read(relativePath) {
@@ -264,7 +264,7 @@ if (gate.source_recheck?.plan_parity !== "source_ready") {
   failures.push(`${gatePath}: plan parity source state must remain source_ready`);
 }
 if (!(gate.gate?.required_source_guards ?? []).includes(
-  "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs",
+  "crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs",
 )) {
   failures.push(`${gatePath}: required source guards must include plan parity verification`);
 }

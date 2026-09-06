@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 82 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-81.md`.
+`crates/modules/rustok-blog/docs/implementation-plan-slice-81.md`.
 
 Slices 1–81 retain the typed Comments remote boundary, bounded TCP framing and
 listener lifecycle, authenticated service reads, signed user-write delegation,

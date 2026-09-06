@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const writerPath = 'crates/rustok-product/src/services/index_refresh_publication.rs';
+const writerPath = 'crates/modules/rustok-product/src/services/index_refresh_publication.rs';
 const writer = requireMarkers(writerPath, [
   'pub enum ProductIndexRefreshContractTarget',
   'Locale {',
@@ -74,7 +74,7 @@ for (const forbidden of [
   }
 }
 
-const services = requireMarkers('crates/rustok-product/src/services/mod.rs', [
+const services = requireMarkers('crates/modules/rustok-product/src/services/mod.rs', [
   'mod index_refresh_publication;',
   'ProductIndexRefreshCanonicalWriter',
   'ProductIndexRefreshContract',
@@ -85,14 +85,14 @@ if (services.includes('pub mod index_refresh_publication')) {
   fail('the implementation module must remain private behind curated exports');
 }
 
-requireMarkers('crates/rustok-product/src/lib.rs', [
+requireMarkers('crates/modules/rustok-product/src/lib.rs', [
   'ProductIndexRefreshCanonicalWriter',
   'ProductIndexRefreshContract',
   'ProductIndexRefreshContractTarget',
   'ProductIndexRefreshPublicationError',
 ]);
 
-const cargo = read('crates/rustok-product/Cargo.toml');
+const cargo = read('crates/modules/rustok-product/Cargo.toml');
 for (const dependency of ['rustok-events.workspace = true', 'rustok-outbox.workspace = true']) {
   if (!cargo.includes(dependency)) fail(`rustok-product is missing ${dependency}`);
 }
@@ -100,7 +100,7 @@ if (cargo.includes('rustok-index')) {
   fail('rustok-product must not depend on rustok-index');
 }
 
-requireMarkers('crates/rustok-product/docs/index-refresh-canonical-writer.md', [
+requireMarkers('crates/modules/rustok-product/docs/index-refresh-canonical-writer.md', [
   'Status: `source_complete_typed_family_and_relay_pending`',
   '`refresh_id`, reserved as the canonical typed envelope',
   '`root_event_id`, the exact Product lifecycle predecessor',

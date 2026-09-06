@@ -11,10 +11,10 @@ const rejectMarker = (source, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`must not contain ${label}`);
 };
 
-const ownerPath = 'crates/rustok-blog/src/services/category_owner.rs';
-const servicesPath = 'crates/rustok-blog/src/services/mod.rs';
-const legacyPath = 'crates/rustok-blog/src/services/category.rs';
-const runtimePath = 'crates/rustok-blog/tests/category_taxonomy_read_cutover.rs';
+const ownerPath = 'crates/modules/rustok-blog/src/services/category_owner.rs';
+const servicesPath = 'crates/modules/rustok-blog/src/services/mod.rs';
+const legacyPath = 'crates/modules/rustok-blog/src/services/category.rs';
+const runtimePath = 'crates/modules/rustok-blog/tests/category_taxonomy_read_cutover.rs';
 
 for (const path of [ownerPath, servicesPath, legacyPath, runtimePath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);

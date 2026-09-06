@@ -23,8 +23,8 @@ ssr = [
 ]
 
 [dependencies]
-fly = { path = "../../fly" }
-fly-ui = { path = "../../fly-ui" }
+fly = { path = "../../../ui/fly" }
+fly-ui = { path = "../../../ui/fly-ui" }
 rustok-ui-core.workspace = true
 rustok-ui-transport.workspace = true
 leptos.workspace = true

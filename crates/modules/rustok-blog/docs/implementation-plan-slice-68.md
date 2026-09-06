@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 68 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-67.md`. Slices 1–66 remain in
+`crates/modules/rustok-blog/docs/implementation-plan-slice-67.md`. Slices 1–66 remain in
 the original implementation plan, and slice 67 remains the retained typed remote
 adapter-core record.
 
@@ -21,7 +21,7 @@ remains maintainer-owned.
 
 ### Implemented source scope
 
-- `crates/rustok-comments/src/tcp_transport.rs` adds
+- `crates/modules/rustok-comments/src/tcp_transport.rs` adds
   `TcpJsonCommentsTransport`, a concrete implementation of
   `CommentsThreadTransport`.
 - The transport uses the source-owned protocol identity
@@ -45,7 +45,7 @@ remains maintainer-owned.
 - The `tcp-transport` feature keeps Tokio transport dependencies outside the
   default Comments provider build.
 - Source evidence is retained at
-  `crates/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json`.
+  `crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-transport.json`.
 - The standalone fail-closed verifier is
   `scripts/verify/verify-blog-comments-tcp-transport.mjs`.
 

@@ -50,9 +50,9 @@
     "reason and published reply count are bounded",
     "receipt updates and deletes are rejected for PostgreSQL and SQLite"
   ],
-  "test": "crates/rustok-forum/tests/topic_move_sqlite.rs",
+  "test": "crates/modules/rustok-forum/tests/topic_move_sqlite.rs",
   "verifier": "scripts/verify/verify-forum-topic-move-owner.mjs",
-  "documentation": "crates/rustok-forum/docs/forum-21a-topic-move-owner.md",
+  "documentation": "crates/modules/rustok-forum/docs/forum-21a-topic-move-owner.md",
   "maintainer_commands": [
     "node scripts/verify/verify-forum-topic-move-owner.mjs",
     "cargo test -p rustok-forum --test topic_move_sqlite -- --nocapture"

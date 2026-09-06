@@ -87,7 +87,7 @@
     "cross_topic_merge_target_disappearance": "hidden_without_separate_source_snapshot_proof"
   },
   "verification": {
-    "contract_test": "crates/rustok-forum/tests/topic_route_tombstone_visibility_contract.rs",
+    "contract_test": "crates/modules/rustok-forum/tests/topic_route_tombstone_visibility_contract.rs",
     "verifier": "scripts/verify/verify-forum-topic-route-tombstone-visibility-owner.mjs",
     "consumer_verifier": "scripts/verify/verify-forum-topic-route-authorized-gone.mjs",
     "maintainer_commands": [

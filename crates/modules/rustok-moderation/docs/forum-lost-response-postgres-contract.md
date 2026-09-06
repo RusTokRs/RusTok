@@ -4,7 +4,7 @@ Status: **source-ready / maintainer execution pending**
 
 ## Scope
 
-`crates/rustok-distribution/tests/forum_moderation_lost_response_postgres.rs` is a real cross-owner PostgreSQL integration target for the response-loss window between Forum domain application and Moderation finalization.
+`crates/modules/rustok-distribution/tests/forum_moderation_lost_response_postgres.rs` is a real cross-owner PostgreSQL integration target for the response-loss window between Forum domain application and Moderation finalization.
 
 The target is compiled only with both `rustok-distribution/mod-forum` and `rustok-distribution/mod-moderation`. Those dependencies already exist in the distribution feature graph, so this evidence adds no new crate dependency and no Cargo lockfile change.
 

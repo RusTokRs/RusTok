@@ -1,5 +1,5 @@
 ---
-id: doc://crates/rustok-translation/docs/translation-event-consumer-lag-prerequisite.md
+id: doc://crates/modules/rustok-translation/docs/translation-event-consumer-lag-prerequisite.md
 kind: implementation_handoff
 language: en
 status: in_progress

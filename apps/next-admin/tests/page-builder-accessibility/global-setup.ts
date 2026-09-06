@@ -4,7 +4,7 @@ import path from 'node:path';
 const repoRoot = path.resolve(__dirname, '../../../..');
 const contractPath = path.join(
   repoRoot,
-  'crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json'
+  'crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json'
 );
 
 type BrowserContract = {

@@ -213,9 +213,9 @@ Additional sections are allowed, but this minimum must be preserved.
 - `[provides.storefront_ui]` requires not only `leptos_crate`, but also non-empty `slot`, `route_segment`, `page_title` and `[provides.storefront_ui.i18n]` with `default_locale`, `supported_locales`, `leptos_locales_path`. The `slot` value must be one of the platform-known slots: `header_navigation`, `home_after_hero`, `home_after_catalog`, `home_before_footer`, `footer_navigation`, `checkout_shipping_handoff`, `checkout_payment_handoff`, `checkout_result_handoff`.
 - `[[provides.storefront_ui.components]]` declares additional no-prop Leptos contributions from the same module UI crate. Each item requires a unique `id`, exported Rust `component`, platform-known `slot`, and may set deterministic `order`. The host registers these through the generic storefront registry; host source must not import module-specific layout components directly.
 - If a UI sub-crate is declared in the manifest, the corresponding host (`apps/admin` or `apps/storefront`) actually connects it as a dependency and forwards mandatory host feature links (`/hydrate`, `/ssr`) where the sub-crate exports them.
-- The host dependency on a UI sub-crate points to the canonical module path (`crates/<module>/admin` or `crates/<module>/storefront`), not to an arbitrary compatible crate with the same name.
+- The host dependency on a UI sub-crate points to the canonical module path (`crates/modules/<module>/admin` or `crates/modules/<module>/storefront`), not to an arbitrary compatible crate with the same name.
 - If a module publishes `admin_ui` or `storefront_ui`, the host composition includes UI surfaces of its direct module dependencies for the same surface when those dependencies also publish such UI.
-- `apps/admin` and `apps/storefront` do not contain orphaned first-party UI dependencies: a path dependency on `crates/*/admin` or `crates/*/storefront` is allowed only if the corresponding `rustok-module.toml` actually declares this crate as `admin_ui` or `storefront_ui`.
+- `apps/admin` and `apps/storefront` do not contain orphaned first-party UI dependencies: a path dependency on `crates/modules/*/admin` or `crates/modules/*/storefront` is allowed only if the corresponding `rustok-module.toml` actually declares this crate as `admin_ui` or `storefront_ui`.
 - `apps/admin` and `apps/storefront` do not contain orphaned host feature entries: `hydrate`/`ssr` do not reference `crate/feature` for a first-party module UI crate if that crate is no longer declared in the module manifest or is no longer connected as a host dependency.
 - Central navigation does not lag behind manifest wiring: `docs/modules/_index.md` contains docs/plan links of the module, and `docs/modules/UI_PACKAGES_INDEX.md` lists declared admin/storefront UI surfaces.
 
@@ -274,8 +274,8 @@ schema = 2
 app = "rustok-server"
 
 [modules]
-blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content"] }
-content = { crate = "rustok-content", source = "path", path = "crates/rustok-content" }
+blog = { crate = "rustok-blog", source = "path", path = "crates/modules/rustok-blog", depends_on = ["content"] }
+content = { crate = "rustok-content", source = "path", path = "crates/modules/rustok-content" }
 
 [settings]
 default_enabled = ["content", "blog"]
@@ -370,7 +370,7 @@ But they do not pass `module validate` until they become a platform module.
 
 Minimum order of addition:
 
-1. Create a crate, typically `crates/rustok-<slug>/`, and ensure it is part of the Cargo workspace.
+1. Create a crate, typically `crates/modules/rustok-<slug>/`, and ensure it is part of the Cargo workspace.
 2. Add mandatory local documents: root `README.md`, `docs/README.md`, `docs/implementation-plan.md`.
 3. Add `rustok-module.toml` with correct `module.slug`, `module.version`, `module.ui_classification`, dependency metadata and `[crate].entry_type` if the crate implements `RusToKModule`.
 4. Add the slug to `[modules]` inside `modules.toml`; use `required = true` only for core modules, leave all other modules as optional.

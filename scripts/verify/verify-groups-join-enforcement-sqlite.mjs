@@ -2,8 +2,8 @@ import fs from "node:fs";
 
 const testPath = "apps/server/tests/groups_join_enforcement_sqlite.rs";
 const postgresTestPath = "apps/server/tests/groups_join_enforcement_postgres.rs";
-const contractPath = "crates/rustok-groups/contracts/groups-effective-membership-access.json";
-const planPath = "crates/rustok-groups/docs/implementation-plan.md";
+const contractPath = "crates/modules/rustok-groups/contracts/groups-effective-membership-access.json";
+const planPath = "crates/modules/rustok-groups/docs/implementation-plan.md";
 
 const test = fs.readFileSync(testPath, "utf8");
 const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));

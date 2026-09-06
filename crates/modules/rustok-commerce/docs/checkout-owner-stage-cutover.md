@@ -6,18 +6,18 @@ Last reviewed: 2026-07-22
 
 ## Production mount
 
-`crates/rustok-commerce/src/services/mod.rs` mounts:
+`crates/modules/rustok-commerce/src/services/mod.rs` mounts:
 
-`crates/rustok-commerce/src/services/checkout_stage_pipeline_owner_ports.rs`
+`crates/modules/rustok-commerce/src/services/checkout_stage_pipeline_owner_ports.rs`
 
 The previous pipeline source remains unmounted compatibility source until compile,
 replay, restart, and upgraded-path evidence is retained.
 
 ## Payment owner
 
-- contract: `crates/rustok-payment/contracts/payment-checkout-execution-v1.json`
+- contract: `crates/modules/rustok-payment/contracts/payment-checkout-execution-v1.json`
 - port: `CheckoutPaymentExecutionPort`
-- owner source: `crates/rustok-payment/src/checkout_execution.rs`
+- owner source: `crates/modules/rustok-payment/src/checkout_execution.rs`
 - operations: prepare, authorize, capture, read
 
 Payment owner retains collection lifecycle, provider registry, provider operation
@@ -35,9 +35,9 @@ adopted after upgrade.
 
 ## Fulfillment owner
 
-- contract: `crates/rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json`
+- contract: `crates/modules/rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json`
 - port: `CheckoutFulfillmentExecutionPort`
-- owner source: `crates/rustok-fulfillment/src/checkout_execution.rs`
+- owner source: `crates/modules/rustok-fulfillment/src/checkout_execution.rs`
 - operations: ensure set, read set
 
 Commerce maps immutable checkout cart-line plans to typed order-line commands.
@@ -51,9 +51,9 @@ fail closed.
 
 ## Order payment settlement owner
 
-- contract: `crates/rustok-order/contracts/order-checkout-payment-settlement-v1.json`
+- contract: `crates/modules/rustok-order/contracts/order-checkout-payment-settlement-v1.json`
 - port: `CheckoutOrderPaymentSettlementPort`
-- owner source: `crates/rustok-order/src/checkout_payment_settlement.rs`
+- owner source: `crates/modules/rustok-order/src/checkout_payment_settlement.rs`
 - operation: settle captured payment identity
 
 Order owner resolves checkout identity, marks a confirmed order paid, and adopts

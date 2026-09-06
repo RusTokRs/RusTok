@@ -149,29 +149,29 @@ ${includeServerOwnedDto ? "struct CreateResolutionRuleRequest; fn build_rule_def
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-channel-boundary-"));
-  writeFixtureFile(root, "crates/rustok-channel/src/dto/mod.rs", channelDtoSource());
+  writeFixtureFile(root, "crates/modules/rustok-channel/src/dto/mod.rs", channelDtoSource());
   writeFixtureFile(root, "apps/server/src/controllers/channel.rs", channelControllerSource(options));
-  writeFixtureFile(root, "crates/rustok-channel/admin/src/lib.rs", libSource(options));
-  writeFixtureFile(root, "crates/rustok-channel/admin/src/core.rs", coreSource(options));
-  writeFixtureFile(root, "crates/rustok-channel/admin/src/ui/leptos/mod.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-channel/admin/src/lib.rs", libSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-channel/admin/src/core.rs", coreSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-channel/admin/src/ui/leptos/mod.rs", `
 mod channel_card;
 mod policy_set_card;
 mod policy_workbench;
 mod runtime_context;
 ${uiSource(options)}
 `);
-  writeFixtureFile(root, "crates/rustok-channel/admin/src/ui/leptos/channel_card.rs", "pub(super) fn ChannelCard() {}");
-  writeFixtureFile(root, "crates/rustok-channel/admin/src/ui/leptos/policy_set_card.rs", "pub(super) fn PolicySetCard() {}");
-  writeFixtureFile(root, "crates/rustok-channel/admin/src/ui/leptos/policy_workbench.rs", "pub(super) fn PolicyWorkbench() {}");
-  writeFixtureFile(root, "crates/rustok-channel/admin/src/ui/leptos/runtime_context.rs", "pub(super) fn RuntimeContext() {}");
-  writeFixtureFile(root, "crates/rustok-channel/admin/src/transport/mod.rs", transportModSource(options));
-  writeFixtureFile(root, "crates/rustok-channel/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
-  writeFixtureFile(root, "crates/rustok-channel/admin/src/transport/rest_adapter.rs", restAdapterSource({ includeServerEndpoint: options.restServerEndpoint }));
+  writeFixtureFile(root, "crates/modules/rustok-channel/admin/src/ui/leptos/channel_card.rs", "pub(super) fn ChannelCard() {}");
+  writeFixtureFile(root, "crates/modules/rustok-channel/admin/src/ui/leptos/policy_set_card.rs", "pub(super) fn PolicySetCard() {}");
+  writeFixtureFile(root, "crates/modules/rustok-channel/admin/src/ui/leptos/policy_workbench.rs", "pub(super) fn PolicyWorkbench() {}");
+  writeFixtureFile(root, "crates/modules/rustok-channel/admin/src/ui/leptos/runtime_context.rs", "pub(super) fn RuntimeContext() {}");
+  writeFixtureFile(root, "crates/modules/rustok-channel/admin/src/transport/mod.rs", transportModSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-channel/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-channel/admin/src/transport/rest_adapter.rs", restAdapterSource({ includeServerEndpoint: options.restServerEndpoint }));
   if (options.includeLegacyApiFile) {
-    writeFixtureFile(root, "crates/rustok-channel/admin/src/api.rs", "pub async fn fetch_bootstrap() {}");
+    writeFixtureFile(root, "crates/modules/rustok-channel/admin/src/api.rs", "pub async fn fetch_bootstrap() {}");
   }
   if (options.includeLegacyTransportFile) {
-    writeFixtureFile(root, "crates/rustok-channel/admin/src/transport.rs", "pub async fn fetch_bootstrap() {}");
+    writeFixtureFile(root, "crates/modules/rustok-channel/admin/src/transport.rs", "pub async fn fetch_bootstrap() {}");
   }
   return root;
 }

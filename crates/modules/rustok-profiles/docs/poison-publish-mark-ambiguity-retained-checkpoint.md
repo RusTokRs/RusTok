@@ -7,7 +7,7 @@ Status: **retained tooling source-complete; runtime packet pending**.
 The source-level publish/mark ambiguity harness now has a fail-closed retained execution path:
 
 ```text
-crates/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution-contract.json
+crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution-contract.json
 scripts/evidence/capture-social-graph-index-raw-poison-publish-mark-ambiguity.mjs
 scripts/verify/verify-social-graph-index-raw-poison-publish-mark-ambiguity-retained.mjs
 ```

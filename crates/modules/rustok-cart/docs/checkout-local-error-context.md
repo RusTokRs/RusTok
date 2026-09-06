@@ -5,7 +5,7 @@ Status: **source-ready / unvalidated**
 ## Scope
 
 This source slice closes the delegated-context diagnostic gap for locally produced failures
-inside `CartCheckoutPort` in `crates/rustok-cart/src/checkout_snapshot.rs`.
+inside `CartCheckoutPort` in `crates/modules/rustok-cart/src/checkout_snapshot.rs`.
 
 The preceding cart checkout slices retained:
 

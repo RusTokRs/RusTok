@@ -11,23 +11,23 @@ const includesAll = (text, markers, label) => {
 };
 
 const contract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-topic-canonical-resolution.json"),
+  read("crates/modules/rustok-forum/contracts/forum-topic-canonical-resolution.json"),
 );
 const cumulative = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-topic-merge-owner.json"),
+  read("crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json"),
 );
-const redirect = read("crates/rustok-forum/src/controllers/topic_redirect.rs");
-const controller = read("crates/rustok-forum/src/controllers/mod.rs");
-const topics = read("crates/rustok-forum/src/controllers/topics.rs");
-const publicBoundary = read("crates/rustok-forum/tests/public_boundary_contract.rs");
-const openapi = read("crates/rustok-forum/src/openapi.rs");
-const cargo = read("crates/rustok-forum/Cargo.toml");
-const docs = read("crates/rustok-forum/docs/forum-21i-topic-canonical-resolution.md");
-const cumulativeDocs = read("crates/rustok-forum/docs/forum-21b-topic-merge-owner.md");
-const readme = read("crates/rustok-forum/README.md");
-const docsIndex = read("crates/rustok-forum/docs/README.md");
+const redirect = read("crates/modules/rustok-forum/src/controllers/topic_redirect.rs");
+const controller = read("crates/modules/rustok-forum/src/controllers/mod.rs");
+const topics = read("crates/modules/rustok-forum/src/controllers/topics.rs");
+const publicBoundary = read("crates/modules/rustok-forum/tests/public_boundary_contract.rs");
+const openapi = read("crates/modules/rustok-forum/src/openapi.rs");
+const cargo = read("crates/modules/rustok-forum/Cargo.toml");
+const docs = read("crates/modules/rustok-forum/docs/forum-21i-topic-canonical-resolution.md");
+const cumulativeDocs = read("crates/modules/rustok-forum/docs/forum-21b-topic-merge-owner.md");
+const readme = read("crates/modules/rustok-forum/README.md");
+const docsIndex = read("crates/modules/rustok-forum/docs/README.md");
 const routing = read("docs/architecture/routing.md");
-const plan = read("crates/rustok-forum/docs/implementation-plan.md");
+const plan = read("crates/modules/rustok-forum/docs/implementation-plan.md");
 
 assert.equal(contract.contract, "forum_topic_canonical_resolution_v1");
 assert.equal(contract.latest_transport_slice, "FORUM-21J");

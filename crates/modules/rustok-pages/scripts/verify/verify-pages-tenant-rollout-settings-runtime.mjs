@@ -4,17 +4,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const files = {
-  runtime: "crates/rustok-api/src/runtime.rs",
-  rollout: "crates/rustok-page-builder/src/rollout.rs",
-  owner: "crates/rustok-pages/src/graphql/builder_rollout.rs",
-  adapter: "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
-  builder: "crates/rustok-pages/admin/src/builder.rs",
-  composition: "crates/rustok-pages/admin/src/composition.rs",
+  runtime: "crates/libs/rustok-api/src/runtime.rs",
+  rollout: "crates/modules/rustok-page-builder/src/rollout.rs",
+  owner: "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
+  adapter: "crates/modules/rustok-pages/admin/src/builder_rollout_settings.rs",
+  builder: "crates/modules/rustok-pages/admin/src/builder.rs",
+  composition: "crates/modules/rustok-pages/admin/src/composition.rs",
   adminMain: "apps/admin/src/main.rs",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-tenant-rollout-settings-runtime-source.json",
-  gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-tenant-rollout-settings-runtime-source.json",
+  gate: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
   actualization: "docs/modules/pages-page-builder-tenant-rollout-settings-runtime-actualization-2026-08-08.md",
 };
 const failures = [];

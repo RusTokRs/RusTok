@@ -10,7 +10,7 @@ management backlog.
 The machine-readable contract is:
 
 ```text
-crates/rustok-rbac/contracts/rbac-owner-role-mutation-contract.json
+crates/modules/rustok-rbac/contracts/rbac-owner-role-mutation-contract.json
 ```
 
 ## Existing transport composition

@@ -3,11 +3,11 @@
 import fs from 'node:fs';
 
 const migrationPath =
-  'crates/rustok-product/src/migrations/m20260828_000015_add_product_taxonomy_category_binding.rs';
-const registryPath = 'crates/rustok-product/src/migrations/mod.rs';
-const contractPath = 'crates/rustok-product/docs/category-taxonomy-binding.md';
+  'crates/modules/rustok-product/src/migrations/m20260828_000015_add_product_taxonomy_category_binding.rs';
+const registryPath = 'crates/modules/rustok-product/src/migrations/mod.rs';
+const contractPath = 'crates/modules/rustok-product/docs/category-taxonomy-binding.md';
 const tenantConstraintPath =
-  'crates/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs';
+  'crates/modules/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs';
 
 const failures = [];
 const need = (source, marker, label = marker) => {

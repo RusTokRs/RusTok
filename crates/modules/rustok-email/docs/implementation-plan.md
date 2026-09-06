@@ -29,10 +29,10 @@ on one SHA, so they do not count as a completed release fix.
 - FBA status: `transport_verified`
 - Structural shape: `no_ui_boundary`
 - FBA provider contract: `EmailDeliveryPort` / `email.delivery.v1` in
-  `crates/rustok-email/contracts/email-fba-registry.json`.
+  `crates/modules/rustok-email/contracts/email-fba-registry.json`.
 - Runtime and fallback evidence:
-  `crates/rustok-email/contracts/evidence/email-contract-test-static-matrix.json`
-  and `crates/rustok-email/contracts/evidence/email-runtime-fallback-smoke.json`.
+  `crates/modules/rustok-email/contracts/evidence/email-contract-test-static-matrix.json`
+  and `crates/modules/rustok-email/contracts/evidence/email-runtime-fallback-smoke.json`.
 - `npm run verify:email:fba` and `npm run verify:foundation:fba-runtime-smoke`
   lock provider metadata, policy semantics, typed validation, and fallback
   behavior, but do not prove durable SMTP delivery or host adoption.

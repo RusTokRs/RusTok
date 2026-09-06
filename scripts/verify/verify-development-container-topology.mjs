@@ -98,12 +98,12 @@ forbidMarkers("apps/server/Dockerfile", [
   "COPY apps/server ./apps/server",
 ]);
 
-requireMarkers("crates/rustok-migrations/Cargo.toml", [
+requireMarkers("crates/utils/rustok-migrations/Cargo.toml", [
   'name = "rustok-migrate"',
   'path = "src/bin/rustok_migrate.rs"',
   "tokio.workspace = true",
 ]);
-requireMarkers("crates/rustok-migrations/src/bin/rustok_migrate.rs", [
+requireMarkers("crates/utils/rustok-migrations/src/bin/rustok_migrate.rs", [
   "enum Command",
   "Up,",
   "Status,",
@@ -118,7 +118,7 @@ requireMarkers("crates/rustok-migrations/src/bin/rustok_migrate.rs", [
   "migration {migration_name} failed",
   'for forbidden in ["down", "fresh", "reset", "refresh"]',
 ]);
-forbidMarkers("crates/rustok-migrations/src/bin/rustok_migrate.rs", [
+forbidMarkers("crates/utils/rustok-migrations/src/bin/rustok_migrate.rs", [
   "Migrator::down",
   "Migrator::fresh",
   "Migrator::reset",

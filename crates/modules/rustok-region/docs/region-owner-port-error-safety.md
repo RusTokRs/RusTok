@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This contract closes the currently identified public-message and diagnostic-payload gaps in the owner `RegionReadPort` implementation in `crates/rustok-region/src/ports.rs`.
+This contract closes the currently identified public-message and diagnostic-payload gaps in the owner `RegionReadPort` implementation in `crates/modules/rustok-region/src/ports.rs`.
 
 The two owner operations remain unchanged:
 
@@ -56,8 +56,8 @@ The broader ecommerce correlation-safe mapper cleanup and runtime validation rem
 
 ## Evidence
 
-- `crates/rustok-region/contracts/evidence/region-owner-port-error-safety-source.json`
-- `crates/rustok-region/contracts/evidence/region-owner-port-error-safety-source-review.json`
+- `crates/modules/rustok-region/contracts/evidence/region-owner-port-error-safety-source.json`
+- `crates/modules/rustok-region/contracts/evidence/region-owner-port-error-safety-source-review.json`
 - `scripts/verify/verify-region-owner-port-error-safety.mjs`
 
 No tests, Node verifiers, Cargo commands, formatting, workflows, CI, or mounted runtime validation was executed.

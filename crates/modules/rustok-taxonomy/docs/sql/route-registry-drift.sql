@@ -2,7 +2,7 @@
 -- Usage:
 --   psql "$DATABASE_URL" --set=ON_ERROR_STOP=1 \
 --     --set=tenant_id='00000000-0000-0000-0000-000000000000' \
---     --file=crates/rustok-taxonomy/docs/sql/route-registry-drift.sql
+--     --file=crates/modules/rustok-taxonomy/docs/sql/route-registry-drift.sql
 --
 -- The complete route identity is:
 -- tenant_id + kind + scope_type + scope_value + locale + route_key.

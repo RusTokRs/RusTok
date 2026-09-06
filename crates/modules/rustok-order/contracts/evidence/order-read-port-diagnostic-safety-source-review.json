@@ -1,10 +1,10 @@
 {
   "status": "order_read_port_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-order/src/order_read.rs",
-    "crates/rustok-order/docs/order-read-port-diagnostic-safety.md",
-    "crates/rustok-order/contracts/evidence/order-read-port-diagnostic-safety-source-review.json",
-    "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-order/src/order_read.rs",
+    "crates/modules/rustok-order/docs/order-read-port-diagnostic-safety.md",
+    "crates/modules/rustok-order/contracts/evidence/order-read-port-diagnostic-safety-source-review.json",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md",
     "scripts/verify/verify-order-read-port-diagnostic-safety.mjs"
   ],
   "review_findings": {

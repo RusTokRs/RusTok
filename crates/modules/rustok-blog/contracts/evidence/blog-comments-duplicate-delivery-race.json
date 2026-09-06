@@ -10,7 +10,7 @@
   "harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
-    "path": "crates/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs",
+    "path": "crates/modules/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
     "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --exact",
     "isolation": "unique_schema_three_independent_connections_two_named_workers_controlled_row_lock",

@@ -108,7 +108,7 @@ Repair/rebuild remains a separate source cursor. Executed authorization, GraphQL
 Suggested commands, intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-transport.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-transport.mjs
 cargo check -p rustok-pages
 ```
 

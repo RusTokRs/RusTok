@@ -18,21 +18,21 @@ const forbidText = (source, value, label) => {
 };
 
 const files = {
-  kind: "crates/rustok-api/src/context/principal_kind.rs",
-  auth: "crates/rustok-api/src/context/auth.rs",
-  context: "crates/rustok-api/src/context/mod.rs",
-  api: "crates/rustok-api/src/lib.rs",
+  kind: "crates/libs/rustok-api/src/context/principal_kind.rs",
+  auth: "crates/libs/rustok-api/src/context/auth.rs",
+  context: "crates/libs/rustok-api/src/context/mod.rs",
+  api: "crates/libs/rustok-api/src/lib.rs",
   resolver: "apps/server/src/extractors/auth/mod.rs",
   resolverTests: "apps/server/src/extractors/auth/tests.rs",
   middleware: "apps/server/src/middleware/auth_context.rs",
   graphqlHost: "apps/server/src/controllers/graphql.rs",
-  owner: "crates/rustok-rbac/src/control_plane.rs",
-  graphqlPolicy: "crates/rustok-rbac/src/graphql/control_plane.rs",
-  graphqlQuery: "crates/rustok-rbac/src/graphql/query.rs",
-  graphqlMutation: "crates/rustok-rbac/src/graphql/mutation.rs",
+  owner: "crates/modules/rustok-rbac/src/control_plane.rs",
+  graphqlPolicy: "crates/modules/rustok-rbac/src/graphql/control_plane.rs",
+  graphqlQuery: "crates/modules/rustok-rbac/src/graphql/query.rs",
+  graphqlMutation: "crates/modules/rustok-rbac/src/graphql/mutation.rs",
   rest: "apps/server/src/controllers/artifact_permissions.rs",
-  native: "crates/rustok-rbac/admin/src/transport/native_server_adapter.rs",
-  plan: "crates/rustok-rbac/docs/implementation-plan.md",
+  native: "crates/modules/rustok-rbac/admin/src/transport/native_server_adapter.rs",
+  plan: "crates/modules/rustok-rbac/docs/implementation-plan.md",
   master: "docs/verification/PLATFORM_VERIFICATION_PLAN.md",
 };
 
@@ -158,7 +158,7 @@ for (const marker of [
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "`core/rbac` — `crates/rustok-rbac` — in_progress",
+  "`core/rbac` — `crates/modules/rustok-rbac` — in_progress",
   "explicit typed principal kind",
 ]) requireText(sources.master, marker, `${files.master}: active cursor`);
 

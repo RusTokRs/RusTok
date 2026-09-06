@@ -194,7 +194,7 @@ Do not expand `rustok-api` or `apps/server` just because a backend helper is nee
 
 The module backend layout is fixed as well:
 
-- domain/application code goes in `crates/rustok-<module>/src`;
+- domain/application code goes in `crates/modules/rustok-<module>/src`;
 - public contract and FBA evidence artifacts go in module-local `contracts/`;
 - local roadmap and FFA/FBA evidence go in module-local `docs/`;
 - operational command adapters go in module-local `cli/` and depend on
@@ -489,6 +489,6 @@ This checklist is needed for any new module, major module refactor or module con
 
 ## Scripts placement policy
 
-- Module-specific scripts must live near the module in `crates/<module>/scripts/` (or `apps/<app>/scripts/` for app-owned scripts).
+- Module-specific scripts must live near the module in `crates/modules/<module>/scripts/` (or `apps/<app>/scripts/` for app-owned scripts).
 - Repository-level `scripts/` is reserved for cross-platform orchestration and multi-module runners.
 - If a script affects module runtime/public contracts, update both local module docs and central `docs/` references in the same change.

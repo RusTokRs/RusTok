@@ -18,7 +18,7 @@ For these requirements, the codebase already has a specialized layer `rustok-out
 ## Decision
 
 1. **Source of truth for queues and event delivery-path in production** is fixed to:
-   - `crates/rustok-outbox` (outbox persistence, relay semantics, DLQ/retry lifecycle);
+   - `crates/modules/rustok-outbox` (outbox persistence, relay semantics, DLQ/retry lifecycle);
    - `apps/server/src/services/event_transport_factory.rs` (single runtime point for transport/relay target selection).
 2. A generic queue/jobs system is allowed only as an auxiliary non-production mechanism (utility/background tasks) that does not duplicate the event delivery-path.
 3. Any changes to queue/event runtime must be compatible with the outbox-first contract and pass through the specified source-of-truth components.

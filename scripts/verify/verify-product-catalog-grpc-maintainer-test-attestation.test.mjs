@@ -11,7 +11,7 @@ const scriptPath = path.resolve(
   "scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs",
 );
 const evidencePath =
-  "crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json";
+  "crates/modules/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json";
 const verifierPath =
   "scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs";
 const commands = [
@@ -89,7 +89,7 @@ function fixture(options = {}) {
   );
   write(
     root,
-    "crates/rustok-product/contracts/product-fba-registry.json",
+    "crates/modules/rustok-product/contracts/product-fba-registry.json",
     JSON.stringify({
       status: options.falsePromotion ? "transport_verified" : "boundary_ready",
       evidence: {
@@ -105,7 +105,7 @@ function fixture(options = {}) {
   );
   write(
     root,
-    "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
+    "crates/modules/rustok-ai-product/contracts/ai-product-fba-registry.json",
     JSON.stringify({
       status: "boundary_ready",
       evidence: {
@@ -126,10 +126,10 @@ function fixture(options = {}) {
 - [x] Execute the Commerce and AI remote consumer behavior harnesses.
 - [ ] Execute the standalone PostgreSQL schema preflight and retain runtime logs.
 - [ ] Retain authenticated separate-process Commerce and AI end-to-end evidence.`;
-  write(root, "crates/rustok-product/docs/implementation-plan.md", productPlan);
+  write(root, "crates/modules/rustok-product/docs/implementation-plan.md", productPlan);
   write(
     root,
-    "crates/rustok-ai-product/docs/implementation-plan.md",
+    "crates/modules/rustok-ai-product/docs/implementation-plan.md",
     "maintainer-attested raw logs were not retained separate-process",
   );
   return root;

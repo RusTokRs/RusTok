@@ -34,7 +34,7 @@ function resolverSlice(source, name, nextName) {
   return source.slice(start, end < 0 ? source.length : end);
 }
 
-const ports = read("crates/rustok-product/src/ports.rs");
+const ports = read("crates/modules/rustok-product/src/ports.rs");
 for (const required of [
   "async fn list_filtered_published_products(",
   "pub struct FilteredPublishedProductsRequest",
@@ -70,7 +70,7 @@ for (const forbidden of ["search", "category_id", "sort_by", "attribute_filters"
   );
 }
 
-const ownerQueries = read("crates/rustok-product/src/services/catalog/queries.rs");
+const ownerQueries = read("crates/modules/rustok-product/src/services/catalog/queries.rs");
 for (const required of [
   "list_legacy_storefront_products_with_locale_fallback(",
   "Column::Status.eq(entities::product::ProductStatus::Active)",
@@ -92,7 +92,7 @@ for (const required of [
   requireText(ownerQueries, required, `Product owner storefront compatibility source must contain ${required}`);
 }
 
-const source = read("crates/rustok-commerce/src/graphql/product_catalog.rs");
+const source = read("crates/modules/rustok-commerce/src/graphql/product_catalog.rs");
 const storefront = resolverSlice(source, "storefront_product_catalog", "admin_product_catalog");
 const admin = resolverSlice(source, "admin_product_catalog", null);
 
@@ -131,7 +131,7 @@ for (const required of [
 }
 forbidText(source, "CatalogService::new", "Product GraphQL catalog module must not construct CatalogService");
 
-const legacySource = read("crates/rustok-commerce/src/graphql/query.rs");
+const legacySource = read("crates/modules/rustok-commerce/src/graphql/query.rs");
 const legacyDetail = resolverSlice(legacySource, "storefront_product", "storefront_products");
 const legacyList = resolverSlice(
   legacySource,

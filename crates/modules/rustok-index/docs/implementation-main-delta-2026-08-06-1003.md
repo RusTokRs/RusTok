@@ -21,7 +21,7 @@ verifiers.
 
 They do not modify:
 
-- `crates/rustok-index/src/infrastructure/postgres/drift_confirmed_candidate_writer.rs`;
+- `crates/modules/rustok-index/src/infrastructure/postgres/drift_confirmed_candidate_writer.rs`;
 - Index finding storage, candidate confirmation, reader, or application contracts;
 - Index crate exports changed by this branch;
 - Index persistence documentation or static guards;

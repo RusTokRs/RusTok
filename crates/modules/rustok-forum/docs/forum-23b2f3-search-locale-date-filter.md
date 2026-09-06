@@ -20,7 +20,7 @@ pagination and query-rule behavior. The continuation replaces that draft with on
 execution owner:
 
 ```text
-crates/rustok-search/src/forum_storefront_execution.rs
+crates/modules/rustok-search/src/forum_storefront_execution.rs
 ```
 
 Locale, author, tag, solved and date predicates are represented by one bounded

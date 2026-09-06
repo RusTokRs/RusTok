@@ -34,9 +34,9 @@ prefill execution; it never falls back to an order service or storage access.
   `read_order_status`. Degraded behavior is
   `generate_summary_without_live_status`, `require_operator_review`, and
   `skip_prefill_execution`.
-- Evidence: `crates/rustok-ai-order/contracts/ai-order-fba-registry.json`,
-  `crates/rustok-ai-order/contracts/evidence/ai-order-consumer-static-matrix.json`,
-  `crates/rustok-ai-order/contracts/evidence/ai-order-runtime-fallback-smoke.json`,
+- Evidence: `crates/modules/rustok-ai-order/contracts/ai-order-fba-registry.json`,
+  `crates/modules/rustok-ai-order/contracts/evidence/ai-order-consumer-static-matrix.json`,
+  `crates/modules/rustok-ai-order/contracts/evidence/ai-order-runtime-fallback-smoke.json`,
   and `scripts/verify/verify-ai-fba-baseline.mjs`.
 
 ## Next results

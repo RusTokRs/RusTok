@@ -4,17 +4,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  limits: "crates/rustok-page-builder/src/static_publish_resource_limits.rs",
-  sanitization: "crates/rustok-page-builder/src/publish_sanitization.rs",
-  staticLanding: "crates/rustok-page-builder/src/static_landing.rs",
+  limits: "crates/modules/rustok-page-builder/src/static_publish_resource_limits.rs",
+  sanitization: "crates/modules/rustok-page-builder/src/publish_sanitization.rs",
+  staticLanding: "crates/modules/rustok-page-builder/src/static_landing.rs",
   runtimeContract:
-    "crates/rustok-page-builder/contracts/page-builder-publish-runtime-review.json",
+    "crates/modules/rustok-page-builder/contracts/page-builder-publish-runtime-review.json",
   evidence:
-    "crates/rustok-page-builder/contracts/evidence/page-builder-static-publish-resource-limits-source.json",
-  packet: "crates/rustok-page-builder/docs/static-publish-resource-limits.md",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-static-publish-resource-limits-source.json",
+  packet: "crates/modules/rustok-page-builder/docs/static-publish-resource-limits.md",
   actualization: "docs/modules/page-builder-parity-actualization-2026-08-05.md",
 };
 

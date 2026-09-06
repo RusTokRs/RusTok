@@ -4,7 +4,7 @@
   "status": "pages_native_storefront_server_fn_source_unvalidated",
   "scope": "registered Leptos Pages storefront server function over SQLite owner data and typed cache runtime",
   "harness": {
-    "path": "crates/rustok-pages/storefront/tests/native_storefront_server_fn_sqlite.rs",
+    "path": "crates/modules/rustok-pages/storefront/tests/native_storefront_server_fn_sqlite.rs",
     "test": "native_storefront_server_fn_misses_hits_rotates_and_fails_open",
     "backend": "sqlite_in_memory",
     "route": "/api/fn/pages/storefront-data",

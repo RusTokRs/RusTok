@@ -418,7 +418,7 @@ fn validate_module_semantics_contract_rejects_path_module_with_non_first_party_o
     let spec = ModuleSpec {
         crate_name: "rustok-demo".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-demo".to_string()),
+        path: Some("crates/modules/rustok-demo".to_string()),
         required: false,
         version: None,
         git: None,
@@ -452,7 +452,7 @@ fn validate_module_semantics_contract_rejects_required_module_without_core_trust
     let spec = ModuleSpec {
         crate_name: "rustok-demo".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-demo".to_string()),
+        path: Some("crates/modules/rustok-demo".to_string()),
         required: true,
         version: None,
         git: None,
@@ -486,7 +486,7 @@ fn validate_module_semantics_contract_rejects_optional_module_with_core_trust_le
     let spec = ModuleSpec {
         crate_name: "rustok-demo".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-demo".to_string()),
+        path: Some("crates/modules/rustok-demo".to_string()),
         required: false,
         version: None,
         git: None,
@@ -535,7 +535,7 @@ fn validate_module_kind_contract_rejects_required_module_without_core_kind() {
     let spec = ModuleSpec {
         crate_name: "rustok-demo".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-demo".to_string()),
+        path: Some("crates/modules/rustok-demo".to_string()),
         required: true,
         version: None,
         git: None,
@@ -576,7 +576,7 @@ fn validate_module_kind_contract_rejects_optional_module_declaring_core_kind() {
     let spec = ModuleSpec {
         crate_name: "rustok-demo".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-demo".to_string()),
+        path: Some("crates/modules/rustok-demo".to_string()),
         required: false,
         version: None,
         git: None,
@@ -935,7 +935,7 @@ fn validate_module_server_registry_contract_accepts_optional_runtime_module() {
     let spec = ModuleSpec {
         crate_name: "alloy".to_string(),
         source: "path".to_string(),
-        path: Some("crates/alloy".to_string()),
+        path: Some("crates/modules/alloy".to_string()),
         required: false,
         version: None,
         git: None,
@@ -1023,7 +1023,7 @@ fn validate_module_server_registry_contract_accepts_capability_only_always_linke
     let spec = ModuleSpec {
         crate_name: "flex".to_string(),
         source: "path".to_string(),
-        path: Some("crates/flex".to_string()),
+        path: Some("crates/modules/flex".to_string()),
         required: false,
         version: None,
         git: None,
@@ -1113,7 +1113,7 @@ fn validate_module_server_registry_contract_rejects_required_module_missing_dire
     let spec = ModuleSpec {
         crate_name: "rustok-auth".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-auth".to_string()),
+        path: Some("crates/modules/rustok-auth".to_string()),
         required: true,
         version: None,
         git: None,
@@ -1207,7 +1207,7 @@ fn validate_module_server_registry_contract_rejects_optional_module_direct_regis
     let spec = ModuleSpec {
         crate_name: "alloy".to_string(),
         source: "path".to_string(),
-        path: Some("crates/alloy".to_string()),
+        path: Some("crates/modules/alloy".to_string()),
         required: false,
         version: None,
         git: None,
@@ -1371,7 +1371,7 @@ fn validate_default_enabled_server_contract_rejects_missing_server_default_featu
                 ModuleSpec {
                     crate_name: "rustok-content".to_string(),
                     source: "path".to_string(),
-                    path: Some("crates/rustok-content".to_string()),
+                    path: Some("crates/modules/rustok-content".to_string()),
                     required: false,
                     version: None,
                     git: None,
@@ -1386,7 +1386,7 @@ fn validate_default_enabled_server_contract_rejects_missing_server_default_featu
                 ModuleSpec {
                     crate_name: "rustok-pages".to_string(),
                     source: "path".to_string(),
-                    path: Some("crates/rustok-pages".to_string()),
+                    path: Some("crates/modules/rustok-pages".to_string()),
                     required: false,
                     version: None,
                     git: None,
@@ -1445,7 +1445,7 @@ fn validate_default_enabled_server_contract_rejects_required_module_in_default_e
             ModuleSpec {
                 crate_name: "rustok-channel".to_string(),
                 source: "path".to_string(),
-                path: Some("crates/rustok-channel".to_string()),
+                path: Some("crates/modules/rustok-channel".to_string()),
                 required: true,
                 version: None,
                 git: None,
@@ -1502,7 +1502,7 @@ fn validate_default_enabled_server_contract_accepts_present_server_default_featu
                 ModuleSpec {
                     crate_name: "rustok-content".to_string(),
                     source: "path".to_string(),
-                    path: Some("crates/rustok-content".to_string()),
+                    path: Some("crates/modules/rustok-content".to_string()),
                     required: false,
                     version: None,
                     git: None,
@@ -1517,7 +1517,7 @@ fn validate_default_enabled_server_contract_accepts_present_server_default_featu
                 ModuleSpec {
                     crate_name: "rustok-pages".to_string(),
                     source: "path".to_string(),
-                    path: Some("crates/rustok-pages".to_string()),
+                    path: Some("crates/modules/rustok-pages".to_string()),
                     required: false,
                     version: None,
                     git: None,
@@ -1575,7 +1575,7 @@ fn validate_default_enabled_server_contract_rejects_missing_optional_dependency_
                 ModuleSpec {
                     crate_name: "rustok-content".to_string(),
                     source: "path".to_string(),
-                    path: Some("crates/rustok-content".to_string()),
+                    path: Some("crates/modules/rustok-content".to_string()),
                     required: false,
                     version: None,
                     git: None,
@@ -1590,7 +1590,7 @@ fn validate_default_enabled_server_contract_rejects_missing_optional_dependency_
                 ModuleSpec {
                     crate_name: "rustok-blog".to_string(),
                     source: "path".to_string(),
-                    path: Some("crates/rustok-blog".to_string()),
+                    path: Some("crates/modules/rustok-blog".to_string()),
                     required: false,
                     version: None,
                     git: None,
@@ -1638,7 +1638,7 @@ fn validate_host_ui_inventory_contract_rejects_orphan_module_ui_dependency() {
                 ssr = ["rustok-demo-admin/ssr"]
 
                 [dependencies]
-                rustok-demo-admin = { path = "../../crates/rustok-demo/admin", default-features = false }
+                rustok-demo-admin = { path = "../../crates/modules/rustok-demo/admin", default-features = false }
             "#,
         )
         .expect("temporary admin Cargo.toml should be writable");
@@ -1671,7 +1671,7 @@ fn validate_host_ui_inventory_contract_rejects_orphan_module_ui_dependency() {
     let manifest_path = base.join("modules.toml");
     std::fs::write(
             &manifest_path,
-            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/rustok-demo\" }\n",
+            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/modules/rustok-demo\" }\n",
         )
         .expect("temporary modules.toml should be writable");
     let manifest = load_manifest_from(&manifest_path).expect("manifest should parse");
@@ -1717,7 +1717,7 @@ fn validate_host_ui_inventory_contract_ignores_support_ui_dependency_without_mod
                 ssr = ["rustok-ai-admin/ssr"]
 
                 [dependencies]
-                rustok-ai-admin = { path = "../../crates/rustok-ai/admin", default-features = false }
+                rustok-ai-admin = { path = "../../crates/modules/rustok-ai/admin", default-features = false }
             "#,
         )
         .expect("temporary admin Cargo.toml should be writable");
@@ -1804,7 +1804,7 @@ fn validate_host_ui_inventory_contract_rejects_orphan_feature_entry_for_declared
     let manifest_path = base.join("modules.toml");
     std::fs::write(
             &manifest_path,
-            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/rustok-demo\" }\n",
+            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/modules/rustok-demo\" }\n",
         )
         .expect("temporary modules.toml should be writable");
     let manifest = load_manifest_from(&manifest_path).expect("manifest should parse");
@@ -1936,7 +1936,7 @@ fn validate_module_host_ui_contract_rejects_missing_admin_feature_wiring() {
                 ssr = []
 
                 [dependencies]
-                rustok-demo-admin = { path = "../../crates/rustok-demo/admin", default-features = false }
+                rustok-demo-admin = { path = "../../crates/modules/rustok-demo/admin", default-features = false }
             "#,
         )
         .expect("temporary admin Cargo.toml should be writable");
@@ -1956,13 +1956,13 @@ fn validate_module_host_ui_contract_rejects_missing_admin_feature_wiring() {
     let manifest_path = base.join("modules.toml");
     std::fs::write(
             &manifest_path,
-            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/rustok-demo\" }\n",
+            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/modules/rustok-demo\" }\n",
         )
             .expect("temporary modules.toml should be writable");
     let spec = ModuleSpec {
         crate_name: "rustok-demo".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-demo".to_string()),
+        path: Some("crates/modules/rustok-demo".to_string()),
         required: false,
         version: None,
         git: None,
@@ -2011,7 +2011,7 @@ fn validate_module_host_ui_contract_accepts_storefront_ssr_wiring() {
                 ssr = ["rustok-demo-storefront/ssr"]
 
                 [dependencies]
-                rustok-demo-storefront = { path = "../../crates/rustok-demo/storefront", default-features = false }
+                rustok-demo-storefront = { path = "../../crates/modules/rustok-demo/storefront", default-features = false }
             "#,
         )
         .expect("temporary storefront Cargo.toml should be writable");
@@ -2031,13 +2031,13 @@ fn validate_module_host_ui_contract_accepts_storefront_ssr_wiring() {
     let manifest_path = base.join("modules.toml");
     std::fs::write(
             &manifest_path,
-            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/rustok-demo\" }\n",
+            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/modules/rustok-demo\" }\n",
         )
             .expect("temporary modules.toml should be writable");
     let spec = ModuleSpec {
         crate_name: "rustok-demo".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-demo".to_string()),
+        path: Some("crates/modules/rustok-demo".to_string()),
         required: false,
         version: None,
         git: None,
@@ -2088,7 +2088,7 @@ fn validate_module_host_ui_contract_rejects_missing_dependency_admin_ui_wiring()
                 ssr = ["rustok-demo-admin/ssr"]
 
                 [dependencies]
-                rustok-demo-admin = { path = "../../crates/rustok-demo/admin", default-features = false }
+                rustok-demo-admin = { path = "../../crates/modules/rustok-demo/admin", default-features = false }
             "#,
         )
         .expect("temporary admin Cargo.toml should be writable");
@@ -2156,13 +2156,13 @@ fn validate_module_host_ui_contract_rejects_missing_dependency_admin_ui_wiring()
     let manifest_path = base.join("modules.toml");
     std::fs::write(
             &manifest_path,
-            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/rustok-demo\", depends_on = [\"comments\"] }\ncomments = { crate = \"rustok-comments\", source = \"path\", path = \"crates/rustok-comments\" }\n",
+            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/modules/rustok-demo\", depends_on = [\"comments\"] }\ncomments = { crate = \"rustok-comments\", source = \"path\", path = \"crates/modules/rustok-comments\" }\n",
         )
         .expect("temporary modules.toml should be writable");
     let spec = ModuleSpec {
         crate_name: "rustok-demo".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-demo".to_string()),
+        path: Some("crates/modules/rustok-demo".to_string()),
         required: false,
         version: None,
         git: None,
@@ -2252,13 +2252,13 @@ fn validate_module_host_ui_contract_rejects_non_canonical_ui_dependency_path() {
     let manifest_path = base.join("modules.toml");
     std::fs::write(
             &manifest_path,
-            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/rustok-demo\" }\n",
+            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/modules/rustok-demo\" }\n",
         )
         .expect("temporary modules.toml should be writable");
     let spec = ModuleSpec {
         crate_name: "rustok-demo".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-demo".to_string()),
+        path: Some("crates/modules/rustok-demo".to_string()),
         required: false,
         version: None,
         git: None,
@@ -2701,7 +2701,7 @@ fn validate_module_docs_navigation_contract_rejects_missing_ui_navigation_link()
     std::fs::create_dir_all(&docs_modules_dir).expect("temporary docs/modules dir should exist");
     std::fs::write(
             docs_modules_dir.join("_index.md"),
-            "| `rustok-demo` | [docs](../../crates/rustok-demo/docs/README.md) | [plan](../../crates/rustok-demo/docs/implementation-plan.md) |\n",
+            "| `rustok-demo` | [docs](../../crates/modules/rustok-demo/docs/README.md) | [plan](../../crates/modules/rustok-demo/docs/implementation-plan.md) |\n",
         )
         .expect("temporary _index.md should be writable");
     std::fs::write(docs_modules_dir.join("UI_PACKAGES_INDEX.md"), "# ui\n")
@@ -2713,7 +2713,7 @@ fn validate_module_docs_navigation_contract_rejects_missing_ui_navigation_link()
     let spec = ModuleSpec {
         crate_name: "rustok-demo".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-demo".to_string()),
+        path: Some("crates/modules/rustok-demo".to_string()),
         required: false,
         version: None,
         git: None,
@@ -2749,12 +2749,12 @@ fn validate_module_docs_navigation_contract_accepts_documented_storefront_module
     std::fs::create_dir_all(&docs_modules_dir).expect("temporary docs/modules dir should exist");
     std::fs::write(
             docs_modules_dir.join("_index.md"),
-            "| `rustok-demo` | [docs](../../crates/rustok-demo/docs/README.md) | [plan](../../crates/rustok-demo/docs/implementation-plan.md) |\n",
+            "| `rustok-demo` | [docs](../../crates/modules/rustok-demo/docs/README.md) | [plan](../../crates/modules/rustok-demo/docs/implementation-plan.md) |\n",
         )
         .expect("temporary _index.md should be writable");
     std::fs::write(
         docs_modules_dir.join("UI_PACKAGES_INDEX.md"),
-        "- `rustok-demo` storefront UI: [README](../../crates/rustok-demo/storefront/README.md)\n",
+        "- `rustok-demo` storefront UI: [README](../../crates/modules/rustok-demo/storefront/README.md)\n",
     )
     .expect("temporary UI index should be writable");
     let manifest_path = base.join("modules.toml");
@@ -2764,7 +2764,7 @@ fn validate_module_docs_navigation_contract_accepts_documented_storefront_module
     let spec = ModuleSpec {
         crate_name: "rustok-demo".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-demo".to_string()),
+        path: Some("crates/modules/rustok-demo".to_string()),
         required: false,
         version: None,
         git: None,
@@ -2806,12 +2806,12 @@ fn validate_module_docs_navigation_contract_rejects_missing_next_admin_showcase_
         .expect("temporary next-admin package dir should exist");
     std::fs::write(
             docs_modules_dir.join("_index.md"),
-            "| `rustok-blog` | [docs](../../crates/rustok-blog/docs/README.md) | [plan](../../crates/rustok-blog/docs/implementation-plan.md) |\n",
+            "| `rustok-blog` | [docs](../../crates/modules/rustok-blog/docs/README.md) | [plan](../../crates/modules/rustok-blog/docs/implementation-plan.md) |\n",
         )
         .expect("temporary _index.md should be writable");
     std::fs::write(
         docs_modules_dir.join("UI_PACKAGES_INDEX.md"),
-        "- `rustok-blog` admin UI: [README](../../crates/rustok-blog/admin/README.md)\n",
+        "- `rustok-blog` admin UI: [README](../../crates/modules/rustok-blog/admin/README.md)\n",
     )
     .expect("temporary UI index should be writable");
     let manifest_path = base.join("modules.toml");
@@ -2821,7 +2821,7 @@ fn validate_module_docs_navigation_contract_rejects_missing_next_admin_showcase_
     let spec = ModuleSpec {
         crate_name: "rustok-blog".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-blog".to_string()),
+        path: Some("crates/modules/rustok-blog".to_string()),
         required: false,
         version: None,
         git: None,
@@ -2876,7 +2876,7 @@ fn validate_module_registry_docs_contract_rejects_missing_row() {
     let spec = ModuleSpec {
         crate_name: "rustok-demo".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-demo".to_string()),
+        path: Some("crates/modules/rustok-demo".to_string()),
         required: false,
         version: None,
         git: None,
@@ -2914,7 +2914,7 @@ fn validate_module_registry_docs_contract_rejects_dependency_drift() {
     let spec = ModuleSpec {
         crate_name: "rustok-demo".to_string(),
         source: "path".to_string(),
-        path: Some("crates/rustok-demo".to_string()),
+        path: Some("crates/modules/rustok-demo".to_string()),
         required: false,
         version: None,
         git: None,
@@ -2961,7 +2961,7 @@ fn validate_central_module_registry_inventory_contract_rejects_undocumented_modu
             ModuleSpec {
                 crate_name: "rustok-demo".to_string(),
                 source: "path".to_string(),
-                path: Some("crates/rustok-demo".to_string()),
+                path: Some("crates/modules/rustok-demo".to_string()),
                 required: false,
                 version: None,
                 git: None,
@@ -2991,7 +2991,7 @@ fn validate_central_module_registry_inventory_contract_rejects_undocumented_modu
 fn validate_module_ui_surface_contract_rejects_declared_missing_subcrate() {
     let error = validate_module_ui_surface_contract(
         "blog",
-        Path::new("crates/rustok-blog"),
+        Path::new("crates/modules/rustok-blog"),
         "preview",
         Some("rustok-blog-preview"),
     )
@@ -3006,7 +3006,7 @@ fn validate_module_ui_surface_contract_rejects_declared_missing_subcrate() {
 fn validate_module_ui_surface_contract_accepts_wired_existing_admin_subcrate() {
     validate_module_ui_surface_contract(
         "blog",
-        &super::workspace_root().join("crates").join("rustok-blog"),
+        &super::workspace_root().join("crates").join("modules").join("rustok-blog"),
         "admin",
         Some("rustok-blog-admin"),
     )

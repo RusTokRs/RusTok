@@ -11,14 +11,14 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  query: "crates/rustok-forum/src/graphql/topic_route_query.rs",
-  graphqlMod: "crates/rustok-forum/src/graphql/mod.rs",
-  owner: "crates/rustok-forum/src/services/topic_route.rs",
-  audienceOwner: "crates/rustok-forum/src/services/topic_audience_read.rs",
-  tombstoneOwner: "crates/rustok-forum/src/services/topic_route_tombstone_visibility.rs",
-  contract: "crates/rustok-forum/contracts/forum-topic-route-storefront-graphql.json",
-  test: "crates/rustok-forum/tests/topic_route_storefront_graphql_contract.rs",
-  docs: "crates/rustok-forum/docs/forum-24h-topic-route-storefront-graphql.md",
+  query: "crates/modules/rustok-forum/src/graphql/topic_route_query.rs",
+  graphqlMod: "crates/modules/rustok-forum/src/graphql/mod.rs",
+  owner: "crates/modules/rustok-forum/src/services/topic_route.rs",
+  audienceOwner: "crates/modules/rustok-forum/src/services/topic_audience_read.rs",
+  tombstoneOwner: "crates/modules/rustok-forum/src/services/topic_route_tombstone_visibility.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-route-storefront-graphql.json",
+  test: "crates/modules/rustok-forum/tests/topic_route_storefront_graphql_contract.rs",
+  docs: "crates/modules/rustok-forum/docs/forum-24h-topic-route-storefront-graphql.md",
 };
 
 function absolute(relativePath) {

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
-const sourcePath = "crates/rustok-groups/src/effective_service.rs";
-const planPath = "crates/rustok-groups/docs/implementation-plan.md";
+const sourcePath = "crates/modules/rustok-groups/src/effective_service.rs";
+const planPath = "crates/modules/rustok-groups/docs/implementation-plan.md";
 
 const source = fs.readFileSync(sourcePath, "utf8");
 const plan = fs.readFileSync(planPath, "utf8");

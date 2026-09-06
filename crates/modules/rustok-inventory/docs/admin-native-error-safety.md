@@ -76,7 +76,7 @@ This slice does not change:
 
 The retained source evidence is:
 
-`crates/rustok-inventory/contracts/evidence/admin-native-error-safety-source.json`
+`crates/modules/rustok-inventory/contracts/evidence/admin-native-error-safety-source.json`
 
 The fail-closed source guard is:
 

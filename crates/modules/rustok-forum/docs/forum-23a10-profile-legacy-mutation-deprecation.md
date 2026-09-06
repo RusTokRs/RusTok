@@ -18,7 +18,7 @@ could select the unsafe API accidentally.
 names the exact event-aware replacement method.
 
 The machine-readable contract is
-`crates/rustok-forum/contracts/forum-search-profile-legacy-mutation-deprecation.json`.
+`crates/modules/rustok-forum/contracts/forum-search-profile-legacy-mutation-deprecation.json`.
 
 ## Deprecated methods
 

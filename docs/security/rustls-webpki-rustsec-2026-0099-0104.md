@@ -17,7 +17,7 @@ Workspace no longer contains `rustls-webpki 0.101.7` and `rustls 0.21.12`. The A
 
 ## What Changed
 
-- In `crates/rustok-storage/Cargo.toml`, default features are disabled for `aws-sdk-s3` and `aws-config`.
+- In `crates/utils/rustok-storage/Cargo.toml`, default features are disabled for `aws-sdk-s3` and `aws-config`.
 - For the S3 backend, only necessary runtime/TLS features are explicitly enabled:
   - `behavior-version-latest`;
   - `default-https-client`;

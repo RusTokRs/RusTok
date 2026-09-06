@@ -53,7 +53,7 @@ revision/CAS checks, owner change evidence, and atomic business writes.
 
 ## Related contracts
 
-- [`rustok-outbox`](../crates/rustok-outbox/README.md)
-- [`rustok-media`](../crates/rustok-media/README.md)
-- [`rustok-taxonomy`](../crates/rustok-taxonomy/README.md)
+- [`rustok-outbox`](../crates/modules/rustok-outbox/README.md)
+- [`rustok-media`](../crates/modules/rustok-media/README.md)
+- [`rustok-taxonomy`](../crates/modules/rustok-taxonomy/README.md)
 - [Translation control plane and owner-owned localized data](./2026-07-26-translation-control-plane-boundary.md)

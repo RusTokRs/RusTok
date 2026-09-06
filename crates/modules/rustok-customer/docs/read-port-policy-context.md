@@ -62,8 +62,8 @@ The source contract is guarded by:
 
 - `scripts/verify/verify-customer-read-policy-context.mjs`;
 - `scripts/verify/verify-customer-read-local-context.mjs`;
-- `crates/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source.json`;
-- `crates/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source-review.json`.
+- `crates/modules/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source.json`;
+- `crates/modules/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source-review.json`.
 
 Direct compatibility callers, consumer-side transport mappings, customer writes, profile transports, compile/runtime traces, restart behavior, and remote-profile execution remain open. The wider ecommerce correlation-safe mapper cleanup also remains open.
 

@@ -23,7 +23,7 @@ apps/next-admin/playwright.forum-category-taxonomy.config.ts
 machine contract:
 
 ```text
-crates/rustok-forum/contracts/evidence/forum-category-taxonomy-browser-execution-contract.json
+crates/modules/rustok-forum/contracts/evidence/forum-category-taxonomy-browser-execution-contract.json
 ```
 
 manual execution workflow:

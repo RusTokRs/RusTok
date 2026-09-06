@@ -27,8 +27,8 @@ export function verifyEcommerceFbaContractEvidence({
 } = {}) {
   const readJson = createJsonReader(root);
   for (const module of modules) {
-    const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
-    const evidencePath = `crates/rustok-${module}/contracts/evidence/${module}-contract-test-static-matrix.json`;
+    const registryPath = `crates/modules/rustok-${module}/contracts/${module}-fba-registry.json`;
+    const evidencePath = `crates/modules/rustok-${module}/contracts/evidence/${module}-contract-test-static-matrix.json`;
     const registry = readJson(registryPath);
     const evidence = readJson(evidencePath);
 

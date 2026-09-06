@@ -8,16 +8,16 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(".");
 const failures = [];
 
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
-const projectionPath = "crates/rustok-forum/src/search_projection.rs";
-const queryContractPath = "crates/rustok-search/src/engine.rs";
-const graphqlTypesPath = "crates/rustok-search/src/graphql/types.rs";
-const graphqlQueryPath = "crates/rustok-search/src/graphql/query.rs";
-const pgEnginePath = "crates/rustok-search/src/pg_engine.rs";
-const searchReadmePath = "crates/rustok-search/README.md";
-const searchPlanPath = "crates/rustok-search/docs/implementation-plan.md";
-const contractPath = "crates/rustok-forum/contracts/forum-search-exact-category-filter.json";
-const notePath = "crates/rustok-forum/docs/forum-23b1-exact-category-filter.md";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
+const projectionPath = "crates/modules/rustok-forum/src/search_projection.rs";
+const queryContractPath = "crates/modules/rustok-search/src/engine.rs";
+const graphqlTypesPath = "crates/modules/rustok-search/src/graphql/types.rs";
+const graphqlQueryPath = "crates/modules/rustok-search/src/graphql/query.rs";
+const pgEnginePath = "crates/modules/rustok-search/src/pg_engine.rs";
+const searchReadmePath = "crates/modules/rustok-search/README.md";
+const searchPlanPath = "crates/modules/rustok-search/docs/implementation-plan.md";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-search-exact-category-filter.json";
+const notePath = "crates/modules/rustok-forum/docs/forum-23b1-exact-category-filter.md";
 const verifierPath = "scripts/verify/verify-forum-search-exact-category-filter.mjs";
 
 function read(relativePath) {

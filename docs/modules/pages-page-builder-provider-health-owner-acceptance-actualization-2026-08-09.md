@@ -18,7 +18,7 @@ The remaining gap before server binding was an explicit owner decision over reta
 The source contract is:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json
 ```
 
 The maintainer runner is:
@@ -172,7 +172,7 @@ This source slice deliberately leaves all current production paths unchanged:
 The fail-closed source guard is:
 
 ```text
-crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
 ```
 
 It locks the evaluator packet admission, owner decision vocabulary, explicit rollback action, source/deployment binding fields, query/freshness/identity-age admission, canonical health/SLO re-evaluation, source hash checks and continued production anti-promotion.
@@ -199,8 +199,8 @@ Per maintainer instruction, tests were not run. No Node verifier, Cargo command,
 Suggested maintainer source checks, intentionally not run:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
-node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 ```

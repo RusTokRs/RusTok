@@ -112,9 +112,9 @@
     "all topic audience inserts reject archived or deleted topics on PostgreSQL and SQLite",
     "new merge receipts compare exact policy and child relation sets before commit on PostgreSQL and SQLite"
   ],
-  "test": "crates/rustok-forum/tests/topic_merge_audience_reconciliation_sqlite.rs",
+  "test": "crates/modules/rustok-forum/tests/topic_merge_audience_reconciliation_sqlite.rs",
   "verifier": "scripts/verify/verify-forum-topic-merge-audience-reconciliation.mjs",
-  "documentation": "crates/rustok-forum/docs/forum-21g-topic-merge-audience-reconciliation.md",
+  "documentation": "crates/modules/rustok-forum/docs/forum-21g-topic-merge-audience-reconciliation.md",
   "maintainer_commands": [
     "node scripts/verify/verify-forum-topic-merge-audience-reconciliation.mjs",
     "cargo test -p rustok-forum --test topic_merge_audience_reconciliation_sqlite -- --nocapture"

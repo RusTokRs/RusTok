@@ -115,8 +115,8 @@ This slice does not add:
 - `apps/storefront/Cargo.toml`
 - `apps/storefront/build.rs`
 - `apps/server/src/middleware/auth_context.rs`
-- `crates/rustok-pages/contracts/evidence/pages-authenticated-authoring-route-source.json`
-- `crates/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs`
+- `crates/modules/rustok-pages/contracts/evidence/pages-authenticated-authoring-route-source.json`
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs`
 
 ## Validation status
 
@@ -125,14 +125,14 @@ The source status is explicit: artifact build and browser execution remain pendi
 Suggested commands, intentionally not run:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs
 cargo test -p rustok-server auth_context -- --nocapture
 cargo test -p rustok-storefront --features pages-inline-edit,ssr --all-targets -- --nocapture
 cargo check -p rustok-server --features pages-inline-edit
 cargo check -p rustok-storefront --no-default-features \
   --features pages-inline-edit-hydrate --target wasm32-unknown-unknown
 node apps/storefront/scripts/build-pages-inline-edit-client.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
 ```
 
 Acceptance still requires retained command output, generated artifact inspection, same-origin asset delivery, authenticated/anonymous HTTP evidence and observed browser editing with stale/replay failure cases.

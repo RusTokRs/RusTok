@@ -14,15 +14,15 @@ const forbid = (source, marker, label) => {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 };
 
-const eventPath = 'crates/rustok-events/src/product_index_refresh.rs';
-const contractPath = 'crates/rustok-events/src/contract.rs';
-const eventsLibPath = 'crates/rustok-events/src/lib.rs';
-const productBindingPath = 'crates/rustok-product/src/services/index_refresh_event.rs';
-const productRelayPath = 'crates/rustok-product/src/services/index_refresh_relay.rs';
-const productWriterPath = 'crates/rustok-product/src/services/index_refresh_publication.rs';
-const productModPath = 'crates/rustok-product/src/services/mod.rs';
-const digestPath = 'crates/rustok-events/contracts/event-contract-digests.json';
-const docsPath = 'crates/rustok-product/docs/index-refresh-event-family.md';
+const eventPath = 'crates/libs/rustok-events/src/product_index_refresh.rs';
+const contractPath = 'crates/libs/rustok-events/src/contract.rs';
+const eventsLibPath = 'crates/libs/rustok-events/src/lib.rs';
+const productBindingPath = 'crates/modules/rustok-product/src/services/index_refresh_event.rs';
+const productRelayPath = 'crates/modules/rustok-product/src/services/index_refresh_relay.rs';
+const productWriterPath = 'crates/modules/rustok-product/src/services/index_refresh_publication.rs';
+const productModPath = 'crates/modules/rustok-product/src/services/mod.rs';
+const digestPath = 'crates/libs/rustok-events/contracts/event-contract-digests.json';
+const docsPath = 'crates/modules/rustok-product/docs/index-refresh-event-family.md';
 
 for (const relative of [
   eventPath,

@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-remote-adapter-core.json';
-const adapterPath = 'crates/rustok-comments/src/remote.rs';
-const providerExportPath = 'crates/rustok-comments/src/lib.rs';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-67.md';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-remote-adapter-core.json';
+const adapterPath = 'crates/modules/rustok-comments/src/remote.rs';
+const providerExportPath = 'crates/modules/rustok-comments/src/lib.rs';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-67.md';
 
 function read(path) {
   return fs.readFileSync(path, 'utf8');

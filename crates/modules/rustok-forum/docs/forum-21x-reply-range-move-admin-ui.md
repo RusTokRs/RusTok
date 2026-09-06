@@ -11,7 +11,7 @@ receipt, semantic event, REST route or native transport.
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-reply-range-move-admin-ui.json
+crates/modules/rustok-forum/contracts/forum-reply-range-move-admin-ui.json
 ```
 
 ## Routes and authority

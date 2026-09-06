@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-requireMarkers('crates/rustok-index/src/domain/localized_query.rs', [
+requireMarkers('crates/modules/rustok-index/src/domain/localized_query.rs', [
   'pub struct LocalizedEntityQuery',
   'pub query: IndexQuery',
   'pub fallback_locale: Option<LocaleKey>',
@@ -30,7 +30,7 @@ requireMarkers('crates/rustok-index/src/domain/localized_query.rs', [
   'pub fn canonical_fallback_locale(&self)',
   'ordinary_nodes + any_locale_nodes > MAX_LOCALIZED_FILTER_NODES',
 ]);
-requireMarkers('crates/rustok-index/src/application/localized_validation.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/localized_validation.rs', [
   'LocaleRequiredSchema(SchemaRef)',
   'InvalidIdentityOrderDirection',
   'OrderDirection::Asc | OrderDirection::Desc',
@@ -40,7 +40,7 @@ requireMarkers('crates/rustok-index/src/application/localized_validation.rs', [
   'LocalizedProjectionInOrder(FieldPath)',
   'self.validate_query(&query.query)?;',
 ]);
-requireMarkers('crates/rustok-index/src/application/localized_cursor.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/localized_cursor.rs', [
   'const LOCALIZED_SCOPED_CURSOR_VERSION: u8 = 3;',
   'identity_order_direction: OrderDirection',
   'identity_order_direction: query.identity_order_direction',
@@ -48,7 +48,7 @@ requireMarkers('crates/rustok-index/src/application/localized_cursor.rs', [
   'localized_projection_fields.sort();',
 ]);
 
-const ordinaryCursor = requireMarkers('crates/rustok-index/src/application/cursor.rs', [
+const ordinaryCursor = requireMarkers('crates/modules/rustok-index/src/application/cursor.rs', [
   'const SCOPED_CURSOR_VERSION: u8 = 2;',
   'b"rustok-index-cursor-query-v1"',
 ]);
@@ -56,12 +56,12 @@ if (ordinaryCursor.includes('identity_order_direction')) {
   fail('ordinary cursor codec must not absorb localized identity ordering');
 }
 
-requireMarkers('crates/rustok-index/src/application/query_port.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/query_port.rs', [
   'async fn execute_localized_query(',
   'localized Index query execution is unavailable for this adapter',
 ]);
-requireMarkers('crates/rustok-index/src/domain/query.rs', ['TextLike(FieldPath, String)']);
-requireMarkers('crates/rustok-index/docs/m7-product-storefront-localized-query-architecture.md', [
+requireMarkers('crates/modules/rustok-index/src/domain/query.rs', ['TextLike(FieldPath, String)']);
+requireMarkers('crates/modules/rustok-index/docs/m7-product-storefront-localized-query-architecture.md', [
   'Status: `runtime_text_pattern_identity_order_source_complete_adapter_and_evidence_pending`',
   '`LocalizedEntityQuery`',
   '`identity_order_direction`',

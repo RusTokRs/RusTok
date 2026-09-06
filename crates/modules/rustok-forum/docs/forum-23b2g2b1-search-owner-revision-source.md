@@ -86,8 +86,8 @@ compared numerically and neither replaces the other.
 The remaining evidence protocol is frozen by `FORUM-23B2G2B3D0`:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json
-crates/rustok-forum/docs/forum-23b2g2b3d-runtime-evidence.md
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json
+crates/modules/rustok-forum/docs/forum-23b2g2b3d-runtime-evidence.md
 ```
 
 It requires executable PostgreSQL/Iggy proof for exact duplicate recognition,

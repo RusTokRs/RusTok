@@ -370,4 +370,4 @@ These commands were not run while publishing
 - [Outbox intake contract](../contracts/notifications-outbox-intake.json)
 - [Fanout worker contract](../contracts/notifications-fanout-worker.json)
 - [Candidate worker contract](../contracts/notifications-candidate-worker.json)
-- Canonical roadmap: `crates/rustok-forum/docs/implementation-plan.md`
+- Canonical roadmap: `crates/modules/rustok-forum/docs/implementation-plan.md`

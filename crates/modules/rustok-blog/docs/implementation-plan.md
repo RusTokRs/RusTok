@@ -62,14 +62,14 @@ native Search, Search admin preview, and admin global search.
 Canonical navigation is a Search-owned provider boundary, not a Blog-owned gate.
 Blog consumes the projected canonical URL and must not reconstruct routes. The
 owner evidence is
-`crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`,
+`crates/modules/rustok-search/contracts/evidence/search-canonical-url-contract.json`,
 verified by `scripts/verify/verify-search-canonical-url-contract.mjs` and focused
 fixture `scripts/verify/verify-search-canonical-url-contract.test.mjs`. Exact
 leaf commands `verify:search:canonical-url` and `test:verify:search:canonical-url`
 are locked into the Search FBA verify/test chains.
 
 Blog lifecycle projection is also Search-owned. Its retained executable harness
-is `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`,
+is `crates/modules/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`,
 guarded by `scripts/verify/verify-search-blog-projection.mjs` and focused fixture
 `scripts/verify/verify-search-blog-projection.test.mjs`. Exact commands
 `verify:search:blog-projection` and `test:verify:search:blog-projection` are locked
@@ -78,7 +78,7 @@ registration does not record routing or PostgreSQL execution.
 
 Comments thread positioning, active counters, first-thread identity, and repair
 migrations are Comments-owned provider invariants. Their retained evidence is
-`crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`,
+`crates/modules/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`,
 guarded by `scripts/verify/verify-comments-thread-write-invariants.mjs` and focused
 self-test `scripts/verify/verify-comments-thread-write-invariants.test.mjs`. Exact
 commands `verify:comments:thread-write-invariants` and
@@ -104,13 +104,13 @@ facade re-exports `CommentsThreadPort` so UI packages can name the already-publi
 injection contract without depending directly on the provider crate. The retained
 compile-only harness is
 `services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port`
-in `crates/rustok-blog/src/services/comment.rs`, with suggested command
+in `crates/modules/rustok-blog/src/services/comment.rs`, with suggested command
 `cargo test -p rustok-blog --lib services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port -- --exact`.
 Evidence schema v3 lives at
-`crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`.
+`crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`.
 The active fallback/error source evidence is
-`crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`,
-with `consumer_error_mapping` bound to `crates/rustok-blog/src/services/comment.rs`
+`crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`,
+with `consumer_error_mapping` bound to `crates/modules/rustok-blog/src/services/comment.rs`
 rather than the legacy `CommentsError` conversion. The fail-closed gate is
 `scripts/verify/verify-blog-comments-port-boundary.mjs` with focused fixture
 `scripts/verify/verify-blog-comments-port-boundary.test.mjs`; exact commands
@@ -130,7 +130,7 @@ reads an optional `Arc<dyn CommentsThreadPort>` through
 `CommentService::with_comments_thread_port` when the host supplies one while
 preserving `CommentService::new` as the in-process fallback. The moderation
 controller delegates only to that selector. Schema-v1 evidence lives at
-`crates/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json`,
+`crates/modules/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json`,
 guarded by `scripts/verify/verify-blog-comments-http-port-injection.mjs` and
 focused fixture
 `scripts/verify/verify-blog-comments-http-port-injection.test.mjs`. The registered
@@ -155,7 +155,7 @@ Its single `BlogGraphqlRuntimeData::comment_service` selector chooses
 `CommentService::new` fallback. Public comments, moderation comments, and the
 moderation mutation all consume that schema data rather than constructing a
 provider in resolver source. Schema-v1 evidence lives at
-`crates/rustok-blog/contracts/evidence/blog-comments-graphql-port-injection.json`,
+`crates/modules/rustok-blog/contracts/evidence/blog-comments-graphql-port-injection.json`,
 guarded by `scripts/verify/verify-blog-comments-graphql-port-injection.mjs` and
 focused fixture
 `scripts/verify/verify-blog-comments-graphql-port-injection.test.mjs`. The retained
@@ -179,7 +179,7 @@ selector looks up an optional `Arc<dyn rustok_blog::CommentsThreadPort>` with
 preserves `CommentService::new` as the in-process fallback. The approved-only
 public read delegates through that selector without changing pagination or typed
 `AVAILABLE` / `UNAVAILABLE` / `TIMEOUT` degradation. Schema-v1 evidence lives at
-`crates/rustok-blog/contracts/evidence/blog-comments-storefront-native-port-injection.json`,
+`crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-native-port-injection.json`,
 guarded by
 `scripts/verify/verify-blog-comments-storefront-native-port-injection.mjs` and
 focused fixture
@@ -211,7 +211,7 @@ single `comment_service(&NativeContext)` selector chooses
 remains bounded to page at least one and `per_page` in `1..100`; all Blog errors
 remain fail-closed and no storefront empty-success degradation is reused.
 Schema-v1 evidence lives at
-`crates/rustok-blog/contracts/evidence/blog-comments-admin-native-port-injection.json`,
+`crates/modules/rustok-blog/contracts/evidence/blog-comments-admin-native-port-injection.json`,
 guarded by `scripts/verify/verify-blog-comments-admin-native-port-injection.mjs`
 and focused fixture
 `scripts/verify/verify-blog-comments-admin-native-port-injection.test.mjs`. The
@@ -237,11 +237,11 @@ and `BlogPostUpdated` outbox publication in one transaction. `project()` and
 `EventHandler::handles()` share the pure `comment_projection_change` classifier,
 and the pure counter transition floors deletes at zero while saturating count and
 version overflow. Evidence schema v4 is retained at
-`crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json`,
+`crates/modules/rustok-blog/contracts/evidence/blog-comments-event-projection.json`,
 guarded by `scripts/verify/verify-blog-comments-event-projection.mjs` and focused
 fixture `scripts/verify/verify-blog-comments-event-projection.test.mjs`. The Rust
 source harness is the `services::comment_projection::tests` module in
-`crates/rustok-blog/src/services/comment_projection.rs`, with status
+`crates/modules/rustok-blog/src/services/comment_projection.rs`, with status
 `executable_no_run` and suggested command
 `cargo test -p rustok-blog --lib services::comment_projection::tests`.
 
@@ -256,7 +256,7 @@ contention or observed natural retry frequency.
 
 The retained deterministic PostgreSQL retry-limit target is
 `optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears` in
-`crates/rustok-blog/tests/comment_projection_postgres_test.rs`. It installs a
+`crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs`. It installs a
 schema-local `BEFORE UPDATE` trigger that returns `NULL`, so the real handler
 observes eight zero-row update results. A PostgreSQL sequence records all eight
 attempts outside transaction rollback. The written assertions require the
@@ -267,7 +267,7 @@ The target is `executable_no_run`; it does not record execution or measure natur
 contention frequency.
 
 The retained host registration target is the `tests` module in
-`crates/rustok-blog/src/lib.rs`. It creates the real module listener context,
+`crates/modules/rustok-blog/src/lib.rs`. It creates the real module listener context,
 invokes `BlogModule::register_event_listeners`, extracts the single registered
 handler, verifies the `blog_comment_projection` identity, accepts Blog
 `comment.created` / `comment.deleted`, and rejects a non-Blog target. Its suggested
@@ -279,7 +279,7 @@ target below.
 
 The retained dispatcher target is the filtered
 `event_dispatcher_routes_registered_handler_and_commits_projection` case in
-`crates/rustok-blog/tests/comment_projection_postgres_test.rs`. It builds the real
+`crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs`. It builds the real
 module listener context, registers handlers through
 `BlogModule::register_event_listeners`, moves them into `EventDispatcher`, starts
 the subscriber, publishes one envelope through `EventBus`, waits for the durable
@@ -290,7 +290,7 @@ The target is `executable_no_run`; no dispatcher or PostgreSQL output is recorde
 
 The retained concurrency target is the filtered
 `concurrent_created_events_converge_without_lost_updates` case in
-`crates/rustok-blog/tests/comment_projection_postgres_test.rs`. It creates four
+`crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs`. It creates four
 independent PostgreSQL connections against one isolated schema, constructs one
 handler per connection, releases four unique `comment.created` envelopes through
 a shared barrier, and requires the shared post to finish at `comment_count = 4`
@@ -302,7 +302,7 @@ an observed retry count or optimistic-exhaustion result.
 
 The retained concurrent duplicate-delivery target is
 `concurrent_duplicate_envelope_commits_once_and_replays_cleanly` in
-`crates/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs`.
+`crates/modules/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs`.
 A control transaction locks the Blog post before two named one-connection workers
 start with the same envelope. The harness waits until `pg_stat_activity` reports
 both workers blocked on a lock, proving both initial delivery-ledger lookups have
@@ -310,7 +310,7 @@ completed before the row lock is released. The written assertions require exactl
 one successful handler, one failed losing transaction, final `comment_count = 1`
 and `version = 2`, one delivery row, one outbox row, and a clean replay of the same
 envelope. Evidence schema v1 is retained at
-`crates/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json`,
+`crates/modules/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json`,
 guarded by `scripts/verify/verify-blog-comments-duplicate-delivery-race.mjs` and
 focused fixture
 `scripts/verify/verify-blog-comments-duplicate-delivery-race.test.mjs`. Its
@@ -324,7 +324,7 @@ dispatcher-level duplicate result is recorded.
 
 The retained dispatcher duplicate-delivery target is
 `event_dispatcher_replays_duplicate_envelope_without_double_commit` in
-`crates/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs`.
+`crates/modules/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs`.
 It registers the real projection handler through
 `BlogModule::register_event_listeners`, wraps that handler only to count completed
 calls and errors, publishes the same envelope twice through `EventBus` and
@@ -332,7 +332,7 @@ calls and errors, publishes the same envelope twice through `EventBus` and
 assertions require two completed calls, zero handler errors, final
 `comment_count = 1` and `version = 2`, one delivery row, and one outbox row.
 Evidence schema v1 is retained at
-`crates/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json`,
+`crates/modules/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json`,
 guarded by
 `scripts/verify/verify-blog-comments-dispatcher-duplicate-delivery.mjs` and focused
 fixture
@@ -348,7 +348,7 @@ The retained evidence remains `source_verified_no_compile` and the target remain
 `executable_no_run`.
 
 The retained PostgreSQL target is
-`crates/rustok-blog/tests/comment_projection_postgres_test.rs`. It uses
+`crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs`. It uses
 `RUSTOK_BLOG_TEST_DATABASE_URL` (or PostgreSQL `DATABASE_URL`), a unique schema,
 and a one-connection pool for each direct handler. Its five direct-handler cases
 cover duplicate-envelope idempotency, deterministic retry-limit rollback/replay,
@@ -362,7 +362,7 @@ table cannot fall through to a developer database table and invalidate rollback
 coverage. The three focused source verifiers reject that fallback explicitly.
 
 The retained same-process restart target is
-`crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs`. It applies
+`crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs`. It applies
 one envelope, drops the first handler, opens a new PostgreSQL connection against
 the same isolated schema, creates a new handler, and replays the same envelope.
 The written assertions require one counter transition, one durable delivery row,
@@ -445,16 +445,16 @@ execution remains maintainer-owned.
 
 ### AI Blog owner boundary
 
-The AI Blog draft writer in `crates/rustok-ai/src/direct.rs` reads existing
+The AI Blog draft writer in `crates/modules/rustok-ai/src/direct.rs` reads existing
 source material through `content_plain_text`, converts generated create and
 update text with `article_document_from_plain_text`, and persists drafts with
 `publish: false` through `PostService`.
 
-The private AI Blog owner shim at `crates/rustok-ai/src/rustok_blog.rs` exports
+The private AI Blog owner shim at `crates/modules/rustok-ai/src/rustok_blog.rs` exports
 only `CreatePostInput`, `PostResponse`, `PostService`, `UpdatePostInput`, and
 `richtext`. Owner migrations and other Blog internals are outside this boundary.
 Evidence is recorded in
-`crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json`; the
+`crates/modules/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json`; the
 fail-closed source gate is `scripts/verify/verify-blog-ai-richtext-boundary.mjs`
 with fixture `scripts/verify/verify-blog-ai-richtext-boundary.test.mjs`.
 
@@ -934,49 +934,49 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
 
 ## Evidence and guardrails
 
-- `crates/rustok-blog/contracts/blog-fba-registry.json`
-- `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`
-- `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`
-- `crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json`
-- `crates/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json`
-- `crates/rustok-blog/contracts/evidence/blog-comments-graphql-port-injection.json`
-- `crates/rustok-blog/contracts/evidence/blog-comments-storefront-native-port-injection.json`
-- `crates/rustok-blog/contracts/evidence/blog-comments-admin-native-port-injection.json`
-- `crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json`
-- `crates/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json`
-- `crates/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json`
-- `crates/rustok-blog/rustok-module.toml`
-- `crates/rustok-blog/src/lib.rs`
-- `crates/rustok-blog/src/controllers/mod.rs`
-- `crates/rustok-blog/src/controllers/comments.rs`
-- `crates/rustok-blog/src/services/comment.rs`
-- `crates/rustok-blog/src/graphql/mod.rs`
-- `crates/rustok-blog/src/graphql/runtime_data.rs`
-- `crates/rustok-blog/src/graphql/types.rs`
-- `crates/rustok-blog/src/graphql/mutation.rs`
+- `crates/modules/rustok-blog/contracts/blog-fba-registry.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-comments-http-port-injection.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-comments-graphql-port-injection.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-native-port-injection.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-comments-admin-native-port-injection.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-comments-event-projection.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json`
+- `crates/modules/rustok-blog/rustok-module.toml`
+- `crates/modules/rustok-blog/src/lib.rs`
+- `crates/modules/rustok-blog/src/controllers/mod.rs`
+- `crates/modules/rustok-blog/src/controllers/comments.rs`
+- `crates/modules/rustok-blog/src/services/comment.rs`
+- `crates/modules/rustok-blog/src/graphql/mod.rs`
+- `crates/modules/rustok-blog/src/graphql/runtime_data.rs`
+- `crates/modules/rustok-blog/src/graphql/types.rs`
+- `crates/modules/rustok-blog/src/graphql/mutation.rs`
 - `apps/server/build.rs`
 - `apps/server/src/graphql/schema.rs`
-- `crates/rustok-blog/storefront/src/model.rs`
-- `crates/rustok-blog/storefront/src/transport/graphql_adapter.rs`
-- `crates/rustok-blog/storefront/src/transport/native_server_adapter.rs`
-- `crates/rustok-blog/storefront/src/ui/leptos.rs`
-- `crates/rustok-blog/admin/src/transport/native_server_adapter.rs`
-- `crates/rustok-blog/src/services/comment_projection.rs`
-- `crates/rustok-blog/tests/comment_projection_postgres_test.rs`
-- `crates/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs`
-- `crates/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs`
-- `crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs`
-- `crates/rustok-comments/contracts/comments-fba-registry.json`
-- `crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
-- `crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json`
-- `crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json`
-- `crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json`
-- `crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json`
-- `crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json`
-- `crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json`
-- `crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json`
-- `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
-- `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
+- `crates/modules/rustok-blog/storefront/src/model.rs`
+- `crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs`
+- `crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs`
+- `crates/modules/rustok-blog/storefront/src/ui/leptos.rs`
+- `crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs`
+- `crates/modules/rustok-blog/src/services/comment_projection.rs`
+- `crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs`
+- `crates/modules/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs`
+- `crates/modules/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs`
+- `crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs`
+- `crates/modules/rustok-comments/contracts/comments-fba-registry.json`
+- `crates/modules/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json`
+- `crates/modules/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
+- `crates/modules/rustok-search/contracts/evidence/search-canonical-url-contract.json`
 - `scripts/verify/verify-blog-comments-port-boundary.mjs`
 - `scripts/verify/verify-blog-comments-port-boundary.test.mjs`
 - `scripts/verify/verify-blog-comments-http-port-injection.mjs`

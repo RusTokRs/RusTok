@@ -21,9 +21,9 @@ does not create a package-local locale fallback.
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA registry and static/runtime evidence:
-  `crates/rustok-auth/contracts/auth-fba-registry.json`,
-  `crates/rustok-auth/contracts/evidence/auth-capability-static-matrix.json`,
-  and `crates/rustok-auth/contracts/evidence/auth-runtime-fallback-smoke.json`.
+  `crates/modules/rustok-auth/contracts/auth-fba-registry.json`,
+  `crates/modules/rustok-auth/contracts/evidence/auth-capability-static-matrix.json`,
+  and `crates/modules/rustok-auth/contracts/evidence/auth-runtime-fallback-smoke.json`.
 
 ## Open results
 

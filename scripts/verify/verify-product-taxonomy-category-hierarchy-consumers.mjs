@@ -4,9 +4,9 @@ import fs from 'node:fs';
 
 const files = {
   effectiveForms:
-    'crates/rustok-product/src/services/catalog_schema_service/effective_forms.rs',
-  ownerRead: 'crates/rustok-taxonomy/src/owner_category_read.rs',
-  contract: 'crates/rustok-product/docs/category-taxonomy-binding.md',
+    'crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms.rs',
+  ownerRead: 'crates/modules/rustok-taxonomy/src/owner_category_read.rs',
+  contract: 'crates/modules/rustok-product/docs/category-taxonomy-binding.md',
 };
 
 const failures = [];

@@ -10,17 +10,17 @@ payment state.
 
 Payment workstream completion and verification state is tracked in:
 
-`crates/rustok-commerce/docs/implementation-plan.md#payment-workstream`
+`crates/modules/rustok-commerce/docs/implementation-plan.md#payment-workstream`
 
 Marketplace financial/reversal completion and verification state is tracked in:
 
-`crates/rustok-marketplace/docs/implementation-plan.md`
+`crates/modules/rustok-marketplace/docs/implementation-plan.md`
 
 This document is an operational runbook, not a roadmap.
 
 Machine-readable contract:
 
-`crates/rustok-payment/contracts/payment-provider-webhook-v1.json`
+`crates/modules/rustok-payment/contracts/payment-provider-webhook-v1.json`
 
 ## Mounted routes
 

@@ -18,7 +18,7 @@ D17 does not execute any runtime command and does not change the canonical
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-assembler.json
+crates/modules/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-assembler.json
 ```
 
 Assembler:

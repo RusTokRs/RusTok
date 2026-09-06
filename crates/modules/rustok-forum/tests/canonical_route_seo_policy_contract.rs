@@ -4,6 +4,7 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|path| path.parent())
+        .and_then(|path| path.parent())
         .expect("workspace root")
         .to_path_buf()
 }
@@ -15,7 +16,7 @@ fn read(relative: &str) -> String {
 
 #[test]
 fn seo_wrapper_uses_route_owners_for_canonical_and_alternate_paths() {
-    let source = read("crates/rustok-forum/src/seo_audience_targets.rs");
+    let source = read("crates/modules/rustok-forum/src/seo_audience_targets.rs");
 
     for marker in [
         "const MAX_FORUM_SEO_ALTERNATE_ROUTES: usize = 64",
@@ -93,8 +94,8 @@ fn canonical_route_handlers_compose_head_without_replacing_route_authority() {
 
 #[test]
 fn contract_preserves_visibility_schema_and_compatibility_boundaries() {
-    let contract = read("crates/rustok-forum/contracts/forum-canonical-route-seo-policy.json");
-    let docs = read("crates/rustok-forum/docs/forum-24p-canonical-route-seo-policy.md");
+    let contract = read("crates/modules/rustok-forum/contracts/forum-canonical-route-seo-policy.json");
+    let docs = read("crates/modules/rustok-forum/docs/forum-24p-canonical-route-seo-policy.md");
 
     for marker in [
         "\"task\": \"FORUM-24P\"",

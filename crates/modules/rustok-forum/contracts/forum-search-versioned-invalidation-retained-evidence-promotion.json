@@ -2,7 +2,7 @@
   "contract": "forum_search_versioned_invalidation_retained_evidence_promotion_v1",
   "task": "FORUM-23B2G2B3D12",
   "status": "source_ready_maintainer_execution_pending",
-  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "runtime_evidence_parent": "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
   "aggregate_artifact": "target/forum-search-versioned-invalidation-runtime-evidence.json",
   "reviewer": "scripts/evidence/review-forum-search-versioned-invalidation-runtime-evidence.mjs",
   "verifier": "scripts/verify/verify-forum-search-versioned-invalidation-retained-evidence-promotion.mjs",

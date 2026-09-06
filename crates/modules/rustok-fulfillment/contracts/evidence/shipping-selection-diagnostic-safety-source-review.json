@@ -1,14 +1,14 @@
 {
   "status": "fulfillment_shipping_selection_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-fulfillment/src/ports.rs",
-    "crates/rustok-fulfillment/src/error.rs",
-    "crates/rustok-fulfillment/docs/shipping-selection-diagnostic-safety.md",
-    "crates/rustok-fulfillment/docs/implementation-plan.md",
+    "crates/modules/rustok-fulfillment/src/ports.rs",
+    "crates/modules/rustok-fulfillment/src/error.rs",
+    "crates/modules/rustok-fulfillment/docs/shipping-selection-diagnostic-safety.md",
+    "crates/modules/rustok-fulfillment/docs/implementation-plan.md",
     "scripts/verify/verify-fulfillment-shipping-selection-diagnostic-safety.mjs",
     "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
     "scripts/verify/verify-ecommerce-public-port-error-safety-v2.test.mjs",
-    "crates/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source.json"
+    "crates/modules/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source.json"
   ],
   "review_findings": {
     "public_api_preserved": true,

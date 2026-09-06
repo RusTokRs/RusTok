@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This source slice closes the owner-attribution and retained-context gap for the two
 owner-port reads mounted directly in
-`crates/rustok-commerce/src/storefront_staged_checkout_runtime.rs`:
+`crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs`:
 
 - `CartStorefrontPort::read_storefront_cart`;
 - `CustomerReadPort::read_customer_projection_by_user`.

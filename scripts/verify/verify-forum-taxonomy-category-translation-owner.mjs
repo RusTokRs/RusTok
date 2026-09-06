@@ -11,16 +11,16 @@ const rejectText = (source, marker, label = marker) => {
 };
 const normalizeWhitespace = (source) => source.replace(/\s+/g, ' ').trim();
 
-const planPath = 'crates/rustok-forum/docs/implementation-plan.md';
+const planPath = 'crates/modules/rustok-forum/docs/implementation-plan.md';
 const centralPlanPath = 'docs/modules/translation-implementation-plan.md';
-const modulePlanPath = 'crates/rustok-translation/docs/implementation-plan.md';
+const modulePlanPath = 'crates/modules/rustok-translation/docs/implementation-plan.md';
 const registryPath = 'docs/modules/translation-surfaces.json';
-const parityPath = 'crates/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md';
-const retirementTest = 'crates/rustok-forum/tests/category_taxonomy_translation_provider_retirement.rs';
+const parityPath = 'crates/modules/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md';
+const retirementTest = 'crates/modules/rustok-forum/tests/category_taxonomy_translation_provider_retirement.rs';
 const retiredPaths = [
-  'crates/rustok-forum/src/services/category_translation_target.rs',
-  'crates/rustok-forum/src/services/category_translation_progress.rs',
-  'crates/rustok-forum/tests/category_translation_target_postgres.rs',
+  'crates/modules/rustok-forum/src/services/category_translation_target.rs',
+  'crates/modules/rustok-forum/src/services/category_translation_progress.rs',
+  'crates/modules/rustok-forum/tests/category_translation_target_postgres.rs',
 ];
 
 for (const path of [planPath, centralPlanPath, modulePlanPath, registryPath, parityPath, retirementTest]) {
@@ -140,7 +140,7 @@ if (failures.length === 0) {
     for (const path of [
       retirementTest,
       'docs/architecture/taxonomy-flex-category-platform-plan.md',
-      'crates/rustok-taxonomy/src/translation_target.rs',
+      'crates/modules/rustok-taxonomy/src/translation_target.rs',
     ]) {
       if (!forum.evidence_paths?.includes(path)) failures.push(`forum_categories missing evidence ${path}`);
     }

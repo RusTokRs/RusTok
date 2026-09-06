@@ -4,20 +4,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  rollout: "crates/rustok-page-builder/src/rollout.rs",
-  owner: "crates/rustok-pages/src/graphql/builder_rollout.rs",
-  adapter: "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
-  transport: "crates/rustok-pages/admin/src/transport/builder_rollout_adapter.rs",
-  builder: "crates/rustok-pages/admin/src/builder.rs",
-  composition: "crates/rustok-pages/admin/src/composition.rs",
+  rollout: "crates/modules/rustok-page-builder/src/rollout.rs",
+  owner: "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
+  adapter: "crates/modules/rustok-pages/admin/src/builder_rollout_settings.rs",
+  transport: "crates/modules/rustok-pages/admin/src/transport/builder_rollout_adapter.rs",
+  builder: "crates/modules/rustok-pages/admin/src/builder.rs",
+  composition: "crates/modules/rustok-pages/admin/src/composition.rs",
   adminMain: "apps/admin/src/main.rs",
-  cargo: "crates/rustok-pages/admin/Cargo.toml",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-server-snapshot-source.json",
-  health: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
-  gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
+  cargo: "crates/modules/rustok-pages/admin/Cargo.toml",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-server-snapshot-source.json",
+  health: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
+  gate: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
   actualization: "docs/modules/pages-page-builder-rollout-server-snapshot-actualization-2026-08-08.md",
 };
 const read = (name) => {

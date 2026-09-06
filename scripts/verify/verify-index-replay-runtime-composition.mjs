@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const runtimePath = 'crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
+const runtimePath = 'crates/modules/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
 const runtime = requireMarkers(runtimePath, [
   'pub struct SharedIndexReplayRuntime',
   'targeted: Arc<IndexReplayTargetedExecutor<PostgresMutationStore>>',
@@ -115,7 +115,7 @@ requireMarkers('apps/server/src/services/index_replay_shadow_transport.rs', [
   'IndexReplayDryRunRequest::for_locale(',
   'self.operator.run_shadow(context, request).await?',
 ]);
-const continuation = requireMarkers('crates/rustok-index/src/application/source_continuation.rs', [
+const continuation = requireMarkers('crates/modules/rustok-index/src/application/source_continuation.rs', [
   'pub fn for_locale(',
   'claims.locale != expected_scope.locale',
   'IndexSourceContinuationError::LocaleScopeMismatch',
@@ -125,29 +125,29 @@ for (const forbidden of ['CONTINUATION_VERSION', 'ContinuationClaimsV1', 'Contin
     fail(`source continuation must remain one canonical unversioned envelope: ${forbidden}`);
   }
 }
-requireMarkers('crates/rustok-index/src/replay_dry_run.rs', [
+requireMarkers('crates/modules/rustok-index/src/replay_dry_run.rs', [
   'locale: Option<LocaleKey>',
   'registered.schema.locale_mode == LocaleMode::None',
   'IndexSourceScanRequest::for_locale(',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs', [
   'impl ModuleWorkRegistration for IndexReconciliationWorkRegistration',
   'impl ModuleWorkSource for PostgresIndexReconciliationWorkAdapter',
   'impl ModuleWorkHandler for PostgresIndexReconciliationWorkAdapter',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod replay_runtime;',
   'mod source_reconciliation_scheduler;',
   'SharedIndexReplayRuntime',
   'register_postgres_index_reconciliation_work',
 ]);
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'host-published replay and query capabilities',
   'host-owned due reconciliation scheduling through the generic module-work lifecycle',
   'SharedIndexReplayRuntime',
   'register_postgres_index_reconciliation_work',
 ]);
-requireMarkers('crates/rustok-index/docs/m6-replay-runtime-composition.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-runtime-composition.md', [
   'Status: `source_complete_owner_execution_pending`',
   'bounded shared replay runtime containing durable Full plus exact-key Targeted execution',
   '`IndexReplayTargetedExecutor<PostgresMutationStore>`',
@@ -162,7 +162,7 @@ requireMarkers('crates/rustok-index/docs/m6-replay-runtime-composition.md', [
   'No additional independent source-only M6 replay boundary is open',
   'maintainer-run',
 ]);
-requireMarkers('crates/rustok-index/docs/m6-reconciliation-host-scheduler.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-reconciliation-host-scheduler.md', [
   'Status: `source_complete_owner_execution_pending`.',
   'The generic host scheduler remains the only polling and lifecycle owner',
 ]);

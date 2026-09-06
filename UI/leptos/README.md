@@ -44,7 +44,7 @@ Complex interactive components (Select with popover, Dialog, DatePicker) may tem
 
 - `Button`, `Input`, `Textarea`, `Select`, `Checkbox`, `Switch`, `Badge`, `Spinner` — base form/action primitives
 - CSS-variable-based theming (no hardcoded Tailwind color classes — only semantic tokens)
-- Re-exported by `crates/leptos-ui` which adds domain-specific wrappers (`Card`, `Label`, `Separator`)
+- Re-exported by `crates/ui/leptos-ui` which adds domain-specific wrappers (`Card`, `Label`, `Separator`)
 
 ## Entry Points
 
@@ -70,7 +70,7 @@ Previous versions of this library used `--iu-*` CSS custom properties from `UI/t
 
 ## Interactions
 
-- **Consumed by**: `crates/leptos-ui` (re-exports), `apps/admin`, `apps/storefront`
+- **Consumed by**: `crates/ui/leptos-ui` (re-exports), `apps/admin`, `apps/storefront`
 - **Depends on**: `leptos` (workspace), `serde` (for derive on enums)
 - **Tokens**: shadcn CSS variables defined in host app CSS entry point
 
@@ -78,5 +78,5 @@ Previous versions of this library used `--iu-*` CSS custom properties from `UI/t
 
 - [IU API Contracts](../docs/api-contracts.md)
 - [UI Tokens](../tokens/base.css)
-- [leptos-ui crate](../../crates/leptos-ui/) — thin re-export wrapper
+- [leptos-ui crate](../../crates/ui/leptos-ui/) — thin re-export wrapper
 - [Platform docs](../../docs/index.md)

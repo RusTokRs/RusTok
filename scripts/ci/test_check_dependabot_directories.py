@@ -183,7 +183,7 @@ class DependabotDirectoryCheckTests(unittest.TestCase):
                 "Dependabot Cargo configuration does not cover Cargo manifests:",
                 result.stderr,
             )
-            self.assertIn("/crates/rustok-core", result.stderr)
+            self.assertIn("/crates/libs/rustok-core", result.stderr)
 
     def test_fails_when_directory_entries_are_duplicated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

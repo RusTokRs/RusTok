@@ -13,12 +13,12 @@ import { dirname, resolve } from "node:path";
 
 const root = process.cwd();
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-evidence-assembler.json";
-const forumPlanPath = "crates/rustok-forum/docs/implementation-plan.md";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-evidence-assembler.json";
+const forumPlanPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const d0Path =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
 const d12ContractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-retained-evidence-promotion.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-retained-evidence-promotion.json";
 const candidatePath =
   "target/forum-search-versioned-invalidation-runtime-promotion-candidate.json";
 const aggregatePath =

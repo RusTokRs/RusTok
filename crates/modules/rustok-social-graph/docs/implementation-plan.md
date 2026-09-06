@@ -3,7 +3,7 @@
 This is the live owner plan for tenant-scoped block, mute, directional follow,
 durable commands, events, replay, maintenance, and approved projections.
 Cross-module presentation policy remains coordinated by
-`crates/rustok-profiles/docs/implementation-plan.md`.
+`crates/modules/rustok-profiles/docs/implementation-plan.md`.
 
 ## Current state
 

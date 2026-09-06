@@ -55,7 +55,7 @@ The next bounded FORUM-26 slice should compose authoritative fact adapters for t
 
 ## Canonical plan debt
 
-The canonical `crates/rustok-forum/docs/implementation-plan.md` is not replaced through the GitHub contents API. It exceeds two thousand lines and complete replacement risks unrelated roadmap loss. A safe repository-local edit still needs to mark FORUM-26 `in_progress`, record FORUM-26A-D, update the FORUM-20 trust dependency and retain fact composition, owner enforcement, duplicate hashing, shared rate limiting and optional external scoring as remaining work.
+The canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is not replaced through the GitHub contents API. It exceeds two thousand lines and complete replacement risks unrelated roadmap loss. A safe repository-local edit still needs to mark FORUM-26 `in_progress`, record FORUM-26A-D, update the FORUM-20 trust dependency and retain fact composition, owner enforcement, duplicate hashing, shared rate limiting and optional external scoring as remaining work.
 
 `CRATE_API.md` is likewise not completely replaced. The public evaluator and rules are exported from the crate root and recorded by the machine contract and verifier.
 

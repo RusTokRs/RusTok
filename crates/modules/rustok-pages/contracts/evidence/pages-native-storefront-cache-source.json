@@ -3,9 +3,9 @@
   "date": "2026-08-05",
   "scope": "native Pages storefront composite response cache boundary",
   "basis": {
-    "production_adapter": "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
-    "cache_contract": "crates/rustok-pages/src/cache_invalidation.rs",
-    "harness": "crates/rustok-pages/tests/native_storefront_cache_contract.rs",
+    "production_adapter": "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+    "cache_contract": "crates/modules/rustok-pages/src/cache_invalidation.rs",
+    "harness": "crates/modules/rustok-pages/tests/native_storefront_cache_contract.rs",
     "parity_plan": "docs/modules/pages-page-builder-parity-continuation-plan.md"
   },
   "source_contract": {
@@ -40,7 +40,7 @@
     "fba_promoted": false
   },
   "harness": {
-    "path": "crates/rustok-pages/tests/native_storefront_cache_contract.rs",
+    "path": "crates/modules/rustok-pages/tests/native_storefront_cache_contract.rs",
     "test": "native_storefront_cache_misses_refills_hits_rotates_and_fails_open",
     "backend": "recording_pages_cache_port",
     "source_model": "bounded_storefront_snapshot"

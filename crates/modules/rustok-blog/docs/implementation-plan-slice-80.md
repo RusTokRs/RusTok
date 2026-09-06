@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 80 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-79.md`. Slices 1–79 retain
+`crates/modules/rustok-blog/docs/implementation-plan-slice-79.md`. Slices 1–79 retain
 the typed Comments remote boundary, bounded framing and listener lifecycle,
 bearer-authenticated reads, signed user-write delegation, overlapping keyrings,
 process-local whole-snapshot reload, time-aware activation and retirement, and

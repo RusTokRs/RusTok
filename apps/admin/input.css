@@ -3,8 +3,8 @@
 @source "./index.html";
 @source "./src/**/*.rs";
 @source "../../crates/**/admin/src/**/*.rs";
-@source "../../crates/leptos-ui/src/**/*.rs";
-@source "../../crates/leptos-*/src/**/*.rs";
+@source "../../crates/ui/leptos-ui/src/**/*.rs";
+@source "../../crates/ui/leptos-*/src/**/*.rs";
 
 @import "../../UI/tokens/base.css";
 

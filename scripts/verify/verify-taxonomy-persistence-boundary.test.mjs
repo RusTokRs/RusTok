@@ -41,27 +41,27 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rustok-taxonomy-boundary-'))
 try {
   write(
     root,
-    'crates/rustok-taxonomy/src/services.rs',
+    'crates/modules/rustok-taxonomy/src/services.rs',
     'fn owner() { let _ = taxonomy_term::Entity; }\n',
   );
   write(
     root,
-    'crates/rustok-product/src/migrations/m0001.rs',
+    'crates/modules/rustok-product/src/migrations/m0001.rs',
     'fn migration() { let _ = taxonomy_term::Entity; }\n',
   );
   write(
     root,
-    'crates/rustok-product/src/entities/product_tag.rs',
+    'crates/modules/rustok-product/src/entities/product_tag.rs',
     'fn relation() { let _ = taxonomy_term::Entity; }\n',
   );
   write(
     root,
-    'crates/rustok-blog/tests/taxonomy_tags.rs',
+    'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
     'fn storage_assertion() { let _ = taxonomy_term_translation::Entity; }\n',
   );
   write(
     root,
-    'crates/rustok-search/src/blog_projector.rs',
+    'crates/modules/rustok-search/src/blog_projector.rs',
     [
       'const SQL: &str = r#"JOIN taxonomy_terms term; taxonomy_term::Entity"#;',
       '// taxonomy_term_translation::Entity is documentation only.',
@@ -71,7 +71,7 @@ try {
   );
   write(
     root,
-    'crates/rustok-content-orchestration/src/lib.rs',
+    'crates/modules/rustok-content-orchestration/src/lib.rs',
     [
       'fn production_before_tests() {}',
       '#[cfg(all(test, feature = "fixture"))]',
@@ -93,7 +93,7 @@ try {
     `allowed fixture should pass:\nstdout=${result.stdout}\nstderr=${result.stderr}`,
   );
 
-  const blogViolation = 'crates/rustok-blog/src/services/tag.rs';
+  const blogViolation = 'crates/modules/rustok-blog/src/services/tag.rs';
   write(
     root,
     blogViolation,
@@ -111,7 +111,7 @@ try {
   );
   remove(root, blogViolation);
 
-  const forumViolation = 'crates/rustok-forum/src/services/tag.rs';
+  const forumViolation = 'crates/modules/rustok-forum/src/services/tag.rs';
   write(
     root,
     forumViolation,
@@ -125,7 +125,7 @@ try {
   );
   remove(root, forumViolation);
 
-  const mixedFile = 'crates/rustok-content-orchestration/src/lib.rs';
+  const mixedFile = 'crates/modules/rustok-content-orchestration/src/lib.rs';
   write(
     root,
     mixedFile,

@@ -3,7 +3,7 @@
   "module": "fulfillment",
   "packet": "provider-spi-live-adapter-execution-contract",
   "status": "live_adapter_contract_locked",
-  "generated_from": "crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-runtime-smoke.json",
+  "generated_from": "crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-runtime-smoke.json",
   "runner": "scripts/verify/verify-ecommerce-provider-spi-evidence.mjs",
   "execution_scope": "contract_locked_runtime_execution_pending",
   "adapter_profile": "external_carrier_adapter",

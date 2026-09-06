@@ -4,28 +4,28 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-topic-merge-read-state-reconciliation.json";
+  "crates/modules/rustok-forum/contracts/forum-topic-merge-read-state-reconciliation.json";
 const docsPath =
-  "crates/rustok-forum/docs/forum-21d-topic-merge-read-state-reconciliation.md";
+  "crates/modules/rustok-forum/docs/forum-21d-topic-merge-read-state-reconciliation.md";
 const entityPath =
-  "crates/rustok-forum/src/entities/forum_topic_merge_read_state_reconciliation.rs";
-const topicEntityPath = "crates/rustok-forum/src/entities/forum_topic.rs";
-const entitiesModPath = "crates/rustok-forum/src/entities/mod.rs";
-const errorPath = "crates/rustok-forum/src/error.rs";
-const libPath = "crates/rustok-forum/src/lib.rs";
-const lockPath = "crates/rustok-forum/src/services/topic_read_state_lock.rs";
+  "crates/modules/rustok-forum/src/entities/forum_topic_merge_read_state_reconciliation.rs";
+const topicEntityPath = "crates/modules/rustok-forum/src/entities/forum_topic.rs";
+const entitiesModPath = "crates/modules/rustok-forum/src/entities/mod.rs";
+const errorPath = "crates/modules/rustok-forum/src/error.rs";
+const libPath = "crates/modules/rustok-forum/src/lib.rs";
+const lockPath = "crates/modules/rustok-forum/src/services/topic_read_state_lock.rs";
 const migrationPath =
-  "crates/rustok-forum/src/migrations/m20260801_000012_add_forum_topic_merge_read_state_reconciliations.rs";
-const migrationsModPath = "crates/rustok-forum/src/migrations/mod.rs";
-const readTrackingPath = "crates/rustok-forum/src/services/read_tracking.rs";
+  "crates/modules/rustok-forum/src/migrations/m20260801_000012_add_forum_topic_merge_read_state_reconciliations.rs";
+const migrationsModPath = "crates/modules/rustok-forum/src/migrations/mod.rs";
+const readTrackingPath = "crates/modules/rustok-forum/src/services/read_tracking.rs";
 const readTrackingAudiencePath =
-  "crates/rustok-forum/src/services/read_tracking_audience.rs";
+  "crates/modules/rustok-forum/src/services/read_tracking_audience.rs";
 const servicePath =
-  "crates/rustok-forum/src/services/topic_merge_read_state_reconciliation.rs";
-const servicesModPath = "crates/rustok-forum/src/services/mod.rs";
+  "crates/modules/rustok-forum/src/services/topic_merge_read_state_reconciliation.rs";
+const servicesModPath = "crates/modules/rustok-forum/src/services/mod.rs";
 const testPath =
-  "crates/rustok-forum/tests/topic_merge_read_state_reconciliation_sqlite.rs";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
+  "crates/modules/rustok-forum/tests/topic_merge_read_state_reconciliation_sqlite.rs";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const verifierPath =
   "scripts/verify/verify-forum-topic-merge-read-state-reconciliation.mjs";
 

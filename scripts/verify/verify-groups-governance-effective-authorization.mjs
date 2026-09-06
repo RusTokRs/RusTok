@@ -1,11 +1,11 @@
 import fs from "node:fs";
 
 const read = (path) => fs.readFileSync(path, "utf8");
-const governance = read("crates/rustok-groups/src/governance.rs");
-const transaction = read("crates/rustok-groups/src/membership_enforcement_transaction.rs");
-const graphql = read("crates/rustok-groups/src/graphql_governance.rs");
-const registry = JSON.parse(read("crates/rustok-groups/contracts/groups-fba-registry.json"));
-const plan = read("crates/rustok-groups/docs/implementation-plan.md");
+const governance = read("crates/modules/rustok-groups/src/governance.rs");
+const transaction = read("crates/modules/rustok-groups/src/membership_enforcement_transaction.rs");
+const graphql = read("crates/modules/rustok-groups/src/graphql_governance.rs");
+const registry = JSON.parse(read("crates/modules/rustok-groups/contracts/groups-fba-registry.json"));
+const plan = read("crates/modules/rustok-groups/docs/implementation-plan.md");
 
 function requireText(source, needle, message) {
   if (!source.includes(needle)) throw new Error(message);

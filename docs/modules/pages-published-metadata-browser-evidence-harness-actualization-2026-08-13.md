@@ -14,7 +14,7 @@ The selected published metadata surface still requires a retained browser packet
 
 The retained contract is:
 
-`crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json`
+`crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json`
 
 A successful maintainer run may write only:
 
@@ -37,7 +37,7 @@ The workflow masks the reviewed RepoDigest and four reviewed route inputs before
 
 The workflow source guard is:
 
-`node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs`
+`node crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs`
 
 This workflow makes the maintainer run reproducible but does not establish deployment provenance. The required protected-environment policy and reviewed external fixtures remain maintainer-owned execution inputs.
 
@@ -97,7 +97,7 @@ Chromium is single-worker, retry-free, and trace/screenshots/video are disabled.
 
 The source-only harness guard is:
 
-`node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs`
+`node crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs`
 
 A direct maintainer browser run remains:
 

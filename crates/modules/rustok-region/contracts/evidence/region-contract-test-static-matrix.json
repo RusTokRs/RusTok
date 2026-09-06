@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "region",
   "status": "static_matrix_locked",
-  "generated_from": "crates/rustok-region/contracts/region-fba-registry.json",
+  "generated_from": "crates/modules/rustok-region/contracts/region-fba-registry.json",
   "runner": "scripts/verify/verify-region-fba.mjs",
   "contract_version": "region.read_projection.v1",
   "profiles": ["in_process", "remote_adapter_placeholder"],

@@ -9,7 +9,7 @@ FORUM-24C composes localized route tombstones into the existing topic delete own
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-delete-route-tombstone-owner.json
+crates/modules/rustok-forum/contracts/forum-topic-delete-route-tombstone-owner.json
 ```
 
 ## Owner composition

@@ -6,7 +6,7 @@ Status: `source_closed_unvalidated`
 
 This source wave closes the currently identified dynamic pricing `PortError.message` handling gap in the mounted Commerce GraphQL query facade.
 
-The compatibility resolver source in `crates/rustok-commerce/src/graphql/query.rs` remains unchanged. Its four pricing owner calls continue to serve:
+The compatibility resolver source in `crates/modules/rustok-commerce/src/graphql/query.rs` remains unchanged. Its four pricing owner calls continue to serve:
 
 - admin product pricing projection;
 - storefront active price-list projections;
@@ -71,7 +71,7 @@ The complete `PortError` and owner-message content are not logged.
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/graphql-query-pricing-error-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/graphql-query-pricing-error-safety-source-review.json`
 - `scripts/verify/verify-commerce-graphql-query-pricing-error-safety.mjs`
 
 ## Still open

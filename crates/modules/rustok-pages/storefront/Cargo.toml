@@ -31,7 +31,7 @@ inline-edit = [
 
 [dependencies]
 rustok-ui-core.workspace = true
-fly = { path = "../../fly", optional = true }
+fly = { path = "../../../ui/fly", optional = true }
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-graphql.workspace = true

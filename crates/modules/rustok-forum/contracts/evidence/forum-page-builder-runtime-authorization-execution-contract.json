@@ -68,16 +68,16 @@
     "authenticated topic visibility admits authenticated categories while retaining tenant and topic-status filtering"
   ],
   "required_source_files": [
-    "crates/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json",
+    "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json",
     "scripts/evidence/forum-page-builder-runtime-authorization-evidence.mjs",
-    "crates/rustok-forum/admin/src/widget_preview_transport.rs",
-    "crates/rustok-forum/admin/src/widget_property_transport.rs",
-    "crates/rustok-api/src/runtime.rs",
-    "crates/rustok-api/src/context/auth.rs",
-    "crates/rustok-forum/src/services/widget_preview.rs",
-    "crates/rustok-forum/src/services/topic_visibility.rs",
-    "crates/rustok-forum/src/services/category_visibility.rs",
-    "crates/rustok-forum/tests/page_builder_widget_visibility_sqlite.rs"
+    "crates/modules/rustok-forum/admin/src/widget_preview_transport.rs",
+    "crates/modules/rustok-forum/admin/src/widget_property_transport.rs",
+    "crates/libs/rustok-api/src/runtime.rs",
+    "crates/libs/rustok-api/src/context/auth.rs",
+    "crates/modules/rustok-forum/src/services/widget_preview.rs",
+    "crates/modules/rustok-forum/src/services/topic_visibility.rs",
+    "crates/modules/rustok-forum/src/services/category_visibility.rs",
+    "crates/modules/rustok-forum/tests/page_builder_widget_visibility_sqlite.rs"
   ],
   "retained_data": [
     "exact source commit",

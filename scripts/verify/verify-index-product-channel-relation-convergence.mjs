@@ -24,7 +24,7 @@ const forbidMarkers = (relative, source, markers) => {
 };
 
 const migrationPath =
-  'crates/rustok-product/src/migrations/m20260807_000012_add_product_sales_channel_relation_convergence.rs';
+  'crates/modules/rustok-product/src/migrations/m20260807_000012_add_product_sales_channel_relation_convergence.rs';
 const migration = requireMarkers(migrationPath, [
   'CREATE TABLE product_sales_channel_index_relation_convergence_requests',
   'PRIMARY KEY (tenant_id, sequence_no)',
@@ -73,12 +73,12 @@ forbidMarkers(migrationPath, migration, [
   'index_links',
   'sys_events',
 ]);
-requireMarkers('crates/rustok-product/src/migrations/mod.rs', [
+requireMarkers('crates/modules/rustok-product/src/migrations/mod.rs', [
   'mod m20260807_000012_add_product_sales_channel_relation_convergence;',
   'Box::new(m20260807_000012_add_product_sales_channel_relation_convergence::Migration)',
 ]);
 
-const storePath = 'crates/rustok-product/src/services/index_channel_relation_convergence.rs';
+const storePath = 'crates/modules/rustok-product/src/services/index_channel_relation_convergence.rs';
 const store = requireMarkers(storePath, [
   'pub enum ProductSalesChannelIndexRelationConvergenceWork',
   'VisibilityRequest {',
@@ -115,22 +115,22 @@ forbidMarkers(storePath, store, [
   'sys_events',
   'OutboxRelay',
 ]);
-const productCargo = read('crates/rustok-product/Cargo.toml');
-forbidMarkers('crates/rustok-product/Cargo.toml', productCargo, ['rustok-channel', 'rustok-index']);
+const productCargo = read('crates/modules/rustok-product/Cargo.toml');
+forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-channel', 'rustok-index']);
 
-requireMarkers('crates/rustok-product/src/services/mod.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/mod.rs', [
   'mod index_channel_relation_convergence;',
   'ProductSalesChannelIndexRelationConvergenceStore',
   'ProductSalesChannelIndexRelationConvergenceWork',
 ]);
-requireMarkers('crates/rustok-product/src/lib.rs', [
+requireMarkers('crates/modules/rustok-product/src/lib.rs', [
   'ProductSalesChannelIndexRelationConvergenceClaim',
   'ProductSalesChannelIndexRelationConvergenceStore',
   'ProductSalesChannelIndexRelationConvergenceWork',
 ]);
 
 const workerPath =
-  'crates/rustok-distribution/src/product_index/channel_relation_convergence.rs';
+  'crates/modules/rustok-distribution/src/product_index/channel_relation_convergence.rs';
 const worker = requireMarkers(workerPath, [
   'PRODUCT_SALES_CHANNEL_RELATION_CONVERGENCE_WORKER',
   'product_sales_channel_relation_convergence',
@@ -165,7 +165,7 @@ const worker = requireMarkers(workerPath, [
   'owner_rejection_isolated_from_retryable_storage_failures',
 ]);
 
-requireMarkers('crates/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
   'SELECT id FROM products WHERE tenant_id = $1',
   'reconcile_product(tenant_id, product_id)',
   'MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE',
@@ -182,14 +182,14 @@ forbidMarkers(workerPath, worker, [
   'TransactionalEventBus',
 ]);
 
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'mod channel_relation_convergence;',
   'channel_relation_convergence::register(extensions)',
   'selected_product_and_channel_bridge_registers_channel_admission_and_convergence_work',
 ]);
-requireMarkers('crates/rustok-distribution/Cargo.toml', ['rustok-runtime.workspace = true']);
+requireMarkers('crates/modules/rustok-distribution/Cargo.toml', ['rustok-runtime.workspace = true']);
 
-requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-convergence.md', [
+requireMarkers('crates/modules/rustok-product/docs/index-sales-channel-relation-convergence.md', [
   'Status: `source_complete_runtime_evidence_pending`',
   'is append-only and tenant ordered',
   'Channel generation sweep',
@@ -198,7 +198,7 @@ requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-converge
   'rejected Product',
   'source-read -> mutation-apply',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-convergence.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-convergence.md', [
   'Status: `source_and_query_fence_complete_runtime_evidence_pending`',
   'Generic ModuleWork composition',
   'Multi-host and restart behavior',
@@ -206,19 +206,19 @@ requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-convergence.md
   'materialized/query freshness fence is also source complete',
   'PostgreSQL execution evidence',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-resolver.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-resolver.md', [
   'Status: `automatic_convergence_and_query_fence_source_complete_runtime_evidence_pending`',
   'ProductSalesChannelIndexRelationFreshnessStore::record',
   'Automatic convergence composition',
   'Automatic convergence now re-establishes stale/missing relation freshness',
   'materialized/query freshness fence separately closes',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-relation-admission.md', [
   'Automatic Product visibility / Channel identity relation convergence through generic ModuleWork',
   'Materialized/query freshness admission for the source-read -> mutation-apply window: source complete',
   'PostgreSQL execution/admission evidence pending',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
   'Product-owned visibility convergence requests and tenant lease/checkpoint state',
   'bounded generic ModuleWork Product-SalesChannel automatic convergence',
   'Automatic owner-change relation convergence source complete',

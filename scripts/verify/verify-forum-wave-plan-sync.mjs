@@ -9,13 +9,13 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
   : path.resolve(scriptDir, "../..");
 
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const evidencePath =
-  "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json";
 const pagesGateAcceptancePath =
-  "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json";
+  "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json";
 const waveAdmissionPath =
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json";
 const waveAdmissionVerifierPath =
   "scripts/verify/verify-forum-page-builder-wave-admission.mjs";
 const verifierPath = "scripts/verify/verify-forum-wave-plan-sync.mjs";

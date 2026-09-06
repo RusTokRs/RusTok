@@ -3,17 +3,17 @@
 import { readFile } from 'node:fs/promises';
 
 const files = {
-  support: 'crates/rustok-index/tests/support/drift_repair.rs',
-  environment: 'crates/rustok-index/tests/drift_repair_postgres_environment_test.rs',
-  recovery: 'crates/rustok-index/tests/drift_repair_recovery_postgres_test.rs',
-  execution: 'crates/rustok-index/tests/drift_repair_concrete_execution_postgres_test.rs',
+  support: 'crates/modules/rustok-index/tests/support/drift_repair.rs',
+  environment: 'crates/modules/rustok-index/tests/drift_repair_postgres_environment_test.rs',
+  recovery: 'crates/modules/rustok-index/tests/drift_repair_recovery_postgres_test.rs',
+  execution: 'crates/modules/rustok-index/tests/drift_repair_concrete_execution_postgres_test.rs',
   contract:
-    'crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json',
+    'crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json',
   runner: 'scripts/evidence/capture-index-repair-postgres.mjs',
   retainedVerifier: 'scripts/verify/verify-index-repair-retained-evidence.mjs',
-  doc: 'crates/rustok-index/docs/m6-repair-execution-postgres-harness.md',
-  admissionDoc: 'crates/rustok-index/docs/m6-repair-retained-evidence-admission.md',
-  plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
+  doc: 'crates/modules/rustok-index/docs/m6-repair-execution-postgres-harness.md',
+  admissionDoc: 'crates/modules/rustok-index/docs/m6-repair-retained-evidence-admission.md',
+  plan: 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
 

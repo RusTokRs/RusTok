@@ -56,14 +56,14 @@ function functionBody(text, functionName) {
   return "";
 }
 
-const modPath = "crates/rustok-commerce/admin/src/transport/mod.rs";
-const helperPath = "crates/rustok-commerce/admin/src/transport/graphql_error_safety.rs";
-const shippingPath = "crates/rustok-commerce/admin/src/transport/shipping_profile.rs";
-const orderPath = "crates/rustok-commerce/admin/src/transport/order_change.rs";
-const adapterPath = "crates/rustok-commerce/admin/src/transport/graphql_adapter.rs";
-const cargoPath = "crates/rustok-commerce/admin/Cargo.toml";
+const modPath = "crates/modules/rustok-commerce/admin/src/transport/mod.rs";
+const helperPath = "crates/modules/rustok-commerce/admin/src/transport/graphql_error_safety.rs";
+const shippingPath = "crates/modules/rustok-commerce/admin/src/transport/shipping_profile.rs";
+const orderPath = "crates/modules/rustok-commerce/admin/src/transport/order_change.rs";
+const adapterPath = "crates/modules/rustok-commerce/admin/src/transport/graphql_adapter.rs";
+const cargoPath = "crates/modules/rustok-commerce/admin/Cargo.toml";
 const evidencePath =
-  "crates/rustok-commerce/contracts/evidence/admin-graphql-error-safety-source.json";
+  "crates/modules/rustok-commerce/contracts/evidence/admin-graphql-error-safety-source.json";
 
 const routing = readRepo(modPath);
 const helper = readRepo(helperPath);

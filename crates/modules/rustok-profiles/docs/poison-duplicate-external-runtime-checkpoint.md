@@ -7,13 +7,13 @@ Status: **runtime harness source-complete; external execution and retained evide
 The bounded external-Iggy scanner now has one opt-in runtime harness:
 
 ```text
-crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs
+crates/modules/rustok-iggy/tests/dlq_duplicate_external_scan.rs
 ```
 
 Machine contract:
 
 ```text
-crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json
+crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json
 ```
 
 Verifier:
@@ -25,7 +25,7 @@ scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs
 Operator guide:
 
 ```text
-crates/rustok-iggy/docs/dlq-duplicate-external-scan-runtime-evidence.md
+crates/modules/rustok-iggy/docs/dlq-duplicate-external-scan-runtime-evidence.md
 ```
 
 No Profiles service, GraphQL field, storefront behavior, relation policy, or authorization port changed.

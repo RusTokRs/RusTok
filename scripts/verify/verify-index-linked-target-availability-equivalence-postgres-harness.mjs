@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const harnessPath = 'crates/rustok-distribution/tests/product_linked_target_availability_equivalence_postgres.rs';
+const harnessPath = 'crates/modules/rustok-distribution/tests/product_linked_target_availability_equivalence_postgres.rs';
 const harness = requireMarkers(harnessPath, [
   '#![cfg(feature = "mod-product")]',
   'linked_target_availability_preserves_filter_order_count_and_runtime_restart_parity',
@@ -70,22 +70,22 @@ forbidMarkers(harnessPath, harness, [
   'register_postgres_index_query_link_target_availability',
 ]);
 
-requireMarkers('crates/rustok-product/src/migrations/m20260730_000002_add_product_variant_index_revision.rs', [
+requireMarkers('crates/modules/rustok-product/src/migrations/m20260730_000002_add_product_variant_index_revision.rs', [
   'BEFORE UPDATE ON product_variants',
   'NEW.index_revision := OLD.index_revision + 1',
 ]);
-requireMarkers('crates/rustok-product/src/migrations/m20260731_000003_bump_product_index_revision_for_variant_membership.rs', [
+requireMarkers('crates/modules/rustok-product/src/migrations/m20260731_000003_bump_product_index_revision_for_variant_membership.rs', [
   'AFTER UPDATE OF id, tenant_id, product_id ON product_variants',
   'OLD.id IS NOT DISTINCT FROM NEW.id',
 ]);
-requireMarkers('crates/rustok-channel/src/migrations/m20260730_000010_add_channel_index_revision.rs', [
+requireMarkers('crates/modules/rustok-channel/src/migrations/m20260730_000010_add_channel_index_revision.rs', [
   'BEFORE UPDATE ON channels',
   'NEW.index_revision := OLD.index_revision + 1',
 ]);
-requireMarkers('crates/rustok-channel/src/migrations/m20260807_000012_add_channel_index_identity_generation.rs', [
+requireMarkers('crates/modules/rustok-channel/src/migrations/m20260807_000012_add_channel_index_identity_generation.rs', [
   'AFTER INSERT OR DELETE OR UPDATE OF id, tenant_id, slug ON channels',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_admission.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/query_admission.rs', [
   'query.referenced_paths()',
   'path.links().first()',
   'apply_root_predicate(&mut compiled.sql, &predicate)?',

@@ -1,5 +1,5 @@
 ---
-id: doc://crates/rustok-reactions-api/docs/implementation-plan.md
+id: doc://crates/modules/rustok-reactions-api/docs/implementation-plan.md
 kind: capability_implementation_plan
 language: en
 status: active

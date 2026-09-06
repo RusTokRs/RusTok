@@ -10,7 +10,7 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const source = readFileSync(
   new URL(
-    'crates/rustok-commerce/src/services/checkout_inventory_reservation_executor.rs',
+    'crates/modules/rustok-commerce/src/services/checkout_inventory_reservation_executor.rs',
     root,
   ),
   'utf8',

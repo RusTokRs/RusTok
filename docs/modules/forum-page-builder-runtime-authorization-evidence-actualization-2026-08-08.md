@@ -76,7 +76,7 @@ This is the same category floor consumed by the Forum widget topic-list preview 
 The runtime contract is:
 
 ```text
-crates/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json
+crates/modules/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json
 ```
 
 The runner is:

@@ -67,8 +67,8 @@ This source slice does not change:
 
 - `scripts/verify/verify-customer-read-local-context.mjs`;
 - `scripts/verify/verify-customer-read-policy-context.mjs`;
-- `crates/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source.json`;
-- `crates/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source-review.json`.
+- `crates/modules/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source.json`;
+- `crates/modules/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source-review.json`.
 
 Direct compatibility-path callers, customer write adapters, consumer-side transport mappers, profile transports, and runtime/remote evidence remain separate work. The broader ecommerce correlation-safe mapper cleanup remains open.
 

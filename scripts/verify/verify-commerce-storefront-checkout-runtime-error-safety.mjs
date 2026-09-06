@@ -12,16 +12,16 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  mounted: 'crates/rustok-commerce/src/storefront_checkout_runtime_mounted.rs',
-  legacy: 'crates/rustok-commerce/src/storefront_checkout_runtime.rs',
+  mounted: 'crates/modules/rustok-commerce/src/storefront_checkout_runtime_mounted.rs',
+  legacy: 'crates/modules/rustok-commerce/src/storefront_checkout_runtime.rs',
   paymentNative:
-    'crates/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs',
+    'crates/modules/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs',
   fulfillmentNative:
-    'crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs',
+    'crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs',
   evidence:
-    'crates/rustok-commerce/contracts/evidence/storefront-checkout-runtime-error-safety-source-review.json',
+    'crates/modules/rustok-commerce/contracts/evidence/storefront-checkout-runtime-error-safety-source-review.json',
   document:
-    'crates/rustok-commerce/docs/storefront-checkout-runtime-error-safety.md',
+    'crates/modules/rustok-commerce/docs/storefront-checkout-runtime-error-safety.md',
 };
 
 const mounted = read(paths.mounted);

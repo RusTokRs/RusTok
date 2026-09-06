@@ -83,10 +83,10 @@ Detailed post-handoff evidence is retained in
 - FBA status: `transport_verified`
 - Structural shape: `core_transport_ui`
 - Provider contract: `TenantReadPort` / `tenant.read_projection.v1` in
-  `crates/rustok-tenant/contracts/tenant-fba-registry.json`.
+  `crates/modules/rustok-tenant/contracts/tenant-fba-registry.json`.
 - Static/runtime evidence:
-  `crates/rustok-tenant/contracts/evidence/tenant-contract-test-static-matrix.json`
-  and `crates/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json`.
+  `crates/modules/rustok-tenant/contracts/evidence/tenant-contract-test-static-matrix.json`
+  and `crates/modules/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json`.
 - The admin overview remains a documented native-only exception. No public
   GraphQL/REST tenant-bootstrap UI contract exists.
 

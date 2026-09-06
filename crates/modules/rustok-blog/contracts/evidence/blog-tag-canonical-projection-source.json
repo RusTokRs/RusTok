@@ -14,11 +14,11 @@
     "metadata_tags_is_search_projection_source": false
   },
   "source_contract": {
-    "blog_read_service": "crates/rustok-blog/src/services/tag.rs",
-    "blog_read_harness": "crates/rustok-blog/tests/taxonomy_tags.rs",
-    "search_projector": "crates/rustok-search/src/blog_projector.rs",
-    "search_postgres_harness": "crates/rustok-search/tests/blog_projection_postgres_test.rs",
-    "search_projection_evidence": "crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json",
+    "blog_read_service": "crates/modules/rustok-blog/src/services/tag.rs",
+    "blog_read_harness": "crates/modules/rustok-blog/tests/taxonomy_tags.rs",
+    "search_projector": "crates/modules/rustok-search/src/blog_projector.rs",
+    "search_postgres_harness": "crates/modules/rustok-search/tests/blog_projection_postgres_test.rs",
+    "search_projection_evidence": "crates/modules/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json",
     "requested_post_ids_receive_explicit_empty_tag_entries": true,
     "empty_relation_set_falls_back_to_metadata": false,
     "blog_read_harness_rejects_metadata_resurrection": true,

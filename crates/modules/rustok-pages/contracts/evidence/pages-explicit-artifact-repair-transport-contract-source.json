@@ -4,7 +4,7 @@
   "generated_at": "2026-08-07T09:13:00+03:00",
   "scope": "Runnable source harness for Pages explicit repair GraphQL SDL and OpenAPI bounded transport contracts",
   "source_contract": {
-    "test": "crates/rustok-pages/tests/explicit_artifact_repair_transport_contract.rs",
+    "test": "crates/modules/rustok-pages/tests/explicit_artifact_repair_transport_contract.rs",
     "graphql_rebuild_mutation": "rebuildPageArtifact",
     "graphql_activation_mutation": "activateRebuiltPageArtifact",
     "http_rebuild_path": "/api/admin/pages/{id}/artifacts/rebuild",

@@ -3,9 +3,9 @@
   "task": "FORUM-23B2G2B1",
   "status": "source_complete_consumer_checkpoint_pending",
   "scope": "Expose the append-only Forum projection revision ledger as a bounded neutral Search source without advancing Search owner-revision checkpoints",
-  "predecessor": "crates/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
-  "hardening_predecessor": "crates/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json",
-  "owner_note": "crates/rustok-forum/docs/forum-23b2g2b1-search-owner-revision-source.md",
+  "predecessor": "crates/modules/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
+  "hardening_predecessor": "crates/modules/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json",
+  "owner_note": "crates/modules/rustok-forum/docs/forum-23b2g2b1-search-owner-revision-source.md",
   "source_verifier": "scripts/verify/verify-forum-search-owner-revision-source.mjs",
   "owner_clock": {
     "table": "forum_projection_revision_ledger",
@@ -27,8 +27,8 @@
     "migration_added_in_this_slice": false
   },
   "forum_owner": {
-    "dto": "crates/rustok-forum/src/dto/event.rs",
-    "service": "crates/rustok-forum/src/services/event.rs",
+    "dto": "crates/modules/rustok-forum/src/dto/event.rs",
+    "service": "crates/modules/rustok-forum/src/services/event.rs",
     "method": "ForumEventService::list_projection_owner_revisions",
     "payload_exposed": false,
     "actor_exposed": false,
@@ -42,7 +42,7 @@
     "impact": "full_rebuild"
   },
   "search_contract": {
-    "owner": "crates/rustok-search/src/forum_reconciliation.rs",
+    "owner": "crates/modules/rustok-search/src/forum_reconciliation.rs",
     "trait": "ForumProjectionOwnerRevisionSourcePort",
     "shared_type": "SharedForumProjectionOwnerRevisionSourcePort",
     "resolver": "resolve_forum_projection_owner_revisions",

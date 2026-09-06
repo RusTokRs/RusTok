@@ -8,13 +8,13 @@
   "compile_policy": "not_run_by_request",
   "runtime_status": "not_run",
   "source_contract": {
-    "module_manifest": "crates/rustok-blog/rustok-module.toml",
-    "graphql_module": "crates/rustok-blog/src/graphql/mod.rs",
-    "runtime_data": "crates/rustok-blog/src/graphql/runtime_data.rs",
-    "comment_reads": "crates/rustok-blog/src/graphql/types.rs",
-    "comment_mutation": "crates/rustok-blog/src/graphql/mutation.rs",
-    "consumer_service": "crates/rustok-blog/src/services/comment.rs",
-    "consumer_matrix": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json",
+    "module_manifest": "crates/modules/rustok-blog/rustok-module.toml",
+    "graphql_module": "crates/modules/rustok-blog/src/graphql/mod.rs",
+    "runtime_data": "crates/modules/rustok-blog/src/graphql/runtime_data.rs",
+    "comment_reads": "crates/modules/rustok-blog/src/graphql/types.rs",
+    "comment_mutation": "crates/modules/rustok-blog/src/graphql/mutation.rs",
+    "consumer_service": "crates/modules/rustok-blog/src/services/comment.rs",
+    "consumer_matrix": "crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json",
     "server_codegen": "apps/server/build.rs",
     "server_schema": "apps/server/src/graphql/schema.rs"
   },
@@ -46,7 +46,7 @@
   "harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
-    "source": "crates/rustok-blog/src/graphql/runtime_data.rs",
+    "source": "crates/modules/rustok-blog/src/graphql/runtime_data.rs",
     "test": "graphql::runtime_data::tests::graphql_runtime_data_exposes_comments_port_selection",
     "command": "cargo test -p rustok-blog --lib graphql::runtime_data::tests::graphql_runtime_data_exposes_comments_port_selection -- --exact"
   },

@@ -2,9 +2,9 @@
   "status": "inventory_admin_client_transport_error_safety_source_reviewed_unvalidated",
   "reviewed_at": "2026-07-30",
   "review_scope": [
-    "crates/rustok-inventory/admin/src/transport/mod.rs",
-    "crates/rustok-inventory/admin/src/transport/error_safety.rs",
-    "crates/rustok-inventory/admin/src/transport/native_server_adapter.rs"
+    "crates/modules/rustok-inventory/admin/src/transport/mod.rs",
+    "crates/modules/rustok-inventory/admin/src/transport/error_safety.rs",
+    "crates/modules/rustok-inventory/admin/src/transport/native_server_adapter.rs"
   ],
   "findings": {
     "public_raw_server_fn_conversion_removed": true,

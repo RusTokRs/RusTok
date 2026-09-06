@@ -4,18 +4,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-topic-fork-owner.json",
-  docs: "crates/rustok-forum/docs/forum-21q-topic-fork-owner.md",
-  facade: "crates/rustok-forum/src/services/topic_fork.rs",
-  owner: "crates/rustok-forum/src/services/topic_fork_owner.rs",
-  storage: "crates/rustok-forum/src/services/topic_fork_storage.rs",
-  serviceRegistry: "crates/rustok-forum/src/services/mod.rs",
-  crateApi: "crates/rustok-forum/src/lib.rs",
-  error: "crates/rustok-forum/src/error.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-fork-owner.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21q-topic-fork-owner.md",
+  facade: "crates/modules/rustok-forum/src/services/topic_fork.rs",
+  owner: "crates/modules/rustok-forum/src/services/topic_fork_owner.rs",
+  storage: "crates/modules/rustok-forum/src/services/topic_fork_storage.rs",
+  serviceRegistry: "crates/modules/rustok-forum/src/services/mod.rs",
+  crateApi: "crates/modules/rustok-forum/src/lib.rs",
+  error: "crates/modules/rustok-forum/src/error.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260804_000021_add_forum_topic_fork_operations.rs",
-  migrationRegistry: "crates/rustok-forum/src/migrations/mod.rs",
-  sqlite: "crates/rustok-forum/tests/topic_fork_sqlite.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260804_000021_add_forum_topic_fork_operations.rs",
+  migrationRegistry: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  sqlite: "crates/modules/rustok-forum/tests/topic_fork_sqlite.rs",
 };
 
 const read = (path) => readFileSync(path, "utf8");

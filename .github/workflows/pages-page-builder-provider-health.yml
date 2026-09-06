@@ -6,32 +6,32 @@ on:
       - main
     paths:
       - ".github/workflows/pages-page-builder-provider-health.yml"
-      - "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json"
-      - "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json"
-      - "crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs"
-      - "crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs"
-      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json"
-      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-runner-test-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json"
-      - "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-runner-test-source.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-runner-test-source.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json"
-      - "crates/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json"
-      - "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json"
-      - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs"
+      - "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json"
+      - "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json"
+      - "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs"
+      - "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-runner-test-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-runner-test-source.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-runner-test-source.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs"
       - "scripts/evidence/accept-pages-builder-provider-health-deployment.mjs"
       - "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs"
       - "scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs"
@@ -61,39 +61,39 @@ on:
       - "docs/modules/forum-page-builder-ffa-fba-promotion-review-actualization-*.md"
       - "docs/modules/pages-page-builder-parity-continuation-plan.md"
       - "docs/modules/page-builder-implementation-plan.md"
-      - "crates/rustok-page-builder/docs/implementation-plan.md"
-      - "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
+      - "crates/modules/rustok-page-builder/docs/implementation-plan.md"
+      - "crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
   pull_request:
     branches:
       - "**"
     paths:
       - ".github/workflows/pages-page-builder-provider-health.yml"
-      - "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json"
-      - "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json"
-      - "crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs"
-      - "crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs"
-      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json"
-      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-runner-test-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json"
-      - "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-runner-test-source.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-runner-test-source.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json"
-      - "crates/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json"
-      - "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json"
-      - "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json"
-      - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs"
+      - "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json"
+      - "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json"
+      - "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs"
+      - "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-runner-test-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-runner-test-source.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-runner-test-source.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json"
+      - "crates/modules/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs"
       - "scripts/evidence/accept-pages-builder-provider-health-deployment.mjs"
       - "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs"
       - "scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs"
@@ -123,8 +123,8 @@ on:
       - "docs/modules/forum-page-builder-ffa-fba-promotion-review-actualization-*.md"
       - "docs/modules/pages-page-builder-parity-continuation-plan.md"
       - "docs/modules/page-builder-implementation-plan.md"
-      - "crates/rustok-page-builder/docs/implementation-plan.md"
-      - "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
+      - "crates/modules/rustok-page-builder/docs/implementation-plan.md"
+      - "crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
   workflow_dispatch:
 
 permissions:
@@ -146,19 +146,19 @@ jobs:
           node-version: 22
       - name: Verify deployment identity evidence source
         if: ${{ !cancelled() }}
-        run: node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
+        run: node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
       - name: Verify deployment evaluator evidence source
         if: ${{ !cancelled() }}
-        run: node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
+        run: node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
       - name: Verify binding owner acceptance source
         if: ${{ !cancelled() }}
-        run: node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
       - name: Verify runtime evidence harness source
         if: ${{ !cancelled() }}
-        run: node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
       - name: Verify observed-health owner acceptance source
         if: ${{ !cancelled() }}
-        run: node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
       - name: Verify observed-health owner acceptance runner test source
         if: ${{ !cancelled() }}
         run: node scripts/verify/verify-pages-builder-provider-health-owner-runner-tests.mjs
@@ -167,7 +167,7 @@ jobs:
         run: node scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs
       - name: Verify Pages reference-consumer gate acceptance source
         if: ${{ !cancelled() }}
-        run: node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
       - name: Verify Pages gate owner acceptance runner test source
         if: ${{ !cancelled() }}
         run: node scripts/verify/verify-pages-reference-consumer-gate-owner-runner-tests.mjs
@@ -206,4 +206,4 @@ jobs:
         run: node scripts/evidence/review-forum-page-builder-ffa-fba-promotion.test.mjs
       - name: Verify Pages and Page Builder plan parity
         if: ${{ !cancelled() }}
-        run: node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+        run: node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs

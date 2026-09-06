@@ -4,22 +4,22 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-topic-merge-graphql-transport.json",
-  resolutionContract: "crates/rustok-forum/contracts/forum-topic-merge-solution-resolution.json",
-  cumulativeContract: "crates/rustok-forum/contracts/forum-topic-merge-owner.json",
-  docs: "crates/rustok-forum/docs/forum-21k-topic-merge-graphql-transport.md",
-  resolutionDocs: "crates/rustok-forum/docs/forum-21l-topic-merge-solution-resolution.md",
-  cumulativeDocs: "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
-  graphql: "crates/rustok-forum/src/graphql/topic_merge_mutation.rs",
-  graphqlMod: "crates/rustok-forum/src/graphql/mod.rs",
-  owner: "crates/rustok-forum/src/services/topic_merge.rs",
-  ordinarySchemaTest: "crates/rustok-forum/tests/topic_merge_graphql_contract.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-graphql-transport.json",
+  resolutionContract: "crates/modules/rustok-forum/contracts/forum-topic-merge-solution-resolution.json",
+  cumulativeContract: "crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21k-topic-merge-graphql-transport.md",
+  resolutionDocs: "crates/modules/rustok-forum/docs/forum-21l-topic-merge-solution-resolution.md",
+  cumulativeDocs: "crates/modules/rustok-forum/docs/forum-21b-topic-merge-owner.md",
+  graphql: "crates/modules/rustok-forum/src/graphql/topic_merge_mutation.rs",
+  graphqlMod: "crates/modules/rustok-forum/src/graphql/mod.rs",
+  owner: "crates/modules/rustok-forum/src/services/topic_merge.rs",
+  ordinarySchemaTest: "crates/modules/rustok-forum/tests/topic_merge_graphql_contract.rs",
   resolutionSchemaTest:
-    "crates/rustok-forum/tests/topic_merge_solution_resolution_graphql_contract.rs",
-  resolutionRuntimeTest: "crates/rustok-forum/tests/topic_merge_solution_resolution_sqlite.rs",
-  readme: "crates/rustok-forum/README.md",
-  docsIndex: "crates/rustok-forum/docs/README.md",
-  plan: "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/tests/topic_merge_solution_resolution_graphql_contract.rs",
+  resolutionRuntimeTest: "crates/modules/rustok-forum/tests/topic_merge_solution_resolution_sqlite.rs",
+  readme: "crates/modules/rustok-forum/README.md",
+  docsIndex: "crates/modules/rustok-forum/docs/README.md",
+  plan: "crates/modules/rustok-forum/docs/implementation-plan.md",
 };
 
 const read = (path) => readFileSync(path, "utf8");

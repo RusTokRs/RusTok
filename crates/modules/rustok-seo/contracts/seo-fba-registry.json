@@ -7,7 +7,7 @@
   "provider_dependencies": [
     {
       "module": "media",
-      "registry": "crates/rustok-media/contracts/media-fba-registry.json",
+      "registry": "crates/modules/rustok-media/contracts/media-fba-registry.json",
       "contract_version": "media.asset_read.v1",
       "port": "MediaAssetReadPort",
       "operations": [
@@ -36,17 +36,17 @@
     "evidence": "SEO composes MediaAssetReadPort through SeoMediaAssetReadProvider, and Product forwards ProductImageResponse.media_id. URL-only records retain their owner-provided descriptor when the provider is unavailable or absent."
   },
   "evidence": {
-    "local_plan": "crates/rustok-seo/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-seo/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-seo-fba.mjs",
-    "static_matrix": "crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json",
-    "provider_fallback_smoke": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
-    "consumer_runtime_order_smoke": "crates/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json",
+    "static_matrix": "crates/modules/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json",
+    "provider_fallback_smoke": "crates/modules/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
+    "consumer_runtime_order_smoke": "crates/modules/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json",
     "consumer_runtime_order_smoke_runner": "scripts/verify/verify-consumer-fba-runtime-order.mjs"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
-    "source": "crates/rustok-seo/contracts/seo-fba-registry.json",
+    "source": "crates/modules/rustok-seo/contracts/seo-fba-registry.json",
     "runner": "scripts/verify/verify-seo-fba.mjs",
     "profiles": [
       "in_process",
@@ -83,12 +83,12 @@
         "keep_existing_seo_image",
         "proxy_storage_relative_url"
       ],
-      "provider_source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
+      "provider_source": "crates/modules/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
       "consumer_runtime_evidence": "pending"
     },
     "consumer_runtime_artifacts": {
       "status": "template_only_pending_consumer_runtime",
-      "template": "crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json#consumer_runtime_artifact_template",
+      "template": "crates/modules/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json#consumer_runtime_artifact_template",
       "required_files": [
         "image-descriptor-in-process.json",
         "provider-unavailable-omit-image-metadata.json",

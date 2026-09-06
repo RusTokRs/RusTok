@@ -9,10 +9,10 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
-  : path.resolve(scriptDir, "..", "..", "..", "..");
+  : path.resolve(scriptDir, "..", "..", "..", "..", "..");
 const graphVerifier = path.join(
   repoRoot,
-  "crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs",
+  "crates/modules/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs",
 );
 
 function usage(message) {

@@ -15,7 +15,7 @@ The primary execution-owned Index gate remains concrete repair PostgreSQL execut
 contract is:
 
 ```text
-crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json
+crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json
 ```
 
 Run from the exact clean commit intended for admission:
@@ -34,9 +34,9 @@ git diff --check
 A successful capture must produce the complete retained set together:
 
 ```text
-crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.json
-crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stdout.log
-crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stderr.log
+crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution.json
+crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stdout.log
+crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stderr.log
 ```
 
 The latest maintainer attempt stopped before PostgreSQL execution because no opt-in database URL was configured.
@@ -70,7 +70,7 @@ maintainer result.
 - `causation_id = root_event_id` remains Product ledger/writer ownership.
 
 The current family branch must run the canonical generator again and commit the newly generated
-`crates/rustok-events/contracts/event-contract-digests.json` in the **same wire-contract PR before merge**.
+`crates/libs/rustok-events/contracts/event-contract-digests.json` in the **same wire-contract PR before merge**.
 Do not hand-author those new hashes.
 
 Only after that family/digest PR is admitted may M5 advance to Product/ProductVariant typed route registration and

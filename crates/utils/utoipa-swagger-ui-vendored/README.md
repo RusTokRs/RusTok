@@ -1,7 +1,7 @@
 # utoipa-swagger-ui-vendored
 
 ## Purpose
-`crates/utoipa-swagger-ui-vendored` — module/application of RusToK. This is where its code and root documentation live.
+`crates/utils/utoipa-swagger-ui-vendored` — module/application of RusToK. This is where its code and root documentation live.
 
 ## Interactions
 - apps/server
@@ -20,6 +20,6 @@
   - utoipa/OpenAPI pipeline
   - dev/documentation tools
 - **Entry points:**
-  - `crates/utoipa-swagger-ui-vendored/src/lib.rs`
+  - `crates/utils/utoipa-swagger-ui-vendored/src/lib.rs`
 - **Local documentation:** `./docs/`
 - **Global platform documentation:** `/docs/`

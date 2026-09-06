@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This slice hardens the shared marketplace-listing admin native request boundary in:
 
-- `crates/rustok-marketplace-listing/admin/src/transport/native_server_adapter.rs`.
+- `crates/modules/rustok-marketplace-listing/admin/src/transport/native_server_adapter.rs`.
 
 The boundary is shared by directory, detail, and command server functions. It resolves the host runtime, owner runtime, authentication, tenant and request contexts, tenant-module availability, and the owner `PortContext`.
 

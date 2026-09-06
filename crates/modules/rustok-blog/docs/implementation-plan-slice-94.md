@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 94 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-93.md`.
+`crates/modules/rustok-blog/docs/implementation-plan-slice-93.md`.
 
 Slices 90–93 retain atomic canonical admission, one host-owned handoff worker,
 durable source retry/exhaustion state, source dead-lettering, retry-aware claiming,

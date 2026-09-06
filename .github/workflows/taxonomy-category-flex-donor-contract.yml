@@ -3,22 +3,22 @@ name: Taxonomy Category Flex Donor Contract
 on:
   pull_request:
     paths:
-      - "crates/flex/Cargo.toml"
-      - "crates/flex/src/attached_definitions.rs"
-      - "crates/flex/src/attached_storage.rs"
-      - "crates/flex/src/entity_type.rs"
-      - "crates/flex/src/graphql/**"
-      - "crates/flex/src/lib.rs"
-      - "crates/flex/src/cache_generation.rs"
-      - "crates/flex/src/migrations/**"
-      - "crates/flex/tests/generic_attached_definitions.rs"
-      - "crates/flex/tests/generic_attached_storage.rs"
-      - "crates/flex/tests/postgres_generic_attached_storage.rs"
-      - "crates/rustok-taxonomy/src/category_delete.rs"
-      - "crates/rustok-taxonomy/src/lib.rs"
-      - "crates/rustok-taxonomy/src/owner_identity.rs"
-      - "crates/rustok-taxonomy/tests/owner_identity.rs"
-      - "crates/rustok-taxonomy/docs/implementation-plan.md"
+      - "crates/modules/flex/Cargo.toml"
+      - "crates/modules/flex/src/attached_definitions.rs"
+      - "crates/modules/flex/src/attached_storage.rs"
+      - "crates/modules/flex/src/entity_type.rs"
+      - "crates/modules/flex/src/graphql/**"
+      - "crates/modules/flex/src/lib.rs"
+      - "crates/modules/flex/src/cache_generation.rs"
+      - "crates/modules/flex/src/migrations/**"
+      - "crates/modules/flex/tests/generic_attached_definitions.rs"
+      - "crates/modules/flex/tests/generic_attached_storage.rs"
+      - "crates/modules/flex/tests/postgres_generic_attached_storage.rs"
+      - "crates/modules/rustok-taxonomy/src/category_delete.rs"
+      - "crates/modules/rustok-taxonomy/src/lib.rs"
+      - "crates/modules/rustok-taxonomy/src/owner_identity.rs"
+      - "crates/modules/rustok-taxonomy/tests/owner_identity.rs"
+      - "crates/modules/rustok-taxonomy/docs/implementation-plan.md"
       - "apps/server/src/graphql/schema.rs"
       - "apps/server/src/services/field_definition_registry_bootstrap.rs"
       - "apps/server/src/services/flex_attached_values.rs"
@@ -29,22 +29,22 @@ on:
     branches:
       - main
     paths:
-      - "crates/flex/Cargo.toml"
-      - "crates/flex/src/attached_definitions.rs"
-      - "crates/flex/src/attached_storage.rs"
-      - "crates/flex/src/entity_type.rs"
-      - "crates/flex/src/graphql/**"
-      - "crates/flex/src/lib.rs"
-      - "crates/flex/src/cache_generation.rs"
-      - "crates/flex/src/migrations/**"
-      - "crates/flex/tests/generic_attached_definitions.rs"
-      - "crates/flex/tests/generic_attached_storage.rs"
-      - "crates/flex/tests/postgres_generic_attached_storage.rs"
-      - "crates/rustok-taxonomy/src/category_delete.rs"
-      - "crates/rustok-taxonomy/src/lib.rs"
-      - "crates/rustok-taxonomy/src/owner_identity.rs"
-      - "crates/rustok-taxonomy/tests/owner_identity.rs"
-      - "crates/rustok-taxonomy/docs/implementation-plan.md"
+      - "crates/modules/flex/Cargo.toml"
+      - "crates/modules/flex/src/attached_definitions.rs"
+      - "crates/modules/flex/src/attached_storage.rs"
+      - "crates/modules/flex/src/entity_type.rs"
+      - "crates/modules/flex/src/graphql/**"
+      - "crates/modules/flex/src/lib.rs"
+      - "crates/modules/flex/src/cache_generation.rs"
+      - "crates/modules/flex/src/migrations/**"
+      - "crates/modules/flex/tests/generic_attached_definitions.rs"
+      - "crates/modules/flex/tests/generic_attached_storage.rs"
+      - "crates/modules/flex/tests/postgres_generic_attached_storage.rs"
+      - "crates/modules/rustok-taxonomy/src/category_delete.rs"
+      - "crates/modules/rustok-taxonomy/src/lib.rs"
+      - "crates/modules/rustok-taxonomy/src/owner_identity.rs"
+      - "crates/modules/rustok-taxonomy/tests/owner_identity.rs"
+      - "crates/modules/rustok-taxonomy/docs/implementation-plan.md"
       - "apps/server/src/graphql/schema.rs"
       - "apps/server/src/services/field_definition_registry_bootstrap.rs"
       - "apps/server/src/services/flex_attached_values.rs"
@@ -105,21 +105,21 @@ jobs:
         shell: bash
         run: |
           rustfmt +1.96.0 --edition 2024 --check \
-            crates/flex/src/attached_definitions.rs \
-            crates/flex/src/attached_storage.rs \
-            crates/flex/src/entity_type.rs \
-            crates/flex/src/graphql/mod.rs \
-            crates/flex/src/graphql/runtime.rs \
-            crates/flex/src/graphql/query.rs \
-            crates/flex/src/graphql/mutation.rs \
-            crates/flex/src/graphql/types.rs \
-            crates/flex/src/migrations/m20260822_000001_create_generic_attached_donor_storage.rs \
-            crates/flex/tests/generic_attached_definitions.rs \
-            crates/flex/tests/generic_attached_storage.rs \
-            crates/flex/tests/postgres_generic_attached_storage.rs \
-            crates/rustok-taxonomy/src/category_delete.rs \
-            crates/rustok-taxonomy/src/owner_identity.rs \
-            crates/rustok-taxonomy/tests/owner_identity.rs \
+            crates/modules/flex/src/attached_definitions.rs \
+            crates/modules/flex/src/attached_storage.rs \
+            crates/modules/flex/src/entity_type.rs \
+            crates/modules/flex/src/graphql/mod.rs \
+            crates/modules/flex/src/graphql/runtime.rs \
+            crates/modules/flex/src/graphql/query.rs \
+            crates/modules/flex/src/graphql/mutation.rs \
+            crates/modules/flex/src/graphql/types.rs \
+            crates/modules/flex/src/migrations/m20260822_000001_create_generic_attached_donor_storage.rs \
+            crates/modules/flex/tests/generic_attached_definitions.rs \
+            crates/modules/flex/tests/generic_attached_storage.rs \
+            crates/modules/flex/tests/postgres_generic_attached_storage.rs \
+            crates/modules/rustok-taxonomy/src/category_delete.rs \
+            crates/modules/rustok-taxonomy/src/owner_identity.rs \
+            crates/modules/rustok-taxonomy/tests/owner_identity.rs \
             apps/server/src/graphql/schema.rs \
             apps/server/src/services/field_definition_registry_bootstrap.rs \
             apps/server/src/services/flex_attached_values.rs \

@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 74 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-73.md`. Slices 1–66 remain in
+`crates/modules/rustok-blog/docs/implementation-plan-slice-73.md`. Slices 1–66 remain in
 the original plan; slices 67–73 retain the typed Comments remote core, bounded
 TCP framing and lifecycle, bearer-authenticated reads, signed user delegation,
 and process-local replay admission.
@@ -31,7 +31,7 @@ continuation. Execution remains maintainer-owned.
 
 ### Implemented source scope
 
-- `crates/rustok-comments/src/tcp_channel.rs` owns the channel abstraction.
+- `crates/modules/rustok-comments/src/tcp_channel.rs` owns the channel abstraction.
 - `CommentsTcpIo` is the byte-stream boundary consumed by framing and typed
   transport code. Implementations must provide asynchronous read/write, be
   unpinned, and be sendable between tasks.
@@ -54,7 +54,7 @@ continuation. Execution remains maintainer-owned.
   now enforces loopback independently on both client endpoint and accepted peer.
 - A non-loopback plaintext endpoint or peer fails with
   `comments.tcp_plaintext_non_loopback` before a typed request is exchanged.
-- `crates/rustok-comments/src/tcp_protocol.rs` no longer owns `TcpStream`.
+- `crates/modules/rustok-comments/src/tcp_protocol.rs` no longer owns `TcpStream`.
   Length-prefixed framing is generic over asynchronous readers and writers while
   retaining:
   - four-byte big-endian frame length;
@@ -95,7 +95,7 @@ continuation. Execution remains maintainer-owned.
   with the channel abstraction while preserving their historical source-only
   evidence.
 - Source evidence is retained at
-  `crates/rustok-blog/contracts/evidence/blog-comments-tcp-channel-seam.json`.
+  `crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-channel-seam.json`.
 - The standalone source verifier is
   `scripts/verify/verify-blog-comments-tcp-channel-seam.mjs`.
 

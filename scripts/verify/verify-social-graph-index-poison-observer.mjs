@@ -3,9 +3,9 @@
 import { readFileSync } from "node:fs";
 
 const files = {
-  telemetryLib: readFileSync("crates/rustok-telemetry/src/lib.rs", "utf8"),
+  telemetryLib: readFileSync("crates/libs/rustok-telemetry/src/lib.rs", "utf8"),
   metrics: readFileSync(
-    "crates/rustok-telemetry/src/consumer_poison_metrics.rs",
+    "crates/libs/rustok-telemetry/src/consumer_poison_metrics.rs",
     "utf8",
   ),
   services: readFileSync("apps/server/src/services/mod.rs", "utf8"),

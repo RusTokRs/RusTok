@@ -23,7 +23,7 @@ It does not retain the broker endpoint, credentials, config path/content, messag
 Execution contract:
 
 ```text
-crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution-contract.json
+crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution-contract.json
 ```
 
 Capture runner:
@@ -41,7 +41,7 @@ scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs
 Canonical packet, absent until successful execution:
 
 ```text
-crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution.json
+crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution.json
 ```
 
 ## Required environment

@@ -122,7 +122,7 @@ Repair/rebuild remains a separate source cursor. Public transport and executed d
 Suggested commands, intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit.mjs
 cargo test -p rustok-pages artifact_integrity_audit -- --nocapture
 cargo check -p rustok-pages
 ```

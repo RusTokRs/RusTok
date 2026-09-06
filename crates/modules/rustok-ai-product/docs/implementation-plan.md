@@ -24,11 +24,11 @@ for complete tenant, locale, and persistence validation.
 - `ProductCatalogReadPort` / `product.catalog_read.v1` provides
   `read_product_projection`. Degraded behavior is `generate_from_prompt_only`,
   `skip_catalog_enrichment`, and `require_operator_review`.
-- Evidence: `crates/rustok-ai-product/contracts/ai-product-fba-registry.json`,
-  `crates/rustok-ai-product/contracts/evidence/ai-product-consumer-static-matrix.json`,
-  `crates/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json`,
-  `crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json`,
-  `crates/rustok-ai/src/direct_product_attributes.rs`,
+- Evidence: `crates/modules/rustok-ai-product/contracts/ai-product-fba-registry.json`,
+  `crates/modules/rustok-ai-product/contracts/evidence/ai-product-consumer-static-matrix.json`,
+  `crates/modules/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json`,
+  `crates/modules/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json`,
+  `crates/modules/rustok-ai/src/direct_product_attributes.rs`,
   `scripts/verify/verify-product-remote-consumer-behavior.mjs`, and
   `scripts/verify/verify-ai-product-fba.mjs`.
 

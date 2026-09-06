@@ -3,12 +3,12 @@
   "format": "page_builder_consumer_properties_v1",
   "parity_plan": "docs/modules/pages-page-builder-parity-continuation-plan.md",
   "provider": {
-    "contract_source": "crates/rustok-page-builder/admin/src/consumer_properties.rs",
-    "panel_source": "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs",
-    "module_export_source": "crates/rustok-page-builder/admin/src/editor/mod.rs",
-    "panel_export_source": "crates/rustok-page-builder/admin/src/lib.rs",
-    "facade_source": "crates/rustok-page-builder/admin/src/transport/mod.rs",
-    "composition_source": "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
+    "contract_source": "crates/modules/rustok-page-builder/admin/src/consumer_properties.rs",
+    "panel_source": "crates/modules/rustok-page-builder/admin/src/editor/consumer_properties.rs",
+    "module_export_source": "crates/modules/rustok-page-builder/admin/src/editor/mod.rs",
+    "panel_export_source": "crates/modules/rustok-page-builder/admin/src/lib.rs",
+    "facade_source": "crates/modules/rustok-page-builder/admin/src/transport/mod.rs",
+    "composition_source": "crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs",
     "schema": "ConsumerPropertyEditorSchema",
     "snapshot": "ConsumerPropertyEditorSnapshot",
     "save_input": "SaveConsumerPropertiesInput",
@@ -46,11 +46,11 @@
     "persistence_owned": false
   },
   "pages_consumer": {
-    "contribution_source": "crates/rustok-pages/admin/src/contributions.rs",
-    "owner_port_source": "crates/rustok-pages/admin/src/metadata_properties.rs",
-    "composition_source": "crates/rustok-pages/admin/src/lib.rs",
-    "workspace_source": "crates/rustok-pages/admin/src/composition.rs",
-    "published_surface_source": "crates/rustok-pages/admin/src/standalone_metadata.rs",
+    "contribution_source": "crates/modules/rustok-pages/admin/src/contributions.rs",
+    "owner_port_source": "crates/modules/rustok-pages/admin/src/metadata_properties.rs",
+    "composition_source": "crates/modules/rustok-pages/admin/src/lib.rs",
+    "workspace_source": "crates/modules/rustok-pages/admin/src/composition.rs",
+    "published_surface_source": "crates/modules/rustok-pages/admin/src/standalone_metadata.rs",
     "contribution_id": "rustok.pages.metadata",
     "property_editor_id": "rustok.pages.metadata.editor",
     "provider": "rustok.pages",
@@ -101,7 +101,7 @@
       }
     },
     "legacy_form": {
-      "source": "crates/rustok-pages/admin/src/composition.rs",
+      "source": "crates/modules/rustok-pages/admin/src/composition.rs",
       "component": "PageMetadataEditor",
       "state": "removed",
       "direct_persistence_path_removed": true,
@@ -110,16 +110,16 @@
     "source_evidence": {
       "metadata_revision_isolation": {
         "state": "source_ready_execution_pending",
-        "contract": "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json",
-        "verifier": "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
+        "contract": "crates/modules/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json",
+        "verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
       },
       "published_metadata_surface": {
         "state": "source_ready_execution_pending",
-        "contract": "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
-        "verifier": "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
+        "contract": "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
+        "verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
       }
     }
   },
-  "source_guard": "crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs",
+  "source_guard": "crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs",
   "executed_evidence": "pending"
 }

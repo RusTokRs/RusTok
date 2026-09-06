@@ -14,15 +14,15 @@ The additional commit after the preceding 06:26 UTC comparison is Pages-only:
 
 It does not modify:
 
-- `crates/rustok-index` source, documentation, or Cargo manifest;
-- Product Index source/absence composition under `crates/rustok-distribution`;
+- `crates/modules/rustok-index` source, documentation, or Cargo manifest;
+- Product Index source/absence composition under `crates/modules/rustok-distribution`;
 - the server Index GraphQL files;
 - Index diagnosis or source-page service composition;
 - Index verifier files changed by this PR.
 
 The broader forty-four-commit default-branch set still includes general `Cargo.lock` and
 `apps/server/Cargo.toml` updates, but this PR modifies neither file. The continuation slice changes
-only `crates/rustok-index/Cargo.toml` to consume the already-defined workspace `aes-gcm` dependency.
+only `crates/modules/rustok-index/Cargo.toml` to consume the already-defined workspace `aes-gcm` dependency.
 No changed-file collision was found for the Index continuation work.
 
 This is a source comparison record only. No merge, rebase, test, verifier, formatter, Cargo command,

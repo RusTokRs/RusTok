@@ -2,13 +2,13 @@
   "schema_version": 1,
   "status": "commerce_graphql_query_customer_error_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/graphql/query.rs",
-    "crates/rustok-commerce/src/graphql/safe_query/source.rs",
-    "crates/rustok-commerce/src/graphql/safe_query/source/rustok_customer_shim.rs",
-    "crates/rustok-customer/src/read_context.rs",
-    "crates/rustok-customer/src/ports.rs",
+    "crates/modules/rustok-commerce/src/graphql/query.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query/source.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_customer_shim.rs",
+    "crates/modules/rustok-customer/src/read_context.rs",
+    "crates/modules/rustok-customer/src/ports.rs",
     "scripts/verify/verify-commerce-graphql-query-customer-error-safety.mjs",
-    "crates/rustok-commerce/docs/graphql-query-customer-error-safety.md"
+    "crates/modules/rustok-commerce/docs/graphql-query-customer-error-safety.md"
   ],
   "source_contract": {
     "query_resolver_source_changed": false,

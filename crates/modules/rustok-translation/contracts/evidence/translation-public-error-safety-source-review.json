@@ -2,12 +2,12 @@
   "schema_version": 1,
   "status": "translation_public_error_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-translation/src/public_error.rs",
-    "crates/rustok-translation/src/error.rs",
-    "crates/rustok-translation/src/graphql/context.rs",
-    "crates/rustok-translation/admin/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-translation/src/public_error.rs",
+    "crates/modules/rustok-translation/src/error.rs",
+    "crates/modules/rustok-translation/src/graphql/context.rs",
+    "crates/modules/rustok-translation/admin/src/transport/native_server_adapter.rs",
     "scripts/verify/verify-translation-public-error-safety.mjs",
-    "crates/rustok-translation/contracts/evidence/translation-public-error-safety-source.json"
+    "crates/modules/rustok-translation/contracts/evidence/translation-public-error-safety-source.json"
   ],
   "review_findings": {
     "public_structs_preserved": true,

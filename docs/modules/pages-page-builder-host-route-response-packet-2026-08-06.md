@@ -61,13 +61,13 @@ Storefront router
 
 ## Source evidence
 
-- `crates/rustok-pages/storefront/src/transport/host_route_adapter.rs`;
-- `crates/rustok-pages/storefront/src/transport/mod.rs`;
-- `crates/rustok-pages/storefront/src/lib.rs`;
+- `crates/modules/rustok-pages/storefront/src/transport/host_route_adapter.rs`;
+- `crates/modules/rustok-pages/storefront/src/transport/mod.rs`;
+- `crates/modules/rustok-pages/storefront/src/lib.rs`;
 - `apps/storefront/src/lib.rs`;
-- `crates/rustok-pages/storefront/tests/host_route_decision_sqlite.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-host-route-response-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-host-route-response.mjs`.
+- `crates/modules/rustok-pages/storefront/tests/host_route_decision_sqlite.rs`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-host-route-response-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-host-route-response.mjs`.
 
 The focused SQLite/Axum harness retains the registered Leptos server-function path
 and source scenarios for two historical aliases, current canonical identity,
@@ -89,7 +89,7 @@ missing route, gone route, current/history conflict and channel-module denial.
 Suggested commands only; they were not run by the implementation agent:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-host-route-response.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-host-route-response.mjs
 
 cargo test -p rustok-pages-storefront \
   --features ssr \

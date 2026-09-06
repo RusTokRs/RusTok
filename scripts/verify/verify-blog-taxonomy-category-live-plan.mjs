@@ -25,7 +25,7 @@ function rejectMarker(source, marker, label) {
 }
 
 function main() {
-  const planPath = "crates/rustok-blog/docs/implementation-plan.md";
+  const planPath = "crates/modules/rustok-blog/docs/implementation-plan.md";
   const plan = read(planPath);
 
   for (const marker of [

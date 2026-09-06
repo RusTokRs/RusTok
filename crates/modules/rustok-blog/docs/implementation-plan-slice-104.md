@@ -68,7 +68,7 @@ Canonical interpretation:
 
 ## Retained source harness
 
-`crates/rustok-blog/tests/taxonomy_tags.rs` now includes executable-no-run cases for:
+`crates/modules/rustok-blog/tests/taxonomy_tags.rs` now includes executable-no-run cases for:
 
 - successful tag rename + durable Blog-scope reindex in one committed path;
 - forced `sys_events` unavailability causing tag rename/revision rollback;

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-observability-source.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-observability-source.json";
 const contract = JSON.parse(readFileSync(resolve(root, contractPath), "utf8"));
 const telemetry = readFileSync(resolve(root, contract.telemetry_source), "utf8");
 const registration = readFileSync(resolve(root, contract.telemetry_registration), "utf8");

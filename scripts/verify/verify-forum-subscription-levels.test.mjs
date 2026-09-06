@@ -6,14 +6,14 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const root = mkdtempSync(join(tmpdir(), "forum-subscription-verifier-"));
-cpSync("crates/rustok-forum", join(root, "crates/rustok-forum"), { recursive: true });
+cpSync("crates/modules/rustok-forum", join(root, "crates/modules/rustok-forum"), { recursive: true });
 mkdirSync(join(root, "scripts/verify"), { recursive: true });
 cpSync(
   "scripts/verify/verify-forum-subscription-levels.mjs",
   join(root, "scripts/verify/verify-forum-subscription-levels.mjs"),
 );
 writeFileSync(
-  join(root, "crates/rustok-forum/src/subscription.rs"),
+  join(root, "crates/modules/rustok-forum/src/subscription.rs"),
   "pub enum ForumSubscriptionLevel { Watching, Tracking, Normal }\n",
 );
 const result = spawnSync(

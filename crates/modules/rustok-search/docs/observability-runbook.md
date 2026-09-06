@@ -314,7 +314,7 @@ Recommended first dashboard:
 ## Incident ownership
 
 Primary owner for search/index projection incidents is the search module on-call.
-Escalation path: `crates/rustok-search` owner, then platform database/runtime
+Escalation path: `crates/modules/rustok-search` owner, then platform database/runtime
 owner when lag, query plans, or event delivery affect multiple tenants.
 
 During an incident:

@@ -99,7 +99,7 @@ Never put `#[component]`, `view!`, signals, or effects in `core`.
 
 ### 5. Do Not Put Module UI in Host
 
-Module storefront UI belongs in `crates/rustok-<module>/storefront/`.
+Module storefront UI belongs in `crates/modules/rustok-<module>/storefront/`.
 
 Never place module storefront workflows in `apps/storefront/src/`, except host shell and shared composition code under `widgets/header` or `shared`.
 
@@ -111,7 +111,7 @@ This host follows Feature-Sliced Design layers:
 - `widgets` - header
 - `modules` - module composition adapters
 - `shared` - shared contracts
-- module-owned UI packages - `crates/rustok-*/storefront/`
+- module-owned UI packages - `crates/modules/rustok-*/storefront/`
 
 ## Verification Commands
 
@@ -168,7 +168,7 @@ Full FFA concept: [Fluid Frontend Architecture](../../docs/research/fluid-fronte
 | Writing `Button` locally | Use `leptos-ui::Button` |
 | Raw HTTP client in `graphql_adapter` | Use `rustok-graphql` |
 | `t!(i18n, key)` macro | Use `i18n::t(locale, "key", "fallback")` |
-| Module UI in `apps/storefront/src/` | Use `crates/rustok-<module>/storefront/` |
+| Module UI in `apps/storefront/src/` | Use `crates/modules/rustok-<module>/storefront/` |
 | Building routes with hardcoded strings | Use `UiRouteContext::module_route_base()` |
 | Writing `i18n.rs` without `rustok-ui-i18n-leptos` | Follow the standard `LeptosUiMessages` adapter boilerplate |
 | Forgetting dependencies in module `Cargo.toml` | Each module must declare all direct dependencies explicitly |

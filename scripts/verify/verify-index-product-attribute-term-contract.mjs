@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const modulePath = 'crates/rustok-distribution/src/product_index/attribute_terms.rs';
+const modulePath = 'crates/modules/rustok-distribution/src/product_index/attribute_terms.rs';
 const source = requireMarkers(modulePath, [
   'pub(crate) const PRODUCT_ATTRIBUTE_TERMS_FIELD: &str = "attribute_terms";',
   'pub(crate) const PRODUCT_ATTRIBUTE_TERMS_CTE: &str',
@@ -53,24 +53,24 @@ if (source.includes('pa.code ||') || source.includes('pa.code::text ||')) {
   fail(`${modulePath} must key persisted terms by stable attribute UUID rather than mutable public code`);
 }
 
-requireMarkers('crates/rustok-product/src/services/catalog_attribute_terms.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/catalog_attribute_terms.rs', [
   'hex_encode(value)',
   'value.normalize().to_string()',
   'value.timestamp_micros().to_string()',
 ]);
 
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'mod attribute_terms;',
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
 ]);
-requireMarkers('crates/rustok-distribution/Cargo.toml', [
+requireMarkers('crates/modules/rustok-distribution/Cargo.toml', [
   'mod-product = ["dep:rustok-product", "mod-taxonomy", "dep:chrono", "dep:hex", "dep:rust_decimal"]',
   'chrono = { workspace = true, optional = true }',
   'hex = { workspace = true, optional = true }',
   'rust_decimal = { workspace = true, optional = true }',
 ]);
 
-requireMarkers('crates/rustok-product/src/services/catalog/attribute_filters.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/catalog/attribute_filters.rs', [
   'AND archived_at IS NULL',
   'AND is_filterable = TRUE',
   "AND scope IN ('product', 'both')",
@@ -81,7 +81,7 @@ requireMarkers('crates/rustok-product/src/services/catalog/attribute_filters.rs'
   'pao.archived_at IS NULL',
 ]);
 
-requireMarkers('crates/rustok-product/src/services/catalog_attribute_terms.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/catalog_attribute_terms.rs', [
   'AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext',
   'AttributeValueType::Integer',
   'AttributeValueType::Decimal',
@@ -92,12 +92,12 @@ requireMarkers('crates/rustok-product/src/services/catalog_attribute_terms.rs', 
   'AttributeValueType::Json',
 ]);
 
-requireMarkers('crates/rustok-product/src/services/write_transaction.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/write_transaction.rs', [
   'DomainEvent::ProductAttributeValuesChanged { product_id } => Some(*product_id)',
   'UPDATE products SET index_revision = index_revision',
 ]);
 
-requireMarkers('crates/rustok-distribution/src/product_index/product.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/product.rs', [
   'many_field("attribute_terms", IndexValueType::String, false, true)?',
   'PRODUCT_ATTRIBUTE_TERMS_CTE',
   "COALESCE(attributes.attribute_terms, '[]'::jsonb) AS attribute_terms",
@@ -106,7 +106,7 @@ requireMarkers('crates/rustok-distribution/src/product_index/product.rs', [
   'derive_index_schema_source_event_id(',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m7-product-attribute-term-contract.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-attribute-term-contract.md', [
   'Status: `source_complete_materialized_rebuild_pending`',
   '`attribute_terms: Many<String>`',
   '`<attribute_uuid>|<kind>|<locale_hex>|<value_hex>`',

@@ -12,12 +12,12 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  mutations: 'crates/rustok-commerce/src/graphql/mutations/fulfillment.rs',
-  graphqlRuntime: 'crates/rustok-commerce/src/graphql_runtime.rs',
-  orderOwner: 'crates/rustok-order/src/admin_command.rs',
+  mutations: 'crates/modules/rustok-commerce/src/graphql/mutations/fulfillment.rs',
+  graphqlRuntime: 'crates/modules/rustok-commerce/src/graphql_runtime.rs',
+  orderOwner: 'crates/modules/rustok-order/src/admin_command.rs',
   hostRuntime: 'apps/server/src/services/commerce_provider_runtime.rs',
-  plan: 'crates/rustok-commerce/docs/implementation-plan.md',
-  document: 'crates/rustok-commerce/docs/graphql-order-lifecycle-owner-port-cutover-2026-08-09.md',
+  plan: 'crates/modules/rustok-commerce/docs/implementation-plan.md',
+  document: 'crates/modules/rustok-commerce/docs/graphql-order-lifecycle-owner-port-cutover-2026-08-09.md',
 };
 
 const mutations = read(paths.mutations);

@@ -1,12 +1,12 @@
 import { readFile } from 'node:fs/promises';
 
 const paths = {
-  commandFacade: 'crates/fly/src/command.rs',
-  commandPatch: 'crates/fly/src/command/patch.rs',
-  commandModel: 'crates/fly/src/command/model.rs',
-  commandEditor: 'crates/fly/src/command/editor.rs',
-  commandTests: 'crates/fly/src/command/tests.rs',
-  snapshotModel: 'crates/fly/src/snapshot/model.rs',
+  commandFacade: 'crates/ui/fly/src/command.rs',
+  commandPatch: 'crates/ui/fly/src/command/patch.rs',
+  commandModel: 'crates/ui/fly/src/command/model.rs',
+  commandEditor: 'crates/ui/fly/src/command/editor.rs',
+  commandTests: 'crates/ui/fly/src/command/tests.rs',
+  snapshotModel: 'crates/ui/fly/src/snapshot/model.rs',
 };
 
 const source = Object.fromEntries(await Promise.all(

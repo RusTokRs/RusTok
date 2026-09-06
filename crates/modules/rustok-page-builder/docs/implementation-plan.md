@@ -255,15 +255,15 @@ and decision packets, not another production-consumer or provider-health archite
 - `contracts/evidence/page-builder-provider-health-runtime-observation-source.json` plus the deployment
   metrics, identity and evaluator source contracts record the bounded observation-to-deployment-health
   architecture without making process-local samples deployment authority.
-- `crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json`,
+- `crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json`,
   consumer-binding source, runtime harness source and observed-health acceptance source record the
   fail-closed Pages binding and historical observed-health evidence/owner-decision boundary.
-- `crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json` records the exact
+- `crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json` records the exact
   rollout-only Pages reference-consumer blocker; committed source remains `accepted = false`.
-- `crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json` records
+- `crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json` records
   the explicit dual-input gate owner/rollback decision source over the rollout candidate and accepted
   observed-health evidence.
-- `crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json` records the
+- `crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json` records the
   exact-source/deployment correlation required before an observed Forum control-plane Wave may start.
 - `scripts/verify/verify-page-builder-admin-accessibility.mjs` source-locks generic editor programmatic
   names, scoped repeated actions and selected-state semantics without claiming browser conformance.
@@ -276,23 +276,23 @@ and decision packets, not another production-consumer or provider-health archite
 - `scripts/verify/verify-page-builder-publish-transport-cutover.mjs` forbids public legacy/default
   publication and source-locks GraphQL, HTTP, admin reviewed DTO/receipt, scenario-selection and
   non-builder lifecycle boundaries.
-- `crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs` source-locks the Pages
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs` source-locks the Pages
   gate identity, profile requirements, owner-read availability, Forum source state and no-live-claim
   boundary.
-- `crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs` source-locks
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs` source-locks
   exact candidate + observed-health lineage, owner/rollback decisions and non-promotion boundaries.
 - `scripts/verify/verify-forum-page-builder-wave-admission.mjs` source-locks accepted-gate consumption,
   Forum evidence lineage and continued observed-Wave pending state.
-- `crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs` source-locks exact
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs` source-locks exact
   contribution-schema binding, Pages ownership, optimistic metadata revision, registered draft and
   published surfaces, legacy-form absence and the absence of production Fly document writes.
-- `crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs` source-locks
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs` source-locks
   conflict-before-patch ordering, exact stale conflict, metadata-only transport shape, dirty Fly
   isolation regressions and the unvalidated machine evidence boundary.
-- `crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs` source-locks Pages ownership
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs` source-locks Pages ownership
   of cache scopes/keys, event-driven invalidation, neutral server capabilities and authorization/cache/
   owner-source ordering in storefront and artifact readers.
-- `crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs` source-locks exact publish
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs` source-locks exact publish
   manifests, activation-cursor rollback ordering, immutable-only reuse, typed receipts and public
   transports.
 
@@ -343,45 +343,45 @@ and decision packets, not another production-consumer or provider-health archite
   - `contracts/page-builder-fba-registry.json`;
   - `admin/src/publish_scenario_selection.rs`;
   - `admin/src/editor/publish_scenario_selector.rs`;
-  - `crates/rustok-pages/admin/src/builder.rs`;
-  - `crates/rustok-pages/admin/src/contributions.rs`;
-  - `crates/rustok-pages/admin/src/metadata_properties.rs`;
-  - `crates/rustok-pages/admin/src/standalone_metadata.rs`;
-  - `crates/rustok-pages/admin/src/lib.rs`;
-  - `crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json`;
-  - `crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json`;
-  - `crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json`;
-  - `crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json`;
-  - `crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json`;
-  - `crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json`;
-  - `crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json`;
-  - `crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs`;
-  - `crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs`;
+  - `crates/modules/rustok-pages/admin/src/builder.rs`;
+  - `crates/modules/rustok-pages/admin/src/contributions.rs`;
+  - `crates/modules/rustok-pages/admin/src/metadata_properties.rs`;
+  - `crates/modules/rustok-pages/admin/src/standalone_metadata.rs`;
+  - `crates/modules/rustok-pages/admin/src/lib.rs`;
+  - `crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json`;
+  - `crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json`;
+  - `crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json`;
+  - `crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json`;
+  - `crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json`;
+  - `crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json`;
+  - `crates/modules/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json`;
+  - `crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs`;
+  - `crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs`;
   - `scripts/verify/verify-forum-page-builder-wave-admission.mjs`;
-  - `crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs`;
-  - `crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`;
-  - `crates/rustok-pages/src/dto/page.rs`;
-  - `crates/rustok-pages/src/services/page/reviewed_publish.rs`;
-  - `crates/rustok-pages/src/services/page/rollback.rs`;
-  - `crates/rustok-pages/src/services/page/artifact_set.rs`;
-  - `crates/rustok-pages/src/services/page/publish_manifest.rs`;
-  - `crates/rustok-pages/src/services/page/lifecycle.rs`;
-  - `crates/rustok-pages/src/cache_invalidation.rs`;
-  - `crates/rustok-pages/storefront/src/transport/native_server_adapter.rs`;
-  - `crates/rustok-pages/src/controllers/mod.rs`;
+  - `crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs`;
+  - `crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`;
+  - `crates/modules/rustok-pages/src/dto/page.rs`;
+  - `crates/modules/rustok-pages/src/services/page/reviewed_publish.rs`;
+  - `crates/modules/rustok-pages/src/services/page/rollback.rs`;
+  - `crates/modules/rustok-pages/src/services/page/artifact_set.rs`;
+  - `crates/modules/rustok-pages/src/services/page/publish_manifest.rs`;
+  - `crates/modules/rustok-pages/src/services/page/lifecycle.rs`;
+  - `crates/modules/rustok-pages/src/cache_invalidation.rs`;
+  - `crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs`;
+  - `crates/modules/rustok-pages/src/controllers/mod.rs`;
   - `apps/server/src/services/pages_cache_invalidation.rs`;
   - `apps/server/src/services/module_event_dispatcher.rs`;
-  - `crates/rustok-pages/src/graphql/mutation.rs`;
-  - `crates/rustok-pages/src/http.rs`;
-  - `crates/rustok-pages/admin/src/transport/graphql_adapter.rs`;
-  - `crates/rustok-pages/src/entities/page_publish_operation.rs`;
-  - `crates/rustok-pages/src/entities/page_publish_operation_artifact.rs`;
-  - `crates/rustok-pages/src/entities/page_rollback_operation.rs`;
-  - `crates/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs`;
+  - `crates/modules/rustok-pages/src/graphql/mutation.rs`;
+  - `crates/modules/rustok-pages/src/http.rs`;
+  - `crates/modules/rustok-pages/admin/src/transport/graphql_adapter.rs`;
+  - `crates/modules/rustok-pages/src/entities/page_publish_operation.rs`;
+  - `crates/modules/rustok-pages/src/entities/page_publish_operation_artifact.rs`;
+  - `crates/modules/rustok-pages/src/entities/page_rollback_operation.rs`;
+  - `crates/modules/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs`;
   - `scripts/verify/verify-page-builder-publish-runtime-review.mjs`;
   - `scripts/verify/verify-page-builder-publish-transport-cutover.mjs`;
-  - `crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`;
-  - `crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`.
+  - `crates/modules/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`;
+  - `crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`.
 
 ## Open results
 
@@ -414,37 +414,37 @@ and decision packets, not another production-consumer or provider-health archite
 
 - `node scripts/verify/verify-page-builder-admin-accessibility.mjs`;
 - `node scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs`;
-- `node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs`;
-- `node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs`;
-- `node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs`;
-- `node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs`;
-- `node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs`;
 - `node scripts/verify/verify-forum-page-builder-wave-admission.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-transport-bridge.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-endpoint-adapters.mjs`;
-- `node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-transport-bridge.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-endpoint-adapters.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs`;
 - `node scripts/verify/verify-forum-page-builder-contribution-metadata.mjs`;
 - `node scripts/verify/verify-forum-page-builder-browser-evidence-harness.mjs`;
 - `node scripts/verify/verify-forum-page-builder-runtime-authorization-evidence.mjs`;
 - `node scripts/verify/verify-forum-page-builder-serverfn-deployment-attestation.mjs`;
-- `node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs`;
-- `node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs`;
 - `cargo test -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport`;
 - `cargo test -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state`;
-- `node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`;
-- `node crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs`;
 - `cargo test -p rustok-page-builder --all-targets --all-features`;
 - `cargo test -p rustok-pages --lib`;
 - `cargo xtask module validate page_builder`.

@@ -87,8 +87,8 @@
     "seo_or_hreflang_changed": false
   },
   "verification": {
-    "contract_test": "crates/rustok-forum/tests/category_slug_alias_contract.rs",
-    "sqlite_test": "crates/rustok-forum/tests/category_slug_alias_sqlite.rs",
+    "contract_test": "crates/modules/rustok-forum/tests/category_slug_alias_contract.rs",
+    "sqlite_test": "crates/modules/rustok-forum/tests/category_slug_alias_sqlite.rs",
     "verifier": "scripts/verify/verify-forum-category-slug-alias-owner.mjs",
     "commands": [
       "node scripts/verify/verify-forum-category-slug-alias-owner.mjs",

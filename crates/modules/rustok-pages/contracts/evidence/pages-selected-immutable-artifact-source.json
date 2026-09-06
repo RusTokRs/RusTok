@@ -43,7 +43,7 @@
     "fba_promoted": false
   },
   "harness": {
-    "path": "crates/rustok-pages/tests/selected_immutable_published_artifact_sqlite.rs",
+    "path": "crates/modules/rustok-pages/tests/selected_immutable_published_artifact_sqlite.rs",
     "test": "storefront_reads_selected_immutable_artifact_after_persisted_draft_mutation",
     "database": "isolated SQLite with real Channel and Pages migrations",
     "owner_read": "PageBuilderArtifactService::load_public_bound_artifact_with_fallback",

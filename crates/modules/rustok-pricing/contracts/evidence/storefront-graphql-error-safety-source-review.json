@@ -5,17 +5,17 @@
   "status": "pricing_storefront_graphql_error_safety_source_reviewed_unvalidated",
   "scope": "Pricing storefront GraphQL public and diagnostic error boundary",
   "reviewed_sources": [
-    "crates/rustok-commerce/docs/implementation-plan.md",
-    "crates/rustok-pricing/docs/implementation-plan.md",
-    "crates/rustok-pricing/storefront/Cargo.toml",
-    "crates/rustok-pricing/storefront/src/core.rs",
-    "crates/rustok-pricing/storefront/src/transport/mod.rs",
-    "crates/rustok-pricing/storefront/src/transport/graphql_adapter.rs",
-    "crates/rustok-pricing/storefront/src/transport/graphql_error_safety.rs",
-    "crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs",
-    "crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source.json",
-    "crates/rustok-pricing/docs/storefront-graphql-error-safety.md",
-    "crates/rustok-graphql/src/lib.rs",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-pricing/docs/implementation-plan.md",
+    "crates/modules/rustok-pricing/storefront/Cargo.toml",
+    "crates/modules/rustok-pricing/storefront/src/core.rs",
+    "crates/modules/rustok-pricing/storefront/src/transport/mod.rs",
+    "crates/modules/rustok-pricing/storefront/src/transport/graphql_adapter.rs",
+    "crates/modules/rustok-pricing/storefront/src/transport/graphql_error_safety.rs",
+    "crates/modules/rustok-pricing/storefront/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source.json",
+    "crates/modules/rustok-pricing/docs/storefront-graphql-error-safety.md",
+    "crates/ui/rustok-graphql/src/lib.rs",
     "scripts/verify/verify-pricing-storefront-graphql-error-safety.mjs"
   ],
   "findings": [
@@ -56,10 +56,10 @@
     "runtime_evidence_claimed": false
   },
   "changed_files_expected": [
-    "crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source-review.json",
-    "crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source.json",
-    "crates/rustok-pricing/docs/storefront-graphql-error-safety.md",
-    "crates/rustok-pricing/storefront/src/transport/graphql_error_safety.rs",
+    "crates/modules/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source-review.json",
+    "crates/modules/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source.json",
+    "crates/modules/rustok-pricing/docs/storefront-graphql-error-safety.md",
+    "crates/modules/rustok-pricing/storefront/src/transport/graphql_error_safety.rs",
     "scripts/verify/verify-pricing-storefront-graphql-error-safety.mjs"
   ],
   "preserved": [

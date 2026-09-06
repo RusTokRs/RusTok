@@ -16,7 +16,7 @@
     "selector": "rustok_ui_transport::execute_selected_transport"
   },
   "native_server": {
-    "adapter": "crates/rustok-forum/admin/src/transport/topic_merge_native_server_adapter.rs",
+    "adapter": "crates/modules/rustok-forum/admin/src/transport/topic_merge_native_server_adapter.rs",
     "candidate_endpoint": "/api/fn/forum/topic-merge-candidates",
     "merge_endpoint": "/api/fn/forum/topic-merge",
     "candidate_owner": "TopicService::list_with_locale_fallback",
@@ -47,7 +47,7 @@
     "merge_request_fields": ["command"]
   },
   "graphql_parity": {
-    "adapter": "crates/rustok-forum/admin/src/transport/topic_merge_graphql_adapter.rs",
+    "adapter": "crates/modules/rustok-forum/admin/src/transport/topic_merge_graphql_adapter.rs",
     "candidate_query_retained": true,
     "ordinary_merge_mutation_retained": true,
     "solution_resolution_mutation_retained": true,

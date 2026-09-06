@@ -1,10 +1,10 @@
 {
   "status": "commerce_admin_fulfillment_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/controllers/admin/fulfillments.rs",
+    "crates/modules/rustok-commerce/src/controllers/admin/fulfillments.rs",
     "scripts/verify/verify-commerce-admin-fulfillment-route-error-context.mjs",
-    "crates/rustok-commerce/docs/admin-fulfillment-diagnostic-safety.md",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/admin-fulfillment-diagnostic-safety.md",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_contract": {
     "raw_port_error_logged": false,

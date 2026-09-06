@@ -13,25 +13,25 @@ const failures = [];
 
 const paths = {
   centralPlan: 'docs/modules/translation-implementation-plan.md',
-  localPlan: 'crates/rustok-translation/docs/implementation-plan.md',
-  settings: 'crates/rustok-modules/src/settings.rs',
-  lifecycle: 'crates/rustok-modules/src/lifecycle_writer.rs',
-  localizedOwner: 'crates/rustok-modules/src/static_settings_localization.rs',
-  sourceLocaleOwner: 'crates/rustok-modules/src/static_settings_source_locale.rs',
-  translationRead: 'crates/rustok-modules/src/static_settings_translation_read.rs',
-  adapterCargo: 'crates/rustok-modules-translation/Cargo.toml',
-  adapter: 'crates/rustok-modules-translation/src/lib.rs',
+  localPlan: 'crates/modules/rustok-translation/docs/implementation-plan.md',
+  settings: 'crates/modules/rustok-modules/src/settings.rs',
+  lifecycle: 'crates/modules/rustok-modules/src/lifecycle_writer.rs',
+  localizedOwner: 'crates/modules/rustok-modules/src/static_settings_localization.rs',
+  sourceLocaleOwner: 'crates/modules/rustok-modules/src/static_settings_source_locale.rs',
+  translationRead: 'crates/modules/rustok-modules/src/static_settings_translation_read.rs',
+  adapterCargo: 'crates/modules/rustok-modules-translation/Cargo.toml',
+  adapter: 'crates/modules/rustok-modules-translation/src/lib.rs',
   localizedMigration:
-    'crates/rustok-modules/src/migrations/m20260904_000051_static_localized_settings.rs',
+    'crates/modules/rustok-modules/src/migrations/m20260904_000051_static_localized_settings.rs',
   changeMigration:
-    'crates/rustok-modules/src/migrations/m20260904_000052_static_settings_change_cursor.rs',
+    'crates/modules/rustok-modules/src/migrations/m20260904_000052_static_settings_change_cursor.rs',
   sourceLocaleMigration:
-    'crates/rustok-modules/src/migrations/m20260904_000053_static_settings_source_locale.rs',
-  migrationRegistry: 'crates/rustok-modules/src/migrations/mod.rs',
+    'crates/modules/rustok-modules/src/migrations/m20260904_000053_static_settings_source_locale.rs',
+  migrationRegistry: 'crates/modules/rustok-modules/src/migrations/mod.rs',
   evidence:
-    'crates/rustok-translation/contracts/evidence/translation-settings-localization-prerequisite-source.json',
+    'crates/modules/rustok-translation/contracts/evidence/translation-settings-localization-prerequisite-source.json',
   handoff:
-    'crates/rustok-translation/docs/translation-settings-localization-prerequisite.md',
+    'crates/modules/rustok-translation/docs/translation-settings-localization-prerequisite.md',
 };
 
 const sources = Object.fromEntries(

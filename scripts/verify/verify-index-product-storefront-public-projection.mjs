@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const ownerPath = 'crates/rustok-product/src/services/catalog/queries.rs';
+const ownerPath = 'crates/modules/rustok-product/src/services/catalog/queries.rs';
 requireMarkers(ownerPath, [
   'title: translation',
   '.unwrap_or_else(|| "Untitled product".to_string())',
@@ -26,7 +26,7 @@ requireMarkers(ownerPath, [
   '.unwrap_or_default()',
 ]);
 
-const rawPacketPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs';
+const rawPacketPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs';
 requireMarkers(rawPacketPath, [
   'assert_eq!(owner_c.title, "Untitled product");',
   'assert_eq!(owner_c.handle, "");',
@@ -34,7 +34,7 @@ requireMarkers(rawPacketPath, [
   'assert_eq!(projected_string(index_c, "handle")?, None);',
 ]);
 
-const projectionPath = 'crates/rustok-distribution/src/product_index/storefront_projection.rs';
+const projectionPath = 'crates/modules/rustok-distribution/src/product_index/storefront_projection.rs';
 const projection = requireMarkers(projectionPath, [
   'const UNTITLED_PRODUCT: &str = "Untitled product";',
   'pub(crate) enum ProductStorefrontIndexPublicProjectionError',
@@ -62,7 +62,7 @@ for (const forbidden of [
   }
 }
 
-const builderPath = 'crates/rustok-distribution/src/product_index/storefront_shadow.rs';
+const builderPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow.rs';
 const builder = read(builderPath);
 for (const forbidden of ['Untitled product', 'project_product_storefront_index_page']) {
   if (builder.includes(forbidden)) {
@@ -70,7 +70,7 @@ for (const forbidden of ['Untitled product', 'project_product_storefront_index_p
   }
 }
 
-const executorPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const executorPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
 const executor = requireMarkers(executorPath, [
   'pub(crate) projected: Result<IndexQueryPage, ProductStorefrontIndexShadowProjectionError>',
   'pub(crate) public_projected:',
@@ -105,7 +105,7 @@ if (
   fail('raw Index page must exist before public projection and raw equivalence comparison');
 }
 
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'mod storefront_projection;',
   'ProductStorefrontIndexPublicProjectionError',
   'project_product_storefront_index_page',

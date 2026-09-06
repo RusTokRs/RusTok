@@ -134,8 +134,8 @@ Remaining:
 - FBA status: `boundary_ready`.
 - Structural shape: `no_ui_boundary`.
 - Capability runtime contract:
-  `crates/alloy/contracts/alloy-runtime-contract.json` and
-  `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json`.
+  `crates/modules/alloy/contracts/alloy-runtime-contract.json` and
+  `crates/modules/alloy/contracts/evidence/alloy-runtime-static-matrix.json`.
 - Static gate:
   `scripts/verify/verify-alloy-runtime-contract.mjs` /
   `npm run verify:alloy:runtime-contract`.

@@ -17,10 +17,10 @@ hydrate = ["leptos/hydrate", "wasm-client"]
 ssr = ["leptos/ssr", "fly-leptos/ssr"]
 
 [dependencies]
-fly = { path = "../../fly" }
-fly-ui = { path = "../../fly-ui" }
-fly-browser = { path = "../../fly-browser" }
-fly-leptos = { path = "../../fly-leptos", default-features = false }
+fly = { path = "../../../ui/fly" }
+fly-ui = { path = "../../../ui/fly-ui" }
+fly-browser = { path = "../../../ui/fly-browser" }
+fly-leptos = { path = "../../../ui/fly-leptos", default-features = false }
 rustok-page-builder = { path = "..", default-features = false }
 rustok-ui-core.workspace = true
 rustok-ui-i18n-leptos.workspace = true

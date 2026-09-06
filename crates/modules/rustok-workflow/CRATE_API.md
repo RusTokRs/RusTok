@@ -5,7 +5,7 @@
 
 ## Source of truth
 
-- Crate source: `crates/rustok-workflow/src/**`
+- Crate source: `crates/modules/rustok-workflow/src/**`
 - Rustdoc (locally):
   - `cargo doc -p rustok-workflow --no-deps`
 - Server runtime wiring:
@@ -82,7 +82,7 @@ When changing workflow transport contract, execution semantics, or error model:
 ## Hotspot contract (DOC-12 / H4)
 
 - Hotspot: `H4` (Workflow/Public API contracts).
-- Doc contracts updated: `crates/rustok-workflow/CRATE_API.md`.
+- Doc contracts updated: `crates/modules/rustok-workflow/CRATE_API.md`.
 - Owner scope: workflow module owner.
 - Residual drift risk:
   - until DOC-09 (B12 CI artifacts) is closed, there may be a gap between curated overview

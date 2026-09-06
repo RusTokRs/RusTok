@@ -17,9 +17,9 @@ The `OrderExpr` shape is unchanged. Existing `asc` / `desc` payloads, source lit
 legacy plan/cursor discriminants therefore retain their old representation.
 
 The machine-readable contract is
-`crates/rustok-index/contracts/m4-many-link-aggregate-ordering.json`. Decimal's exact hidden-order
+`crates/modules/rustok-index/contracts/m4-many-link-aggregate-ordering.json`. Decimal's exact hidden-order
 handoff is separately fixed by
-`crates/rustok-index/contracts/m4-decimal-aggregate-order-wire.json`.
+`crates/modules/rustok-index/contracts/m4-decimal-aggregate-order-wire.json`.
 
 ## Validation policy
 

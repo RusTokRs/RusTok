@@ -16,9 +16,9 @@ fn source(relative: &str) -> String {
 
 #[test]
 fn generation_store_is_clone_shared_bounded_identity_safe_and_fail_closed() {
-    let service = source("crates/rustok-cache/src/service.rs");
-    let generation = source("crates/rustok-cache/src/generation.rs");
-    let regression = source("crates/rustok-cache/tests/generation_store_regression.rs");
+    let service = source("crates/modules/rustok-cache/src/service.rs");
+    let generation = source("crates/modules/rustok-cache/src/generation.rs");
+    let regression = source("crates/modules/rustok-cache/tests/generation_store_regression.rs");
 
     for required in [
         "generation_store_identity",

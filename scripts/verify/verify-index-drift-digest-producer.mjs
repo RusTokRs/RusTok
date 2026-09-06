@@ -3,15 +3,15 @@
 import { readFile } from "node:fs/promises";
 
 const files = {
-  producer: "crates/rustok-index/src/application/drift_digest.rs",
-  applicationMod: "crates/rustok-index/src/application/mod.rs",
-  recorder: "crates/rustok-index/src/infrastructure/postgres/drift_digest_recorder.rs",
-  reader: "crates/rustok-index/src/infrastructure/postgres/drift_snapshot_reader.rs",
+  producer: "crates/modules/rustok-index/src/application/drift_digest.rs",
+  applicationMod: "crates/modules/rustok-index/src/application/mod.rs",
+  recorder: "crates/modules/rustok-index/src/infrastructure/postgres/drift_digest_recorder.rs",
+  reader: "crates/modules/rustok-index/src/infrastructure/postgres/drift_snapshot_reader.rs",
   diagnosis: "apps/server/src/services/index_drift_diagnosis_operator.rs",
   pageDiagnosis: "apps/server/src/services/index_drift_source_page_diagnosis.rs",
-  postgresMod: "crates/rustok-index/src/infrastructure/postgres/mod.rs",
-  doc: "crates/rustok-index/docs/m6-drift-digest-producer.md",
-  plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  postgresMod: "crates/modules/rustok-index/src/infrastructure/postgres/mod.rs",
+  doc: "crates/modules/rustok-index/docs/m6-drift-digest-producer.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
 };
 
 const content = Object.fromEntries(

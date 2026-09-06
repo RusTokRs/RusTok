@@ -69,7 +69,7 @@ The shared storefront HTTP mappers, inventory, customer, tax, promotion, native 
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/graphql-query-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/graphql-query-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-graphql-query-error-boundary.mjs`
 - `scripts/verify/verify-commerce-graphql-borrowed-message-envelope-safety.mjs`
 

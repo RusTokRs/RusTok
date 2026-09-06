@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const relayPath = 'crates/rustok-product/src/services/index_refresh_relay.rs';
+const relayPath = 'crates/modules/rustok-product/src/services/index_refresh_relay.rs';
 const relay = requireMarkers(relayPath, [
   'pub trait ProductIndexRefreshEventFactory: Send + Sync',
   'type LocaleEvent: ProductIndexRefreshContract',
@@ -63,7 +63,7 @@ for (const forbidden of [
 }
 
 const migrationPath =
-  'crates/rustok-product/src/migrations/m20260806_000007_add_product_index_refresh_relay_cursors.rs';
+  'crates/modules/rustok-product/src/migrations/m20260806_000007_add_product_index_refresh_relay_cursors.rs';
 requireMarkers(migrationPath, [
   'CREATE TABLE product_index_refresh_relay_cursors',
   'PRIMARY KEY (tenant_id, stream_kind)',
@@ -76,12 +76,12 @@ requireMarkers(migrationPath, [
   'BEFORE DELETE ON product_index_refresh_relay_cursors',
 ]);
 
-requireMarkers('crates/rustok-product/src/migrations/mod.rs', [
+requireMarkers('crates/modules/rustok-product/src/migrations/mod.rs', [
   'mod m20260806_000007_add_product_index_refresh_relay_cursors;',
   'Box::new(m20260806_000007_add_product_index_refresh_relay_cursors::Migration)',
 ]);
 
-const services = requireMarkers('crates/rustok-product/src/services/mod.rs', [
+const services = requireMarkers('crates/modules/rustok-product/src/services/mod.rs', [
   'mod index_refresh_relay;',
   'ProductIndexRefreshEventFactory',
   'ProductIndexRefreshRelayError',
@@ -92,14 +92,14 @@ if (services.includes('pub mod index_refresh_relay')) {
   fail('the relay implementation module must remain private behind curated exports');
 }
 
-requireMarkers('crates/rustok-product/src/lib.rs', [
+requireMarkers('crates/modules/rustok-product/src/lib.rs', [
   'ProductIndexRefreshEventFactory',
   'ProductIndexRefreshRelayError',
   'ProductIndexRefreshRelayStep',
   'ProductIndexRefreshRelayStepOutcome',
 ]);
 
-requireMarkers('crates/rustok-product/docs/index-refresh-relay-step.md', [
+requireMarkers('crates/modules/rustok-product/docs/index-refresh-relay-step.md', [
   'Status: `source_complete_typed_family_source_ready_digest_regeneration_pending`',
   '`product_index_refresh_relay_cursors`',
   '`FOR UPDATE`',

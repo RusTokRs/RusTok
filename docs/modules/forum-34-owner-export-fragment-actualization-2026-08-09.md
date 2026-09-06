@@ -10,7 +10,7 @@ Fresh `main` before this slice was `2b8f569a7a9297b5bfd77a4b8940707c165fb403`. T
 
 ## Concurrent main recheck
 
-While this slice was being prepared, `main` advanced to `d448bad036e59f5a76cd8038420c1be59d3be168`, including `5be73a352b5b8b3c7c3e2ff0979cf37399a4d257` (`feat: implement translation interchange module and establish module governance and lifecycle services`). The compare from the slice base contains no `crates/rustok-forum/*` changes.
+While this slice was being prepared, `main` advanced to `d448bad036e59f5a76cd8038420c1be59d3be168`, including `5be73a352b5b8b3c7c3e2ff0979cf37399a4d257` (`feat: implement translation interchange module and establish module governance and lifecycle services`). The compare from the slice base contains no `crates/modules/rustok-forum/*` changes.
 
 The new `rustok-translation::TranslationInterchangeService` is a specialized Translation workflow boundary: it exports/imports Translation job items under Translation RBAC, source/target locales, Translation-owned job persistence and translation resource snapshots/proposals. It is not a neutral module data migration runner and does not provide Forum category/topic/reply checkpoint, receipt, replay or source-to-target identity semantics.
 

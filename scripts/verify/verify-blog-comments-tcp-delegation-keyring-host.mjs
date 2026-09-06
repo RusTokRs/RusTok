@@ -11,10 +11,10 @@ const readBuffer = (relativePath) => readFileSync(path.join(root, relativePath))
 const wrapperPath = 'apps/server/src/services/comments_provider_runtime.rs';
 const basePath = 'apps/server/src/services/comments_provider_runtime_base.rs';
 const keyringPath = 'apps/server/src/services/comments_provider_runtime_keyring.rs';
-const delegationPath = 'crates/rustok-comments/src/tcp_delegation.rs';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-77.md';
+const delegationPath = 'crates/modules/rustok-comments/src/tcp_delegation.rs';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-77.md';
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-keyring-host.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-keyring-host.json';
 
 const wrapper = read(wrapperPath);
 const base = read(basePath);

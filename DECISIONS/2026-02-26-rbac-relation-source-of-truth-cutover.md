@@ -7,7 +7,7 @@
 
 The platform has already been migrated to a relation-derived RBAC graph as the sole source of permission data. The next migration step concerns not the data source, but the runtime decision path: the relation-resolver must follow a controlled path to `casbin_only` without losing observability and without reverting to legacy decision layers.
 
-The key architectural goal: `crates/rustok-rbac` remains the policy host, while `apps/server` is limited to adapter/wiring responsibilities.
+The key architectural goal: `crates/modules/rustok-rbac` remains the policy host, while `apps/server` is limited to adapter/wiring responsibilities.
 
 ## Decision
 

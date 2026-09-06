@@ -26,15 +26,15 @@ function rejectMarker(source, marker, label) {
 }
 
 const paths = {
-  cargo: "crates/rustok-forum/storefront/Cargo.toml",
-  test: "crates/rustok-forum/storefront/tests/native_host_route_decision_sqlite.rs",
+  cargo: "crates/modules/rustok-forum/storefront/Cargo.toml",
+  test: "crates/modules/rustok-forum/storefront/tests/native_host_route_decision_sqlite.rs",
   categoryAdapter:
-    "crates/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
+    "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
   topicAdapter:
-    "crates/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
-  contract: "crates/rustok-forum/contracts/forum-native-host-route-evidence.json",
-  docs: "crates/rustok-forum/docs/forum-24s-native-host-route-evidence.md",
-  readme: "crates/rustok-forum/docs/README.md",
+    "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-native-host-route-evidence.json",
+  docs: "crates/modules/rustok-forum/docs/forum-24s-native-host-route-evidence.md",
+  readme: "crates/modules/rustok-forum/docs/README.md",
 };
 
 const source = Object.fromEntries(

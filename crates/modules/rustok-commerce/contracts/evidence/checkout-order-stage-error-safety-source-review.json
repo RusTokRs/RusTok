@@ -2,9 +2,9 @@
   "schema_version": 1,
   "status": "commerce_checkout_order_stage_error_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/services/checkout_order_stages.rs",
-    "crates/rustok-commerce/src/services/checkout_order_stages_legacy.rs",
-    "crates/rustok-commerce/docs/checkout-order-stage-context.md",
+    "crates/modules/rustok-commerce/src/services/checkout_order_stages.rs",
+    "crates/modules/rustok-commerce/src/services/checkout_order_stages_legacy.rs",
+    "crates/modules/rustok-commerce/docs/checkout-order-stage-context.md",
     "scripts/verify/verify-commerce-checkout-order-stage-context.mjs",
     "scripts/verify/verify-commerce-checkout-completion-cutover.mjs",
     "scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs",

@@ -14,7 +14,7 @@ The packet is source-ready but has not been executed or admitted by the implemen
 
 ## Production runtime path
 
-`crates/rustok-distribution/tests/product_channel_convergence_postgres.rs` builds one selected runtime
+`crates/modules/rustok-distribution/tests/product_channel_convergence_postgres.rs` builds one selected runtime
 with Index, Channel, and Product. It retrieves `ModuleWorkRegistrations` from the same distribution
 composition used by the host and registers them into two independent `ModuleWorkScheduler` hosts with
 separate PostgreSQL connections.

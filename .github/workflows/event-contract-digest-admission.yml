@@ -24,7 +24,7 @@ env:
   CARGO_INCREMENTAL: 0
   RUST_TOOLCHAIN: "1.96.0"
   EVIDENCE_ROOT: evidence/event-contract-digest-admission
-  COMMITTED_ARTIFACT: crates/rustok-events/contracts/event-contract-digests.json
+  COMMITTED_ARTIFACT: crates/libs/rustok-events/contracts/event-contract-digests.json
 
 jobs:
   digest-admission:

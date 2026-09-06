@@ -22,7 +22,7 @@ function run(options = {}) {
   try {
     write(
       root,
-      "crates/rustok-product/storefront/src/catalog_controls.rs",
+      "crates/modules/rustok-product/storefront/src/catalog_controls.rs",
       `
 pub struct CatalogListInput {
   pub category_id: Option<String>,
@@ -36,7 +36,7 @@ fn normalize_sort_direction() {}
     );
     write(
       root,
-      "crates/rustok-product/src/services/catalog/types.rs",
+      "crates/modules/rustok-product/src/services/catalog/types.rs",
       `
 pub category_id: Option<Uuid>
 pub enum StorefrontProductSortBy {}
@@ -46,14 +46,14 @@ pub fn try_from_transport() {}
     );
     write(
       root,
-      "crates/rustok-product/src/services/catalog/queries.rs",
+      "crates/modules/rustok-product/src/services/catalog/queries.rs",
       options.omitOwnerCategory
         ? `StorefrontProductSortBy::PublishedAt StorefrontProductSortBy::CreatedAt StorefrontProductSortDirection::Asc StorefrontProductSortDirection::Desc`
         : `PrimaryCategoryId.eq(category_id) StorefrontProductSortBy::PublishedAt StorefrontProductSortBy::CreatedAt StorefrontProductSortDirection::Asc StorefrontProductSortDirection::Desc`,
     );
     write(
       root,
-      "crates/rustok-product/storefront/src/transport/catalog_list_native.rs",
+      "crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs",
       `
 controls.category_id
 controls.sort_by
@@ -63,14 +63,14 @@ StorefrontProductListQuery::try_from_transport
     );
     write(
       root,
-      "crates/rustok-product/storefront/src/transport/graphql_adapter.rs",
+      "crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs",
       options.omitGraphqlSort
         ? `storefrontProductCatalog category_id: controls.category_id`
         : `storefrontProductCatalog category_id: controls.category_id sort_by: controls.sort_by sort_direction: controls.sort_direction`,
     );
     write(
       root,
-      "crates/rustok-commerce/src/graphql/product_catalog.rs",
+      "crates/modules/rustok-commerce/src/graphql/product_catalog.rs",
       `
 pub struct StorefrontProductCatalogFilter
 pub category_id: Option<Uuid>
@@ -80,12 +80,12 @@ StorefrontProductListQuery::try_new
     );
     write(
       root,
-      "crates/rustok-commerce/src/graphql/mod.rs",
+      "crates/modules/rustok-commerce/src/graphql/mod.rs",
       `product_catalog::ProductCatalogQuery`,
     );
     write(
       root,
-      "crates/rustok-product/storefront/src/ui/leptos.rs",
+      "crates/modules/rustok-product/storefront/src/ui/leptos.rs",
       options.omitUiControls
         ? `fetch_catalog_search_options`
         : `
@@ -100,7 +100,7 @@ fetch_catalog_search_options
     );
     write(
       root,
-      "crates/rustok-product/docs/implementation-plan.md",
+      "crates/modules/rustok-product/docs/implementation-plan.md",
       options.omitPlanMarker
         ? `verify-product-storefront-category-sort.mjs`
         : `Connect storefront category and deterministic date sorting

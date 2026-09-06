@@ -4,7 +4,7 @@ Status: **source-ready / maintainer execution pending**
 
 ## Scope
 
-`crates/rustok-forum/tests/moderation_terminal_concurrency_postgres.rs` completes the FORUM-19 PostgreSQL revision-fence matrix for terminal reply effects that mutate public accounting or tombstone/solution state:
+`crates/modules/rustok-forum/tests/moderation_terminal_concurrency_postgres.rs` completes the FORUM-19 PostgreSQL revision-fence matrix for terminal reply effects that mutate public accounting or tombstone/solution state:
 
 - `RejectPublication` against an overlapping reply-body edit;
 - `Remove + SetVisibility(Removed)` against an overlapping reply-body edit where the reply is also the accepted solution.

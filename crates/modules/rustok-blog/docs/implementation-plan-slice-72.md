@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 72 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-71.md`. Slices 1–66 remain in
+`crates/modules/rustok-blog/docs/implementation-plan-slice-71.md`. Slices 1–66 remain in
 the original plan; slices 67–71 retain the typed remote core, TCP client,
 trusted provider adapter, host-selected publication, and bounded listener
 lifecycle.
@@ -29,7 +29,7 @@ remains maintainer-owned.
 
 ### Implemented source scope
 
-- `crates/rustok-comments/src/tcp_auth.rs` owns the authentication envelope and
+- `crates/modules/rustok-comments/src/tcp_auth.rs` owns the authentication envelope and
   concrete loopback bearer authority contract.
 - `CommentsTcpRequestEnvelope` wraps one existing typed
   `CommentsThreadRequest` with:
@@ -47,7 +47,7 @@ remains maintainer-owned.
 - The bearer value is retained privately for client envelope creation. Its
   `Debug` output, the wire credential `Debug`, resolver `Debug`, and transport
   `Debug` redact the secret.
-- `crates/rustok-api/src/digest.rs` provides the already-dependency-backed shared
+- `crates/libs/rustok-api/src/digest.rs` provides the already-dependency-backed shared
   SHA-256 helper and a fixed-work comparison over two 32-byte digests.
 - Expected and candidate `Bearer <token>` values are hashed before comparison.
   Digest comparison has no early return or length-dependent loop. This source
@@ -103,7 +103,7 @@ remains maintainer-owned.
   versioned authenticated envelope without changing their retained source-only
   evidence status.
 - Source evidence is retained at
-  `crates/rustok-blog/contracts/evidence/blog-comments-tcp-bearer-auth.json`.
+  `crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-bearer-auth.json`.
 - The standalone source verifier is
   `scripts/verify/verify-blog-comments-tcp-bearer-auth.mjs`.
 

@@ -95,20 +95,20 @@
     "delayed_commit_is_rejected_after_expiry_without_partial_write"
   ],
   "required_source_files": [
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json",
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-browser-evidence-harness-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-browser-evidence-harness-source.json",
     "apps/next-admin/package.json",
     "apps/next-admin/package-lock.json",
     "apps/next-admin/playwright.pages-inline-edit.config.ts",
     "apps/next-admin/tests/pages-inline-edit/browser-evidence.spec.ts",
-    "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-browser-evidence-harness.mjs",
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-browser-evidence-harness.mjs",
     "docs/modules/pages-page-builder-inline-edit-browser-evidence-harness-packet-2026-08-06.md",
     "docs/modules/pages-page-builder-inline-edit-execution-plan.md",
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
-    "crates/rustok-pages/storefront/src/inline_edit.rs",
-    "crates/rustok-pages/admin/src/inline_edit_launch.rs",
-    "crates/rustok-page-builder-storefront/src/inline_edit.rs",
-    "crates/fly-leptos/src/real_dom_inline.rs"
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
+    "crates/modules/rustok-pages/storefront/src/inline_edit.rs",
+    "crates/modules/rustok-pages/admin/src/inline_edit_launch.rs",
+    "crates/modules/rustok-page-builder-storefront/src/inline_edit.rs",
+    "crates/ui/fly-leptos/src/real_dom_inline.rs"
   ],
   "privacy_boundary": {
     "persist_environment_names_only": true,

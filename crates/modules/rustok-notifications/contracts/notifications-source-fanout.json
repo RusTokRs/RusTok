@@ -2,13 +2,13 @@
   "schema_version": 5,
   "slice": "NOTIFY-01B/03A",
   "promoted_by_slices": ["NOTIFY-03D", "NOTIFY-03E", "NOTIFY-03F", "NOTIFY-03I"],
-  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
   "owner": "rustok-notifications",
-  "migration": "crates/rustok-notifications/src/migrations/m20260722_000011_create_notification_source_inbox.rs",
-  "service": "crates/rustok-notifications/src/fanout.rs",
-  "outbox_intake_contract": "crates/rustok-notifications/contracts/notifications-outbox-intake.json",
-  "fanout_worker_contract": "crates/rustok-notifications/contracts/notifications-fanout-worker.json",
-  "sparse_page_test": "crates/rustok-notifications/tests/fanout_sparse_page_sqlite.rs",
+  "migration": "crates/modules/rustok-notifications/src/migrations/m20260722_000011_create_notification_source_inbox.rs",
+  "service": "crates/modules/rustok-notifications/src/fanout.rs",
+  "outbox_intake_contract": "crates/modules/rustok-notifications/contracts/notifications-outbox-intake.json",
+  "fanout_worker_contract": "crates/modules/rustok-notifications/contracts/notifications-fanout-worker.json",
+  "sparse_page_test": "crates/modules/rustok-notifications/tests/fanout_sparse_page_sqlite.rs",
   "source_inbox": {
     "table": "notification_source_inbox",
     "dedupe_identity": ["tenant_id", "source_slug", "source_event_id"],
@@ -47,7 +47,7 @@
     "privacy_and_preferences_required_before_processing": true
   },
   "forum_user_mention_source": {
-    "provider": "crates/rustok-forum/src/notification_source.rs",
+    "provider": "crates/modules/rustok-forum/src/notification_source.rs",
     "event_type": "forum.mention.user_added",
     "relation_table": "forum_user_mentions",
     "exact_relation_identity_required": true,
@@ -61,12 +61,12 @@
     "audience_mention_event_deferred": true
   },
   "tests": [
-    "crates/rustok-notifications/tests/fanout_sqlite.rs",
-    "crates/rustok-notifications/tests/fanout_sparse_page_sqlite.rs",
-    "crates/rustok-notifications/tests/outbox_intake_sqlite.rs",
-    "crates/rustok-notifications/tests/fanout_worker_sqlite.rs",
-    "crates/rustok-notifications/tests/fanout_policy_deferral_sqlite.rs",
-    "crates/rustok-forum/tests/notification_source_sqlite.rs"
+    "crates/modules/rustok-notifications/tests/fanout_sqlite.rs",
+    "crates/modules/rustok-notifications/tests/fanout_sparse_page_sqlite.rs",
+    "crates/modules/rustok-notifications/tests/outbox_intake_sqlite.rs",
+    "crates/modules/rustok-notifications/tests/fanout_worker_sqlite.rs",
+    "crates/modules/rustok-notifications/tests/fanout_policy_deferral_sqlite.rs",
+    "crates/modules/rustok-forum/tests/notification_source_sqlite.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-notifications-source-fanout.mjs",

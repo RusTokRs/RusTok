@@ -3,7 +3,7 @@
   "module": "seo",
   "role": "consumer",
   "provider": "media",
-  "generated_from": "crates/rustok-seo/contracts/seo-fba-registry.json",
+  "generated_from": "crates/modules/rustok-seo/contracts/seo-fba-registry.json",
   "runner": "scripts/verify/verify-consumer-fba-runtime-order.mjs",
   "status": "executable_no_compile",
   "fallback_smoke": {
@@ -15,7 +15,7 @@
       "keep_existing_seo_image",
       "proxy_storage_relative_url"
     ],
-    "provider_source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
+    "provider_source": "crates/modules/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
   },
   "runtime_order": [
     {
@@ -33,7 +33,7 @@
   "source_assertions": [
     {
       "name": "independent typed image boundary",
-      "path": "crates/rustok-seo-targets/src/lib.rs",
+      "path": "crates/modules/rustok-seo-targets/src/lib.rs",
       "markers": [
         "pub struct SeoTargetImageRecord",
         "impl SeoTargetImageRecord",
@@ -43,7 +43,7 @@
     },
     {
       "name": "media read policy",
-      "path": "crates/rustok-media/src/ports.rs",
+      "path": "crates/modules/rustok-media/src/ports.rs",
       "markers": [
         "trait MediaAssetReadPort",
         "context.require_policy(PortCallPolicy::read())",
@@ -53,7 +53,7 @@
     },
     {
       "name": "descriptor public URL policy",
-      "path": "crates/rustok-media/src/dto.rs",
+      "path": "crates/modules/rustok-media/src/dto.rs",
       "markers": [
         "pub struct MediaImageDescriptor",
         "pub fn requires_public_proxy",

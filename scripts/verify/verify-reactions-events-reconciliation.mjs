@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-reactions/contracts/reactions-events-reconciliation.json";
+  "crates/modules/rustok-reactions/contracts/reactions-events-reconciliation.json";
 
 function fail(message) {
   throw new Error(`Reactions events/reconciliation verification failed: ${message}`);
@@ -39,21 +39,21 @@ if (contract.status !== "source_ready_maintainer_execution_pending") {
 }
 for (const requiredFile of contract.required_files) read(requiredFile);
 
-const eventsCargo = read("crates/rustok-events/Cargo.toml");
-const eventContract = read("crates/rustok-events/src/contract.rs");
-const eventLib = read("crates/rustok-events/src/lib.rs");
-const eventFamily = read("crates/rustok-events/src/reactions.rs");
-const eventTests = read("crates/rustok-events/tests/reactions_contracts.rs");
-const eventApi = read("crates/rustok-events/CRATE_API.md");
-const ownerCargo = read("crates/rustok-reactions/Cargo.toml");
-const ownerLib = read("crates/rustok-reactions/src/lib.rs");
-const service = read("crates/rustok-reactions/src/service.rs");
-const reconciliation = read("crates/rustok-reactions/src/reconciliation.rs");
+const eventsCargo = read("crates/libs/rustok-events/Cargo.toml");
+const eventContract = read("crates/libs/rustok-events/src/contract.rs");
+const eventLib = read("crates/libs/rustok-events/src/lib.rs");
+const eventFamily = read("crates/libs/rustok-events/src/reactions.rs");
+const eventTests = read("crates/libs/rustok-events/tests/reactions_contracts.rs");
+const eventApi = read("crates/libs/rustok-events/CRATE_API.md");
+const ownerCargo = read("crates/modules/rustok-reactions/Cargo.toml");
+const ownerLib = read("crates/modules/rustok-reactions/src/lib.rs");
+const service = read("crates/modules/rustok-reactions/src/service.rs");
+const reconciliation = read("crates/modules/rustok-reactions/src/reconciliation.rs");
 const reactionsPlan = normalized(
-  read("crates/rustok-reactions/docs/implementation-plan.md"),
+  read("crates/modules/rustok-reactions/docs/implementation-plan.md"),
 );
 const forumPlan = normalized(
-  read("crates/rustok-forum/docs/implementation-plan.md"),
+  read("crates/modules/rustok-forum/docs/implementation-plan.md"),
 );
 
 if (!ownerCargo.includes("rustok-events.workspace = true")) {

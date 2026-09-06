@@ -39,12 +39,12 @@ function assertNotContains(text, marker, description) {
   if (text.includes(marker)) failures.push(description);
 }
 
-const corePath = "crates/rustok-auth/admin/src/core.rs";
-const mutationPortPath = "crates/rustok-auth/src/admin_mutations.rs";
-const restContractPath = "crates/rustok-auth/src/rest.rs";
-const authConfigPath = "crates/rustok-auth/src/config.rs";
+const corePath = "crates/modules/rustok-auth/admin/src/core.rs";
+const mutationPortPath = "crates/modules/rustok-auth/src/admin_mutations.rs";
+const restContractPath = "crates/modules/rustok-auth/src/rest.rs";
+const authConfigPath = "crates/modules/rustok-auth/src/config.rs";
 const oauthTenantIntegrityMigrationPath =
-  "crates/rustok-auth/src/migrations/m20260720_000002_enforce_oauth_tenant_integrity.rs";
+  "crates/modules/rustok-auth/src/migrations/m20260720_000002_enforce_oauth_tenant_integrity.rs";
 const oauthConsentModelPath = "apps/server/src/models/oauth_consents.rs";
 const oauthAppServicePath = "apps/server/src/services/oauth_app.rs";
 const oauthTokenServicePath = "apps/server/src/services/oauth_token_service.rs";
@@ -60,24 +60,24 @@ const lifecycleProviderPath = "apps/server/src/services/auth_lifecycle_provider.
 const authLifecycleServicePath = "apps/server/src/services/auth_lifecycle.rs";
 const boundPasswordResetPath = "apps/server/src/services/auth_password_reset.rs";
 const runtimeExtensionsPath = "apps/server/src/services/module_event_dispatcher.rs";
-const authGraphqlPath = "crates/rustok-auth/src/graphql/auth_mutation.rs";
-const oauthGraphqlPath = "crates/rustok-auth/src/graphql/mutation.rs";
-const authGraphqlModPath = "crates/rustok-auth/src/graphql/mod.rs";
+const authGraphqlPath = "crates/modules/rustok-auth/src/graphql/auth_mutation.rs";
+const oauthGraphqlPath = "crates/modules/rustok-auth/src/graphql/mutation.rs";
+const authGraphqlModPath = "crates/modules/rustok-auth/src/graphql/mod.rs";
 const userGraphqlPath = "apps/server/src/graphql/mutations.rs";
-const transportPath = "crates/rustok-auth/admin/src/transport/mod.rs";
-const nativeTransportPath = "crates/rustok-auth/admin/src/transport/native_server_adapter.rs";
-const uiPath = "crates/rustok-auth/admin/src/ui/users.rs";
-const detailUiPath = "crates/rustok-auth/admin/src/ui/user_details.rs";
-const oauthUiPath = "crates/rustok-auth/admin/src/ui/oauth_apps.rs";
-const loginUiPath = "crates/rustok-auth/admin/src/ui/login.rs";
-const registerUiPath = "crates/rustok-auth/admin/src/ui/register.rs";
-const resetUiPath = "crates/rustok-auth/admin/src/ui/reset.rs";
-const profileUiPath = "crates/rustok-auth/admin/src/ui/profile.rs";
-const securityUiPath = "crates/rustok-auth/admin/src/ui/security.rs";
-const authAdminUiPath = "crates/rustok-auth/admin/src/ui/auth_admin.rs";
-const modelPath = "crates/rustok-auth/admin/src/model.rs";
-const i18nPath = "crates/rustok-auth/admin/src/i18n.rs";
-const planPath = "crates/rustok-auth/docs/implementation-plan.md";
+const transportPath = "crates/modules/rustok-auth/admin/src/transport/mod.rs";
+const nativeTransportPath = "crates/modules/rustok-auth/admin/src/transport/native_server_adapter.rs";
+const uiPath = "crates/modules/rustok-auth/admin/src/ui/users.rs";
+const detailUiPath = "crates/modules/rustok-auth/admin/src/ui/user_details.rs";
+const oauthUiPath = "crates/modules/rustok-auth/admin/src/ui/oauth_apps.rs";
+const loginUiPath = "crates/modules/rustok-auth/admin/src/ui/login.rs";
+const registerUiPath = "crates/modules/rustok-auth/admin/src/ui/register.rs";
+const resetUiPath = "crates/modules/rustok-auth/admin/src/ui/reset.rs";
+const profileUiPath = "crates/modules/rustok-auth/admin/src/ui/profile.rs";
+const securityUiPath = "crates/modules/rustok-auth/admin/src/ui/security.rs";
+const authAdminUiPath = "crates/modules/rustok-auth/admin/src/ui/auth_admin.rs";
+const modelPath = "crates/modules/rustok-auth/admin/src/model.rs";
+const i18nPath = "crates/modules/rustok-auth/admin/src/i18n.rs";
+const planPath = "crates/modules/rustok-auth/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 

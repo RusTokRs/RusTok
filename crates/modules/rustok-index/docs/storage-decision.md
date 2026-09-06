@@ -98,7 +98,7 @@ Hash help is accepted only as the sole argument. Mixed help/path invocations and
 node scripts/verify/index-storage-tooling.mjs render \
   --comparison evidence/index-storage/comparison/comparison.json \
   --decision evidence/index-storage/comparison/decision.json \
-  --output crates/rustok-index/docs/adr-postgresql-storage.md
+  --output crates/modules/rustok-index/docs/adr-postgresql-storage.md
 ```
 
 Finalization snapshots the exact comparison and decision bytes before rendering. The generated ADR records both `Comparison SHA-256` and `Decision SHA-256`, so reviewers can verify the two source documents used to produce it.
@@ -132,7 +132,7 @@ After saving or reviewing the generated Markdown, verify that it still represent
 node scripts/verify/index-storage-tooling.mjs verify-adr \
   --comparison evidence/index-storage/comparison/comparison.json \
   --decision evidence/index-storage/comparison/decision.json \
-  --adr crates/rustok-index/docs/adr-postgresql-storage.md
+  --adr crates/modules/rustok-index/docs/adr-postgresql-storage.md
 ```
 
 `verify-adr` recalculates both digest lines from exact file bytes, snapshots the same comparison and decision bytes, repeats deterministic finalization including the observed database-settings gate, and requires the saved ADR to match the regenerated Markdown byte for byte. Any manual edit, formatting change, stale decision, replaced evidence file, or methodology drift is rejected.

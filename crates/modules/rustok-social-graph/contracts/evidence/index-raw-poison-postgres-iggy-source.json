@@ -5,7 +5,7 @@
   "status": "source_complete_runtime_pending",
   "scope": "social_graph_index_raw_poison_postgres_iggy_ordering",
   "test_target": "index_raw_poison_postgres_iggy",
-  "source_path": "crates/rustok-social-graph/tests/index_raw_poison_postgres_iggy.rs",
+  "source_path": "crates/modules/rustok-social-graph/tests/index_raw_poison_postgres_iggy.rs",
   "worker_path": "apps/server/src/services/social_graph_index_worker.rs",
   "verifier": "scripts/verify/verify-social-graph-index-raw-poison-postgres-iggy.mjs",
   "required_environment": [

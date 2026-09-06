@@ -3,31 +3,31 @@ name: Profiles Taxonomy Tag Locale Contract
 on:
   pull_request:
     paths:
-      - "crates/rustok-taxonomy/src/owner_read.rs"
-      - "crates/rustok-taxonomy/src/lib.rs"
-      - "crates/rustok-profiles/src/services.rs"
-      - "crates/rustok-profiles/tests/profile_tag_locale_fallback.rs"
-      - "crates/rustok-profiles/tests/profile_service_test.rs"
-      - "crates/rustok-profiles/tests/support.rs"
-      - "crates/rustok-profiles/README.md"
-      - "crates/rustok-profiles/docs/README.md"
-      - "crates/rustok-taxonomy/Cargo.toml"
-      - "crates/rustok-profiles/Cargo.toml"
+      - "crates/modules/rustok-taxonomy/src/owner_read.rs"
+      - "crates/modules/rustok-taxonomy/src/lib.rs"
+      - "crates/modules/rustok-profiles/src/services.rs"
+      - "crates/modules/rustok-profiles/tests/profile_tag_locale_fallback.rs"
+      - "crates/modules/rustok-profiles/tests/profile_service_test.rs"
+      - "crates/modules/rustok-profiles/tests/support.rs"
+      - "crates/modules/rustok-profiles/README.md"
+      - "crates/modules/rustok-profiles/docs/README.md"
+      - "crates/modules/rustok-taxonomy/Cargo.toml"
+      - "crates/modules/rustok-profiles/Cargo.toml"
       - ".github/workflows/profiles-taxonomy-tag-locale-contract.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-taxonomy/src/owner_read.rs"
-      - "crates/rustok-taxonomy/src/lib.rs"
-      - "crates/rustok-profiles/src/services.rs"
-      - "crates/rustok-profiles/tests/profile_tag_locale_fallback.rs"
-      - "crates/rustok-profiles/tests/profile_service_test.rs"
-      - "crates/rustok-profiles/tests/support.rs"
-      - "crates/rustok-profiles/README.md"
-      - "crates/rustok-profiles/docs/README.md"
-      - "crates/rustok-taxonomy/Cargo.toml"
-      - "crates/rustok-profiles/Cargo.toml"
+      - "crates/modules/rustok-taxonomy/src/owner_read.rs"
+      - "crates/modules/rustok-taxonomy/src/lib.rs"
+      - "crates/modules/rustok-profiles/src/services.rs"
+      - "crates/modules/rustok-profiles/tests/profile_tag_locale_fallback.rs"
+      - "crates/modules/rustok-profiles/tests/profile_service_test.rs"
+      - "crates/modules/rustok-profiles/tests/support.rs"
+      - "crates/modules/rustok-profiles/README.md"
+      - "crates/modules/rustok-profiles/docs/README.md"
+      - "crates/modules/rustok-taxonomy/Cargo.toml"
+      - "crates/modules/rustok-profiles/Cargo.toml"
       - ".github/workflows/profiles-taxonomy-tag-locale-contract.yml"
   workflow_dispatch:
 

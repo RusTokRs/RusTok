@@ -5,8 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
-const moduleRoot = path.join(repoRoot, "crates", "rustok-page-builder");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
+const moduleRoot = path.join(repoRoot, "crates", "modules", "rustok-page-builder");
 const contract = JSON.parse(
   fs.readFileSync(
     path.join(moduleRoot, "contracts", "page-builder-service-boundary.json"),
@@ -47,11 +47,11 @@ const implementationPlan = fs.readFileSync(
   "utf8",
 );
 const pagesBuilder = fs.readFileSync(
-  path.join(repoRoot, "crates", "rustok-pages", "admin", "src", "builder.rs"),
+  path.join(repoRoot, "crates", "modules", "rustok-pages", "admin", "src", "builder.rs"),
   "utf8",
 );
 const pagesAdminManifest = fs.readFileSync(
-  path.join(repoRoot, "crates", "rustok-pages", "admin", "Cargo.toml"),
+  path.join(repoRoot, "crates", "modules", "rustok-pages", "admin", "Cargo.toml"),
   "utf8",
 );
 const pageBuilderAdminRuntime = fs.readFileSync(

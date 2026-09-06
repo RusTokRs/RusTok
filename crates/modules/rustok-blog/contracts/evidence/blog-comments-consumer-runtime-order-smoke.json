@@ -3,14 +3,14 @@
   "module": "blog",
   "role": "consumer",
   "provider": "comments",
-  "generated_from": "crates/rustok-blog/contracts/blog-fba-registry.json",
+  "generated_from": "crates/modules/rustok-blog/contracts/blog-fba-registry.json",
   "runner": "scripts/verify/verify-consumer-fba-runtime-order.mjs",
   "status": "executable_no_compile",
   "compile_policy": "not_run_by_request",
   "source_contract": {
-    "consumer_service": "crates/rustok-blog/src/services/comment.rs",
-    "consumer_error_mapping": "crates/rustok-blog/src/services/comment.rs",
-    "provider_registry": "crates/rustok-comments/contracts/comments-fba-registry.json"
+    "consumer_service": "crates/modules/rustok-blog/src/services/comment.rs",
+    "consumer_error_mapping": "crates/modules/rustok-blog/src/services/comment.rs",
+    "provider_registry": "crates/modules/rustok-comments/contracts/comments-fba-registry.json"
   },
   "fallback_smoke": {
     "status": "planned",
@@ -90,7 +90,7 @@
   "source_assertions": [
     {
       "name": "blog target ownership",
-      "path": "crates/rustok-blog/src/services/comment.rs",
+      "path": "crates/modules/rustok-blog/src/services/comment.rs",
       "markers": [
         "const TARGET_TYPE_BLOG_POST",
         "Self::ensure_blog_target",
@@ -99,7 +99,7 @@
     },
     {
       "name": "typed richtext comments consumer",
-      "path": "crates/rustok-blog/src/dto/comment.rs",
+      "path": "crates/modules/rustok-blog/src/dto/comment.rs",
       "markers": [
         "pub content: RichTextDocument",
         "pub content: Option<RichTextDocument>",
@@ -109,7 +109,7 @@
     },
     {
       "name": "typed comments port error mapping",
-      "path": "crates/rustok-blog/src/services/comment.rs",
+      "path": "crates/modules/rustok-blog/src/services/comment.rs",
       "markers": [
         "PortErrorKind::Validation",
         "PortErrorKind::NotFound",

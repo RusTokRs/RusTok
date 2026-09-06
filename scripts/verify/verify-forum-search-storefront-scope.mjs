@@ -9,26 +9,26 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  forumPlan: "crates/rustok-forum/docs/implementation-plan.md",
-  searchPlan: "crates/rustok-search/docs/implementation-plan.md",
-  contract: "crates/rustok-forum/contracts/forum-search-storefront-scope.json",
-  note: "crates/rustok-forum/docs/forum-23b2c-storefront-search-scope.md",
-  scopePort: "crates/rustok-search/src/storefront_category_scope.rs",
-  execution: "crates/rustok-search/src/forum_storefront_execution.rs",
-  searchLib: "crates/rustok-search/src/lib.rs",
-  graphqlOwner: "crates/rustok-search/src/graphql/forum_storefront.rs",
-  graphqlMod: "crates/rustok-search/src/graphql/mod.rs",
+  forumPlan: "crates/modules/rustok-forum/docs/implementation-plan.md",
+  searchPlan: "crates/modules/rustok-search/docs/implementation-plan.md",
+  contract: "crates/modules/rustok-forum/contracts/forum-search-storefront-scope.json",
+  note: "crates/modules/rustok-forum/docs/forum-23b2c-storefront-search-scope.md",
+  scopePort: "crates/modules/rustok-search/src/storefront_category_scope.rs",
+  execution: "crates/modules/rustok-search/src/forum_storefront_execution.rs",
+  searchLib: "crates/modules/rustok-search/src/lib.rs",
+  graphqlOwner: "crates/modules/rustok-search/src/graphql/forum_storefront.rs",
+  graphqlMod: "crates/modules/rustok-search/src/graphql/mod.rs",
   serverAdapter: "apps/server/src/services/forum_search_category_scope.rs",
   serverComposition: "apps/server/src/services/mod.rs",
   serverSchema: "apps/server/src/graphql/schema.rs",
-  storefrontSelector: "crates/rustok-search/storefront/src/transport/mod.rs",
+  storefrontSelector: "crates/modules/rustok-search/storefront/src/transport/mod.rs",
   nativeAdapter:
-    "crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
+    "crates/modules/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
   graphqlAdapter:
-    "crates/rustok-search/storefront/src/transport/forum_graphql_adapter.rs",
-  existingGraphql: "crates/rustok-search/src/graphql/query.rs",
+    "crates/modules/rustok-search/storefront/src/transport/forum_graphql_adapter.rs",
+  existingGraphql: "crates/modules/rustok-search/src/graphql/query.rs",
   existingNative:
-    "crates/rustok-search/storefront/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-search/storefront/src/transport/native_server_adapter.rs",
   verifier: "scripts/verify/verify-forum-search-storefront-scope.mjs",
 };
 

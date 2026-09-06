@@ -43,7 +43,7 @@
     "metadata_revision_source_sha256": "b811f8e3dc01eed581a94ecc3c29d5505d7a1d98983dca479d72af94262086f0"
   },
   "target": {
-    "registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "registry": "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
     "registry_status": "boundary_ready",
     "json_pointer": "/consumers/0/metadata_properties/executed_evidence",
     "before": "pending",

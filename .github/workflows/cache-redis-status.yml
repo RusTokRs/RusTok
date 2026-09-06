@@ -4,9 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      - "crates/rustok-cache/src/redis_status.rs"
-      - "crates/rustok-cache/Cargo.toml"
-      - "crates/rustok-telemetry/src/lib.rs"
+      - "crates/modules/rustok-cache/src/redis_status.rs"
+      - "crates/modules/rustok-cache/Cargo.toml"
+      - "crates/libs/rustok-telemetry/src/lib.rs"
       - "apps/server/src/services/cache_redis_status_monitor.rs"
       - "apps/server/src/services/event_transport_factory.rs"
       - "apps/server/src/services/mod.rs"
@@ -15,9 +15,9 @@ on:
       - ".github/workflows/cache-redis-status.yml"
   pull_request:
     paths:
-      - "crates/rustok-cache/src/redis_status.rs"
-      - "crates/rustok-cache/Cargo.toml"
-      - "crates/rustok-telemetry/src/lib.rs"
+      - "crates/modules/rustok-cache/src/redis_status.rs"
+      - "crates/modules/rustok-cache/Cargo.toml"
+      - "crates/libs/rustok-telemetry/src/lib.rs"
       - "apps/server/src/services/cache_redis_status_monitor.rs"
       - "apps/server/src/services/event_transport_factory.rs"
       - "apps/server/src/services/mod.rs"

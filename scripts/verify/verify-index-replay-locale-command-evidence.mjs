@@ -95,7 +95,7 @@ if (
 requireMarkers('apps/server/src/graphql/mod.rs', [
   '#[cfg(test)]\nmod index_replay_locale_tests;'.replace('\\n', '\n'),
 ]);
-requireMarkers('crates/rustok-index/docs/m6-locale-replay-command-evidence.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-locale-replay-command-evidence.md', [
   'Status: `source_complete_execution_pending`.',
   '`en-US`: 9 one-mutation pages',
   '`de`: 2 one-mutation pages',
@@ -105,11 +105,11 @@ requireMarkers('crates/rustok-index/docs/m6-locale-replay-command-evidence.md', 
   'exactly three replay jobs and three checkpoints',
   'Execution and admission remain maintainer-owned',
 ]);
-requireMarkers('crates/rustok-index/docs/m6-locale-replay-runner-graphql.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-locale-replay-runner-graphql.md', [
   'runner_graphql_evidence_source_complete_execution_pending',
   'end-to-end GraphQL locale yield/isolation/fresh-runtime resume',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Retain deterministic locale replay/restart command evidence through the real GraphQL/runtime/runner path.',
   'Execute/admit retained locale replay/restart command evidence, including schema/locale isolation.',
   'Define/retain whole-page duration versus lease/heartbeat policy beyond per-dependency bounds.',

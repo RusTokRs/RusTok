@@ -5,26 +5,26 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const evidence = JSON.parse(
   read(
-    "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-failures-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-failures-source.json",
   ),
 );
 const harness = read(
-  "crates/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs",
+  "crates/modules/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs",
 );
 const reviewedPublish = read(
-  "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+  "crates/modules/rustok-pages/src/services/page/reviewed_publish.rs",
 );
 const rebuildOwner = read(
-  "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
+  "crates/modules/rustok-pages/src/services/page/artifact_rebuild.rs",
 );
 const activationOwner = read(
-  "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+  "crates/modules/rustok-pages/src/services/page/artifact_binding_replacement.rs",
 );
 const continuation = read(
   "docs/modules/pages-page-builder-repair-failures-continuation-2026-08-07.md",
@@ -139,7 +139,7 @@ for (const [key, expected] of Object.entries({
 
 if (
   evidence.harness?.path !==
-  "crates/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs"
+  "crates/modules/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs"
 ) {
   failures.push("failure harness path is invalid");
 }

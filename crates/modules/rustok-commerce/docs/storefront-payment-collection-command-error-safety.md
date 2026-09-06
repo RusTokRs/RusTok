@@ -7,8 +7,8 @@ Status: **source-ready / unvalidated**
 This slice hardens only the final Commerce public envelope for:
 
 - `create_storefront_payment_collection`;
-- `crates/rustok-commerce/storefront/src/transport/mod.rs`;
-- `crates/rustok-commerce/storefront/src/transport/payment_collection_command_error_safety.rs`.
+- `crates/modules/rustok-commerce/storefront/src/transport/mod.rs`;
+- `crates/modules/rustok-commerce/storefront/src/transport/payment_collection_command_error_safety.rs`.
 
 The shipping-selection and checkout-completion wrappers remain open and continue to use the generic `From<UiTransportError>` conversion.
 
@@ -85,8 +85,8 @@ This slice does not change:
 
 Focused source evidence:
 
-- `crates/rustok-commerce/contracts/evidence/storefront-payment-command-error-safety-source.json`;
-- `crates/rustok-commerce/contracts/evidence/storefront-payment-command-error-safety-source-review.json`;
+- `crates/modules/rustok-commerce/contracts/evidence/storefront-payment-command-error-safety-source.json`;
+- `crates/modules/rustok-commerce/contracts/evidence/storefront-payment-command-error-safety-source-review.json`;
 - `scripts/verify/verify-commerce-storefront-payment-command-error-safety.mjs`.
 
 The focused verifier is imported by `scripts/verify/verify-commerce-storefront-transport-error-safety.mjs`. The earlier aggregate guard now requires exactly two remaining generic command mappings.

@@ -11,11 +11,11 @@ external-adapter identity evidence, and remote-adapter transport evidence.
 
 The source harness is:
 
-`crates/rustok-commerce/tests/fulfillment_read_port_failure_contract.rs`
+`crates/modules/rustok-commerce/tests/fulfillment_read_port_failure_contract.rs`
 
 The locked machine contract is:
 
-`crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-failure-execution-contract.json`
+`crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-failure-execution-contract.json`
 
 ## Typed GraphQL boundary
 

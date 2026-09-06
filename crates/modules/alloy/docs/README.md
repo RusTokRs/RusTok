@@ -185,8 +185,8 @@ modified by publication.
    all scripts. In-memory registry paths must preserve the same ordering as
    SeaORM (`name`, then `id`), and apply offset/limit after filtering.
    The machine-readable static contract is stored in
-   `crates/alloy/contracts/alloy-runtime-contract.json`, the evidence matrix in
-   `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json`; the fast
+   `crates/modules/alloy/contracts/alloy-runtime-contract.json`, the evidence matrix in
+   `crates/modules/alloy/contracts/evidence/alloy-runtime-static-matrix.json`; the fast
    no-compile gate is run via `npm run verify:alloy:runtime-contract`.
    The same contract now captures default/strict/relaxed sandbox profiles,
    timeout/native Rhai error mapping, scheduler `Scheduled` phase + tenant

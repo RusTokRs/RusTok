@@ -42,18 +42,18 @@
   "ci": {
     "workflow": ".github/workflows/pages-page-builder-provider-health.yml",
     "commands": [
-      "node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs",
-      "node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs",
-      "node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs",
-      "node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs",
-      "node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs",
+      "node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs",
+      "node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs",
+      "node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs",
+      "node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs",
+      "node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs",
       "node scripts/verify/verify-pages-builder-provider-health-owner-runner-tests.mjs",
       "node scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs",
-      "node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
+      "node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
     ]
   },
   "required_source_files": [
-    "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-runner-test-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-runner-test-source.json",
     "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs",
     "scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs",
     "scripts/verify/verify-pages-builder-provider-health-owner-runner-tests.mjs",

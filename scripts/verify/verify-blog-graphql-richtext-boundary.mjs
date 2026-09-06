@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
-const ROOT = 'crates/rustok-blog/src/graphql';
+const ROOT = 'crates/modules/rustok-blog/src/graphql';
 const TYPES = `${ROOT}/types.rs`;
 const MUTATION = `${ROOT}/mutation.rs`;
-const CREATE_TEST = 'crates/rustok-blog/tests/graphql_create_post_input_conversion_test.rs';
-const EVIDENCE = 'crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json';
+const CREATE_TEST = 'crates/modules/rustok-blog/tests/graphql_create_post_input_conversion_test.rs';
+const EVIDENCE = 'crates/modules/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json';
 const GUARDRAIL = 'scripts/verify/verify-blog-graphql-richtext-boundary.mjs';
 const GUARDRAIL_TEST = 'scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs';
 
@@ -74,7 +74,7 @@ assert.deepEqual(evidence.canonical_contract, {
   plain_text: 'server-derived',
   resolver_conversion: 'typed input.into() delegation with direct content mapping',
 }, 'GraphQL richtext canonical contract drift');
-assert.equal(evidence.scan_scope, 'crates/rustok-blog/src/graphql/**/*.rs', 'GraphQL scan scope drift');
+assert.equal(evidence.scan_scope, 'crates/modules/rustok-blog/src/graphql/**/*.rs', 'GraphQL scan scope drift');
 assert.deepEqual(evidence.legacy_adapter_fields, [], 'legacy GraphQL adapter fields returned');
 assert.deepEqual(evidence.legacy_adapter_files, [], 'legacy GraphQL adapter files returned');
 assert.deepEqual(evidence.conversion_owner, {

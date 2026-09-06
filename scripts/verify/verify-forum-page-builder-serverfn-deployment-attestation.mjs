@@ -15,12 +15,12 @@ function requireAbsent(text, needle, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json";
 const runnerPath = "scripts/evidence/capture-forum-page-builder-serverfn-attestation.mjs";
 const verifierPath = "scripts/verify/verify-forum-page-builder-serverfn-deployment-attestation.mjs";
-const previewTransportPath = "crates/rustok-forum/admin/src/widget_preview_transport.rs";
-const propertyTransportPath = "crates/rustok-forum/admin/src/widget_property_transport.rs";
-const adminLibPath = "crates/rustok-forum/admin/src/lib.rs";
+const previewTransportPath = "crates/modules/rustok-forum/admin/src/widget_preview_transport.rs";
+const propertyTransportPath = "crates/modules/rustok-forum/admin/src/widget_property_transport.rs";
+const adminLibPath = "crates/modules/rustok-forum/admin/src/lib.rs";
 const appRouterPath = "apps/server/src/services/app_router.rs";
 const dockerfilePath = "apps/server/Dockerfile";
 const releaseDockerfilePath = "apps/server/Dockerfile.release";

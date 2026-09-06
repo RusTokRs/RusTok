@@ -5,26 +5,26 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const evidence = JSON.parse(
   read(
-    "crates/rustok-pages/contracts/evidence/pages-publish-rollback-outbox-cache-postgres-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-publish-rollback-outbox-cache-postgres-source.json",
   ),
 );
 const harness = read(
-  "crates/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs",
+  "crates/modules/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs",
 );
 const reviewedPublish = read(
-  "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+  "crates/modules/rustok-pages/src/services/page/reviewed_publish.rs",
 );
-const rollback = read("crates/rustok-pages/src/services/page/rollback.rs");
-const transactionalBus = read("crates/rustok-outbox/src/transactional.rs");
-const outboxTransport = read("crates/rustok-outbox/src/transport.rs");
-const outboxEntity = read("crates/rustok-outbox/src/entity.rs");
-const cacheOwner = read("crates/rustok-pages/src/cache_invalidation.rs");
+const rollback = read("crates/modules/rustok-pages/src/services/page/rollback.rs");
+const transactionalBus = read("crates/modules/rustok-outbox/src/transactional.rs");
+const outboxTransport = read("crates/modules/rustok-outbox/src/transport.rs");
+const outboxEntity = read("crates/modules/rustok-outbox/src/entity.rs");
+const cacheOwner = read("crates/modules/rustok-pages/src/cache_invalidation.rs");
 const overlay = read(
   "docs/modules/pages-page-builder-postgres-outbox-cache-packet-2026-08-04.md",
 );
@@ -131,7 +131,7 @@ for (const [key, expected] of Object.entries({
 
 if (
   evidence.harness?.path !==
-    "crates/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs" ||
+    "crates/modules/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs" ||
   evidence.harness?.test !==
     "publish_and_rollback_receipts_correlate_with_durable_outbox_and_cache_rotation_on_postgres" ||
   evidence.harness?.database_env !== "RUSTOK_PAGES_TEST_DATABASE_URL" ||

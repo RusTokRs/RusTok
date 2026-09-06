@@ -25,7 +25,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const packetPath = 'crates/rustok-distribution/tests/product_current_schema_promotion_postgres.rs';
+const packetPath = 'crates/modules/rustok-distribution/tests/product_current_schema_promotion_postgres.rs';
 const packet = requireMarkers(packetPath, [
   '#![cfg(feature = "mod-product")]',
   'RUSTOK_PRODUCT_KEY4_PROMOTION_DATABASE_URL',
@@ -84,7 +84,7 @@ forbidMarkers(packetPath, packet, [
 
 // The lower-key contract is deliberately a storage/probe fixture. The packet must never register a key3
 // source factory or add key3 to the selected distribution runtime.
-const distributionProductPath = 'crates/rustok-distribution/src/product_index/product.rs';
+const distributionProductPath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 const distributionProduct = requireMarkers(distributionProductPath, [
   'derive_index_schema_source_event_id',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
@@ -95,11 +95,11 @@ forbidMarkers(distributionProductPath, distributionProduct, [
   'derive_index_source_event_id(',
 ]);
 
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
   'Lower keys are historical storage identities only.',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-current-schema-promotion.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-current-schema-promotion.md', [
   'Status: `postgres_packet_source_complete_execution_pending`',
   'Retained PostgreSQL promotion packet — source complete',
   'storage-only lower-key fixture',

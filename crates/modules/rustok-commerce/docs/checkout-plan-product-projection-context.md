@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This source slice closes the consumer-side structured-context gap for product and
 variant projection reads in
-`crates/rustok-commerce/src/services/checkout_plan_builder.rs`.
+`crates/modules/rustok-commerce/src/services/checkout_plan_builder.rs`.
 
 The checkout plan builder already used the typed `ProductCatalogReadPort` to load
 a product either by known product identity or by variant identity. Before this

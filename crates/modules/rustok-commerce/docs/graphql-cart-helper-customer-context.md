@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This source slice closes the retained-context and diagnostic-severity gap for the
 optional customer projection read in
-`crates/rustok-commerce/src/graphql/mutations/safe_helpers.rs`:
+`crates/modules/rustok-commerce/src/graphql/mutations/safe_helpers.rs`:
 
 - `resolve_optional_storefront_customer_id`;
 - `CustomerReadPort::read_customer_projection_by_user`;

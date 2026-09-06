@@ -12,7 +12,7 @@ headless/default builds.
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-native-admin.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-native-admin.json
 ```
 
 ## Selected transport, no fallback

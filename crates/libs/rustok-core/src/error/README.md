@@ -213,7 +213,7 @@ let error = ValidationErrorBuilder::new()
 
 ### Content Module
 
-**File:** `crates/rustok-content/src/error.rs` (130 lines)
+**File:** `crates/modules/rustok-content/src/error.rs` (130 lines)
 
 ```rust
 use rustok_core::error::{ErrorContext, ErrorKind, RichError};
@@ -289,7 +289,7 @@ pub async fn get_node(id: Uuid, tenant_id: Uuid) -> ContentResult<Node> {
 
 ### Commerce Module
 
-**File:** `crates/rustok-commerce/src/error.rs` (190 lines)
+**File:** `crates/modules/rustok-commerce/src/error.rs` (190 lines)
 
 ```rust
 #[derive(Debug, thiserror::Error)]

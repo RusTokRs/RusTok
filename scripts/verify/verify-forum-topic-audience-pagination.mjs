@@ -9,12 +9,12 @@ const requireText = (source, needle, label) => {
   }
 };
 
-const owner = read('crates/rustok-forum/src/services/topic_audience_list.rs');
-const readState = read('crates/rustok-forum/src/services/storefront_read_state.rs');
-const graphql = read('crates/rustok-forum/src/graphql/storefront_read_state.rs');
-const transport = read('crates/rustok-forum/src/topic_read_transport.rs');
+const owner = read('crates/modules/rustok-forum/src/services/topic_audience_list.rs');
+const readState = read('crates/modules/rustok-forum/src/services/storefront_read_state.rs');
+const graphql = read('crates/modules/rustok-forum/src/graphql/storefront_read_state.rs');
+const transport = read('crates/modules/rustok-forum/src/topic_read_transport.rs');
 const contract = JSON.parse(
-  read('crates/rustok-forum/contracts/forum-topic-audience-pagination.json'),
+  read('crates/modules/rustok-forum/contracts/forum-topic-audience-pagination.json'),
 );
 
 requireText(owner, 'pub struct ForumTopicAudienceListService', 'list owner');

@@ -34,18 +34,18 @@ function between(source, start, end, label) {
 }
 
 const paths = {
-  cargo: "crates/rustok-product/admin/Cargo.toml",
-  lib: "crates/rustok-product/admin/src/lib.rs",
-  publicTransport: "crates/rustok-product/admin/src/catalog_transport.rs",
-  legacyTransport: "crates/rustok-product/admin/src/transport.rs",
-  native: "crates/rustok-product/admin/src/transport/native_server_adapter.rs",
-  graphql: "crates/rustok-product/admin/src/transport/graphql_adapter.rs",
-  ui: "crates/rustok-product/admin/src/ui/catalog_admin.rs",
+  cargo: "crates/modules/rustok-product/admin/Cargo.toml",
+  lib: "crates/modules/rustok-product/admin/src/lib.rs",
+  publicTransport: "crates/modules/rustok-product/admin/src/catalog_transport.rs",
+  legacyTransport: "crates/modules/rustok-product/admin/src/transport.rs",
+  native: "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs",
+  graphql: "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs",
+  ui: "crates/modules/rustok-product/admin/src/ui/catalog_admin.rs",
   evidence:
-    "crates/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source.json",
+    "crates/modules/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source.json",
   review:
-    "crates/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source-review.json",
-  doc: "crates/rustok-product/docs/admin-catalog-search-options-error-safety.md",
+    "crates/modules/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source-review.json",
+  doc: "crates/modules/rustok-product/docs/admin-catalog-search-options-error-safety.md",
 };
 
 const cargo = read(paths.cargo);

@@ -2,12 +2,12 @@
   "schema_version": 1,
   "status": "pricing_write_local_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-pricing/src/write_context.rs",
-    "crates/rustok-pricing/src/ports.rs",
-    "crates/rustok-pricing/src/read_context.rs",
+    "crates/modules/rustok-pricing/src/write_context.rs",
+    "crates/modules/rustok-pricing/src/ports.rs",
+    "crates/modules/rustok-pricing/src/read_context.rs",
     "scripts/verify/verify-pricing-write-local-context.mjs",
-    "crates/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source.json",
-    "crates/rustok-pricing/docs/write-local-context.md"
+    "crates/modules/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source.json",
+    "crates/modules/rustok-pricing/docs/write-local-context.md"
   ],
   "review_findings": {
     "all_four_write_operations_preserved": true,

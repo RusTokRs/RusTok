@@ -4,20 +4,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  rebuildOwner: "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
-  activationOwner: "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
-  transportDto: "crates/rustok-pages/src/dto/artifact_repair_transport.rs",
-  dtoMod: "crates/rustok-pages/src/dto/mod.rs",
-  gql: "crates/rustok-pages/src/graphql/artifact_repair.rs",
-  gqlMod: "crates/rustok-pages/src/graphql/mod.rs",
-  http: "crates/rustok-pages/src/http/artifact_repair.rs",
-  httpMod: "crates/rustok-pages/src/http.rs",
-  openapi: "crates/rustok-pages/src/openapi.rs",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-transport-source.json",
-  packet: "crates/rustok-pages/docs/explicit-artifact-repair-transports.md",
+  rebuildOwner: "crates/modules/rustok-pages/src/services/page/artifact_rebuild.rs",
+  activationOwner: "crates/modules/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+  transportDto: "crates/modules/rustok-pages/src/dto/artifact_repair_transport.rs",
+  dtoMod: "crates/modules/rustok-pages/src/dto/mod.rs",
+  gql: "crates/modules/rustok-pages/src/graphql/artifact_repair.rs",
+  gqlMod: "crates/modules/rustok-pages/src/graphql/mod.rs",
+  http: "crates/modules/rustok-pages/src/http/artifact_repair.rs",
+  httpMod: "crates/modules/rustok-pages/src/http.rs",
+  openapi: "crates/modules/rustok-pages/src/openapi.rs",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-transport-source.json",
+  packet: "crates/modules/rustok-pages/docs/explicit-artifact-repair-transports.md",
   actualization: "docs/modules/page-builder-parity-actualization-2026-08-05.md",
   continuation: "docs/modules/pages-page-builder-rebuild-provenance-continuation-2026-08-06.md",
 };

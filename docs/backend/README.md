@@ -18,7 +18,7 @@ work must use the explicit Axum runtime contracts.
 
 The physical shape is also fixed:
 
-- module domain/application code lives in `crates/rustok-<module>/src`;
+- module domain/application code lives in `crates/modules/rustok-<module>/src`;
 - module evidence and generated/public contract artifacts live in `contracts/`;
 - module-local plans and readiness evidence live in `docs/`;
 - optional UI adapters live in `admin/` and `storefront/`;

@@ -19,10 +19,10 @@ const runner = path.join(
   "scripts/evidence/accept-pages-reference-consumer-gate.mjs",
 );
 const candidateContract = readJson(
-  "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
 );
 const observedSource = readJson(
-  "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
 );
 const testRoot = path.join(
   repoRoot,

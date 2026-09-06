@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryRoot = resolve(packageRoot, '../..');
 const sourceProfiles = JSON.parse(
-  await readFile(resolve(repositoryRoot, 'crates/rustok-content/fixtures/richtext/profiles.json'), 'utf8')
+  await readFile(resolve(repositoryRoot, 'crates/modules/rustok-content/fixtures/richtext/profiles.json'), 'utf8')
 );
 const generatedProfiles = JSON.parse(
   await readFile(resolve(packageRoot, 'src/generated/profiles.json'), 'utf8')

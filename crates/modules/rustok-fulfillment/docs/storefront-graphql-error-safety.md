@@ -135,8 +135,8 @@ or diagnostic GraphQL payloads.
 
 Evidence files:
 
-- `crates/rustok-fulfillment/contracts/evidence/storefront-graphql-error-safety-source.json`;
-- `crates/rustok-fulfillment/contracts/evidence/storefront-graphql-error-safety-source-review.json`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/storefront-graphql-error-safety-source.json`;
+- `crates/modules/rustok-fulfillment/contracts/evidence/storefront-graphql-error-safety-source-review.json`.
 
 ## Evidence boundary
 

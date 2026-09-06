@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json";
+  "crates/modules/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json";
 const MAX_INPUT_BYTES = 1024 * 1024;
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/u;

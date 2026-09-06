@@ -4,16 +4,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  service: "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
-  migration: "crates/rustok-pages/src/migrations/m20260807_000015_create_page_artifact_binding_replacements.rs",
-  test: "crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs",
-  rollbackTest: "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs",
-  repeatedTest: "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json",
-  packet: "crates/rustok-pages/docs/explicit-immutable-artifact-loss-activation-recovery.md",
+  service: "crates/modules/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+  migration: "crates/modules/rustok-pages/src/migrations/m20260807_000015_create_page_artifact_binding_replacements.rs",
+  test: "crates/modules/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs",
+  rollbackTest: "crates/modules/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs",
+  repeatedTest: "crates/modules/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json",
+  packet: "crates/modules/rustok-pages/docs/explicit-immutable-artifact-loss-activation-recovery.md",
   latestOverlay: "docs/modules/pages-page-builder-repeated-artifact-loss-recovery-actualization-2026-08-07.md",
 };
 

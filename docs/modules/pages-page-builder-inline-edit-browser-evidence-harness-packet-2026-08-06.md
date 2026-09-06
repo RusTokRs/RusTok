@@ -22,11 +22,11 @@ The browser proof deliberately uses two preloaded tabs for stale-state evidence 
 ## Source files
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json
-crates/rustok-pages/contracts/evidence/pages-inline-edit-browser-evidence-harness-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json
+crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-browser-evidence-harness-source.json
 apps/next-admin/playwright.pages-inline-edit.config.ts
 apps/next-admin/tests/pages-inline-edit/browser-evidence.spec.ts
-crates/rustok-pages/scripts/verify/verify-pages-inline-edit-browser-evidence-harness.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-browser-evidence-harness.mjs
 ```
 
 The harness reuses the repository's existing pinned `@playwright/test` dependency. Chromium is explicit, workers are fixed to one, retries are disabled and trace, screenshots and video are disabled so retained evidence cannot accidentally include credentials, grants, authoring HTML or edited text.
@@ -221,7 +221,7 @@ npx --no-install playwright test \
 The source guard is:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-browser-evidence-harness.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-browser-evidence-harness.mjs
 ```
 
 ## Promotion boundary

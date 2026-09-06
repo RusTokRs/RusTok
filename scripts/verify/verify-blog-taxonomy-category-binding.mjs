@@ -14,14 +14,14 @@ const rejectMarker = (path, marker, label = marker) => {
 };
 
 const migration =
-  'crates/rustok-blog/src/migrations/m20260824_000019_add_blog_taxonomy_category_binding.rs';
-const migrationRegistry = 'crates/rustok-blog/src/migrations/mod.rs';
+  'crates/modules/rustok-blog/src/migrations/m20260824_000019_add_blog_taxonomy_category_binding.rs';
+const migrationRegistry = 'crates/modules/rustok-blog/src/migrations/mod.rs';
 const backfillContracts = 'docs/migrations/backfill-contracts.json';
-const relation = 'crates/rustok-blog/src/entities/blog_category_taxonomy_binding.rs';
-const runtimeTest = 'crates/rustok-blog/tests/category_taxonomy_binding.rs';
-const entities = 'crates/rustok-blog/src/entities/mod.rs';
-const legacyCategory = 'crates/rustok-blog/src/entities/blog_category.rs';
-const legacyTranslation = 'crates/rustok-blog/src/entities/blog_category_translation.rs';
+const relation = 'crates/modules/rustok-blog/src/entities/blog_category_taxonomy_binding.rs';
+const runtimeTest = 'crates/modules/rustok-blog/tests/category_taxonomy_binding.rs';
+const entities = 'crates/modules/rustok-blog/src/entities/mod.rs';
+const legacyCategory = 'crates/modules/rustok-blog/src/entities/blog_category.rs';
+const legacyTranslation = 'crates/modules/rustok-blog/src/entities/blog_category_translation.rs';
 
 for (const path of [
   migration,

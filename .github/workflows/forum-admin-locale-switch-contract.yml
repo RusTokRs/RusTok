@@ -3,8 +3,8 @@ name: Forum Admin Locale Switch Contract
 on:
   pull_request:
     paths:
-      - "crates/rustok-forum/admin/**"
-      - "crates/rustok-forum/docs/forum-28-admin-locale-switch-contract.md"
+      - "crates/modules/rustok-forum/admin/**"
+      - "crates/modules/rustok-forum/docs/forum-28-admin-locale-switch-contract.md"
       - "scripts/verify/verify-forum-admin-locale-switch.mjs"
       - ".github/workflows/forum-admin-locale-switch-contract.yml"
   workflow_dispatch:

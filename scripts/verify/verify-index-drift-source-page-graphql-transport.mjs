@@ -8,7 +8,7 @@ const files = {
   schema: "apps/server/src/graphql/schema.rs",
   service: "apps/server/src/services/index_drift_source_page_diagnosis.rs",
   doc: "apps/server/docs/index-drift-source-page-graphql-transport.md",
-  plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
   aggregate: "scripts/verify/verify-index-query-contract.mjs",
 };
 

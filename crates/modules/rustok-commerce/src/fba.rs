@@ -140,12 +140,12 @@ mod tests {
             registry
                 .provider("product")
                 .map(|provider| provider.registry.as_str()),
-            Some("crates/rustok-product/contracts/product-fba-registry.json")
+            Some("crates/modules/rustok-product/contracts/product-fba-registry.json")
         );
         assert!(registry.provider_modules().contains(&"inventory"));
         assert_eq!(
             registry.evidence.runtime_invocation_trace,
-            "crates/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json"
+            "crates/modules/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json"
         );
     }
 
@@ -157,7 +157,7 @@ mod tests {
         assert_eq!(trace.schema_version, 1);
         assert_eq!(
             trace.generated_from,
-            "crates/rustok-commerce/contracts/commerce-fba-registry.json"
+            "crates/modules/rustok-commerce/contracts/commerce-fba-registry.json"
         );
         assert!(
             trace

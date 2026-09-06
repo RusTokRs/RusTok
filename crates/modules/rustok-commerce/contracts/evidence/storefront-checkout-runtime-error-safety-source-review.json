@@ -2,12 +2,12 @@
   "schema_version": 1,
   "status": "commerce_storefront_checkout_runtime_error_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/storefront_checkout_runtime_mounted.rs",
-    "crates/rustok-commerce/src/storefront_checkout_runtime.rs",
-    "crates/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs",
-    "crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/modules/rustok-commerce/src/storefront_checkout_runtime_mounted.rs",
+    "crates/modules/rustok-commerce/src/storefront_checkout_runtime.rs",
+    "crates/modules/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs",
     "scripts/verify/verify-commerce-storefront-checkout-runtime-error-safety.mjs",
-    "crates/rustok-commerce/docs/storefront-checkout-runtime-error-safety.md"
+    "crates/modules/rustok-commerce/docs/storefront-checkout-runtime-error-safety.md"
   ],
   "source_contract": {
     "legacy_runtime_source_changed": false,

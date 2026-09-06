@@ -30,8 +30,8 @@ function assert(condition, message) {
   if (!condition) failures.push(message);
 }
 
-const catalogPath = "crates/rustok-ai/contracts/rig-0.39-provider-catalog.json";
-const cassettePath = "crates/rustok-ai/contracts/rig-0.39-stream-cassettes.json";
+const catalogPath = "crates/modules/rustok-ai/contracts/rig-0.39-provider-catalog.json";
+const cassettePath = "crates/modules/rustok-ai/contracts/rig-0.39-stream-cassettes.json";
 assert(existsSync(repoPath(catalogPath)), `missing ${catalogPath}`);
 assert(existsSync(repoPath(cassettePath)), `missing ${cassettePath}`);
 
@@ -47,14 +47,14 @@ if (failures.length === 0) {
   );
 }
 
-const catalogSource = read("crates/rustok-ai/src/engine/catalog.rs");
-const inferenceSource = read("crates/rustok-ai/src/engine/inference.rs");
+const catalogSource = read("crates/modules/rustok-ai/src/engine/catalog.rs");
+const inferenceSource = read("crates/modules/rustok-ai/src/engine/inference.rs");
 assert(catalogSource.includes("enum ProviderIntegration"), "typed ProviderIntegration dispatch is required");
 assert(catalogSource.includes("catalog_matches_the_rig_0_39_registry_snapshot"), "Rig snapshot test is required");
 assert(inferenceSource.includes("match integration"), "inference factory must dispatch by ProviderIntegration");
 
 const forbidden = ["ModelProvider", "OpenAiCompatibleProvider", "AnthropicProvider", "GeminiProvider", "AiRuntime"];
-for (const relativePath of walk("crates/rustok-ai/src").filter((file) => file.endsWith(".rs"))) {
+for (const relativePath of walk("crates/modules/rustok-ai/src").filter((file) => file.endsWith(".rs"))) {
   const source = read(relativePath);
   for (const symbol of forbidden) {
     assert(!new RegExp(`\\b${symbol}\\b`).test(source), `${relativePath} retains forbidden legacy symbol ${symbol}`);

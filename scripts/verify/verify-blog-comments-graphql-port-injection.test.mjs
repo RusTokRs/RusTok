@@ -11,18 +11,18 @@ const verifier = path.resolve(
   'scripts/verify/verify-blog-comments-graphql-port-injection.mjs',
 );
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-graphql-port-injection.json';
-const manifestPath = 'crates/rustok-blog/rustok-module.toml';
-const graphqlModulePath = 'crates/rustok-blog/src/graphql/mod.rs';
-const runtimeDataPath = 'crates/rustok-blog/src/graphql/runtime_data.rs';
-const commentReadsPath = 'crates/rustok-blog/src/graphql/types.rs';
-const commentMutationPath = 'crates/rustok-blog/src/graphql/mutation.rs';
-const servicePath = 'crates/rustok-blog/src/services/comment.rs';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-graphql-port-injection.json';
+const manifestPath = 'crates/modules/rustok-blog/rustok-module.toml';
+const graphqlModulePath = 'crates/modules/rustok-blog/src/graphql/mod.rs';
+const runtimeDataPath = 'crates/modules/rustok-blog/src/graphql/runtime_data.rs';
+const commentReadsPath = 'crates/modules/rustok-blog/src/graphql/types.rs';
+const commentMutationPath = 'crates/modules/rustok-blog/src/graphql/mutation.rs';
+const servicePath = 'crates/modules/rustok-blog/src/services/comment.rs';
 const consumerMatrixPath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
 const serverCodegenPath = 'apps/server/build.rs';
 const serverSchemaPath = 'apps/server/src/graphql/schema.rs';
-const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
 const harnessTest =
   'graphql::runtime_data::tests::graphql_runtime_data_exposes_comments_port_selection';
 const harnessCommand = `cargo test -p rustok-blog --lib ${harnessTest} -- --exact`;

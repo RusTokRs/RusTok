@@ -16,8 +16,8 @@ The compared default-branch changes are limited to:
 
 No compared default-branch commit modifies:
 
-- `crates/rustok-index` source, documentation, or Cargo manifest;
-- Product Index source/absence composition under `crates/rustok-distribution`;
+- `crates/modules/rustok-index` source, documentation, or Cargo manifest;
+- Product Index source/absence composition under `crates/modules/rustok-distribution`;
 - `apps/server/src/graphql/index_drift_diagnosis.rs` or the Index GraphQL root files changed by this
   PR;
 - `apps/server/src/services/index_drift_diagnosis_operator.rs`;
@@ -26,7 +26,7 @@ No compared default-branch commit modifies:
 - the Index verifier files changed by this PR.
 
 The continuation slice adds `aes-gcm.workspace = true` only to
-`crates/rustok-index/Cargo.toml`. The default branch does not modify that manifest. The active PR does
+`crates/modules/rustok-index/Cargo.toml`. The default branch does not modify that manifest. The active PR does
 not modify `apps/server/Cargo.toml` or `Cargo.lock`, so those parallel default-branch changes are not
 changed-file collisions.
 

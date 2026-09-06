@@ -20,12 +20,12 @@ function rejectTokens(path, tokens) {
   }
 }
 
-const routeOwner = "crates/rustok-forum/src/services/topic_route.rs";
-const mergeOwner = "crates/rustok-forum/src/services/topic_merge.rs";
-const contract = "crates/rustok-forum/contracts/forum-topic-merge-route-alias-owner.json";
-const documentation = "crates/rustok-forum/docs/forum-24b-topic-merge-route-aliases.md";
-const plan = "crates/rustok-forum/docs/implementation-plan.md";
-const test = "crates/rustok-forum/tests/topic_merge_route_alias_sqlite.rs";
+const routeOwner = "crates/modules/rustok-forum/src/services/topic_route.rs";
+const mergeOwner = "crates/modules/rustok-forum/src/services/topic_merge.rs";
+const contract = "crates/modules/rustok-forum/contracts/forum-topic-merge-route-alias-owner.json";
+const documentation = "crates/modules/rustok-forum/docs/forum-24b-topic-merge-route-aliases.md";
+const plan = "crates/modules/rustok-forum/docs/implementation-plan.md";
+const test = "crates/modules/rustok-forum/tests/topic_merge_route_alias_sqlite.rs";
 
 requireTokens(routeOwner, [
   "PLATFORM_FALLBACK_LOCALE",

@@ -57,13 +57,13 @@ sink, and does not load the editor runtime for read-only moderation.
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `CommentsThreadPort` / `comments.thread.v1` in
-  `crates/rustok-comments/contracts/comments-fba-registry.json`.
+  `crates/modules/rustok-comments/contracts/comments-fba-registry.json`.
 - Comments FBA registry schema v4 locks the exact verify/test package order,
   the provider port-boundary leaf, thread-invariant leaf commands, focused
   self-tests, evidence paths, strict classifier unit harness, and shared owner
   runtime-order gate.
 - Provider port source evidence schema v2:
-  `crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json`
+  `crates/modules/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json`
   with status `source_verified_no_compile`, compile policy `not_run_by_request`,
   runtime status `pending`, source-verified `in_process`, and pending
   `remote_adapter_placeholder`.
@@ -77,10 +77,10 @@ sink, and does not load the editor runtime for read-only moderation.
   `test:verify:comments:port-boundary`; both are registered in
   `verify:comments:fba` / `test:verify:comments:fba` before thread invariants.
 - Runtime-order evidence:
-  `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`.
+  `crates/modules/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`.
   Its executable source ordering remains uncompiled and unexecuted.
 - Thread write invariant evidence schema v3:
-  `crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
+  `crates/modules/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
   with status `executable_no_run`.
 - Thread invariant source gate:
   `scripts/verify/verify-comments-thread-write-invariants.mjs` with focused
@@ -89,7 +89,7 @@ sink, and does not load the editor runtime for read-only moderation.
   UUID suffix, verifies that unrelated storage errors propagate, and forbids broad
   `Err(_)` fallback or prefix-only classification.
 - Classifier unit harness:
-  `crates/rustok-comments/src/entities/thread_insert_error_tests.rs`, registered by
+  `crates/modules/rustok-comments/src/entities/thread_insert_error_tests.rs`, registered by
   `#[cfg(test)] mod thread_insert_error_tests;` in the entities module. It records
   exact-scope acceptance, malformed-owner rejection, wrong-scope rejection, and
   unrelated `DbErr` preservation as database failure. It is written but not run.
@@ -97,9 +97,9 @@ sink, and does not load the editor runtime for read-only moderation.
   `test:verify:comments:thread-write-invariants`; both run after the provider leaf
   and before the shared owner runtime-order gate.
 - Executable targets:
-  `crates/rustok-comments/src/entities/thread_insert_error_tests.rs`,
-  `crates/rustok-comments/tests/thread_write_invariants.rs`, and
-  `crates/rustok-comments/tests/thread_creation_concurrency.rs`.
+  `crates/modules/rustok-comments/src/entities/thread_insert_error_tests.rs`,
+  `crates/modules/rustok-comments/tests/thread_write_invariants.rs`, and
+  `crates/modules/rustok-comments/tests/thread_creation_concurrency.rs`.
 - Both concurrent PostgreSQL targets use two independent one-connection pools, an isolated
   schema, and `RUSTOK_COMMENTS_TEST_DATABASE_URL` or PostgreSQL `DATABASE_URL`.
 - Public-port create/delete publish `comment.created` and `comment.deleted`

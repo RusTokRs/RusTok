@@ -9,8 +9,8 @@ const fail = (message) => {
   process.exit(1);
 };
 
-const cargo = read('crates/rustok-tenant/admin/Cargo.toml');
-const adapter = read('crates/rustok-tenant/admin/src/transport/native_server_adapter.rs');
+const cargo = read('crates/modules/rustok-tenant/admin/Cargo.toml');
+const adapter = read('crates/modules/rustok-tenant/admin/src/transport/native_server_adapter.rs');
 
 for (const marker of [
   'tracing.workspace = true',

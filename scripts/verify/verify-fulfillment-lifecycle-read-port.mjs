@@ -15,16 +15,16 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const ownerRoot = read('crates/rustok-fulfillment/src/lib.rs');
-const ownerSource = read('crates/rustok-fulfillment/src/fulfillment_read.rs');
-const commerceRuntime = read('crates/rustok-commerce/src/graphql_runtime.rs');
+const ownerRoot = read('crates/modules/rustok-fulfillment/src/lib.rs');
+const ownerSource = read('crates/modules/rustok-fulfillment/src/fulfillment_read.rs');
+const commerceRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.rs');
 const hostRuntime = read('apps/server/src/services/commerce_provider_runtime.rs');
-const commerceHttp = read('crates/rustok-commerce/src/controllers/mod.rs');
+const commerceHttp = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
 const compatibilityFacade = readCommerceSafeQuerySource(read);
 const fulfillmentShim = readCommerceFulfillmentQueryShimSource(read);
-const adminRest = read('crates/rustok-commerce/src/controllers/admin/fulfillments.rs');
+const adminRest = read('crates/modules/rustok-commerce/src/controllers/admin/fulfillments.rs');
 const evidence = JSON.parse(
-  read('crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json'),
+  read('crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json'),
 );
 const failures = [];
 

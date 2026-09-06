@@ -15,15 +15,15 @@ const [
   regressionPanel,
   serviceTests,
 ] = await Promise.all([
-  read('crates/fly/src/lib.rs'),
-  read('crates/fly/src/runtime_scenario_release.rs'),
-  read('crates/rustok-page-builder/src/lib.rs'),
-  read('crates/rustok-page-builder/src/runtime_scenario_release.rs'),
-  read('crates/rustok-page-builder/src/adapters/fly_service.rs'),
-  read('crates/rustok-page-builder/admin/src/ui/leptos.rs'),
-  read('crates/rustok-page-builder/admin/src/editor/modular_canvas.rs'),
-  read('crates/rustok-page-builder/admin/src/editor/runtime_scenario_regression.rs'),
-  read('crates/rustok-page-builder/tests/runtime_scenario_release.rs'),
+  read('crates/ui/fly/src/lib.rs'),
+  read('crates/ui/fly/src/runtime_scenario_release.rs'),
+  read('crates/modules/rustok-page-builder/src/lib.rs'),
+  read('crates/modules/rustok-page-builder/src/runtime_scenario_release.rs'),
+  read('crates/modules/rustok-page-builder/src/adapters/fly_service.rs'),
+  read('crates/modules/rustok-page-builder/admin/src/ui/leptos.rs'),
+  read('crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs'),
+  read('crates/modules/rustok-page-builder/admin/src/editor/runtime_scenario_regression.rs'),
+  read('crates/modules/rustok-page-builder/tests/runtime_scenario_release.rs'),
 ]);
 
 const required = [

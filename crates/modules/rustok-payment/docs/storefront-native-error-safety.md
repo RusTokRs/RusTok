@@ -6,7 +6,7 @@ Status: **source-complete / unvalidated**
 
 This slice hardens the payment-owned native server-function adapter in:
 
-- `crates/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs`.
+- `crates/modules/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs`.
 
 It covers refund-summary read, payment-collection read, and payment-collection create/reuse. The GraphQL adapter, public DTOs, transport selection, commerce runtime operations, and payment facade variants are unchanged.
 
@@ -67,7 +67,7 @@ scripts/verify/verify-payment-storefront-native-error-safety.mjs
 Retained evidence:
 
 ```text
-crates/rustok-payment/contracts/evidence/payment-storefront-native-error-safety-source.json
+crates/modules/rustok-payment/contracts/evidence/payment-storefront-native-error-safety-source.json
 ```
 
 The guard requires four type-only mapper sites, correlation-aware bounded context fields, all three endpoint and owner-call contracts, static public envelopes, and unchanged outer wrapper counts. It rejects complete error payloads, obsolete `Debug` bounds, full tenant/channel/slug/locale fields, and raw public conversions.

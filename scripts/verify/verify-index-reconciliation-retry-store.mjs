@@ -19,16 +19,16 @@ const requireMarkers = (relative, markers) => {
 };
 
 const retryPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_retry.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_retry.rs';
 const runnerPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_runner.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_runner.rs';
 const schedulerPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs';
 const docsPath =
-  'crates/rustok-index/docs/m6-reconciliation-retry-transition-store.md';
+  'crates/modules/rustok-index/docs/m6-reconciliation-retry-transition-store.md';
 const schedulerDocsPath =
-  'crates/rustok-index/docs/m6-reconciliation-host-scheduler.md';
-const planPath = 'crates/rustok-index/docs/implementation-plan.md';
+  'crates/modules/rustok-index/docs/m6-reconciliation-host-scheduler.md';
+const planPath = 'crates/modules/rustok-index/docs/implementation-plan.md';
 const aggregatePath = 'scripts/verify/verify-index-query-contract.mjs';
 
 const retry = requireMarkers(retryPath, [

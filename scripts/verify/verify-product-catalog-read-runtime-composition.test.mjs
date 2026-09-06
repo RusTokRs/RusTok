@@ -21,14 +21,14 @@ function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-product-read-runtime-"));
   write(
     root,
-    "crates/rustok-product/src/runtime.rs",
+    "crates/modules/rustok-product/src/runtime.rs",
     options.omitExternal
       ? "pub enum ProductCatalogReadProfile { EmbeddedNative } pub struct ProductCatalogReadRuntime pub fn in_process pub fn read_port pub const fn profile"
       : "pub enum ProductCatalogReadProfile { EmbeddedNative, External } pub struct ProductCatalogReadRuntime pub fn in_process pub fn external pub fn read_port pub const fn profile",
   );
   write(
     root,
-    "crates/rustok-product/src/lib.rs",
+    "crates/modules/rustok-product/src/lib.rs",
     "mod runtime; ProductCatalogReadProfile ProductCatalogReadRuntime",
   );
   const directMarketplace = options.directMarketplace
@@ -44,7 +44,7 @@ function fixture(options = {}) {
   );
   write(
     root,
-    "crates/rustok-product/contracts/product-fba-registry.json",
+    "crates/modules/rustok-product/contracts/product-fba-registry.json",
     options.omitRegistry
       ? "{}"
       : JSON.stringify({
@@ -65,7 +65,7 @@ function fixture(options = {}) {
   );
   write(
     root,
-    "crates/rustok-product/docs/implementation-plan.md",
+    "crates/modules/rustok-product/docs/implementation-plan.md",
     options.omitPlan
       ? "Product plan"
       : "ProductCatalogReadRuntime AI, checkout consumer source cutover is complete Concrete external transport execution remains open verify-product-catalog-read-runtime-composition.mjs",

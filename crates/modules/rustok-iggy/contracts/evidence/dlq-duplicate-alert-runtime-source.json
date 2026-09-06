@@ -4,9 +4,9 @@
   "packet": "dlq-duplicate-alert-runtime-source",
   "status": "source_complete_server_observer_execution_pending",
   "owner": "rustok-iggy",
-  "source": "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs",
-  "policy_source": "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs",
-  "summary_source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+  "source": "crates/modules/rustok-iggy/src/dlq_duplicate_alert_runtime.rs",
+  "policy_source": "crates/modules/rustok-iggy/src/dlq_duplicate_alert_policy.rs",
+  "summary_source": "crates/modules/rustok-iggy/src/dlq_duplicate_inspection.rs",
   "public_exports": [
     "DlqDuplicateAlertRuntimePublisher",
     "DlqDuplicateAlertRuntimeSubscriber",
@@ -102,8 +102,8 @@
   },
   "server_observer": {
     "status": "source_complete_execution_pending",
-    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json",
-    "iggy_source": "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs",
+    "contract": "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json",
+    "iggy_source": "crates/modules/rustok-iggy/src/dlq_duplicate_alert_observer.rs",
     "server_source": "apps/server/src/services/event_dlq_duplicate_alert_observer.rs",
     "delivery_profiles": [
       "outbox_not_applicable",
@@ -128,7 +128,7 @@
     "aggregate_receipt_and_duplicate_health_correlation"
   ],
   "verifier": "scripts/verify/verify-iggy-dlq-duplicate-alert-runtime.mjs",
-  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-alert-runtime.md",
-  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-alert-runtime-checkpoint.md",
+  "documentation": "crates/modules/rustok-iggy/docs/dlq-duplicate-alert-runtime.md",
+  "profiles_checkpoint": "crates/modules/rustok-profiles/docs/poison-duplicate-alert-runtime-checkpoint.md",
   "execution_status": "source_not_run"
 }

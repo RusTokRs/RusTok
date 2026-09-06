@@ -5,22 +5,22 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const contract = JSON.parse(
-  read("crates/rustok-page-builder/contracts/page-builder-consumer-properties.json"),
+  read("crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json"),
 );
 const providerContract = read(contract.provider.contract_source);
 const providerPanel = read(contract.provider.panel_source);
 const providerModuleExport = read(contract.provider.module_export_source);
 const providerPanelExport = read(contract.provider.panel_export_source);
 const providerCanvas = read(contract.provider.composition_source);
-const moduleManifestTooling = read("crates/rustok-build/src/module_manifest_contribution.rs");
+const moduleManifestTooling = read("crates/utils/rustok-build/src/module_manifest_contribution.rs");
 const pagesContributions = read(contract.pages_consumer.contribution_source);
-const pagesContributionBuild = read("crates/rustok-pages/admin/build.rs");
-const pagesModuleManifest = read("crates/rustok-pages/rustok-module.toml");
+const pagesContributionBuild = read("crates/modules/rustok-pages/admin/build.rs");
+const pagesModuleManifest = read("crates/modules/rustok-pages/rustok-module.toml");
 const pagesOwnerPort = read(contract.pages_consumer.owner_port_source);
 const pagesOwnerPortProduction = pagesOwnerPort.split("#[cfg(test)]")[0];
 const pagesBoundary = read(contract.pages_consumer.composition_source);
@@ -128,9 +128,9 @@ const metadataEvidence =
 if (
   metadataEvidence?.state !== "source_ready_execution_pending" ||
   metadataEvidence?.contract !==
-    "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json" ||
+    "crates/modules/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json" ||
   metadataEvidence?.verifier !==
-    "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
 ) {
   fail("metadata revision/isolation source evidence registration is invalid");
 }
@@ -140,9 +140,9 @@ const publishedSurfaceEvidence =
 if (
   publishedSurfaceEvidence?.state !== "source_ready_execution_pending" ||
   publishedSurfaceEvidence?.contract !==
-    "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json" ||
+    "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json" ||
   publishedSurfaceEvidence?.verifier !==
-    "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
 ) {
   fail("published metadata surface source evidence registration is invalid");
 }

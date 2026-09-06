@@ -14,7 +14,7 @@
 
 ## Interactions
 
-- Consumed by module-owned Leptos UI crates in both `crates/*/admin` and `crates/*/storefront`.
+- Consumed by module-owned Leptos UI crates in both `crates/modules/*/admin` and `crates/modules/*/storefront`.
 - Works with `rustok-api`, which owns route/query schemas, host route context contracts, and framework-agnostic route-query update intents.
 - Works with host apps such as `apps/admin` and `apps/storefront`, which provide the route sanitization/write policy.
 

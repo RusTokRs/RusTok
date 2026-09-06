@@ -72,12 +72,12 @@
     "workflow_or_ci_run": false
   },
   "production_sources": [
-    "crates/rustok-page-builder/src/rollout.rs",
-    "crates/rustok-page-builder/admin/src/provider_status.rs",
-    "crates/rustok-pages/src/graphql/builder_rollout.rs",
-    "crates/rustok-pages/admin/src/builder.rs"
+    "crates/modules/rustok-page-builder/src/rollout.rs",
+    "crates/modules/rustok-page-builder/admin/src/provider_status.rs",
+    "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
+    "crates/modules/rustok-pages/admin/src/builder.rs"
   ],
-  "verifier": "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs",
+  "verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs",
   "next_cursor": {
     "provider_health_capability_preflight": "source_ready_runtime_execution_pending",
     "observed_health_runtime_evidence_harness": "source_ready_maintainer_execution_pending",

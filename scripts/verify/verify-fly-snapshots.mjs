@@ -1,16 +1,16 @@
 import { access, readFile } from 'node:fs/promises';
 
 const paths = {
-  flyLib: 'crates/fly/src/lib.rs',
-  flyError: 'crates/fly/src/error.rs',
-  snapshotFacade: 'crates/fly/src/snapshot.rs',
-  snapshotModel: 'crates/fly/src/snapshot/model.rs',
-  snapshotCatalog: 'crates/fly/src/snapshot/catalog.rs',
-  snapshotDiff: 'crates/fly/src/snapshot/diff.rs',
-  snapshotTests: 'crates/fly/src/snapshot/tests.rs',
-  commandModel: 'crates/fly/src/command/model.rs',
-  commandEditor: 'crates/fly/src/command/editor.rs',
-  commandTests: 'crates/fly/src/command/tests.rs',
+  flyLib: 'crates/ui/fly/src/lib.rs',
+  flyError: 'crates/ui/fly/src/error.rs',
+  snapshotFacade: 'crates/ui/fly/src/snapshot.rs',
+  snapshotModel: 'crates/ui/fly/src/snapshot/model.rs',
+  snapshotCatalog: 'crates/ui/fly/src/snapshot/catalog.rs',
+  snapshotDiff: 'crates/ui/fly/src/snapshot/diff.rs',
+  snapshotTests: 'crates/ui/fly/src/snapshot/tests.rs',
+  commandModel: 'crates/ui/fly/src/command/model.rs',
+  commandEditor: 'crates/ui/fly/src/command/editor.rs',
+  commandTests: 'crates/ui/fly/src/command/tests.rs',
 };
 
 const source = Object.fromEntries(await Promise.all(
@@ -102,7 +102,7 @@ requireMarkers('commandTests', [
 ], 'snapshot transaction regression coverage');
 
 try {
-  await access('crates/rustok-page-builder/admin/src/editor/snapshot_panel.rs');
+  await access('crates/modules/rustok-page-builder/admin/src/editor/snapshot_panel.rs');
   failures.push(
     'orphan hydrated snapshot_panel.rs must not exist; restore UI must call the history-safe snapshot command',
   );

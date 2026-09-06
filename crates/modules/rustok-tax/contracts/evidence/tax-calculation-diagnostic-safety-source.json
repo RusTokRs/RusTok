@@ -2,11 +2,11 @@
   "status": "tax_calculation_diagnostic_safety_source_unvalidated",
   "scope": {
     "public_operation": "calculate_tax",
-    "canonical_wrapper": "crates/rustok-tax/src/calculation_context.rs",
-    "canonical_owner": "crates/rustok-tax/src/ports.rs",
+    "canonical_wrapper": "crates/modules/rustok-tax/src/calculation_context.rs",
+    "canonical_owner": "crates/modules/rustok-tax/src/ports.rs",
     "documentation": [
-      "crates/rustok-tax/docs/calculation-local-context.md",
-      "crates/rustok-tax/docs/calculation-port-policy-context.md"
+      "crates/modules/rustok-tax/docs/calculation-local-context.md",
+      "crates/modules/rustok-tax/docs/calculation-port-policy-context.md"
     ],
     "verifiers": [
       "scripts/verify/verify-tax-calculation-local-context.mjs",

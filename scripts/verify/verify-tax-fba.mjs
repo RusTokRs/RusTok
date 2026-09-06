@@ -22,19 +22,19 @@ const sameSet = (actual, expected) =>
   expected.every((item) => actual.includes(item));
 
 export function verifyTaxFba({ root = defaultRoot } = {}) {
-  const registryPath = 'crates/rustok-tax/contracts/tax-fba-registry.json';
-  const evidencePath = 'crates/rustok-tax/contracts/evidence/tax-contract-test-static-matrix.json';
+  const registryPath = 'crates/modules/rustok-tax/contracts/tax-fba-registry.json';
+  const evidencePath = 'crates/modules/rustok-tax/contracts/evidence/tax-contract-test-static-matrix.json';
   const registry = readJson(root, registryPath);
   const evidence = readJson(root, evidencePath);
   const runtimeSmoke = readJson(root, registry.evidence.runtime_contract_smoke);
-  const manifest = read(root, 'crates/rustok-tax/rustok-module.toml');
-  const plan = read(root, 'crates/rustok-tax/docs/implementation-plan.md');
+  const manifest = read(root, 'crates/modules/rustok-tax/rustok-module.toml');
+  const plan = read(root, 'crates/modules/rustok-tax/docs/implementation-plan.md');
   const central = read(root, 'docs/modules/registry.md');
-  const cargo = read(root, 'crates/rustok-tax/Cargo.toml');
-  const libSource = read(root, 'crates/rustok-tax/src/lib.rs');
-  const contextSource = read(root, 'crates/rustok-tax/src/calculation_context.rs');
-  const portSource = read(root, 'crates/rustok-tax/src/ports.rs');
-  const servicesSource = read(root, 'crates/rustok-tax/src/services.rs');
+  const cargo = read(root, 'crates/modules/rustok-tax/Cargo.toml');
+  const libSource = read(root, 'crates/modules/rustok-tax/src/lib.rs');
+  const contextSource = read(root, 'crates/modules/rustok-tax/src/calculation_context.rs');
+  const portSource = read(root, 'crates/modules/rustok-tax/src/ports.rs');
+  const servicesSource = read(root, 'crates/modules/rustok-tax/src/services.rs');
 
   if (registry.schema_version !== 1) fail('tax registry schema_version must be 1');
   if (registry.module !== 'tax') fail('tax registry module drift');

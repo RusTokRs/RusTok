@@ -20,7 +20,7 @@ const runner = path.join(
   "scripts/evidence/admit-pages-page-builder-terminal-readiness.mjs",
 );
 const executionContractPath =
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-execution-source.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-execution-source.json";
 const digest = `ghcr.io/rustok/server@sha256:${"a".repeat(64)}`;
 
 function sha256(value) {

@@ -178,7 +178,7 @@ the main CI workflow for the focused Rust test output.
 For the `page_builder -> pages` track, the mandatory minimum gate before advancing between waves:
 
 ```bash
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs
 ```
 
 Baseline gate composition:
@@ -231,7 +231,7 @@ described as a Core module.
 
 When architecture, API, UI contracts, module system, observability, or quality gates change:
 
-1. Update local docs of the affected `apps/*` or `crates/*`.
+1. Update local docs of the affected `apps/*` or `crates/modules/*`.
 2. Update the profile verification plan in this folder if the verification procedure itself changed.
 3. Update related central docs in `docs/modules/*`, `docs/architecture/*` and `docs/index.md`.
 4. If a module's acceptance contract changes, synchronously update the [manifest-layer contract](../modules/manifest.md).

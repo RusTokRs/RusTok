@@ -105,10 +105,10 @@ workflow reports successful compiled, PostgreSQL and Redis jobs.
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `ChannelReadPort` / `channel.read_projection.v1` in
-  `crates/rustok-channel/contracts/channel-fba-registry.json`.
+  `crates/modules/rustok-channel/contracts/channel-fba-registry.json`.
 - Static and fallback evidence:
-  `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json`
-  and `crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json`.
+  `crates/modules/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json`
+  and `crates/modules/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json`.
 - `scripts/verify/verify-channel-admin-boundary.mjs`,
   `npm run verify:channel:resolution-contract`, and
   `npm run verify:channel:proof-points` lock the UI boundary, canonical

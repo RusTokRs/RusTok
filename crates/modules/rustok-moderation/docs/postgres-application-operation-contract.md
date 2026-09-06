@@ -4,7 +4,7 @@ Status: **source-ready / maintainer execution pending**
 
 ## Scope
 
-`crates/rustok-moderation/tests/postgres_application_operation_contract.rs` is an opt-in PostgreSQL integration target for the durable application-operation queue/lease invariants in the Moderation implementation plan.
+`crates/modules/rustok-moderation/tests/postgres_application_operation_contract.rs` is an opt-in PostgreSQL integration target for the durable application-operation queue/lease invariants in the Moderation implementation plan.
 
 It runs the production Moderation migrations in a unique temporary PostgreSQL schema and covers four database-backed contracts:
 

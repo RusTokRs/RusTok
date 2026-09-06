@@ -1,11 +1,11 @@
 # Flex — Custom Fields System
 
-> **Attached mode status:** Phases 0–4 implemented. Phase 4.5 (extraction to `crates/flex`) — in progress.
+> **Attached mode status:** Phases 0–4 implemented. Phase 4.5 (extraction to `crates/modules/flex`) — in progress.
 > **Standalone mode status:** Phase 5 — in active implementation (transport-agnostic contracts, persistence/service layer, GraphQL and REST surfaces already live; rollout/governance contract already fixed, full integration verification remains as separate verification debt).
-> **Module-system wiring status:** Phase 4.6 is now live: `flex` is registered in `modules.toml` as a `capability_only` ghost module with `rustok-module.toml` and runtime `FlexModule`; GraphQL roots/runtime/DTO and REST contract DTO belong to `crates/flex`, while `apps/server` remains the HTTP/persistence/composition adapter.
+> **Module-system wiring status:** Phase 4.6 is now live: `flex` is registered in `modules.toml` as a `capability_only` ghost module with `rustok-module.toml` and runtime `FlexModule`; GraphQL roots/runtime/DTO and REST contract DTO belong to `crates/modules/flex`, while `apps/server` remains the HTTP/persistence/composition adapter.
 > Not implemented → [`implementation-plan.md`](./implementation-plan.md)
 
-> **Important regarding multilingual support:** a common platform contract already applies for `flex`. `FieldDefinition.is_localized` is a live part of the DB/runtime contract; standalone schema copy (`name`, `description`) is stored in `flex_schema_translations`; standalone entry values are now split into `flex_entries.data` (shared/non-localized payload) and `flex_entry_localized_values` (locale-aware payload per `entry_id + locale`); attached-mode locale-aware values have a canonical storage-path in `flex_attached_localized_values`, and shared entity/helpers for this path live in `crates/flex`. Live write/read path is already wired for `user`, `product`, `order` and `topic`; for `topic` the donor payload now lives in `forum_topics.metadata`, and locale-aware Flex values go into parallel attached rows under the same contract.
+> **Important regarding multilingual support:** a common platform contract already applies for `flex`. `FieldDefinition.is_localized` is a live part of the DB/runtime contract; standalone schema copy (`name`, `description`) is stored in `flex_schema_translations`; standalone entry values are now split into `flex_entries.data` (shared/non-localized payload) and `flex_entry_localized_values` (locale-aware payload per `entry_id + locale`); attached-mode locale-aware values have a canonical storage-path in `flex_attached_localized_values`, and shared entity/helpers for this path live in `crates/modules/flex`. Live write/read path is already wired for `user`, `product`, `order` and `topic`; for `topic` the donor payload now lives in `forum_topics.metadata`, and locale-aware Flex values go into parallel attached rows under the same contract.
 > Cleanup/backfill of residual inline locale-aware payloads must be done via migrations; the runtime path must not read donor/base-row inline localized JSON as a canonical fallback.
 > Authoring accepts only a valid normalized locale and reads only that exact row. Presentation fallback belongs exclusively to read resolution and must never seed a locale or become input to a write.
 
@@ -28,7 +28,7 @@
 ## Integration
 
 - `rustok-core::field_schema` supplies base types, validation rules and migration helpers;
-- `crates/flex` holds shared attached/standalone contracts and runtime metadata via `FlexModule`;
+- `crates/modules/flex` holds shared attached/standalone contracts and runtime metadata via `FlexModule`;
 - `apps/server` remains the adapter/composition layer for SeaORM, REST handler and bootstrap; attached field-definition row-to-core/view/command mapping, create guardrails, persisted JSON shape helpers, persisted type-name normalization, lifecycle event construction and cache invalidation event taxonomy live in `flex::registry`, attached field-definition and standalone GraphQL roots/runtime/DTO/RBAC/error/event mapping live in `flex::graphql`, REST request/response DTO, request-to-command mapping and view mapping live in `flex::rest`, roots are connected via `[provides.graphql]`, and the host passes concrete standalone service, registry/cache and DB handle through `FlexGraphqlRuntime`;
 - donor write/read paths are currently live for `user`, `product`, `order` and `topic`.
 
@@ -54,7 +54,7 @@ Canonical Flex module documentation lives in this file.
 The current architecture is divided into three layers:
 
 - `rustok-core::field_schema` stores base types, validators and migration helpers for attached mode;
-- `crates/flex` stores transport-agnostic orchestration, registry, field-definition row-to-core/view-source/command conversion mapping, persisted JSON shape helpers, attached field-definition lifecycle guardrails/events/cache invalidation taxonomy, standalone contracts, standalone fields_config/schema/key-derivation/row-view/entry validation/split/merge helpers, attached/standalone GraphQL roots/runtime/DTO and REST contract DTO/command mapping;
+- `crates/modules/flex` stores transport-agnostic orchestration, registry, field-definition row-to-core/view-source/command conversion mapping, persisted JSON shape helpers, attached field-definition lifecycle guardrails/events/cache invalidation taxonomy, standalone contracts, standalone fields_config/schema/key-derivation/row-view/entry validation/split/merge helpers, attached/standalone GraphQL roots/runtime/DTO and REST contract DTO/command mapping;
 - `apps/server` holds the adapter/wiring layer: SeaORM, REST handler, cache/bootstrap and schema runtime registration. Owner roots come in via manifest codegen; concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle and cache adapter are created/passed only in the composition root through `FlexGraphqlRuntime`.
 
 Attached mode is considered a working production contract. Standalone mode already has live GraphQL and REST API surfaces in `apps/server`; rollout/governance policy for this surface is now also fixed, and only the full integration verification remains open.
@@ -340,7 +340,7 @@ Each module = ~50 lines of new code. Everything else is in core.
 ### Step 1: Migration
 
 ```rust
-// crates/rustok-migrations/src/m20260315_000001_create_user_field_definitions.rs
+// crates/utils/rustok-migrations/src/m20260315_000001_create_user_field_definitions.rs
 use rustok_core::field_schema::create_field_definitions_table;
 
 async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -400,11 +400,11 @@ if !errors.is_empty() {
 | Module | Table | entity_type | donor payload |
 |--------|---------|-------------|---------------|
 | apps/server | `user_field_definitions` | `"user"` | `users.metadata` + `flex_attached_localized_values` |
-| apps/server + `crates/flex` | `product_field_definitions` | `"product"` | `products.metadata` + `flex_attached_localized_values` |
-| apps/server + `crates/flex` | `order_field_definitions` | `"order"` | `orders.metadata` + `flex_attached_localized_values` |
-| apps/server + `crates/flex` | `topic_field_definitions` | `"topic"` | `forum_topics.metadata` + `flex_attached_localized_values` |
+| apps/server + `crates/modules/flex` | `product_field_definitions` | `"product"` | `products.metadata` + `flex_attached_localized_values` |
+| apps/server + `crates/modules/flex` | `order_field_definitions` | `"order"` | `orders.metadata` + `flex_attached_localized_values` |
+| apps/server + `crates/modules/flex` | `topic_field_definitions` | `"topic"` | `forum_topics.metadata` + `flex_attached_localized_values` |
 
-All definitions tables are structurally identical, physically isolated in their own module. For attached localized values, canonical shared storage now lives in `flex_attached_localized_values`, and shared entity/helpers are moved to `crates/flex`; `user`, `product`, `order` and `topic` already use this path in the live read/write flow.
+All definitions tables are structurally identical, physically isolated in their own module. For attached localized values, canonical shared storage now lives in `flex_attached_localized_values`, and shared entity/helpers are moved to `crates/modules/flex`; `user`, `product`, `order` and `topic` already use this path in the live read/write flow.
 
 ---
 
@@ -540,12 +540,12 @@ At the current stage, for standalone mode already live:
 - `StandaloneSchemaViewSource`, `StandaloneSchemaTranslationSource`, `StandaloneEntryViewSource`, `standalone_schema_view_from_source` and `standalone_entry_view_from_source`
 - Guardrail validators: `validate_create_schema_command`, `validate_update_schema_command`, `validate_create_entry_command`, `validate_update_entry_command` now check JSON-object form for payload, normalized identifiers/statuses/schema names, limit of 50 fields per schema and DB-column length caps for schema slugs/names, as well as entry `entity_type`/`status`.
 - Orchestration helpers: `list/find/create/update/delete` for schemas and entries
-- GraphQL queries/mutations in `crates/flex/src/graphql` for schemas and entries with shared `AuthContext` / `TenantContext` and separate `flex_schemas:*` / `flex_entries:*` permission gates
+- GraphQL queries/mutations in `crates/modules/flex/src/graphql` for schemas and entries with shared `AuthContext` / `TenantContext` and separate `flex_schemas:*` / `flex_entries:*` permission gates
 - REST endpoints in `apps/server`: `/api/v1/flex/schemas*` and `/api/v1/flex/schemas/{schema_id}/entries*` with the same tenant-scoped RBAC gates; request/response DTO, command mapping and view mapping come from `flex::rest`
 
 A live rollout/governance contract already applies for the standalone surface:
 
-- attached field-definition and standalone GraphQL transport belong to `crates/flex`, roots are connected via manifest codegen, REST contract DTO belong to `flex::rest`, and the server only registers runtime, concrete persistence/registry/cache adapters and Axum REST handler;
+- attached field-definition and standalone GraphQL transport belong to `crates/modules/flex`, roots are connected via manifest codegen, REST contract DTO belong to `flex::rest`, and the server only registers runtime, concrete persistence/registry/cache adapters and Axum REST handler;
 - `flex` is registered in `modules.toml` as a `capability_only` ghost module with `rustok-module.toml` and runtime `FlexModule`;
 - capability wiring is verified via `cargo xtask validate-manifest` and `cargo xtask module validate flex`;
 - multilingual DB/runtime drift is verified via `node scripts/verify/verify-flex-multilingual-contract.mjs`;
@@ -614,5 +614,5 @@ Implementation details — in [`implementation-plan.md`](./implementation-plan.m
 ## See Also
 
 - [`implementation-plan.md`](./implementation-plan.md) — not yet implemented (Phase 4 debts, Phase 4.5, 5, 6)
-- [`rustok-core/src/field_schema.rs`](../../crates/rustok-core/src/field_schema.rs) — source code of core types
+- [`rustok-core/src/field_schema.rs`](../../crates/libs/rustok-core/src/field_schema.rs) — source code of core types
 - [`../../../docs/modules/_index.md`](../../../docs/modules/_index.md) — central module documentation index

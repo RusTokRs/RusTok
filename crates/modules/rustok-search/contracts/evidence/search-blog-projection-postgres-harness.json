@@ -11,13 +11,13 @@
     "isolation": "unique schema first in search_path with public extensions available"
   },
   "test_targets": [
-    "crates/rustok-search/tests/blog_ingestion_contract_test.rs",
-    "crates/rustok-search/tests/blog_projection_postgres_test.rs"
+    "crates/modules/rustok-search/tests/blog_ingestion_contract_test.rs",
+    "crates/modules/rustok-search/tests/blog_projection_postgres_test.rs"
   ],
   "production_contract": {
-    "event_handler": "crates/rustok-search/src/ingestion.rs",
-    "projector": "crates/rustok-search/src/blog_projector.rs",
-    "search_migrations": "crates/rustok-search/src/migrations/mod.rs",
+    "event_handler": "crates/modules/rustok-search/src/ingestion.rs",
+    "projector": "crates/modules/rustok-search/src/blog_projector.rs",
+    "search_migrations": "crates/modules/rustok-search/src/migrations/mod.rs",
     "source_guardrail": "scripts/verify/verify-search-blog-projection.mjs",
     "blog_tag_attachment_source": "blog_post_tags",
     "tag_dictionary_source": "taxonomy_terms + taxonomy_term_translations",

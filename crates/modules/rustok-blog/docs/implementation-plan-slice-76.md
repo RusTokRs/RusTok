@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 76 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-75.md`. Slices 1–66 remain in
+`crates/modules/rustok-blog/docs/implementation-plan-slice-75.md`. Slices 1–66 remain in
 the original plan; slices 67–75 retain the typed Comments remote core, bounded
 framing and listener lifecycle, bearer-authenticated reads, signed user
 write delegation, process-local replay admission, generic channel interfaces,
@@ -31,7 +31,7 @@ remains maintainer-owned.
 
 ### Implemented source scope
 
-- `crates/rustok-comments/src/tcp_delegation.rs` now owns a bounded keyring.
+- `crates/modules/rustok-comments/src/tcp_delegation.rs` now owns a bounded keyring.
 - `CommentsTcpDelegationKeyId` accepts 1..=64 ASCII letters, digits, dots,
   underscores, or hyphens.
 - `CommentsTcpDelegationKeyring` requires:
@@ -72,10 +72,10 @@ remains maintainer-owned.
   process-local nonce admission remain unchanged.
 - Replay nonces remain global within the listener process rather than scoped by
   key ID, preventing the same nonce from being admitted once per rotating key.
-- `crates/rustok-comments/src/lib.rs` exports the key ID, keyring, and bounds.
+- `crates/modules/rustok-comments/src/lib.rs` exports the key ID, keyring, and bounds.
 - No manifest, direct dependency, feature, or `Cargo.lock` change is required.
 - Source evidence is retained at
-  `crates/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-key-rotation.json`.
+  `crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-key-rotation.json`.
 - The standalone source verifier is
   `scripts/verify/verify-blog-comments-tcp-delegation-key-rotation.mjs`.
 

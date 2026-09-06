@@ -12,7 +12,7 @@ code and does not change the canonical `LINK-FORUM-03` status from `planned`.
 The machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-link-forum-03-evidence-assembler.json
+crates/modules/rustok-forum/contracts/forum-search-link-forum-03-evidence-assembler.json
 ```
 
 The assembler is:

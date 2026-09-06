@@ -10,13 +10,13 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 
 const wrapper = readFileSync(
-  new URL('crates/rustok-tax/src/calculation_context.rs', root),
+  new URL('crates/modules/rustok-tax/src/calculation_context.rs', root),
   'utf8',
 );
-const library = readFileSync(new URL('crates/rustok-tax/src/lib.rs', root), 'utf8');
-const owner = readFileSync(new URL('crates/rustok-tax/src/ports.rs', root), 'utf8');
+const library = readFileSync(new URL('crates/modules/rustok-tax/src/lib.rs', root), 'utf8');
+const owner = readFileSync(new URL('crates/modules/rustok-tax/src/ports.rs', root), 'utf8');
 const evidence = readFileSync(
-  new URL('crates/rustok-tax/docs/calculation-local-context.md', root),
+  new URL('crates/modules/rustok-tax/docs/calculation-local-context.md', root),
   'utf8',
 );
 const failures = [];

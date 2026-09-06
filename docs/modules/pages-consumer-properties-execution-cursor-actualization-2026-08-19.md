@@ -42,7 +42,7 @@ The recursive current Page Builder FBA blocker set contains exactly one `execute
 
 All previously admitted cache-consumer and artifact-repair/rollback evidence nodes remain independently `verified`; none of them imply provider consumer-properties execution.
 
-Pages FFA is independently blocked because `crates/rustok-pages/docs/implementation-plan.md` still contains `execution-rollout-pending`.
+Pages FFA is independently blocked because `crates/modules/rustok-pages/docs/implementation-plan.md` still contains `execution-rollout-pending`.
 
 Therefore terminal readiness remains incomplete and owner/platform terminal review is not yet eligible.
 
@@ -86,7 +86,7 @@ This cursor does **not**:
 - assert that the current source SHA is deployed anywhere;
 - assert current Page Builder provider health;
 - change `/provider/consumer_properties_contract/executed_evidence`;
-- change `crates/rustok-page-builder/contracts/page-builder-fba-registry.json`;
+- change `crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json`;
 - change the Pages `execution-rollout-pending` marker;
 - promote Pages FFA or Page Builder FBA;
 - authorize Forum Wave or any later FFA/FBA promotion review.

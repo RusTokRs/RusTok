@@ -66,7 +66,7 @@ fn artifact_role_permission_routes_require_owner_direct_principal_admission_firs
 
 #[test]
 fn native_admin_bootstrap_uses_the_same_owner_principal_policy() {
-    let native = source("crates/rustok-rbac/admin/src/transport/native_server_adapter.rs");
+    let native = source("crates/modules/rustok-rbac/admin/src/transport/native_server_adapter.rs");
 
     for required in [
         "AuthPrincipalContext",
@@ -100,9 +100,9 @@ fn native_admin_bootstrap_uses_the_same_owner_principal_policy() {
 
 #[test]
 fn module_owned_control_plane_guard_denies_delegated_service_and_cross_tenant_principals() {
-    let owner = source("crates/rustok-rbac/src/control_plane.rs");
-    let exports = source("crates/rustok-rbac/src/lib.rs");
-    let graphql = source("crates/rustok-rbac/src/graphql/control_plane.rs");
+    let owner = source("crates/modules/rustok-rbac/src/control_plane.rs");
+    let exports = source("crates/modules/rustok-rbac/src/lib.rs");
+    let graphql = source("crates/modules/rustok-rbac/src/graphql/control_plane.rs");
 
     for required in [
         "pub struct RbacControlPlanePrincipal",

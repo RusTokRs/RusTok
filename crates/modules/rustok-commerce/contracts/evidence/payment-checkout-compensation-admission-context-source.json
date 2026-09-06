@@ -10,9 +10,9 @@
     "public_root_factory": "rustok_payment::in_process_checkout_payment_compensation_port",
     "public_module_type": "rustok_payment::checkout_compensation::InProcessCheckoutPaymentCompensationPort",
     "public_module_factory": "rustok_payment::checkout_compensation::in_process_checkout_payment_compensation_port",
-    "persistent_source": "crates/rustok-payment/src/checkout_compensation.rs",
-    "context_wrapper": "crates/rustok-payment/src/checkout_compensation_context.rs",
-    "public_facade": "crates/rustok-payment/src/checkout_compensation_api.rs"
+    "persistent_source": "crates/modules/rustok-payment/src/checkout_compensation.rs",
+    "context_wrapper": "crates/modules/rustok-payment/src/checkout_compensation_context.rs",
+    "public_facade": "crates/modules/rustok-payment/src/checkout_compensation_api.rs"
   },
   "admission_envelopes": [
     {

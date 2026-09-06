@@ -37,7 +37,7 @@
   unrelated owner operations cannot collide.
 - Used by `apps/server` for runtime relay wiring, background processing, and migrations.
 - Integrates with target transports such as `rustok-iggy` instead of owning transport-specific adapters inline.
-- The Leptos admin UI lives in `crates/rustok-outbox/admin`, keeps framework-agnostic DTO/view-model helpers in `admin/src/core.rs`, and is mounted through manifest-driven host wiring.
+- The Leptos admin UI lives in `crates/modules/rustok-outbox/admin`, keeps framework-agnostic DTO/view-model helpers in `admin/src/core.rs`, and is mounted through manifest-driven host wiring.
 
 ## Relay policy
 

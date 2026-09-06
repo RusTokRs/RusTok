@@ -27,7 +27,7 @@ Existing per-value policy limits remain separate and continue to cover content, 
 The resource policy is implemented in:
 
 ```text
-crates/rustok-page-builder/src/static_publish_resource_limits.rs
+crates/modules/rustok-page-builder/src/static_publish_resource_limits.rs
 ```
 
 Project bytes use a bounded streaming JSON counter. Component count and depth use a bounded iterative traversal of only the current `pages[].component` authority. Obsolete frame trees are not consulted or synchronized.
@@ -114,8 +114,8 @@ This source slice does not change:
 Suggested commands, intentionally not run in this slice:
 
 ```bash
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs
 cargo test -p rustok-page-builder static_publish_resource_limits -- --nocapture
 cargo test -p rustok-page-builder publish_sanitization -- --nocapture
 cargo test -p rustok-page-builder static_landing -- --nocapture

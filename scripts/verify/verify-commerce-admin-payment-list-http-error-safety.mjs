@@ -10,12 +10,12 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const payments = read('crates/rustok-commerce/src/controllers/admin/payments.rs');
-const paymentErrors = read('crates/rustok-payment/src/error.rs');
+const payments = read('crates/modules/rustok-commerce/src/controllers/admin/payments.rs');
+const paymentErrors = read('crates/modules/rustok-payment/src/error.rs');
 const paymentOrchestration = read(
-  'crates/rustok-commerce/src/services/payment_orchestration.rs',
+  'crates/modules/rustok-commerce/src/services/payment_orchestration.rs',
 );
-const paymentService = read('crates/rustok-payment/src/services/payment.rs');
+const paymentService = read('crates/modules/rustok-payment/src/services/payment.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {

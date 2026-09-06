@@ -13,7 +13,7 @@ const finalizer = read('scripts/verify/finalize-index-storage-adr.mjs');
 const fixture = read('scripts/verify/finalize-index-storage-adr-decision-contract.test.mjs');
 const decisionFixture = read('scripts/verify/index-storage-decision-tooling.test.mjs');
 const router = read('scripts/verify/index-storage-tooling.mjs');
-const guide = read('crates/rustok-index/docs/storage-decision.md');
+const guide = read('crates/modules/rustok-index/docs/storage-decision.md');
 
 const requireMarkers = (content, label, markers) => {
   for (const marker of markers) {

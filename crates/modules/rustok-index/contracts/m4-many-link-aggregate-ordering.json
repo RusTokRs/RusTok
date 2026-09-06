@@ -35,11 +35,11 @@
     "legacy_planner_error_mapping_preserved": true
   },
   "guardrails": {
-    "validator": "crates/rustok-index/src/application/aggregate_ordering.rs",
-    "compiler": "crates/rustok-index/src/application/postgres_compiler.rs",
-    "sql": "crates/rustok-index/src/application/postgres_query_sql.rs",
-    "tests": "crates/rustok-index/src/application/aggregate_ordering_tests.rs",
-    "decimal_contract": "crates/rustok-index/contracts/m4-decimal-aggregate-order-wire.json",
+    "validator": "crates/modules/rustok-index/src/application/aggregate_ordering.rs",
+    "compiler": "crates/modules/rustok-index/src/application/postgres_compiler.rs",
+    "sql": "crates/modules/rustok-index/src/application/postgres_query_sql.rs",
+    "tests": "crates/modules/rustok-index/src/application/aggregate_ordering_tests.rs",
+    "decimal_contract": "crates/modules/rustok-index/contracts/m4-decimal-aggregate-order-wire.json",
     "verifier": "scripts/verify/verify-index-many-link-aggregate-ordering.mjs"
   },
   "validation": {

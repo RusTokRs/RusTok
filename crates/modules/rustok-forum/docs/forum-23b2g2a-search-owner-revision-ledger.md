@@ -40,7 +40,7 @@ rest of the owner work.
 that validates the registered root event, creates one envelope, writes it to the
 canonical outbox and returns that exact envelope ID. Existing outbox method
 signatures and behavior are unchanged; the additive identity-returning method is
-recorded in `crates/rustok-outbox/CRATE_API.md`.
+recorded in `crates/modules/rustok-outbox/CRATE_API.md`.
 
 The Forum invalidation owner performs these ordered steps:
 

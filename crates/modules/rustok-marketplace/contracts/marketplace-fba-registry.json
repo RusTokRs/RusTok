@@ -116,7 +116,7 @@
     "provider_payload_parsing": false
   },
   "financial_orchestration": {
-    "contract": "crates/rustok-marketplace/contracts/financial-orchestration-v2.json",
+    "contract": "crates/modules/rustok-marketplace/contracts/financial-orchestration-v2.json",
     "operations": [
       {
         "name": "process_order_financials",
@@ -151,22 +151,22 @@
     "receipt_replay": true
   },
   "evidence": {
-    "local_plan": "crates/rustok-marketplace/docs/implementation-plan.md",
-    "central_plan": "crates/rustok-commerce/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-marketplace/docs/implementation-plan.md",
+    "central_plan": "crates/modules/rustok-commerce/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-marketplace-family-boundary.mjs",
-    "financial_orchestration_contract": "crates/rustok-marketplace/contracts/financial-orchestration-v2.json",
-    "ledger_contract": "crates/rustok-marketplace-ledger/contracts/marketplace-ledger-fba-registry.json",
+    "financial_orchestration_contract": "crates/modules/rustok-marketplace/contracts/financial-orchestration-v2.json",
+    "ledger_contract": "crates/modules/rustok-marketplace-ledger/contracts/marketplace-ledger-fba-registry.json",
     "financial_orchestration_tests": [
-      "crates/rustok-marketplace/src/financial_orchestration_tests.rs",
-      "crates/rustok-marketplace/tests/financial_reversal_orchestration_test.rs"
+      "crates/modules/rustok-marketplace/src/financial_orchestration_tests.rs",
+      "crates/modules/rustok-marketplace/tests/financial_reversal_orchestration_test.rs"
     ],
-    "seller_consumer": "crates/rustok-marketplace/src/seller_directory.rs",
-    "listing_consumer": "crates/rustok-marketplace/src/listing_directory.rs",
-    "allocation_consumer": "crates/rustok-marketplace/src/allocation_directory.rs",
-    "commission_consumer": "crates/rustok-marketplace/src/commission_directory.rs",
-    "ledger_consumer": "crates/rustok-marketplace/src/ledger_directory.rs",
-    "payout_consumer": "crates/rustok-marketplace/src/payout_directory.rs"
+    "seller_consumer": "crates/modules/rustok-marketplace/src/seller_directory.rs",
+    "listing_consumer": "crates/modules/rustok-marketplace/src/listing_directory.rs",
+    "allocation_consumer": "crates/modules/rustok-marketplace/src/allocation_directory.rs",
+    "commission_consumer": "crates/modules/rustok-marketplace/src/commission_directory.rs",
+    "ledger_consumer": "crates/modules/rustok-marketplace/src/ledger_directory.rs",
+    "payout_consumer": "crates/modules/rustok-marketplace/src/payout_directory.rs"
   },
   "contract_tests": {
     "status": "source_cases_added_unvalidated",

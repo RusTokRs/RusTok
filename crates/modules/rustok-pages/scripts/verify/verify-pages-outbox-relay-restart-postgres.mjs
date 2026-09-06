@@ -5,19 +5,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const evidence = JSON.parse(
   read(
-    "crates/rustok-pages/contracts/evidence/pages-outbox-relay-restart-postgres-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-outbox-relay-restart-postgres-source.json",
   ),
 );
-const harness = read("crates/rustok-pages/tests/outbox_relay_restart_postgres.rs");
-const relay = read("crates/rustok-outbox/src/relay.rs");
-const transactionalBus = read("crates/rustok-outbox/src/transactional.rs");
-const cacheOwner = read("crates/rustok-pages/src/cache_invalidation.rs");
+const harness = read("crates/modules/rustok-pages/tests/outbox_relay_restart_postgres.rs");
+const relay = read("crates/modules/rustok-outbox/src/relay.rs");
+const transactionalBus = read("crates/modules/rustok-outbox/src/transactional.rs");
+const cacheOwner = read("crates/modules/rustok-pages/src/cache_invalidation.rs");
 const overlay = read(
   "docs/modules/pages-page-builder-outbox-relay-restart-packet-2026-08-04.md",
 );
@@ -123,7 +123,7 @@ for (const [key, expected] of Object.entries({
 }
 
 if (
-  evidence.harness?.path !== "crates/rustok-pages/tests/outbox_relay_restart_postgres.rs" ||
+  evidence.harness?.path !== "crates/modules/rustok-pages/tests/outbox_relay_restart_postgres.rs" ||
   evidence.harness?.test !==
     "restarted_relay_dispatches_pending_node_published_before_acknowledging_row" ||
   evidence.harness?.database_env !== "RUSTOK_PAGES_TEST_DATABASE_URL" ||

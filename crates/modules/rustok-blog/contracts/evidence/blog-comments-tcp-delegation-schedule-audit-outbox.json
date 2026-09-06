@@ -6,7 +6,7 @@
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "runtime_status": "not_run",
-  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-83.md",
+  "generated_from": "crates/modules/rustok-blog/docs/implementation-plan-slice-83.md",
   "source_contract": {
     "runtime_facade": "apps/server/src/services/comments_provider_runtime.rs",
     "trigger_guard": "apps/server/src/services/comments_provider_runtime_keyring_schedule_trigger_guard.rs",
@@ -14,8 +14,8 @@
     "audited_trigger": "apps/server/src/services/comments_provider_runtime_keyring_schedule_postgres_audited_trigger.rs",
     "ordinary_postgres_store_preserved": "apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_postgres.rs",
     "ordinary_persisted_trigger_preserved": "apps/server/src/services/comments_provider_runtime_keyring_schedule_persisted_trigger.rs",
-    "migration_registry": "crates/rustok-blog/src/migrations/mod.rs",
-    "migration": "crates/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs"
+    "migration_registry": "crates/modules/rustok-blog/src/migrations/mod.rs",
+    "migration": "crates/modules/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs"
   },
   "profile": {
     "separate_opt_in_audited_trigger": true,

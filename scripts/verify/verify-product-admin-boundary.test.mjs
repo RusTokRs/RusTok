@@ -280,18 +280,18 @@ pub struct BindCategoryAttributeInput;
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-product-boundary-"));
-  writeFixtureFile(root, "crates/rustok-product/admin/src/lib.rs", libSource());
-  writeFixtureFile(root, "crates/rustok-product/admin/src/core.rs", coreSource(options));
-  writeFixtureFile(root, "crates/rustok-product/admin/src/ui/leptos.rs", uiSource(options));
-  writeFixtureFile(root, "crates/rustok-product/admin/src/transport.rs", transportSource(options));
-  writeFixtureFile(root, "crates/rustok-product/admin/src/transport/graphql_adapter.rs", apiSource(options));
-  writeFixtureFile(root, "crates/rustok-product/admin/src/transport/native_server_adapter.rs", nativeAdapterSource());
-  writeFixtureFile(root, "crates/rustok-product/admin/Cargo.toml", "[package]\nname = \"rustok-product-admin-fixture\"\nversion = \"0.1.0\"\n");
-  if (options.legacyApi) writeFixtureFile(root, "crates/rustok-product/admin/src/api.rs", apiSource(options));
-  writeFixtureFile(root, "crates/rustok-commerce/src/graphql/query.rs", commerceQuerySource());
-  writeFixtureFile(root, "crates/rustok-commerce/src/graphql/mutations/catalog.rs", commerceCatalogMutationSource());
-  writeFixtureFile(root, "crates/rustok-commerce/src/graphql/types.rs", commerceTypesSource());
-  writeFixtureFile(root, "crates/rustok-product/docs/implementation-plan.md", "verify-product-admin-boundary.mjs category-bound admin transport");
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/lib.rs", libSource());
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/core.rs", coreSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport.rs", transportSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs", apiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs", nativeAdapterSource());
+  writeFixtureFile(root, "crates/modules/rustok-product/admin/Cargo.toml", "[package]\nname = \"rustok-product-admin-fixture\"\nversion = \"0.1.0\"\n");
+  if (options.legacyApi) writeFixtureFile(root, "crates/modules/rustok-product/admin/src/api.rs", apiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-commerce/src/graphql/query.rs", commerceQuerySource());
+  writeFixtureFile(root, "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs", commerceCatalogMutationSource());
+  writeFixtureFile(root, "crates/modules/rustok-commerce/src/graphql/types.rs", commerceTypesSource());
+  writeFixtureFile(root, "crates/modules/rustok-product/docs/implementation-plan.md", "verify-product-admin-boundary.mjs category-bound admin transport");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-product-admin-boundary.mjs category-bound admin transport");
   writeFixtureFile(root, "package.json", JSON.stringify({
     scripts: {

@@ -271,15 +271,15 @@ Below captures the alignment of the plan with the current repository state.
 ### 2) UI packages in code are currently Leptos-specific
 
 - Basic shared UI crates depend on Leptos:
-  - `crates/leptos-ui/Cargo.toml`
-  - `crates/leptos-ui-routing/Cargo.toml`
-  - `crates/rustok-graphql/Cargo.toml`
-  - `crates/leptos-auth/Cargo.toml`
+  - `crates/ui/leptos-ui/Cargo.toml`
+  - `crates/ui/leptos-ui-routing/Cargo.toml`
+  - `crates/ui/rustok-graphql/Cargo.toml`
+  - `crates/ui/leptos-auth/Cargo.toml`
 - Module-owned UI packages actively use `leptos::*`, `#[component]`, `leptos_router` and Leptos hooks (example: `rustok-search`, `rustok-workflow`, `rustok-commerce`, `rustok-cart`).
 
 ### 3) Data already flows through native/GraphQL hybrid
 
-- In `crates/rustok-*/storefront/src/api.rs` and `crates/rustok-*/admin/src/api.rs`, GraphQL adapters (`rustok_graphql`) and `#[cfg(feature = "ssr")]` branches for native SSR paths are visible.
+- In `crates/modules/rustok-*/storefront/src/api.rs` and `crates/modules/rustok-*/admin/src/api.rs`, GraphQL adapters (`rustok_graphql`) and `#[cfg(feature = "ssr")]` branches for native SSR paths are visible.
 - This means the plan does not invent a new model but formalizes an already existing runtime split and converts it into an FFA structure.
 
 ### 4) Pilot candidates confirmed by current complexity
@@ -291,7 +291,7 @@ Below captures the alignment of the plan with the current repository state.
 
 ```bash
 rg -n "Dioxus|Leptos|headless|server functions|UI packages|GraphQL" docs crates apps
-rg -n "^use leptos|#\[component\]|#\[server\]|leptos =|leptos_router|leptos_ui_routing|cfg\(feature = "ssr"\)" crates/rustok-*/admin crates/rustok-*/storefront crates/leptos-* --glob "*.rs" --glob "Cargo.toml"
+rg -n "^use leptos|#\[component\]|#\[server\]|leptos =|leptos_router|leptos_ui_routing|cfg\(feature = "ssr"\)" crates/modules/rustok-*/admin crates/modules/rustok-*/storefront crates/modules/leptos-* --glob "*.rs" --glob "Cargo.toml"
 nl -ba docs/UI/graphql-architecture.md
 nl -ba apps/storefront/docs/README.md
 npm run verify:ffa:ui:migration

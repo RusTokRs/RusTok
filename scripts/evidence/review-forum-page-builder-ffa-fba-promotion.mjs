@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath = path.join(
   repoRoot,
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json",
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json",
 );
 const MAX_INPUT_BYTES = 1024 * 1024;
 const OWNER_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/u;

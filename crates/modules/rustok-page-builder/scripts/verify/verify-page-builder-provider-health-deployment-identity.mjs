@@ -4,18 +4,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  telemetryMetrics: "crates/rustok-telemetry/src/page_builder_provider_metrics.rs",
+  telemetryMetrics: "crates/libs/rustok-telemetry/src/page_builder_provider_metrics.rs",
   releaseDockerfile: "apps/server/Dockerfile.release",
   releaseWorkflow: ".github/workflows/release.yml",
   capture: "scripts/evidence/capture-page-builder-provider-health-deployment-identity.mjs",
-  evidence: "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
+  evidence: "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
   overlay: "docs/modules/page-builder-provider-health-deployment-identity-actualization-2026-08-09.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
-  pagesGraphql: "crates/rustok-pages/src/graphql/builder_rollout.rs",
-  pagesFacade: "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
+  pagesGraphql: "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
+  pagesFacade: "crates/modules/rustok-pages/admin/src/builder_rollout_settings.rs",
 };
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);

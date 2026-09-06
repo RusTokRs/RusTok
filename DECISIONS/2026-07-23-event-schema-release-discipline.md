@@ -20,7 +20,7 @@ provides backward compatibility would therefore be misleading.
 
 `rustok-events` computes deterministic SHA-256 digests for the sorted complete
 event registry and for the root and typed transport wire schemas. The committed
-`crates/rustok-events/contracts/event-contract-digests.json` artifact is checked
+`crates/libs/rustok-events/contracts/event-contract-digests.json` artifact is checked
 by the public contract test suite. Any wire or metadata drift fails the test and
 requires an intentional artifact update during review.
 

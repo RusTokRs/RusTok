@@ -23,7 +23,7 @@ The admission tooling makes one successful owner run reproducible and reviewable
 The immutable source contract is:
 
 ```text
-crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json
+crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json
 ```
 
 It allowlists three commands:
@@ -64,9 +64,9 @@ remains.
 A successful run writes one atomic logical set:
 
 ```text
-crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.json
-crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stdout.log
-crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stderr.log
+crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution.json
+crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stdout.log
+crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stderr.log
 ```
 
 The JSON packet retains:

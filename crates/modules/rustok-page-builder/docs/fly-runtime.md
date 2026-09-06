@@ -94,8 +94,8 @@ same source without copying lifecycle, form, selection or draft-route policy.
 ## Verification
 
 ```text
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-fly-runtime.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fly-runtime.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs
 cargo test -p fly
 cargo test -p rustok-page-builder
 ```

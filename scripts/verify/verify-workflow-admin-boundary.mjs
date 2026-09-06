@@ -63,13 +63,13 @@ function readCoreSources(coreDirPath) {
 }
 
 function assertWorkflowAdminBoundary() {
-  const libPath = "crates/rustok-workflow/admin/src/lib.rs";
-  const coreDirPath = "crates/rustok-workflow/admin/src/core";
-  const uiPath = "crates/rustok-workflow/admin/src/ui/leptos.rs";
-  const transportModPath = "crates/rustok-workflow/admin/src/transport/mod.rs";
-  const nativeAdapterPath = "crates/rustok-workflow/admin/src/transport/native_server_adapter.rs";
-  const graphqlAdapterPath = "crates/rustok-workflow/admin/src/transport/graphql_adapter.rs";
-  const cargoPath = "crates/rustok-workflow/admin/Cargo.toml";
+  const libPath = "crates/modules/rustok-workflow/admin/src/lib.rs";
+  const coreDirPath = "crates/modules/rustok-workflow/admin/src/core";
+  const uiPath = "crates/modules/rustok-workflow/admin/src/ui/leptos.rs";
+  const transportModPath = "crates/modules/rustok-workflow/admin/src/transport/mod.rs";
+  const nativeAdapterPath = "crates/modules/rustok-workflow/admin/src/transport/native_server_adapter.rs";
+  const graphqlAdapterPath = "crates/modules/rustok-workflow/admin/src/transport/graphql_adapter.rs";
+  const cargoPath = "crates/modules/rustok-workflow/admin/Cargo.toml";
 
   for (const checkedPath of [
     libPath,
@@ -88,12 +88,12 @@ function assertWorkflowAdminBoundary() {
     assertExists(checkedPath, `${checkedPath}: expected workflow admin FFA boundary file`);
   }
   assertMissing(
-    "crates/rustok-workflow/admin/src/api.rs",
-    "crates/rustok-workflow/admin/src/api.rs: pre-FFA api facade must stay absent",
+    "crates/modules/rustok-workflow/admin/src/api.rs",
+    "crates/modules/rustok-workflow/admin/src/api.rs: pre-FFA api facade must stay absent",
   );
   assertMissing(
-    "crates/rustok-workflow/admin/src/transport.rs",
-    "crates/rustok-workflow/admin/src/transport.rs: transport must remain split into transport/ adapters",
+    "crates/modules/rustok-workflow/admin/src/transport.rs",
+    "crates/modules/rustok-workflow/admin/src/transport.rs: transport must remain split into transport/ adapters",
   );
 
   const lib = readRepo(libPath);

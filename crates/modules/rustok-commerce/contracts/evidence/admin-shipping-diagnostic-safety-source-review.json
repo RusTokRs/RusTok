@@ -1,11 +1,11 @@
 {
   "status": "commerce_admin_shipping_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/controllers/admin/shipping.rs",
+    "crates/modules/rustok-commerce/src/controllers/admin/shipping.rs",
     "scripts/verify/verify-commerce-admin-shipping-option-error-context.mjs",
     "scripts/verify/verify-commerce-admin-shipping-http-error-safety.mjs",
-    "crates/rustok-commerce/docs/admin-shipping-diagnostic-safety.md",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/admin-shipping-diagnostic-safety.md",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_contract": {
     "raw_commerce_error_logged": false,

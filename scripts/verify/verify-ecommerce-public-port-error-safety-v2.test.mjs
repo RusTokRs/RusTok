@@ -344,47 +344,47 @@ hash_json(context, "encode_checkout_snapshot_hash", snapshot);
 
 function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-public-port-errors-'));
-  put(root, 'crates/rustok-channel/src/ports.rs', `tracing::error!();\n"channel storage is temporarily unavailable";\n${options.channelAppend ?? ''}`);
-  put(root, 'crates/rustok-region/src/ports.rs', `tracing::error!();\n"region storage is temporarily unavailable";\n${options.regionAppend ?? ''}`);
-  put(root, 'crates/rustok-cart/src/checkout_snapshot.rs', `tracing::error!();\n"cart checkout request or projection is invalid";\n"cart checkout snapshot could not be encoded";\n${options.cartAppend ?? ''}`);
+  put(root, 'crates/modules/rustok-channel/src/ports.rs', `tracing::error!();\n"channel storage is temporarily unavailable";\n${options.channelAppend ?? ''}`);
+  put(root, 'crates/modules/rustok-region/src/ports.rs', `tracing::error!();\n"region storage is temporarily unavailable";\n${options.regionAppend ?? ''}`);
+  put(root, 'crates/modules/rustok-cart/src/checkout_snapshot.rs', `tracing::error!();\n"cart checkout request or projection is invalid";\n"cart checkout snapshot could not be encoded";\n${options.cartAppend ?? ''}`);
 
   let pricing = `${canonicalPricing()}${options.pricingAppend ?? ''}`;
   if (options.removePricingCorrelation) pricing = pricing.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
-  put(root, 'crates/rustok-pricing/src/ports.rs', pricing);
+  put(root, 'crates/modules/rustok-pricing/src/ports.rs', pricing);
 
   let payment = `${canonicalPayment()}${options.paymentAppend ?? ''}`;
   if (options.removePaymentOperation) payment = payment.replaceAll('operation = owner_operation', 'operation = omitted');
-  put(root, 'crates/rustok-payment/src/ports.rs', payment);
+  put(root, 'crates/modules/rustok-payment/src/ports.rs', payment);
 
-  put(root, 'crates/rustok-payment/src/checkout_compensation.rs', `${canonicalPaymentCompensation()}${options.paymentCompensationAppend ?? ''}`);
+  put(root, 'crates/modules/rustok-payment/src/checkout_compensation.rs', `${canonicalPaymentCompensation()}${options.paymentCompensationAppend ?? ''}`);
 
   let fulfillment = `${canonicalFulfillment()}${options.fulfillmentAppend ?? ''}`;
   if (options.removeFulfillmentCorrelation) fulfillment = fulfillment.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
-  put(root, 'crates/rustok-fulfillment/src/ports.rs', fulfillment);
+  put(root, 'crates/modules/rustok-fulfillment/src/ports.rs', fulfillment);
 
   let customer = `${canonicalCustomer()}${options.customerAppend ?? ''}`;
   if (options.removeCustomerCorrelation) customer = customer.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
-  put(root, 'crates/rustok-customer/src/ports.rs', customer);
+  put(root, 'crates/modules/rustok-customer/src/ports.rs', customer);
 
   let inventory = `${canonicalInventory()}${options.inventoryAppend ?? ''}`;
   if (options.removeInventoryCorrelation) inventory = inventory.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   if (options.removeInventoryIdentityStorageContext) inventory = inventory.replace('storage_unavailable_with_context(&context, owner_operation, error)', 'storage_context_omitted(error)');
   if (options.removeInventoryHelperStorageContext) inventory = inventory.replace('storage_unavailable_with_context(context, owner_operation, error)', 'storage_context_omitted(error)');
-  put(root, 'crates/rustok-inventory/src/ports.rs', inventory);
+  put(root, 'crates/modules/rustok-inventory/src/ports.rs', inventory);
 
   let order = `${canonicalOrder()}${options.orderAppend ?? ''}`;
   if (options.removeOrderCorrelation) order = order.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
-  put(root, 'crates/rustok-order/src/ports.rs', order);
+  put(root, 'crates/modules/rustok-order/src/ports.rs', order);
 
   let orderCompensation = `${canonicalOrderCompensation()}${options.orderCompensationAppend ?? ''}`;
   if (options.removeOrderCompensationCorrelation) orderCompensation = orderCompensation.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
-  put(root, 'crates/rustok-order/src/checkout_compensation.rs', orderCompensation);
+  put(root, 'crates/modules/rustok-order/src/checkout_compensation.rs', orderCompensation);
 
-  put(root, 'crates/rustok-order/src/checkout_payment_settlement.rs', `${canonicalOrderPaymentSettlement()}${options.orderPaymentSettlementAppend ?? ''}`);
+  put(root, 'crates/modules/rustok-order/src/checkout_payment_settlement.rs', `${canonicalOrderPaymentSettlement()}${options.orderPaymentSettlementAppend ?? ''}`);
 
   let orderRecovery = `${canonicalOrderRecovery()}${options.orderRecoveryAppend ?? ''}`;
   if (options.removeOrderRecoveryCorrelation) orderRecovery = orderRecovery.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
-  put(root, 'crates/rustok-order/src/checkout_order_recovery.rs', orderRecovery);
+  put(root, 'crates/modules/rustok-order/src/checkout_order_recovery.rs', orderRecovery);
   return root;
 }
 

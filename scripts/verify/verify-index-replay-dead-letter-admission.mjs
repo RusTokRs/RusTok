@@ -19,7 +19,7 @@ const requireMarkers = (relative, markers) => {
 };
 
 const jobPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_replay_job.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_job.rs';
 const jobs = requireMarkers(jobPath, [
   'DeadLettered {',
   'job_id: Uuid,',
@@ -84,7 +84,7 @@ if (jobs.includes("UPDATE index_jobs SET state = 'pending'")) {
 }
 
 const testsPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_replay_job_tests.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_job_tests.rs';
 requireMarkers(testsPath, [
   'failed_terminal_replay_job_blocks_scope_without_raw_details',
   'Err(IndexReplayJobError::DeadLettered {',
@@ -97,7 +97,7 @@ requireMarkers(testsPath, [
 ]);
 
 requireMarkers(
-  'crates/rustok-index/src/infrastructure/postgres/source_replay_retry.rs',
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_retry.rs',
   [
     'pub struct PostgresIndexReplayRetryStore',
     'IndexReplayRetryDisposition::TerminalPermanent',
@@ -107,7 +107,7 @@ requireMarkers(
 );
 
 const runnerPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = requireMarkers(runnerPath, [
   'match finish_failure(&self.db, &lease, details).await?',
 ]);
@@ -121,7 +121,7 @@ for (const premature of [
   }
 }
 
-requireMarkers('crates/rustok-index/docs/m6-replay-dead-letter-admission.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-dead-letter-admission.md', [
   'Status: `source_complete_operator_requeue_pending`',
   '`failed` rebuild job becomes the ordinary replay admission barrier',
   '`IndexReplayJobError::DeadLettered`',
@@ -131,10 +131,10 @@ requireMarkers('crates/rustok-index/docs/m6-replay-dead-letter-admission.md', [
   'canonical implementation-plan item',
   'maintainer-run',
 ]);
-requireMarkers('crates/rustok-index/docs/README.md', [
+requireMarkers('crates/modules/rustok-index/docs/README.md', [
   '[M6 Replay Dead-letter Admission](./m6-replay-dead-letter-admission.md)',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add bounded retry/backoff, dead-letter state, and global scheduling ownership.',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [

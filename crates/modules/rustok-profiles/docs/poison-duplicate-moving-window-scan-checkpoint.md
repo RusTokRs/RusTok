@@ -20,13 +20,13 @@ No delivery identity, payload, digest, partition, or offset crosses into Profile
 
 ```text
 scanner/state:
-  crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs
+  crates/modules/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs
 Iggy observer composition:
-  crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs
+  crates/modules/rustok-iggy/src/dlq_duplicate_alert_observer.rs
 server composition:
   apps/server/src/services/event_dlq_duplicate_alert_observer.rs
 machine contracts:
-  crates/rustok-iggy/contracts/evidence/
+  crates/modules/rustok-iggy/contracts/evidence/
     dlq-duplicate-moving-window-scan-source.json
     dlq-duplicate-alert-server-observer-source.json
 verifiers:

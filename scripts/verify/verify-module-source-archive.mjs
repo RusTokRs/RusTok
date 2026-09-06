@@ -6,15 +6,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const crateRoot = path.join(root, 'crates/rustok-build-source');
+const crateRoot = path.join(root, 'crates/utils/rustok-build-source');
 const manifest = fs.readFileSync(path.join(crateRoot, 'Cargo.toml'), 'utf8');
 const reader = fs.readFileSync(path.join(crateRoot, 'src/lib.rs'), 'utf8');
 const writer = fs.readFileSync(path.join(crateRoot, 'src/writer.rs'), 'utf8');
 const cliManifest = fs.readFileSync(
-  path.join(root, 'crates/rustok-modules/cli/Cargo.toml'),
+  path.join(root, 'crates/modules/rustok-modules/cli/Cargo.toml'),
   'utf8',
 );
-const cli = fs.readFileSync(path.join(root, 'crates/rustok-modules/cli/src/lib.rs'), 'utf8');
+const cli = fs.readFileSync(path.join(root, 'crates/modules/rustok-modules/cli/src/lib.rs'), 'utf8');
 
 for (const marker of [
   'pub struct SourceArchiveBuilder',

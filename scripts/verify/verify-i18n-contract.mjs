@@ -79,27 +79,27 @@ expectNotContains(
   "legacy Russian default in the Leptos admin generated i18n module",
 );
 expectContains(
-  "crates/rustok-modules/src/static_package.rs",
+  "crates/modules/rustok-modules/src/static_package.rs",
   "rustok_api::normalize_locale_tag(locale)",
   "module UI i18n validation to normalize locale tags via rustok-api",
 );
 expectNotContains(
-  "crates/rustok-modules/src/static_package.rs",
+  "crates/modules/rustok-modules/src/static_package.rs",
   "is_valid_locale_key(",
   "legacy short-form locale validator in manifest i18n contract",
 );
 expectNotContains(
-  "crates/rustok-core/src/field_schema.rs",
+  "crates/libs/rustok-core/src/field_schema.rs",
   "LOCALE_KEY_REGEX",
   "legacy locale regex in rustok-core field schema",
 );
 expectNotContains(
-  "crates/rustok-ai/src/metrics.rs",
+  "crates/modules/rustok-ai/src/metrics.rs",
   "fn locale_tags_match(",
   "duplicate locale matcher in rustok-ai metrics",
 );
 expectNotContains(
-  "crates/rustok-ai/src/metrics.rs",
+  "crates/modules/rustok-ai/src/metrics.rs",
   "fn normalize_locale_tag(",
   "duplicate locale normalizer in rustok-ai metrics",
 );

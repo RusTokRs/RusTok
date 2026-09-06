@@ -18,25 +18,25 @@ const forbidAll = (text, markers, label) => {
 };
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-topic-move-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-topic-move-proof.json";
 const ownerContractPath =
-  "crates/rustok-forum/contracts/forum-topic-move-owner.json";
+  "crates/modules/rustok-forum/contracts/forum-topic-move-owner.json";
 const docPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d16-topic-move-proof.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d16-topic-move-proof.md";
 const testPath =
   "apps/server/tests/forum_versioned_invalidation_topic_move.rs";
 const verifierPath =
   "scripts/verify/verify-forum-search-link-forum-03-topic-move-proof.mjs";
 const evidencePath =
   "target/forum-search-link-forum-03-topic-move-evidence.json";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
-const moveServicePath = "crates/rustok-forum/src/services/topic_move.rs";
-const projectionSourcePath = "crates/rustok-forum/src/search_projection.rs";
-const reconcilerPath = "crates/rustok-search/src/forum_reconciliation.rs";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
+const moveServicePath = "crates/modules/rustok-forum/src/services/topic_move.rs";
+const projectionSourcePath = "crates/modules/rustok-forum/src/search_projection.rs";
+const reconcilerPath = "crates/modules/rustok-search/src/forum_reconciliation.rs";
 const categoryOwnerPath =
-  "crates/rustok-forum/src/services/category_projection_owner.rs";
-const topicOwnerPath = "crates/rustok-forum/src/services/topic_inline.rs";
-const replyOwnerPath = "crates/rustok-forum/src/services/reply_owner.rs";
+  "crates/modules/rustok-forum/src/services/category_projection_owner.rs";
+const topicOwnerPath = "crates/modules/rustok-forum/src/services/topic_inline.rs";
+const replyOwnerPath = "crates/modules/rustok-forum/src/services/reply_owner.rs";
 
 const contract = JSON.parse(read(contractPath));
 assert.equal(

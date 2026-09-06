@@ -4,16 +4,16 @@ import { readFileSync } from "node:fs";
 
 const files = {
   module: readFileSync(
-    "crates/rustok-index/src/infrastructure/postgres/mod.rs",
+    "crates/modules/rustok-index/src/infrastructure/postgres/mod.rs",
     "utf8",
   ),
-  lib: readFileSync("crates/rustok-index/src/lib.rs", "utf8"),
+  lib: readFileSync("crates/modules/rustok-index/src/lib.rs", "utf8"),
   registration: readFileSync(
-    "crates/rustok-index/src/infrastructure/postgres/schema_registration.rs",
+    "crates/modules/rustok-index/src/infrastructure/postgres/schema_registration.rs",
     "utf8",
   ),
   tests: readFileSync(
-    "crates/rustok-index/src/infrastructure/postgres/schema_registration_tests.rs",
+    "crates/modules/rustok-index/src/infrastructure/postgres/schema_registration_tests.rs",
     "utf8",
   ),
 };

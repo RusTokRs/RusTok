@@ -5,18 +5,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
-const sourcePath = "crates/rustok-pages/admin/src/metadata_properties.rs";
-const modelPath = "crates/rustok-pages/admin/src/model.rs";
+const sourcePath = "crates/modules/rustok-pages/admin/src/metadata_properties.rs";
+const modelPath = "crates/modules/rustok-pages/admin/src/model.rs";
 const evidencePath =
-  "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json";
+  "crates/modules/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json";
 const planPath = "docs/modules/pages-page-builder-parity-continuation-plan.md";
 const consumerContractPath =
-  "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json";
-const cargoPath = "crates/rustok-pages/admin/Cargo.toml";
+  "crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json";
+const cargoPath = "crates/modules/rustok-pages/admin/Cargo.toml";
 
 const source = read(sourcePath);
 const model = read(modelPath);
@@ -296,7 +296,7 @@ if (
   evidenceRegistration?.state !== "source_ready_execution_pending" ||
   evidenceRegistration?.contract !== evidencePath ||
   evidenceRegistration?.verifier !==
-    "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
 ) {
   failures.push("consumer property metadata revision/isolation evidence registration is invalid");
 }

@@ -38,10 +38,10 @@ transport `status` fields remain strings for backward compatibility.
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `CartCheckoutPort` / `cart.checkout.v2`, covering the
   checkout snapshot plus context update and checkout lifecycle writes.
-  in `crates/rustok-cart/contracts/cart-fba-registry.json`.
+  in `crates/modules/rustok-cart/contracts/cart-fba-registry.json`.
 - Static and no-compile runtime evidence:
-  `crates/rustok-cart/contracts/evidence/cart-contract-test-static-matrix.json`
-  and `crates/rustok-cart/contracts/evidence/cart-runtime-contract-smoke.json`.
+  `crates/modules/rustok-cart/contracts/evidence/cart-contract-test-static-matrix.json`
+  and `crates/modules/rustok-cart/contracts/evidence/cart-runtime-contract-smoke.json`.
 - `scripts/verify/verify-cart-storefront-boundary.mjs` locks the storefront
   core/transport/UI split, native host runtime, GraphQL fallback, and removal
   of the legacy API layer.

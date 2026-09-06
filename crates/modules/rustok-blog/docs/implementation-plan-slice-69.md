@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 69 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-68.md`. Slices 1–66 remain in
+`crates/modules/rustok-blog/docs/implementation-plan-slice-68.md`. Slices 1–66 remain in
 the original implementation plan, slice 67 retains the transport-neutral Comments
 remote adapter, and slice 68 retains the concrete TCP JSON client transport.
 
@@ -21,9 +21,9 @@ remains maintainer-owned.
 
 ### Implemented source scope
 
-- `crates/rustok-comments/src/tcp_protocol.rs` owns the shared bounded four-byte
+- `crates/modules/rustok-comments/src/tcp_protocol.rs` owns the shared bounded four-byte
   unsigned big-endian length-prefix framing used by both TCP client and server.
-- `crates/rustok-comments/src/tcp_server.rs` adds
+- `crates/modules/rustok-comments/src/tcp_server.rs` adds
   `TcpJsonCommentsServerAdapter` for exactly one typed request/reply exchange on
   a host-accepted `TcpStream`.
 - The adapter decodes `CommentsThreadRequest`, dispatches all seven operations to
@@ -46,10 +46,10 @@ remains maintainer-owned.
 - Malformed typed JSON, authority denial, tenant mismatch, provider errors,
   oversized frames, disconnects, response encoding failure, and processing
   deadline exhaustion remain typed and fail closed.
-- `crates/rustok-comments/src/lib.rs` exports the client and server adapters only
+- `crates/modules/rustok-comments/src/lib.rs` exports the client and server adapters only
   behind the existing opt-in `tcp-transport` feature.
 - Source evidence is retained at
-  `crates/rustok-blog/contracts/evidence/blog-comments-tcp-server-adapter.json`.
+  `crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-server-adapter.json`.
 - The standalone fail-closed verifier is
   `scripts/verify/verify-blog-comments-tcp-server-adapter.mjs`.
 

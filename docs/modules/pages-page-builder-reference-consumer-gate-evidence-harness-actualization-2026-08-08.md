@@ -14,7 +14,7 @@ This slice makes those two evidence layers explicit and requires both. It does n
 
 ## Four required machine packets
 
-`crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json` now requires four existing machine packets:
+`crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json` now requires four existing machine packets:
 
 1. `pages_inline_edit_artifact_http_execution_v1` / `artifact_http_execution_passed_browser_rollout_pending`;
 2. `pages_inline_edit_browser_execution_v1` / `browser_execution_passed_rollout_pending`;
@@ -126,9 +126,9 @@ It does not accept Forum Wave or mutate canonical source. A maintainer must stil
 
 ## Source evidence and guards
 
-- `crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-evidence-harness-source.json` records the unexecuted four-packet candidate state.
-- `crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs` locks the four-input chain, both rollout guards, canonical error separation, privacy boundary and pending-approval semantics.
-- `crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json` keeps `execution_gate = pending`, `accepted = false`, provider health `unobserved`, Forum Wave blocked and FFA/FBA unpromoted.
+- `crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-evidence-harness-source.json` records the unexecuted four-packet candidate state.
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs` locks the four-input chain, both rollout guards, canonical error separation, privacy boundary and pending-approval semantics.
+- `crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json` keeps `execution_gate = pending`, `accepted = false`, provider health `unobserved`, Forum Wave blocked and FFA/FBA unpromoted.
 
 ## Maintainer execution
 
@@ -150,9 +150,9 @@ RUSTOK_PAGES_REFERENCE_GATE_OUTPUT
 Suggested source guards, intentionally not run by this implementation slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs
 ```
 
 No tests, verifiers, Cargo commands, Node commands, browser runs, HTTP/GraphQL requests, workflows, CI, builds, formatting or migrations were run by this implementation slice.

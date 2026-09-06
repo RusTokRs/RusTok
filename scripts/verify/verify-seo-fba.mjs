@@ -10,11 +10,11 @@ function sameSet(actual, expected, label) {
   if (a !== e) fail(`${label} drift: expected ${e}, got ${a}`);
 }
 
-const registryPath = 'crates/rustok-seo/contracts/seo-fba-registry.json';
-const evidencePath = 'crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json';
-const providerPath = 'crates/rustok-media/contracts/media-fba-registry.json';
-const providerFallbackSmokePath = 'crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json';
-const consumerRuntimeOrderSmokePath = 'crates/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json';
+const registryPath = 'crates/modules/rustok-seo/contracts/seo-fba-registry.json';
+const evidencePath = 'crates/modules/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json';
+const providerPath = 'crates/modules/rustok-media/contracts/media-fba-registry.json';
+const providerFallbackSmokePath = 'crates/modules/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json';
+const consumerRuntimeOrderSmokePath = 'crates/modules/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const provider = json(providerPath);
@@ -30,17 +30,17 @@ if (dependency.module !== 'media' || dependency.registry !== providerPath) fail(
 if (dependency.contract_version !== provider.contract_version || dependency.port !== 'MediaAssetReadPort') fail('provider contract/port drift');
 const gap = registry.implementation_gap;
 if (!gap || gap.status !== 'product_consumer_composed_other_target_providers_pending' || !gap.remaining_work.includes('media_asset_id') || !gap.remaining_work.includes('live provider')) fail('SEO media consumer implementation gap drift');
-const seoCargo = read('crates/rustok-seo/Cargo.toml');
+const seoCargo = read('crates/modules/rustok-seo/Cargo.toml');
 if (!seoCargo.includes('rustok-media')) fail('SEO media consumer must depend on rustok-media');
-const seoTargets = read('crates/rustok-seo/src/services/targets.rs');
-const seoService = read('crates/rustok-seo/src/services/mod.rs');
+const seoTargets = read('crates/modules/rustok-seo/src/services/targets.rs');
+const seoService = read('crates/modules/rustok-seo/src/services/mod.rs');
 const serverComposition = read('apps/server/src/services/module_event_dispatcher.rs');
 hasAll(seoTargets, ['MediaAssetReadPort', '.get_image_descriptor(', '.with_deadline(Duration::from_secs(2))', 'unwrap_or(image.url)'], 'SEO media consumer');
 hasAll(seoService, ['SeoMediaAssetReadProvider', 'with_media_asset_read_port', 'get::<SeoMediaAssetReadProvider>()'], 'SEO media provider injection');
 hasAll(serverComposition, ['rustok_media::MediaService::new', 'rustok_seo::SeoMediaAssetReadProvider::new'], 'server media provider composition');
-const targets = read('crates/rustok-seo-targets/src/lib.rs');
+const targets = read('crates/modules/rustok-seo-targets/src/lib.rs');
 hasAll(targets, ['pub media_asset_id: Option<Uuid>', 'pub fn with_media_asset_id'], 'SEO target media reference contract');
-const productSeoTargets = read('crates/rustok-product/src/seo_targets.rs');
+const productSeoTargets = read('crates/modules/rustok-product/src/seo_targets.rs');
 hasAll(productSeoTargets, ['ProductImageResponse', '.with_media_asset_id(image.media_id)'], 'product SEO media reference handoff');
 if (provider.module !== 'media' || provider.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(provider.status)) fail('media provider status drift');
 const providerOperations = provider.ports?.[0]?.operations ?? [];
@@ -51,7 +51,7 @@ sameSet(dependency.fallback_profiles, mediaConsumer.fallback_profiles, 'consumer
 sameSet(dependency.degraded_modes, mediaConsumer.degraded_modes, 'consumer/provider degraded modes');
 if (dependency.context !== 'rustok_api::ports::PortContext' || dependency.error !== 'rustok_api::ports::PortError') fail('consumer context/error drift');
 
-const manifest = read('crates/rustok-seo/rustok-module.toml');
+const manifest = read('crates/modules/rustok-seo/rustok-module.toml');
 hasAll(manifest, ['[fba.consumer]', 'registry = "contracts/seo-fba-registry.json"', 'profile = "seo_image_descriptor"', 'media.asset_read.v1'], 'manifest');
 
 if (registry.evidence?.provider_fallback_smoke !== providerFallbackSmokePath) fail('registry missing provider fallback smoke source');
@@ -106,10 +106,10 @@ for (const row of evidence.consumer_runtime_drill_matrix) {
   if ((row.blocks_closeout_if ?? []).length < 2) fail(`consumer runtime drill ${row.case} misses blockers`);
 }
 
-const plan = read('crates/rustok-seo/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-seo/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `in_progress`', 'seo-fba-registry.json', 'MediaAssetReadPort', 'media asset UUID'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `seo` |', 'crates/rustok-seo/contracts/seo-fba-registry.json', '`in_progress` | `in_progress`', 'media asset UUIDs'], 'central registry');
+hasAll(central, ['| `seo` |', 'crates/modules/rustok-seo/contracts/seo-fba-registry.json', '`in_progress` | `in_progress`', 'media asset UUIDs'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`seo`', 'MediaAssetReadPort', 'seo-fba-registry.json', 'media asset UUIDs'], 'unified plan');
 

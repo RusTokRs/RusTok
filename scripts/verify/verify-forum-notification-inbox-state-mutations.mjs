@@ -35,7 +35,7 @@ function section(source, startMarker, endMarker) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-notification-inbox-state-mutations.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-inbox-state-mutations.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const owner = read(contract.notifications_owner_file ?? "");
 const surface = read(contract.notifications_surface_file ?? "");

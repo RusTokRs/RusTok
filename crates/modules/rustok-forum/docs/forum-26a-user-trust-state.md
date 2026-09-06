@@ -33,7 +33,7 @@ The next bounded slice should publish a read-only trust facts adapter over the a
 
 ## Canonical plan debt
 
-The canonical `crates/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten through the GitHub contents API. The file exceeds two thousand lines and complete replacement risks unrelated roadmap loss. A later safe repository-local edit must mark `FORUM-26` in progress, record `FORUM-26A`, advance the FORUM-20 trust dependency, and retain posting-policy evaluation, trust adapter composition, limits, duplicate hashing, rate limiting, and optional scoring as remaining work.
+The canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten through the GitHub contents API. The file exceeds two thousand lines and complete replacement risks unrelated roadmap loss. A later safe repository-local edit must mark `FORUM-26` in progress, record `FORUM-26A`, advance the FORUM-20 trust dependency, and retain posting-policy evaluation, trust adapter composition, limits, duplicate hashing, rate limiting, and optional scoring as remaining work.
 
 ## Validation status
 

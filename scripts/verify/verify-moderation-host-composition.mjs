@@ -9,8 +9,8 @@ const profiles = fs.readFileSync(
   "apps/server/tests/moderation_composition_profiles.rs",
   "utf8",
 );
-const forumCargo = fs.readFileSync("crates/rustok-forum/Cargo.toml", "utf8");
-const forumLib = fs.readFileSync("crates/rustok-forum/src/lib.rs", "utf8");
+const forumCargo = fs.readFileSync("crates/modules/rustok-forum/Cargo.toml", "utf8");
+const forumLib = fs.readFileSync("crates/modules/rustok-forum/src/lib.rs", "utf8");
 
 function requireText(source, needle, message) {
   if (!source.includes(needle)) throw new Error(message);

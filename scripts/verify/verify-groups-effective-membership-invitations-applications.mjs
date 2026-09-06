@@ -6,23 +6,23 @@ const failures = [];
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 
 const files = {
-  error: "crates/rustok-groups/src/error.rs",
-  guard: "crates/rustok-groups/src/effective_membership_guard.rs",
-  locking: "crates/rustok-groups/src/membership_enforcement_transaction.rs",
-  invitations: "crates/rustok-groups/src/effective_invitations.rs",
-  invitationOwner: "crates/rustok-groups/src/invitations_transactional.rs",
-  targetedOwner: "crates/rustok-groups/src/targeted_invitations_transactional.rs",
-  applications: "crates/rustok-groups/src/effective_applications.rs",
-  applicationOwner: "crates/rustok-groups/src/applications_transactional.rs",
-  applicationCasOwner: "crates/rustok-groups/src/applications_transactional_cas.rs",
+  error: "crates/modules/rustok-groups/src/error.rs",
+  guard: "crates/modules/rustok-groups/src/effective_membership_guard.rs",
+  locking: "crates/modules/rustok-groups/src/membership_enforcement_transaction.rs",
+  invitations: "crates/modules/rustok-groups/src/effective_invitations.rs",
+  invitationOwner: "crates/modules/rustok-groups/src/invitations_transactional.rs",
+  targetedOwner: "crates/modules/rustok-groups/src/targeted_invitations_transactional.rs",
+  applications: "crates/modules/rustok-groups/src/effective_applications.rs",
+  applicationOwner: "crates/modules/rustok-groups/src/applications_transactional.rs",
+  applicationCasOwner: "crates/modules/rustok-groups/src/applications_transactional_cas.rs",
   applicationLifecycleOwner:
-    "crates/rustok-groups/src/applications_transactional_lifecycle.rs",
-  module: "crates/rustok-groups/src/lib.rs",
+    "crates/modules/rustok-groups/src/applications_transactional_lifecycle.rs",
+  module: "crates/modules/rustok-groups/src/lib.rs",
   contract:
-    "crates/rustok-groups/contracts/groups-effective-membership-invitations-applications.json",
-  plan: "crates/rustok-groups/docs/implementation-plan.md",
-  runtime: "crates/rustok-groups/docs/README.md",
-  readme: "crates/rustok-groups/README.md",
+    "crates/modules/rustok-groups/contracts/groups-effective-membership-invitations-applications.json",
+  plan: "crates/modules/rustok-groups/docs/implementation-plan.md",
+  runtime: "crates/modules/rustok-groups/docs/README.md",
+  readme: "crates/modules/rustok-groups/README.md",
 };
 
 for (const relative of Object.values(files)) {

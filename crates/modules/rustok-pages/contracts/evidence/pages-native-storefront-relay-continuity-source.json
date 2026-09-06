@@ -4,7 +4,7 @@
   "date": "2026-08-05",
   "scope": "reviewed Pages publication durable lifecycle relay through a synchronous test target to registered native storefront generation miss refill hit continuity",
   "harness": {
-    "path": "crates/rustok-pages/storefront/tests/native_storefront_relay_continuity_sqlite.rs",
+    "path": "crates/modules/rustok-pages/storefront/tests/native_storefront_relay_continuity_sqlite.rs",
     "test": "reviewed_node_published_relay_rotates_registered_native_route_key_before_refill",
     "backend": "sqlite_in_memory",
     "route": "/api/fn/pages/storefront-data",

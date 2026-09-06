@@ -3,16 +3,16 @@ name: Forum Taxonomy Category Binding Contract
 on:
   pull_request:
     paths:
-      - "crates/rustok-forum/src/entities/forum_category_taxonomy_binding.rs"
-      - "crates/rustok-forum/src/entities/mod.rs"
-      - "crates/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs"
-      - "crates/rustok-forum/src/migrations/mod.rs"
-      - "crates/rustok-forum/src/services/category.rs"
-      - "crates/rustok-forum/src/services/category_mutation_support.rs"
-      - "crates/rustok-forum/src/services/category_import.rs"
-      - "crates/rustok-forum/src/services/category_projection_owner.rs"
-      - "crates/rustok-forum/src/services/mod.rs"
-      - "crates/rustok-forum/tests/category_taxonomy_binding.rs"
+      - "crates/modules/rustok-forum/src/entities/forum_category_taxonomy_binding.rs"
+      - "crates/modules/rustok-forum/src/entities/mod.rs"
+      - "crates/modules/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs"
+      - "crates/modules/rustok-forum/src/migrations/mod.rs"
+      - "crates/modules/rustok-forum/src/services/category.rs"
+      - "crates/modules/rustok-forum/src/services/category_mutation_support.rs"
+      - "crates/modules/rustok-forum/src/services/category_import.rs"
+      - "crates/modules/rustok-forum/src/services/category_projection_owner.rs"
+      - "crates/modules/rustok-forum/src/services/mod.rs"
+      - "crates/modules/rustok-forum/tests/category_taxonomy_binding.rs"
       - "docs/migrations/backfill-contracts.json"
       - "scripts/verify/verify-forum-taxonomy-category-binding.mjs"
       - ".github/workflows/forum-taxonomy-category-binding.yml"
@@ -20,16 +20,16 @@ on:
     branches:
       - main
     paths:
-      - "crates/rustok-forum/src/entities/forum_category_taxonomy_binding.rs"
-      - "crates/rustok-forum/src/entities/mod.rs"
-      - "crates/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs"
-      - "crates/rustok-forum/src/migrations/mod.rs"
-      - "crates/rustok-forum/src/services/category.rs"
-      - "crates/rustok-forum/src/services/category_mutation_support.rs"
-      - "crates/rustok-forum/src/services/category_import.rs"
-      - "crates/rustok-forum/src/services/category_projection_owner.rs"
-      - "crates/rustok-forum/src/services/mod.rs"
-      - "crates/rustok-forum/tests/category_taxonomy_binding.rs"
+      - "crates/modules/rustok-forum/src/entities/forum_category_taxonomy_binding.rs"
+      - "crates/modules/rustok-forum/src/entities/mod.rs"
+      - "crates/modules/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs"
+      - "crates/modules/rustok-forum/src/migrations/mod.rs"
+      - "crates/modules/rustok-forum/src/services/category.rs"
+      - "crates/modules/rustok-forum/src/services/category_mutation_support.rs"
+      - "crates/modules/rustok-forum/src/services/category_import.rs"
+      - "crates/modules/rustok-forum/src/services/category_projection_owner.rs"
+      - "crates/modules/rustok-forum/src/services/mod.rs"
+      - "crates/modules/rustok-forum/tests/category_taxonomy_binding.rs"
       - "docs/migrations/backfill-contracts.json"
       - "scripts/verify/verify-forum-taxonomy-category-binding.mjs"
       - ".github/workflows/forum-taxonomy-category-binding.yml"
@@ -87,10 +87,10 @@ jobs:
         shell: bash
         run: |
           rustfmt +1.96.0 --edition 2024 --check \
-            crates/rustok-forum/src/entities/forum_category_taxonomy_binding.rs \
-            crates/rustok-forum/src/services/category_mutation_support.rs \
-            crates/rustok-forum/src/services/category.rs \
-            crates/rustok-forum/src/services/category_projection_owner.rs
+            crates/modules/rustok-forum/src/entities/forum_category_taxonomy_binding.rs \
+            crates/modules/rustok-forum/src/services/category_mutation_support.rs \
+            crates/modules/rustok-forum/src/services/category.rs \
+            crates/modules/rustok-forum/src/services/category_projection_owner.rs
       - name: Run Forum Taxonomy Category binding runtime contract
         run: cargo test --locked -p rustok-forum --test category_taxonomy_binding -- --nocapture
       - name: Compile Forum binding and migration registry

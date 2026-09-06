@@ -8,9 +8,9 @@ const fail = (message) => {
   process.exit(1);
 };
 
-const lib = read('crates/rustok-index/src/lib.rs');
-const domain = read('crates/rustok-index/src/domain/mod.rs');
-const cargo = read('crates/rustok-index/Cargo.toml');
+const lib = read('crates/modules/rustok-index/src/lib.rs');
+const domain = read('crates/modules/rustok-index/src/domain/mod.rs');
+const cargo = read('crates/modules/rustok-index/Cargo.toml');
 const productionDependencySections = cargo
   .split(/\n(?=\[)/u)
   .filter((section) => {
@@ -18,10 +18,10 @@ const productionDependencySections = cargo
     return header === '[dependencies]' || /^\[target\..+\.dependencies\]$/u.test(header);
   })
   .join('\n');
-const manifest = read('crates/rustok-index/rustok-module.toml');
-const plan = read('crates/rustok-index/docs/implementation-plan.md');
+const manifest = read('crates/modules/rustok-index/rustok-module.toml');
+const plan = read('crates/modules/rustok-index/docs/implementation-plan.md');
 const normalizedPlan = plan.replace(/\s+/gu, ' ');
-const benchmarkDoc = read('crates/rustok-index/docs/storage-benchmark.md');
+const benchmarkDoc = read('crates/modules/rustok-index/docs/storage-benchmark.md');
 const normalizedBenchmarkDoc = benchmarkDoc.replace(/\s+/gu, ' ');
 const benchmarkCargo = read('ops/benches/Cargo.toml');
 const benchmarkConfig = read('ops/benches/src/index_storage/config.rs');
@@ -48,17 +48,17 @@ const maintenanceRunner = read('ops/benches/src/index_storage/maintenance_runner
 const serverDispatcher = read('apps/server/src/services/module_event_dispatcher.rs');
 
 for (const obsolete of [
-  'crates/rustok-index/src/ports.rs',
-  'crates/rustok-index/src/models.rs',
-  'crates/rustok-index/src/error.rs',
-  'crates/rustok-index/src/traits.rs',
-  'crates/rustok-index/src/content',
-  'crates/rustok-index/src/product',
-  'crates/rustok-index/src/flex',
-  'crates/rustok-index/src/search',
-  'crates/rustok-index/contracts/index-fba-registry.json',
-  'crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json',
-  'crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json',
+  'crates/modules/rustok-index/src/ports.rs',
+  'crates/modules/rustok-index/src/models.rs',
+  'crates/modules/rustok-index/src/error.rs',
+  'crates/modules/rustok-index/src/traits.rs',
+  'crates/modules/rustok-index/src/content',
+  'crates/modules/rustok-index/src/product',
+  'crates/modules/rustok-index/src/flex',
+  'crates/modules/rustok-index/src/search',
+  'crates/modules/rustok-index/contracts/index-fba-registry.json',
+  'crates/modules/rustok-index/contracts/evidence/index-contract-test-static-matrix.json',
+  'crates/modules/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json',
   'ops/benches/src/index_storage/sql/eav.rs',
   'ops/benches/src/index_storage/sql/hot.rs',
 ]) {

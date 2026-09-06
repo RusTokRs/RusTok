@@ -4,22 +4,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  migration: "crates/rustok-pages/src/migrations/m20260807_000015_create_page_artifact_binding_replacements.rs",
-  entity: "crates/rustok-pages/src/entities/page_artifact_binding_replacement_operation.rs",
-  dto: "crates/rustok-pages/src/dto/artifact_binding_replacement.rs",
-  service: "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
-  rollback: "crates/rustok-pages/src/services/page/rollback.rs",
-  artifactService: "crates/rustok-pages/src/services/page_builder_artifact.rs",
-  sqliteTest: "crates/rustok-pages/tests/explicit_artifact_binding_replacement_sqlite.rs",
-  singleLossTest: "crates/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs",
-  multiLossTest: "crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs",
-  rollbackLossTest: "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs",
-  repeatedLossTest: "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json",
-  recoveryPacket: "crates/rustok-pages/docs/explicit-immutable-artifact-loss-activation-recovery.md",
+  migration: "crates/modules/rustok-pages/src/migrations/m20260807_000015_create_page_artifact_binding_replacements.rs",
+  entity: "crates/modules/rustok-pages/src/entities/page_artifact_binding_replacement_operation.rs",
+  dto: "crates/modules/rustok-pages/src/dto/artifact_binding_replacement.rs",
+  service: "crates/modules/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+  rollback: "crates/modules/rustok-pages/src/services/page/rollback.rs",
+  artifactService: "crates/modules/rustok-pages/src/services/page_builder_artifact.rs",
+  sqliteTest: "crates/modules/rustok-pages/tests/explicit_artifact_binding_replacement_sqlite.rs",
+  singleLossTest: "crates/modules/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs",
+  multiLossTest: "crates/modules/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs",
+  rollbackLossTest: "crates/modules/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs",
+  repeatedLossTest: "crates/modules/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json",
+  recoveryPacket: "crates/modules/rustok-pages/docs/explicit-immutable-artifact-loss-activation-recovery.md",
   latestOverlay: "docs/modules/pages-page-builder-repeated-artifact-loss-recovery-actualization-2026-08-07.md",
 };
 

@@ -96,14 +96,14 @@ function packageSource({ omitVerify = false, omitAggregate = false } = {}) {
 
 function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-forum-storefront-boundary-"));
-  writeFixtureFile(root, "crates/rustok-forum/storefront/src/lib.rs", `${options.restoredApi ? "mod api;" : ""}\npub use ui::leptos::ForumView;\n`);
-  writeFixtureFile(root, "crates/rustok-forum/storefront/src/core.rs", coreSource(options));
-  writeFixtureFile(root, "crates/rustok-forum/storefront/src/ui/leptos.rs", uiSource(options));
-  writeFixtureFile(root, "crates/rustok-forum/storefront/src/transport/mod.rs", "mod graphql_adapter { include!(\"graphql_adapter.rs\"); }\npub async fn fetch_storefront_forum() { graphql_adapter::fetch_storefront_forum().await; }\n");
-  writeFixtureFile(root, "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub async fn fetch_storefront_forum() {}\n");
-  writeFixtureFile(root, "crates/rustok-forum/storefront/Cargo.toml", "[dependencies]\nleptos-ui.workspace = true\n");
-  if (options.restoredApi) writeFixtureFile(root, "crates/rustok-forum/storefront/src/api.rs", "mod graphql {}\n");
-  writeFixtureFile(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-storefront-boundary.mjs shared `RichTextHtml`\n");
+  writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/lib.rs", `${options.restoredApi ? "mod api;" : ""}\npub use ui::leptos::ForumView;\n`);
+  writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/core.rs", coreSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/transport/mod.rs", "mod graphql_adapter { include!(\"graphql_adapter.rs\"); }\npub async fn fetch_storefront_forum() { graphql_adapter::fetch_storefront_forum().await; }\n");
+  writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub async fn fetch_storefront_forum() {}\n");
+  writeFixtureFile(root, "crates/modules/rustok-forum/storefront/Cargo.toml", "[dependencies]\nleptos-ui.workspace = true\n");
+  if (options.restoredApi) writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/api.rs", "mod graphql {}\n");
+  writeFixtureFile(root, "crates/modules/rustok-forum/docs/implementation-plan.md", "verify-forum-storefront-boundary.mjs shared `RichTextHtml`\n");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-forum-storefront-boundary.mjs\n");
   writeFixtureFile(root, "scripts/verify/verify-forum-storefront-boundary.test.mjs", "passes canonical fixture\nrejects Leptos-specific core\nrejects direct richtext HTML rendering\nrejects missing storefront content-locale bidi\n");
   writeFixtureFile(root, "package.json", packageSource(options));

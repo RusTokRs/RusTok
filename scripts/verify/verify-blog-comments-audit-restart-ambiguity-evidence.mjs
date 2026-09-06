@@ -18,9 +18,9 @@ const recoveryPath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_recovery_postgres.rs';
 const writerPath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_canonical_writer.rs';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-96.md';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-96.md';
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-audit-restart-ambiguity-evidence.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-audit-restart-ambiguity-evidence.json';
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');

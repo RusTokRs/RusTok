@@ -18,24 +18,24 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const cargoPath = 'crates/rustok-index/Cargo.toml';
-const libPath = 'crates/rustok-index/src/lib.rs';
-const postgresPath = 'crates/rustok-index/src/infrastructure/postgres/mod.rs';
+const cargoPath = 'crates/modules/rustok-index/Cargo.toml';
+const libPath = 'crates/modules/rustok-index/src/lib.rs';
+const postgresPath = 'crates/modules/rustok-index/src/infrastructure/postgres/mod.rs';
 const schedulerPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs';
 const runnerPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_runner.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_runner.rs';
 const replayRuntimePath =
-  'crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
-const runtimePath = 'crates/rustok-runtime/src/lib.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
+const runtimePath = 'crates/libs/rustok-runtime/src/lib.rs';
 const appRuntimePath = 'apps/server/src/services/app_runtime.rs';
-const docsPath = 'crates/rustok-index/docs/m6-reconciliation-host-scheduler.md';
+const docsPath = 'crates/modules/rustok-index/docs/m6-reconciliation-host-scheduler.md';
 const retryDocsPath =
-  'crates/rustok-index/docs/m6-reconciliation-retry-transition-store.md';
+  'crates/modules/rustok-index/docs/m6-reconciliation-retry-transition-store.md';
 const runnerDocsPath =
-  'crates/rustok-index/docs/m6-reconciliation-runner-retry-wiring.md';
-const docsIndexPath = 'crates/rustok-index/docs/README.md';
-const planPath = 'crates/rustok-index/docs/implementation-plan.md';
+  'crates/modules/rustok-index/docs/m6-reconciliation-runner-retry-wiring.md';
+const docsIndexPath = 'crates/modules/rustok-index/docs/README.md';
+const planPath = 'crates/modules/rustok-index/docs/implementation-plan.md';
 const aggregatePath = 'scripts/verify/verify-index-query-contract.mjs';
 
 requireMarkers(cargoPath, [

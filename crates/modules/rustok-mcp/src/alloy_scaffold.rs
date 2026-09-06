@@ -88,7 +88,7 @@ pub struct ReviewModuleScaffoldResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ApplyModuleScaffoldRequest {
     pub draft_id: String,
-    /// Absolute workspace root where `crates/rustok-<slug>` should be written.
+    /// Absolute workspace root where `crates/modules/rustok-<slug>` should be written.
     pub workspace_root: String,
     /// Explicit confirmation that the reviewed design scaffold should be written.
     pub confirm: bool,
@@ -124,7 +124,7 @@ pub fn generate_module_scaffold(
     let slug = request.slug.trim().to_string();
     let crate_name = format!("rustok-{slug}");
     let module_type = format!("{}Module", pascal_case(&slug));
-    let crate_path = format!("crates/{crate_name}");
+    let crate_path = format!("crates/modules/{crate_name}");
     let file_map = build_file_map(&slug, &crate_name, &module_type, request);
 
     Ok(ScaffoldModulePreview {

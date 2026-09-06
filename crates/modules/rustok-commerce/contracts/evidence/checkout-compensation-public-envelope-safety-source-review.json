@@ -1,10 +1,10 @@
 {
   "status": "commerce_checkout_compensation_public_envelope_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/services/checkout_compensation.rs",
-    "crates/rustok-commerce/docs/checkout-compensation-public-envelope-safety.md",
+    "crates/modules/rustok-commerce/src/services/checkout_compensation.rs",
+    "crates/modules/rustok-commerce/docs/checkout-compensation-public-envelope-safety.md",
     "scripts/verify/verify-commerce-checkout-compensation-public-envelope-safety.mjs",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_contract": {
     "manual_reconciliation_state_site_count": 7,

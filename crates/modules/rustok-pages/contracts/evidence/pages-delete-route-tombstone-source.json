@@ -53,15 +53,15 @@
     "resolver": "PageRouteService::resolve",
     "reason": "Page deleted"
   },
-  "migration": "crates/rustok-pages/src/migrations/m20260806_000011_create_page_route_publications.rs",
+  "migration": "crates/modules/rustok-pages/src/migrations/m20260806_000011_create_page_route_publications.rs",
   "regression": {
-    "path": "crates/rustok-pages/tests/page_delete_route_tombstone_sqlite.rs",
+    "path": "crates/modules/rustok-pages/tests/page_delete_route_tombstone_sqlite.rs",
     "tests": [
       "delete_turns_every_retained_public_route_into_gone_without_rewriting_redirects",
       "deleting_a_never_published_draft_does_not_reserve_its_slug"
     ],
     "backend": "sqlite_in_memory"
   },
-  "source_verifier": "crates/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs",
+  "source_verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs",
   "packet": "docs/modules/pages-page-builder-delete-route-tombstone-packet-2026-08-06.md"
 }

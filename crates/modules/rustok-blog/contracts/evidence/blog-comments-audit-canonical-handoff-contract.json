@@ -6,14 +6,14 @@
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "runtime_status": "not_run",
-  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-87.md",
+  "generated_from": "crates/modules/rustok-blog/docs/implementation-plan-slice-87.md",
   "source_contract": {
     "publication_contract": "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_publication.rs",
     "runtime_facade": "apps/server/src/services/comments_provider_runtime.rs",
     "existing_blog_audit_store": "apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_postgres_audit.rs",
-    "existing_blog_audit_migration": "crates/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs",
-    "canonical_relay": "crates/rustok-outbox/src/relay.rs",
-    "canonical_outbox_plan": "crates/rustok-outbox/docs/implementation-plan.md"
+    "existing_blog_audit_migration": "crates/modules/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs",
+    "canonical_relay": "crates/modules/rustok-outbox/src/relay.rs",
+    "canonical_outbox_plan": "crates/modules/rustok-outbox/docs/implementation-plan.md"
   },
   "ownership_audit": {
     "blog_relay_added": false,

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 function fail(message) {
   console.error("[verify-page-builder-pages-fallback-gate] FAIL");
@@ -16,7 +16,7 @@ function fail(message) {
 
 const serviceFallbackCheck = {
   label: "rustok-pages capability gates and independent read paths",
-  file: "crates/rustok-pages/src/services/page/lifecycle.rs",
+  file: "crates/modules/rustok-pages/src/services/page/lifecycle.rs",
   tokens: [
     "ensure_builder_preview_enabled_for_tenant",
     "ensure_builder_properties_enabled_for_tenant",
@@ -29,7 +29,7 @@ const hostChecks = [
   serviceFallbackCheck,
   {
     label: "rustok-pages reviewed publish capability gate",
-    file: "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+    file: "crates/modules/rustok-pages/src/services/page/reviewed_publish.rs",
     tokens: [
       "ensure_builder_publish_enabled_in_tx",
       "is_builder_enabled",
@@ -39,7 +39,7 @@ const hostChecks = [
   },
   {
     label: "rustok-pages public storefront read paths",
-    file: "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+    file: "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs",
     tokens: [
       "SecurityContext::public_read()",
       "load_public_bound_artifact_with_fallback",
@@ -49,7 +49,7 @@ const hostChecks = [
   },
   {
     label: "rustok-pages public service read paths",
-    file: "crates/rustok-pages/src/services/page/read.rs",
+    file: "crates/modules/rustok-pages/src/services/page/read.rs",
     tokens: [
       "pub async fn get_with_locale_fallback",
       "pub async fn list_public_visible_with_locale_fallback",

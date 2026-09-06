@@ -11,7 +11,7 @@ statements are historical and must not be followed.
 The only authoritative Forum roadmap is:
 
 ```text
-crates/rustok-forum/docs/implementation-plan.md
+crates/modules/rustok-forum/docs/implementation-plan.md
 ```
 
 Do not update the snapshot, copy status from it, or add new execution work to

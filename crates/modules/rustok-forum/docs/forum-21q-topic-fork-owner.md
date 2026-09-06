@@ -9,7 +9,7 @@ FORUM-21Q adds the copy-oriented counterpart to FORUM-21P selected-reply split. 
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-fork-owner.json
+crates/modules/rustok-forum/contracts/forum-topic-fork-owner.json
 ```
 
 ## Command and replay identity

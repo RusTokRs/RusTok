@@ -18,20 +18,20 @@ const forbidAll = (text, markers, label) => {
 };
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
 const protocolPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d-runtime-evidence.md";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d-runtime-evidence.md";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const ownerSourcePath =
-  "crates/rustok-forum/docs/forum-23b2g2b1-search-owner-revision-source.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b1-search-owner-revision-source.md";
 const checkpointPath =
-  "crates/rustok-forum/docs/forum-23b2g2b2-search-owner-revision-checkpoint.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b2-search-owner-revision-checkpoint.md";
 const wirePath =
-  "crates/rustok-forum/docs/forum-23b2g2b3a-versioned-invalidation-wire-contract.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3a-versioned-invalidation-wire-contract.md";
 const publisherPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3b2-versioned-invalidation-publisher.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3b2-versioned-invalidation-publisher.md";
 const consumerPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3c-versioned-invalidation-consumer.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3c-versioned-invalidation-consumer.md";
 
 const contract = JSON.parse(read(contractPath));
 assert.equal(
@@ -233,7 +233,7 @@ requireAll(
   "versioned invalidation runtime evidence protocol",
 );
 
-const eventFamily = read("crates/rustok-events/src/forum_search_projection.rs");
+const eventFamily = read("crates/libs/rustok-events/src/forum_search_projection.rs");
 requireAll(
   eventFamily,
   [
@@ -244,7 +244,7 @@ requireAll(
   "sealed Forum Search event family",
 );
 
-const forumPublisher = read("crates/rustok-forum/src/services/projection_invalidation.rs");
+const forumPublisher = read("crates/modules/rustok-forum/src/services/projection_invalidation.rs");
 requireAll(
   forumPublisher,
   [
@@ -255,7 +255,7 @@ requireAll(
   "Forum projection invalidation publisher",
 );
 
-const ingress = read("crates/rustok-search/src/forum_contract_ingress.rs");
+const ingress = read("crates/modules/rustok-search/src/forum_contract_ingress.rs");
 requireAll(
   ingress,
   [

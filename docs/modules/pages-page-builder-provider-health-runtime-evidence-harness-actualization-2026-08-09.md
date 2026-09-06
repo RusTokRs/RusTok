@@ -107,11 +107,11 @@ This harness also does not alter:
 ## Source evidence
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json
-crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json
+crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json
 apps/next-admin/playwright.pages-builder-provider-health-runtime.config.ts
 apps/next-admin/tests/pages-builder-provider-health-runtime/runtime.spec.ts
-crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
 ```
 
 ## Validation boundary
@@ -121,7 +121,7 @@ No tests, Node verifiers, Cargo commands, formatting, builds, GraphQL/HTTP reque
 Suggested maintainer source check, intentionally not run:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
 ```
 
 Suggested runtime command after the exact evidence chain and binding are prepared, intentionally not run:

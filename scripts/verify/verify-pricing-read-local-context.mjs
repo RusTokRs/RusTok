@@ -12,15 +12,15 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  lib: 'crates/rustok-pricing/src/lib.rs',
-  owner: 'crates/rustok-pricing/src/ports.rs',
-  wrapper: 'crates/rustok-pricing/src/read_context.rs',
-  writeWrapper: 'crates/rustok-pricing/src/write_context.rs',
+  lib: 'crates/modules/rustok-pricing/src/lib.rs',
+  owner: 'crates/modules/rustok-pricing/src/ports.rs',
+  wrapper: 'crates/modules/rustok-pricing/src/read_context.rs',
+  writeWrapper: 'crates/modules/rustok-pricing/src/write_context.rs',
   evidence:
-    'crates/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source.json',
+    'crates/modules/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source.json',
   review:
-    'crates/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source-review.json',
-  document: 'crates/rustok-pricing/docs/read-local-context.md',
+    'crates/modules/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source-review.json',
+  document: 'crates/modules/rustok-pricing/docs/read-local-context.md',
 };
 
 const lib = read(paths.lib);
@@ -319,7 +319,7 @@ for (const marker of [
   'UUID presence and non-nil state',
   'exact quantity values are not recorded',
   'public message text is not recorded',
-  '`crates/rustok-pricing/src/write_context.rs` remains open',
+  '`crates/modules/rustok-pricing/src/write_context.rs` remains open',
 ]) requireText(document, marker, `${paths.document}: truthful scope`);
 
 if (failures.length > 0) {

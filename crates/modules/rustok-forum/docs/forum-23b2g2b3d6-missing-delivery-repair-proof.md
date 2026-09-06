@@ -13,13 +13,13 @@ trigger in one isolated Search schema.
 The machine-readable proof contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-missing-delivery-repair-proof.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-missing-delivery-repair-proof.json
 ```
 
 The executable test is:
 
 ```text
-crates/rustok-search/tests/forum_versioned_invalidation_missing_delivery_repair.rs
+crates/modules/rustok-search/tests/forum_versioned_invalidation_missing_delivery_repair.rs
 ```
 
 Successful execution writes:

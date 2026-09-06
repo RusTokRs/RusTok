@@ -12,7 +12,7 @@ the canonical Forum plan.
 The machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-link-forum-03-canonical-promotion-packet.json
+crates/modules/rustok-forum/contracts/forum-search-link-forum-03-canonical-promotion-packet.json
 ```
 
 The packet builder is:

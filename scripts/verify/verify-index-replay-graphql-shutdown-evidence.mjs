@@ -101,11 +101,11 @@ requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
   'context.authorize_for(request.page_request().tenant_id())?;',
   '.run_interruptible(request, should_interrupt)',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/replay_runtime.rs', [
   'pub async fn run_interruptible<Check>(',
   '.run_interruptible(request, should_interrupt)',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs', [
   'let lease_request = lease_request_for_run(&request, source_name)?;',
   'Err(crate::IndexReplayError::Interrupted) => {',
   'yield_after_host_interruption(&self.db, &lease, aggregate).await',

@@ -4,7 +4,7 @@ Status: **source-ready / maintainer execution pending**
 
 ## Scope
 
-`crates/rustok-moderation/tests/postgres_owner_contract.rs` is an opt-in PostgreSQL integration target for the owner invariants that were previously covered only by SQLite/source guards.
+`crates/modules/rustok-moderation/tests/postgres_owner_contract.rs` is an opt-in PostgreSQL integration target for the owner invariants that were previously covered only by SQLite/source guards.
 
 It exercises the production Moderation migrations in a unique temporary PostgreSQL schema and covers three plan-level contracts:
 

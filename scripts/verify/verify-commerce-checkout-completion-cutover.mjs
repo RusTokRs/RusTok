@@ -12,15 +12,15 @@ export class CommerceCheckoutCompletionCutoverError extends Error {
 const defaultRoot = process.cwd();
 
 const files = {
-  stage: "crates/rustok-commerce/src/services/checkout_order_stages.rs",
-  pipeline: "crates/rustok-commerce/src/services/checkout_stage_pipeline.rs",
-  adoption: "crates/rustok-commerce/src/services/checkout_inventory_order_adoption.rs",
-  recovery: "crates/rustok-order/src/checkout_order_recovery.rs",
-  ports: "crates/rustok-order/src/ports.rs",
-  orderLib: "crates/rustok-order/src/lib.rs",
+  stage: "crates/modules/rustok-commerce/src/services/checkout_order_stages.rs",
+  pipeline: "crates/modules/rustok-commerce/src/services/checkout_stage_pipeline.rs",
+  adoption: "crates/modules/rustok-commerce/src/services/checkout_inventory_order_adoption.rs",
+  recovery: "crates/modules/rustok-order/src/checkout_order_recovery.rs",
+  ports: "crates/modules/rustok-order/src/ports.rs",
+  orderLib: "crates/modules/rustok-order/src/lib.rs",
 };
 const legacyStageFile =
-  "crates/rustok-commerce/src/services/checkout_order_stages_legacy.rs";
+  "crates/modules/rustok-commerce/src/services/checkout_order_stages_legacy.rs";
 
 const requireMarker = (failures, source, marker, file) => {
   if (!source.includes(marker)) failures.push(`${file}: missing ${marker}`);

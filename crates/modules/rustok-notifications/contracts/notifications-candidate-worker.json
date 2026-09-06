@@ -2,18 +2,18 @@
   "schema_version": 6,
   "slice": "NOTIFY-03C",
   "promoted_by_slices": ["NOTIFY-03D", "NOTIFY-03E", "NOTIFY-03G", "NOTIFY-03H"],
-  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
-  "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
-  "owner_driver": "crates/rustok-notifications/src/worker.rs",
-  "candidate_service": "crates/rustok-notifications/src/candidate.rs",
-  "policy_runtime": "crates/rustok-notifications/src/recipient_policy.rs",
+  "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
+  "owner_plan": "crates/modules/rustok-notifications/docs/implementation-plan.md",
+  "owner_driver": "crates/modules/rustok-notifications/src/worker.rs",
+  "candidate_service": "crates/modules/rustok-notifications/src/candidate.rs",
+  "policy_runtime": "crates/modules/rustok-notifications/src/recipient_policy.rs",
   "server_worker": "apps/server/src/services/notification_candidate_worker.rs",
   "policy_composition": "apps/server/src/services/notification_recipient_policy.rs",
   "bootstrap": "apps/server/src/services/server_bootstrap.rs",
-  "module_policy_consumer": "crates/rustok-modules/src/policy_revision_consumer.rs",
-  "module_policy_transition": "crates/rustok-modules/src/policy_transition_event.rs",
-  "outbox_intake_contract": "crates/rustok-notifications/contracts/notifications-outbox-intake.json",
-  "fanout_worker_contract": "crates/rustok-notifications/contracts/notifications-fanout-worker.json",
+  "module_policy_consumer": "crates/modules/rustok-modules/src/policy_revision_consumer.rs",
+  "module_policy_transition": "crates/modules/rustok-modules/src/policy_transition_event.rs",
+  "outbox_intake_contract": "crates/modules/rustok-notifications/contracts/notifications-outbox-intake.json",
+  "fanout_worker_contract": "crates/modules/rustok-notifications/contracts/notifications-fanout-worker.json",
   "enablement": {
     "environment_variable": "RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED",
     "default_enabled": false,
@@ -98,10 +98,10 @@
     "upstream_workers_default_enabled": false
   },
   "tests": [
-    "crates/rustok-notifications/tests/candidate_worker_sqlite.rs",
-    "crates/rustok-modules/tests/policy_commit_guard_sqlite.rs",
-    "crates/rustok-notifications/tests/outbox_intake_sqlite.rs",
-    "crates/rustok-notifications/tests/fanout_worker_sqlite.rs"
+    "crates/modules/rustok-notifications/tests/candidate_worker_sqlite.rs",
+    "crates/modules/rustok-modules/tests/policy_commit_guard_sqlite.rs",
+    "crates/modules/rustok-notifications/tests/outbox_intake_sqlite.rs",
+    "crates/modules/rustok-notifications/tests/fanout_worker_sqlite.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-notifications-candidate-worker.mjs",

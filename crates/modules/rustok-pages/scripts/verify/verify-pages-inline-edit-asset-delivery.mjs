@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 const need = (text, marker, label) => {
@@ -24,14 +24,14 @@ const featureBody = (manifest, feature, label) => {
 };
 
 const files = {
-  evidence: "crates/rustok-pages/contracts/evidence/pages-inline-edit-asset-delivery-source.json",
-  pagesCargo: "crates/rustok-pages/Cargo.toml",
-  pagesHttp: "crates/rustok-pages/src/http.rs",
-  assets: "crates/rustok-pages/src/http/inline_edit_assets.rs",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-asset-delivery-source.json",
+  pagesCargo: "crates/modules/rustok-pages/Cargo.toml",
+  pagesHttp: "crates/modules/rustok-pages/src/http.rs",
+  assets: "crates/modules/rustok-pages/src/http/inline_edit_assets.rs",
   serverCargo: "apps/server/Cargo.toml",
   clientBuilder: "apps/storefront/scripts/build-pages-inline-edit-client.mjs",
   serverBuilder: "scripts/build/build-pages-inline-edit-server.sh",
-  localPlan: "crates/rustok-pages/docs/implementation-plan.md",
+  localPlan: "crates/modules/rustok-pages/docs/implementation-plan.md",
   plan: "docs/modules/pages-page-builder-parity-continuation-plan.md",
   packet: "docs/modules/pages-page-builder-inline-edit-asset-delivery-packet-2026-08-06.md",
 };

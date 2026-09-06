@@ -2,12 +2,12 @@
   "schema_version": 1,
   "status": "inventory_reservation_owner_diagnostic_safety_source_unvalidated",
   "scope": {
-    "owner_wrapper": "crates/rustok-inventory/src/reservation_owner_context.rs",
-    "persistent_owner": "crates/rustok-inventory/src/ports.rs",
+    "owner_wrapper": "crates/modules/rustok-inventory/src/reservation_owner_context.rs",
+    "persistent_owner": "crates/modules/rustok-inventory/src/ports.rs",
     "owner_verifier": "scripts/verify/verify-inventory-reservation-owner-context.mjs",
     "local_verifier": "scripts/verify/verify-inventory-reservation-local-context.mjs",
-    "owner_documentation": "crates/rustok-inventory/docs/reservation-owner-context.md",
-    "local_documentation": "crates/rustok-inventory/docs/reservation-local-context.md"
+    "owner_documentation": "crates/modules/rustok-inventory/docs/reservation-owner-context.md",
+    "local_documentation": "crates/modules/rustok-inventory/docs/reservation-local-context.md"
   },
   "source_contract": {
     "admission_diagnostic_cleanup_closed": true,

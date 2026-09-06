@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This source slice closes the consumer-side structured-context gap for inventory
 availability validation in
-`crates/rustok-commerce/src/services/checkout_plan_builder.rs`.
+`crates/modules/rustok-commerce/src/services/checkout_plan_builder.rs`.
 
 The checkout plan builder already called the typed `InventoryReservationPort`
 `check_availability` operation. Before this slice, each cart line constructed its

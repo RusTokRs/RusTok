@@ -13,20 +13,20 @@ The accepted rollout remains defined by:
 
 ```text
 DECISIONS/2026-07-31-forum-search-versioned-invalidation-rollout.md
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json
 ```
 
 The machine-readable implementation result is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-publisher.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-publisher.json
 ```
 
 The remaining runtime-evidence protocol is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json
-crates/rustok-forum/docs/forum-23b2g2b3d-runtime-evidence.md
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json
+crates/modules/rustok-forum/docs/forum-23b2g2b3d-runtime-evidence.md
 ```
 
 ## Sealed event family
@@ -172,7 +172,7 @@ Search typed-contract consumer that:
    `ingest_sequence`.
 
 `FORUM-23B2G2B3D0` now freezes the remaining executable evidence protocol in
-`crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json`.
+`crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json`.
 It does not claim that PostgreSQL, Iggy, restart, poison, DLQ or multi-process
 evidence has run.
 

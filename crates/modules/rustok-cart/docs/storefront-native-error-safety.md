@@ -145,7 +145,7 @@ Pricing owner metadata, all severity paths, the single missing-variant decrement
 all three endpoints, and shared DTO mapping; and leaves execution claims open.
 
 The source evidence remains in
-`crates/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json`.
+`crates/modules/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json`.
 
 ## Evidence boundary
 

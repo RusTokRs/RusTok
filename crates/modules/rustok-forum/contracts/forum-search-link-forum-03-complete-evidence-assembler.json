@@ -4,14 +4,14 @@
   "target_link": "LINK-FORUM-03",
   "coverage": "complete_canonical_runtime_scope_review_pending",
   "status": "source_ready_maintainer_execution_pending",
-  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
   "assembler": "scripts/evidence/assemble-link-forum-03-complete-forum-search-evidence.mjs",
   "verifier": "scripts/verify/verify-link-forum-03-complete-forum-search-evidence.mjs",
   "required_contracts": [
-    "crates/rustok-forum/contracts/forum-search-link-forum-03-evidence-assembler.json",
-    "crates/rustok-forum/contracts/forum-search-link-forum-03-translation-moderation-proof.json",
-    "crates/rustok-forum/contracts/forum-search-link-forum-03-private-trusted-exclusion-proof.json",
-    "crates/rustok-forum/contracts/forum-search-link-forum-03-topic-move-proof.json"
+    "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-evidence-assembler.json",
+    "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-translation-moderation-proof.json",
+    "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-private-trusted-exclusion-proof.json",
+    "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-topic-move-proof.json"
   ],
   "required_inputs": [
     "target/link-forum-03-forum-index-search-ordering-visibility-evidence.json",

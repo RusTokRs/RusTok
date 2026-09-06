@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice hardens the Commerce GraphQL storefront-channel admission boundary in `crates/rustok-commerce/src/graphql/mod.rs`.
+This slice hardens the Commerce GraphQL storefront-channel admission boundary in `crates/modules/rustok-commerce/src/graphql/mod.rs`.
 
 The boundary performs one owner call to determine whether Commerce is enabled for the request channel. Before this change, its dependency-failure event logged the complete storage error together with the raw tenant UUID, optional channel UUID, and optional channel slug. Its disabled-channel warning logged the same request identities.
 
@@ -48,7 +48,7 @@ The broad ecommerce correlation-safe mapper and non-`PortError` cleanup remains 
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/graphql-channel-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/graphql-channel-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-graphql-root-error-safety.mjs`
 
 ## Validation disclosure

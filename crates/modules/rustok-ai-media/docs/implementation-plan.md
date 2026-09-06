@@ -16,9 +16,9 @@ README, while the provider contract is in the FBA registry.
   `get_image_descriptor` and `get_asset` operations, and degraded modes
   `skip_asset_enrichment`, `proxy_storage_relative_url`, and
   `summarize_internal_binary`.
-- Evidence: `crates/rustok-ai-media/contracts/ai-media-fba-registry.json`,
-  `crates/rustok-ai-media/contracts/evidence/ai-media-consumer-static-matrix.json`,
-  `crates/rustok-ai-media/contracts/evidence/ai-media-runtime-fallback-smoke.json`,
+- Evidence: `crates/modules/rustok-ai-media/contracts/ai-media-fba-registry.json`,
+  `crates/modules/rustok-ai-media/contracts/evidence/ai-media-consumer-static-matrix.json`,
+  `crates/modules/rustok-ai-media/contracts/evidence/ai-media-runtime-fallback-smoke.json`,
   and `scripts/verify/verify-ai-media-fba.mjs`.
 
 ## Completed direct-execution evidence

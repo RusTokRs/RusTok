@@ -17,7 +17,7 @@ The combined Social Graph raw-poison ordering harness now has a locked retained-
 The future canonical packet is:
 
 ```text
-crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution.json
+crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution.json
 ```
 
 It remains absent until a maintainer successfully executes both cases.

@@ -34,7 +34,7 @@ function functionSlice(source, name, nextName) {
   return source.slice(start, end < 0 ? source.length : end);
 }
 
-const productLib = read("crates/rustok-product/src/lib.rs");
+const productLib = read("crates/modules/rustok-product/src/lib.rs");
 requireText(
   productLib,
   "pub use catalog_command_port::ProductCatalogCommandPort;",
@@ -46,14 +46,14 @@ requireText(
   "rustok-product must publish ProductCatalogCommandRuntime",
 );
 
-const commandPort = read("crates/rustok-product/src/catalog_command_port.rs");
+const commandPort = read("crates/modules/rustok-product/src/catalog_command_port.rs");
 requireText(
   commandPort,
   "require_policy(PortCallPolicy::write())",
   "Product command port must enforce deadline and idempotency write semantics",
 );
 
-const productRuntime = read("crates/rustok-product/src/runtime.rs");
+const productRuntime = read("crates/modules/rustok-product/src/runtime.rs");
 requireText(
   productRuntime,
   "pub struct ProductCatalogCommandRuntime",
@@ -77,7 +77,7 @@ requireText(
   "server must provide the explicit embedded Product command adapter",
 );
 
-const commerceHttp = read("crates/rustok-commerce/src/controllers/mod.rs");
+const commerceHttp = read("crates/modules/rustok-commerce/src/controllers/mod.rs");
 requireText(
   commerceHttp,
   "product_catalog_command_runtime: rustok_product::ProductCatalogCommandRuntime",
@@ -89,7 +89,7 @@ requireText(
   "Commerce HTTP mount must fail closed when Product command runtime is missing",
 );
 
-const adminProducts = read("crates/rustok-commerce/src/controllers/admin/products.rs");
+const adminProducts = read("crates/modules/rustok-commerce/src/controllers/admin/products.rs");
 forbidText(
   adminProducts,
   "CatalogService",
@@ -113,7 +113,7 @@ for (const method of ["create_product", "update_product"]) {
   );
 }
 
-const sharedProducts = read("crates/rustok-commerce/src/controllers/products.rs");
+const sharedProducts = read("crates/modules/rustok-commerce/src/controllers/products.rs");
 requireText(
   sharedProducts,
   ".with_idempotency_key(idempotency_key)",

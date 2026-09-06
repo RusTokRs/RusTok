@@ -140,7 +140,7 @@ supplied policy. It does not prove projection freshness, watermark/lag safety, r
 or authorize a privacy cutover.
 
 The machine contract is
-`crates/rustok-social-graph/contracts/social-graph-index-privacy-shadow-evidence.json`.
+`crates/modules/rustok-social-graph/contracts/social-graph-index-privacy-shadow-evidence.json`.
 Capture contract: `social_graph_index_privacy_shadow_window_capture_v1`. Admission contract:
 `social_graph_index_privacy_shadow_window_admission_v1`.
 

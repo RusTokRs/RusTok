@@ -71,7 +71,7 @@ remain selected from `PortErrorKind`:
 
 ## Source evidence
 
-- `crates/rustok-commerce/contracts/evidence/checkout-payment-stage-error-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/checkout-payment-stage-error-safety-source-review.json`
 - `scripts/verify/verify-commerce-checkout-payment-stage-context.mjs`
 - `scripts/verify/verify-commerce-staged-checkout-payment-retry-disposition.mjs`
 

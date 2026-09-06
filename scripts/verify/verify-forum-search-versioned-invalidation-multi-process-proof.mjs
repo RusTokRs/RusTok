@@ -18,19 +18,19 @@ const forbidAll = (text, markers, label) => {
 };
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-multi-process-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-multi-process-proof.json";
 const parentContractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
 const docPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d7-multi-process-serialization-proof.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d7-multi-process-serialization-proof.md";
 const testPath =
   "apps/server/tests/forum_versioned_invalidation_multi_process_serialization.rs";
 const serverCargoPath = "apps/server/Cargo.toml";
-const reconcilerPath = "crates/rustok-search/src/forum_owner_checkpoint.rs";
-const ownerSourcePath = "crates/rustok-search/src/forum_reconciliation.rs";
+const reconcilerPath = "crates/modules/rustok-search/src/forum_owner_checkpoint.rs";
+const ownerSourcePath = "crates/modules/rustok-search/src/forum_reconciliation.rs";
 const checkpointMigrationPath =
-  "crates/rustok-search/src/migrations/m20260731_000012_create_forum_owner_revision_checkpoints.rs";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
+  "crates/modules/rustok-search/src/migrations/m20260731_000012_create_forum_owner_revision_checkpoints.rs";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const evidencePath =
   "target/forum-search-versioned-invalidation-multi-process-evidence.json";
 

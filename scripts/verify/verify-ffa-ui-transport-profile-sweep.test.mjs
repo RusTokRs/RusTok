@@ -31,12 +31,12 @@ function withFixture({
     [
       "| Module slug | UI surfaces | FFA status | FBA status | Structural shape | Source plan |",
       "|---|---|---|---|---|---|",
-      `| \`demo\` | admin | \`in_progress\` | \`not_started\` | \`core_transport_ui\` | \`crates/rustok-demo/docs/implementation-plan.md\` ${registryExtra} |`,
+      `| \`demo\` | admin | \`in_progress\` | \`not_started\` | \`core_transport_ui\` | \`crates/modules/rustok-demo/docs/implementation-plan.md\` ${registryExtra} |`,
     ].join("\n"),
   );
   writeFixtureFile(
     root,
-    "crates/rustok-demo/docs/implementation-plan.md",
+    "crates/modules/rustok-demo/docs/implementation-plan.md",
     [
       "## FFA/FBA status",
       "- FFA status: `in_progress`",
@@ -45,15 +45,15 @@ function withFixture({
       planExtra,
     ].join("\n"),
   );
-  writeFixtureFile(root, "crates/rustok-demo/admin/src/core.rs", "pub fn view_model() {}\n");
-  writeFixtureFile(root, "crates/rustok-demo/admin/src/transport/mod.rs", transportSource);
+  writeFixtureFile(root, "crates/modules/rustok-demo/admin/src/core.rs", "pub fn view_model() {}\n");
+  writeFixtureFile(root, "crates/modules/rustok-demo/admin/src/transport/mod.rs", transportSource);
   if (includeNativeAdapter) {
-    writeFixtureFile(root, "crates/rustok-demo/admin/src/transport/native_server_adapter.rs", nativeAdapterSource);
+    writeFixtureFile(root, "crates/modules/rustok-demo/admin/src/transport/native_server_adapter.rs", nativeAdapterSource);
   }
   if (includeGraphqlAdapter) {
-    writeFixtureFile(root, "crates/rustok-demo/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource);
+    writeFixtureFile(root, "crates/modules/rustok-demo/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource);
   }
-  writeFixtureFile(root, "crates/rustok-demo/admin/src/ui/leptos.rs", "use crate::transport;\npub fn DemoAdmin() {}\n");
+  writeFixtureFile(root, "crates/modules/rustok-demo/admin/src/ui/leptos.rs", "use crate::transport;\npub fn DemoAdmin() {}\n");
   return {
     root,
     cleanup() {
@@ -134,7 +134,7 @@ test("rejects transport parity gap outside in-progress FFA status", () => {
       [
         "| Module slug | UI surfaces | FFA status | FBA status | Structural shape | Source plan |",
         "|---|---|---|---|---|---|",
-        "| `demo` | admin | `phase_b_ready` | `not_started` | `core_transport_ui` | `crates/rustok-demo/docs/implementation-plan.md` |",
+        "| `demo` | admin | `phase_b_ready` | `not_started` | `core_transport_ui` | `crates/modules/rustok-demo/docs/implementation-plan.md` |",
       ].join("\n"),
     );
     const result = runVerifier(fixture.root);

@@ -127,8 +127,8 @@ node scripts/verify/verify-cart-storefront-boundary.mjs
 
 Retained source evidence:
 
-- `crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json`;
-- `crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json`.
+- `crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json`;
+- `crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json`.
 
 The evidence establishes only that the source and guardrail are present and
 have been reviewed. It does not establish compilation, browser execution,

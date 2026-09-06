@@ -4,26 +4,26 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
 const evidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-selected-immutable-artifact-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-selected-immutable-artifact-source.json",
 ));
 const harness = read(
-  "crates/rustok-pages/tests/selected_immutable_published_artifact_sqlite.rs",
+  "crates/modules/rustok-pages/tests/selected_immutable_published_artifact_sqlite.rs",
 );
 const artifactService = read(
-  "crates/rustok-pages/src/services/page_builder_artifact.rs",
+  "crates/modules/rustok-pages/src/services/page_builder_artifact.rs",
 );
 const nativeAdapter = read(
-  "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs",
 );
 const packet = read(
   "docs/modules/pages-page-builder-selected-immutable-artifact-packet-2026-08-05.md",
 );
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
-const localPlan = read("crates/rustok-pages/docs/implementation-plan.md");
+const localPlan = read("crates/modules/rustok-pages/docs/implementation-plan.md");
 const failures = [];
 
 const need = (text, marker, label) => {
@@ -103,7 +103,7 @@ for (const key of [
 }
 if (
   evidence.harness?.path !==
-    "crates/rustok-pages/tests/selected_immutable_published_artifact_sqlite.rs" ||
+    "crates/modules/rustok-pages/tests/selected_immutable_published_artifact_sqlite.rs" ||
   evidence.harness?.test !==
     "storefront_reads_selected_immutable_artifact_after_persisted_draft_mutation" ||
   evidence.harness?.owner_read !==

@@ -12,7 +12,7 @@ without modification.
 The machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-read-state-reconciliation.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-read-state-reconciliation.json
 ```
 
 The owner API is:

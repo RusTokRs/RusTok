@@ -8,21 +8,21 @@ const fail = (message) => {
   process.exit(1);
 };
 
-const lib = read('crates/rustok-index/src/lib.rs');
-const migrationModule = read('crates/rustok-index/src/migrations/mod.rs');
-const records = read('crates/rustok-index/src/migrations/m20260727_000001_create_index_records.rs');
-const delivery = read('crates/rustok-index/src/migrations/m20260727_000002_create_index_delivery_state.rs');
-const operations = read('crates/rustok-index/src/migrations/m20260727_000003_create_index_operations.rs');
+const lib = read('crates/modules/rustok-index/src/lib.rs');
+const migrationModule = read('crates/modules/rustok-index/src/migrations/mod.rs');
+const records = read('crates/modules/rustok-index/src/migrations/m20260727_000001_create_index_records.rs');
+const delivery = read('crates/modules/rustok-index/src/migrations/m20260727_000002_create_index_delivery_state.rs');
+const operations = read('crates/modules/rustok-index/src/migrations/m20260727_000003_create_index_operations.rs');
 const recovery = read(
-  'crates/rustok-index/src/migrations/m20260803_000004_create_index_reconciliation_recovery.rs',
+  'crates/modules/rustok-index/src/migrations/m20260803_000004_create_index_reconciliation_recovery.rs',
 );
 const migrations = normalize(
   [migrationModule, records, delivery, operations, recovery].join('\n'),
 );
-const tests = read('crates/rustok-index/src/contract_tests.rs');
-const plan = read('crates/rustok-index/docs/implementation-plan.md');
-const crateReadme = read('crates/rustok-index/README.md');
-const moduleDocs = read('crates/rustok-index/docs/README.md');
+const tests = read('crates/modules/rustok-index/src/contract_tests.rs');
+const plan = read('crates/modules/rustok-index/docs/implementation-plan.md');
+const crateReadme = read('crates/modules/rustok-index/README.md');
+const moduleDocs = read('crates/modules/rustok-index/docs/README.md');
 const databaseDocs = read('docs/architecture/database.md');
 
 for (const marker of [

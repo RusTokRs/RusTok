@@ -7,17 +7,17 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-execution-contract.json";
+  "crates/modules/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-execution-contract.json";
 const runnerPath =
   "scripts/evidence/capture-iggy-contract-poison-external-dedup.mjs";
 const verifierPath =
   "scripts/verify/verify-iggy-contract-poison-external-dedup-retained-evidence.mjs";
 const evidencePath =
-  "crates/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-execution.json";
+  "crates/modules/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-execution.json";
 const sourceContractPath =
-  "crates/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-source.json";
+  "crates/modules/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-source.json";
 const testPath =
-  "crates/rustok-iggy/tests/contract_poison_external_iggy_dedup.rs";
+  "crates/modules/rustok-iggy/tests/contract_poison_external_iggy_dedup.rs";
 
 const contract = readJson(contractPath);
 const sourceContract = readJson(sourceContractPath);
@@ -91,11 +91,11 @@ const expectedCommandTemplate = {
 };
 const expectedSourceFiles = [
   testPath,
-  "crates/rustok-iggy/src/contract_decode_failure.rs",
-  "crates/rustok-iggy/src/dlq.rs",
-  "crates/rustok-iggy/src/dlq_publisher.rs",
-  "crates/rustok-iggy/src/partitioning.rs",
-  "crates/rustok-iggy/src/transport.rs",
+  "crates/modules/rustok-iggy/src/contract_decode_failure.rs",
+  "crates/modules/rustok-iggy/src/dlq.rs",
+  "crates/modules/rustok-iggy/src/dlq_publisher.rs",
+  "crates/modules/rustok-iggy/src/partitioning.rs",
+  "crates/modules/rustok-iggy/src/transport.rs",
 ];
 const expectedMetadata = [
   "git_commit",

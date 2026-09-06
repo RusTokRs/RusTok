@@ -2,10 +2,10 @@
   "schema_version": 2,
   "slice": "NOTIFY-07B",
   "promoted_by_slices": ["SOCIAL-01A/NOTIFY-07C", "NOTIFY-03C"],
-  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
-  "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
+  "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
+  "owner_plan": "crates/modules/rustok-notifications/docs/implementation-plan.md",
   "profile_owner_port": {
-    "contract": "crates/rustok-profiles/src/privacy.rs",
+    "contract": "crates/modules/rustok-profiles/src/privacy.rs",
     "runtime": "ProfilePrivacyRuntime",
     "implementation": "ProfileService",
     "tenant_scoped": true,
@@ -16,8 +16,8 @@
     ]
   },
   "relation_owner_ports": {
-    "contract": "crates/rustok-notifications/src/recipient_policy.rs",
-    "concrete_owner_contract": "crates/rustok-social-graph/contracts/social-graph-notification-policy.json",
+    "contract": "crates/modules/rustok-notifications/src/recipient_policy.rs",
+    "concrete_owner_contract": "crates/modules/rustok-social-graph/contracts/social-graph-notification-policy.json",
     "block_runtime": "NotificationBlockReadRuntime",
     "mute_runtime": "NotificationMuteReadRuntime",
     "permissive_default_forbidden": true,
@@ -42,7 +42,7 @@
   },
   "worker_gate": {
     "runtime_delivered": true,
-    "worker_contract": "crates/rustok-notifications/contracts/notifications-candidate-worker.json",
+    "worker_contract": "crates/modules/rustok-notifications/contracts/notifications-candidate-worker.json",
     "enable_environment_variable": "RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED",
     "candidate_worker_default_enabled": false,
     "requires_relation_ports_ready": true,

@@ -96,7 +96,7 @@ requireNormalizedMarkers('ops/benches/README.md', [
   'retains full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL)` samples',
 ]);
 
-requireNormalizedMarkers('crates/rustok-index/docs/partition-evidence-runbook.md', [
+requireNormalizedMarkers('crates/modules/rustok-index/docs/partition-evidence-runbook.md', [
   'index-partition-query-evidence',
   'normalized_partition_plan_v1',
   'query.json',
@@ -104,12 +104,12 @@ requireNormalizedMarkers('crates/rustok-index/docs/partition-evidence-runbook.md
   'result digest parity',
 ]);
 
-requireNormalizedMarkers('crates/rustok-index/docs/README.md', [
+requireNormalizedMarkers('crates/modules/rustok-index/docs/README.md', [
   'M3 partition query evidence runner: `complete`',
   'Real mutation, maintenance, and cutover evidence remain',
 ]);
 
-requireNormalizedMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireNormalizedMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- M3 partition query evidence runner: `complete`',
   '- [x] Add owner-operated PostgreSQL baseline/shadow query evidence capture.',
   '- [ ] Execute retained PostgreSQL mutation, maintenance, and cutover evidence.',

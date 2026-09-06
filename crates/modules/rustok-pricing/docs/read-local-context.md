@@ -74,14 +74,14 @@ not-found, and conflict outcomes remain warning severity.
 
 ## Deliberate boundary
 
-`crates/rustok-pricing/src/write_context.rs` remains open as the next Pricing diagnostic
+`crates/modules/rustok-pricing/src/write_context.rs` remains open as the next Pricing diagnostic
 slice. The broader ecommerce cleanup and all execution evidence also remain open.
 
 ## Static evidence
 
 - `scripts/verify/verify-pricing-read-local-context.mjs`
-- `crates/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source.json`
-- `crates/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source.json`
+- `crates/modules/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source-review.json`
 
 Intended maintainer validation:
 

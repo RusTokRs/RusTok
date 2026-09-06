@@ -4,17 +4,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-topic-split-owner.json",
-  docs: "crates/rustok-forum/docs/forum-21p-topic-split-owner.md",
-  service: "crates/rustok-forum/src/services/topic_split.rs",
-  serviceRegistry: "crates/rustok-forum/src/services/mod.rs",
-  crateApi: "crates/rustok-forum/src/lib.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-split-owner.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21p-topic-split-owner.md",
+  service: "crates/modules/rustok-forum/src/services/topic_split.rs",
+  serviceRegistry: "crates/modules/rustok-forum/src/services/mod.rs",
+  crateApi: "crates/modules/rustok-forum/src/lib.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260803_000020_add_forum_topic_split_operations.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260803_000020_add_forum_topic_split_operations.rs",
   relationIntegrity:
-    "crates/rustok-forum/src/migrations/m20260712_000003_enforce_forum_relation_tenant_integrity.rs",
-  migrationRegistry: "crates/rustok-forum/src/migrations/mod.rs",
-  sqlite: "crates/rustok-forum/tests/topic_split_sqlite.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260712_000003_enforce_forum_relation_tenant_integrity.rs",
+  migrationRegistry: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  sqlite: "crates/modules/rustok-forum/tests/topic_split_sqlite.rs",
 };
 
 const read = (path) => readFileSync(path, "utf8");

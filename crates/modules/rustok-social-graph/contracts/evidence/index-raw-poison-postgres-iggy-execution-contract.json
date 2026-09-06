@@ -3,10 +3,10 @@
   "module": "social-graph",
   "packet": "index-raw-poison-postgres-iggy-execution-contract",
   "status": "runtime_execution_contract_locked",
-  "source_contract": "crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-source.json",
+  "source_contract": "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-source.json",
   "runner": "scripts/evidence/capture-social-graph-index-raw-poison-postgres-iggy.mjs",
   "verifier": "scripts/verify/verify-social-graph-index-raw-poison-postgres-iggy-retained.mjs",
-  "evidence_path": "crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution.json",
+  "evidence_path": "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution.json",
   "evidence_status": "runtime_execution_pending",
   "test_target": "index_raw_poison_postgres_iggy",
   "required_environment": [
@@ -63,14 +63,14 @@
     }
   ],
   "source_files": [
-    "crates/rustok-social-graph/tests/index_raw_poison_postgres_iggy.rs",
+    "crates/modules/rustok-social-graph/tests/index_raw_poison_postgres_iggy.rs",
     "apps/server/src/services/social_graph_index_worker.rs",
-    "crates/rustok-social-graph/src/index_consumer.rs",
-    "crates/rustok-iggy/src/contract_consumer.rs",
-    "crates/rustok-iggy/src/contract_decode_failure.rs",
-    "crates/rustok-iggy/src/dlq_publisher.rs",
-    "crates/rustok-iggy/src/transport.rs",
-    "crates/rustok-iggy-connector/src/migrations.rs"
+    "crates/modules/rustok-social-graph/src/index_consumer.rs",
+    "crates/modules/rustok-iggy/src/contract_consumer.rs",
+    "crates/modules/rustok-iggy/src/contract_decode_failure.rs",
+    "crates/modules/rustok-iggy/src/dlq_publisher.rs",
+    "crates/modules/rustok-iggy/src/transport.rs",
+    "crates/modules/rustok-iggy-connector/src/migrations.rs"
   ],
   "retained_metadata": [
     "git_commit",

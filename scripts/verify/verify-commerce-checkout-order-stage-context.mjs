@@ -17,11 +17,11 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const facade = read('crates/rustok-commerce/src/services/checkout_order_stages.rs');
-const legacy = read('crates/rustok-commerce/src/services/checkout_order_stages_legacy.rs');
-const doc = read('crates/rustok-commerce/docs/checkout-order-stage-context.md');
+const facade = read('crates/modules/rustok-commerce/src/services/checkout_order_stages.rs');
+const legacy = read('crates/modules/rustok-commerce/src/services/checkout_order_stages_legacy.rs');
+const doc = read('crates/modules/rustok-commerce/docs/checkout-order-stage-context.md');
 const evidence = JSON.parse(read(
-  'crates/rustok-commerce/contracts/evidence/checkout-order-stage-error-safety-source-review.json',
+  'crates/modules/rustok-commerce/contracts/evidence/checkout-order-stage-error-safety-source-review.json',
 ));
 const combined = `${facade}\n${legacy}`;
 

@@ -105,8 +105,8 @@ This work does not change:
 
 Focused source evidence:
 
-- `crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source.json`;
-- `crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source-review.json`;
+- `crates/modules/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source.json`;
+- `crates/modules/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source-review.json`;
 - `scripts/verify/verify-pricing-storefront-graphql-error-safety.mjs`.
 
 The focused verifier now requires bounded error facts, forbids the complete raw and

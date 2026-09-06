@@ -8,7 +8,7 @@ const fail = (message) => {
 };
 
 const migration = read(
-  'crates/rustok-tenant/src/migrations/m20260726_000001_enforce_tenant_locale_policy.rs',
+  'crates/modules/rustok-tenant/src/migrations/m20260726_000001_enforce_tenant_locale_policy.rs',
 );
 
 for (const marker of [

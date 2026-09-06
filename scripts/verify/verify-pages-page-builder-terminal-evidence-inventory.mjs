@@ -62,19 +62,19 @@ function collectPendingEvidence(value, prefix = "") {
 }
 
 const sourcePath =
-  "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json";
+  "crates/modules/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json";
 const runnerPath = "scripts/evidence/inventory-pages-page-builder-terminal-readiness.mjs";
 const testsPath = "scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs";
 const verifierPath = "scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs";
 const actualizationPath =
   "docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-14.md";
 const predecessorSourcePath =
-  "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json";
+  "crates/modules/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json";
 const predecessorVerifierPath =
   "scripts/verify/verify-pages-page-builder-terminal-readiness-admission.mjs";
-const fbaRegistryPath = "crates/rustok-page-builder/contracts/page-builder-fba-registry.json";
-const pagesPlanPath = "crates/rustok-pages/docs/implementation-plan.md";
-const pageBuilderPlanPath = "crates/rustok-page-builder/docs/implementation-plan.md";
+const fbaRegistryPath = "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json";
+const pagesPlanPath = "crates/modules/rustok-pages/docs/implementation-plan.md";
+const pageBuilderPlanPath = "crates/modules/rustok-page-builder/docs/implementation-plan.md";
 const centralRegistryPath = "docs/modules/registry.md";
 
 const source = json(sourcePath);

@@ -11,13 +11,13 @@ const fail = (message) => {
 
 const rootManifest = read('modules.toml');
 const exampleManifest = read('modules.toml.example');
-const cargo = read('crates/rustok-commerce/Cargo.toml');
-const manifest = read('crates/rustok-commerce/rustok-module.toml');
-const lib = read('crates/rustok-commerce/src/lib.rs');
-const context = read('crates/rustok-commerce/src/services/context.rs');
-const tests = read('crates/rustok-commerce/tests/context_service_test.rs');
-const support = read('crates/rustok-commerce/tests/support/mod.rs');
-const evidence = read('crates/rustok-commerce/docs/tenant-locale-owner-cutover.md');
+const cargo = read('crates/modules/rustok-commerce/Cargo.toml');
+const manifest = read('crates/modules/rustok-commerce/rustok-module.toml');
+const lib = read('crates/modules/rustok-commerce/src/lib.rs');
+const context = read('crates/modules/rustok-commerce/src/services/context.rs');
+const tests = read('crates/modules/rustok-commerce/tests/context_service_test.rs');
+const support = read('crates/modules/rustok-commerce/tests/support/mod.rs');
+const evidence = read('crates/modules/rustok-commerce/docs/tenant-locale-owner-cutover.md');
 
 if (!cargo.includes('rustok-tenant.workspace = true')) {
   fail('commerce must depend on the tenant owner module in production');
@@ -28,7 +28,7 @@ if (!manifest.includes('tenant = { version_req = ">=0.1.0" }')) {
 if (!lib.includes('"tenant",')) {
   fail('CommerceModule runtime dependencies must include tenant');
 }
-const rootDependency = 'commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce", depends_on = ["tenant",';
+const rootDependency = 'commerce = { crate = "rustok-commerce", source = "path", path = "crates/modules/rustok-commerce", depends_on = ["tenant",';
 if (!rootManifest.includes(rootDependency)) {
   fail('root modules.toml must order commerce after tenant');
 }

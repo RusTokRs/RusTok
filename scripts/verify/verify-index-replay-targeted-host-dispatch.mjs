@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const runtimePath = 'crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
+const runtimePath = 'crates/modules/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
 const runtime = requireMarkers(runtimePath, [
   'targeted: Arc<IndexReplayTargetedExecutor<PostgresMutationStore>>',
   'pub async fn run_targeted(',
@@ -93,7 +93,7 @@ for (const forbidden of [
   }
 }
 
-const appPath = 'crates/rustok-index/src/application/targeted_replay.rs';
+const appPath = 'crates/modules/rustok-index/src/application/targeted_replay.rs';
 requireMarkers(appPath, [
   'IndexReplayModeSelection::Targeted(request) => request',
   'for (position, key) in request.keys().iter().enumerate()',
@@ -128,19 +128,19 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-index/docs/m6-targeted-replay-mutation-application.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-targeted-replay-mutation-application.md', [
   'Status: `source_complete_transport_execution_pending`.',
   '## PostgreSQL/runtime composition',
   '## GraphQL transport',
   '`runIndexReplayTargeted(input: ...)`',
   'not expose it. Source routing remains server-owned.',
 ]);
-requireMarkers('crates/rustok-index/docs/m6-replay-runtime-composition.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-runtime-composition.md', [
   'Targeted and Shadow each keep a separate typed operator error wrapper',
   '`IndexReplayOperatorError`, so adding those execution surfaces does not widen the existing GraphQL',
   '`runIndexReplayTargeted` is mounted on the existing `IndexReplayMutation` object',
 ]);
-requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-mode-contract.md', [
   'Status: `source_complete_targeted_graphql_execution_pending`.',
   '## Targeted PostgreSQL composition and host dispatch',
   '## Targeted GraphQL transport',
@@ -148,7 +148,7 @@ requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
   'requires the same effective',
   '`modules:manage` permission snapshot used by Full',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',
   'Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.',
 ]);

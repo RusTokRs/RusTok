@@ -11,15 +11,15 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const files = {
-  lib: "crates/rustok-translation/admin/src/lib.rs",
-  core: "crates/rustok-translation/admin/src/core.rs",
-  model: "crates/rustok-translation/admin/src/model.rs",
-  transport: "crates/rustok-translation/admin/src/transport/mod.rs",
+  lib: "crates/modules/rustok-translation/admin/src/lib.rs",
+  core: "crates/modules/rustok-translation/admin/src/core.rs",
+  model: "crates/modules/rustok-translation/admin/src/model.rs",
+  transport: "crates/modules/rustok-translation/admin/src/transport/mod.rs",
   native:
-    "crates/rustok-translation/admin/src/transport/native_server_adapter.rs",
-  graphql: "crates/rustok-translation/admin/src/transport/graphql_adapter.rs",
-  leptos: "crates/rustok-translation/admin/src/ui/leptos.rs",
-  manifest: "crates/rustok-translation/rustok-module.toml",
+    "crates/modules/rustok-translation/admin/src/transport/native_server_adapter.rs",
+  graphql: "crates/modules/rustok-translation/admin/src/transport/graphql_adapter.rs",
+  leptos: "crates/modules/rustok-translation/admin/src/ui/leptos.rs",
+  manifest: "crates/modules/rustok-translation/rustok-module.toml",
   adminCargo: "apps/admin/Cargo.toml",
   nextPackage: "apps/next-admin/packages/translation/src/index.tsx",
   nextApi: "apps/next-admin/packages/translation/src/api.ts",
@@ -32,9 +32,9 @@ const files = {
   uiInput: "UI/leptos/src/input.rs",
   uiSelect: "UI/leptos/src/select.rs",
   uiTextarea: "UI/leptos/src/textarea.rs",
-  uiLabel: "crates/leptos-ui/src/label.rs",
-  leptosEn: "crates/rustok-translation/admin/locales/en.json",
-  leptosRu: "crates/rustok-translation/admin/locales/ru.json",
+  uiLabel: "crates/ui/leptos-ui/src/label.rs",
+  leptosEn: "crates/modules/rustok-translation/admin/locales/en.json",
+  leptosRu: "crates/modules/rustok-translation/admin/locales/ru.json",
   nextEn: "apps/next-admin/messages/en.json",
   nextRu: "apps/next-admin/messages/ru.json",
 };
@@ -517,7 +517,7 @@ for (const profile of ["csr", "hydrate", "ssr"]) {
 }
 contains(
   source.adminCargo,
-  'rustok-translation-admin = { path = "../../crates/rustok-translation/admin"',
+  'rustok-translation-admin = { path = "../../crates/modules/rustok-translation/admin"',
   `${files.adminCargo}: missing Translation admin dependency`,
 );
 contains(
@@ -631,7 +631,7 @@ try {
   fail(`Translation locale bundle parsing failed: ${error.message}`);
 }
 
-const staleSupportPath = "crates/rustok-translation-admin-support";
+const staleSupportPath = "crates/modules/rustok-translation-admin-support";
 if (existsSync(absolute(staleSupportPath))) {
   fail(`${staleSupportPath}: superseded support package must stay removed`);
 }

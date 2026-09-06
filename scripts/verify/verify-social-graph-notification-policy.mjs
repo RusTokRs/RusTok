@@ -40,20 +40,20 @@ function reject(source, pattern, message) {
 }
 
 const contractPath =
-  "crates/rustok-social-graph/contracts/social-graph-notification-policy.json";
+  "crates/modules/rustok-social-graph/contracts/social-graph-notification-policy.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const migration = read(contract.migration ?? "");
 const entity = read(contract.entity ?? "");
 const service = read(contract.service ?? "");
 const ports = read(contract.ports ?? "");
 const adapter = read(contract.server_composition?.adapter ?? "");
-const runtime = read("crates/rustok-notifications/src/recipient_policy.rs");
+const runtime = read("crates/modules/rustok-notifications/src/recipient_policy.rs");
 const registry = read(contract.distribution?.registry ?? "");
 const generatedPromotions = read(
-  "crates/rustok-distribution/src/generated_promotions.rs",
+  "crates/modules/rustok-distribution/src/generated_promotions.rs",
 );
 const manifest = read(contract.distribution?.manifest ?? "");
-const test = read("crates/rustok-social-graph/tests/privacy_sqlite.rs");
+const test = read("crates/modules/rustok-social-graph/tests/privacy_sqlite.rs");
 
 if (contract.slice !== "SOCIAL-01A/NOTIFY-07C") {
   failures.push("machine contract must identify SOCIAL-01A/NOTIFY-07C");

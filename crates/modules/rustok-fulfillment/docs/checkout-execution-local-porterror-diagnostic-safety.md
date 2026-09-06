@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This bounded source slice hardens only
 `map_checkout_fulfillment_local_port_error` in
-`crates/rustok-fulfillment/src/checkout_execution.rs`.
+`crates/modules/rustok-fulfillment/src/checkout_execution.rs`.
 
 The mapper receives locally produced request, immutable-plan, identity, and set-validation
 `PortError` values after their stable public code, message, kind, and retryability have already
@@ -84,8 +84,8 @@ pass-through.
 The admission guard and evidence are:
 
 - `scripts/verify/verify-fulfillment-checkout-admission-context.mjs`;
-- `crates/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json`;
-- `crates/rustok-fulfillment/docs/checkout-admission-context.md`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json`;
+- `crates/modules/rustok-fulfillment/docs/checkout-admission-context.md`.
 
 ## Related context-validation contracts
 
@@ -96,9 +96,9 @@ causation ordering, exact public call sites, stable typed errors, and original-e
 The context guard and evidence are:
 
 - `scripts/verify/verify-fulfillment-checkout-context-validation.mjs`;
-- `crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`;
-- `crates/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json`;
-- `crates/rustok-fulfillment/docs/checkout-context-validation.md`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`;
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json`;
+- `crates/modules/rustok-fulfillment/docs/checkout-context-validation.md`.
 
 Causation records only bounded context and identity-shape facts. Tenant parsing records only
 parse-cause type and bounded context/message facts. Neither related contract changes the local
@@ -114,8 +114,8 @@ and delegated context with bounded facts.
 The owner guard and evidence are:
 
 - `scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`;
-- `crates/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`;
-- `crates/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`;
+- `crates/modules/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md`.
 
 That contract does not change the local mapper or its eight call sites.
 
@@ -133,7 +133,7 @@ bounded and source-only.
 
 Local source evidence is recorded in:
 
-- `crates/rustok-fulfillment/contracts/evidence/checkout-execution-local-porterror-diagnostic-safety-source.json`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-execution-local-porterror-diagnostic-safety-source.json`.
 
 ## Checkout execution source boundary
 

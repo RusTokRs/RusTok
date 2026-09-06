@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 const need = (text, marker, label) => {
@@ -20,7 +20,7 @@ const needCount = (text, marker, expected, label) => {
 };
 
 const files = {
-  evidence: "crates/rustok-pages/contracts/evidence/pages-inline-edit-release-composition-source.json",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-release-composition-source.json",
   adminBuilder: "scripts/build/build-embedded-admin.sh",
   deploymentBuilder: "scripts/build/build-pages-inline-edit-deployment.sh",
   serverBuilder: "scripts/build/build-pages-inline-edit-server.sh",
@@ -35,7 +35,7 @@ const files = {
   supplyChain: "scripts/verify/verify-release-supply-chain-contract.mjs",
   readinessGuard: "scripts/verify/verify-release-readiness-contract.mjs",
   readinessChecklist: "docs/release/RELEASE_READINESS_CHECKLIST.md",
-  localPlan: "crates/rustok-pages/docs/implementation-plan.md",
+  localPlan: "crates/modules/rustok-pages/docs/implementation-plan.md",
   plan: "docs/modules/pages-page-builder-parity-continuation-plan.md",
   packet: "docs/modules/pages-page-builder-inline-edit-release-composition-packet-2026-08-06.md",
 };

@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 const contractPath =
-  'crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json';
+  'crates/modules/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json';
 const contract = JSON.parse(
   readFileSync(path.join(repoRoot, contractPath), 'utf8')
 ) as BrowserContract;

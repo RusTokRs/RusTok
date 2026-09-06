@@ -38,7 +38,7 @@ function between(source, start, end, label) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-topic-create-audience-enforcement.json";
+  "crates/modules/rustok-forum/contracts/forum-topic-create-audience-enforcement.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const authorization = read(contract.authorization_service_file ?? "");
 const policy = read(contract.policy_service_file ?? "");

@@ -5,7 +5,7 @@ Status: **source-ready / unvalidated**
 ## Scope
 
 This slice closes only the private storefront line-item compatibility wrappers in
-`crates/rustok-commerce/src/graphql/mutations/safe_helpers.rs`.
+`crates/modules/rustok-commerce/src/graphql/mutations/safe_helpers.rs`.
 
 The layered Commerce GraphQL helper surface already selected
 `typed_line_item_helpers::{resolve_storefront_line_item_input,
@@ -107,7 +107,7 @@ The broad ecommerce correlation-safe mapper cleanup remains open.
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/graphql-line-item-compatibility-cutover-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/graphql-line-item-compatibility-cutover-source-review.json`
 - `scripts/verify/verify-commerce-graphql-line-item-compatibility-cutover.mjs`
 - `scripts/verify/verify-commerce-graphql-cart-helper-error-safety.mjs`
 

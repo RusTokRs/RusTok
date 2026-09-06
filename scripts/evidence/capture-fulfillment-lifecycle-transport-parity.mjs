@@ -14,21 +14,21 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 const contractPath =
-  'crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json';
+  'crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json';
 const expectedRunnerPath =
   'scripts/evidence/capture-fulfillment-lifecycle-transport-parity.mjs';
 const expectedVerifierPath =
   'scripts/verify/verify-fulfillment-lifecycle-transport-parity-capture.mjs';
 const expectedEvidencePath =
-  'crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution.json';
+  'crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution.json';
 const expectedSourceFiles = [
   'apps/server/src/controllers/graphql.rs',
-  'crates/rustok-commerce/src/graphql/query.rs',
-  'crates/rustok-commerce/src/graphql/safe_query.rs',
-  'crates/rustok-commerce/src/graphql_runtime.rs',
-  'crates/rustok-commerce/src/controllers/admin/fulfillments.rs',
-  'crates/rustok-fulfillment/src/fulfillment_read.rs',
-  'crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json',
+  'crates/modules/rustok-commerce/src/graphql/query.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query.rs',
+  'crates/modules/rustok-commerce/src/graphql_runtime.rs',
+  'crates/modules/rustok-commerce/src/controllers/admin/fulfillments.rs',
+  'crates/modules/rustok-fulfillment/src/fulfillment_read.rs',
+  'crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json',
 ];
 const expectedScenarioIds = [
   'lookup_rest_detail_projection_parity',

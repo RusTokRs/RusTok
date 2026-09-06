@@ -18,25 +18,25 @@ const forbidAll = (text, markers, label) => {
 };
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-translation-moderation-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-translation-moderation-proof.json";
 const docPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d14-translation-moderation-proof.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d14-translation-moderation-proof.md";
 const testPath =
   "apps/server/tests/forum_versioned_invalidation_translation_moderation.rs";
 const verifierPath =
   "scripts/verify/verify-forum-search-link-forum-03-translation-moderation-proof.mjs";
 const evidencePath =
   "target/forum-search-link-forum-03-translation-moderation-evidence.json";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
-const topicInlinePath = "crates/rustok-forum/src/services/topic_inline.rs";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
+const topicInlinePath = "crates/modules/rustok-forum/src/services/topic_inline.rs";
 const categoryOwnerPath =
-  "crates/rustok-forum/src/services/category_projection_owner.rs";
+  "crates/modules/rustok-forum/src/services/category_projection_owner.rs";
 const moderationOwnerPath =
-  "crates/rustok-forum/src/services/moderation_owner.rs";
-const replyOwnerPath = "crates/rustok-forum/src/services/reply_owner.rs";
-const projectionSourcePath = "crates/rustok-forum/src/search_projection.rs";
+  "crates/modules/rustok-forum/src/services/moderation_owner.rs";
+const replyOwnerPath = "crates/modules/rustok-forum/src/services/reply_owner.rs";
+const projectionSourcePath = "crates/modules/rustok-forum/src/search_projection.rs";
 const invalidationContractPath =
-  "crates/rustok-forum/contracts/forum-projection-invalidation.json";
+  "crates/modules/rustok-forum/contracts/forum-projection-invalidation.json";
 
 const contract = JSON.parse(read(contractPath));
 assert.equal(

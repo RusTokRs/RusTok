@@ -39,7 +39,7 @@ family. No alternate JSON/event-name route or compatibility family is admitted.
 On `main@535c6d4a3aca4412c27c69453e08c6942c281ac9`, the maintainer reported:
 
 - `cargo run --locked -p rustok-events --example event_contract_digests -- --write` completed successfully;
-- `git diff --exit-code -- crates/rustok-events/contracts/event-contract-digests.json` returned exit code 0;
+- `git diff --exit-code -- crates/libs/rustok-events/contracts/event-contract-digests.json` returned exit code 0;
 - `verify-index-product-refresh-event-family.mjs` passed with
   `typed_family=true canonical_factory=true digest_regenerated=true`;
 - `verify-event-contract-digest-admission.mjs` failed only on one case-sensitive prose marker.

@@ -15,7 +15,7 @@ This slice adds a source-level production call-site gate for that risk. It does 
 public Rust signatures and does not make the methods compile-time private.
 
 The machine-readable contract is
-`crates/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json`.
+`crates/modules/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json`.
 
 ## Audited direct methods
 
@@ -30,7 +30,7 @@ The audit covers:
 - `backfill_profile`.
 
 At main commit `31df77f3cd7b6294af04af81bf73eadb1a0c9e72`, repository search found definitions in
-`crates/rustok-profiles/src/services.rs` and non-definition call sites only in tests or verifier
+`crates/modules/rustok-profiles/src/services.rs` and non-definition call sites only in tests or verifier
 text. No production Rust caller was found.
 
 ## Enforced boundary

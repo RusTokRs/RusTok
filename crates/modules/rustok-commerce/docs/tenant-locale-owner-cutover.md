@@ -48,4 +48,4 @@ The source correction does not promote Commerce FBA/FFA status. Completion
 requires the final-SHA focused workflow to compile and run the context test and
 module validation. Broader commerce owner-boundary, migration, replay, and
 remote-profile gates remain governed by
-`crates/rustok-commerce/docs/implementation-plan.md`.
+`crates/modules/rustok-commerce/docs/implementation-plan.md`.

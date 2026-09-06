@@ -15,13 +15,13 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const query = read('crates/rustok-commerce/src/graphql/query.rs');
+const query = read('crates/modules/rustok-commerce/src/graphql/query.rs');
 const facade = readCommerceSafeQuerySource(read);
 const shim = readCommerceFulfillmentQueryShimSource(read);
-const graphqlRuntime = read('crates/rustok-commerce/src/graphql_runtime.rs');
-const commerceCargo = read('crates/rustok-commerce/Cargo.toml');
-const shippingOwner = read('crates/rustok-fulfillment/src/shipping_option_read.rs');
-const lifecycleOwner = read('crates/rustok-fulfillment/src/fulfillment_read.rs');
+const graphqlRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.rs');
+const commerceCargo = read('crates/modules/rustok-commerce/Cargo.toml');
+const shippingOwner = read('crates/modules/rustok-fulfillment/src/shipping_option_read.rs');
+const lifecycleOwner = read('crates/modules/rustok-fulfillment/src/fulfillment_read.rs');
 const serverComposition = read('apps/server/src/services/commerce_provider_runtime.rs');
 const serverSchema = read('apps/server/src/graphql/schema.rs');
 const failures = [];

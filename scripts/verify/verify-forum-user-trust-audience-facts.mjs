@@ -28,7 +28,7 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-user-trust-audience-facts.json";
+  "crates/modules/rustok-forum/contracts/forum-user-trust-audience-facts.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const adapter = read(contract.adapter_file);
 const stateEntity = read(contract.state_entity);
@@ -40,8 +40,8 @@ const sqliteProof = read(contract.sqlite_proof);
 const note = read(contract.owner_note);
 const channelContract = JSON.parse(read(contract.historical_channel_contract) || "{}");
 const groupContract = JSON.parse(read(contract.historical_group_contract) || "{}");
-const serviceRegistry = read("crates/rustok-forum/src/services/mod.rs");
-const crateRoot = read("crates/rustok-forum/src/lib.rs");
+const serviceRegistry = read("crates/modules/rustok-forum/src/services/mod.rs");
+const crateRoot = read("crates/modules/rustok-forum/src/lib.rs");
 
 if (
   contract.schema_version !== 1 ||
@@ -240,7 +240,7 @@ for (const marker of [
   "`forum_user_stats` remains an activity-counter projection",
   "no automatic trust promotion/demotion",
   "next bounded FORUM-26 slice",
-  "canonical `crates/rustok-forum/docs/implementation-plan.md` is intentionally not replaced",
+  "canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is intentionally not replaced",
   "were not run by the implementation agent",
 ]) {
   requireText(note, marker, `FORUM-26B owner note is missing ${marker}`);

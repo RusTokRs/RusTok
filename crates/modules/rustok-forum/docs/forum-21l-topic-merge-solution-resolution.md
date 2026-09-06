@@ -12,13 +12,13 @@ transaction, receipt ledger or merge event contract.
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-solution-resolution.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-solution-resolution.json
 ```
 
 Cumulative owner contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-owner.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json
 ```
 
 ## Owner commands

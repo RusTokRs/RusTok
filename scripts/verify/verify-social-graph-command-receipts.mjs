@@ -38,19 +38,19 @@ function assertNotContains(text, pattern, description) {
 }
 
 const paths = {
-  cargo: "crates/rustok-social-graph/Cargo.toml",
-  entity: "crates/rustok-social-graph/src/entities/command_receipt.rs",
-  entities: "crates/rustok-social-graph/src/entities/mod.rs",
-  error: "crates/rustok-social-graph/src/error.rs",
-  lib: "crates/rustok-social-graph/src/lib.rs",
-  migration: "crates/rustok-social-graph/src/migrations/m20260726_000003_create_command_receipts.rs",
-  migrations: "crates/rustok-social-graph/src/migrations/mod.rs",
-  receipts: "crates/rustok-social-graph/src/receipts.rs",
-  service: "crates/rustok-social-graph/src/service.rs",
-  ports: "crates/rustok-social-graph/src/ports.rs",
-  observability: "crates/rustok-social-graph/src/observability.rs",
-  test: "crates/rustok-social-graph/tests/command_receipts_sqlite.rs",
-  plan: "crates/rustok-social-graph/docs/implementation-plan.md",
+  cargo: "crates/modules/rustok-social-graph/Cargo.toml",
+  entity: "crates/modules/rustok-social-graph/src/entities/command_receipt.rs",
+  entities: "crates/modules/rustok-social-graph/src/entities/mod.rs",
+  error: "crates/modules/rustok-social-graph/src/error.rs",
+  lib: "crates/modules/rustok-social-graph/src/lib.rs",
+  migration: "crates/modules/rustok-social-graph/src/migrations/m20260726_000003_create_command_receipts.rs",
+  migrations: "crates/modules/rustok-social-graph/src/migrations/mod.rs",
+  receipts: "crates/modules/rustok-social-graph/src/receipts.rs",
+  service: "crates/modules/rustok-social-graph/src/service.rs",
+  ports: "crates/modules/rustok-social-graph/src/ports.rs",
+  observability: "crates/modules/rustok-social-graph/src/observability.rs",
+  test: "crates/modules/rustok-social-graph/tests/command_receipts_sqlite.rs",
+  plan: "crates/modules/rustok-social-graph/docs/implementation-plan.md",
 };
 
 for (const value of Object.values(paths)) assertExists(value);

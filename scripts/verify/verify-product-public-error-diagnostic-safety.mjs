@@ -12,14 +12,14 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  mapper: 'crates/rustok-product/src/public_error.rs',
-  error: 'crates/rustok-product/src/error.rs',
-  root: 'crates/rustok-product/src/lib.rs',
+  mapper: 'crates/modules/rustok-product/src/public_error.rs',
+  error: 'crates/modules/rustok-product/src/error.rs',
+  root: 'crates/modules/rustok-product/src/lib.rs',
   evidence:
-    'crates/rustok-product/contracts/evidence/product-public-error-diagnostic-safety-source.json',
+    'crates/modules/rustok-product/contracts/evidence/product-public-error-diagnostic-safety-source.json',
   review:
-    'crates/rustok-product/contracts/evidence/product-public-error-diagnostic-safety-source-review.json',
-  document: 'crates/rustok-product/docs/product-public-error-diagnostic-safety.md',
+    'crates/modules/rustok-product/contracts/evidence/product-public-error-diagnostic-safety-source-review.json',
+  document: 'crates/modules/rustok-product/docs/product-public-error-diagnostic-safety.md',
 };
 
 const mapperSource = read(paths.mapper);

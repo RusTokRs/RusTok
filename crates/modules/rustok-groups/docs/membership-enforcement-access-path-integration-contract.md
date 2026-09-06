@@ -46,7 +46,7 @@ This preserves fail-closed behavior without making the Groups adapter responsibl
 
 ## Groups contract accounting
 
-`crates/rustok-groups/contracts/groups-effective-membership-access.json` records `forum_audience_group_facts` as `source_delivered_execution_pending` and keeps `additional_provider_specific_acl_adapters` in remaining work.
+`crates/modules/rustok-groups/contracts/groups-effective-membership-access.json` records `forum_audience_group_facts` as `source_delivered_execution_pending` and keeps `additional_provider_specific_acl_adapters` in remaining work.
 
 The broad Groups FBA field `membership_enforcement.provider_acl_integration` remains open because one delivered Forum consumer does not complete all additional provider ACL profiles. `evidence.membership_enforcement_access_path_integration` remains null because the owner-backed commands have not yet completed the durable runtime gate.
 
@@ -54,7 +54,7 @@ The broad Groups FBA field `membership_enforcement.provider_acl_integration` rem
 
 The authoritative Forum-side composition contract is:
 
-`crates/rustok-forum/contracts/forum-audience-group-facts-host-runtime.json`
+`crates/modules/rustok-forum/contracts/forum-audience-group-facts-host-runtime.json`
 
 Its source verifier remains:
 

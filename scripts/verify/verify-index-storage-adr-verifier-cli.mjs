@@ -12,7 +12,7 @@ const fail = (message) => {
 const verifier = read('scripts/verify/verify-index-storage-adr.mjs');
 const fixture = read('scripts/verify/index-storage-tooling.test.mjs');
 const router = read('scripts/verify/index-storage-tooling.mjs');
-const guide = read('crates/rustok-index/docs/storage-decision.md');
+const guide = read('crates/modules/rustok-index/docs/storage-decision.md');
 
 const requireMarkers = (content, label, markers) => {
   for (const marker of markers) {

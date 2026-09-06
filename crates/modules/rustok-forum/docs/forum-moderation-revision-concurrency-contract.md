@@ -4,7 +4,7 @@ Status: **source-ready / maintainer execution pending**
 
 ## Scope
 
-`crates/rustok-forum/tests/moderation_revision_concurrency_postgres.rs` retains real PostgreSQL concurrency evidence for the Forum-owned moderation subject revision fence.
+`crates/modules/rustok-forum/tests/moderation_revision_concurrency_postgres.rs` retains real PostgreSQL concurrency evidence for the Forum-owned moderation subject revision fence.
 
 The test uses the production Forum migrations through the shared `PostgresForumTestDb` bootstrap and materializes the real `ForumModerationSubjectAdapterFactory` against independent database connections. No test double stands in for the producer adapter.
 

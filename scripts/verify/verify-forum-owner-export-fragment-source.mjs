@@ -14,8 +14,8 @@ function requireAbsent(text, marker, message) {
   if (text.includes(marker)) throw new Error(message);
 }
 
-const mappingPath = "crates/rustok-forum/src/export_mapping.rs";
-const libPath = "crates/rustok-forum/src/lib.rs";
+const mappingPath = "crates/modules/rustok-forum/src/export_mapping.rs";
+const libPath = "crates/modules/rustok-forum/src/lib.rs";
 const packetPath = "docs/modules/forum-34-owner-export-fragment-actualization-2026-08-09.md";
 
 const mapping = read(mappingPath);

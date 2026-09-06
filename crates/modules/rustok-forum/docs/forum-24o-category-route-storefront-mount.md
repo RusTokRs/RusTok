@@ -22,7 +22,7 @@ The slice includes:
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-category-route-storefront-mount.json
+crates/modules/rustok-forum/contracts/forum-category-route-storefront-mount.json
 ```
 
 ## Module and host boundaries

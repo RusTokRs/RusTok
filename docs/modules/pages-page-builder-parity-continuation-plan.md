@@ -61,7 +61,7 @@ The recheck includes all relevant merged source after the former PR #3063 cursor
 
 The current Forum contribution/runtime source boundary is complete without changing Forum persistence, visibility, widget validation or authorization ownership:
 
-- `crates/rustok-forum/rustok-module.toml` declares complementary `rustok.forum.widget-catalog` and `rustok.forum.widget-preview` contributions through the shared `[fba.builder_consumer.contribution_manifest]` shape;
+- `crates/modules/rustok-forum/rustok-module.toml` declares complementary `rustok.forum.widget-catalog` and `rustok.forum.widget-preview` contributions through the shared `[fba.builder_consumer.contribution_manifest]` shape;
 - `forum.topic_list`, `forum.topic_detail` and `forum.reply_stream` have real Fly block/component identities;
 - owner schema references remain metadata-only while actual schemas and validation stay behind `ForumWidgetContractService`;
 - `adapter_state = "fly_contract_ready"`, `preview_data_state = "owner_preview_transport_ready"` and `property_data_state = "owner_property_editor_ready"` are the current source states;
@@ -380,7 +380,7 @@ Admin/storefront assembly, policy filters and structural diagnostics are source-
 
 ### Pages reference-consumer gate: source-ready / acceptance-source-ready / execution-open
 
-`crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json` remains the rollout-only fail-closed blocker referenced by Forum Wave evidence. It requires the Pages `1.1` Page Builder contract, `all_on`, `publish_off`, `preview_off` and `builder_off` profiles, Pages-owned reads in every profile and the existing source guards plus maintainer execution evidence. That candidate branch intentionally keeps `provider_health = unobserved`.
+`crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json` remains the rollout-only fail-closed blocker referenced by Forum Wave evidence. It requires the Pages `1.1` Page Builder contract, `all_on`, `publish_off`, `preview_off` and `builder_off` profiles, Pages-owned reads in every profile and the existing source guards plus maintainer execution evidence. That candidate branch intentionally keeps `provider_health = unobserved`.
 
 `pages-reference-consumer-gate-acceptance-source.json` separately requires the exact reference candidate plus `pages_builder_provider_health_observed_acceptance_v1` on the same source commit and immutable RepoDigest, with explicit `accept_pages_reference_consumer_gate|reject` owner decision and explicit retain/rollback disposition. Committed source remains `accepted = false`; the decision source does not perform rollback, assert current provider health or promote Forum/FFA/FBA.
 
@@ -499,17 +499,17 @@ node scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.m
 node scripts/verify/verify-page-builder-accessibility-browser-packet-verifier.mjs
 node scripts/evidence/verify-page-builder-accessibility-browser-packet.test.mjs
 node scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs
-node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
 node scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
 node scripts/evidence/accept-pages-reference-consumer-gate.test.mjs
 node scripts/verify/verify-forum-page-builder-wave-admission.mjs
 node scripts/evidence/admit-forum-page-builder-wave.test.mjs
@@ -520,14 +520,14 @@ node scripts/verify/verify-forum-page-builder-wave-observed-acceptance.mjs
 node scripts/evidence/accept-forum-page-builder-wave.test.mjs
 node scripts/verify/verify-fly-ui-contributions.mjs
 node scripts/verify/verify-forum-page-builder-contribution-metadata.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
 cargo xtask module validate pages
 cargo xtask module validate forum
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs
 node scripts/verify/verify-release-infra-self-test.mjs
 node scripts/verify/verify-release-supply-chain-contract.mjs
 node scripts/verify/verify-release-readiness-contract.mjs

@@ -4,28 +4,28 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const failures = [];
 
 const evidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-host-route-response-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-host-route-response-source.json",
 ));
 const historicalEvidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-published-slug-route-alias-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-published-slug-route-alias-source.json",
 ));
-const pagesLib = read("crates/rustok-pages/src/lib.rs");
+const pagesLib = read("crates/modules/rustok-pages/src/lib.rs");
 const adapter = read(
-  "crates/rustok-pages/storefront/src/transport/host_route_adapter.rs",
+  "crates/modules/rustok-pages/storefront/src/transport/host_route_adapter.rs",
 );
-const transport = read("crates/rustok-pages/storefront/src/transport/mod.rs");
-const storefrontLib = read("crates/rustok-pages/storefront/src/lib.rs");
+const transport = read("crates/modules/rustok-pages/storefront/src/transport/mod.rs");
+const storefrontLib = read("crates/modules/rustok-pages/storefront/src/lib.rs");
 const host = read("apps/storefront/src/lib.rs");
 const harness = read(
-  "crates/rustok-pages/storefront/tests/host_route_decision_sqlite.rs",
+  "crates/modules/rustok-pages/storefront/tests/host_route_decision_sqlite.rs",
 );
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
-const localPlan = read("crates/rustok-pages/docs/implementation-plan.md");
+const localPlan = read("crates/modules/rustok-pages/docs/implementation-plan.md");
 const packet = read(
   "docs/modules/pages-page-builder-host-route-response-packet-2026-08-06.md",
 );
@@ -125,7 +125,7 @@ if (
   evidence.server_function?.path !== "/api/fn/pages/route-decision" ||
   evidence.server_function?.codec !== "application/x-www-form-urlencoded" ||
   evidence.regression?.path !==
-    "crates/rustok-pages/storefront/tests/host_route_decision_sqlite.rs" ||
+    "crates/modules/rustok-pages/storefront/tests/host_route_decision_sqlite.rs" ||
   evidence.regression?.test !==
     "registered_host_route_decision_respects_admission_aliases_and_terminal_states" ||
   evidence.host?.redirect_status !== 308 ||

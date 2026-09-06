@@ -16,7 +16,7 @@ The slice changes only route identity inside the existing public SEO composition
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-canonical-route-seo-policy.json
+crates/modules/rustok-forum/contracts/forum-canonical-route-seo-policy.json
 ```
 
 ## Owner boundary
@@ -113,4 +113,4 @@ cargo check -p rustok-storefront --all-targets --features ssr
 - retained SQLite, PostgreSQL, registered-host, sitemap and browser evidence;
 - final canonical-plan ledger reconciliation after maintainer execution.
 
-`crates/rustok-forum/docs/implementation-plan.md` remains the only authoritative roadmap. The connected complete-file writer cannot safely retrieve and replace the full plan losslessly, so this task document records the stable FORUM-24P contract without creating a second backlog or claiming ledger synchronization.
+`crates/modules/rustok-forum/docs/implementation-plan.md` remains the only authoritative roadmap. The connected complete-file writer cannot safely retrieve and replace the full plan losslessly, so this task document records the stable FORUM-24P contract without creating a second backlog or claiming ledger synchronization.

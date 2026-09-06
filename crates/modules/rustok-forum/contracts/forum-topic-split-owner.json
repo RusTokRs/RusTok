@@ -97,7 +97,7 @@
   ],
   "migration": "m20260803_000020_add_forum_topic_split_operations",
   "verification": {
-    "sqlite_contract": "crates/rustok-forum/tests/topic_split_sqlite.rs",
+    "sqlite_contract": "crates/modules/rustok-forum/tests/topic_split_sqlite.rs",
     "static_verifier": "scripts/verify/verify-forum-topic-split-owner.mjs",
     "commands_run_by_implementation_agent": false
   },

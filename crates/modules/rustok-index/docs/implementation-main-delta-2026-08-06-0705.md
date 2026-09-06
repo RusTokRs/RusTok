@@ -10,7 +10,7 @@ The only commit after the previously checked
 Its diff is limited to Commerce Admin Fulfillment diagnostic source, documentation, evidence, and a
 Commerce verifier. It does not modify:
 
-- `crates/rustok-index`;
+- `crates/modules/rustok-index`;
 - Product Index source/absence composition;
 - `apps/server/src/graphql/index_drift_diagnosis.rs`;
 - Index replay, exact-diagnosis, source-continuation, or source-page service composition;

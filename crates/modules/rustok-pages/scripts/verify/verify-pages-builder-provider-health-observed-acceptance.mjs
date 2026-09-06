@@ -4,18 +4,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  contract: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
+  contract: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
   runner: "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs",
-  runtimeContract: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json",
-  runtimeSource: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json",
-  identitySource: "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
-  evaluatorSource: "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
-  bindingSource: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
-  runtimeVerifier: "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs",
-  gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
+  runtimeContract: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json",
+  runtimeSource: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json",
+  identitySource: "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
+  evaluatorSource: "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
+  bindingSource: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
+  runtimeVerifier: "crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs",
+  gate: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
   overlay: "docs/modules/pages-page-builder-provider-health-observed-acceptance-actualization-2026-08-10.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };

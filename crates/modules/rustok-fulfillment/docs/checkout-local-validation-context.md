@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This source slice closes the delegated-context attribution gap for locally produced request,
 set, identity, and immutable-plan failures inside `CheckoutFulfillmentExecutionPort` in
-`crates/rustok-fulfillment/src/checkout_execution.rs`.
+`crates/modules/rustok-fulfillment/src/checkout_execution.rs`.
 
 The covered local paths are:
 
@@ -139,22 +139,22 @@ The dedicated local payload-safety guard is:
 
 Its source evidence and detailed policy are recorded in:
 
-- `crates/rustok-fulfillment/contracts/evidence/checkout-execution-local-porterror-diagnostic-safety-source.json`;
-- `crates/rustok-fulfillment/docs/checkout-execution-local-porterror-diagnostic-safety.md`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-execution-local-porterror-diagnostic-safety-source.json`;
+- `crates/modules/rustok-fulfillment/docs/checkout-execution-local-porterror-diagnostic-safety.md`.
 
 Admission diagnostics are source-ready / unvalidated under their separate bounded contract:
 
 - `scripts/verify/verify-fulfillment-checkout-admission-context.mjs`;
-- `crates/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json`;
-- `crates/rustok-fulfillment/docs/checkout-admission-context.md`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json`;
+- `crates/modules/rustok-fulfillment/docs/checkout-admission-context.md`.
 
 Causation validation and tenant UUID parse-failure diagnostics are source-ready / unvalidated
 under their context-validation contracts:
 
 - `scripts/verify/verify-fulfillment-checkout-context-validation.mjs`;
-- `crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`;
-- `crates/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json`;
-- `crates/rustok-fulfillment/docs/checkout-context-validation.md`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`;
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json`;
+- `crates/modules/rustok-fulfillment/docs/checkout-context-validation.md`.
 
 The context guard preserves exact parsing and matching behavior while forbidding complete errors,
 complete parse causes, raw delegated values, message text, and Debug kind output inside both
@@ -164,8 +164,8 @@ Canonical `FulfillmentError` diagnostics are source-ready / unvalidated under th
 contract:
 
 - `scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`;
-- `crates/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`;
-- `crates/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`;
+- `crates/modules/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md`.
 
 The canonical mapper preserves all five static public envelopes and the existing warning/error
 severity while recording only bounded variant and context facts.

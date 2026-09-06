@@ -1,6 +1,6 @@
 # rustok-blog implementation plan — slice 83 continuation
 
-This document continues `crates/rustok-blog/docs/implementation-plan-slice-82.md`.
+This document continues `crates/modules/rustok-blog/docs/implementation-plan-slice-82.md`.
 
 Slices 1–82 retain the typed Comments remote boundary, signed user-write
 delegation, scheduled key lifecycle, one process-local replay gate, explicitly

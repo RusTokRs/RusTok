@@ -16,13 +16,13 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-execution-contract.json";
+  "crates/modules/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-execution-contract.json";
 const expectedRunnerPath =
   "scripts/evidence/capture-iggy-contract-poison-external-dedup.mjs";
 const expectedVerifierPath =
   "scripts/verify/verify-iggy-contract-poison-external-dedup-retained-evidence.mjs";
 const expectedEvidencePath =
-  "crates/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-execution.json";
+  "crates/modules/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-execution.json";
 const expectedCaseNames = [
   "disabled_deduplication_persists_repeated_uuid_twice",
   "enabled_deduplication_suppresses_immediate_repeated_uuid",

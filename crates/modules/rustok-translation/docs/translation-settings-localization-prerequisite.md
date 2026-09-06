@@ -1,5 +1,5 @@
 ---
-id: doc://crates/rustok-translation/docs/translation-settings-localization-prerequisite.md
+id: doc://crates/modules/rustok-translation/docs/translation-settings-localization-prerequisite.md
 kind: implementation_handoff
 language: en
 status: in_progress

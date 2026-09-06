@@ -8,13 +8,13 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const failures = [];
 const files = {
   contract:
-    "crates/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-registry-admission-source.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-registry-admission-source.json",
   runner: "scripts/evidence/admit-page-builder-static-sanitization-registry-update.mjs",
   tests: "scripts/evidence/admit-page-builder-static-sanitization-registry-update.test.mjs",
   verifier: "scripts/verify/verify-page-builder-static-sanitization-registry-admission.mjs",
   executionSource:
-    "crates/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-execution-source.json",
-  registry: "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-execution-source.json",
+  registry: "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
 };
 
 function absolute(relativePath) {

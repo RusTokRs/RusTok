@@ -29,27 +29,27 @@ const forbidMarkers = (relative, markers) => {
 };
 
 for (const relative of [
-  "crates/rustok-groups/src/applications.rs",
-  "crates/rustok-groups/src/applications_policy_management.rs",
-  "crates/rustok-groups/src/graphql_application_policy_management.rs",
-  "crates/rustok-groups/src/graphql_application_cas.rs",
-  "crates/rustok-groups/src/ports.rs",
-  "crates/rustok-groups/admin/src/application_model.rs",
-  "crates/rustok-groups/admin/src/application_core.rs",
-  "crates/rustok-groups/admin/src/policy_locale_compat.rs",
-  "crates/rustok-groups/admin/src/lib.rs",
-  "crates/rustok-groups/admin/src/transport.rs",
-  "crates/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs",
-  "crates/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs",
-  "crates/rustok-groups/admin/src/ui/policy_editor.rs",
-  "crates/rustok-groups/contracts/groups-fba-registry.json",
-  "crates/rustok-groups/docs/implementation-plan.md",
+  "crates/modules/rustok-groups/src/applications.rs",
+  "crates/modules/rustok-groups/src/applications_policy_management.rs",
+  "crates/modules/rustok-groups/src/graphql_application_policy_management.rs",
+  "crates/modules/rustok-groups/src/graphql_application_cas.rs",
+  "crates/modules/rustok-groups/src/ports.rs",
+  "crates/modules/rustok-groups/admin/src/application_model.rs",
+  "crates/modules/rustok-groups/admin/src/application_core.rs",
+  "crates/modules/rustok-groups/admin/src/policy_locale_compat.rs",
+  "crates/modules/rustok-groups/admin/src/lib.rs",
+  "crates/modules/rustok-groups/admin/src/transport.rs",
+  "crates/modules/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs",
+  "crates/modules/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs",
+  "crates/modules/rustok-groups/admin/src/ui/policy_editor.rs",
+  "crates/modules/rustok-groups/contracts/groups-fba-registry.json",
+  "crates/modules/rustok-groups/docs/implementation-plan.md",
 ]) requireFile(relative);
 
-requireMarkers("crates/rustok-groups/src/applications.rs", [
+requireMarkers("crates/modules/rustok-groups/src/applications.rs", [
   'include!("applications_policy_management.rs")',
 ]);
-requireMarkers("crates/rustok-groups/src/applications_policy_management.rs", [
+requireMarkers("crates/modules/rustok-groups/src/applications_policy_management.rs", [
   "GroupApplicationPolicyManagementReadPort",
   "list_group_application_policy_locales",
   "read_group_application_policy_for_management",
@@ -61,56 +61,56 @@ requireMarkers("crates/rustok-groups/src/applications_policy_management.rs", [
   "questions: Vec::new()",
   "rules: Vec::new()",
 ]);
-forbidMarkers("crates/rustok-groups/src/applications_policy_management.rs", [
+forbidMarkers("crates/modules/rustok-groups/src/applications_policy_management.rs", [
   "load_policy_for_locale",
   "context.locale",
   "unwrap_or_else(|| locales",
   "first()",
 ]);
 
-requireMarkers("crates/rustok-groups/src/graphql_application_policy_management.rs", [
+requireMarkers("crates/modules/rustok-groups/src/graphql_application_policy_management.rs", [
   "GroupsApplicationPolicyManagementQuery",
   "group_application_policy_locale_catalog",
   "group_application_policy_for_management",
   "ListGroupApplicationPolicyLocalesRequest",
   "ReadGroupApplicationPolicyForManagementRequest",
 ]);
-requireMarkers("crates/rustok-groups/src/graphql_application_cas.rs", [
+requireMarkers("crates/modules/rustok-groups/src/graphql_application_cas.rs", [
   "GroupsApplicationPolicyManagementQuery",
   "GroupsApplicationLifecycleQuery,",
   "GroupsApplicationPolicyManagementQuery,",
 ]);
-requireMarkers("crates/rustok-groups/src/ports.rs", [
+requireMarkers("crates/modules/rustok-groups/src/ports.rs", [
   '"GroupApplicationPolicyManagementReadPort"',
 ]);
 
-requireMarkers("crates/rustok-groups/admin/src/application_model.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/application_model.rs", [
   "GroupsAdminApplicationPolicyLocaleCatalog",
   "GroupsAdminApplicationPolicyManagementView",
   "translation_exists: bool",
   "pub fn precondition",
 ]);
-requireMarkers("crates/rustok-groups/admin/src/application_core.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/application_core.rs", [
   "prepare_group_application_policy_locale_catalog_query",
   "prepare_group_application_policy_query",
   "normalize_locale_tag(locale)",
 ]);
-requireMarkers("crates/rustok-groups/admin/src/policy_locale_compat.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/policy_locale_compat.rs", [
   "pub async fn load_group_admin_application_policy",
   "load_group_admin_application_policy_for_management",
   "selected membership application policy translation does not exist",
   "UiTransportError::native",
   "UiTransportError::graphql",
 ]);
-forbidMarkers("crates/rustok-groups/admin/src/policy_locale_compat.rs", [
+forbidMarkers("crates/modules/rustok-groups/admin/src/policy_locale_compat.rs", [
   "fallback_failed",
   "load_group_application_policy(",
 ]);
-requireMarkers("crates/rustok-groups/admin/src/lib.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/lib.rs", [
   "mod policy_locale_compat;",
   "pub use policy_locale_compat::*;",
 ]);
-requireMarkers("crates/rustok-groups/admin/src/transport.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/transport.rs", [
   "load_group_admin_application_policy_locale_catalog",
   "load_group_admin_application_policy_for_management",
   '"groups.admin.applications.policy.locales"',
@@ -118,31 +118,31 @@ requireMarkers("crates/rustok-groups/admin/src/transport.rs", [
   "execute_selected_transport",
   "never falls back",
 ]);
-requireMarkers("crates/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs", [
   "request::RequestContext",
   "request.locale",
   "ListGroupApplicationPolicyLocalesRequest",
   "ReadGroupApplicationPolicyForManagementRequest",
   "locale: query.locale",
 ]);
-forbidMarkers("crates/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs", [
+forbidMarkers("crates/modules/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs", [
   "PortActor::user(auth.user_id.to_string()),\n            query.locale",
   "PortActor::user(auth.user_id.to_string()),\n            command.locale.clone()",
   "GroupApplicationReadPort",
 ]);
-requireMarkers("crates/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs", [
   "groupApplicationPolicyLocaleCatalog",
   "groupApplicationPolicyForManagement",
   "ManagementVariables",
   "translation_exists",
   "tenant_slug,\n        None,",
 ]);
-forbidMarkers("crates/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs", [
+forbidMarkers("crates/modules/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs", [
   "Some(query.locale.clone())",
   "Some(command.locale.clone())",
   "groupApplicationPolicy(groupId",
 ]);
-requireMarkers("crates/rustok-groups/admin/src/ui/policy_editor.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/ui/policy_editor.rs", [
   "locale_options",
   "management_loaded",
   "translation_exists",
@@ -153,15 +153,15 @@ requireMarkers("crates/rustok-groups/admin/src/ui/policy_editor.rs", [
   "new_translation",
   "disabled=move || !management_loaded.get()",
 ]);
-forbidMarkers("crates/rustok-groups/admin/src/ui/policy_editor.rs", [
+forbidMarkers("crates/modules/rustok-groups/admin/src/ui/policy_editor.rs", [
   "prop:value=move || locale.get() readonly",
   "native_policy_locale_adapter",
   "graphql_policy_locale_adapter",
 ]);
 
 for (const relative of [
-  "crates/rustok-groups/admin/locales/en.json",
-  "crates/rustok-groups/admin/locales/ru.json",
+  "crates/modules/rustok-groups/admin/locales/en.json",
+  "crates/modules/rustok-groups/admin/locales/ru.json",
 ]) {
   if (!requireFile(relative)) continue;
   try { JSON.parse(read(relative)); } catch (error) {
@@ -174,8 +174,8 @@ for (const relative of [
   ]);
 }
 
-if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
-  const registry = JSON.parse(read("crates/rustok-groups/contracts/groups-fba-registry.json"));
+if (requireFile("crates/modules/rustok-groups/contracts/groups-fba-registry.json")) {
+  const registry = JSON.parse(read("crates/modules/rustok-groups/contracts/groups-fba-registry.json"));
   const port = registry?.provider?.ports?.find((entry) => entry?.name === "GroupApplicationPolicyManagementReadPort");
   if (!port?.operations?.includes("list_group_application_policy_locales") || !port?.operations?.includes("read_group_application_policy_for_management")) failures.push("registry is missing policy locale management operations");
   if (port?.selected_locale_source !== "typed_request") failures.push("selected management locale must come from the typed request");
@@ -185,7 +185,7 @@ if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
   if (registry?.evidence?.membership_application_policy_locale_management !== null) failures.push("unexecuted policy locale management evidence must remain null");
 }
 
-requireMarkers("crates/rustok-groups/docs/implementation-plan.md", [
+requireMarkers("crates/modules/rustok-groups/docs/implementation-plan.md", [
   "GroupApplicationPolicyManagementReadPort",
   "selected exact locale",
   "typed request",

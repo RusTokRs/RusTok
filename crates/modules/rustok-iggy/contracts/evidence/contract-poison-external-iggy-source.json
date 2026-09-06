@@ -6,7 +6,7 @@
   "scope": "external_real_iggy_raw_poison_cursor_lifecycle",
   "test_target": "contract_poison_external_iggy",
   "test_case": "malformed_delivery_redelivers_until_explicit_ack_and_dlq_keeps_exact_bytes",
-  "source_path": "crates/rustok-iggy/tests/contract_poison_external_iggy.rs",
+  "source_path": "crates/modules/rustok-iggy/tests/contract_poison_external_iggy.rs",
   "verifier": "scripts/verify/verify-iggy-contract-poison-external-evidence.mjs",
   "required_environment": [
     "RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS"

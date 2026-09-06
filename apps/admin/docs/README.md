@@ -2,7 +2,7 @@
 
 > **MANDATORY FOR AI AGENTS — Read these guides BEFORE any code changes:**
 >
-> **Module UI Package Guides (for `crates/rustok-*/admin` packages):**
+> **Module UI Package Guides (for `crates/modules/rustok-*/admin` packages):**
 > - [Architecture Guide](../../../docs/UI/module-package-architecture.md) — explains **FFA** (Fluid Frontend Architecture), `core/transport/ui` split, dual-path model
 > - [Implementation Guide](../../../docs/UI/module-package-implementation.md) — **internal libraries** (`leptos-ui`, `leptos-ui-routing`, `rustok-graphql`, etc.), **i18n rules**, file structure, forbidden patterns
 > - [Verification Guide](../../../docs/UI/module-package-verification.md) — verification commands, common errors
@@ -38,7 +38,7 @@ a Leptos render/bind adapter. This split is enforced by a quick verifier
 `/modules/workflow`. The host still composes only the workflow detail editor, execution history,
 and version history through `src/features/workflow/`; its native server-function adapter uses
 `HostRuntimeContext`. The outstanding ownership transfer must move that remaining detail
-surface atomically into `crates/rustok-workflow/admin/` and delete the host feature; no second
+surface atomically into `crates/modules/rustok-workflow/admin/` and delete the host feature; no second
 transport path is to be introduced.
 
 The host-owned `/modules` control plane also receives only a narrow database snapshot from
@@ -186,7 +186,7 @@ npm.cmd run tw:build
 
 `apps/admin/input.css` uses Tailwind v4 `@import "tailwindcss"` and explicit `@source` entries. `tailwind.config.js`
 must include `apps/admin/src`, shared Leptos UI crates and module-owned admin UI packages
-`crates/**/admin/src/**/*.rs`. If `dist/output.css` is missing or the source globs do not cover module UI packages,
+`crates/modules/**/admin/src/**/*.rs`. If `dist/output.css` is missing or the source globs do not cover module UI packages,
 the shell will load partially or without styles. This does not change the production target: the architectural path for Leptos admin remains
 SSR/hydrate over `apps/server`, and CSR is needed for standalone debug and testing module-owned UI packages.
 

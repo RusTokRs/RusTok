@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 function fail(message) {
   console.error("[verify-page-builder-leptos-admin-parity] FAIL");
@@ -22,11 +22,11 @@ function read(relativePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
-const adminComposition = read("crates/rustok-pages/admin/src/composition.rs");
-const adminBuilder = read("crates/rustok-pages/admin/src/builder.rs");
-const rolloutSettings = read("crates/rustok-pages/admin/src/builder_rollout_settings.rs");
-const sharedAdminUi = read("crates/rustok-page-builder/admin/src/ui/leptos.rs");
-const consumerManifest = read("crates/rustok-pages/rustok-module.toml");
+const adminComposition = read("crates/modules/rustok-pages/admin/src/composition.rs");
+const adminBuilder = read("crates/modules/rustok-pages/admin/src/builder.rs");
+const rolloutSettings = read("crates/modules/rustok-pages/admin/src/builder_rollout_settings.rs");
+const sharedAdminUi = read("crates/modules/rustok-page-builder/admin/src/ui/leptos.rs");
+const consumerManifest = read("crates/modules/rustok-pages/rustok-module.toml");
 
 for (const token of [
   "PagesBuilderFacade",

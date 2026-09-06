@@ -21,11 +21,11 @@ const verifier = path.join(
   'scripts/verify/verify-blog-post-category-name-projection-source.mjs',
 );
 const files = [
-  'crates/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
-  'crates/rustok-blog/src/services/post.rs',
-  'crates/rustok-blog/src/services/category_name_projection.rs',
-  'crates/rustok-blog/src/dto/post.rs',
-  'crates/rustok-blog/tests/post_category_name_projection.rs',
+  'crates/modules/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
+  'crates/modules/rustok-blog/src/services/post.rs',
+  'crates/modules/rustok-blog/src/services/category_name_projection.rs',
+  'crates/modules/rustok-blog/src/dto/post.rs',
+  'crates/modules/rustok-blog/tests/post_category_name_projection.rs',
 ];
 
 function fixture() {
@@ -70,7 +70,7 @@ test('canonical Taxonomy category-name projection source passes', () => {
 test('rejects restoring permanent None category projection', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/rustok-blog/src/services/post.rs', (source) =>
+    mutate(root, 'crates/modules/rustok-blog/src/services/post.rs', (source) =>
       source.replace('category_name,', 'category_name: None,'),
     );
     expectFailure(root, 'permanent None detail projection must fail');
@@ -82,7 +82,7 @@ test('rejects restoring permanent None category projection', () => {
 test('rejects restoring legacy Blog category translation reads', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/rustok-blog/src/services/post.rs', (source) =>
+    mutate(root, 'crates/modules/rustok-blog/src/services/post.rs', (source) =>
       source.replace(
         'use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};',
         'use crate::entities::{blog_category_translation, blog_post, blog_post_channel_visibility, blog_post_translation};',
@@ -97,7 +97,7 @@ test('rejects restoring legacy Blog category translation reads', () => {
 test('rejects dropping tenant binding from typed Category lookup', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/rustok-blog/src/services/category_name_projection.rs', (source) =>
+    mutate(root, 'crates/modules/rustok-blog/src/services/category_name_projection.rs', (source) =>
       source.replace(
         '.filter(blog_category_taxonomy_binding::Column::TenantId.eq(tenant_id))',
         '',
@@ -112,7 +112,7 @@ test('rejects dropping tenant binding from typed Category lookup', () => {
 test('rejects replacing batch binding lookup with one Category', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/rustok-blog/src/services/category_name_projection.rs', (source) =>
+    mutate(root, 'crates/modules/rustok-blog/src/services/category_name_projection.rs', (source) =>
       source.replace(
         'BlogCategoryId.is_in(category_ids.clone())',
         'BlogCategoryId.eq(category_ids[0])',
@@ -127,7 +127,7 @@ test('rejects replacing batch binding lookup with one Category', () => {
 test('rejects dropping caller fallback locale from Taxonomy projection', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/rustok-blog/src/services/category_name_projection.rs', (source) =>
+    mutate(root, 'crates/modules/rustok-blog/src/services/category_name_projection.rs', (source) =>
       source.replace('            fallback_locale,', '            None,'),
     );
     expectFailure(root, 'fallback removal must fail');
@@ -139,7 +139,7 @@ test('rejects dropping caller fallback locale from Taxonomy projection', () => {
 test('rejects removing legacy-row deletion from ownership harness', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/rustok-blog/tests/post_category_name_projection.rs', (source) =>
+    mutate(root, 'crates/modules/rustok-blog/tests/post_category_name_projection.rs', (source) =>
       source.replace('blog_category_translation::Entity::delete_many()', 'blog_category_translation::Entity::find()'),
     );
     expectFailure(root, 'ownership proof must delete legacy category translations');
@@ -153,7 +153,7 @@ test('rejects fake execution promotion', () => {
   try {
     mutate(
       root,
-      'crates/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
+      'crates/modules/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
       (source) => source.replace('"execution": []', '"execution": ["fake"]'),
     );
     expectFailure(root, 'fake execution claim must fail');

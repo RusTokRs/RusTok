@@ -6,15 +6,15 @@ The branch merge base remains `9cfc43cf72284e16261f788070a47367613bf2e2`. Twelve
 `main` after that merge base while PR #2986 continued. Their changed files are limited to:
 
 - Commerce checkout-compensation diagnostics and source evidence;
-- Forum reply-range GraphQL transport inside `crates/rustok-forum`;
+- Forum reply-range GraphQL transport inside `crates/modules/rustok-forum`;
 - Inventory availability diagnostics;
 - Order checkout-recovery diagnostics;
 - Pages/Page Builder native storefront evidence and harnesses.
 
 No intervening commit changes:
 
-- `crates/rustok-index`;
-- `crates/rustok-distribution` Product Index composition;
+- `crates/modules/rustok-index`;
+- `crates/modules/rustok-distribution` Product Index composition;
 - `apps/server/src/graphql/schema.rs`;
 - `apps/server/src/graphql/index_drift_diagnosis.rs`;
 - `apps/server/src/services/index_drift_diagnosis_operator.rs`;

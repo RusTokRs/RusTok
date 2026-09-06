@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const visibilityPath = 'crates/rustok-distribution/src/product_index/channel_visibility.rs';
+const visibilityPath = 'crates/modules/rustok-distribution/src/product_index/channel_visibility.rs';
 requireMarkers(visibilityPath, [
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS: usize = 1024',
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUG_BYTES: usize = 100',
@@ -27,7 +27,7 @@ requireMarkers(visibilityPath, [
 ]);
 
 const resolverPath =
-  'crates/rustok-distribution/src/product_index/channel_relation_resolver.rs';
+  'crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs';
 const resolver = requireMarkers(resolverPath, [
   'MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE: usize = 64',
   'MAX_PRODUCT_SALES_CHANNEL_STABILIZATION_ATTEMPTS: usize = 3',
@@ -70,9 +70,9 @@ for (const forbidden of [
 }
 
 for (const ownerPath of [
-  'crates/rustok-product/src/services/index_channel_relation.rs',
-  'crates/rustok-product/src/services/index_channel_relation_freshness.rs',
-  'crates/rustok-product/src/services/index_channel_relation_convergence.rs',
+  'crates/modules/rustok-product/src/services/index_channel_relation.rs',
+  'crates/modules/rustok-product/src/services/index_channel_relation_freshness.rs',
+  'crates/modules/rustok-product/src/services/index_channel_relation_convergence.rs',
 ]) {
   const owner = read(ownerPath);
   for (const forbidden of ['rustok_channel', 'rustok_index', 'FROM channels', 'JOIN channels']) {
@@ -82,14 +82,14 @@ for (const ownerPath of [
   }
 }
 
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'pub(crate) mod channel_relation_resolver;',
   'mod channel_relation_convergence;',
   'mod channel_visibility;',
   'mod query_admission;',
 ]);
 
-const resolverDoc = requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-resolver.md', [
+const resolverDoc = requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-resolver.md', [
   'Status: `automatic_convergence_and_query_fence_source_complete_runtime_evidence_pending`',
   '`REPEATABLE READ`, `READ ONLY`',
   '1024 visibility slugs',
@@ -108,14 +108,14 @@ for (const legacy of ['Product v1', 'Product v2', 'Product v3', 'new Product Ind
   if (resolverDoc.includes(legacy)) fail(`resolver doc retains legacy compatibility text: ${legacy}`);
 }
 
-requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-relation-admission.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-relation-admission.md', [
   'current Product Index graph contains the Product-to-SalesChannel link',
   'Product-owned freshness witness',
   'Channel identity generation',
   'Automatic convergence',
   'Materialized/query freshness admission',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
   'bounded cross-owner Product visibility to SalesChannel UUID resolver',
   'one canonical Product Index source',
   'Freshness watermark source complete',

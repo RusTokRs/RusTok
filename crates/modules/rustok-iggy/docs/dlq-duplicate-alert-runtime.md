@@ -172,7 +172,7 @@ The server stores a read-only subscriber in `EventDlqDuplicateAlertObserverHandl
 Complete mode, environment, privacy, and lifecycle rules are documented in:
 
 ```text
-crates/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md
+crates/modules/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md
 ```
 
 ## Source contracts
@@ -180,13 +180,13 @@ crates/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md
 Reusable runtime:
 
 ```text
-crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
+crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
 ```
 
 Server observer:
 
 ```text
-crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json
+crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json
 ```
 
 Static guards:

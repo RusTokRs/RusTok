@@ -1,5 +1,5 @@
 ---
-id: doc://crates/rustok-translation/docs/implementation-plan.md
+id: doc://crates/modules/rustok-translation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress

@@ -5,32 +5,32 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
-const graphqlMutation = read("crates/rustok-pages/src/graphql/mutation.rs");
-const graphqlTypes = read("crates/rustok-pages/src/graphql/types.rs");
-const createService = read("crates/rustok-pages/src/services/page/create.rs");
-const lifecycleService = read("crates/rustok-pages/src/services/page/lifecycle.rs");
-const http = read("crates/rustok-pages/src/http.rs");
-const openapi = read("crates/rustok-pages/src/openapi.rs");
-const manifest = read("crates/rustok-pages/rustok-module.toml");
-const adminModel = read("crates/rustok-pages/admin/src/model.rs");
+const graphqlMutation = read("crates/modules/rustok-pages/src/graphql/mutation.rs");
+const graphqlTypes = read("crates/modules/rustok-pages/src/graphql/types.rs");
+const createService = read("crates/modules/rustok-pages/src/services/page/create.rs");
+const lifecycleService = read("crates/modules/rustok-pages/src/services/page/lifecycle.rs");
+const http = read("crates/modules/rustok-pages/src/http.rs");
+const openapi = read("crates/modules/rustok-pages/src/openapi.rs");
+const manifest = read("crates/modules/rustok-pages/rustok-module.toml");
+const adminModel = read("crates/modules/rustok-pages/admin/src/model.rs");
 const adminTransport = read(
-  "crates/rustok-pages/admin/src/transport/graphql_adapter.rs",
+  "crates/modules/rustok-pages/admin/src/transport/graphql_adapter.rs",
 );
 const adminTransportModule = read(
-  "crates/rustok-pages/admin/src/transport/mod.rs",
+  "crates/modules/rustok-pages/admin/src/transport/mod.rs",
 );
 const publishSelection = read(
-  "crates/rustok-page-builder/admin/src/publish_scenario_selection.rs",
+  "crates/modules/rustok-page-builder/admin/src/publish_scenario_selection.rs",
 );
 const publishSelectorPanel = read(
-  "crates/rustok-page-builder/admin/src/editor/publish_scenario_selector.rs",
+  "crates/modules/rustok-page-builder/admin/src/editor/publish_scenario_selector.rs",
 );
 const modularCanvas = read(
-  "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
+  "crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs",
 );
 
 function fail(message) {

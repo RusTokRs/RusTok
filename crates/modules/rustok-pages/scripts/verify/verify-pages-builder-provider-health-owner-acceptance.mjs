@@ -4,15 +4,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  contract: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
+  contract: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
   runner: "scripts/evidence/accept-pages-builder-provider-health-deployment.mjs",
   evaluator: "scripts/evidence/evaluate-page-builder-provider-health-deployment.mjs",
-  server: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
-  consumer: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
-  graphql: "crates/rustok-pages/src/graphql/builder_rollout.rs",
+  server: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
+  consumer: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
+  graphql: "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };
 const read = (name) => {

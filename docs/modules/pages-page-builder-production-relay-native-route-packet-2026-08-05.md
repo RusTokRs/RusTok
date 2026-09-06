@@ -98,17 +98,17 @@ The machine evidence execution list remains empty and every validation flag rema
 
 - `apps/server/tests/pages_production_relay_native_route_sqlite.rs`;
 - `apps/server/Cargo.toml` test-only SSR dependency;
-- `crates/rustok-pages/contracts/evidence/pages-production-relay-native-route-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-production-relay-native-route-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs`;
 - this packet;
 - the canonical Pages / Page Builder continuation plan.
 
 ## Maintainer validation
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs
 cargo test -p rustok-server --features mod-pages --test pages_production_relay_native_route_sqlite -- --nocapture
 cargo check -p rustok-server --features mod-pages --all-targets
 ```

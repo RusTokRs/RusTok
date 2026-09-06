@@ -17,29 +17,29 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const ownerRoot = read('crates/rustok-fulfillment/src/lib.rs');
-const owner = read('crates/rustok-fulfillment/src/shipping_option_read.rs');
+const ownerRoot = read('crates/modules/rustok-fulfillment/src/lib.rs');
+const owner = read('crates/modules/rustok-fulfillment/src/shipping_option_read.rs');
 const context = read(
-  'crates/rustok-commerce/src/graphql/mutations/shipping_option_read_context.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/shipping_option_read_context.rs',
 );
 const optionConsumer = read(
-  'crates/rustok-commerce/src/graphql/mutations/typed_shipping_option_helper.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/typed_shipping_option_helper.rs',
 );
 const listConsumer = read(
-  'crates/rustok-commerce/src/graphql/mutations/typed_shipping_enrichment_helper.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/typed_shipping_enrichment_helper.rs',
 );
 const evidence = JSON.parse(
   read(
-    'crates/rustok-fulfillment/contracts/evidence/shipping-option-read-diagnostic-safety-source.json',
+    'crates/modules/rustok-fulfillment/contracts/evidence/shipping-option-read-diagnostic-safety-source.json',
   ),
 );
 const review = JSON.parse(
   read(
-    'crates/rustok-fulfillment/contracts/evidence/shipping-option-read-diagnostic-safety-source-review.json',
+    'crates/modules/rustok-fulfillment/contracts/evidence/shipping-option-read-diagnostic-safety-source-review.json',
   ),
 );
 const doc = read(
-  'crates/rustok-fulfillment/docs/shipping-option-read-diagnostic-safety.md',
+  'crates/modules/rustok-fulfillment/docs/shipping-option-read-diagnostic-safety.md',
 );
 
 for (const marker of [

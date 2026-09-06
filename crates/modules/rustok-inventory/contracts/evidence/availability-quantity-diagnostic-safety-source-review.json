@@ -1,12 +1,12 @@
 {
   "status": "inventory_availability_quantity_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-inventory/src/reservation_port_context.rs",
-    "crates/rustok-inventory/docs/availability-quantity-local-context.md",
-    "crates/rustok-inventory/docs/availability-quantity-owner-context.md",
+    "crates/modules/rustok-inventory/src/reservation_port_context.rs",
+    "crates/modules/rustok-inventory/docs/availability-quantity-local-context.md",
+    "crates/modules/rustok-inventory/docs/availability-quantity-owner-context.md",
     "scripts/verify/verify-inventory-availability-quantity-local-context.mjs",
     "scripts/verify/verify-inventory-availability-quantity-context.mjs",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "review_findings": {
     "local_outcome_diagnostics_sanitized": true,

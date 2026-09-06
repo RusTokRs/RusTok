@@ -6,11 +6,10 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 const defaultPacketPath = path.join(
   repoRoot,
-  "crates",
-  "rustok-page-builder",
+  "crates", "modules", "rustok-page-builder",
   "contracts",
   "evidence",
   "pages-wave0-dry-run-evidence.json",
@@ -20,8 +19,7 @@ const packetPath = process.argv[2]
   : defaultPacketPath;
 const templatePath = path.join(
   repoRoot,
-  "crates",
-  "rustok-page-builder",
+  "crates", "modules", "rustok-page-builder",
   "contracts",
   "page-builder-wave-evidence-template.json",
 );

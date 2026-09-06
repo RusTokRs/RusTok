@@ -1,17 +1,17 @@
 import fs from 'node:fs';
 
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-tcp-channel-seam.json';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-74.md';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-channel-seam.json';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-74.md';
 const lockPath = 'Cargo.lock';
-const manifestPath = 'crates/rustok-comments/Cargo.toml';
-const exportPath = 'crates/rustok-comments/src/lib.rs';
-const channelPath = 'crates/rustok-comments/src/tcp_channel.rs';
-const protocolPath = 'crates/rustok-comments/src/tcp_protocol.rs';
-const transportPath = 'crates/rustok-comments/src/tcp_transport.rs';
-const serverPath = 'crates/rustok-comments/src/tcp_server.rs';
-const authPath = 'crates/rustok-comments/src/tcp_auth.rs';
-const delegationPath = 'crates/rustok-comments/src/tcp_delegation.rs';
+const manifestPath = 'crates/modules/rustok-comments/Cargo.toml';
+const exportPath = 'crates/modules/rustok-comments/src/lib.rs';
+const channelPath = 'crates/modules/rustok-comments/src/tcp_channel.rs';
+const protocolPath = 'crates/modules/rustok-comments/src/tcp_protocol.rs';
+const transportPath = 'crates/modules/rustok-comments/src/tcp_transport.rs';
+const serverPath = 'crates/modules/rustok-comments/src/tcp_server.rs';
+const authPath = 'crates/modules/rustok-comments/src/tcp_auth.rs';
+const delegationPath = 'crates/modules/rustok-comments/src/tcp_delegation.rs';
 const runtimePath = 'apps/server/src/services/comments_provider_runtime.rs';
 
 function read(path) {

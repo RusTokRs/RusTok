@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const admissionPath = 'crates/rustok-index/src/application/postgres_query_admission.rs';
+const admissionPath = 'crates/modules/rustok-index/src/application/postgres_query_admission.rs';
 const admission = requireMarkers(admissionPath, [
   'ENTITY_ALIAS_TOKEN: &str = "{{entity}}"',
   'MAX_ENTITY_ADMISSION_BYTES: usize = 32 * 1024',
@@ -51,7 +51,7 @@ forbidMarkers(admissionPath, admission, [
   'loop {',
 ]);
 
-const catalogPath = 'crates/rustok-index/src/infrastructure/postgres/query_admission.rs';
+const catalogPath = 'crates/modules/rustok-index/src/infrastructure/postgres/query_admission.rs';
 const catalog = requireMarkers(catalogPath, [
   'pub struct PostgresIndexQueryAdmissionCatalog',
   'rule: Option<PostgresQueryEntityAdmission>',
@@ -75,7 +75,7 @@ forbidMarkers(catalogPath, catalog, [
   'rustok-product',
 ]);
 
-const portPath = 'crates/rustok-index/src/infrastructure/postgres/query_port.rs';
+const portPath = 'crates/modules/rustok-index/src/infrastructure/postgres/query_port.rs';
 const port = requireMarkers(portPath, [
   'admissions: PostgresIndexQueryAdmissionCatalog',
   'pub fn with_admissions(',
@@ -95,7 +95,7 @@ if (availabilityOffset < 0 || ownerOffset < 0 || availabilityOffset >= ownerOffs
 }
 forbidMarkers(portPath, port, ['tokio::spawn', 'IndexMutation::']);
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_runtime.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/query_runtime.rs', [
   'let mut admissions = extensions',
   '.get::<PostgresIndexQueryAdmissionCatalog>()',
   'AdmissionSchemaMissing',
@@ -107,7 +107,7 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_runtime.rs
   'PostgresIndexQueryPort::with_admissions(',
 ]);
 
-const productAdmissionPath = 'crates/rustok-distribution/src/product_index/query_admission.rs';
+const productAdmissionPath = 'crates/modules/rustok-distribution/src/product_index/query_admission.rs';
 const productAdmission = requireMarkers(productAdmissionPath, [
   'PRODUCT_QUERY_MATERIALIZED_FRESHNESS',
   'PRODUCT_VARIANT_QUERY_MATERIALIZED_FRESHNESS',
@@ -143,21 +143,21 @@ forbidMarkers(productAdmissionPath, productAdmission, [
   'loop {',
 ]);
 
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
   'query_admission::register(extensions)?;',
   'assert_eq!(admissions.len(), 2)',
   'assert_eq!(admissions.len(), 3)',
   'assert_eq!(admissions.link_availability_len(), 1)',
 ]);
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'PostgresQueryEntityAdmission',
   'PostgresQueryEntityAdmissionApplyError',
   'PostgresQueryEntityAdmissionError',
 ]);
 
 const freshnessDoc = requireMarkers(
-  'crates/rustok-index/docs/m7-product-materialized-query-freshness.md',
+  'crates/modules/rustok-index/docs/m7-product-materialized-query-freshness.md',
   [
     'Status: `source_complete_link_target_availability_equivalence_execution_pending`',
     '`PostgresQueryEntityAdmission`',
@@ -177,7 +177,7 @@ const freshnessDoc = requireMarkers(
     'Remaining M7 evidence',
   ],
 );
-forbidMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.md', freshnessDoc, [
+forbidMarkers('crates/modules/rustok-index/docs/m7-product-materialized-query-freshness.md', freshnessDoc, [
   'Remaining linked-target availability boundary',
   'does **not** claim delete+recreate identity safety',
   'next source slice must make those two owner source clocks monotonic',

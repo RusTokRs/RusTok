@@ -22,7 +22,7 @@ Document the runtime purpose, expected format, and default behavior for this env
 
 ## Evidence
 
-- `crates/rustok-telemetry/src/otel.rs:67`
+- `crates/libs/rustok-telemetry/src/otel.rs:67`
 
 ## Notes
 

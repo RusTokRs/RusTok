@@ -8,22 +8,22 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const failures = [];
 const files = {
   contract:
-    "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
   recorder: "scripts/evidence/record-pages-consumer-properties-source-execution.mjs",
   workflow: ".github/workflows/pages-consumer-properties-source-evidence.yml",
   actualization:
     "docs/modules/pages-consumer-properties-source-execution-actualization-2026-08-13.md",
-  consumer: "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json",
-  registry: "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+  consumer: "crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json",
+  registry: "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
   revision:
-    "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json",
   published:
-    "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
   browser:
-    "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
-  metadata: "crates/rustok-pages/admin/src/metadata_properties.rs",
-  standalone: "crates/rustok-pages/admin/src/standalone_metadata.rs",
-  panel: "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs",
+    "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
+  metadata: "crates/modules/rustok-pages/admin/src/metadata_properties.rs",
+  standalone: "crates/modules/rustok-pages/admin/src/standalone_metadata.rs",
+  panel: "crates/modules/rustok-page-builder/admin/src/editor/consumer_properties.rs",
 };
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);
@@ -165,11 +165,11 @@ const expectedTests = [
   "cargo test --locked -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state -- --nocapture",
 ];
 const expectedVerifiers = [
-  "node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs",
-  "node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs",
-  "node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs",
-  "node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs",
-  "node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs",
+  "node crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs",
+  "node crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs",
+  "node crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs",
+  "node crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs",
+  "node crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs",
   "node scripts/verify/verify-pages-consumer-properties-source-execution.mjs",
 ];
 requireValue(

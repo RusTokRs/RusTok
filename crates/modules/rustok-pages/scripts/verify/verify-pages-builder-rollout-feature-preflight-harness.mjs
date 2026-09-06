@@ -4,18 +4,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const files = {
-  contract: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-harness-source.json",
+  contract: "crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-harness-source.json",
   config: "apps/next-admin/playwright.pages-builder-rollout-feature-preflight.config.ts",
   spec: "apps/next-admin/tests/pages-builder-rollout-feature-preflight/feature-preflight.spec.ts",
-  owner: "crates/rustok-pages/src/graphql/builder_rollout.rs",
-  graphqlMod: "crates/rustok-pages/src/graphql/mod.rs",
-  pagesCargo: "crates/rustok-pages/Cargo.toml",
-  pageBuilderCargo: "crates/rustok-page-builder/Cargo.toml",
-  rollout: "crates/rustok-page-builder/src/rollout.rs",
-  service: "crates/rustok-page-builder/src/service.rs",
+  owner: "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
+  graphqlMod: "crates/modules/rustok-pages/src/graphql/mod.rs",
+  pagesCargo: "crates/modules/rustok-pages/Cargo.toml",
+  pageBuilderCargo: "crates/modules/rustok-page-builder/Cargo.toml",
+  rollout: "crates/modules/rustok-page-builder/src/rollout.rs",
+  service: "crates/modules/rustok-page-builder/src/service.rs",
   packet: "docs/modules/pages-page-builder-rollout-feature-preflight-actualization-2026-08-08.md",
 };
 const failures = [];

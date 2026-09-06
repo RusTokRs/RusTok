@@ -22,7 +22,7 @@ Document the runtime purpose, expected format, and default behavior for this env
 
 ## Evidence
 
-- `crates/rustok-cache/src/service.rs:820`
+- `crates/modules/rustok-cache/src/service.rs:820`
 
 ## Notes
 

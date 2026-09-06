@@ -12,14 +12,14 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  ports: 'crates/rustok-region/src/ports.rs',
-  error: 'crates/rustok-region/src/error.rs',
+  ports: 'crates/modules/rustok-region/src/ports.rs',
+  error: 'crates/modules/rustok-region/src/error.rs',
   evidence:
-    'crates/rustok-region/contracts/evidence/region-owner-port-error-safety-source.json',
+    'crates/modules/rustok-region/contracts/evidence/region-owner-port-error-safety-source.json',
   review:
-    'crates/rustok-region/contracts/evidence/region-owner-port-error-safety-source-review.json',
-  document: 'crates/rustok-region/docs/region-owner-port-error-safety.md',
-  plan: 'crates/rustok-region/docs/implementation-plan.md',
+    'crates/modules/rustok-region/contracts/evidence/region-owner-port-error-safety-source-review.json',
+  document: 'crates/modules/rustok-region/docs/region-owner-port-error-safety.md',
+  plan: 'crates/modules/rustok-region/docs/implementation-plan.md',
 };
 
 const ports = read(paths.ports);

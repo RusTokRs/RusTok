@@ -54,7 +54,7 @@ let processed = relay.process_pending_once().await?;
 
 ## 5) Synchronization with code (procedure)
 
-- When changes are made to `crates/rustok-outbox/**` or to the runtime assembly in `apps/server/src/services/event_transport_factory.rs`:
+- When changes are made to `crates/modules/rustok-outbox/**` or to the runtime assembly in `apps/server/src/services/event_transport_factory.rs`:
   1) update examples and signatures;
   2) update the date in the header;
   3) verify the relevance of anti-patterns.

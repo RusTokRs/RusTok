@@ -17,12 +17,12 @@ const forbidText = (source, text, message) => {
   if (source.includes(text)) fail(message ?? `forbidden ${JSON.stringify(text)}`);
 };
 
-const server = read("crates/rustok-commerce/src/graphql/mutations/catalog.rs");
-const catalogFixture = read("crates/rustok-commerce/tests/graphql_runtime_parity_test/catalog.rs");
-const activeTransport = read("crates/rustok-product/admin/src/catalog_transport_retry.rs");
-const schemaTransport = read("crates/rustok-product/admin/src/transport/product_schema_graphql.rs");
-const retryIdentity = read("crates/rustok-product/admin/src/schema_retry_identity.rs");
-const adminLib = read("crates/rustok-product/admin/src/lib.rs");
+const server = read("crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs");
+const catalogFixture = read("crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/catalog.rs");
+const activeTransport = read("crates/modules/rustok-product/admin/src/catalog_transport_retry.rs");
+const schemaTransport = read("crates/modules/rustok-product/admin/src/transport/product_schema_graphql.rs");
+const retryIdentity = read("crates/modules/rustok-product/admin/src/schema_retry_identity.rs");
+const adminLib = read("crates/modules/rustok-product/admin/src/lib.rs");
 
 forbidText(
   server,

@@ -8,17 +8,17 @@ const forbidText = (source, needle, message) => {
   if (source.includes(needle)) throw new Error(message);
 };
 
-const cargo = read("crates/rustok-groups/Cargo.toml");
-const lib = read("crates/rustok-groups/src/lib.rs");
-const adapter = read("crates/rustok-groups/src/moderation_subject.rs");
-const ownerMutation = read("crates/rustok-groups/src/membership_enforcement_command.rs");
-const ownerLock = read("crates/rustok-groups/src/membership_enforcement_transaction.rs");
-const neutralModel = read("crates/rustok-moderation-api/src/model.rs");
-const dispatcher = read("crates/rustok-moderation/src/application_dispatch.rs");
-const plan = read("crates/rustok-groups/docs/implementation-plan.md");
-const moderationPlan = read("crates/rustok-moderation/docs/implementation-plan.md");
+const cargo = read("crates/modules/rustok-groups/Cargo.toml");
+const lib = read("crates/modules/rustok-groups/src/lib.rs");
+const adapter = read("crates/modules/rustok-groups/src/moderation_subject.rs");
+const ownerMutation = read("crates/modules/rustok-groups/src/membership_enforcement_command.rs");
+const ownerLock = read("crates/modules/rustok-groups/src/membership_enforcement_transaction.rs");
+const neutralModel = read("crates/modules/rustok-moderation-api/src/model.rs");
+const dispatcher = read("crates/modules/rustok-moderation/src/application_dispatch.rs");
+const plan = read("crates/modules/rustok-groups/docs/implementation-plan.md");
+const moderationPlan = read("crates/modules/rustok-moderation/docs/implementation-plan.md");
 const contract = JSON.parse(
-  read("crates/rustok-groups/contracts/groups-effective-membership-access.json"),
+  read("crates/modules/rustok-groups/contracts/groups-effective-membership-access.json"),
 );
 
 for (const marker of [
@@ -129,7 +129,7 @@ if (contract.remaining_paths?.includes("moderation_subject_adapter")) {
   throw new Error("Groups contract still lists the source-complete moderation adapter as remaining");
 }
 if (!contract.converted_source_paths?.moderation_subject_adapter?.includes(
-  "crates/rustok-groups/src/moderation_subject.rs",
+  "crates/modules/rustok-groups/src/moderation_subject.rs",
 )) {
   throw new Error("Groups contract does not retain the moderation adapter source path");
 }

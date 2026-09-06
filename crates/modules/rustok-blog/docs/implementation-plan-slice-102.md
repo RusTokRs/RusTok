@@ -70,7 +70,7 @@ They cover zero/default/oversized page sizes plus ordinary and extreme page offs
 
 Machine evidence:
 
-`crates/rustok-blog/contracts/evidence/blog-tag-pagination-source.json`
+`crates/modules/rustok-blog/contracts/evidence/blog-tag-pagination-source.json`
 
 Fail-closed source guard:
 

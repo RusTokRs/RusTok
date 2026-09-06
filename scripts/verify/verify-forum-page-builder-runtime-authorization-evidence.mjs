@@ -15,16 +15,16 @@ function requireAbsent(text, needle, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-runtime-authorization-execution-contract.json";
 const runnerPath = "scripts/evidence/forum-page-builder-runtime-authorization-evidence.mjs";
-const previewTransportPath = "crates/rustok-forum/admin/src/widget_preview_transport.rs";
-const propertyTransportPath = "crates/rustok-forum/admin/src/widget_property_transport.rs";
-const apiRuntimePath = "crates/rustok-api/src/runtime.rs";
-const authPath = "crates/rustok-api/src/context/auth.rs";
-const widgetPreviewPath = "crates/rustok-forum/src/services/widget_preview.rs";
-const topicVisibilityPath = "crates/rustok-forum/src/services/topic_visibility.rs";
-const categoryVisibilityPath = "crates/rustok-forum/src/services/category_visibility.rs";
-const visibilityTestPath = "crates/rustok-forum/tests/page_builder_widget_visibility_sqlite.rs";
+const previewTransportPath = "crates/modules/rustok-forum/admin/src/widget_preview_transport.rs";
+const propertyTransportPath = "crates/modules/rustok-forum/admin/src/widget_property_transport.rs";
+const apiRuntimePath = "crates/libs/rustok-api/src/runtime.rs";
+const authPath = "crates/libs/rustok-api/src/context/auth.rs";
+const widgetPreviewPath = "crates/modules/rustok-forum/src/services/widget_preview.rs";
+const topicVisibilityPath = "crates/modules/rustok-forum/src/services/topic_visibility.rs";
+const categoryVisibilityPath = "crates/modules/rustok-forum/src/services/category_visibility.rs";
+const visibilityTestPath = "crates/modules/rustok-forum/tests/page_builder_widget_visibility_sqlite.rs";
 const packetPath =
   "docs/modules/forum-page-builder-runtime-authorization-evidence-actualization-2026-08-08.md";
 

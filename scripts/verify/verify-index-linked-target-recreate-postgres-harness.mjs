@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const harnessPath = 'crates/rustok-distribution/tests/product_linked_target_recreate_postgres.rs';
+const harnessPath = 'crates/modules/rustok-distribution/tests/product_linked_target_recreate_postgres.rs';
 const harness = requireMarkers(harnessPath, [
   '#![cfg(feature = "mod-product")]',
   'rustok_channel::migrations::migrations()',
@@ -86,7 +86,7 @@ forbidMarkers(harnessPath, harness, [
 ]);
 
 requireMarkers(
-  'crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs',
+  'crates/modules/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs',
   [
     'OLD.index_revision + 1',
     'rustok_product_variant_seed_index_revision_from_tombstone',
@@ -95,7 +95,7 @@ requireMarkers(
   ],
 );
 requireMarkers(
-  'crates/rustok-channel/src/migrations/m20260731_000011_add_channel_index_tombstones.rs',
+  'crates/modules/rustok-channel/src/migrations/m20260731_000011_add_channel_index_tombstones.rs',
   [
     'OLD.index_revision + 1',
     'rustok_channel_seed_index_revision_from_tombstone',
@@ -103,11 +103,11 @@ requireMarkers(
     'rustok_channel_clear_inserted_index_tombstone',
   ],
 );
-requireMarkers('crates/rustok-distribution/src/product_index/query_admission.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/query_admission.rs', [
   'owner_variant.index_revision = {{entity}}.source_version',
   'owner_channel.index_revision = {{entity}}.source_version',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-linked-target-recreate-postgres-harness.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-linked-target-recreate-postgres-harness.md', [
   'Status: `source_ready_execution_pending`',
   'It adds no owner clock, no Index schema, and no compatibility version.',
   'ProductVariant recreate scenario',

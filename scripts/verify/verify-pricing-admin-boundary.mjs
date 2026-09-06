@@ -40,14 +40,14 @@ function assertNotContains(text, pattern, description) {
 }
 
 const files = {
-  lib: "crates/rustok-pricing/admin/src/lib.rs",
-  core: "crates/rustok-pricing/admin/src/core/mod.rs",
-  ui: "crates/rustok-pricing/admin/src/ui/leptos.rs",
-  transport: "crates/rustok-pricing/admin/src/transport.rs",
-  graphqlErrorSafety: "crates/rustok-pricing/admin/src/transport/graphql_error_safety.rs",
-  nativeServerAdapter: "crates/rustok-pricing/admin/src/transport/native_server_adapter.rs",
-  legacyApi: "crates/rustok-pricing/admin/src/api.rs",
-  implementationPlan: "crates/rustok-pricing/docs/implementation-plan.md",
+  lib: "crates/modules/rustok-pricing/admin/src/lib.rs",
+  core: "crates/modules/rustok-pricing/admin/src/core/mod.rs",
+  ui: "crates/modules/rustok-pricing/admin/src/ui/leptos.rs",
+  transport: "crates/modules/rustok-pricing/admin/src/transport.rs",
+  graphqlErrorSafety: "crates/modules/rustok-pricing/admin/src/transport/graphql_error_safety.rs",
+  nativeServerAdapter: "crates/modules/rustok-pricing/admin/src/transport/native_server_adapter.rs",
+  legacyApi: "crates/modules/rustok-pricing/admin/src/api.rs",
+  implementationPlan: "crates/modules/rustok-pricing/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
   packageJson: "package.json",
 };

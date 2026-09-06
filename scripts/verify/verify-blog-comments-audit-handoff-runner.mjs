@@ -13,9 +13,9 @@ const runtimePath = "apps/server/src/services/comments_provider_runtime.rs";
 const bootstrapPath = "apps/server/src/services/server_bootstrap.rs";
 const ownerPath =
   "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_postgres.rs";
-const planPath = "crates/rustok-blog/docs/implementation-plan-slice-91.md";
+const planPath = "crates/modules/rustok-blog/docs/implementation-plan-slice-91.md";
 const evidencePath =
-  "crates/rustok-blog/contracts/evidence/blog-comments-audit-handoff-runner.json";
+  "crates/modules/rustok-blog/contracts/evidence/blog-comments-audit-handoff-runner.json";
 
 for (const file of [
   workerPath,

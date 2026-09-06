@@ -12,18 +12,18 @@ const read = (relativePath) => readFileSync(path.join(root, relativePath), "utf8
 const failures = [];
 
 const paths = {
-  wrapper: "crates/rustok-order/src/checkout_compensation_local_context.rs",
-  shared: "crates/rustok-order/src/checkout_owner_context.rs",
-  owner: "crates/rustok-order/src/checkout_compensation.rs",
-  lib: "crates/rustok-order/src/lib.rs",
-  doc: "crates/rustok-order/docs/checkout-compensation-local-context.md",
-  ownerDoc: "crates/rustok-order/docs/checkout-owner-context.md",
-  plan: "crates/rustok-order/docs/implementation-plan.md",
-  commercePlan: "crates/rustok-commerce/docs/implementation-plan.md",
+  wrapper: "crates/modules/rustok-order/src/checkout_compensation_local_context.rs",
+  shared: "crates/modules/rustok-order/src/checkout_owner_context.rs",
+  owner: "crates/modules/rustok-order/src/checkout_compensation.rs",
+  lib: "crates/modules/rustok-order/src/lib.rs",
+  doc: "crates/modules/rustok-order/docs/checkout-compensation-local-context.md",
+  ownerDoc: "crates/modules/rustok-order/docs/checkout-owner-context.md",
+  plan: "crates/modules/rustok-order/docs/implementation-plan.md",
+  commercePlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
   evidence:
-    "crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source.json",
+    "crates/modules/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source.json",
   review:
-    "crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source-review.json",
+    "crates/modules/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source-review.json",
   ownerGuard: "scripts/verify/verify-order-checkout-compensation-error-context.mjs",
 };
 

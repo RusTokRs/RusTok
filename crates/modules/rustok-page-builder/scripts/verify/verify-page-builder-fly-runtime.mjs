@@ -6,14 +6,14 @@ const read = (path) => readFile(`${root}/${path}`, "utf8");
 
 const [cargo, adapters, service, serviceContract, browserHost, browserRuntime] =
   await Promise.all([
-    read("crates/rustok-page-builder/Cargo.toml"),
-    read("crates/rustok-page-builder/src/adapters.rs"),
-    read("crates/rustok-page-builder/src/adapters/fly_service.rs"),
+    read("crates/modules/rustok-page-builder/Cargo.toml"),
+    read("crates/modules/rustok-page-builder/src/adapters.rs"),
+    read("crates/modules/rustok-page-builder/src/adapters/fly_service.rs"),
     read(
-      "crates/rustok-page-builder/contracts/page-builder-service-boundary.json",
+      "crates/modules/rustok-page-builder/contracts/page-builder-service-boundary.json",
     ),
-    read("crates/rustok-page-builder/src/browser_host.rs"),
-    read("crates/fly-browser/assets/fly-browser.js"),
+    read("crates/modules/rustok-page-builder/src/browser_host.rs"),
+    read("crates/ui/fly-browser/assets/fly-browser.js"),
   ]);
 
 const contract = JSON.parse(serviceContract);

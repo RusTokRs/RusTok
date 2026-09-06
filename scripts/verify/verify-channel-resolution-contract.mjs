@@ -20,10 +20,10 @@ const assertOrder = (source, markers) => {
   }
 };
 
-const resolution = read('crates/rustok-channel/src/resolution.rs');
-const plan = read('crates/rustok-channel/docs/implementation-plan.md');
-const docs = read('crates/rustok-channel/docs/README.md');
-const readme = read('crates/rustok-channel/README.md');
+const resolution = read('crates/modules/rustok-channel/src/resolution.rs');
+const plan = read('crates/modules/rustok-channel/docs/implementation-plan.md');
+const docs = read('crates/modules/rustok-channel/docs/README.md');
+const readme = read('crates/modules/rustok-channel/README.md');
 const registry = read('docs/modules/registry.md');
 
 assertOrder(resolution, [

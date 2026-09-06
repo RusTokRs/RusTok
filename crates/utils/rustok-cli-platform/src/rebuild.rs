@@ -51,6 +51,7 @@ fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|path| path.parent())
+        .and_then(|path| path.parent())
         .map(PathBuf::from)
         .expect("workspace root should be resolvable from rustok-cli-platform")
 }

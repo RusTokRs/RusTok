@@ -38,7 +38,7 @@ function between(source, start, end, label) {
 }
 
 const contract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-notification-inbox-open-graphql.json") || "{}",
+  read("crates/modules/rustok-forum/contracts/forum-notification-inbox-open-graphql.json") || "{}",
 );
 const ownerGraphql = read(contract.notifications_graphql_file ?? "");
 const ownerPort = read(contract.notifications_storefront_port ?? "");
@@ -123,7 +123,7 @@ for (const sync of [contract.canonical_plan_sync, contract.notifications_local_p
   if (
     sync?.status !== "synchronized_by_FORUM-20AM" ||
     sync.required_ledger_through !== "FORUM-20AL" ||
-    sync.sync_contract !== "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
+    sync.sync_contract !== "crates/modules/rustok-forum/contracts/forum-notification-plan-sync.json"
   ) {
     failures.push("Forum and Notifications ledgers must be synchronized by FORUM-20AM through FORUM-20AL");
   }
@@ -131,7 +131,7 @@ for (const sync of [contract.canonical_plan_sync, contract.notifications_local_p
 if (
   contract.notifications_owner_docs_sync?.status !== "synchronized_by_FORUM-20AM" ||
   contract.notifications_owner_docs_sync?.sync_contract !==
-    "crates/rustok-forum/contracts/forum-notification-plan-sync.json"
+    "crates/modules/rustok-forum/contracts/forum-notification-plan-sync.json"
 ) {
   failures.push("Notifications owner documents must be synchronized by FORUM-20AM");
 }

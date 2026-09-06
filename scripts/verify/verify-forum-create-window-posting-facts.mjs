@@ -28,7 +28,7 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-create-window-posting-facts.json";
+  "crates/modules/rustok-forum/contracts/forum-create-window-posting-facts.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const provider = read(contract.provider_file);
 const serviceRegistry = read(contract.service_registry);
@@ -155,7 +155,7 @@ for (const marker of [
 
 for (const marker of [
   '"downstream_create_window_task": "FORUM-26J"',
-  '"downstream_create_window_contract": "crates/rustok-forum/contracts/forum-create-window-posting-facts.json"',
+  '"downstream_create_window_contract": "crates/modules/rustok-forum/contracts/forum-create-window-posting-facts.json"',
 ]) {
   requireText(upstream, marker, `FORUM-26I contract is missing downstream marker ${marker}`);
 }

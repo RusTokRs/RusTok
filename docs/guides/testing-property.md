@@ -184,11 +184,11 @@ fn empty_payment_id_fails(order: Order<Pending>) {
 
 ```bash
 # Content state machine
-cd crates/rustok-content
+cd crates/modules/rustok-content
 cargo test state_machine_proptest
 
 # Commerce state machine
-cd crates/rustok-commerce
+cd crates/modules/rustok-commerce
 cargo test state_machine_proptest
 ```
 

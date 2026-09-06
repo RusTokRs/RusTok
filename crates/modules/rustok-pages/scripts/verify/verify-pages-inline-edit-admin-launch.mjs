@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 const need = (text, marker, label) => {
@@ -24,12 +24,12 @@ const featureBody = (manifest, feature, label) => {
 };
 
 const files = {
-  evidence: "crates/rustok-pages/contracts/evidence/pages-inline-edit-admin-launch-source.json",
-  pagesAdminCargo: "crates/rustok-pages/admin/Cargo.toml",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-admin-launch-source.json",
+  pagesAdminCargo: "crates/modules/rustok-pages/admin/Cargo.toml",
   appAdminCargo: "apps/admin/Cargo.toml",
-  pagesAdminLib: "crates/rustok-pages/admin/src/lib.rs",
-  launch: "crates/rustok-pages/admin/src/inline_edit_launch.rs",
-  localPlan: "crates/rustok-pages/docs/implementation-plan.md",
+  pagesAdminLib: "crates/modules/rustok-pages/admin/src/lib.rs",
+  launch: "crates/modules/rustok-pages/admin/src/inline_edit_launch.rs",
+  localPlan: "crates/modules/rustok-pages/docs/implementation-plan.md",
   plan: "docs/modules/pages-page-builder-parity-continuation-plan.md",
   packet: "docs/modules/pages-page-builder-inline-edit-admin-launch-packet-2026-08-06.md",
 };

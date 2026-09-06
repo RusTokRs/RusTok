@@ -32,20 +32,20 @@ function forbidMarkers(relativePath, markers) {
 }
 
 try {
-  requireMarkers('crates/rustok-api/src/module_marketplace.rs', [
+  requireMarkers('crates/libs/rustok-api/src/module_marketplace.rs', [
     'pub enum MarketplaceRegistryStatus',
     'pub struct MarketplaceRegistryFreshness',
     'pub registry_id: String',
     'pub last_success_unix_ms: Option<u64>',
     'pub consecutive_failures: u64',
   ]);
-  forbidMarkers('crates/rustok-api/src/module_marketplace.rs', [
+  forbidMarkers('crates/libs/rustok-api/src/module_marketplace.rs', [
     'pub registry_url:',
     'pub endpoint:',
     'pub last_error:',
   ]);
 
-  requireMarkers('crates/rustok-modules/src/marketplace.rs', [
+  requireMarkers('crates/modules/rustok-modules/src/marketplace.rs', [
     'fn registry_freshness(&self) -> Vec<MarketplaceRegistryFreshness>',
     'Local compiled-manifest composition is intentionally not represented',
   ]);

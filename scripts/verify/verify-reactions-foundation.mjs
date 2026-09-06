@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath = path.join(
   repoRoot,
-  "crates/rustok-reactions/contracts/reactions-foundation.json",
+  "crates/modules/rustok-reactions/contracts/reactions-foundation.json",
 );
 const contract = JSON.parse(readFileSync(contractPath, "utf8"));
 
@@ -27,16 +27,16 @@ if (contract.contract !== "reactions_foundation_v2") {
 
 for (const relativePath of contract.required_files) read(relativePath);
 
-const apiCargo = read("crates/rustok-reactions-api/Cargo.toml");
+const apiCargo = read("crates/modules/rustok-reactions-api/Cargo.toml");
 const apiSource = [
-  read("crates/rustok-reactions-api/src/lib.rs"),
-  read("crates/rustok-reactions-api/src/model.rs"),
-  read("crates/rustok-reactions-api/src/provider.rs"),
+  read("crates/modules/rustok-reactions-api/src/lib.rs"),
+  read("crates/modules/rustok-reactions-api/src/model.rs"),
+  read("crates/modules/rustok-reactions-api/src/provider.rs"),
 ].join("\n");
-const ownerCargo = read("crates/rustok-reactions/Cargo.toml");
+const ownerCargo = read("crates/modules/rustok-reactions/Cargo.toml");
 const ownerSource = [
-  read("crates/rustok-reactions/src/lib.rs"),
-  read("crates/rustok-reactions/src/service.rs"),
+  read("crates/modules/rustok-reactions/src/lib.rs"),
+  read("crates/modules/rustok-reactions/src/service.rs"),
 ].join("\n");
 
 for (const symbol of contract.required_api_symbols) {
@@ -80,8 +80,8 @@ for (const fragment of [
 }
 
 for (const forbiddenPath of [
-  "crates/rustok-reactions/admin",
-  "crates/rustok-reactions/storefront",
+  "crates/modules/rustok-reactions/admin",
+  "crates/modules/rustok-reactions/storefront",
 ]) {
   if (existsSync(path.join(repoRoot, forbiddenPath))) {
     fail(`foundation unexpectedly contains ${forbiddenPath}`);
@@ -97,7 +97,7 @@ if (/"reactions"/u.test(defaultEnabled)) {
   fail("reactions must remain outside default_enabled");
 }
 
-const manifest = read("crates/rustok-reactions/rustok-module.toml");
+const manifest = read("crates/modules/rustok-reactions/rustok-module.toml");
 for (const fragment of [
   'slug = "reactions"',
   'entry_type = "ReactionsModule"',
@@ -106,7 +106,7 @@ for (const fragment of [
   if (!manifest.includes(fragment)) fail(`module manifest is missing ${fragment}`);
 }
 
-const forumPlan = read("crates/rustok-forum/docs/implementation-plan.md");
+const forumPlan = read("crates/modules/rustok-forum/docs/implementation-plan.md");
 for (const fragment of [
   "| Reaction catalog, actor reactions and aggregate reaction counts | `rustok-reactions` |",
   "| `FORUM-18` | `in_progress` |",
@@ -118,7 +118,7 @@ for (const fragment of [
 }
 
 const forumOwnership = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-shared-capability-ownership.json"),
+  read("crates/modules/rustok-forum/contracts/forum-shared-capability-ownership.json"),
 );
 if (forumOwnership.required_shared_owners.reactions !== "rustok-reactions") {
   fail("Forum ownership contract does not name the active Reactions owner");

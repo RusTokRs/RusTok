@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This source slice closes the owner-admission diagnostic gap for the four operations
 published by `CartCheckoutPort` in
-`crates/rustok-cart/src/checkout_snapshot.rs`:
+`crates/modules/rustok-cart/src/checkout_snapshot.rs`:
 
 - `prepare_checkout`;
 - `read_checkout_snapshot`;

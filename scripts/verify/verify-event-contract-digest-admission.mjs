@@ -60,7 +60,7 @@ if (/^\s{2}(push|pull_request):/m.test(workflow)) {
   fail(`${workflowPath} must remain manually dispatched by contract`);
 }
 
-const generatorPath = 'crates/rustok-events/examples/event_contract_digests.rs';
+const generatorPath = 'crates/libs/rustok-events/examples/event_contract_digests.rs';
 requireMarkers(generatorPath, [
   'use rustok_events::event_contract_digests;',
   'format_version: 1',
@@ -69,14 +69,14 @@ requireMarkers(generatorPath, [
   'usage: cargo run -p rustok-events --example event_contract_digests [--write]',
 ]);
 
-const canonicalTestPath = 'crates/rustok-events/tests/canonical_contracts.rs';
+const canonicalTestPath = 'crates/libs/rustok-events/tests/canonical_contracts.rs';
 requireMarkers(canonicalTestPath, [
   'event-contract-digests.json',
   'event_contract_digests()',
   'published_event_contract_matches_committed_release_artifact',
 ]);
 
-const documentationPath = 'crates/rustok-events/docs/event-contract-digest-admission.md';
+const documentationPath = 'crates/libs/rustok-events/docs/event-contract-digest-admission.md';
 requireMarkers(documentationPath, [
   'Status: `product_index_family_digest_admitted_maintainer_reverify_pending`',
   '`generate_patch`',

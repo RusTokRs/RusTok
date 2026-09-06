@@ -1,10 +1,10 @@
 {
   "status": "commerce_admin_payment_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/controllers/admin/payments.rs",
+    "crates/modules/rustok-commerce/src/controllers/admin/payments.rs",
     "scripts/verify/verify-commerce-admin-payment-diagnostic-safety.mjs",
-    "crates/rustok-commerce/docs/admin-payment-diagnostic-safety.md",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/admin-payment-diagnostic-safety.md",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_contract": {
     "raw_payment_error_logged": false,

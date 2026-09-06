@@ -47,7 +47,7 @@ Marker:
 explicit-artifact-repair-request-contract-harness-source-ready
 ```
 
-`crates/rustok-pages/tests/explicit_artifact_repair_request_contract.rs` exercises real GraphQL requests through the merged `PagesQuery`/`PagesMutation` schema and real Axum requests through `rustok_pages::http::axum_router`.
+`crates/modules/rustok-pages/tests/explicit_artifact_repair_request_contract.rs` exercises real GraphQL requests through the merged `PagesQuery`/`PagesMutation` schema and real Axum requests through `rustok_pages::http::axum_router`.
 
 The harness covers both rebuild and activation.
 
@@ -81,7 +81,7 @@ explicit-artifact-repair-postgres-harness-source-ready
 The environment-gated harness is:
 
 ```text
-crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs
+crates/modules/rustok-pages/tests/explicit_artifact_repair_postgres.rs
 ```
 
 It creates an isolated PostgreSQL schema, applies the real `OutboxModule` and `PagesModule` migrations and uses the owner services end-to-end after reviewed publication.
@@ -122,13 +122,13 @@ No automatic audit-to-rebuild or rebuild-to-activation behavior is introduced.
 Request source evidence:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-request-contract-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-request-contract-source.json
 ```
 
 PostgreSQL source evidence:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json
 ```
 
 Statuses remain unvalidated; execution arrays are empty and validation flags remain false until maintainer execution.
@@ -136,8 +136,8 @@ Statuses remain unvalidated; execution arrays are empty and validation flags rem
 Source guards:
 
 ```text
-crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-request-contract.mjs
-crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-request-contract.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
 ```
 
 Neither guard is run in this source slice.
@@ -182,12 +182,12 @@ cargo test -p rustok-pages --test explicit_artifact_repair_transport_contract --
 cargo test -p rustok-pages --test explicit_artifact_repair_request_contract -- --nocapture
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-pages --test explicit_artifact_repair_postgres -- --nocapture
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport-contract.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-request-contract.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport-contract.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-request-contract.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs
 cargo check -p rustok-pages --all-targets
 ```
 

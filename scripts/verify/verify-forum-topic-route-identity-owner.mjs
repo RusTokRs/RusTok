@@ -5,21 +5,21 @@ import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(path, 'utf8');
 const contract = JSON.parse(
-  read('crates/rustok-forum/contracts/forum-topic-route-identity-owner.json')
+  read('crates/modules/rustok-forum/contracts/forum-topic-route-identity-owner.json')
 );
-const service = read('crates/rustok-forum/src/services/topic_route.rs');
+const service = read('crates/modules/rustok-forum/src/services/topic_route.rs');
 const migration = read(
-  'crates/rustok-forum/src/migrations/m20260805_000024_add_forum_topic_route_aliases.rs'
+  'crates/modules/rustok-forum/src/migrations/m20260805_000024_add_forum_topic_route_aliases.rs'
 );
-const migrationRegistry = read('crates/rustok-forum/src/migrations/mod.rs');
-const serviceRegistry = read('crates/rustok-forum/src/services/mod.rs');
-const exports = read('crates/rustok-forum/src/lib.rs');
-const errors = read('crates/rustok-forum/src/error.rs');
-const controllers = read('crates/rustok-forum/src/controllers/mod.rs');
+const migrationRegistry = read('crates/modules/rustok-forum/src/migrations/mod.rs');
+const serviceRegistry = read('crates/modules/rustok-forum/src/services/mod.rs');
+const exports = read('crates/modules/rustok-forum/src/lib.rs');
+const errors = read('crates/modules/rustok-forum/src/error.rs');
+const controllers = read('crates/modules/rustok-forum/src/controllers/mod.rs');
 const docs = read(
-  'crates/rustok-forum/docs/forum-24a-topic-route-identity-owner.md'
+  'crates/modules/rustok-forum/docs/forum-24a-topic-route-identity-owner.md'
 );
-const plan = read('crates/rustok-forum/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-forum/docs/implementation-plan.md');
 
 assert.equal(contract.contract, 'forum_topic_route_identity_owner_v1');
 assert.equal(contract.task, 'FORUM-24A');

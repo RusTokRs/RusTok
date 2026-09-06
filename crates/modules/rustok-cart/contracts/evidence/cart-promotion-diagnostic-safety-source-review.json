@@ -1,11 +1,11 @@
 {
   "status": "cart_promotion_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-cart/src/promotion_guard.rs",
-    "crates/rustok-cart/docs/promotion-diagnostic-safety.md",
-    "crates/rustok-cart/docs/implementation-plan.md",
+    "crates/modules/rustok-cart/src/promotion_guard.rs",
+    "crates/modules/rustok-cart/docs/promotion-diagnostic-safety.md",
+    "crates/modules/rustok-cart/docs/implementation-plan.md",
     "scripts/verify/verify-cart-promotion-port-error-safety.mjs",
-    "crates/rustok-cart/contracts/evidence/cart-promotion-diagnostic-safety-source.json"
+    "crates/modules/rustok-cart/contracts/evidence/cart-promotion-diagnostic-safety-source.json"
   ],
   "review_findings": {
     "public_api_preserved": true,

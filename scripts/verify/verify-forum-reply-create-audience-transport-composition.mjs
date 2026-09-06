@@ -38,13 +38,13 @@ function between(source, start, end, label) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-reply-create-audience-transport-composition.json";
+  "crates/modules/rustok-forum/contracts/forum-reply-create-audience-transport-composition.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const transport = read(contract.transport_context_file ?? "");
 const graphqlRuntime = read(contract.graphql_runtime_file ?? "");
 const graphqlStandard = read(contract.graphql_standard_mutation_file ?? "");
 const graphqlCommand = read(contract.graphql_command_mutation_file ?? "");
-const graphqlTypes = read("crates/rustok-forum/src/graphql/types.rs");
+const graphqlTypes = read("crates/modules/rustok-forum/src/graphql/types.rs");
 const httpRuntime = read(contract.http_runtime_file ?? "");
 const httpStandard = read(contract.http_standard_create_file ?? "");
 const httpCommand = read(contract.http_command_create_file ?? "");

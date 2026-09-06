@@ -14,11 +14,11 @@ It does not execute the matrix and does not accept `pages_reference_consumer_gat
 
 The maintainer-run Playwright harness is defined by:
 
-- `crates/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-execution-contract.json`
+- `crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-execution-contract.json`
 - `apps/next-admin/playwright.pages-builder-rollout-matrix.config.ts`
 - `apps/next-admin/tests/pages-builder-rollout-matrix/runtime-matrix.spec.ts`
-- `crates/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-harness-source.json`
-- `crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs`
+- `crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-harness-source.json`
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs`
 
 It requires an already passing Pages inline-edit browser evidence packet from the exact same source commit. That predecessor already binds two reviewed origins, and this matrix preserves the split explicitly:
 
@@ -109,7 +109,7 @@ npx --no-install playwright test --config playwright.pages-builder-rollout-matri
 The source guard is:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs
 ```
 
 No tests, Node verifiers, Cargo commands, formatting, database scenarios, GraphQL/HTTP requests, Playwright/browser runs, workflows, CI, or `git diff --check` were executed by this implementation slice.

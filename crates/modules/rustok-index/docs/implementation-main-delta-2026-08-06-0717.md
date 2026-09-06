@@ -10,7 +10,7 @@ The only commit after the previously checked
 Its diff is limited to Forum module-owned Leptos and Next-admin API, command, UI, navigation,
 locales, source contracts, documentation, and verifiers. It does not modify:
 
-- `crates/rustok-index`;
+- `crates/modules/rustok-index`;
 - Product Index source/absence composition;
 - the server Index GraphQL root;
 - Index replay, exact-diagnosis, source-continuation, or source-page service composition;

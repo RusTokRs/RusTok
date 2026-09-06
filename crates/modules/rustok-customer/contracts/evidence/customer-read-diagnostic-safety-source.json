@@ -2,13 +2,13 @@
   "schema_version": 1,
   "status": "customer_read_diagnostic_safety_source_unvalidated",
   "scope": {
-    "owner_policy_source": "crates/rustok-customer/src/ports.rs",
-    "canonical_wrapper": "crates/rustok-customer/src/read_context.rs",
+    "owner_policy_source": "crates/modules/rustok-customer/src/ports.rs",
+    "canonical_wrapper": "crates/modules/rustok-customer/src/read_context.rs",
     "policy_verifier": "scripts/verify/verify-customer-read-policy-context.mjs",
     "local_verifier": "scripts/verify/verify-customer-read-local-context.mjs",
-    "policy_documentation": "crates/rustok-customer/docs/read-port-policy-context.md",
-    "local_documentation": "crates/rustok-customer/docs/read-local-context.md",
-    "implementation_plan": "crates/rustok-customer/docs/implementation-plan.md"
+    "policy_documentation": "crates/modules/rustok-customer/docs/read-port-policy-context.md",
+    "local_documentation": "crates/modules/rustok-customer/docs/read-local-context.md",
+    "implementation_plan": "crates/modules/rustok-customer/docs/implementation-plan.md"
   },
   "source_contract": {
     "owner_policy_diagnostics_bounded": true,

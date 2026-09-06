@@ -4,30 +4,30 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 const failures = [];
 
 const evidence = JSON.parse(
-  read("crates/rustok-pages/contracts/evidence/pages-public-list-locale-fallback-source.json"),
+  read("crates/modules/rustok-pages/contracts/evidence/pages-public-list-locale-fallback-source.json"),
 );
-const owner = read("crates/rustok-pages/src/services/page/read.rs");
+const owner = read("crates/modules/rustok-pages/src/services/page/read.rs");
 const nativeAdapter = read(
-  "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs",
 );
-const graphql = read("crates/rustok-pages/src/graphql/query.rs");
-const regression = read("crates/rustok-pages/tests/page_locale_fallback.rs");
+const graphql = read("crates/modules/rustok-pages/src/graphql/query.rs");
+const regression = read("crates/modules/rustok-pages/tests/page_locale_fallback.rs");
 const cacheGuard = read(
-  "crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs",
+  "crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs",
 );
 const serverFnGuard = read(
-  "crates/rustok-pages/scripts/verify/verify-pages-native-storefront-server-fn.mjs",
+  "crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-server-fn.mjs",
 );
 const channelGuard = read(
-  "crates/rustok-pages/scripts/verify/verify-pages-native-storefront-channel-admission.mjs",
+  "crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-channel-admission.mjs",
 );
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
-const localPlan = read("crates/rustok-pages/docs/implementation-plan.md");
+const localPlan = read("crates/modules/rustok-pages/docs/implementation-plan.md");
 const packet = read(
   "docs/modules/pages-page-builder-public-list-locale-fallback-packet-2026-08-05.md",
 );

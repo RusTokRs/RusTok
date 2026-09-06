@@ -6,17 +6,17 @@ const json = (path) => JSON.parse(read(path));
 const fail = (message) => { console.error(`[verify-channel-fba] ${message}`); process.exit(1); };
 const sameSet = (actual, expected) => Array.isArray(actual) && Array.isArray(expected) && actual.length === expected.length && expected.every((item) => actual.includes(item));
 
-const registryPath = 'crates/rustok-channel/contracts/channel-fba-registry.json';
-const evidencePath = 'crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json';
-const runtimeSmokePath = 'crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json';
+const registryPath = 'crates/modules/rustok-channel/contracts/channel-fba-registry.json';
+const evidencePath = 'crates/modules/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json';
+const runtimeSmokePath = 'crates/modules/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const runtimeSmoke = json(runtimeSmokePath);
-const manifest = read('crates/rustok-channel/rustok-module.toml');
-const plan = read('crates/rustok-channel/docs/implementation-plan.md');
+const manifest = read('crates/modules/rustok-channel/rustok-module.toml');
+const plan = read('crates/modules/rustok-channel/docs/implementation-plan.md');
 const central = read('docs/modules/registry.md');
-const lib = read('crates/rustok-channel/src/lib.rs');
-const ports = read('crates/rustok-channel/src/ports.rs');
+const lib = read('crates/modules/rustok-channel/src/lib.rs');
+const ports = read('crates/modules/rustok-channel/src/ports.rs');
 
 if (registry.schema_version !== 1) fail('registry schema_version must be 1');
 if (registry.module !== 'channel' || registry.role !== 'provider' || registry.status !== 'boundary_ready') fail('registry identity/status drift');
@@ -26,7 +26,7 @@ if (!port || port.name !== 'ChannelReadPort') fail('ChannelReadPort missing');
 for (const op of ['read_channel', 'list_channels_for_tenant']) {
   if (!port.operations.includes(op)) fail(`port lacks ${op}`);
 }
-if (port.context !== 'crates/rustok-channel/src/ports.rs::PortContext' || port.error !== 'crates/rustok-channel/src/ports.rs::PortError') fail('context/error drift');
+if (port.context !== 'crates/modules/rustok-channel/src/ports.rs::PortContext' || port.error !== 'crates/modules/rustok-channel/src/ports.rs::PortError') fail('context/error drift');
 if (port.deadline_required !== true || port.idempotency_required !== false || port.semantics !== 'read_only') fail('channel read projection must be read-only with deadline semantics');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/channel-fba-registry.json"') || !manifest.includes('contract_version = "channel.read_projection.v1"')) fail('manifest metadata drift');
 if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
@@ -55,9 +55,9 @@ for (const profile of registry.contract_tests.fallback_smoke.profiles) {
 for (const marker of ['impl ChannelReadPort for crate::ChannelService', 'context.require_policy(PortCallPolicy::read())?', 'ensure_tenant_scope', 'request.include_inactive || detail.channel.is_active', 'channel.tenant_id_invalid', 'channel.slug_empty', 'channel.host_target_empty']) {
   if (!ports.includes(marker)) fail(`runtime smoke source missing ${marker}`);
 }
-const transportFacade = read('crates/rustok-channel/admin/src/transport/mod.rs');
-const nativeAdapter = read('crates/rustok-channel/admin/src/transport/native_server_adapter.rs');
-const restAdapter = read('crates/rustok-channel/admin/src/transport/rest_adapter.rs');
+const transportFacade = read('crates/modules/rustok-channel/admin/src/transport/mod.rs');
+const nativeAdapter = read('crates/modules/rustok-channel/admin/src/transport/native_server_adapter.rs');
+const restAdapter = read('crates/modules/rustok-channel/admin/src/transport/rest_adapter.rs');
 if (!transportFacade.includes('native_server_adapter') || !transportFacade.includes('rest_adapter')) fail('runtime smoke transport facade drift');
 if (!nativeAdapter.includes('#[server') || !restAdapter.includes('reqwest')) fail('runtime smoke native/rest adapter markers drift');
 console.log('[verify-channel-fba] Channel FBA provider metadata, port semantics, static evidence and source-locked runtime fallback smoke are consistent');

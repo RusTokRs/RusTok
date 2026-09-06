@@ -19,19 +19,19 @@ publish-rebuild-provenance-postgres-harness-source-ready
 Harness:
 
 ```text
-crates/rustok-pages/tests/publish_rebuild_provenance_postgres.rs
+crates/modules/rustok-pages/tests/publish_rebuild_provenance_postgres.rs
 ```
 
 Machine evidence:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-publish-rebuild-provenance-postgres-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-publish-rebuild-provenance-postgres-source.json
 ```
 
 Fail-closed source guard:
 
 ```text
-crates/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance-postgres.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance-postgres.mjs
 ```
 
 ## PostgreSQL fixture
@@ -167,10 +167,10 @@ pages_publish_rebuild_provenance_postgres_source_unvalidated
 Suggested commands, intentionally not run here:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance-postgres.mjs
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-pages --test publish_rebuild_provenance_postgres -- --nocapture
-node crates/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance.mjs
 cargo check -p rustok-pages --all-targets
 ```
 

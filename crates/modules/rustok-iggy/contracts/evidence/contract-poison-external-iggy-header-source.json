@@ -6,7 +6,7 @@
   "scope": "external_real_iggy_physical_dlq_header_and_partition",
   "test_target": "contract_poison_external_iggy_header",
   "test_case": "deterministic_dlq_uuid_is_physical_iggy_header_and_selects_one_based_partition",
-  "source_path": "crates/rustok-iggy/tests/contract_poison_external_iggy_header.rs",
+  "source_path": "crates/modules/rustok-iggy/tests/contract_poison_external_iggy_header.rs",
   "verifier": "scripts/verify/verify-iggy-contract-poison-external-header-evidence.mjs",
   "required_environment": [
     "RUSTOK_IGGY_EXTERNAL_TEST_ADDRESS"

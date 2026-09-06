@@ -93,23 +93,23 @@
     }
   ],
   "evidence": {
-    "local_plan": "crates/rustok-media/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-media/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-media-fba.mjs",
-    "static_matrix": "crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json",
-    "runtime_fallback_smoke": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
-    "port_error_matrix": "crates/rustok-media/contracts/evidence/media-port-error-matrix.json",
-    "runtime_order_smoke": "crates/rustok-media/contracts/evidence/media-provider-runtime-order-smoke.json",
+    "static_matrix": "crates/modules/rustok-media/contracts/evidence/media-contract-test-static-matrix.json",
+    "runtime_fallback_smoke": "crates/modules/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
+    "port_error_matrix": "crates/modules/rustok-media/contracts/evidence/media-port-error-matrix.json",
+    "runtime_order_smoke": "crates/modules/rustok-media/contracts/evidence/media-provider-runtime-order-smoke.json",
     "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs"
   },
   "in_process_provider_impl": {
     "service": "MediaService",
-    "source": "crates/rustok-media/src/ports.rs",
+    "source": "crates/modules/rustok-media/src/ports.rs",
     "status": "implemented"
   },
   "contract_tests": {
     "status": "runtime_verified",
-    "source": "crates/rustok-media-transport/tests/port_conformance.rs",
+    "source": "crates/modules/rustok-media-transport/tests/port_conformance.rs",
     "runner": "cargo test -p rustok-media-transport --test port_conformance",
     "profiles": [
       "in_process",
@@ -231,11 +231,11 @@
         "proxy_storage_relative_url",
         "summarize_internal_binary"
       ],
-      "source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
+      "source": "crates/modules/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
     },
     "port_error_matrix": {
       "status": "source_locked",
-      "source": "crates/rustok-media/contracts/evidence/media-port-error-matrix.json",
+      "source": "crates/modules/rustok-media/contracts/evidence/media-port-error-matrix.json",
       "assertions": [
         "typed_port_error_mapping",
         "tenant_context_validation",

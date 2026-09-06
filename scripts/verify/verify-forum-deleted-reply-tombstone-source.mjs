@@ -15,15 +15,15 @@ function forbid(text, marker, label) {
 }
 
 const files = {
-  lib: "crates/rustok-forum/src/lib.rs",
-  tombstone: "crates/rustok-forum/src/import_tombstone_preparation.rs",
-  mapping: "crates/rustok-forum/src/import_mapping.rs",
-  relation: "crates/rustok-forum/src/import_relation_preparation.rs",
-  write: "crates/rustok-forum/src/services/import_write.rs",
-  replyOwner: "crates/rustok-forum/src/services/reply_owner.rs",
-  replyImport: "crates/rustok-forum/src/services/reply_owner_import.rs",
-  pgSoftDelete: "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/postgres_up.rs",
-  sqliteRevisions: "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_revisions.rs",
+  lib: "crates/modules/rustok-forum/src/lib.rs",
+  tombstone: "crates/modules/rustok-forum/src/import_tombstone_preparation.rs",
+  mapping: "crates/modules/rustok-forum/src/import_mapping.rs",
+  relation: "crates/modules/rustok-forum/src/import_relation_preparation.rs",
+  write: "crates/modules/rustok-forum/src/services/import_write.rs",
+  replyOwner: "crates/modules/rustok-forum/src/services/reply_owner.rs",
+  replyImport: "crates/modules/rustok-forum/src/services/reply_owner_import.rs",
+  pgSoftDelete: "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/postgres_up.rs",
+  sqliteRevisions: "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_revisions.rs",
   packet: "docs/modules/forum-34-deleted-reply-tombstone-actualization-2026-08-09.md",
 };
 

@@ -12,8 +12,8 @@
     "leptos_admin": {
       "route_subpath": "split",
       "component": "ForumTopicSplitAdmin",
-      "model": "crates/rustok-forum/admin/src/topic_split_model.rs",
-      "transport": "crates/rustok-forum/admin/src/transport/topic_split_graphql_adapter.rs",
+      "model": "crates/modules/rustok-forum/admin/src/topic_split_model.rs",
+      "transport": "crates/modules/rustok-forum/admin/src/transport/topic_split_graphql_adapter.rs",
       "graphql_only": true
     },
     "next_admin": {
@@ -82,16 +82,16 @@
     "transport_fallback": false
   },
   "source_contracts": [
-    "crates/rustok-forum/admin/src/topic_split_model.rs",
-    "crates/rustok-forum/admin/src/transport.rs",
-    "crates/rustok-forum/admin/src/transport/topic_split_graphql_adapter.rs",
-    "crates/rustok-forum/admin/src/ui/topic_split.rs",
+    "crates/modules/rustok-forum/admin/src/topic_split_model.rs",
+    "crates/modules/rustok-forum/admin/src/transport.rs",
+    "crates/modules/rustok-forum/admin/src/transport/topic_split_graphql_adapter.rs",
+    "crates/modules/rustok-forum/admin/src/ui/topic_split.rs",
     "apps/next-admin/packages/forum/src/core/topic-split.ts",
     "apps/next-admin/packages/forum/src/api/forum.ts",
     "apps/next-admin/packages/forum/src/components/forum-topic-split.tsx",
     "apps/next-admin/src/app/dashboard/forum/split/page.tsx"
   ],
-  "documentation": "crates/rustok-forum/docs/forum-21v-topic-split-admin-ui.md",
+  "documentation": "crates/modules/rustok-forum/docs/forum-21v-topic-split-admin-ui.md",
   "verifier": "scripts/verify/verify-forum-topic-split-admin-ui.mjs",
   "maintainer_commands": [
     "node scripts/verify/verify-forum-topic-split-owner.mjs",

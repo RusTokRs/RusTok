@@ -5,27 +5,27 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const evidence = JSON.parse(
   read(
-    "crates/rustok-pages/contracts/evidence/pages-publish-rollback-cache-correlation-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-publish-rollback-cache-correlation-source.json",
   ),
 );
 const regression = read(
-  "crates/rustok-pages/tests/publish_rollback_cache_correlation.rs",
+  "crates/modules/rustok-pages/tests/publish_rollback_cache_correlation.rs",
 );
 const reviewedPublish = read(
-  "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+  "crates/modules/rustok-pages/src/services/page/reviewed_publish.rs",
 );
-const rollback = read("crates/rustok-pages/src/services/page/rollback.rs");
-const cacheOwner = read("crates/rustok-pages/src/cache_invalidation.rs");
+const rollback = read("crates/modules/rustok-pages/src/services/page/rollback.rs");
+const cacheOwner = read("crates/modules/rustok-pages/src/cache_invalidation.rs");
 const storefront = read(
-  "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs",
 );
-const artifact = read("crates/rustok-pages/src/controllers/mod.rs");
+const artifact = read("crates/modules/rustok-pages/src/controllers/mod.rs");
 const parityPlan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
 const failures = [];
 

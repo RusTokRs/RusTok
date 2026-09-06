@@ -5,15 +5,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const evidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-immutable-artifact-integrity-audit-sqlite-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-immutable-artifact-integrity-audit-sqlite-source.json",
 ));
-const harness = read("crates/rustok-pages/tests/immutable_artifact_integrity_audit_sqlite.rs");
-const owner = read("crates/rustok-pages/src/services/page/artifact_integrity_audit.rs");
-const reviewedPublish = read("crates/rustok-pages/src/services/page/reviewed_publish.rs");
+const harness = read("crates/modules/rustok-pages/tests/immutable_artifact_integrity_audit_sqlite.rs");
+const owner = read("crates/modules/rustok-pages/src/services/page/artifact_integrity_audit.rs");
+const reviewedPublish = read("crates/modules/rustok-pages/src/services/page/reviewed_publish.rs");
 const continuation = read(
   "docs/modules/pages-page-builder-artifact-audit-sqlite-continuation-2026-08-07.md",
 );

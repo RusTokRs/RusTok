@@ -177,31 +177,31 @@ The source continues to reject:
 Direct single-locale:
 
 ```text
-crates/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs
-crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-activation-recovery-postgres.mjs
+crates/modules/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs
+crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-loss-activation-recovery-postgres.mjs
 ```
 
 Direct sequential multi-locale:
 
 ```text
-crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs
-crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs
+crates/modules/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs
+crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs
 ```
 
 Rollback-activated recovery:
 
 ```text
-crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs
-crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs
-crates/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json
+crates/modules/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs
+crates/modules/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs
+crates/modules/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json
 ```
 
 Repeated artifact loss:
 
 ```text
-crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs
-crates/rustok-pages/scripts/verify/verify-pages-repeated-artifact-loss-recovery.mjs
-crates/rustok-pages/contracts/evidence/pages-repeated-artifact-loss-recovery-source.json
+crates/modules/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs
+crates/modules/rustok-pages/scripts/verify/verify-pages-repeated-artifact-loss-recovery.mjs
+crates/modules/rustok-pages/contracts/evidence/pages-repeated-artifact-loss-recovery-source.json
 ```
 
 The repeated-loss packet retains four source scenarios:

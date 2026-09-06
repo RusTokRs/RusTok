@@ -38,16 +38,16 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-forum/admin/src/lib.rs";
-const corePath = "crates/rustok-forum/admin/src/core.rs";
-const modelPath = "crates/rustok-forum/admin/src/model.rs";
-const uiPath = "crates/rustok-forum/admin/src/ui/leptos.rs";
-const categoryDndPath = "crates/rustok-forum/admin/src/ui/category_dnd.rs";
-const transportPath = "crates/rustok-forum/admin/src/transport.rs";
-const legacyApiPath = "crates/rustok-forum/admin/src/api.rs";
-const graphqlAdapterPath = "crates/rustok-forum/admin/src/transport/graphql_adapter.rs";
-const categoryTreeGraphqlAdapterPath = "crates/rustok-forum/admin/src/transport/category_tree_graphql_adapter.rs";
-const implementationPlanPath = "crates/rustok-forum/docs/implementation-plan.md";
+const libPath = "crates/modules/rustok-forum/admin/src/lib.rs";
+const corePath = "crates/modules/rustok-forum/admin/src/core.rs";
+const modelPath = "crates/modules/rustok-forum/admin/src/model.rs";
+const uiPath = "crates/modules/rustok-forum/admin/src/ui/leptos.rs";
+const categoryDndPath = "crates/modules/rustok-forum/admin/src/ui/category_dnd.rs";
+const transportPath = "crates/modules/rustok-forum/admin/src/transport.rs";
+const legacyApiPath = "crates/modules/rustok-forum/admin/src/api.rs";
+const graphqlAdapterPath = "crates/modules/rustok-forum/admin/src/transport/graphql_adapter.rs";
+const categoryTreeGraphqlAdapterPath = "crates/modules/rustok-forum/admin/src/transport/category_tree_graphql_adapter.rs";
+const implementationPlanPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 const verifierTestPath = "scripts/verify/verify-forum-admin-boundary.test.mjs";

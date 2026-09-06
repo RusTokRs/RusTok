@@ -41,11 +41,11 @@ function optionalContract(relativePath) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-notification-inbox-storefront-port.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-inbox-storefront-port.json";
 const nativeContractPath =
-  "crates/rustok-forum/contracts/forum-notification-inbox-native-storefront-adapter.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-inbox-native-storefront-adapter.json";
 const groupedUiContractPath =
-  "crates/rustok-forum/contracts/forum-notification-inbox-grouped-storefront-ui.json";
+  "crates/modules/rustok-forum/contracts/forum-notification-inbox-grouped-storefront-ui.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const nativeContract = optionalContract(nativeContractPath);
 const groupedUiContract = optionalContract(groupedUiContractPath);

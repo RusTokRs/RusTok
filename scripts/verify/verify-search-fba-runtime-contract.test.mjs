@@ -6,13 +6,13 @@ import { spawnSync } from 'node:child_process';
 const repoRoot = process.cwd();
 const script = path.join(repoRoot, 'scripts/verify/verify-search-fba-runtime-contract.mjs');
 const fixtureFiles = [
-  'crates/rustok-search/contracts/search-fba-registry.json',
-  'crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json',
-  'crates/rustok-search/src/ports.rs',
-  'crates/rustok-search/src/pg_engine.rs',
-  'crates/rustok-search/src/suggestions.rs',
-  'crates/rustok-search/README.md',
-  'crates/rustok-search/docs/implementation-plan.md',
+  'crates/modules/rustok-search/contracts/search-fba-registry.json',
+  'crates/modules/rustok-search/contracts/evidence/search-runtime-contract-smoke.json',
+  'crates/modules/rustok-search/src/ports.rs',
+  'crates/modules/rustok-search/src/pg_engine.rs',
+  'crates/modules/rustok-search/src/suggestions.rs',
+  'crates/modules/rustok-search/README.md',
+  'crates/modules/rustok-search/docs/implementation-plan.md',
   'docs/modules/registry.md',
 ];
 function assert(condition, message) {
@@ -42,7 +42,7 @@ const success = run();
 assert(success.status === 0, `expected repository fixture to pass\nSTDOUT:\n${success.stdout}\nSTDERR:\n${success.stderr}`);
 
 const reordered = copyFixture();
-const portsPath = path.join(reordered, 'crates/rustok-search/src/ports.rs');
+const portsPath = path.join(reordered, 'crates/modules/rustok-search/src/ports.rs');
 const ports = fs.readFileSync(portsPath, 'utf8');
 fs.writeFileSync(
   portsPath,
@@ -56,7 +56,7 @@ assert(reorderedResult.status !== 0, 'expected reordered policy/locale markers t
 assert(reorderedResult.stderr.includes('locale fallback must happen after read policy'), `expected order failure, got ${reorderedResult.stderr}`);
 
 const missingDoc = copyFixture();
-const readmePath = path.join(missingDoc, 'crates/rustok-search/README.md');
+const readmePath = path.join(missingDoc, 'crates/modules/rustok-search/README.md');
 fs.writeFileSync(readmePath, fs.readFileSync(readmePath, 'utf8').replaceAll('contracts/evidence/search-runtime-contract-smoke.json', 'contracts/evidence/removed.json'));
 const docResult = run(missingDoc);
 assert(docResult.status !== 0, 'expected missing README evidence reference to fail');

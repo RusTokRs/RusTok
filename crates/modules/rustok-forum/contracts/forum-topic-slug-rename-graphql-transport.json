@@ -57,12 +57,12 @@
     "storefront_ui_added": false,
     "graphql_field_is_additive": true
   },
-  "source_contract_test": "crates/rustok-forum/tests/topic_slug_rename_graphql_contract.rs",
-  "authorization_unit_test": "crates/rustok-forum/src/graphql/topic_slug_rename_mutation.rs",
-  "owner_runtime_test": "crates/rustok-forum/tests/topic_slug_rename_sqlite.rs",
-  "documentation": "crates/rustok-forum/docs/forum-24f-topic-slug-rename-graphql-transport.md",
-  "owner_contract": "crates/rustok-forum/contracts/forum-topic-slug-rename-owner.json",
-  "owner_documentation": "crates/rustok-forum/docs/forum-24d-topic-slug-rename-owner.md",
+  "source_contract_test": "crates/modules/rustok-forum/tests/topic_slug_rename_graphql_contract.rs",
+  "authorization_unit_test": "crates/modules/rustok-forum/src/graphql/topic_slug_rename_mutation.rs",
+  "owner_runtime_test": "crates/modules/rustok-forum/tests/topic_slug_rename_sqlite.rs",
+  "documentation": "crates/modules/rustok-forum/docs/forum-24f-topic-slug-rename-graphql-transport.md",
+  "owner_contract": "crates/modules/rustok-forum/contracts/forum-topic-slug-rename-owner.json",
+  "owner_documentation": "crates/modules/rustok-forum/docs/forum-24d-topic-slug-rename-owner.md",
   "verifier": "scripts/verify/verify-forum-topic-slug-rename-graphql-transport.mjs",
   "maintainer_commands": [
     "node scripts/verify/verify-forum-topic-slug-rename-owner.mjs",

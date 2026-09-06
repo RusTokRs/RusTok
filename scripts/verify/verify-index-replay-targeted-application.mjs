@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const targetedPath = 'crates/rustok-index/src/application/targeted_replay.rs';
+const targetedPath = 'crates/modules/rustok-index/src/application/targeted_replay.rs';
 const targeted = requireMarkers(targetedPath, [
   'pub struct IndexReplayTargetedOutcome',
   'pub struct IndexReplayTargetedExecutor<M>',
@@ -86,7 +86,7 @@ for (const forbidden of [
   }
 }
 
-const mode = requireMarkers('crates/rustok-index/src/application/replay_mode.rs', [
+const mode = requireMarkers('crates/modules/rustok-index/src/application/replay_mode.rs', [
   'Targeted(IndexSourceLoadRequest)',
   'IndexSourceLoadRequest::new(keys)?',
   'IndexReplayExecutionSurface::TargetedLoad',
@@ -96,7 +96,7 @@ if (mode.includes('PostgresMutationStore')) {
   fail('replay_mode.rs must remain storage-neutral');
 }
 
-requireMarkers('crates/rustok-index/src/application/source_registry.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/source_registry.rs', [
   'const MAX_LOAD_KEYS: usize = 256;',
   'pub struct IndexSourceLoadRequest',
   'IndexSourceError::EmptyLoadKeys',
@@ -108,12 +108,12 @@ requireMarkers('crates/rustok-index/src/application/source_registry.rs', [
   'IndexSourceError::LoadMutationNotRequested',
   'IndexSourceError::DuplicateLoadMutationKey',
 ]);
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'mod targeted_replay;',
   'IndexReplayTargetedError, IndexReplayTargetedExecutor, IndexReplayTargetedOutcome',
 ]);
 
-const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
+const runnerPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = read(runnerPath);
 for (const forbidden of [
   'IndexReplayTargetedExecutor',
@@ -126,7 +126,7 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-index/docs/m6-targeted-replay-mutation-application.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-targeted-replay-mutation-application.md', [
   'Status: `source_complete_transport_execution_pending`.',
   '`IndexReplayTargetedExecutor`',
   'active-schema admission',
@@ -138,7 +138,7 @@ requireMarkers('crates/rustok-index/docs/m6-targeted-replay-mutation-application
   '## GraphQL transport',
   '`runIndexReplayTargeted(input: ...)`',
 ]);
-requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-mode-contract.md', [
   'Status: `source_complete_targeted_graphql_execution_pending`.',
   '## Targeted mutation application',
   '`IndexReplayTargetedExecutor`',
@@ -147,13 +147,13 @@ requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
   '## Targeted PostgreSQL composition and host dispatch',
   '## Targeted GraphQL transport',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
   'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',
   'Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.',
   'There is no remaining independent source-only M6 replay expansion justified by the current contract.',
 ]);
-requireMarkers('crates/rustok-index/docs/README.md', [
+requireMarkers('crates/modules/rustok-index/docs/README.md', [
   '[M6 Targeted Replay Mutation Application](./m6-targeted-replay-mutation-application.md)',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [

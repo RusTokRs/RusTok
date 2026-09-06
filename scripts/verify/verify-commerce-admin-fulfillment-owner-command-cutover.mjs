@@ -12,15 +12,15 @@ const forbidText = (source, text, label) => {
   if (source.includes(text)) throw new Error(`forbidden ${label}: ${text}`);
 };
 
-const adminMod = read("crates/rustok-commerce/src/controllers/admin/mod.rs");
-const mounted = read("crates/rustok-commerce/src/controllers/admin/fulfillments_owner_commands.rs");
-const legacy = read("crates/rustok-commerce/src/controllers/admin/fulfillments.rs");
-const httpRuntime = read("crates/rustok-commerce/src/controllers/mod.rs");
-const fulfillmentLib = read("crates/rustok-fulfillment/src/lib.rs");
-const ownerCommand = read("crates/rustok-fulfillment/src/admin_command.rs");
-const openapi = read("crates/rustok-commerce/src/openapi.rs");
-const plan = read("crates/rustok-commerce/docs/implementation-plan.md");
-const doc = read("crates/rustok-commerce/docs/admin-fulfillment-owner-command-cutover-2026-08-09.md");
+const adminMod = read("crates/modules/rustok-commerce/src/controllers/admin/mod.rs");
+const mounted = read("crates/modules/rustok-commerce/src/controllers/admin/fulfillments_owner_commands.rs");
+const legacy = read("crates/modules/rustok-commerce/src/controllers/admin/fulfillments.rs");
+const httpRuntime = read("crates/modules/rustok-commerce/src/controllers/mod.rs");
+const fulfillmentLib = read("crates/modules/rustok-fulfillment/src/lib.rs");
+const ownerCommand = read("crates/modules/rustok-fulfillment/src/admin_command.rs");
+const openapi = read("crates/modules/rustok-commerce/src/openapi.rs");
+const plan = read("crates/modules/rustok-commerce/docs/implementation-plan.md");
+const doc = read("crates/modules/rustok-commerce/docs/admin-fulfillment-owner-command-cutover-2026-08-09.md");
 
 requireText(adminMod, '#[path = "fulfillments.rs"]\nmod fulfillments_legacy;', "private legacy Fulfillment module");
 requireText(adminMod, '#[path = "fulfillments_owner_commands.rs"]\npub mod fulfillments;', "mounted Fulfillment owner adapter");

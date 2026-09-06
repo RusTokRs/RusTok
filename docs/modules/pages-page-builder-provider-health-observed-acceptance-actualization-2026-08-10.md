@@ -105,9 +105,9 @@ Forum Wave therefore remains blocked, and FFA/FBA promotion remains unclaimed.
 ## Source evidence
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json
 scripts/evidence/accept-pages-builder-provider-health-runtime.mjs
-crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
 ```
 
 ## Validation boundary
@@ -117,9 +117,9 @@ Tests were not run. Node verifiers, Cargo commands, formatting, builds, GraphQL/
 Suggested maintainer source checks, intentionally not run:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
-node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 ```
 
 Runtime execution and the owner decision remain maintainer-owned.

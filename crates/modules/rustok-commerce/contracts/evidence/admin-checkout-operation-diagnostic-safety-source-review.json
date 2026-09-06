@@ -1,11 +1,11 @@
 {
   "status": "commerce_admin_checkout_operation_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/controllers/admin/checkout_operations.rs",
-    "crates/rustok-commerce/docs/admin-checkout-operation-diagnostic-safety.md",
+    "crates/modules/rustok-commerce/src/controllers/admin/checkout_operations.rs",
+    "crates/modules/rustok-commerce/docs/admin-checkout-operation-diagnostic-safety.md",
     "scripts/verify/verify-commerce-admin-checkout-operation-diagnostic-safety.mjs",
     "scripts/verify/verify-commerce-admin-checkout-operation-error-context.mjs",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_contract": {
     "raw_debug_error_logged": false,

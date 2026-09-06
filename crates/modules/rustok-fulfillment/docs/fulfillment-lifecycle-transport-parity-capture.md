@@ -11,7 +11,7 @@ credentials, raw bodies, or fulfillment metadata.
 
 The locked execution contract is:
 
-`crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json`
+`crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json`
 
 The runner is:
 
@@ -23,7 +23,7 @@ The source guard is:
 
 A successful maintainer-owned run writes one immutable packet to:
 
-`crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution.json`
+`crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution.json`
 
 That output file is intentionally absent until the mounted capture succeeds.
 

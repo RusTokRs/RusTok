@@ -73,9 +73,9 @@ No identity/evaluator/owner-acceptance execution, accepted packet installation, 
 ## Source evidence
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-builder-provider-health-capability-preflight-source.json
-crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs
-crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-capability-preflight-source.json
+crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs
+crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json
 ```
 
 ## Validation boundary
@@ -85,7 +85,7 @@ Tests were not run. Node verifiers, Cargo commands, formatting, builds, GraphQL/
 Suggested maintainer source checks, intentionally not run:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
-node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 ```

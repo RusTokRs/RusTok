@@ -133,7 +133,7 @@ Edit the selected forum topic translation.`);
   if (options.blogOwnsForum) {
     writeFixtureFile(root, 'apps/next-admin/packages/blog/src/api/forum.ts', 'legacy owner');
   }
-  writeFixtureFile(root, 'crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json',
+  writeFixtureFile(root, 'crates/modules/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json',
     JSON.stringify({
       schema_version: 1,
       module: 'blog',

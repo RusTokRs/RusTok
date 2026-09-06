@@ -5,10 +5,10 @@ Status: `source_closed_unvalidated`
 ## Scope
 
 This source wave closes the public error-envelope gap in
-`crates/rustok-commerce/src/storefront_checkout_runtime_mounted.rs`.
+`crates/modules/rustok-commerce/src/storefront_checkout_runtime_mounted.rs`.
 
 The private compatibility implementation in
-`crates/rustok-commerce/src/storefront_checkout_runtime.rs` still converts owner
+`crates/modules/rustok-commerce/src/storefront_checkout_runtime.rs` still converts owner
 and persistence failures into a legacy dynamic `Debug` message. The mounted
 module previously re-exported that error type and the four non-checkout helper
 functions directly, so a Rust consumer could receive the dynamic compatibility
@@ -74,7 +74,7 @@ channel, and locale values are not copied into the mounted diagnostic event.
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/storefront-checkout-runtime-error-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/storefront-checkout-runtime-error-safety-source-review.json`
 - `scripts/verify/verify-commerce-storefront-checkout-runtime-error-safety.mjs`
 
 ## Still open

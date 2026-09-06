@@ -5,31 +5,31 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const evidence = JSON.parse(
   read(
-    "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-cache-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-cache-source.json",
   ),
 );
 const harness = read(
-  "crates/rustok-pages/tests/explicit_artifact_repair_cache_postgres.rs",
+  "crates/modules/rustok-pages/tests/explicit_artifact_repair_cache_postgres.rs",
 );
 const reviewedPublish = read(
-  "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+  "crates/modules/rustok-pages/src/services/page/reviewed_publish.rs",
 );
 const rebuildOwner = read(
-  "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
+  "crates/modules/rustok-pages/src/services/page/artifact_rebuild.rs",
 );
 const activationOwner = read(
-  "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+  "crates/modules/rustok-pages/src/services/page/artifact_binding_replacement.rs",
 );
 const artifactOwner = read(
-  "crates/rustok-pages/src/services/page_builder_artifact.rs",
+  "crates/modules/rustok-pages/src/services/page_builder_artifact.rs",
 );
-const cacheOwner = read("crates/rustok-pages/src/cache_invalidation.rs");
+const cacheOwner = read("crates/modules/rustok-pages/src/cache_invalidation.rs");
 const continuation = read(
   "docs/modules/pages-page-builder-repair-cache-continuation-2026-08-07.md",
 );
@@ -126,7 +126,7 @@ for (const [key, expected] of Object.entries({
 
 if (
   evidence.harness?.path !==
-    "crates/rustok-pages/tests/explicit_artifact_repair_cache_postgres.rs" ||
+    "crates/modules/rustok-pages/tests/explicit_artifact_repair_cache_postgres.rs" ||
   evidence.harness?.test !==
     "rebuilt_bytes_and_activation_cache_rotate_only_after_committed_events_on_postgres" ||
   evidence.harness?.database_env !== "RUSTOK_PAGES_TEST_DATABASE_URL" ||

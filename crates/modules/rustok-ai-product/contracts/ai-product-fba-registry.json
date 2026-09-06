@@ -8,7 +8,7 @@
   "provider_dependencies": [
     {
       "module": "product",
-      "registry": "crates/rustok-product/contracts/product-fba-registry.json",
+      "registry": "crates/modules/rustok-product/contracts/product-fba-registry.json",
       "contract_version": "product.catalog_read.v1",
       "port": "ProductCatalogReadPort",
       "operations": [
@@ -35,7 +35,7 @@
     }
   ],
   "support_adapter": {
-    "source": "crates/rustok-ai-product/src/lib.rs",
+    "source": "crates/modules/rustok-ai-product/src/lib.rs",
     "task_slugs": [
       "product_copy",
       "product_attributes"
@@ -63,18 +63,18 @@
     "all_stages_require_approval": true
   },
   "evidence": {
-    "local_plan": "crates/rustok-ai-product/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-ai-product/docs/implementation-plan.md",
     "central_registry": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ai-product-fba.mjs",
-    "static_matrix": "crates/rustok-ai-product/contracts/evidence/ai-product-consumer-static-matrix.json",
-    "runtime_fallback_smoke": "crates/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json",
+    "static_matrix": "crates/modules/rustok-ai-product/contracts/evidence/ai-product-consumer-static-matrix.json",
+    "runtime_fallback_smoke": "crates/modules/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json",
     "remote_consumer_behavior_verifier": "scripts/verify/verify-product-remote-consumer-behavior.mjs",
-    "product_grpc_maintainer_test_attestation": "crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json"
+    "product_grpc_maintainer_test_attestation": "crates/modules/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json"
   },
   "remote_consumer_behavior": {
     "status": "source_complete_execution_pending",
     "profile": "grpc_loopback",
-    "source": "crates/rustok-ai/src/direct_product_attributes.rs",
+    "source": "crates/modules/rustok-ai/src/direct_product_attributes.rs",
     "failure_profiles": [
       "unavailable",
       "timeout"
@@ -92,7 +92,7 @@
   },
   "contract_tests": {
     "status": "planned_cases_locked",
-    "source": "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
+    "source": "crates/modules/rustok-ai-product/contracts/ai-product-fba-registry.json",
     "runner": "scripts/verify/verify-ai-product-fba.mjs",
     "execution_attestation": "maintainer_attested_passed_no_raw_logs",
     "profiles": [

@@ -3,25 +3,25 @@
 import { readFileSync } from "node:fs";
 
 const files = {
-  cargo: readFileSync("crates/rustok-iggy-connector/Cargo.toml", "utf8"),
+  cargo: readFileSync("crates/modules/rustok-iggy-connector/Cargo.toml", "utf8"),
   migrations: readFileSync(
-    "crates/rustok-iggy-connector/src/migrations.rs",
+    "crates/modules/rustok-iggy-connector/src/migrations.rs",
     "utf8",
   ),
   receipts: readFileSync(
-    "crates/rustok-iggy-connector/src/consumer_poison_receipt.rs",
+    "crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs",
     "utf8",
   ),
   decodeFailure: readFileSync(
-    "crates/rustok-iggy/src/contract_decode_failure.rs",
+    "crates/modules/rustok-iggy/src/contract_decode_failure.rs",
     "utf8",
   ),
   contractCursor: readFileSync(
-    "crates/rustok-iggy/src/contract_consumer.rs",
+    "crates/modules/rustok-iggy/src/contract_consumer.rs",
     "utf8",
   ),
   consumer: readFileSync(
-    "crates/rustok-social-graph/src/index_consumer.rs",
+    "crates/modules/rustok-social-graph/src/index_consumer.rs",
     "utf8",
   ),
   worker: readFileSync(

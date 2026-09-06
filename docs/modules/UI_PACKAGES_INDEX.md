@@ -84,46 +84,46 @@ integration. The canonical source of truth here is only manifest wiring.
 
 ### Core/Admin Surfaces
 
-- `rustok-channel` admin UI: [README](../../crates/rustok-channel/admin/README.md)
-- `rustok-index` admin UI: [README](../../crates/rustok-index/admin/README.md)
-- `rustok-outbox` admin UI: [README](../../crates/rustok-outbox/admin/README.md)
-- `events` admin UI: [README](../../crates/rustok-events-module/admin/README.md);
+- `rustok-channel` admin UI: [README](../../crates/modules/rustok-channel/admin/README.md)
+- `rustok-index` admin UI: [README](../../crates/modules/rustok-index/admin/README.md)
+- `rustok-outbox` admin UI: [README](../../crates/modules/rustok-outbox/admin/README.md)
+- `events` admin UI: [README](../../crates/modules/rustok-events-module/admin/README.md);
   the sibling Next package is
-  `crates/rustok-events-module/next-admin`.
+  `crates/modules/rustok-events-module/next-admin`.
 - `iggy_connector` admin UI:
-  [README](../../crates/rustok-iggy-connector/admin/README.md); the sibling
-  Next package is `crates/rustok-iggy-connector/next-admin`.
-- `rustok-auth` admin UI: [README](../../crates/rustok-auth/admin/README.md), fast boundary gate `npm run verify:auth:admin-boundary`
-- `rustok-tenant` admin UI: [README](../../crates/rustok-tenant/admin/README.md)
-- `rustok-rbac` admin UI: [README](../../crates/rustok-rbac/admin/README.md)
+  [README](../../crates/modules/rustok-iggy-connector/admin/README.md); the sibling
+  Next package is `crates/modules/rustok-iggy-connector/next-admin`.
+- `rustok-auth` admin UI: [README](../../crates/modules/rustok-auth/admin/README.md), fast boundary gate `npm run verify:auth:admin-boundary`
+- `rustok-tenant` admin UI: [README](../../crates/modules/rustok-tenant/admin/README.md)
+- `rustok-rbac` admin UI: [README](../../crates/modules/rustok-rbac/admin/README.md)
 
 ### Optional/Admin Surfaces
 
-- `rustok-notifications` admin UI: [README](../../crates/rustok-notifications/admin/README.md)
-- `rustok-marketplace-listing` admin UI: [README](../../crates/rustok-marketplace-listing/admin/README.md)
-- `rustok-groups` admin UI: [README](../../crates/rustok-groups/admin/README.md)
-- `rustok-product` admin UI: [README](../../crates/rustok-product/admin/README.md)
+- `rustok-notifications` admin UI: [README](../../crates/modules/rustok-notifications/admin/README.md)
+- `rustok-marketplace-listing` admin UI: [README](../../crates/modules/rustok-marketplace-listing/admin/README.md)
+- `rustok-groups` admin UI: [README](../../crates/modules/rustok-groups/admin/README.md)
+- `rustok-product` admin UI: [README](../../crates/modules/rustok-product/admin/README.md)
 - Ecommerce admin UI routes `rustok-product` <-> `rustok-pricing` support
   stable deep links through product `id`; display fields are not used as identity.
-- `rustok-fulfillment` admin UI: [README](../../crates/rustok-fulfillment/admin/README.md)
-- `rustok-customer` admin UI: [README](../../crates/rustok-customer/admin/README.md)
-- `rustok-region` admin UI: [README](../../crates/rustok-region/admin/README.md)
-- `rustok-order` admin UI: [README](../../crates/rustok-order/admin/README.md)
-- `rustok-inventory` admin UI: [README](../../crates/rustok-inventory/admin/README.md)
-- `rustok-pricing` admin UI: [README](../../crates/rustok-pricing/admin/README.md)
-- `rustok-commerce` admin UI: [README](../../crates/rustok-commerce/admin/README.md)
-- `rustok-marketplace-seller` admin UI: [README](../../crates/rustok-marketplace-seller/admin/README.md)
-- `rustok-page-builder` admin UI: [README](../../crates/rustok-page-builder/admin/README.md)
-- `rustok-pages` admin UI: [README](../../crates/rustok-pages/admin/README.md)
-- `rustok-seo` admin UI: [README](../../crates/rustok-seo/admin/README.md)
-- `rustok-blog` admin UI: [README](../../crates/rustok-blog/admin/README.md)
-- `rustok-forum` admin UI: [README](../../crates/rustok-forum/admin/README.md)
-- `rustok-search` admin UI: [README](../../crates/rustok-search/admin/README.md)
-- `rustok-media` admin UI: [README](../../crates/rustok-media/admin/README.md)
-- `rustok-comments` admin UI: [README](../../crates/rustok-comments/admin/README.md)
-- `rustok-workflow` admin UI: [README](../../crates/rustok-workflow/admin/README.md)
+- `rustok-fulfillment` admin UI: [README](../../crates/modules/rustok-fulfillment/admin/README.md)
+- `rustok-customer` admin UI: [README](../../crates/modules/rustok-customer/admin/README.md)
+- `rustok-region` admin UI: [README](../../crates/modules/rustok-region/admin/README.md)
+- `rustok-order` admin UI: [README](../../crates/modules/rustok-order/admin/README.md)
+- `rustok-inventory` admin UI: [README](../../crates/modules/rustok-inventory/admin/README.md)
+- `rustok-pricing` admin UI: [README](../../crates/modules/rustok-pricing/admin/README.md)
+- `rustok-commerce` admin UI: [README](../../crates/modules/rustok-commerce/admin/README.md)
+- `rustok-marketplace-seller` admin UI: [README](../../crates/modules/rustok-marketplace-seller/admin/README.md)
+- `rustok-page-builder` admin UI: [README](../../crates/modules/rustok-page-builder/admin/README.md)
+- `rustok-pages` admin UI: [README](../../crates/modules/rustok-pages/admin/README.md)
+- `rustok-seo` admin UI: [README](../../crates/modules/rustok-seo/admin/README.md)
+- `rustok-blog` admin UI: [README](../../crates/modules/rustok-blog/admin/README.md)
+- `rustok-forum` admin UI: [README](../../crates/modules/rustok-forum/admin/README.md)
+- `rustok-search` admin UI: [README](../../crates/modules/rustok-search/admin/README.md)
+- `rustok-media` admin UI: [README](../../crates/modules/rustok-media/admin/README.md)
+- `rustok-comments` admin UI: [README](../../crates/modules/rustok-comments/admin/README.md)
+- `rustok-workflow` admin UI: [README](../../crates/modules/rustok-workflow/admin/README.md)
 - `rustok-translation` admin UI:
-  [README](../../crates/rustok-translation/admin/README.md). The
+  [README](../../crates/modules/rustok-translation/admin/README.md). The
   manifest-mounted six-tab Leptos workbench and matching Next package share
   the typed 32-operation native/GraphQL contract, versioned glossary and
   Translation Memory workflows, and URL-owned `tab`, `glossary_id`, and
@@ -131,26 +131,26 @@ integration. The canonical source of truth here is only manifest wiring.
 
 ### Optional/Storefront Surfaces
 
-- `rustok-notifications` storefront UI: [README](../../crates/rustok-notifications/storefront/README.md)
-- `rustok-groups` storefront UI: [README](../../crates/rustok-groups/storefront/README.md)
-- `rustok-blog` storefront UI: [README](../../crates/rustok-blog/storefront/README.md)
-- `rustok-cart` storefront UI: [README](../../crates/rustok-cart/storefront/README.md)
-- `rustok-commerce` storefront UI: [README](../../crates/rustok-commerce/storefront/README.md)
-- `rustok-fulfillment` storefront UI: [README](../../crates/rustok-fulfillment/storefront/README.md)
-- `rustok-payment` storefront UI: [README](../../crates/rustok-payment/storefront/README.md)
-- `rustok-order` storefront UI: [README](../../crates/rustok-order/storefront/README.md)
-- `rustok-forum` storefront UI: [README](../../crates/rustok-forum/storefront/README.md)
-- `rustok-pages` storefront UI: [README](../../crates/rustok-pages/storefront/README.md)
-- `rustok-pricing` storefront UI: [README](../../crates/rustok-pricing/storefront/README.md)
-- `rustok-profiles` storefront UI: [README](../../crates/rustok-profiles/storefront/README.md)
-- `rustok-product` storefront UI: [README](../../crates/rustok-product/storefront/README.md)
+- `rustok-notifications` storefront UI: [README](../../crates/modules/rustok-notifications/storefront/README.md)
+- `rustok-groups` storefront UI: [README](../../crates/modules/rustok-groups/storefront/README.md)
+- `rustok-blog` storefront UI: [README](../../crates/modules/rustok-blog/storefront/README.md)
+- `rustok-cart` storefront UI: [README](../../crates/modules/rustok-cart/storefront/README.md)
+- `rustok-commerce` storefront UI: [README](../../crates/modules/rustok-commerce/storefront/README.md)
+- `rustok-fulfillment` storefront UI: [README](../../crates/modules/rustok-fulfillment/storefront/README.md)
+- `rustok-payment` storefront UI: [README](../../crates/modules/rustok-payment/storefront/README.md)
+- `rustok-order` storefront UI: [README](../../crates/modules/rustok-order/storefront/README.md)
+- `rustok-forum` storefront UI: [README](../../crates/modules/rustok-forum/storefront/README.md)
+- `rustok-pages` storefront UI: [README](../../crates/modules/rustok-pages/storefront/README.md)
+- `rustok-pricing` storefront UI: [README](../../crates/modules/rustok-pricing/storefront/README.md)
+- `rustok-profiles` storefront UI: [README](../../crates/modules/rustok-profiles/storefront/README.md)
+- `rustok-product` storefront UI: [README](../../crates/modules/rustok-product/storefront/README.md)
 - Ecommerce storefront UI routes `rustok-product` <-> `rustok-pricing`
   preserve navigation context through `handle` and pricing query fields, and locale
   continues to be taken only from host `UiRouteContext`.
 - Storefront product/pricing UI shows stable `seller_id` as seller boundary;
   `vendor` remains a merchandising/display label and is not used as identity.
-- `rustok-region` storefront UI: [README](../../crates/rustok-region/storefront/README.md)
-- `rustok-search` storefront UI: [README](../../crates/rustok-search/storefront/README.md)
+- `rustok-region` storefront UI: [README](../../crates/modules/rustok-region/storefront/README.md)
+- `rustok-search` storefront UI: [README](../../crates/modules/rustok-search/storefront/README.md)
 - `rustok-seo` remains `admin_only`: storefront SEO runtime lives in `apps/storefront` and `apps/next-frontend`
   through shared SEO contract, not through a separate module-owned storefront package.
 - Entity-specific SEO UI is not centralized in `rustok-seo-admin`: page/product/blog/forum SEO
@@ -164,7 +164,7 @@ These entries are visibility/scaffold references for large capability work. They
 manifest-backed integration proof unless the capability crate also has `rustok-module.toml`
 with `[provides.admin_ui]`; the manifest remains the canonical source for mounted UI.
 
-- `rustok-ai` Leptos operator/admin UI: [README](../../crates/rustok-ai/admin/README.md)
+- `rustok-ai` Leptos operator/admin UI: [README](../../crates/modules/rustok-ai/admin/README.md)
 - `rustok-ai` Next.js operator/admin UI: `apps/next-admin/packages/rustok-ai/`
 
 ## What Not to Do
@@ -193,4 +193,4 @@ with `[provides.admin_ui]`; the manifest remains the canonical source for mounte
 - `rustok-cache`: `apps/next-admin/packages/cache/`
 - `rustok-events`: `apps/next-admin/packages/events/`
 
-- `rustok-navigation`: [storefront README](../../crates/rustok-navigation/storefront/README.md)
+- `rustok-navigation`: [storefront README](../../crates/modules/rustok-navigation/storefront/README.md)

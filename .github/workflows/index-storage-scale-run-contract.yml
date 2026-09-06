@@ -7,9 +7,9 @@ on:
       - ".github/workflows/index-storage-scale-evidence.yml"
       - ".github/workflows/index-storage-scale-run-contract.yml"
       - "scripts/verify/verify-index-storage-scale-run-contract.mjs"
-      - "crates/rustok-index/README.md"
-      - "crates/rustok-index/docs/storage-evidence-runbook.md"
-      - "crates/rustok-index/docs/implementation-plan.md"
+      - "crates/modules/rustok-index/README.md"
+      - "crates/modules/rustok-index/docs/storage-evidence-runbook.md"
+      - "crates/modules/rustok-index/docs/implementation-plan.md"
   push:
     branches:
       - main
@@ -19,9 +19,9 @@ on:
       - ".github/workflows/index-storage-scale-evidence.yml"
       - ".github/workflows/index-storage-scale-run-contract.yml"
       - "scripts/verify/verify-index-storage-scale-run-contract.mjs"
-      - "crates/rustok-index/README.md"
-      - "crates/rustok-index/docs/storage-evidence-runbook.md"
-      - "crates/rustok-index/docs/implementation-plan.md"
+      - "crates/modules/rustok-index/README.md"
+      - "crates/modules/rustok-index/docs/storage-evidence-runbook.md"
+      - "crates/modules/rustok-index/docs/implementation-plan.md"
 
 permissions:
   contents: read

@@ -60,7 +60,7 @@ The next bounded FORUM-26 slice should add one Forum-owned activity fact without
 
 ## Canonical plan debt
 
-The canonical `crates/rustok-forum/docs/implementation-plan.md` is not replaced through the GitHub contents API. It exceeds two thousand lines and complete replacement risks unrelated roadmap loss. A safe repository-local edit still needs to mark FORUM-26 `in_progress`, record FORUM-26A-F and retain reading, approved posts, moderation, reputation, usage windows, enforcement, duplicate hashing, shared rate limiting and optional external scoring as remaining work.
+The canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is not replaced through the GitHub contents API. It exceeds two thousand lines and complete replacement risks unrelated roadmap loss. A safe repository-local edit still needs to mark FORUM-26 `in_progress`, record FORUM-26A-F and retain reading, approved posts, moderation, reputation, usage windows, enforcement, duplicate hashing, shared rate limiting and optional external scoring as remaining work.
 
 `CRATE_API.md` is likewise not completely replaced. FORUM-26F introduces no new public Forum type; it implements and publishes the existing FORUM-26E contracts from the server host.
 

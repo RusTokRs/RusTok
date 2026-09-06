@@ -4,17 +4,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-topic-fork-graphql-transport.json",
-  ownerContract: "crates/rustok-forum/contracts/forum-topic-fork-owner.json",
-  docs: "crates/rustok-forum/docs/forum-21u-topic-fork-graphql-transport.md",
-  ownerDocs: "crates/rustok-forum/docs/forum-21q-topic-fork-owner.md",
-  graphql: "crates/rustok-forum/src/graphql/topic_fork_mutation.rs",
-  graphqlMod: "crates/rustok-forum/src/graphql/mod.rs",
-  owner: "crates/rustok-forum/src/services/topic_fork_owner.rs",
-  schemaTest: "crates/rustok-forum/tests/topic_fork_graphql_contract.rs",
-  ownerRuntimeTest: "crates/rustok-forum/tests/topic_fork_sqlite.rs",
-  docsIndex: "crates/rustok-forum/docs/README.md",
-  plan: "crates/rustok-forum/docs/implementation-plan.md",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-fork-graphql-transport.json",
+  ownerContract: "crates/modules/rustok-forum/contracts/forum-topic-fork-owner.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21u-topic-fork-graphql-transport.md",
+  ownerDocs: "crates/modules/rustok-forum/docs/forum-21q-topic-fork-owner.md",
+  graphql: "crates/modules/rustok-forum/src/graphql/topic_fork_mutation.rs",
+  graphqlMod: "crates/modules/rustok-forum/src/graphql/mod.rs",
+  owner: "crates/modules/rustok-forum/src/services/topic_fork_owner.rs",
+  schemaTest: "crates/modules/rustok-forum/tests/topic_fork_graphql_contract.rs",
+  ownerRuntimeTest: "crates/modules/rustok-forum/tests/topic_fork_sqlite.rs",
+  docsIndex: "crates/modules/rustok-forum/docs/README.md",
+  plan: "crates/modules/rustok-forum/docs/implementation-plan.md",
 };
 
 const read = (path) => readFileSync(path, "utf8");

@@ -23,9 +23,9 @@ ssr = [
 ]
 
 [dependencies]
-fly = { path = "../../fly" }
-fly-browser = { path = "../../fly-browser" }
-fly-ui = { path = "../../fly-ui" }
+fly = { path = "../../../ui/fly" }
+fly-browser = { path = "../../../ui/fly-browser" }
+fly-ui = { path = "../../../ui/fly-ui" }
 rustok-ui-core.workspace = true
 leptos.workspace = true
 leptos-auth.workspace = true

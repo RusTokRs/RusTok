@@ -15,13 +15,13 @@ function requireAbsent(text, needle, message) {
 }
 
 const testPath = "tests/e2e-rust/tests/leptos_storefront_forum_reactions.rs";
-const contractPath = "crates/rustok-forum/contracts/forum-reactions-storefront-browser-evidence.json";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-reactions-storefront-browser-evidence.json";
 const readmePath = "tests/e2e-rust/README.md";
 const testSource = read(testPath);
 const contract = JSON.parse(read(contractPath));
 const readme = read(readmePath);
-const forumCargo = read("crates/rustok-forum/Cargo.toml");
-const forumStorefrontCargo = read("crates/rustok-forum/storefront/Cargo.toml");
+const forumCargo = read("crates/modules/rustok-forum/Cargo.toml");
+const forumStorefrontCargo = read("crates/modules/rustok-forum/storefront/Cargo.toml");
 
 for (const marker of [
   "RUSTOK_FORUM_TOPIC_REACTIONS_E2E_URL",

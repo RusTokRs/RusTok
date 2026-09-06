@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This slice hardens the final public `String` error and its private diagnostic envelope for Product Admin catalog search-option discovery:
 
-- `crates/rustok-product/admin/src/catalog_transport.rs`;
+- `crates/modules/rustok-product/admin/src/catalog_transport.rs`;
 - public `fetch_catalog_search_options` re-exported from the Product Admin crate root.
 
 The existing implementation in `transport.rs` remains the private compatibility executor. It still tries the native owner endpoint first and, only after native failure, performs the GraphQL fallback sequence:
@@ -82,8 +82,8 @@ This slice does not change:
 
 ## Static evidence
 
-- `crates/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source.json`;
-- `crates/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source-review.json`;
+- `crates/modules/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source.json`;
+- `crates/modules/rustok-product/contracts/evidence/admin-catalog-search-options-error-safety-source-review.json`;
 - `scripts/verify/verify-product-admin-catalog-options-error-safety.mjs`.
 
 The focused verifier now fails closed if the complete raw error returns to structured tracing. All execution fields remain false. Source review does not prove compilation, verifier execution, browser behavior, or mounted fallback behavior.

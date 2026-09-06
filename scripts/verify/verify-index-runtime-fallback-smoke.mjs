@@ -8,11 +8,11 @@ const fail = (message) => {
   process.exit(1);
 };
 
-const nativeAdapter = read('crates/rustok-index/admin/src/transport/native_server_adapter.rs');
-const model = read('crates/rustok-index/admin/src/model.rs');
-const core = read('crates/rustok-index/admin/src/core.rs');
+const nativeAdapter = read('crates/modules/rustok-index/admin/src/transport/native_server_adapter.rs');
+const model = read('crates/modules/rustok-index/admin/src/model.rs');
+const core = read('crates/modules/rustok-index/admin/src/core.rs');
 
-if (exists('crates/rustok-index/src/ports.rs')) fail('legacy runtime fallback ports must not exist');
+if (exists('crates/modules/rustok-index/src/ports.rs')) fail('legacy runtime fallback ports must not exist');
 for (const table of ['index_content', 'index_products', 'search_index']) {
   if (nativeAdapter.includes(table)) fail(`admin adapter must not read legacy table ${table}`);
 }

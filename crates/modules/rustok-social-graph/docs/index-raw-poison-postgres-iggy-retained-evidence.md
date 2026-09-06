@@ -6,10 +6,10 @@ The retained execution contract, capture runner, and strict verifier are source-
 
 ## Files
 
-- execution contract: `crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution-contract.json`
+- execution contract: `crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution-contract.json`
 - capture runner: `scripts/evidence/capture-social-graph-index-raw-poison-postgres-iggy.mjs`
 - retained verifier: `scripts/verify/verify-social-graph-index-raw-poison-postgres-iggy-retained.mjs`
-- future packet: `crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution.json`
+- future packet: `crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution.json`
 
 The source harness and its production-order guard remain documented in `index-raw-poison-postgres-iggy-evidence.md`.
 

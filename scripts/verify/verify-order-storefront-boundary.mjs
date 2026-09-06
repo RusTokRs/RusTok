@@ -41,18 +41,18 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-order/storefront/src/lib.rs";
-const corePath = "crates/rustok-order/storefront/src/core.rs";
-const transportPath = "crates/rustok-order/storefront/src/transport.rs";
-const graphqlPath = "crates/rustok-order/storefront/src/transport/graphql_adapter.rs";
-const nativeServerFunctionsPath = "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs";
-const cargoPath = "crates/rustok-order/storefront/Cargo.toml";
-const uiPath = "crates/rustok-order/storefront/src/ui/leptos.rs";
-const i18nPath = "crates/rustok-order/storefront/src/i18n.rs";
-const manifestPath = "crates/rustok-order/rustok-module.toml";
-const commerceUiPath = "crates/rustok-commerce/storefront/src/ui/leptos/mod.rs";
-const commerceRequestsPath = "crates/rustok-commerce/storefront/src/core/requests.rs";
-const planPath = "crates/rustok-order/docs/implementation-plan.md";
+const libPath = "crates/modules/rustok-order/storefront/src/lib.rs";
+const corePath = "crates/modules/rustok-order/storefront/src/core.rs";
+const transportPath = "crates/modules/rustok-order/storefront/src/transport.rs";
+const graphqlPath = "crates/modules/rustok-order/storefront/src/transport/graphql_adapter.rs";
+const nativeServerFunctionsPath = "crates/modules/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs";
+const cargoPath = "crates/modules/rustok-order/storefront/Cargo.toml";
+const uiPath = "crates/modules/rustok-order/storefront/src/ui/leptos.rs";
+const i18nPath = "crates/modules/rustok-order/storefront/src/i18n.rs";
+const manifestPath = "crates/modules/rustok-order/rustok-module.toml";
+const commerceUiPath = "crates/modules/rustok-commerce/storefront/src/ui/leptos/mod.rs";
+const commerceRequestsPath = "crates/modules/rustok-commerce/storefront/src/core/requests.rs";
+const planPath = "crates/modules/rustok-order/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 

@@ -84,7 +84,7 @@ remains open.
 
 ## Evidence
 
-- `crates/rustok-order/contracts/evidence/checkout-order-recovery-owner-error-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-order/contracts/evidence/checkout-order-recovery-owner-error-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-order-checkout-recovery-owner-error-diagnostic-safety.mjs`
 
 Evidence is source-only. `execution` is empty and every validation flag remains false.

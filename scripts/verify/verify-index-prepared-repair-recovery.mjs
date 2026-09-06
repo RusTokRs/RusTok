@@ -3,22 +3,22 @@
 import { readFile } from 'node:fs/promises';
 
 const files = {
-  app: 'crates/rustok-index/src/application/drift_repair_recovery.rs',
-  appMod: 'crates/rustok-index/src/application/mod.rs',
-  store: 'crates/rustok-index/src/infrastructure/postgres/drift_repair_recovery.rs',
-  postgresMod: 'crates/rustok-index/src/infrastructure/postgres/mod.rs',
+  app: 'crates/modules/rustok-index/src/application/drift_repair_recovery.rs',
+  appMod: 'crates/modules/rustok-index/src/application/mod.rs',
+  store: 'crates/modules/rustok-index/src/infrastructure/postgres/drift_repair_recovery.rs',
+  postgresMod: 'crates/modules/rustok-index/src/infrastructure/postgres/mod.rs',
   missingComposition:
-    'crates/rustok-index/src/infrastructure/postgres/drift_missing_entity_repair.rs',
+    'crates/modules/rustok-index/src/infrastructure/postgres/drift_missing_entity_repair.rs',
   orphanComposition:
-    'crates/rustok-index/src/infrastructure/postgres/drift_orphan_link_repair.rs',
+    'crates/modules/rustok-index/src/infrastructure/postgres/drift_orphan_link_repair.rs',
   migration:
-    'crates/rustok-index/src/migrations/m20260806_000008_add_index_finding_repair_recovery.rs',
-  migrationsMod: 'crates/rustok-index/src/migrations/mod.rs',
-  doc: 'crates/rustok-index/docs/m6-prepared-repair-recovery.md',
-  targetedDoc: 'crates/rustok-index/docs/m6-targeted-drift-repair.md',
-  concreteDoc: 'crates/rustok-index/docs/m6-missing-entity-repair-composition.md',
-  orphanDoc: 'crates/rustok-index/docs/m6-orphan-link-repair-composition.md',
-  plan: 'crates/rustok-index/docs/implementation-plan-current-2026-08-03.md',
+    'crates/modules/rustok-index/src/migrations/m20260806_000008_add_index_finding_repair_recovery.rs',
+  migrationsMod: 'crates/modules/rustok-index/src/migrations/mod.rs',
+  doc: 'crates/modules/rustok-index/docs/m6-prepared-repair-recovery.md',
+  targetedDoc: 'crates/modules/rustok-index/docs/m6-targeted-drift-repair.md',
+  concreteDoc: 'crates/modules/rustok-index/docs/m6-missing-entity-repair-composition.md',
+  orphanDoc: 'crates/modules/rustok-index/docs/m6-orphan-link-repair-composition.md',
+  plan: 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
 

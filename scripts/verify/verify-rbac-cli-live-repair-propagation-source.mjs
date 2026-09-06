@@ -24,17 +24,17 @@ const forbidText = (source, value, label) => {
 };
 
 const files = {
-  cargo: "crates/rustok-cli/Cargo.toml",
-  harness: "crates/rustok-cli/tests/rbac_live_repair_propagation.rs",
-  cliRunner: "crates/rustok-cli/src/lib.rs",
-  registry: "crates/rustok-cli-registry/src/generated.rs",
-  rbacCli: "crates/rustok-rbac/cli/src/lib.rs",
+  cargo: "crates/utils/rustok-cli/Cargo.toml",
+  harness: "crates/utils/rustok-cli/tests/rbac_live_repair_propagation.rs",
+  cliRunner: "crates/utils/rustok-cli/src/lib.rs",
+  registry: "crates/utils/rustok-cli-registry/src/generated.rs",
+  rbacCli: "crates/modules/rustok-rbac/cli/src/lib.rs",
   listener: "apps/server/src/services/rbac_cache_invalidation.rs",
   watchdog: "apps/server/src/services/rbac_invalidation_generation.rs",
   evidence:
-    "crates/rustok-rbac/contracts/evidence/rbac-cli-live-repair-propagation-source.json",
-  docs: "crates/rustok-rbac/docs/cli-live-repair-propagation-evidence.md",
-  plan: "crates/rustok-rbac/docs/implementation-plan.md",
+    "crates/modules/rustok-rbac/contracts/evidence/rbac-cli-live-repair-propagation-source.json",
+  docs: "crates/modules/rustok-rbac/docs/cli-live-repair-propagation-evidence.md",
+  plan: "crates/modules/rustok-rbac/docs/implementation-plan.md",
   master: "docs/verification/PLATFORM_VERIFICATION_PLAN.md",
 };
 const sources = Object.fromEntries(

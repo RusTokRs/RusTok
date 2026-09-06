@@ -2,10 +2,10 @@
 import { readFileSync } from 'node:fs';
 
 const files = {
-  lib: 'crates/rustok-page-builder/src/lib.rs',
-  adapters: 'crates/rustok-page-builder/src/adapters.rs',
-  docs: 'crates/rustok-page-builder/docs/README.md',
-  plan: 'crates/rustok-page-builder/docs/implementation-plan.md',
+  lib: 'crates/modules/rustok-page-builder/src/lib.rs',
+  adapters: 'crates/modules/rustok-page-builder/src/adapters.rs',
+  docs: 'crates/modules/rustok-page-builder/docs/README.md',
+  plan: 'crates/modules/rustok-page-builder/docs/implementation-plan.md',
 };
 
 const read = (path) => readFileSync(path, 'utf8');

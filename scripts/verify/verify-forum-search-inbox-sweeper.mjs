@@ -25,16 +25,16 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-const reconcilerPath = "crates/rustok-search/src/forum_reconciliation.rs";
-const inboxPath = "crates/rustok-search/src/forum_inbox.rs";
-const libPath = "crates/rustok-search/src/lib.rs";
+const reconcilerPath = "crates/modules/rustok-search/src/forum_reconciliation.rs";
+const inboxPath = "crates/modules/rustok-search/src/forum_inbox.rs";
+const libPath = "crates/modules/rustok-search/src/lib.rs";
 const workerPath = "apps/server/src/services/forum_search_inbox_worker.rs";
 const servicesPath = "apps/server/src/services/mod.rs";
 const bootstrapPath = "apps/server/src/services/server_bootstrap.rs";
-const rustTestPath = "crates/rustok-search/tests/forum_projection_sweeper_contract.rs";
-const contractPath = "crates/rustok-forum/contracts/forum-search-inbox-sweeper.json";
-const orderingPath = "crates/rustok-forum/contracts/forum-search-inbox-ordering.json";
-const notePath = "crates/rustok-forum/docs/forum-20bq-search-inbox-sweeper.md";
+const rustTestPath = "crates/modules/rustok-search/tests/forum_projection_sweeper_contract.rs";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-search-inbox-sweeper.json";
+const orderingPath = "crates/modules/rustok-forum/contracts/forum-search-inbox-ordering.json";
+const notePath = "crates/modules/rustok-forum/docs/forum-20bq-search-inbox-sweeper.md";
 
 const reconciler = read(reconcilerPath);
 const inbox = read(inboxPath);

@@ -2,11 +2,11 @@
   "status": "order_storefront_native_client_diagnostics_source_reviewed_unvalidated",
   "reviewed_boundary": "complete_checkout native compatibility wrapper",
   "reviewed_files": [
-    "crates/rustok-order/storefront/src/transport/native_server_adapter.rs",
-    "crates/rustok-order/storefront/src/transport/native_server_adapter/native_client_error_safety.rs",
-    "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
-    "crates/rustok-order/storefront/src/transport.rs",
-    "crates/rustok-order/storefront/src/transport/graphql_error_safety.rs",
+    "crates/modules/rustok-order/storefront/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-order/storefront/src/transport/native_server_adapter/native_client_error_safety.rs",
+    "crates/modules/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/modules/rustok-order/storefront/src/transport.rs",
+    "crates/modules/rustok-order/storefront/src/transport/graphql_error_safety.rs",
     "scripts/verify/verify-order-storefront-runtime-error-diagnostics.mjs",
     "scripts/verify/verify-order-storefront-graphql-error-safety.mjs"
   ],

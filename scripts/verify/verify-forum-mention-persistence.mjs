@@ -34,18 +34,18 @@ function reject(source, pattern, message) {
 }
 
 const migrationPath =
-  "crates/rustok-forum/src/migrations/m20260722_000004_add_forum_mention_quote_relations.rs";
+  "crates/modules/rustok-forum/src/migrations/m20260722_000004_add_forum_mention_quote_relations.rs";
 const seedMigrationPath =
-  "crates/rustok-forum/src/migrations/m20260722_000005_seed_forum_relation_revisions.rs";
-const servicePath = "crates/rustok-forum/src/services/mention_relation.rs";
-const testPath = "crates/rustok-forum/src/services/mention_relation_tests.rs";
-const migrationRegistryPath = "crates/rustok-forum/src/migrations/mod.rs";
-const serviceRegistryPath = "crates/rustok-forum/src/services/mod.rs";
-const entityRegistryPath = "crates/rustok-forum/src/entities/mod.rs";
-const errorPath = "crates/rustok-forum/src/error.rs";
-const b2RecordPath = "crates/rustok-forum/docs/forum-12b2-owner-write-integration.md";
-const cRecordPath = "crates/rustok-forum/docs/forum-12c-mention-events.md";
-const crateApiPath = "crates/rustok-forum/CRATE_API.md";
+  "crates/modules/rustok-forum/src/migrations/m20260722_000005_seed_forum_relation_revisions.rs";
+const servicePath = "crates/modules/rustok-forum/src/services/mention_relation.rs";
+const testPath = "crates/modules/rustok-forum/src/services/mention_relation_tests.rs";
+const migrationRegistryPath = "crates/modules/rustok-forum/src/migrations/mod.rs";
+const serviceRegistryPath = "crates/modules/rustok-forum/src/services/mod.rs";
+const entityRegistryPath = "crates/modules/rustok-forum/src/entities/mod.rs";
+const errorPath = "crates/modules/rustok-forum/src/error.rs";
+const b2RecordPath = "crates/modules/rustok-forum/docs/forum-12b2-owner-write-integration.md";
+const cRecordPath = "crates/modules/rustok-forum/docs/forum-12c-mention-events.md";
+const crateApiPath = "crates/modules/rustok-forum/CRATE_API.md";
 
 const migration = read(migrationPath);
 const seedMigration = read(seedMigrationPath);

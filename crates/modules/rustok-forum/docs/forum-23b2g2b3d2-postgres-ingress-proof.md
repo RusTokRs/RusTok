@@ -12,13 +12,13 @@ artifact after all covered scenarios pass.
 The machine-readable proof contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-postgres-ingress-proof.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-postgres-ingress-proof.json
 ```
 
 The executable test is:
 
 ```text
-crates/rustok-search/tests/forum_versioned_invalidation_postgres.rs
+crates/modules/rustok-search/tests/forum_versioned_invalidation_postgres.rs
 ```
 
 ## Covered scenarios

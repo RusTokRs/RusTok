@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 const failures = [];
 const need = (text, marker, label) => {
@@ -23,10 +23,10 @@ const featureBody = (manifest, feature, label) => {
 };
 
 const evidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-authenticated-authoring-route-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-authenticated-authoring-route-source.json",
 ));
 const assetEvidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-inline-edit-asset-delivery-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-asset-delivery-source.json",
 ));
 const storefrontCore = read("apps/storefront/src/modules/core.rs");
 const storefrontCargo = read("apps/storefront/Cargo.toml");
@@ -38,9 +38,9 @@ const builder = [
 ].join("\n");
 const auth = read("apps/server/src/middleware/auth_context.rs");
 const serverCargo = read("apps/server/Cargo.toml");
-const consumer = read("crates/rustok-pages/storefront/src/inline_edit.rs");
+const consumer = read("crates/modules/rustok-pages/storefront/src/inline_edit.rs");
 const canonicalPlan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
-const localPlan = read("crates/rustok-pages/docs/implementation-plan.md");
+const localPlan = read("crates/modules/rustok-pages/docs/implementation-plan.md");
 const packet = read(
   "docs/modules/pages-page-builder-authenticated-authoring-route-packet-2026-08-06.md",
 );

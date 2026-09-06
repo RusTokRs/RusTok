@@ -4,17 +4,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  artifactSet: "crates/rustok-pages/src/services/page/artifact_set.rs",
-  rollback: "crates/rustok-pages/src/services/page/rollback.rs",
-  manifestMigration: "crates/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs",
-  test: "crates/rustok-pages/tests/artifact_repair_rollback_continuity_postgres.rs",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-artifact-repair-rollback-continuity-source.json",
-  packet: "crates/rustok-pages/docs/artifact-repair-rollback-continuity.md",
+  artifactSet: "crates/modules/rustok-pages/src/services/page/artifact_set.rs",
+  rollback: "crates/modules/rustok-pages/src/services/page/rollback.rs",
+  manifestMigration: "crates/modules/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs",
+  test: "crates/modules/rustok-pages/tests/artifact_repair_rollback_continuity_postgres.rs",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-artifact-repair-rollback-continuity-source.json",
+  packet: "crates/modules/rustok-pages/docs/artifact-repair-rollback-continuity.md",
   actualization: "docs/modules/pages-page-builder-repair-rollback-continuity-actualization-2026-08-07.md",
-  registry: "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+  registry: "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
 };
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);

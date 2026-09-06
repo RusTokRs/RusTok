@@ -27,14 +27,14 @@ function reject(source, pattern, message) {
   if (pattern.test(source)) failures.push(message);
 }
 
-const contractPath = "crates/rustok-forum/contracts/forum-read-state-runtime-proof.json";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-read-state-runtime-proof.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const testSource = read(contract.test_file ?? "");
-const postgresSupport = read("crates/rustok-forum/tests/support/postgres.rs");
-const readModel = read("crates/rustok-forum/src/services/read_model.rs");
-const readTracking = read("crates/rustok-forum/src/services/read_tracking.rs");
+const postgresSupport = read("crates/modules/rustok-forum/tests/support/postgres.rs");
+const readModel = read("crates/modules/rustok-forum/src/services/read_model.rs");
+const readTracking = read("crates/modules/rustok-forum/src/services/read_tracking.rs");
 const migration = read(
-  "crates/rustok-forum/src/migrations/m20260724_000001_add_forum_topic_read_states.rs",
+  "crates/modules/rustok-forum/src/migrations/m20260724_000001_add_forum_topic_read_states.rs",
 );
 const record = read(contract.record ?? "");
 const plan = read(contract.canonical_plan ?? "");

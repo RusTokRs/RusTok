@@ -5,7 +5,7 @@
   "status": "runtime_execution_contract_locked",
   "runner": "scripts/evidence/capture-iggy-contract-poison-external-dedup.mjs",
   "verifier": "scripts/verify/verify-iggy-contract-poison-external-dedup-retained-evidence.mjs",
-  "evidence_path": "crates/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-execution.json",
+  "evidence_path": "crates/modules/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-execution.json",
   "execution_scope": "four_external_iggy_dedup_modes_runtime_pending",
   "promotion_gate": "requires_clean_commit_distinct_brokers_reviewed_configs_and_all_cases_passed",
   "test_target": "contract_poison_external_iggy_dedup",
@@ -115,12 +115,12 @@
     "full_config_content_persisted": false
   },
   "source_files": [
-    "crates/rustok-iggy/tests/contract_poison_external_iggy_dedup.rs",
-    "crates/rustok-iggy/src/contract_decode_failure.rs",
-    "crates/rustok-iggy/src/dlq.rs",
-    "crates/rustok-iggy/src/dlq_publisher.rs",
-    "crates/rustok-iggy/src/partitioning.rs",
-    "crates/rustok-iggy/src/transport.rs"
+    "crates/modules/rustok-iggy/tests/contract_poison_external_iggy_dedup.rs",
+    "crates/modules/rustok-iggy/src/contract_decode_failure.rs",
+    "crates/modules/rustok-iggy/src/dlq.rs",
+    "crates/modules/rustok-iggy/src/dlq_publisher.rs",
+    "crates/modules/rustok-iggy/src/partitioning.rs",
+    "crates/modules/rustok-iggy/src/transport.rs"
   ],
   "required_metadata": [
     "git_commit",

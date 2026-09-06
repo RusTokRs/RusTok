@@ -26,7 +26,7 @@ const forbidMarkers = (relative, markers) => {
   }
 };
 
-requireMarkers("crates/rustok-groups/src/migrations/m20260721_000004_create_group_invitations.rs", [
+requireMarkers("crates/modules/rustok-groups/src/migrations/m20260721_000004_create_group_invitations.rs", [
   "GroupInvitations::Table",
   "GroupInvitationRedemptions::Table",
   "TokenHash",
@@ -36,7 +36,7 @@ requireMarkers("crates/rustok-groups/src/migrations/m20260721_000004_create_grou
   "ux_group_invitations_token_hash",
   "ux_group_invitation_redemptions_tenant_invitation_user",
 ]);
-requireMarkers("crates/rustok-groups/src/invitations.rs", [
+requireMarkers("crates/modules/rustok-groups/src/invitations.rs", [
   "GroupInvitationReadPort",
   "GroupInvitationCommandPort",
   "Sha256::digest(token.as_bytes())",
@@ -49,13 +49,13 @@ requireMarkers("crates/rustok-groups/src/invitations.rs", [
   "PortCallPolicy::read()",
   "PortCallPolicy::write()",
 ]);
-forbidMarkers("crates/rustok-groups/src/invitations.rs", [
+forbidMarkers("crates/modules/rustok-groups/src/invitations.rs", [
   "token: Set(",
   "token_hash: Set(token.to_string())",
   '"token": token',
 ]);
 
-requireMarkers("crates/rustok-groups/src/graphql_invitations.rs", [
+requireMarkers("crates/modules/rustok-groups/src/graphql_invitations.rs", [
   "group_invitations",
   "create_group_invitation",
   "revoke_group_invitation",
@@ -65,27 +65,27 @@ requireMarkers("crates/rustok-groups/src/graphql_invitations.rs", [
   "GroupInvitationCommandPort",
   "with_idempotency_key",
 ]);
-requireMarkers("crates/rustok-groups/rustok-module.toml", [
+requireMarkers("crates/modules/rustok-groups/rustok-module.toml", [
   'query = "graphql_application_cas::GroupsQueryRoot"',
   'mutation = "graphql_application_cas::GroupsMutationRoot"',
   'subpath = "invitations"',
 ]);
 
-requireMarkers("crates/rustok-groups/admin/src/core.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/core.rs", [
   "prepare_group_invitation_query",
   "prepare_create_group_invitation",
   "prepare_revoke_group_invitation",
   "TargetedInviteMustBeSingleUse",
 ]);
-forbidMarkers("crates/rustok-groups/admin/src/core.rs", ["use leptos", "leptos::"]);
-requireMarkers("crates/rustok-groups/admin/src/transport.rs", [
+forbidMarkers("crates/modules/rustok-groups/admin/src/core.rs", ["use leptos", "leptos::"]);
+requireMarkers("crates/modules/rustok-groups/admin/src/transport.rs", [
   "load_group_admin_invitations",
   "create_group_admin_invitation",
   "revoke_group_admin_invitation",
   "execute_selected_transport",
   "never falls back",
 ]);
-requireMarkers("crates/rustok-groups/admin/src/ui/invitations.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/ui/invitations.rs", [
   "prepare_group_invitation_query",
   "prepare_create_group_invitation",
   "prepare_revoke_group_invitation",
@@ -94,14 +94,14 @@ requireMarkers("crates/rustok-groups/admin/src/ui/invitations.rs", [
   "revoke_group_admin_invitation",
   "groups.admin.invitations.tokenOnce",
 ]);
-forbidMarkers("crates/rustok-groups/admin/src/ui/invitations.rs", [
+forbidMarkers("crates/modules/rustok-groups/admin/src/ui/invitations.rs", [
   "graphql_invitations_adapter",
   "native_invitations_adapter",
 ]);
 
 for (const relative of [
-  "crates/rustok-groups/admin/locales/en.json",
-  "crates/rustok-groups/admin/locales/ru.json",
+  "crates/modules/rustok-groups/admin/locales/en.json",
+  "crates/modules/rustok-groups/admin/locales/ru.json",
 ]) {
   if (!requireFile(relative)) continue;
   const messages = JSON.parse(read(relative));
@@ -117,8 +117,8 @@ for (const relative of [
   }
 }
 
-if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
-  const registry = JSON.parse(read("crates/rustok-groups/contracts/groups-fba-registry.json"));
+if (requireFile("crates/modules/rustok-groups/contracts/groups-fba-registry.json")) {
+  const registry = JSON.parse(read("crates/modules/rustok-groups/contracts/groups-fba-registry.json"));
   const readPort = registry?.provider?.ports?.find((port) => port?.name === "GroupInvitationReadPort");
   const commandPort = registry?.provider?.ports?.find((port) => port?.name === "GroupInvitationCommandPort");
   if (!readPort?.operations?.includes("list_group_invitations")) {

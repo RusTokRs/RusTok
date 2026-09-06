@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "workflow",
   "status": "compile_free_runtime_smoke_locked",
-  "generated_from": "crates/rustok-workflow/contracts/workflow-fba-registry.json",
+  "generated_from": "crates/modules/rustok-workflow/contracts/workflow-fba-registry.json",
   "runner": "scripts/verify/verify-workflow-fba.mjs",
   "contract_version": "workflow.read_projection.v1",
   "captured_at_utc": "2026-06-20T00:00:00Z",
@@ -12,7 +12,7 @@
   "native_entrypoints": [
     {
       "operation": "list_workflows",
-      "source": "crates/rustok-workflow/admin/src/transport/native_server_adapter.rs",
+      "source": "crates/modules/rustok-workflow/admin/src/transport/native_server_adapter.rs",
       "server_fn_endpoint": "workflow-admin/list-workflows",
       "required_permission": "workflows:list",
       "tenant_source": "TenantContext",
@@ -21,7 +21,7 @@
     },
     {
       "operation": "list_templates",
-      "source": "crates/rustok-workflow/admin/src/transport/native_server_adapter.rs",
+      "source": "crates/modules/rustok-workflow/admin/src/transport/native_server_adapter.rs",
       "server_fn_endpoint": "workflow-admin/templates",
       "required_permission": null,
       "tenant_source": null,
@@ -30,7 +30,7 @@
     },
     {
       "operation": "create_from_template",
-      "source": "crates/rustok-workflow/admin/src/transport/native_server_adapter.rs",
+      "source": "crates/modules/rustok-workflow/admin/src/transport/native_server_adapter.rs",
       "server_fn_endpoint": "workflow-admin/create-from-template",
       "required_permission": "workflows:create",
       "tenant_source": "TenantContext",
@@ -41,19 +41,19 @@
   "graphql_fallback_entrypoints": [
     {
       "operation": "list_workflows",
-      "source": "crates/rustok-workflow/admin/src/transport/graphql_adapter.rs",
+      "source": "crates/modules/rustok-workflow/admin/src/transport/graphql_adapter.rs",
       "query_marker": "query Workflows",
       "projection_field": "workflows"
     },
     {
       "operation": "list_templates",
-      "source": "crates/rustok-workflow/admin/src/transport/graphql_adapter.rs",
+      "source": "crates/modules/rustok-workflow/admin/src/transport/graphql_adapter.rs",
       "query_marker": "query WorkflowTemplates",
       "projection_field": "workflowTemplates"
     },
     {
       "operation": "create_from_template",
-      "source": "crates/rustok-workflow/admin/src/transport/graphql_adapter.rs",
+      "source": "crates/modules/rustok-workflow/admin/src/transport/graphql_adapter.rs",
       "query_marker": "mutation CreateWorkflowFromTemplate",
       "projection_field": "createWorkflowFromTemplate"
     }

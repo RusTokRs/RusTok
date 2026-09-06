@@ -41,19 +41,19 @@ const functionBody = (source, functionName) => {
   return "";
 };
 
-const transport = read("crates/rustok-cart/storefront/src/transport/mod.rs");
+const transport = read("crates/modules/rustok-cart/storefront/src/transport/mod.rs");
 const safe = read(
-  "crates/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
+  "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
 );
 const mapping = read(
-  "crates/rustok-cart/storefront/src/transport/native_server_mapping.rs",
+  "crates/modules/rustok-cart/storefront/src/transport/native_server_mapping.rs",
 );
 const evidence = JSON.parse(
   read(
-    "crates/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json",
+    "crates/modules/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json",
   ),
 );
-const doc = read("crates/rustok-cart/docs/storefront-native-error-safety.md");
+const doc = read("crates/modules/rustok-cart/docs/storefront-native-error-safety.md");
 
 for (const [value, label] of [
   ['#[cfg(not(feature = "ssr"))]\nmod native_server_adapter;', "client contract selection"],

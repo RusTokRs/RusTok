@@ -6,20 +6,20 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-runtime-source.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-runtime-source.json";
 const testPath =
-  "crates/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs";
-const scannerPath = "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs";
-const publisherPath = "crates/rustok-iggy/src/dlq_publisher.rs";
-const transportPath = "crates/rustok-iggy/src/transport.rs";
+  "crates/modules/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs";
+const scannerPath = "crates/modules/rustok-iggy/src/dlq_duplicate_external_scan.rs";
+const publisherPath = "crates/modules/rustok-iggy/src/dlq_publisher.rs";
+const transportPath = "crates/modules/rustok-iggy/src/transport.rs";
 const executionContractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution-contract.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution-contract.json";
 const runnerPath =
   "scripts/evidence/capture-iggy-dlq-duplicate-fair-window-external-scan.mjs";
 const retainedVerifierPath =
   "scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-retained.mjs";
 const evidencePath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution.json";
 const expectedCase =
   "fair_window_scans_each_partition_and_differs_from_global_budget";
 
@@ -307,9 +307,9 @@ if (
   contract.verifier !==
     "scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-runtime.mjs" ||
   contract.documentation !==
-    "crates/rustok-iggy/docs/dlq-duplicate-fair-window-external-scan-runtime-evidence.md" ||
+    "crates/modules/rustok-iggy/docs/dlq-duplicate-fair-window-external-scan-runtime-evidence.md" ||
   contract.profiles_checkpoint !==
-    "crates/rustok-profiles/docs/poison-duplicate-fair-window-external-runtime-checkpoint.md"
+    "crates/modules/rustok-profiles/docs/poison-duplicate-fair-window-external-runtime-checkpoint.md"
 ) {
   fail("fair-window evidence path drift");
 }

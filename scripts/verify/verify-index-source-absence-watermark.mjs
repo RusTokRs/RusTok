@@ -3,15 +3,15 @@
 import { readFile } from "node:fs/promises";
 
 const files = {
-  contract: "crates/rustok-index/src/application/source_absence.rs",
-  applicationMod: "crates/rustok-index/src/application/mod.rs",
-  productProvider: "crates/rustok-distribution/src/product_index/absence.rs",
-  productMod: "crates/rustok-distribution/src/product_index/mod.rs",
-  reader: "crates/rustok-index/src/infrastructure/postgres/drift_snapshot_reader.rs",
+  contract: "crates/modules/rustok-index/src/application/source_absence.rs",
+  applicationMod: "crates/modules/rustok-index/src/application/mod.rs",
+  productProvider: "crates/modules/rustok-distribution/src/product_index/absence.rs",
+  productMod: "crates/modules/rustok-distribution/src/product_index/mod.rs",
+  reader: "crates/modules/rustok-index/src/infrastructure/postgres/drift_snapshot_reader.rs",
   diagnosis: "apps/server/src/services/index_drift_diagnosis_operator.rs",
-  doc: "crates/rustok-index/docs/m6-explicit-source-absence-watermark.md",
-  readerDoc: "crates/rustok-index/docs/m6-postgres-drift-snapshot-reader.md",
-  plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  doc: "crates/modules/rustok-index/docs/m6-explicit-source-absence-watermark.md",
+  readerDoc: "crates/modules/rustok-index/docs/m6-postgres-drift-snapshot-reader.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
 };
 
 const c = Object.fromEntries(

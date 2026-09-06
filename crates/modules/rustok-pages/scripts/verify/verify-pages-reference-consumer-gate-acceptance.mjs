@@ -4,15 +4,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  contract: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
+  contract: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
   runner: "scripts/evidence/accept-pages-reference-consumer-gate.mjs",
-  gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
-  candidateContract: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
-  observedSource: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
-  forumAdmission: "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
+  gate: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
+  candidateContract: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
+  observedSource: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
+  forumAdmission: "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
   overlay: "docs/modules/pages-page-builder-reference-consumer-gate-acceptance-actualization-2026-08-10.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };

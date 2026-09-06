@@ -3,10 +3,10 @@
   "module": "iggy",
   "packet": "dlq-duplicate-fair-window-external-scan-execution-contract",
   "status": "runtime_execution_contract_locked",
-  "source_contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-runtime-source.json",
+  "source_contract": "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-runtime-source.json",
   "runner": "scripts/evidence/capture-iggy-dlq-duplicate-fair-window-external-scan.mjs",
   "verifier": "scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-retained.mjs",
-  "evidence_path": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution.json",
+  "evidence_path": "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution.json",
   "evidence_status": "runtime_execution_pending",
   "command": {
     "program": "cargo",
@@ -124,13 +124,13 @@
     "raw_iggy_error"
   ],
   "source_files": [
-    "crates/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs",
-    "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs",
-    "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
-    "crates/rustok-iggy/src/dlq_publisher.rs",
-    "crates/rustok-iggy/src/transport.rs",
-    "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-runtime-source.json",
-    "crates/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution-contract.json",
+    "crates/modules/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs",
+    "crates/modules/rustok-iggy/src/dlq_duplicate_external_scan.rs",
+    "crates/modules/rustok-iggy/src/dlq_duplicate_inspection.rs",
+    "crates/modules/rustok-iggy/src/dlq_publisher.rs",
+    "crates/modules/rustok-iggy/src/transport.rs",
+    "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-runtime-source.json",
+    "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-fair-window-external-scan-execution-contract.json",
     "scripts/evidence/capture-iggy-dlq-duplicate-fair-window-external-scan.mjs",
     "scripts/verify/verify-iggy-dlq-duplicate-fair-window-external-scan-retained.mjs"
   ],

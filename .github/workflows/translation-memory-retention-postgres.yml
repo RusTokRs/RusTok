@@ -3,25 +3,25 @@ name: Translation Memory Retention PostgreSQL Evidence
 on:
   pull_request:
     paths:
-      - "crates/rustok-translation/Cargo.toml"
-      - "crates/rustok-translation/src/entities/memory_entry.rs"
-      - "crates/rustok-translation/src/entities/memory_receipt.rs"
-      - "crates/rustok-translation/src/memory.rs"
-      - "crates/rustok-translation/src/scheduler.rs"
-      - "crates/rustok-translation/src/migrations/**"
-      - "crates/rustok-translation/tests/memory_retention_postgres.rs"
+      - "crates/modules/rustok-translation/Cargo.toml"
+      - "crates/modules/rustok-translation/src/entities/memory_entry.rs"
+      - "crates/modules/rustok-translation/src/entities/memory_receipt.rs"
+      - "crates/modules/rustok-translation/src/memory.rs"
+      - "crates/modules/rustok-translation/src/scheduler.rs"
+      - "crates/modules/rustok-translation/src/migrations/**"
+      - "crates/modules/rustok-translation/tests/memory_retention_postgres.rs"
       - ".github/workflows/translation-memory-retention-postgres.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-translation/Cargo.toml"
-      - "crates/rustok-translation/src/entities/memory_entry.rs"
-      - "crates/rustok-translation/src/entities/memory_receipt.rs"
-      - "crates/rustok-translation/src/memory.rs"
-      - "crates/rustok-translation/src/scheduler.rs"
-      - "crates/rustok-translation/src/migrations/**"
-      - "crates/rustok-translation/tests/memory_retention_postgres.rs"
+      - "crates/modules/rustok-translation/Cargo.toml"
+      - "crates/modules/rustok-translation/src/entities/memory_entry.rs"
+      - "crates/modules/rustok-translation/src/entities/memory_receipt.rs"
+      - "crates/modules/rustok-translation/src/memory.rs"
+      - "crates/modules/rustok-translation/src/scheduler.rs"
+      - "crates/modules/rustok-translation/src/migrations/**"
+      - "crates/modules/rustok-translation/tests/memory_retention_postgres.rs"
       - ".github/workflows/translation-memory-retention-postgres.yml"
   workflow_dispatch:
 
@@ -74,7 +74,7 @@ jobs:
         with:
           shared-key: translation-memory-retention-postgres
       - name: Check focused evidence formatting
-        run: rustfmt +1.96.0 --edition 2024 --check crates/rustok-translation/tests/memory_retention_postgres.rs
+        run: rustfmt +1.96.0 --edition 2024 --check crates/modules/rustok-translation/tests/memory_retention_postgres.rs
       - name: Compile focused PostgreSQL evidence
         run: cargo test --locked -p rustok-translation --features runtime --test memory_retention_postgres --no-run
       - name: Execute multi-replica tombstone/purge convergence evidence

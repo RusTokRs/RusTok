@@ -6,7 +6,7 @@ Status: `source_closed_unvalidated`
 
 This source wave closes the currently identified non-`PortError` public-envelope gap in the mounted Commerce GraphQL storefront pricing-channel query.
 
-The compatibility resolver source in `crates/rustok-commerce/src/graphql/query.rs` remains unchanged. `storefront_pricing_channels` continues to:
+The compatibility resolver source in `crates/modules/rustok-commerce/src/graphql/query.rs` remains unchanged. `storefront_pricing_channels` continues to:
 
 - require the Commerce module and storefront channel gate;
 - enforce the current-tenant boundary;
@@ -58,7 +58,7 @@ The complete `ChannelError` and owner-detail content are not logged.
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/graphql-query-channel-error-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/graphql-query-channel-error-safety-source-review.json`
 - `scripts/verify/verify-commerce-graphql-query-channel-error-safety.mjs`
 
 ## Still open

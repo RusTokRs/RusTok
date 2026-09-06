@@ -2,12 +2,12 @@
   "schema_version": 1,
   "status": "commerce_graphql_query_pricing_error_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/graphql/query.rs",
-    "crates/rustok-commerce/src/graphql/safe_query/source.rs",
-    "crates/rustok-commerce/src/graphql/safe_query/source/rustok_pricing_shim.rs",
-    "crates/rustok-pricing/src/ports.rs",
+    "crates/modules/rustok-commerce/src/graphql/query.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query/source.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_pricing_shim.rs",
+    "crates/modules/rustok-pricing/src/ports.rs",
     "scripts/verify/verify-commerce-graphql-query-pricing-error-safety.mjs",
-    "crates/rustok-commerce/docs/graphql-query-pricing-error-safety.md"
+    "crates/modules/rustok-commerce/docs/graphql-query-pricing-error-safety.md"
   ],
   "source_contract": {
     "query_resolver_source_changed": false,

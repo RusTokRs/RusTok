@@ -17,7 +17,7 @@ function writeFixtureFile(root, relativePath, content) {
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-tenant-boundary-"));
-  writeFixtureFile(root, "crates/rustok-tenant/admin/src/lib.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-tenant/admin/src/lib.rs", `
 mod core;
 mod i18n;
 ${options.includeApiModule ? "mod api;" : "mod transport;"}
@@ -25,12 +25,12 @@ mod ui;
 
 pub use ui::leptos::TenantAdmin;
 `);
-  writeFixtureFile(root, "crates/rustok-tenant/admin/src/core.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-tenant/admin/src/core.rs", `
 ${options.includeLeptos ? "use leptos::prelude::*;" : ""}
 pub(crate) struct TenantAdminInfoCards;
 pub(crate) fn load_bootstrap_error_message() -> String { String::new() }
 `);
-  writeFixtureFile(root, "crates/rustok-tenant/admin/src/ui/leptos.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-tenant/admin/src/ui/leptos.rs", `
 use crate::{core, i18n::t, transport};
 pub fn TenantAdmin() {
     let _ = core::load_bootstrap_error_message;
@@ -41,14 +41,14 @@ pub fn TenantAdmin() {
     ${options.serverInUi ? "#[server] async fn bad() {}" : ""}
 }
 `);
-  writeFixtureFile(root, "crates/rustok-tenant/admin/src/transport/mod.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-tenant/admin/src/transport/mod.rs", `
 pub mod native_server_adapter;
 pub async fn fetch_bootstrap() {
     native_server_adapter::tenant_bootstrap_native().await;
 }
 ${options.serverInFacade ? "#[server] async fn bad() {}" : ""}
 `);
-  writeFixtureFile(root, "crates/rustok-tenant/admin/src/transport/native_server_adapter.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-tenant/admin/src/transport/native_server_adapter.rs", `
 use leptos::prelude::*;
 use rustok_api::HostRuntimeContext;
 #[server]
@@ -57,13 +57,13 @@ pub async fn tenant_bootstrap_native() -> Result<(), ServerFnError> {
     Ok(())
 }
 `);
-  writeFixtureFile(root, "crates/rustok-tenant/admin/Cargo.toml", `
+  writeFixtureFile(root, "crates/modules/rustok-tenant/admin/Cargo.toml", `
 [package]
 name = "rustok-tenant-admin-fixture"
 version = "0.1.0"
 `);
   if (options.legacyApiFile) {
-    writeFixtureFile(root, "crates/rustok-tenant/admin/src/api.rs", "pub async fn fetch_bootstrap() {}\n");
+    writeFixtureFile(root, "crates/modules/rustok-tenant/admin/src/api.rs", "pub async fn fetch_bootstrap() {}\n");
   }
   return root;
 }

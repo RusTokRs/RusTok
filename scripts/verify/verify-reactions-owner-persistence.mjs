@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-reactions/contracts/reactions-owner-persistence.json";
+  "crates/modules/rustok-reactions/contracts/reactions-owner-persistence.json";
 
 function fail(message) {
   throw new Error(`Reactions owner persistence verification failed: ${message}`);
@@ -22,16 +22,16 @@ if (contract.contract !== "reactions_owner_persistence_v1") {
   fail("unexpected contract identity");
 }
 
-const cargo = read("crates/rustok-reactions/Cargo.toml");
-const lib = read("crates/rustok-reactions/src/lib.rs");
-const entities = read("crates/rustok-reactions/src/entities.rs");
-const migrationIndex = read("crates/rustok-reactions/src/migrations/mod.rs");
+const cargo = read("crates/modules/rustok-reactions/Cargo.toml");
+const lib = read("crates/modules/rustok-reactions/src/lib.rs");
+const entities = read("crates/modules/rustok-reactions/src/entities.rs");
+const migrationIndex = read("crates/modules/rustok-reactions/src/migrations/mod.rs");
 const migration = read(
-  "crates/rustok-reactions/src/migrations/m20260806_000001_create_reaction_owner_state.rs",
+  "crates/modules/rustok-reactions/src/migrations/m20260806_000001_create_reaction_owner_state.rs",
 );
-const service = read("crates/rustok-reactions/src/service.rs");
-const plan = read("crates/rustok-reactions/docs/implementation-plan.md");
-const forumPlan = read("crates/rustok-forum/docs/implementation-plan.md");
+const service = read("crates/modules/rustok-reactions/src/service.rs");
+const plan = read("crates/modules/rustok-reactions/docs/implementation-plan.md");
+const forumPlan = read("crates/modules/rustok-forum/docs/implementation-plan.md");
 
 for (const dependency of [
   "rustok-api.workspace = true",

@@ -26,14 +26,14 @@ envelopes, provider behavior, and validation order remain unchanged.
 - FBA status: `boundary_ready`
 - Structural shape: `no_ui_boundary`
 - FBA provider contract: `TaxCalculationPort` / `tax.calculation.v1` in
-  `crates/rustok-tax/contracts/tax-fba-registry.json`.
+  `crates/modules/rustok-tax/contracts/tax-fba-registry.json`.
 - Static and executable no-compile evidence:
-  `crates/rustok-tax/contracts/evidence/tax-contract-test-static-matrix.json`
-  and `crates/rustok-tax/contracts/evidence/tax-runtime-contract-smoke.json`.
+  `crates/modules/rustok-tax/contracts/evidence/tax-contract-test-static-matrix.json`
+  and `crates/modules/rustok-tax/contracts/evidence/tax-runtime-contract-smoke.json`.
 - Diagnostic source evidence:
-  `crates/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source.json`
+  `crates/modules/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source.json`
   and
-  `crates/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source-review.json`.
+  `crates/modules/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source-review.json`.
 - `scripts/verify/verify-tax-fba.mjs` locks provider metadata, root construction,
   port semantics, plan/registry evidence, and fallback metadata.
 - `scripts/verify/verify-tax-calculation-policy-context.mjs`,

@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const verifierContractPath =
-  "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json";
+  "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json";
 const verifierContract = JSON.parse(
   readFileSync(path.join(repoRoot, verifierContractPath), "utf8"),
 );

@@ -18,19 +18,19 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const ownerHelpers = requireMarkers('crates/rustok-product/src/services/catalog/helpers.rs', [
+const ownerHelpers = requireMarkers('crates/modules/rustok-product/src/services/catalog/helpers.rs', [
   'pub fn product_channel_visibility_condition(',
   'None => Condition::all().add(Expr::cust(',
   "COALESCE(metadata #> '{channel_visibility,allowed_channel_slugs}', '[]'::jsonb) = '[]'::jsonb",
 ]);
 
-const resolver = requireMarkers('crates/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
+const resolver = requireMarkers('crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
   'ProductChannelVisibility::Unrestricted => (',
   'SELECT id FROM channels WHERE tenant_id = $1 ORDER BY id ASC LIMIT $2',
   'ProductChannelVisibility::Restricted(slugs)',
 ]);
 
-const productBridgePath = 'crates/rustok-distribution/src/product_index/product.rs';
+const productBridgePath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 const productBridge = requireMarkers(productBridgePath, [
   'assert_eq!(schema.fields.len(), 15);',
   'many_field("sales_channel_ids", IndexValueType::Uuid, true, true)',
@@ -40,7 +40,7 @@ if (productBridge.includes('SchemaVersion::new(5)')) {
   fail(`${productBridgePath} must not invent a replacement schema merely to approximate channel-less visibility`);
 }
 
-const executorPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const executorPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
 const executor = requireMarkers(executorPath, [
   'pub(crate) enum ProductStorefrontIndexChannelScopeDecision',
   'ShadowEligible { public_channel_id: Uuid }',
@@ -63,7 +63,7 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/storefront_shadow.rs', [
   'PublicChannelRequired',
   'FilterExpr::Contains(',
   'root_field("sales_channel_ids")?',

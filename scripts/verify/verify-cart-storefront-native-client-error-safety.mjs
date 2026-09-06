@@ -42,17 +42,17 @@ function functionBody(source, functionName) {
 }
 
 const files = {
-  transport: "crates/rustok-cart/storefront/src/transport/mod.rs",
-  safety: "crates/rustok-cart/storefront/src/transport/native_client_error_safety.rs",
-  native: "crates/rustok-cart/storefront/src/transport/native_server_adapter.rs",
-  nativeSsr: "crates/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
-  graphqlSafety: "crates/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
+  transport: "crates/modules/rustok-cart/storefront/src/transport/mod.rs",
+  safety: "crates/modules/rustok-cart/storefront/src/transport/native_client_error_safety.rs",
+  native: "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter.rs",
+  nativeSsr: "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
+  graphqlSafety: "crates/modules/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
   evidence:
-    "crates/rustok-cart/contracts/evidence/storefront-native-client-error-safety-source.json",
+    "crates/modules/rustok-cart/contracts/evidence/storefront-native-client-error-safety-source.json",
   review:
-    "crates/rustok-cart/contracts/evidence/storefront-native-client-error-safety-source-review.json",
-  doc: "crates/rustok-cart/docs/storefront-native-client-error-safety.md",
-  plan: "crates/rustok-cart/docs/implementation-plan.md",
+    "crates/modules/rustok-cart/contracts/evidence/storefront-native-client-error-safety-source-review.json",
+  doc: "crates/modules/rustok-cart/docs/storefront-native-client-error-safety.md",
+  plan: "crates/modules/rustok-cart/docs/implementation-plan.md",
   nativeGuard: "scripts/verify/verify-cart-storefront-native-error-safety.mjs",
   graphqlGuard: "scripts/verify/verify-cart-storefront-graphql-error-safety.mjs",
 };

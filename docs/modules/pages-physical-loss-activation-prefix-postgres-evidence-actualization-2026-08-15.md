@@ -23,10 +23,10 @@ This slice targets only the physical-loss activation-prefix child. Parent and si
 
 The retained source authority is:
 
-- `crates/rustok-pages/contracts/evidence/pages-multilocale-repair-rollback-evidence-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-multilocale-repair-rollback-evidence.mjs`;
-- `crates/rustok-pages/tests/artifact_multilocale_repair_rollback_evidence_postgres.rs`;
-- `crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-multilocale-repair-rollback-evidence-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-multilocale-repair-rollback-evidence.mjs`;
+- `crates/modules/rustok-pages/tests/artifact_multilocale_repair_rollback_evidence_postgres.rs`;
+- `crates/modules/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs`;
 - `docs/modules/pages-page-builder-multilocale-rollback-evidence-actualization-2026-08-07.md`;
 - `docs/modules/pages-page-builder-repeated-artifact-loss-recovery-actualization-2026-08-07.md`.
 
@@ -45,12 +45,12 @@ The separate `rollback_activated_repair_to_rollback` packet remains outside this
 
 ## Exact-main execution contract
 
-`crates/rustok-pages/contracts/evidence/pages-physical-loss-activation-prefix-postgres-execution.json` requires:
+`crates/modules/rustok-pages/contracts/evidence/pages-physical-loss-activation-prefix-postgres-execution.json` requires:
 
 - PostgreSQL 16;
 - Rust 1.96.0;
 - exact event SHA checkout;
-- `node crates/rustok-pages/scripts/verify/verify-pages-multilocale-repair-rollback-evidence.mjs`;
+- `node crates/modules/rustok-pages/scripts/verify/verify-pages-multilocale-repair-rollback-evidence.mjs`;
 - `cargo test --locked -p rustok-pages --test artifact_multilocale_repair_rollback_evidence_postgres -- --nocapture`;
 - `cargo test --locked -p rustok-pages --test artifact_repeated_loss_recovery_postgres -- --nocapture`;
 - `cargo check --locked -p rustok-pages --all-targets`.

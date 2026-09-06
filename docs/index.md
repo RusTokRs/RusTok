@@ -13,7 +13,7 @@ Start here when following the rules in [AGENTS.md](../AGENTS.md).
 
 Documentation in `docs/` describes the platform as a whole.
 Local documents for applications and crates live in `apps/*/docs/`,
-`crates/*/docs/` and `README.md` next to the code.
+`crates/{libs,modules,ui,utils,workers}/*/docs/` and `README.md` next to the code.
 
 ## How to Use the Map
 
@@ -50,30 +50,30 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ### Module Control Plane and Workers
 
-- [`rustok-modules` Control-Plane Documentation](../crates/rustok-modules/docs/README.md)
-- [`rustok-runtime` Portable Instance and Deployment Primitives](../crates/rustok-runtime/docs/README.md)
+- [`rustok-modules` Control-Plane Documentation](../crates/modules/rustok-modules/docs/README.md)
+- [`rustok-runtime` Portable Instance and Deployment Primitives](../crates/libs/rustok-runtime/docs/README.md)
 - [Module Control-plane Consolidation Plan](./modules/module-control-plane-consolidation-plan.md)
-- [`rustok-build-source` Deterministic Source Archives](../crates/rustok-build-source/docs/README.md)
-- [`rustok-build-publication` Credential and Signing Foundation](../crates/rustok-build-publication/docs/README.md)
-- [`rustok-module-build-worker` Documentation](../crates/rustok-module-build-worker/docs/README.md)
-- [`rustok-module-sdk` Generated Guest Bindings](../crates/rustok-module-sdk/docs/README.md)
-- [`rustok-module-template` Canonical Rust Component Template](../crates/rustok-module-template/docs/README.md)
-- [`rustok-module-build-dispatcher` Documentation](../crates/rustok-module-build-dispatcher/docs/README.md)
-- [`rustok-module-build-transport` Build-Worker gRPC Documentation](../crates/rustok-module-build-transport/docs/README.md)
-- [`rustok-artifact-node-transport` Node-Agent gRPC Documentation](../crates/rustok-artifact-node-transport/docs/README.md)
-- [`rustok-artifact-node-controller` Node-Agent Controller Documentation](../crates/rustok-artifact-node-controller/docs/README.md)
-- [`rustok-artifact-node-reconciler` Topology Reconciliation Documentation](../crates/rustok-artifact-node-reconciler/docs/README.md)
-- [`rustok-artifact-node-agent` Node Materialization Documentation](../crates/rustok-artifact-node-agent/docs/README.md)
-- [`rustok-verification-worker` Documentation](../crates/rustok-verification-worker/docs/README.md)
-- [`rustok-verification-transport` gRPC Documentation](../crates/rustok-verification-transport/docs/README.md)
-- [`rustok-static-distribution-worker` Documentation](../crates/rustok-static-distribution-worker/docs/README.md)
-- [`rustok-registry-validation-worker` Documentation](../crates/rustok-registry-validation-worker/README.md)
-- [`rustok-worker-transport` mTLS Foundation](../crates/rustok-worker-transport/docs/README.md)
+- [`rustok-build-source` Deterministic Source Archives](../crates/utils/rustok-build-source/docs/README.md)
+- [`rustok-build-publication` Credential and Signing Foundation](../crates/utils/rustok-build-publication/docs/README.md)
+- [`rustok-module-build-worker` Documentation](../crates/workers/rustok-module-build-worker/docs/README.md)
+- [`rustok-module-sdk` Generated Guest Bindings](../crates/utils/rustok-module-sdk/docs/README.md)
+- [`rustok-module-template` Canonical Rust Component Template](../crates/utils/rustok-module-template/docs/README.md)
+- [`rustok-module-build-dispatcher` Documentation](../crates/workers/rustok-module-build-dispatcher/docs/README.md)
+- [`rustok-module-build-transport` Build-Worker gRPC Documentation](../crates/workers/rustok-module-build-transport/docs/README.md)
+- [`rustok-artifact-node-transport` Node-Agent gRPC Documentation](../crates/workers/rustok-artifact-node-transport/docs/README.md)
+- [`rustok-artifact-node-controller` Node-Agent Controller Documentation](../crates/workers/rustok-artifact-node-controller/docs/README.md)
+- [`rustok-artifact-node-reconciler` Topology Reconciliation Documentation](../crates/workers/rustok-artifact-node-reconciler/docs/README.md)
+- [`rustok-artifact-node-agent` Node Materialization Documentation](../crates/workers/rustok-artifact-node-agent/docs/README.md)
+- [`rustok-verification-worker` Documentation](../crates/workers/rustok-verification-worker/docs/README.md)
+- [`rustok-verification-transport` gRPC Documentation](../crates/workers/rustok-verification-transport/docs/README.md)
+- [`rustok-static-distribution-worker` Documentation](../crates/workers/rustok-static-distribution-worker/docs/README.md)
+- [`rustok-registry-validation-worker` Documentation](../crates/workers/rustok-registry-validation-worker/README.md)
+- [`rustok-worker-transport` mTLS Foundation](../crates/workers/rustok-worker-transport/docs/README.md)
 - [Federated Registry Freshness Verification](../scripts/verify/verify-marketplace-registry-freshness.mjs)
-- [`rustok-sandbox` Execution Foundation Documentation](../crates/rustok-sandbox/docs/README.md)
-- [`rustok-sandbox-transport` Streaming Worker Transport](../crates/rustok-sandbox-transport/docs/README.md)
-- [`rustok-sandbox-worker` Isolated Rhai Worker](../crates/rustok-sandbox-worker/docs/README.md)
-- [`rustok-events-module` Runtime Adapter Documentation](../crates/rustok-events-module/docs/README.md)
+- [`rustok-sandbox` Execution Foundation Documentation](../crates/workers/rustok-sandbox/docs/README.md)
+- [`rustok-sandbox-transport` Streaming Worker Transport](../crates/workers/rustok-sandbox-transport/docs/README.md)
+- [`rustok-sandbox-worker` Isolated Rhai Worker](../crates/workers/rustok-sandbox-worker/docs/README.md)
+- [`rustok-events-module` Runtime Adapter Documentation](../crates/modules/rustok-events-module/docs/README.md)
 
 ### Module Backend Guides
 
@@ -88,18 +88,18 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ### Domain Module Documentation
 
-- [Auth Module Documentation](../crates/rustok-auth/docs/README.md)
-- [MCP Capability Documentation](../crates/rustok-mcp/docs/README.md)
-- [AI Capability Documentation](../crates/rustok-ai/docs/README.md) — provider-neutral RAG ingestion and Athanor data plane
-- [Content Module Documentation](../crates/rustok-content/docs/README.md)
-- [Cart Module Documentation](../crates/rustok-cart/docs/README.md)
-- [Media Module Documentation](../crates/rustok-media/docs/README.md)
-- [Order Module Documentation](../crates/rustok-order/docs/README.md)
-- [Pricing Persistence Documentation](../crates/rustok-pricing-persistence/README.md)
-- [Flex Module Documentation](../crates/flex/docs/README.md)
-- [`rustok-page-builder` Runtime Contract](../crates/rustok-page-builder/docs/README.md)
-- [`rustok-translation-targets` Provider Contract](../crates/rustok-translation-targets/docs/README.md)
-- [`rustok-ai-translation` Machine-Translation Bridge Contract](../crates/rustok-ai-translation/docs/README.md)
+- [Auth Module Documentation](../crates/modules/rustok-auth/docs/README.md)
+- [MCP Capability Documentation](../crates/modules/rustok-mcp/docs/README.md)
+- [AI Capability Documentation](../crates/modules/rustok-ai/docs/README.md) — provider-neutral RAG ingestion and Athanor data plane
+- [Content Module Documentation](../crates/modules/rustok-content/docs/README.md)
+- [Cart Module Documentation](../crates/modules/rustok-cart/docs/README.md)
+- [Media Module Documentation](../crates/modules/rustok-media/docs/README.md)
+- [Order Module Documentation](../crates/modules/rustok-order/docs/README.md)
+- [Pricing Persistence Documentation](../crates/modules/rustok-pricing-persistence/README.md)
+- [Flex Module Documentation](../crates/modules/flex/docs/README.md)
+- [`rustok-page-builder` Runtime Contract](../crates/modules/rustok-page-builder/docs/README.md)
+- [`rustok-translation-targets` Provider Contract](../crates/modules/rustok-translation-targets/docs/README.md)
+- [`rustok-ai-translation` Machine-Translation Bridge Contract](../crates/modules/rustok-ai-translation/docs/README.md)
 
 ### Implementation Plans and Machine-Readable Contracts
 
@@ -109,11 +109,11 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
 - [Translation Module Implementation Plan](./modules/translation-implementation-plan.md) — owner-safe control plane, 49-operation admin contract, guarded human workflow controls, private workflow collaboration, checksum-verified expiring interchange artifacts, fixed-cardinality content-free observability, and AI machine-translation workflow
 - [Machine-readable Translation Surface Registry](./modules/translation-surfaces.json)
-- [Page Builder FBA Registry](./crates/rustok-page-builder/contracts/page-builder-fba-registry.json)
-- [Page Builder Wave Evidence Template](./crates/rustok-page-builder/contracts/page-builder-wave-evidence-template.json)
-- [Page Builder Control-plane Dry-run Contract](./crates/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json)
-- [Page Builder Flutter Wave Hand-off Contract](./crates/rustok-page-builder/contracts/page-builder-flutter-wave-handoff.json)
-- [Synthetic Pages Wave 0 Dry-run Evidence Packet](./crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json)
+- [Page Builder FBA Registry](./crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json)
+- [Page Builder Wave Evidence Template](./crates/modules/rustok-page-builder/contracts/page-builder-wave-evidence-template.json)
+- [Page Builder Control-plane Dry-run Contract](./crates/modules/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json)
+- [Page Builder Flutter Wave Hand-off Contract](./crates/modules/rustok-page-builder/contracts/page-builder-flutter-wave-handoff.json)
+- [Synthetic Pages Wave 0 Dry-run Evidence Packet](./crates/modules/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json)
 
 ## UI and Client Surfaces
 
@@ -123,15 +123,15 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Flutter Mobile Storefront Host](../rustok_mobile/apps/rustok_frontend_mobile/README.md)
 - [Flutter Mobile Package Catalog/Cart](../rustok_mobile/packages/rustok_catalog_mobile/README.md)
 - [Admin ↔ Server Quick Start](./UI/admin-server-connection-quickstart.md)
-- [SEO Runtime/Control-plane Contracts (`rustok-seo`)](../crates/rustok-seo/docs/README.md)
-- [SEO Operations Runbook](../crates/rustok-seo/docs/operations-runbook.md)
+- [SEO Runtime/Control-plane Contracts (`rustok-seo`)](../crates/modules/rustok-seo/docs/README.md)
+- [SEO Operations Runbook](../crates/modules/rustok-seo/docs/operations-runbook.md)
 - [Rust UI Component Catalog](./UI/rust-ui-component-catalog.md)
 - [Richtext Track](./modules/rich-text-implementation-plan.md) — shared editor
   runtime, completed Blog article source cutover, and Next/Leptos integration
 - [Shared browser richtext runtime](../packages/richtext/README.md)
 - [Page Builder Track](./modules/page-builder-implementation-plan.md)
 - [i18n Architecture](./architecture/i18n.md)
-- **Module UI Package Guides** (read the relevant one when working on `crates/rustok-*/admin` or `crates/rustok-*/storefront`):
+- **Module UI Package Guides** (read the relevant one when working on `crates/modules/rustok-*/admin` or `crates/modules/rustok-*/storefront`):
   - [Architecture Guide](./UI/module-package-architecture.md) — FFA, `core/transport/ui` split, dual-path model, Dioxus-readiness
   - [Implementation Guide](./UI/module-package-implementation.md) — file structure, internal crates, i18n, URL-selection, manifest wiring, forbidden patterns
   - [Verification Guide](./UI/module-package-verification.md) — all verification commands, what each checks, common errors
@@ -160,12 +160,12 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [ADR: Global event delivery profiles](../DECISIONS/2026-07-23-global-event-delivery-profiles.md)
 - [ADR: User-registration event PII boundary](../DECISIONS/2026-07-23-user-registration-event-pii.md)
 
-- [`rustok-installer` contract and implementation plan](../crates/rustok-installer/docs/README.md) — installer ownership, operator-selected portable instance root, browser-safe contract surface, native seed-runtime boundary, monolith/distributed topology contract and CLI/HTTP adapter boundaries
+- [`rustok-installer` contract and implementation plan](../crates/utils/rustok-installer/docs/README.md) — installer ownership, operator-selected portable instance root, browser-safe contract surface, native seed-runtime boundary, monolith/distributed topology contract and CLI/HTTP adapter boundaries
 
 - [Platform Diagram](./architecture/diagram.md)
 - [Backend Module Guides](./backend/README.md) - target backend module architecture, implementation and verification for `rustok-runtime`, `rustok-web`, `rustok-fba` and `rustok-cli-core`
 - [Database](./architecture/database.md) — live DB/i18n storage contract: `base + translations + optional bodies`, `VARCHAR(32)` locale storage, `tenant_locales` policy layer, `flex` standalone schema translations, shared attached localized Flex values, live donor paths for `user`, `product`, `order`, and `topic`, and the generic Index JSONB migration foundation
-- [`rustok-index` documentation](../crates/rustok-index/docs/README.md) — generic schema/query core, accepted JSONB storage model, M3 migration foundation, atomic mutation persistence, and live implementation plan
+- [`rustok-index` documentation](../crates/modules/rustok-index/docs/README.md) — generic schema/query core, accepted JSONB storage model, M3 migration foundation, atomic mutation persistence, and live implementation plan
 - [ADR: Index PostgreSQL storage model](../DECISIONS/2026-07-24-index-storage-layout.md) — evidence-backed JSONB entity envelope, independent links, source-version rules, and migration/rollback strategy
 - [Hybrid Installer ADR](../DECISIONS/2026-04-26-hybrid-installer-architecture.md) — installer-core/CLI/web wizard layering, PostgreSQL production policy, explicit separation of build composition, schema composition and tenant enablement
 - [Axum Runtime and Operations CLI Boundary](../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md)
@@ -193,7 +193,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Testing](./guides/testing.md)
 - [Observability Quick Start](./guides/observability-quickstart.md)
 - [Runtime Guardrails](./guides/runtime-guardrails.md)
-- [Alloy Runtime Hardening Contract](../crates/alloy/contracts/alloy-runtime-contract.json)
+- [Alloy Runtime Hardening Contract](../crates/modules/alloy/contracts/alloy-runtime-contract.json)
 - [ADR: Control-plane Lifecycle and Migration Ordering Contracts](../DECISIONS/2026-05-18-control-plane-lifecycle-and-migration-contracts.md)
 - [Input Validation](./guides/input-validation.md)
 - [Error Handling](./guides/error-handling.md)
@@ -250,15 +250,15 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ## Crate Documentation
 
-- For platform modules: `crates/rustok-*` per the
+- For platform modules: `crates/modules/rustok-*` per the
   [module and application registry](./modules/registry.md).
-- For foundation/shared libraries see `crates/rustok-*`
+- For foundation/shared libraries see `crates/modules/rustok-*`
   and the corresponding `README.md`.
-- For infrastructure/capability crates see `crates/*`
+- For infrastructure/capability crates see `crates/modules/*`
   and `docs/modules/crates-registry.md`.
-- For UI libraries use `crates/leptos-*`, `crates/leptos-ui`,
-  `crates/rustok-ui-*`, `crates/rustok-graphql`
-  and `crates/rustok-graphql-leptos`.
+- For UI libraries use `crates/modules/leptos-*`, `crates/ui/leptos-ui`,
+  `crates/modules/rustok-ui-*`, `crates/ui/rustok-graphql`
+  and `crates/ui/rustok-graphql-leptos`.
 - Every crate must have an up-to-date `README.md`,
   and `docs/` if needed.
 

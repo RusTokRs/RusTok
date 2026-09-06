@@ -12,7 +12,7 @@
 
 ## Current state
 
-The ecommerce-family implementation plan is maintained in `crates/rustok-commerce/docs/implementation-plan.md#payment-workstream`.
+The ecommerce-family implementation plan is maintained in `crates/modules/rustok-commerce/docs/implementation-plan.md#payment-workstream`.
 This module is currently `boundary_ready` with FBA registry `payment-fba-registry.json`.
 
 ## Milestones
@@ -32,4 +32,4 @@ The payment storefront transport selects native server functions or GraphQL thro
 
 ## Change rules
 
-All payment architectural changes must be coordinated with the ecommerce family plan in `crates/rustok-commerce/docs/implementation-plan.md`.
+All payment architectural changes must be coordinated with the ecommerce family plan in `crates/modules/rustok-commerce/docs/implementation-plan.md`.

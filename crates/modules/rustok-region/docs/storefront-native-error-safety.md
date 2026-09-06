@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This slice hardens the Region-owned native storefront server function in:
 
-- `crates/rustok-region/storefront/src/transport/native_server_adapter.rs`.
+- `crates/modules/rustok-region/storefront/src/transport/native_server_adapter.rs`.
 
 The endpoint loads tenant regions, resolves locale fallback, maps country tax policy data, and selects the active region for the storefront response.
 

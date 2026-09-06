@@ -106,7 +106,7 @@ node scripts/verify/verify-customer-admin-native-error-safety.mjs
 The retained evidence file is:
 
 ```text
-crates/rustok-customer/contracts/evidence/admin-native-error-safety-source.json
+crates/modules/rustok-customer/contracts/evidence/admin-native-error-safety-source.json
 ```
 
 The verifier fails closed if complete framework or `CustomerError` payload logging returns, if the type/variant-only classification disappears, or if endpoint and owner behavior markers drift.

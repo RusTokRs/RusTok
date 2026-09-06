@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const compilerPath = 'crates/rustok-index/src/application/postgres_localized_query.rs';
+const compilerPath = 'crates/modules/rustok-index/src/application/postgres_localized_query.rs';
 requireMarkers(compilerPath, [
   'pub struct CompiledPostgresLocalizedPageQuery',
   'pub struct LocalizedQueryPlanFingerprint',
@@ -48,7 +48,7 @@ requireMarkers(compilerPath, [
   '__exact_count',
   'compiled_mut(&mut self) -> &mut CompiledPostgresQuery',
 ]);
-requireMarkers('crates/rustok-index/src/application/postgres_localized_query_result.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/postgres_localized_query_result.rs', [
   'pub enum PostgresLocalizedQueryDecodeError',
   'pub fn decode_postgres_localized_query_page(',
   'LocalizedPlanFingerprintMismatch',
@@ -61,13 +61,13 @@ requireMarkers('crates/rustok-index/src/application/postgres_localized_query_res
   '&cursor, query, self',
   'IndexQueryPage {',
 ]);
-requireMarkers('crates/rustok-index/src/application/localized_validation.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/localized_validation.rs', [
   'LinkedPathPending(FieldPath)',
   'LocalizedProjectionMany(FieldPath)',
   'LocalizedProjectionInOrdinaryFilter(FieldPath)',
   'LocalizedProjectionInOrder(FieldPath)',
 ]);
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'mod postgres_localized_query;',
   'mod postgres_localized_query_result;',
   'CompiledPostgresLocalizedPageQuery, LocalizedQueryPlanFingerprint,',
@@ -75,7 +75,7 @@ requireMarkers('crates/rustok-index/src/application/mod.rs', [
   'pub use postgres_localized_query_result::PostgresLocalizedQueryDecodeError;',
 ]);
 
-const ordinaryCompiler = read('crates/rustok-index/src/application/postgres_query_sql.rs');
+const ordinaryCompiler = read('crates/modules/rustok-index/src/application/postgres_query_sql.rs');
 if (ordinaryCompiler.includes('localized_entity_fold_plan_v1')) {
   fail('ordinary exact-locale SQL compiler must not absorb localized fold semantics');
 }

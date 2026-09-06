@@ -10,8 +10,8 @@ function sameSet(actual, expected, label) {
   if (a !== e) fail(`${label} drift: expected ${e}, got ${a}`);
 }
 
-const registryPath = 'crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json';
-const evidencePath = 'crates/rustok-ai-alloy/contracts/evidence/ai-alloy-policy-static-matrix.json';
+const registryPath = 'crates/modules/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json';
+const evidencePath = 'crates/modules/rustok-ai-alloy/contracts/evidence/ai-alloy-policy-static-matrix.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 
@@ -61,7 +61,7 @@ hasAll(source, [
   '!parsed.is_object()'
 ], 'support adapter source');
 
-const directSource = read('crates/rustok-ai/src/direct.rs');
+const directSource = read('crates/modules/rustok-ai/src/direct.rs');
 hasAll(directSource, [
   'use rustok_ai_alloy::AlloyOperation;',
   'AlloyOperation::ListScripts',
@@ -71,7 +71,7 @@ hasAll(directSource, [
 ], 'Alloy direct runtime dispatch');
 if (directSource.includes('AiAlloyOperation')) fail('Alloy direct runtime must consume the adapter operation catalog');
 
-const runtimeSource = read('crates/rustok-ai/src/service.rs');
+const runtimeSource = read('crates/modules/rustok-ai/src/service.rs');
 hasAll(runtimeSource, [
   'pub async fn execute_agent_workflow_stage',
   'catalog.validate_stage_execution(',
@@ -112,7 +112,7 @@ hasAll(runtimeSource, [
   'ai_agent_workflow_stages::Column::StartedAt'
 ], 'AI workflow runtime source');
 
-const agentSource = read('crates/rustok-ai/src/agent.rs');
+const agentSource = read('crates/modules/rustok-ai/src/agent.rs');
 hasAll(agentSource, [
   'fn owner_stage_binding_resolves_to_a_registered_direct_handler',
   'DirectExecutionRegistry::with_defaults()',
@@ -120,7 +120,7 @@ hasAll(agentSource, [
   '"product_copywriter"'
 ], 'agent composed direct-binding regression');
 
-const agentInputs = read('crates/rustok-ai/src/graphql/types.rs');
+const agentInputs = read('crates/modules/rustok-ai/src/graphql/types.rs');
 for (const inputName of ['CreateAiAgentPrincipalInputGql', 'UpdateAiAgentPrincipalInputGql']) {
   const start = agentInputs.indexOf(`pub struct ${inputName}`);
   const end = agentInputs.indexOf('\n}', start);
@@ -132,13 +132,13 @@ for (const inputName of ['CreateAiAgentPrincipalInputGql', 'UpdateAiAgentPrincip
   if (body.includes('permission_slugs')) fail(`agent principal input ${inputName} must derive permissions from catalog-selected roles`);
 }
 
-const agentMutation = read('crates/rustok-ai/src/graphql/mutation.rs');
+const agentMutation = read('crates/modules/rustok-ai/src/graphql/mutation.rs');
 hasAll(agentMutation, [
   'tenant_rbac_catalog.as_ref()',
   'role_slugs: input.role_slugs',
 ], 'agent principal GraphQL mutation');
 
-const agentService = read('crates/rustok-ai/src/service.rs');
+const agentService = read('crates/modules/rustok-ai/src/service.rs');
 hasAll(agentService, [
   'fn resolve_agent_principal_rbac(',
   '.validate_assignment(tenant_id, &role_slugs, &[])',
@@ -152,10 +152,10 @@ for (const evidenceCase of evidence.cases) {
   sameSet(evidenceCase.assertions, registryCase.assertions, `assertions for ${evidenceCase.operation}`);
 }
 
-const plan = read('crates/rustok-ai-alloy/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-ai-alloy/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `boundary_ready`', 'ai-alloy-policy-registry.json', 'ai-alloy-policy-static-matrix.json', 'alloy_script_execution_policy', 'allowed_operations', 'runtime_operation', 'alloy_change_review'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `rustok-ai-alloy` |', 'crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json', 'scripts/verify/verify-ai-alloy-policy.mjs', 'allowed operations'], 'central registry');
+hasAll(central, ['| `rustok-ai-alloy` |', 'crates/modules/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json', 'scripts/verify/verify-ai-alloy-policy.mjs', 'allowed operations'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`ai-alloy`', 'ai-alloy-policy-registry.json', 'alloy_script_execution_policy'], 'unified plan');
 

@@ -2,29 +2,29 @@
 fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
     let workspace = include_str!("../../../Cargo.toml");
     let admin_host = include_str!("../../admin/Cargo.toml");
-    let permissions = include_str!("../../../crates/rustok-api/src/permissions.rs");
-    let owner = include_str!("../../../crates/rustok-marketplace-listing/src/lib.rs");
-    let owner_ports = include_str!("../../../crates/rustok-marketplace-listing/src/ports.rs");
-    let owner_graphql = include_str!("../../../crates/rustok-marketplace-listing/src/graphql.rs");
-    let seller_graphql = include_str!("../../../crates/rustok-marketplace-seller/src/graphql.rs");
-    let seller_ports = include_str!("../../../crates/rustok-marketplace-seller/src/ports.rs");
+    let permissions = include_str!("../../../crates/libs/rustok-api/src/permissions.rs");
+    let owner = include_str!("../../../crates/modules/rustok-marketplace-listing/src/lib.rs");
+    let owner_ports = include_str!("../../../crates/modules/rustok-marketplace-listing/src/ports.rs");
+    let owner_graphql = include_str!("../../../crates/modules/rustok-marketplace-listing/src/graphql.rs");
+    let seller_graphql = include_str!("../../../crates/modules/rustok-marketplace-seller/src/graphql.rs");
+    let seller_ports = include_str!("../../../crates/modules/rustok-marketplace-seller/src/ports.rs");
     let seller_manifest =
-        include_str!("../../../crates/rustok-marketplace-seller/rustok-module.toml");
-    let api_runtime = include_str!("../../../crates/rustok-api/src/runtime.rs");
-    let manifest = include_str!("../../../crates/rustok-marketplace-listing/rustok-module.toml");
+        include_str!("../../../crates/modules/rustok-marketplace-seller/rustok-module.toml");
+    let api_runtime = include_str!("../../../crates/libs/rustok-api/src/runtime.rs");
+    let manifest = include_str!("../../../crates/modules/rustok-marketplace-listing/rustok-module.toml");
     let server_runtime = include_str!("../src/services/commerce_provider_runtime.rs");
     let server_manifest = include_str!("../Cargo.toml");
-    let cargo = include_str!("../../../crates/rustok-marketplace-listing/admin/Cargo.toml");
-    let model = include_str!("../../../crates/rustok-marketplace-listing/admin/src/model.rs");
+    let cargo = include_str!("../../../crates/modules/rustok-marketplace-listing/admin/Cargo.toml");
+    let model = include_str!("../../../crates/modules/rustok-marketplace-listing/admin/src/model.rs");
     let transport =
-        include_str!("../../../crates/rustok-marketplace-listing/admin/src/transport.rs");
+        include_str!("../../../crates/modules/rustok-marketplace-listing/admin/src/transport.rs");
     let native = include_str!(
-        "../../../crates/rustok-marketplace-listing/admin/src/transport/native_server_adapter.rs"
+        "../../../crates/modules/rustok-marketplace-listing/admin/src/transport/native_server_adapter.rs"
     );
     let graphql = include_str!(
-        "../../../crates/rustok-marketplace-listing/admin/src/transport/graphql_adapter.rs"
+        "../../../crates/modules/rustok-marketplace-listing/admin/src/transport/graphql_adapter.rs"
     );
-    let ui = include_str!("../../../crates/rustok-marketplace-listing/admin/src/ui/leptos.rs");
+    let ui = include_str!("../../../crates/modules/rustok-marketplace-listing/admin/src/ui/leptos.rs");
 
     for marker in [
         "ui_classification = \"admin_only\"",
@@ -42,14 +42,14 @@ fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
         );
     }
     assert!(cargo.contains("rustok-marketplace-listing = { path = \"..\", optional = true }"));
-    assert!(workspace.contains("\"crates/rustok-marketplace-listing/admin\""));
+    assert!(workspace.contains("\"crates/modules/rustok-marketplace-listing/admin\""));
     assert!(workspace.contains(
-        "rustok-marketplace-listing-admin = { path = \"crates/rustok-marketplace-listing/admin\" }"
+        "rustok-marketplace-listing-admin = { path = \"crates/modules/rustok-marketplace-listing/admin\" }"
     ));
     for marker in [
         "rustok-marketplace-listing-admin/hydrate",
         "rustok-marketplace-listing-admin/ssr",
-        "rustok-marketplace-listing-admin = { path = \"../../crates/rustok-marketplace-listing/admin\"",
+        "rustok-marketplace-listing-admin = { path = \"../../crates/modules/rustok-marketplace-listing/admin\"",
     ] {
         assert!(
             admin_host.contains(marker),

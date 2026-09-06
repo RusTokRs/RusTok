@@ -4,14 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const files = {
-  contract: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-execution-contract.json",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-harness-source.json",
+  contract: "crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-execution-contract.json",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-harness-source.json",
   config: "apps/next-admin/playwright.pages-builder-rollout-matrix.config.ts",
   spec: "apps/next-admin/tests/pages-builder-rollout-matrix/runtime-matrix.spec.ts",
-  gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
-  owner: "crates/rustok-pages/src/graphql/builder_rollout.rs",
+  gate: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
+  owner: "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
   adminMain: "apps/admin/src/main.rs",
   actualization: "docs/modules/pages-page-builder-rollout-runtime-matrix-harness-actualization-2026-08-08.md",
 };
@@ -114,11 +114,11 @@ for (const relativePath of contract.required_source_files ?? []) {
   }
 }
 for (const relativePath of [
-  "crates/rustok-pages/rustok-module.toml",
+  "crates/modules/rustok-pages/rustok-module.toml",
   "apps/server/src/services/module_lifecycle.rs",
   "apps/server/src/modules/manifest/mod.rs",
-  "crates/rustok-modules/src/settings.rs",
-  "crates/rustok-modules/src/lifecycle_writer.rs",
+  "crates/modules/rustok-modules/src/settings.rs",
+  "crates/modules/rustok-modules/src/lifecycle_writer.rs",
 ]) {
   if (!contract.required_source_files?.includes(relativePath)) {
     failures.push(`production settings owner source is not hash-bound: ${relativePath}`);

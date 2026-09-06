@@ -26,8 +26,8 @@ const sliceBetween = (source, start, end, label) => {
   return source.slice(startIndex, endIndex);
 };
 
-const errorSource = read('crates/rustok-seo/src/error.rs');
-const libSource = read('crates/rustok-seo/src/lib.rs');
+const errorSource = read('crates/modules/rustok-seo/src/error.rs');
+const libSource = read('crates/modules/rustok-seo/src/lib.rs');
 
 for (const [value, label] of [
   ['pub enum SeoFailureClass {', 'failure class enum'],

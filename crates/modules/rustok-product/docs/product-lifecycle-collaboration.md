@@ -146,6 +146,6 @@ Host-injected transaction participant ports remain a future alternative if Produ
 
 Source evidence is stored at:
 
-`crates/rustok-product/contracts/evidence/product-lifecycle-collaboration-source.json`
+`crates/modules/rustok-product/contracts/evidence/product-lifecycle-collaboration-source.json`
 
 No tests, Cargo commands, formatting, verifier execution, workflow checks, tenant activation, non-default selection, policy-cache execution, staged recovery execution, migration execution, or transaction rollback execution evidence are claimed by this source wave.

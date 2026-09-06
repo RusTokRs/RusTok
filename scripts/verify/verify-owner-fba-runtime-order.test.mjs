@@ -6,9 +6,9 @@ import { ownerFbaModules, OwnerFbaRuntimeOrderError, verifyOwnerFbaRuntimeOrder 
 
 const repoRoot = process.cwd();
 const files = ownerFbaModules.flatMap((module) => [
-  `crates/rustok-${module}/contracts/${module}-fba-registry.json`,
-  `crates/rustok-${module}/contracts/evidence/${module}-provider-runtime-order-smoke.json`,
-  `crates/rustok-${module}/src/ports.rs`,
+  `crates/modules/rustok-${module}/contracts/${module}-fba-registry.json`,
+  `crates/modules/rustok-${module}/contracts/evidence/${module}-provider-runtime-order-smoke.json`,
+  `crates/modules/rustok-${module}/src/ports.rs`,
 ]);
 
 function fixture() {
@@ -34,12 +34,12 @@ function expectFailure(root, pattern) {
 verifyOwnerFbaRuntimeOrder();
 
 const missingIdempotency = fixture();
-const comments = path.join(missingIdempotency, 'crates/rustok-comments/src/ports.rs');
+const comments = path.join(missingIdempotency, 'crates/modules/rustok-comments/src/ports.rs');
 fs.writeFileSync(comments, fs.readFileSync(comments, 'utf8').replace('context.require_policy(PortCallPolicy::write())?;', '/* removed */'));
 expectFailure(missingIdempotency, /comments\.create_comment source marker missing/);
 
 const fallbackDrift = fixture();
-const regionSmokePath = path.join(fallbackDrift, 'crates/rustok-region/contracts/evidence/region-provider-runtime-order-smoke.json');
+const regionSmokePath = path.join(fallbackDrift, 'crates/modules/rustok-region/contracts/evidence/region-provider-runtime-order-smoke.json');
 const regionSmoke = JSON.parse(fs.readFileSync(regionSmokePath, 'utf8'));
 regionSmoke.degraded_modes = regionSmoke.degraded_modes.slice(1);
 fs.writeFileSync(regionSmokePath, `${JSON.stringify(regionSmoke, null, 2)}\n`);

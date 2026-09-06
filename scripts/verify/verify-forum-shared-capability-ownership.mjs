@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath = path.join(
   repoRoot,
-  "crates/rustok-forum/contracts/forum-shared-capability-ownership.json",
+  "crates/modules/rustok-forum/contracts/forum-shared-capability-ownership.json",
 );
 const contract = JSON.parse(readFileSync(contractPath, "utf8"));
 
@@ -56,7 +56,7 @@ for (const slug of [
   if (!pattern.test(modules)) fail(`modules.toml does not register ${slug}`);
 }
 
-const profiles = read("crates/rustok-profiles/README.md");
+const profiles = read("crates/modules/rustok-profiles/README.md");
 if (!profiles.includes("owns the universal public profile domain")) {
   fail("Profiles does not declare universal public profile ownership");
 }
@@ -64,7 +64,7 @@ if (!profiles.includes("Serves `rustok-blog` and `rustok-forum` through `Profile
   fail("Profiles does not declare the Forum batch-reader boundary");
 }
 
-const media = read("crates/rustok-media/README.md");
+const media = read("crates/modules/rustok-media/README.md");
 for (const fragment of [
   "owns media asset uploads",
   "Own storage-backed media lifecycle state",
@@ -73,7 +73,7 @@ for (const fragment of [
   if (!media.includes(fragment)) fail(`Media owner contract is missing: ${fragment}`);
 }
 
-const reactions = read("crates/rustok-reactions/README.md");
+const reactions = read("crates/modules/rustok-reactions/README.md");
 for (const fragment of [
   "optional shared owner for reusable reactions",
   "never reads producer-private tables",
@@ -84,7 +84,7 @@ for (const fragment of [
   }
 }
 
-const moderation = read("crates/rustok-moderation/README.md");
+const moderation = read("crates/modules/rustok-moderation/README.md");
 for (const fragment of [
   "cross-domain owner for moderation reports",
   "ModerationSubjectCommandPort",

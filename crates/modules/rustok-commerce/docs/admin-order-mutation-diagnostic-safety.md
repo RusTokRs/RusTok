@@ -39,7 +39,7 @@ This slice does not close raw diagnostic payloads in order-detail payment and fu
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/admin-order-mutation-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/admin-order-mutation-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-admin-order-mutation-diagnostic-safety.mjs`
 - `scripts/verify/verify-commerce-admin-order-route-error-context.mjs`
 

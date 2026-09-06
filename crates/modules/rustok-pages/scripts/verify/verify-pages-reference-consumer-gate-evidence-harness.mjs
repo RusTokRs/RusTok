@@ -4,18 +4,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const files = {
-  contract: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-evidence-harness-source.json",
-  gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
+  contract: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-evidence-harness-source.json",
+  gate: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
   runner: "scripts/evidence/pages-reference-consumer-gate-evidence.mjs",
-  artifact: "crates/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
-  browser: "crates/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json",
-  matrix: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-execution-contract.json",
-  feature: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json",
-  matrixGuard: "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs",
-  featureGuard: "crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs",
+  artifact: "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
+  browser: "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json",
+  matrix: "crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-execution-contract.json",
+  feature: "crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json",
+  matrixGuard: "crates/modules/rustok-pages/scripts/verify/verify-pages-builder-rollout-runtime-matrix-harness.mjs",
+  featureGuard: "crates/modules/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs",
   packet: "docs/modules/pages-page-builder-reference-consumer-gate-evidence-harness-actualization-2026-08-08.md",
 };
 const failures = [];
@@ -92,7 +92,7 @@ const guards = new Map((contract.source_guards ?? []).map((entry) => [entry.id, 
 for (const [id, script] of [
   ["rollout_matrix_harness_source", files.matrixGuard],
   ["rollout_feature_preflight_harness_source", files.featureGuard],
-  ["reference_gate_harness_source", "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs"],
+  ["reference_gate_harness_source", "crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs"],
 ]) {
   const guard = guards.get(id);
   if (guard?.program !== "node" || JSON.stringify(guard?.args) !== JSON.stringify([script])) failures.push(`${id} guard drifted`);
@@ -130,10 +130,10 @@ for (const relativePath of [
   files.feature,
   files.matrixGuard,
   files.featureGuard,
-  "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-harness-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-harness-source.json",
   "apps/next-admin/playwright.pages-builder-rollout-feature-preflight.config.ts",
   "apps/next-admin/tests/pages-builder-rollout-feature-preflight/feature-preflight.spec.ts",
-  "crates/rustok-pages/src/graphql/builder_rollout.rs",
+  "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
 ]) {
   if (!contract.required_source_files?.includes(relativePath)) failures.push(`candidate required_source_files is missing ${relativePath}`);
 }

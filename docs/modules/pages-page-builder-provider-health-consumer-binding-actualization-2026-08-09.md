@@ -136,10 +136,10 @@ Tests were not run. Node verifiers, Cargo commands, formatting, builds, GraphQL/
 Suggested maintainer source checks, intentionally not run:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
-node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 ```

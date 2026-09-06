@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 function fail(message) {
   console.error("[verify-page-builder-next-admin-parity] FAIL");
@@ -22,9 +22,9 @@ function read(relativePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
-const consumerManifest = read("crates/rustok-pages/rustok-module.toml");
-const pagesPlan = read("crates/rustok-pages/docs/implementation-plan.md");
-const leptosComposition = read("crates/rustok-pages/admin/src/composition.rs");
+const consumerManifest = read("crates/modules/rustok-pages/rustok-module.toml");
+const pagesPlan = read("crates/modules/rustok-pages/docs/implementation-plan.md");
+const leptosComposition = read("crates/modules/rustok-pages/admin/src/composition.rs");
 
 const removedNextAdminPaths = [
   "apps/next-admin/packages/blog/src/api/page-builder-errors.ts",

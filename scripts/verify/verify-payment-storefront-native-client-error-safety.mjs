@@ -46,23 +46,23 @@ function functionBody(source, functionName) {
 }
 
 const paths = {
-  transport: "crates/rustok-payment/storefront/src/transport.rs",
+  transport: "crates/modules/rustok-payment/storefront/src/transport.rs",
   safety:
-    "crates/rustok-payment/storefront/src/transport/native_client_error_safety.rs",
-  native: "crates/rustok-payment/storefront/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-payment/storefront/src/transport/native_client_error_safety.rs",
+  native: "crates/modules/rustok-payment/storefront/src/transport/native_server_adapter.rs",
   serverFunctions:
-    "crates/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/modules/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs",
   graphqlAdapter:
-    "crates/rustok-payment/storefront/src/transport/graphql_adapter.rs",
+    "crates/modules/rustok-payment/storefront/src/transport/graphql_adapter.rs",
   graphqlSafety:
-    "crates/rustok-payment/storefront/src/transport/graphql_error_safety.rs",
+    "crates/modules/rustok-payment/storefront/src/transport/graphql_error_safety.rs",
   evidence:
-    "crates/rustok-payment/contracts/evidence/payment-storefront-native-client-error-safety-source.json",
+    "crates/modules/rustok-payment/contracts/evidence/payment-storefront-native-client-error-safety-source.json",
   review:
-    "crates/rustok-payment/contracts/evidence/payment-storefront-native-client-error-safety-source-review.json",
-  doc: "crates/rustok-payment/docs/storefront-native-client-error-safety.md",
-  paymentPlan: "crates/rustok-payment/docs/implementation-plan.md",
-  commercePlan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-payment/contracts/evidence/payment-storefront-native-client-error-safety-source-review.json",
+  doc: "crates/modules/rustok-payment/docs/storefront-native-client-error-safety.md",
+  paymentPlan: "crates/modules/rustok-payment/docs/implementation-plan.md",
+  commercePlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
   nativeGuard: "scripts/verify/verify-payment-storefront-native-error-safety.mjs",
   graphqlGuard: "scripts/verify/verify-payment-storefront-graphql-error-safety.mjs",
 };

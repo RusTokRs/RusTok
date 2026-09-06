@@ -12,13 +12,13 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  query: 'crates/rustok-commerce/src/graphql/query.rs',
-  safeSource: 'crates/rustok-commerce/src/graphql/safe_query/source.rs',
-  boundary: 'crates/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs',
-  regionPorts: 'crates/rustok-region/src/ports.rs',
+  query: 'crates/modules/rustok-commerce/src/graphql/query.rs',
+  safeSource: 'crates/modules/rustok-commerce/src/graphql/safe_query/source.rs',
+  boundary: 'crates/modules/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs',
+  regionPorts: 'crates/modules/rustok-region/src/ports.rs',
   evidence:
-    'crates/rustok-commerce/contracts/evidence/graphql-query-region-error-safety-source-review.json',
-  document: 'crates/rustok-commerce/docs/graphql-query-region-error-safety.md',
+    'crates/modules/rustok-commerce/contracts/evidence/graphql-query-region-error-safety-source-review.json',
+  document: 'crates/modules/rustok-commerce/docs/graphql-query-region-error-safety.md',
 };
 
 const query = read(paths.query);

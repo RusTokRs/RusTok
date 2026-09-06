@@ -97,7 +97,7 @@ in-flight stale-mutation window and for this convergence state machine remains p
 
 ## Retained PostgreSQL convergence packet
 
-`crates/rustok-distribution/tests/product_channel_convergence_postgres.rs` is a source-ready,
+`crates/modules/rustok-distribution/tests/product_channel_convergence_postgres.rs` is a source-ready,
 execution-pending packet for the convergence state machine. It uses two independent generic
 `ModuleWorkScheduler` hosts and the production Product/Channel/Index storage/runtime path.
 
@@ -120,7 +120,7 @@ This is retained source only. It has not been executed or admitted.
 
 ## Retained Channel identity-transition packet
 
-`crates/rustok-distribution/tests/product_channel_identity_transitions_postgres.rs` is a separate
+`crates/modules/rustok-distribution/tests/product_channel_identity_transitions_postgres.rs` is a separate
 source-ready, execution-pending packet for Channel create/delete/tenant-move/delete-recreate identity
 semantics.
 

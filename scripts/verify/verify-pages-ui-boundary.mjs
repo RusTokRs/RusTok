@@ -42,21 +42,21 @@ function assertNotContains(text, pattern, description) {
 }
 
 const files = {
-  adminCargo: "crates/rustok-pages/admin/Cargo.toml",
-  adminLib: "crates/rustok-pages/admin/src/lib.rs",
-  adminBuilder: "crates/rustok-pages/admin/src/builder.rs",
-  adminComposition: "crates/rustok-pages/admin/src/composition.rs",
-  adminCore: "crates/rustok-pages/admin/src/core.rs",
-  adminModel: "crates/rustok-pages/admin/src/model.rs",
-  adminTransport: "crates/rustok-pages/admin/src/transport/mod.rs",
-  adminGraphqlAdapter: "crates/rustok-pages/admin/src/transport/graphql_adapter.rs",
-  storefrontLib: "crates/rustok-pages/storefront/src/lib.rs",
-  storefrontCore: "crates/rustok-pages/storefront/src/core.rs",
-  storefrontUi: "crates/rustok-pages/storefront/src/ui/leptos.rs",
-  storefrontTransport: "crates/rustok-pages/storefront/src/transport/mod.rs",
-  storefrontGraphqlAdapter: "crates/rustok-pages/storefront/src/transport/graphql_adapter.rs",
-  storefrontNativeServerAdapter: "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
-  implementationPlan: "crates/rustok-pages/docs/implementation-plan.md",
+  adminCargo: "crates/modules/rustok-pages/admin/Cargo.toml",
+  adminLib: "crates/modules/rustok-pages/admin/src/lib.rs",
+  adminBuilder: "crates/modules/rustok-pages/admin/src/builder.rs",
+  adminComposition: "crates/modules/rustok-pages/admin/src/composition.rs",
+  adminCore: "crates/modules/rustok-pages/admin/src/core.rs",
+  adminModel: "crates/modules/rustok-pages/admin/src/model.rs",
+  adminTransport: "crates/modules/rustok-pages/admin/src/transport/mod.rs",
+  adminGraphqlAdapter: "crates/modules/rustok-pages/admin/src/transport/graphql_adapter.rs",
+  storefrontLib: "crates/modules/rustok-pages/storefront/src/lib.rs",
+  storefrontCore: "crates/modules/rustok-pages/storefront/src/core.rs",
+  storefrontUi: "crates/modules/rustok-pages/storefront/src/ui/leptos.rs",
+  storefrontTransport: "crates/modules/rustok-pages/storefront/src/transport/mod.rs",
+  storefrontGraphqlAdapter: "crates/modules/rustok-pages/storefront/src/transport/graphql_adapter.rs",
+  storefrontNativeServerAdapter: "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+  implementationPlan: "crates/modules/rustok-pages/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
 };
 
@@ -65,11 +65,11 @@ for (const [name, filePath] of Object.entries(files)) {
 }
 
 for (const legacyPath of [
-  "crates/rustok-pages/admin/src/api.rs",
-  "crates/rustok-pages/admin/src/editor_sync.rs",
-  "crates/rustok-pages/admin/src/ui/mod.rs",
-  "crates/rustok-pages/admin/src/ui/leptos.rs",
-  "crates/rustok-pages/storefront/src/api.rs",
+  "crates/modules/rustok-pages/admin/src/api.rs",
+  "crates/modules/rustok-pages/admin/src/editor_sync.rs",
+  "crates/modules/rustok-pages/admin/src/ui/mod.rs",
+  "crates/modules/rustok-pages/admin/src/ui/leptos.rs",
+  "crates/modules/rustok-pages/storefront/src/api.rs",
 ]) {
   assertNotExists(legacyPath, `${legacyPath}: obsolete Pages surface must stay deleted`);
 }

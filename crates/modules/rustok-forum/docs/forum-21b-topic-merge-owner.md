@@ -21,24 +21,24 @@ implementation:
 The cumulative machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-owner.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json
 ```
 
 Focused handoffs include:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-cross-category.json
-crates/rustok-forum/docs/forum-21m-topic-merge-cross-category.md
-crates/rustok-forum/contracts/forum-topic-merge-solution-policy.json
-crates/rustok-forum/docs/forum-21h-topic-merge-solution-policy.md
-crates/rustok-forum/contracts/forum-topic-merge-solution-resolution.json
-crates/rustok-forum/docs/forum-21l-topic-merge-solution-resolution.md
-crates/rustok-forum/contracts/forum-topic-canonical-resolution.json
-crates/rustok-forum/docs/forum-21i-topic-canonical-resolution.md
-crates/rustok-forum/contracts/forum-topic-merge-graphql-transport.json
-crates/rustok-forum/docs/forum-21k-topic-merge-graphql-transport.md
-crates/rustok-forum/contracts/forum-topic-merge-admin-ui.json
-crates/rustok-forum/docs/forum-21n-topic-merge-admin-ui.md
+crates/modules/rustok-forum/contracts/forum-topic-merge-cross-category.json
+crates/modules/rustok-forum/docs/forum-21m-topic-merge-cross-category.md
+crates/modules/rustok-forum/contracts/forum-topic-merge-solution-policy.json
+crates/modules/rustok-forum/docs/forum-21h-topic-merge-solution-policy.md
+crates/modules/rustok-forum/contracts/forum-topic-merge-solution-resolution.json
+crates/modules/rustok-forum/docs/forum-21l-topic-merge-solution-resolution.md
+crates/modules/rustok-forum/contracts/forum-topic-canonical-resolution.json
+crates/modules/rustok-forum/docs/forum-21i-topic-canonical-resolution.md
+crates/modules/rustok-forum/contracts/forum-topic-merge-graphql-transport.json
+crates/modules/rustok-forum/docs/forum-21k-topic-merge-graphql-transport.md
+crates/modules/rustok-forum/contracts/forum-topic-merge-admin-ui.json
+crates/modules/rustok-forum/docs/forum-21n-topic-merge-admin-ui.md
 ```
 
 ## Owner API

@@ -14,7 +14,7 @@ function requireAbsent(text, marker, message) {
   if (text.includes(marker)) throw new Error(message);
 }
 
-const inspectionPath = "crates/rustok-forum/src/import_inspection.rs";
+const inspectionPath = "crates/modules/rustok-forum/src/import_inspection.rs";
 const packetPath =
   "docs/modules/forum-34-nodebb-category-cycle-validation-actualization-2026-08-09.md";
 

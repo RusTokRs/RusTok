@@ -11,24 +11,24 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const controller = read(
-  'crates/rustok-commerce/src/controllers/admin/checkout_operations.rs',
+  'crates/modules/rustok-commerce/src/controllers/admin/checkout_operations.rs',
 );
 const sweep = read(
-  'crates/rustok-commerce/src/services/checkout_compensation_sweep.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_compensation_sweep.rs',
 );
 const operationErrors = read(
-  'crates/rustok-commerce/src/services/checkout_operation.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_operation.rs',
 );
 const compensationErrors = read(
-  'crates/rustok-commerce/src/services/checkout_compensation.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_compensation.rs',
 );
 const reservationErrors = read(
-  'crates/rustok-commerce/src/services/checkout_inventory_reservation_journal.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_inventory_reservation_journal.rs',
 );
-const paymentErrors = read('crates/rustok-payment/src/error.rs');
-const orderErrors = read('crates/rustok-order/src/error.rs');
+const paymentErrors = read('crates/modules/rustok-payment/src/error.rs');
+const orderErrors = read('crates/modules/rustok-order/src/error.rs');
 const paymentOrchestration = read(
-  'crates/rustok-commerce/src/services/payment_orchestration.rs',
+  'crates/modules/rustok-commerce/src/services/payment_orchestration.rs',
 );
 const failures = [];
 

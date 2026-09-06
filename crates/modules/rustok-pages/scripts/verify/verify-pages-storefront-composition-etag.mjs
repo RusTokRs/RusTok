@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const failures = [];
 
@@ -36,19 +36,19 @@ const between = (text, start, end, label) => {
 };
 
 const evidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-storefront-composition-etag-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-storefront-composition-etag-source.json",
 ));
 const routeAdapter = read(
-  "crates/rustok-pages/storefront/src/transport/host_route_adapter.rs",
+  "crates/modules/rustok-pages/storefront/src/transport/host_route_adapter.rs",
 );
-const navigationModel = read("crates/rustok-navigation/storefront/src/model.rs");
-const navigationLib = read("crates/rustok-navigation/storefront/src/lib.rs");
-const navigationUi = read("crates/rustok-navigation/storefront/src/ui/menu.rs");
+const navigationModel = read("crates/modules/rustok-navigation/storefront/src/model.rs");
+const navigationLib = read("crates/modules/rustok-navigation/storefront/src/lib.rs");
+const navigationUi = read("crates/modules/rustok-navigation/storefront/src/ui/menu.rs");
 const composition = read("apps/storefront/src/shared/context/pages_composition.rs");
 const host = read("apps/storefront/src/lib.rs");
 const cargo = read("apps/storefront/Cargo.toml");
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
-const localPlan = read("crates/rustok-pages/docs/implementation-plan.md");
+const localPlan = read("crates/modules/rustok-pages/docs/implementation-plan.md");
 const packet = read(
   "docs/modules/pages-page-builder-storefront-composition-etag-packet-2026-08-06.md",
 );

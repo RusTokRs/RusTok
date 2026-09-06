@@ -10,7 +10,7 @@
     "docker_capture": "scripts/evidence/capture-pages-inline-edit-docker-evidence.mjs",
     "http_capture": "scripts/evidence/capture-pages-inline-edit-http-evidence.mjs",
     "assembler": "scripts/evidence/assemble-pages-inline-edit-artifact-http-evidence.mjs",
-    "source_verifier": "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-artifact-http-evidence-harness.mjs"
+    "source_verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-artifact-http-evidence-harness.mjs"
   },
   "output": {
     "path": "target/pages-inline-edit-artifact-http-evidence.json",
@@ -134,17 +134,17 @@
     "forbidden_markers_found_must_be_empty": true
   },
   "required_source_files": [
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-evidence-harness-source.json",
-    "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-artifact-http-evidence-harness.mjs",
-    "crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-evidence-harness-source.json",
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-artifact-http-evidence-harness.mjs",
+    "crates/modules/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs",
     "docs/modules/pages-page-builder-inline-edit-artifact-http-evidence-harness-packet-2026-08-06.md",
     "docs/modules/pages-page-builder-inline-edit-execution-plan.md",
     "scripts/build/build-embedded-admin.sh",
     "scripts/build/build-pages-inline-edit-deployment.sh",
     "scripts/build/build-pages-inline-edit-server.sh",
     "apps/storefront/scripts/build-pages-inline-edit-client.mjs",
-    "crates/rustok-pages/src/http/inline_edit_assets.rs",
+    "crates/modules/rustok-pages/src/http/inline_edit_assets.rs",
     "apps/server/src/middleware/auth_context.rs",
     "scripts/evidence/capture-pages-inline-edit-build-snapshot.mjs",
     "scripts/evidence/capture-pages-inline-edit-docker-evidence.mjs",

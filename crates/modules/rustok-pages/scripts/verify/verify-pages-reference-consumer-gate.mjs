@@ -7,12 +7,12 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
-  : path.resolve(scriptDir, "..", "..", "..", "..");
+  : path.resolve(scriptDir, "..", "..", "..", "..", "..");
 
 const evidencePath =
-  "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json";
-const pagesManifestPath = "crates/rustok-pages/rustok-module.toml";
-const forumManifestPath = "crates/rustok-forum/rustok-module.toml";
+  "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json";
+const pagesManifestPath = "crates/modules/rustok-pages/rustok-module.toml";
+const forumManifestPath = "crates/modules/rustok-forum/rustok-module.toml";
 const actualizationPath =
   "docs/modules/pages-page-builder-reference-consumer-gate-actualization-2026-08-08.md";
 const failures = [];

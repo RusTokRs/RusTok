@@ -4,14 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
   evidence:
-    "crates/rustok-page-builder/contracts/evidence/page-builder-authenticated-inline-edit-adapter-source.json",
-  inline: "crates/rustok-page-builder-storefront/src/inline_edit.rs",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-authenticated-inline-edit-adapter-source.json",
+  inline: "crates/modules/rustok-page-builder-storefront/src/inline_edit.rs",
   adapterGuard:
-    "crates/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs",
+    "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs",
   packet:
     "docs/modules/pages-page-builder-inline-session-dom-boundary-packet-2026-08-06.md",
   executionPlan: "docs/modules/pages-page-builder-inline-edit-execution-plan.md",

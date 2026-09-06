@@ -4,18 +4,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  owner: "crates/rustok-pages/src/services/page/artifact_integrity_audit.rs",
-  gql: "crates/rustok-pages/src/graphql/artifact_integrity_audit.rs",
-  gqlMod: "crates/rustok-pages/src/graphql/mod.rs",
-  http: "crates/rustok-pages/src/http/artifact_integrity_audit.rs",
-  httpMod: "crates/rustok-pages/src/http.rs",
-  openapi: "crates/rustok-pages/src/openapi.rs",
+  owner: "crates/modules/rustok-pages/src/services/page/artifact_integrity_audit.rs",
+  gql: "crates/modules/rustok-pages/src/graphql/artifact_integrity_audit.rs",
+  gqlMod: "crates/modules/rustok-pages/src/graphql/mod.rs",
+  http: "crates/modules/rustok-pages/src/http/artifact_integrity_audit.rs",
+  httpMod: "crates/modules/rustok-pages/src/http.rs",
+  openapi: "crates/modules/rustok-pages/src/openapi.rs",
   evidence:
-    "crates/rustok-pages/contracts/evidence/pages-immutable-artifact-integrity-audit-transport-source.json",
-  packet: "crates/rustok-pages/docs/immutable-artifact-integrity-audit-transport.md",
+    "crates/modules/rustok-pages/contracts/evidence/pages-immutable-artifact-integrity-audit-transport-source.json",
+  packet: "crates/modules/rustok-pages/docs/immutable-artifact-integrity-audit-transport.md",
   actualization: "docs/modules/page-builder-parity-actualization-2026-08-05.md",
 };
 

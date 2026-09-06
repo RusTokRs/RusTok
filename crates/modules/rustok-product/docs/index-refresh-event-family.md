@@ -97,10 +97,10 @@ Run on the exact branch/head for this PR:
 ```bash
 node scripts/verify/verify-event-contract-digest-admission.mjs
 cargo run --locked -p rustok-events --example event_contract_digests -- --write
-git diff -- crates/rustok-events/contracts/event-contract-digests.json
+git diff -- crates/libs/rustok-events/contracts/event-contract-digests.json
 ```
 
-Then commit the generated `crates/rustok-events/contracts/event-contract-digests.json` in this same PR and run:
+Then commit the generated `crates/libs/rustok-events/contracts/event-contract-digests.json` in this same PR and run:
 
 ```bash
 node scripts/verify/verify-index-product-refresh-event-family.mjs

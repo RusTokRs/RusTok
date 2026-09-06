@@ -14,15 +14,15 @@ const repoRoot = path.resolve(
 const failures = [];
 const files = {
   contract:
-    "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
   surfaceEvidence:
-    "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
   revisionEvidence:
-    "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json",
   consumerContract:
-    "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json",
-  surface: "crates/rustok-pages/admin/src/standalone_metadata.rs",
-  panel: "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs",
+    "crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json",
+  surface: "crates/modules/rustok-pages/admin/src/standalone_metadata.rs",
+  panel: "crates/modules/rustok-page-builder/admin/src/editor/consumer_properties.rs",
   config: "apps/next-admin/playwright.pages-published-metadata.config.ts",
   setup: "apps/next-admin/tests/pages-published-metadata/global-setup.ts",
   runner: "apps/next-admin/tests/pages-published-metadata/browser-evidence.spec.ts",
@@ -198,7 +198,7 @@ requireValue(
     surfaceEvidence.browser_execution?.contract === files.contract &&
     surfaceEvidence.browser_execution?.runner === files.runner &&
     surfaceEvidence.browser_execution?.verifier ===
-      "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs",
+      "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs",
   "published metadata browser registration drifted",
 );
 requireValue(

@@ -3,7 +3,7 @@
   "module": "forum",
   "contract": "forum_shared_capability_ownership_v1",
   "status": "source_ready_maintainer_execution_pending",
-  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
   "required_shared_owners": {
     "public_profile": "rustok-profiles",
     "binary_media": "rustok-media",
@@ -47,7 +47,7 @@
     "Media remains the sole binary asset and delivery-lifecycle owner",
     "Forum trust remains Forum-owned and is not equivalent to reputation"
   ],
-  "archive_snapshot": "crates/rustok-forum/docs/archive/implementation-plan-2026-08-06.snapshot",
+  "archive_snapshot": "crates/modules/rustok-forum/docs/archive/implementation-plan-2026-08-06.snapshot",
   "verification": [
     "node scripts/verify/verify-forum-shared-capability-ownership.mjs",
     "node scripts/verify/verify-reactions-foundation.mjs",

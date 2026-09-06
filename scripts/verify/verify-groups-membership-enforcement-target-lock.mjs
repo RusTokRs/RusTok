@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
-const sourcePath = "crates/rustok-groups/src/membership_enforcement_transaction.rs";
-const docsPath = "crates/rustok-groups/docs/membership-enforcement-target-lock-contract.md";
+const sourcePath = "crates/modules/rustok-groups/src/membership_enforcement_transaction.rs";
+const docsPath = "crates/modules/rustok-groups/docs/membership-enforcement-target-lock-contract.md";
 const source = fs.readFileSync(sourcePath, "utf8");
 const docs = fs.readFileSync(docsPath, "utf8");
 

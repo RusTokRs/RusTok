@@ -40,7 +40,7 @@ function reject(source, pattern, message) {
 }
 
 const contractPath =
-  "crates/rustok-notifications/contracts/notifications-candidate-worker.json";
+  "crates/modules/rustok-notifications/contracts/notifications-candidate-worker.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const owner = read(contract.owner_driver ?? "");
 const candidate = read(contract.candidate_service ?? "");
@@ -50,10 +50,10 @@ const composition = read(contract.policy_composition ?? "");
 const bootstrap = read(contract.bootstrap ?? "");
 const moduleConsumer = read(contract.module_policy_consumer ?? "");
 const moduleTransition = read(contract.module_policy_transition ?? "");
-const moduleExecutor = read("crates/rustok-modules/src/executor.rs");
+const moduleExecutor = read("crates/modules/rustok-modules/src/executor.rs");
 const candidateTest = read(contract.tests?.[0] ?? "");
 const moduleTest = read(contract.tests?.[1] ?? "");
-const library = read("crates/rustok-notifications/src/lib.rs");
+const library = read("crates/modules/rustok-notifications/src/lib.rs");
 
 if (contract.slice !== "NOTIFY-03C" || contract.schema_version !== 6) {
   failures.push("candidate worker contract must identify NOTIFY-03C schema 6");

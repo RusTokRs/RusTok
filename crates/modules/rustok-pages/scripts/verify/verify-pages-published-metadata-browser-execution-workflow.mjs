@@ -14,18 +14,18 @@ const repoRoot = path.resolve(
 const failures = [];
 const files = {
   contract:
-    "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
   surfaceEvidence:
-    "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
   workflow: ".github/workflows/pages-published-metadata-browser-evidence.yml",
   sourceExecution:
-    "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
   sourceWorkflow: ".github/workflows/pages-consumer-properties-source-evidence.yml",
   actualization:
     "docs/modules/pages-published-metadata-browser-evidence-harness-actualization-2026-08-13.md",
 };
 const verifier =
-  "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs";
+  "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs";
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);
 const read = (relativePath) => fs.readFileSync(absolute(relativePath), "utf8");

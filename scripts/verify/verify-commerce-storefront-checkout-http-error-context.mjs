@@ -31,14 +31,14 @@ const between = (source, start, end, label) => {
   return source.slice(startIndex, endIndex);
 };
 
-const checkout = read('crates/rustok-commerce/src/controllers/store/checkout.rs');
-const runtime = read('crates/rustok-commerce/src/storefront_staged_checkout_runtime.rs');
+const checkout = read('crates/modules/rustok-commerce/src/controllers/store/checkout.rs');
+const runtime = read('crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs');
 const evidencePath =
-  'crates/rustok-commerce/contracts/evidence/storefront-checkout-http-diagnostic-safety-source-review.json';
-const docPath = 'crates/rustok-commerce/docs/storefront-checkout-http-diagnostic-safety.md';
+  'crates/modules/rustok-commerce/contracts/evidence/storefront-checkout-http-diagnostic-safety-source-review.json';
+const docPath = 'crates/modules/rustok-commerce/docs/storefront-checkout-http-diagnostic-safety.md';
 const evidence = JSON.parse(read(evidencePath));
 const documentation = read(docPath);
-const plan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 
 const checkoutContext = between(
   checkout,

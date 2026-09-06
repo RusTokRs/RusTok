@@ -21,13 +21,13 @@ The public customer-admin transport facade applies a second fail-closed client b
 - FFA status: `in_progress`
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
-- FBA provider contract: `CustomerReadPort` / `customer.read_projection.v1` in `crates/rustok-customer/contracts/customer-fba-registry.json`.
+- FBA provider contract: `CustomerReadPort` / `customer.read_projection.v1` in `crates/modules/rustok-customer/contracts/customer-fba-registry.json`.
 - `read_customer_projection_by_user` is the owner boundary for storefront authenticated-customer lookup; commerce must not construct `CustomerService`.
 - Canonical root construction is `InProcessCustomerReadPort` / `in_process_customer_read_port`; `rustok_customer::ports` remains a compatibility path rather than the covered root entrypoint.
-- Customer read diagnostic safety: `source_ready_unvalidated`; evidence is `crates/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source.json` with reviewed source handoff in `crates/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source-review.json`.
-- Static and source-locked runtime evidence: `crates/rustok-customer/contracts/evidence/customer-contract-test-static-matrix.json`, `crates/rustok-customer/contracts/evidence/customer-runtime-contract-smoke.json`, and `crates/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json`.
-- Customer-admin native error-safety source evidence is `crates/rustok-customer/contracts/evidence/admin-native-error-safety-source.json`; it remains explicitly unvalidated.
-- Admin client transport error safety: `source_ready_unvalidated`; evidence is `crates/rustok-customer/contracts/evidence/admin-client-transport-error-safety-source.json` with reviewed source handoff in `crates/rustok-customer/contracts/evidence/admin-client-transport-error-safety-source-review.json`.
+- Customer read diagnostic safety: `source_ready_unvalidated`; evidence is `crates/modules/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source.json` with reviewed source handoff in `crates/modules/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source-review.json`.
+- Static and source-locked runtime evidence: `crates/modules/rustok-customer/contracts/evidence/customer-contract-test-static-matrix.json`, `crates/modules/rustok-customer/contracts/evidence/customer-runtime-contract-smoke.json`, and `crates/modules/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json`.
+- Customer-admin native error-safety source evidence is `crates/modules/rustok-customer/contracts/evidence/admin-native-error-safety-source.json`; it remains explicitly unvalidated.
+- Admin client transport error safety: `source_ready_unvalidated`; evidence is `crates/modules/rustok-customer/contracts/evidence/admin-client-transport-error-safety-source.json` with reviewed source handoff in `crates/modules/rustok-customer/contracts/evidence/admin-client-transport-error-safety-source-review.json`.
 - `scripts/verify/verify-customer-admin-boundary.mjs` locks the admin boundary; `node scripts/verify/verify-customer-admin-native-error-safety.mjs` locks the mounted static error envelopes; `node scripts/verify/verify-customer-admin-client-transport-error-safety.mjs` locks the final payload-free client envelope; `node scripts/verify/verify-customer-fba-no-compile.mjs` locks no-compile provider metadata and promotion blockers; `node scripts/verify/verify-customer-read-local-context.mjs` and `node scripts/verify/verify-customer-read-policy-context.mjs` lock bounded canonical read and owner-policy diagnostics without claiming execution evidence.
 
 ## Open results

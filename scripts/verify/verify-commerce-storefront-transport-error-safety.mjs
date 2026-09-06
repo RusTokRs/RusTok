@@ -15,20 +15,20 @@ const rootPath = configuredRoot
   : fileURLToPath(new URL('../../', import.meta.url));
 const read = (relativePath) => readFileSync(path.join(rootPath, relativePath), 'utf8');
 
-const cargo = read('crates/rustok-commerce/storefront/Cargo.toml');
+const cargo = read('crates/modules/rustok-commerce/storefront/Cargo.toml');
 const native = read(
-  'crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs',
+  'crates/modules/rustok-commerce/storefront/src/transport/native_server_adapter.rs',
 );
 const shared = read(
-  'crates/rustok-commerce/storefront/src/transport/shared_adapter.rs',
+  'crates/modules/rustok-commerce/storefront/src/transport/shared_adapter.rs',
 );
 const evidence = JSON.parse(
   read(
-    'crates/rustok-commerce/contracts/evidence/storefront-transport-error-safety-source.json',
+    'crates/modules/rustok-commerce/contracts/evidence/storefront-transport-error-safety-source.json',
   ),
 );
 const recheckDocPath =
-  'crates/rustok-commerce/docs/storefront-request-context-regression.md';
+  'crates/modules/rustok-commerce/docs/storefront-request-context-regression.md';
 const recheckDoc = read(recheckDocPath);
 
 const failures = [];

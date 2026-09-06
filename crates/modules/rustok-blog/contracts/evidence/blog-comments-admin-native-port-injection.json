@@ -8,9 +8,9 @@
   "compile_policy": "not_run_by_request",
   "runtime_status": "not_run",
   "source_contract": {
-    "admin_adapter": "crates/rustok-blog/admin/src/transport/native_server_adapter.rs",
-    "consumer_service": "crates/rustok-blog/src/services/comment.rs",
-    "consumer_matrix": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json"
+    "admin_adapter": "crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs",
+    "consumer_service": "crates/modules/rustok-blog/src/services/comment.rs",
+    "consumer_matrix": "crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json"
   },
   "profiles": {
     "source_verified": [
@@ -52,7 +52,7 @@
   "harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
-    "source": "crates/rustok-blog/admin/src/transport/native_server_adapter.rs",
+    "source": "crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs",
     "test": "transport::native_server_adapter::tests::admin_native_runtime_exposes_comments_port_selection",
     "command": "cargo test -p rustok-blog-admin --features ssr transport::native_server_adapter::tests::admin_native_runtime_exposes_comments_port_selection -- --exact"
   },

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_from": "crates/rustok-ai-media/contracts/ai-media-fba-registry.json",
+  "generated_from": "crates/modules/rustok-ai-media/contracts/ai-media-fba-registry.json",
   "status": "runtime_verified",
   "runner": "cargo test -p rustok-ai-media --lib",
   "scope": "support_adapter_runtime_fallback_smoke",

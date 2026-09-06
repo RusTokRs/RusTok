@@ -29,32 +29,32 @@ const forbidMarkers = (relative, markers) => {
 };
 
 for (const relative of [
-  "crates/rustok-groups/src/applications.rs",
-  "crates/rustok-groups/src/applications_cas.rs",
-  "crates/rustok-groups/src/applications_lifecycle.rs",
-  "crates/rustok-groups/src/graphql_application_cas.rs",
-  "crates/rustok-groups/src/graphql_application_lifecycle.rs",
-  "crates/rustok-groups/rustok-module.toml",
-  "crates/rustok-groups/admin/src/application_core.rs",
-  "crates/rustok-groups/admin/src/application_model.rs",
-  "crates/rustok-groups/admin/src/transport.rs",
-  "crates/rustok-groups/admin/src/transport/native_application_lifecycle_adapter.rs",
-  "crates/rustok-groups/admin/src/transport/graphql_application_lifecycle_adapter.rs",
-  "crates/rustok-groups/admin/src/ui/applications.rs",
-  "crates/rustok-groups/storefront/src/application_core.rs",
-  "crates/rustok-groups/storefront/src/application_model.rs",
-  "crates/rustok-groups/storefront/src/transport.rs",
-  "crates/rustok-groups/storefront/src/transport/native_application_lifecycle_adapter.rs",
-  "crates/rustok-groups/storefront/src/transport/graphql_application_lifecycle_adapter.rs",
-  "crates/rustok-groups/storefront/src/ui/application.rs",
-  "crates/rustok-groups/contracts/groups-fba-registry.json",
-  "crates/rustok-groups/docs/implementation-plan.md",
+  "crates/modules/rustok-groups/src/applications.rs",
+  "crates/modules/rustok-groups/src/applications_cas.rs",
+  "crates/modules/rustok-groups/src/applications_lifecycle.rs",
+  "crates/modules/rustok-groups/src/graphql_application_cas.rs",
+  "crates/modules/rustok-groups/src/graphql_application_lifecycle.rs",
+  "crates/modules/rustok-groups/rustok-module.toml",
+  "crates/modules/rustok-groups/admin/src/application_core.rs",
+  "crates/modules/rustok-groups/admin/src/application_model.rs",
+  "crates/modules/rustok-groups/admin/src/transport.rs",
+  "crates/modules/rustok-groups/admin/src/transport/native_application_lifecycle_adapter.rs",
+  "crates/modules/rustok-groups/admin/src/transport/graphql_application_lifecycle_adapter.rs",
+  "crates/modules/rustok-groups/admin/src/ui/applications.rs",
+  "crates/modules/rustok-groups/storefront/src/application_core.rs",
+  "crates/modules/rustok-groups/storefront/src/application_model.rs",
+  "crates/modules/rustok-groups/storefront/src/transport.rs",
+  "crates/modules/rustok-groups/storefront/src/transport/native_application_lifecycle_adapter.rs",
+  "crates/modules/rustok-groups/storefront/src/transport/graphql_application_lifecycle_adapter.rs",
+  "crates/modules/rustok-groups/storefront/src/ui/application.rs",
+  "crates/modules/rustok-groups/contracts/groups-fba-registry.json",
+  "crates/modules/rustok-groups/docs/implementation-plan.md",
 ]) requireFile(relative);
 
-requireMarkers("crates/rustok-groups/src/applications.rs", [
+requireMarkers("crates/modules/rustok-groups/src/applications.rs", [
   'include!("applications_lifecycle.rs")',
 ]);
-requireMarkers("crates/rustok-groups/src/applications_lifecycle.rs", [
+requireMarkers("crates/modules/rustok-groups/src/applications_lifecycle.rs", [
   "GroupApplicationLifecycleReadPort",
   "GroupApplicationLifecycleCommandPort",
   "read_my_group_membership_application",
@@ -71,13 +71,13 @@ requireMarkers("crates/rustok-groups/src/applications_lifecycle.rs", [
   "replay_receipt::<GroupApplicationLifecycleResult>",
   "store_receipt",
 ]);
-forbidMarkers("crates/rustok-groups/src/applications_lifecycle.rs", [
+forbidMarkers("crates/modules/rustok-groups/src/applications_lifecycle.rs", [
   "rustok_profiles::",
   "rustok_notifications::",
   "policy_snapshot = Set(",
 ]);
 
-const lifecycle = read("crates/rustok-groups/src/applications_lifecycle.rs");
+const lifecycle = read("crates/modules/rustok-groups/src/applications_lifecycle.rs");
 for (const method of ["cancel_application_owned", "reopen_application_owned"]) {
   const start = lifecycle.indexOf(`async fn ${method}`);
   const applicationLock = lifecycle.indexOf("find_application_for_update", start);
@@ -99,12 +99,12 @@ if (!(reopenStart >= 0 && reopenGroupLock > reopenStart && reopenAuthorization >
   failures.push("manager reopen must authorize before exposing or validating application status");
 }
 
-requireMarkers("crates/rustok-groups/src/applications_cas.rs", [
+requireMarkers("crates/modules/rustok-groups/src/applications_cas.rs", [
   "find_candidate_application_for_update",
   "prelocked_application",
   '"application_lock_order": "application_then_group_when_existing"',
 ]);
-const cas = read("crates/rustok-groups/src/applications_cas.rs");
+const cas = read("crates/modules/rustok-groups/src/applications_cas.rs");
 const submitStart = cas.indexOf("async fn submit_application_if_current_owned");
 const firstCandidateLock = cas.indexOf("find_candidate_application_for_update", submitStart);
 const submitGroupLock = cas.indexOf("find_group_for_update", firstCandidateLock);
@@ -115,31 +115,31 @@ if (!(submitStart >= 0 && firstCandidateLock > submitStart && submitGroupLock > 
   failures.push("CAS resubmit must lock an existing application before the group and re-read first submissions after the group lock before state writes");
 }
 
-requireMarkers("crates/rustok-groups/src/graphql_application_lifecycle.rs", [
+requireMarkers("crates/modules/rustok-groups/src/graphql_application_lifecycle.rs", [
   "GroupsApplicationLifecycleQuery",
   "GroupsApplicationLifecycleMutation",
   "my_group_membership_application",
   "cancel_group_membership_application",
   "reopen_group_membership_application",
 ]);
-requireMarkers("crates/rustok-groups/src/graphql_application_cas.rs", [
+requireMarkers("crates/modules/rustok-groups/src/graphql_application_cas.rs", [
   "GroupsApplicationLifecycleQuery",
   "GroupsApplicationLifecycleMutation",
   "GroupsBaseQueryRoot, GroupsApplicationLifecycleQuery",
   "GroupsApplicationCasMutation,",
   "GroupsApplicationLifecycleMutation,",
 ]);
-requireMarkers("crates/rustok-groups/rustok-module.toml", [
+requireMarkers("crates/modules/rustok-groups/rustok-module.toml", [
   'query = "graphql_application_cas::GroupsQueryRoot"',
   'mutation = "graphql_application_cas::GroupsMutationRoot"',
 ]);
 
-requireMarkers("crates/rustok-groups/storefront/src/application_core.rs", [
+requireMarkers("crates/modules/rustok-groups/storefront/src/application_core.rs", [
   "prepare_my_group_membership_application_query",
   "prepare_cancel_group_membership_application",
   "groups-storefront-cancel-application-",
 ]);
-requireMarkers("crates/rustok-groups/storefront/src/transport.rs", [
+requireMarkers("crates/modules/rustok-groups/storefront/src/transport.rs", [
   "load_groups_storefront_my_application",
   "cancel_groups_storefront_membership_application",
   '"groups.storefront.applications.my"',
@@ -147,7 +147,7 @@ requireMarkers("crates/rustok-groups/storefront/src/transport.rs", [
   "execute_selected_transport",
   "never falls back",
 ]);
-requireMarkers("crates/rustok-groups/storefront/src/ui/application.rs", [
+requireMarkers("crates/modules/rustok-groups/storefront/src/ui/application.rs", [
   "pending_existing",
   "approved_existing",
   "rejected_existing",
@@ -157,39 +157,39 @@ requireMarkers("crates/rustok-groups/storefront/src/ui/application.rs", [
   "page_state.refetch()",
   "query_writer.clear_key(GROUP_APPLICATION_QUERY_KEY)",
 ]);
-forbidMarkers("crates/rustok-groups/storefront/src/ui/application.rs", [
+forbidMarkers("crates/modules/rustok-groups/storefront/src/ui/application.rs", [
   "native_application_lifecycle_adapter",
   "graphql_application_lifecycle_adapter",
   "GroupApplicationService",
 ]);
 
-requireMarkers("crates/rustok-groups/admin/src/application_core.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/application_core.rs", [
   "prepare_reopen_group_membership_application",
   "groups-admin-reopen-application-",
 ]);
-requireMarkers("crates/rustok-groups/admin/src/transport.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/transport.rs", [
   "reopen_group_admin_membership_application",
   '"groups.admin.applications.reopen"',
   "execute_selected_transport",
   "never falls back",
 ]);
-requireMarkers("crates/rustok-groups/admin/src/ui/applications.rs", [
+requireMarkers("crates/modules/rustok-groups/admin/src/ui/applications.rs", [
   "prepare_reopen_group_membership_application",
   "reopen_group_admin_membership_application",
   'matches!(item.status.as_str(), "rejected" | "cancelled")',
   "set_status",
 ]);
-forbidMarkers("crates/rustok-groups/admin/src/ui/applications.rs", [
+forbidMarkers("crates/modules/rustok-groups/admin/src/ui/applications.rs", [
   "native_application_lifecycle_adapter",
   "graphql_application_lifecycle_adapter",
   "GroupApplicationService",
 ]);
 
 for (const relative of [
-  "crates/rustok-groups/admin/locales/en.json",
-  "crates/rustok-groups/admin/locales/ru.json",
-  "crates/rustok-groups/storefront/locales/en.json",
-  "crates/rustok-groups/storefront/locales/ru.json",
+  "crates/modules/rustok-groups/admin/locales/en.json",
+  "crates/modules/rustok-groups/admin/locales/ru.json",
+  "crates/modules/rustok-groups/storefront/locales/en.json",
+  "crates/modules/rustok-groups/storefront/locales/ru.json",
 ]) {
   if (!requireFile(relative)) continue;
   try { JSON.parse(read(relative)); } catch (error) {
@@ -197,8 +197,8 @@ for (const relative of [
   }
 }
 
-if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
-  const registry = JSON.parse(read("crates/rustok-groups/contracts/groups-fba-registry.json"));
+if (requireFile("crates/modules/rustok-groups/contracts/groups-fba-registry.json")) {
+  const registry = JSON.parse(read("crates/modules/rustok-groups/contracts/groups-fba-registry.json"));
   const readPort = registry?.provider?.ports?.find((port) => port?.name === "GroupApplicationLifecycleReadPort");
   const commandPort = registry?.provider?.ports?.find((port) => port?.name === "GroupApplicationLifecycleCommandPort");
   if (!readPort?.operations?.includes("read_my_group_membership_application")) failures.push("registry is missing candidate application read operation");
@@ -209,7 +209,7 @@ if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
   if (registry?.evidence?.membership_application_lifecycle !== null) failures.push("unexecuted application lifecycle evidence must remain null");
 }
 
-requireMarkers("crates/rustok-groups/docs/implementation-plan.md", [
+requireMarkers("crates/modules/rustok-groups/docs/implementation-plan.md", [
   "GroupApplicationLifecycleReadPort",
   "GroupApplicationLifecycleCommandPort",
   "candidate cancellation",

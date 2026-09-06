@@ -2,14 +2,14 @@
   "schema_version": 1,
   "module": "media",
   "role": "provider",
-  "generated_from": "crates/rustok-media/contracts/media-fba-registry.json",
+  "generated_from": "crates/modules/rustok-media/contracts/media-fba-registry.json",
   "status": "source_locked_no_compile",
   "profile": "embedded_native",
   "operation": "get_image_descriptor",
   "port": "MediaAssetReadPort",
   "source_files": [
-    "crates/rustok-media/src/ports.rs",
-    "crates/rustok-media/src/dto.rs"
+    "crates/modules/rustok-media/src/ports.rs",
+    "crates/modules/rustok-media/src/dto.rs"
   ],
   "degraded_modes": [
     {

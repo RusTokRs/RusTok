@@ -70,7 +70,7 @@ requireMarkers('ops/benches/Cargo.toml', [
   'name = "index-partition-cutover-evidence"',
   'path = "src/bin/index_partition_cutover_evidence.rs"',
 ]);
-requireMarkers('crates/rustok-index/docs/partition-cutover-evidence.md', [
+requireMarkers('crates/modules/rustok-index/docs/partition-cutover-evidence.md', [
   'ACCESS EXCLUSIVE',
   'rename choreography only on four empty clones',
   'production and retained snapshot-shadow relations remained unchanged',

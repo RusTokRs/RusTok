@@ -45,20 +45,20 @@ function collectFiles(root, relative = "") {
   return files;
 }
 
-const apiLibPath = "crates/rustok-notifications-api/src/lib.rs";
-const keysPath = "crates/rustok-notifications-api/src/keys.rs";
-const modelPath = "crates/rustok-notifications-api/src/model.rs";
-const providerPath = "crates/rustok-notifications-api/src/provider.rs";
-const ownerLibPath = "crates/rustok-notifications/src/lib.rs";
-const ownerServicePath = "crates/rustok-notifications/src/service.rs";
-const manifestPath = "crates/rustok-notifications/rustok-module.toml";
-const adminCorePath = "crates/rustok-notifications/admin/src/core.rs";
-const adminTransportPath = "crates/rustok-notifications/admin/src/transport.rs";
-const adminUiPath = "crates/rustok-notifications/admin/src/ui/leptos.rs";
-const storefrontCorePath = "crates/rustok-notifications/storefront/src/core.rs";
-const storefrontTransportPath = "crates/rustok-notifications/storefront/src/transport.rs";
-const storefrontUiPath = "crates/rustok-notifications/storefront/src/ui/leptos.rs";
-const canonicalPlanPath = "crates/rustok-forum/docs/implementation-plan.md";
+const apiLibPath = "crates/modules/rustok-notifications-api/src/lib.rs";
+const keysPath = "crates/modules/rustok-notifications-api/src/keys.rs";
+const modelPath = "crates/modules/rustok-notifications-api/src/model.rs";
+const providerPath = "crates/modules/rustok-notifications-api/src/provider.rs";
+const ownerLibPath = "crates/modules/rustok-notifications/src/lib.rs";
+const ownerServicePath = "crates/modules/rustok-notifications/src/service.rs";
+const manifestPath = "crates/modules/rustok-notifications/rustok-module.toml";
+const adminCorePath = "crates/modules/rustok-notifications/admin/src/core.rs";
+const adminTransportPath = "crates/modules/rustok-notifications/admin/src/transport.rs";
+const adminUiPath = "crates/modules/rustok-notifications/admin/src/ui/leptos.rs";
+const storefrontCorePath = "crates/modules/rustok-notifications/storefront/src/core.rs";
+const storefrontTransportPath = "crates/modules/rustok-notifications/storefront/src/transport.rs";
+const storefrontUiPath = "crates/modules/rustok-notifications/storefront/src/ui/leptos.rs";
+const canonicalPlanPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 
 const apiLib = read(apiLibPath);
 const keys = read(keysPath);
@@ -164,10 +164,10 @@ reject(storefrontTransport, /localStorage|gloo_storage|Some\s*\(\s*[1-9]/, `${st
 for (const relativePath of collectFiles(repoRoot)) {
   if (relativePath === "Cargo.toml") continue;
   if (!relativePath.endsWith(".rs") && !relativePath.endsWith("Cargo.toml")) continue;
-  if (relativePath.startsWith("crates/rustok-notifications/")) continue;
-  if (relativePath.startsWith("crates/rustok-notifications-api/")) continue;
-  if (relativePath.startsWith("crates/rustok-distribution/")) continue;
-  if (relativePath.startsWith("crates/rustok-migrations/")) continue;
+  if (relativePath.startsWith("crates/modules/rustok-notifications/")) continue;
+  if (relativePath.startsWith("crates/modules/rustok-notifications-api/")) continue;
+  if (relativePath.startsWith("crates/modules/rustok-distribution/")) continue;
+  if (relativePath.startsWith("crates/utils/rustok-migrations/")) continue;
   if (relativePath.startsWith("apps/server/")) continue;
   if (relativePath.startsWith("apps/admin/")) continue;
   if (relativePath.startsWith("apps/storefront/")) continue;

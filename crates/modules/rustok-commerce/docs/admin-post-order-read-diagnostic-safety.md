@@ -49,7 +49,7 @@ This slice does not close raw diagnostic payloads in Commerce admin return/chang
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/admin-post-order-read-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/admin-post-order-read-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-admin-post-order-read-diagnostic-safety.mjs`
 - `scripts/verify/verify-commerce-admin-post-order-read-cutover.mjs`
 

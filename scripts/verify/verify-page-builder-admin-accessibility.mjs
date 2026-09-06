@@ -8,14 +8,14 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   : process.cwd();
 
 const files = {
-  assets: "crates/rustok-page-builder/admin/src/editor/asset_section.rs",
-  styles: "crates/rustok-page-builder/admin/src/editor/style_section.rs",
-  properties: "crates/rustok-page-builder/admin/src/editor/properties_section.rs",
-  responsive: "crates/rustok-page-builder/admin/src/editor/responsive_styles.rs",
-  traits: "crates/rustok-page-builder/admin/src/editor/trait_panel.rs",
-  pages: "crates/rustok-page-builder/admin/src/editor/page_manager.rs",
-  paletteLayers: "crates/rustok-page-builder/admin/src/editor/palette_layers.rs",
-  toolbar: "crates/rustok-page-builder/admin/src/editor/toolbar.rs",
+  assets: "crates/modules/rustok-page-builder/admin/src/editor/asset_section.rs",
+  styles: "crates/modules/rustok-page-builder/admin/src/editor/style_section.rs",
+  properties: "crates/modules/rustok-page-builder/admin/src/editor/properties_section.rs",
+  responsive: "crates/modules/rustok-page-builder/admin/src/editor/responsive_styles.rs",
+  traits: "crates/modules/rustok-page-builder/admin/src/editor/trait_panel.rs",
+  pages: "crates/modules/rustok-page-builder/admin/src/editor/page_manager.rs",
+  paletteLayers: "crates/modules/rustok-page-builder/admin/src/editor/palette_layers.rs",
+  toolbar: "crates/modules/rustok-page-builder/admin/src/editor/toolbar.rs",
 };
 
 const failures = [];

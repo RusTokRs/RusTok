@@ -52,7 +52,7 @@ This GraphQL command is an execution transport only. The Forum FFA/FBA promotion
 
 ## Promotion execution harness
 
-`crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-execution-source.json` and `scripts/evidence/execute-forum-page-builder-ffa-fba-promotion.mjs` now define the separate maintainer execution step after an approved promotion review.
+`crates/modules/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-execution-source.json` and `scripts/evidence/execute-forum-page-builder-ffa-fba-promotion.mjs` now define the separate maintainer execution step after an approved promotion review.
 
 The runner revalidates the approved review packet against exact checkout `HEAD`, the immutable deployment RepoDigest, the retained observed-Wave freshness/admission-lineage facts and the still-live Wave lease before making a target request. Target origin, tenant and auth come from bounded environment inputs and are never retained raw.
 

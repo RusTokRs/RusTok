@@ -11,7 +11,7 @@ Iggy or storefront code and does not edit the canonical Forum plan.
 The machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-promotion.json
+crates/modules/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-promotion.json
 ```
 
 The reviewer is:

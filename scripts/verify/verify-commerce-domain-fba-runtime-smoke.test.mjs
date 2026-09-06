@@ -5,31 +5,31 @@ import { commerceDomainModules, CommerceDomainFbaRuntimeSmokeError, verifyCommer
 
 const repoRoot = process.cwd();
 const files = commerceDomainModules.flatMap((module) => [
-  `crates/rustok-${module}/contracts/${module}-fba-registry.json`,
-  `crates/rustok-${module}/contracts/evidence/${module}-runtime-contract-smoke.json`,
-  `crates/rustok-${module}/src/ports.rs`,
+  `crates/modules/rustok-${module}/contracts/${module}-fba-registry.json`,
+  `crates/modules/rustok-${module}/contracts/evidence/${module}-runtime-contract-smoke.json`,
+  `crates/modules/rustok-${module}/src/ports.rs`,
 ]).concat([
-  'crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json',
-  'crates/rustok-commerce/contracts/commerce-fba-registry.json',
-  'crates/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json',
-  'crates/rustok-commerce/src/fba.rs',
-  'crates/rustok-commerce/src/services/checkout.rs',
-  'crates/rustok-commerce/src/controllers/store/carts.rs',
-  'crates/rustok-commerce/src/graphql/query.rs',
-  'crates/rustok-commerce/src/graphql/mutations/cart.rs',
-  'crates/rustok-commerce/src/controllers/store/checkout.rs',
-  'crates/rustok-commerce/src/graphql/mutations/checkout.rs',
-  'crates/rustok-commerce/src/storefront_checkout_runtime.rs',
-  'crates/rustok-commerce/src/controllers/store/products.rs',
-  'crates/rustok-commerce/src/graphql/mutations/pricing.rs',
-  'crates/rustok-commerce/admin/src/transport/native_server_adapter.rs',
-  'crates/rustok-commerce/src/storefront_checkout_pricing.rs',
-  'crates/rustok-commerce/src/graphql/mutations/helpers.rs',
-  'crates/rustok-commerce/src/controllers/store/mod.rs',
-  'crates/rustok-commerce/src/controllers/store/line_item_resolution.rs',
-  'crates/rustok-cart/src/services/cart.rs',
-  'crates/rustok-cart/src/services/cart/helpers.rs',
-  'crates/rustok-cart/src/error.rs',
+  'crates/modules/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json',
+  'crates/modules/rustok-commerce/contracts/commerce-fba-registry.json',
+  'crates/modules/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json',
+  'crates/modules/rustok-commerce/src/fba.rs',
+  'crates/modules/rustok-commerce/src/services/checkout.rs',
+  'crates/modules/rustok-commerce/src/controllers/store/carts.rs',
+  'crates/modules/rustok-commerce/src/graphql/query.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/cart.rs',
+  'crates/modules/rustok-commerce/src/controllers/store/checkout.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/checkout.rs',
+  'crates/modules/rustok-commerce/src/storefront_checkout_runtime.rs',
+  'crates/modules/rustok-commerce/src/controllers/store/products.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/pricing.rs',
+  'crates/modules/rustok-commerce/admin/src/transport/native_server_adapter.rs',
+  'crates/modules/rustok-commerce/src/storefront_checkout_pricing.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs',
+  'crates/modules/rustok-commerce/src/controllers/store/mod.rs',
+  'crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs',
+  'crates/modules/rustok-cart/src/services/cart.rs',
+  'crates/modules/rustok-cart/src/services/cart/helpers.rs',
+  'crates/modules/rustok-cart/src/error.rs',
 ]);
 
 function fixture() {
@@ -55,26 +55,26 @@ function expectFailure(root, pattern) {
 verifyCommerceDomainFbaRuntimeSmoke();
 
 const missingPolicy = fixture();
-const productPorts = path.join(missingPolicy, 'crates/rustok-product/src/ports.rs');
+const productPorts = path.join(missingPolicy, 'crates/modules/rustok-product/src/ports.rs');
 fs.writeFileSync(productPorts, fs.readFileSync(productPorts, 'utf8').replace('context.require_policy(PortCallPolicy::read())?;', '/* policy removed */'));
 expectFailure(missingPolicy, /product\.read_product_projection source marker missing/);
 
 const missingMode = fixture();
-const taxSmokePath = path.join(missingMode, 'crates/rustok-tax/contracts/evidence/tax-runtime-contract-smoke.json');
+const taxSmokePath = path.join(missingMode, 'crates/modules/rustok-tax/contracts/evidence/tax-runtime-contract-smoke.json');
 const taxSmoke = JSON.parse(fs.readFileSync(taxSmokePath, 'utf8'));
 taxSmoke.degraded_modes = [];
 fs.writeFileSync(taxSmokePath, `${JSON.stringify(taxSmoke, null, 2)}\n`);
 expectFailure(missingMode, /tax invocation trace degraded mode drift/);
 
 const consumerDrift = fixture();
-const tracePath = path.join(consumerDrift, 'crates/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json');
+const tracePath = path.join(consumerDrift, 'crates/modules/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json');
 const trace = JSON.parse(fs.readFileSync(tracePath, 'utf8'));
 trace.modules.find((entry) => entry.provider_module === 'product').consumer_degraded_modes = ['show_product_refresh_required'];
 fs.writeFileSync(tracePath, `${JSON.stringify(trace, null, 2)}\n`);
 expectFailure(consumerDrift, /product invocation trace consumer degraded mode drift/);
 
 const missingRuntimeEntrypoint = fixture();
-const fbaPath = path.join(missingRuntimeEntrypoint, 'crates/rustok-commerce/src/fba.rs');
+const fbaPath = path.join(missingRuntimeEntrypoint, 'crates/modules/rustok-commerce/src/fba.rs');
 fs.writeFileSync(
   fbaPath,
   fs.readFileSync(fbaPath, 'utf8').replace('pub fn commerce_domain_provider_invocation_trace', 'fn commerce_domain_provider_invocation_trace'),
@@ -82,7 +82,7 @@ fs.writeFileSync(
 expectFailure(missingRuntimeEntrypoint, /commerce fba\.rs must publish an invocation trace parser/);
 
 const missingLookupHelper = fixture();
-const lookupFbaPath = path.join(missingLookupHelper, 'crates/rustok-commerce/src/fba.rs');
+const lookupFbaPath = path.join(missingLookupHelper, 'crates/modules/rustok-commerce/src/fba.rs');
 fs.writeFileSync(
   lookupFbaPath,
   fs.readFileSync(lookupFbaPath, 'utf8').replace('pub fn provider_entry(', 'fn provider_entry('),

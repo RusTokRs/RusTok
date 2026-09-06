@@ -45,8 +45,8 @@ The complete `TranslationError`, provider code/message, database error, workflow
 
 ## Evidence
 
-- `crates/rustok-translation/contracts/evidence/translation-public-error-safety-source.json`
-- `crates/rustok-translation/contracts/evidence/translation-public-error-safety-source-review.json`
+- `crates/modules/rustok-translation/contracts/evidence/translation-public-error-safety-source.json`
+- `crates/modules/rustok-translation/contracts/evidence/translation-public-error-safety-source-review.json`
 - `scripts/verify/verify-translation-public-error-safety.mjs`
 
 ## Remaining gaps

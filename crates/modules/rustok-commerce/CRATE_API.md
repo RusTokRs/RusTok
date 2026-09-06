@@ -57,7 +57,7 @@
 - Changing order status outside the state machine.
 - Bypassing `ValidateEvent` or the transactional outbox when publishing events.
 - Moving transport adapters back into `apps/server` instead of extending
-  `crates/rustok-commerce/src/graphql/*` or `crates/rustok-commerce/src/controllers/*`.
+  `crates/modules/rustok-commerce/src/graphql/*` or `crates/modules/rustok-commerce/src/controllers/*`.
 
 ## Minimum Contract Set
 

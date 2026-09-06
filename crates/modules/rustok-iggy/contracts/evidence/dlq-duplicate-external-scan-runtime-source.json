@@ -6,7 +6,7 @@
   "owner": "rustok-iggy",
   "feature": "iggy",
   "test_target": "dlq_duplicate_external_scan",
-  "test": "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs",
+  "test": "crates/modules/rustok-iggy/tests/dlq_duplicate_external_scan.rs",
   "case": "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset",
   "command": {
     "program": "cargo",
@@ -126,18 +126,18 @@
   },
   "retained_execution": {
     "status": "source_complete_execution_pending",
-    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution-contract.json",
+    "contract": "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution-contract.json",
     "runner": "scripts/evidence/capture-iggy-dlq-duplicate-external-scan.mjs",
     "verifier": "scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs",
-    "evidence_path": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution.json",
+    "evidence_path": "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution.json",
     "canonical_packet_present": false
   },
   "source_files": [
-    "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs",
-    "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs",
-    "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
-    "crates/rustok-iggy/src/dlq.rs",
-    "crates/rustok-iggy/src/transport.rs"
+    "crates/modules/rustok-iggy/tests/dlq_duplicate_external_scan.rs",
+    "crates/modules/rustok-iggy/src/dlq_duplicate_external_scan.rs",
+    "crates/modules/rustok-iggy/src/dlq_duplicate_inspection.rs",
+    "crates/modules/rustok-iggy/src/dlq.rs",
+    "crates/modules/rustok-iggy/src/transport.rs"
   ],
   "non_claims": [
     "active_server_configuration_readback",
@@ -152,7 +152,7 @@
     "profiles_authorization"
   ],
   "verifier": "scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs",
-  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-external-scan-runtime-evidence.md",
-  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-external-runtime-checkpoint.md",
+  "documentation": "crates/modules/rustok-iggy/docs/dlq-duplicate-external-scan-runtime-evidence.md",
+  "profiles_checkpoint": "crates/modules/rustok-profiles/docs/poison-duplicate-external-runtime-checkpoint.md",
   "execution_status": "not_run"
 }

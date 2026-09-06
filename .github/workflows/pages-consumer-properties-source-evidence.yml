@@ -15,22 +15,22 @@ on:
       - "scripts/verify/verify-pages-consumer-properties-admission.mjs"
       - "docs/modules/pages-consumer-properties-source-execution-actualization-2026-08-13.md"
       - "docs/modules/pages-consumer-properties-admission-actualization-2026-08-18.md"
-      - "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json"
-      - "crates/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json"
-      - "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json"
-      - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
-      - "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json"
-      - "crates/rustok-pages/admin/src/metadata_properties.rs"
-      - "crates/rustok-pages/admin/src/model.rs"
-      - "crates/rustok-pages/admin/src/standalone_metadata.rs"
-      - "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json"
+      - "crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json"
+      - "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json"
+      - "crates/modules/rustok-pages/admin/src/metadata_properties.rs"
+      - "crates/modules/rustok-pages/admin/src/model.rs"
+      - "crates/modules/rustok-pages/admin/src/standalone_metadata.rs"
+      - "crates/modules/rustok-page-builder/admin/src/editor/consumer_properties.rs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs"
       - "apps/next-admin/playwright.pages-published-metadata.config.ts"
       - "apps/next-admin/tests/pages-published-metadata/**"
   pull_request:
@@ -46,22 +46,22 @@ on:
       - "scripts/verify/verify-pages-consumer-properties-admission.mjs"
       - "docs/modules/pages-consumer-properties-source-execution-actualization-2026-08-13.md"
       - "docs/modules/pages-consumer-properties-admission-actualization-2026-08-18.md"
-      - "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json"
-      - "crates/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json"
-      - "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json"
-      - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
-      - "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json"
-      - "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json"
-      - "crates/rustok-pages/admin/src/metadata_properties.rs"
-      - "crates/rustok-pages/admin/src/model.rs"
-      - "crates/rustok-pages/admin/src/standalone_metadata.rs"
-      - "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs"
-      - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json"
+      - "crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json"
+      - "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json"
+      - "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json"
+      - "crates/modules/rustok-pages/admin/src/metadata_properties.rs"
+      - "crates/modules/rustok-pages/admin/src/model.rs"
+      - "crates/modules/rustok-pages/admin/src/standalone_metadata.rs"
+      - "crates/modules/rustok-page-builder/admin/src/editor/consumer_properties.rs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs"
+      - "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs"
       - "apps/next-admin/playwright.pages-published-metadata.config.ts"
       - "apps/next-admin/tests/pages-published-metadata/**"
 
@@ -92,15 +92,15 @@ jobs:
         with:
           node-version: 22
       - name: Verify consumer properties source
-        run: node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
       - name: Verify metadata revision isolation source
-        run: node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs
       - name: Verify published metadata surface source
-        run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs
       - name: Verify published metadata browser harness source
-        run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs
       - name: Verify published metadata browser workflow source
-        run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs
+        run: node crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs
       - name: Verify consumer properties admission source
         run: node scripts/verify/verify-pages-consumer-properties-admission.mjs
       - name: Exercise consumer properties admission fail-closed synthetic coverage

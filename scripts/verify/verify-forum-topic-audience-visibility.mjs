@@ -28,7 +28,7 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-topic-audience-visibility.json";
+  "crates/modules/rustok-forum/contracts/forum-topic-audience-visibility.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const owner = read(contract.owner_file ?? "");
 const baseOwner = read(contract.base_visibility_owner ?? "");

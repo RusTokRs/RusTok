@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 const moduleArg = process.argv[2] ?? "pages";
 const moduleToCrate = {
@@ -21,7 +21,7 @@ if (!crateName) {
   process.exit(1);
 }
 
-const pagesManifest = path.join(repoRoot, "crates", crateName, "rustok-module.toml");
+const pagesManifest = path.join(repoRoot, "crates", "modules", crateName, "rustok-module.toml");
 
 function fail(message) {
   console.error("[verify-page-builder-fallback-profiles] FAIL");

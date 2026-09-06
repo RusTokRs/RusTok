@@ -51,7 +51,7 @@ jobs:
               apps/server/tests/field_definition_cache_runtime_guard.rs \
               apps/server/tests/locale_cache_architecture_guard.rs \
               apps/server/tests/marketplace_cache_architecture_guard.rs \
-              crates/rustok-cache/tests/invalidation_failure_metrics.rs
+              crates/modules/rustok-cache/tests/invalidation_failure_metrics.rs
             format_status=$?
             git diff --check
             diff_status=$?
@@ -78,7 +78,7 @@ jobs:
               apps/server/tests/field_definition_cache_runtime_guard.rs \
               apps/server/tests/locale_cache_architecture_guard.rs \
               apps/server/tests/marketplace_cache_architecture_guard.rs \
-              crates/rustok-cache/tests/invalidation_failure_metrics.rs
+              crates/modules/rustok-cache/tests/invalidation_failure_metrics.rs
             if git diff --cached --quiet; then
               echo "already_formatted"
               exit 0

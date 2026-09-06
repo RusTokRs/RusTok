@@ -1,9 +1,9 @@
 import fs from "node:fs";
 
 const migrationPath =
-  "crates/rustok-product/src/migrations/m20260829_000019_retire_product_category_closure_invariant.rs";
-const migrationIndexPath = "crates/rustok-product/src/migrations/mod.rs";
-const contractPath = "crates/rustok-product/docs/category-taxonomy-binding.md";
+  "crates/modules/rustok-product/src/migrations/m20260829_000019_retire_product_category_closure_invariant.rs";
+const migrationIndexPath = "crates/modules/rustok-product/src/migrations/mod.rs";
+const contractPath = "crates/modules/rustok-product/docs/category-taxonomy-binding.md";
 const backfillContractPath = "docs/migrations/backfill-contracts.json";
 
 const migration = fs.readFileSync(migrationPath, "utf8");

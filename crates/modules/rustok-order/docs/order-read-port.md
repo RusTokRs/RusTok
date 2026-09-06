@@ -186,7 +186,7 @@ storage or owner-invariant details.
 
 Source evidence is retained at:
 
-`crates/rustok-order/contracts/evidence/order-read-port-source.json`
+`crates/modules/rustok-order/contracts/evidence/order-read-port-source.json`
 
 Its status is `mounted_consumer_cutover_unvalidated`. Six owner read operations,
 host composition, and all mounted admin REST, GraphQL, and storefront complete and

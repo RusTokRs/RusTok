@@ -77,7 +77,7 @@ This source wave does not change:
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/checkout-order-stage-error-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/checkout-order-stage-error-safety-source-review.json`
 - `scripts/verify/verify-commerce-checkout-order-stage-context.mjs`
 - `scripts/verify/verify-commerce-checkout-completion-cutover.mjs`
 - `scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`

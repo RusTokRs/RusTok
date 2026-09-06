@@ -8,12 +8,12 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution-contract.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution-contract.json";
 const sourceContractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json";
 const runnerPath = "scripts/evidence/capture-iggy-dlq-duplicate-external-scan.mjs";
 const evidencePath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution.json";
 const expectedVerifier =
   "scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs";
 const expectedCase =
@@ -212,7 +212,7 @@ if (!sameValue(contract.required_offset_observations, expectedOffsets)) {
 if (
   sourceContract.status !== "source_complete_runtime_pending" ||
   sourceContract.execution_status !== "not_run" ||
-  sourceContract.test !== "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs" ||
+  sourceContract.test !== "crates/modules/rustok-iggy/tests/dlq_duplicate_external_scan.rs" ||
   sourceContract.case !== expectedCase ||
   sourceContract.verifier !==
     "scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs"

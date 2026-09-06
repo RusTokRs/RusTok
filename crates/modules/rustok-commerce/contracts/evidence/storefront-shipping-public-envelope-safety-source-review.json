@@ -1,12 +1,12 @@
 {
   "status": "commerce_storefront_shipping_public_envelope_source_reviewed_unvalidated",
   "scope": [
-    "crates/rustok-commerce/src/storefront_shipping.rs",
+    "crates/modules/rustok-commerce/src/storefront_shipping.rs",
     "scripts/verify/verify-commerce-storefront-shipping-public-envelope-safety.mjs",
     "scripts/verify/verify-commerce-storefront-shipping-enrichment-context.mjs",
     "scripts/verify/verify-commerce-storefront-cart-shipping-http-error-safety.mjs",
     "scripts/verify/verify-commerce-storefront-shipping-enrichment-diagnostic-safety.mjs",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_review": {
     "compatibility_signature_preserved": true,

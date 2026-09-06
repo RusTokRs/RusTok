@@ -7,16 +7,16 @@ Last reviewed: 2026-08-08
 - FFA status: `in_progress`
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
-- Consumer registry: `crates/rustok-commerce/contracts/commerce-fba-registry.json`
+- Consumer registry: `crates/modules/rustok-commerce/contracts/commerce-fba-registry.json`
 - Provider registries:
-  - `crates/rustok-payment/contracts/payment-fba-registry.json`
-  - `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`
-  - `crates/rustok-order/contracts/order-fba-registry.json`
-  - `crates/rustok-pricing/contracts/pricing-fba-registry.json`
-  - `crates/rustok-inventory/contracts/inventory-fba-registry.json`
-  - `crates/rustok-product/contracts/product-fba-registry.json`
-  - `crates/rustok-customer/contracts/customer-fba-registry.json`
-  - `crates/rustok-cart/contracts/cart-fba-registry.json`
+  - `crates/modules/rustok-payment/contracts/payment-fba-registry.json`
+  - `crates/modules/rustok-fulfillment/contracts/fulfillment-fba-registry.json`
+  - `crates/modules/rustok-order/contracts/order-fba-registry.json`
+  - `crates/modules/rustok-pricing/contracts/pricing-fba-registry.json`
+  - `crates/modules/rustok-inventory/contracts/inventory-fba-registry.json`
+  - `crates/modules/rustok-product/contracts/product-fba-registry.json`
+  - `crates/modules/rustok-customer/contracts/customer-fba-registry.json`
+  - `crates/modules/rustok-cart/contracts/cart-fba-registry.json`
 
 ## Payment workstream
 

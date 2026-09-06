@@ -13,18 +13,18 @@ const rejectMarker = (path, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`${path}: must not contain ${label}`);
 };
 
-const migration = 'crates/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs';
-const migrationRegistry = 'crates/rustok-forum/src/migrations/mod.rs';
+const migration = 'crates/modules/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs';
+const migrationRegistry = 'crates/modules/rustok-forum/src/migrations/mod.rs';
 const backfillContracts = 'docs/migrations/backfill-contracts.json';
-const relation = 'crates/rustok-forum/src/entities/forum_category_taxonomy_binding.rs';
-const runtimeTest = 'crates/rustok-forum/tests/category_taxonomy_binding.rs';
-const entities = 'crates/rustok-forum/src/entities/mod.rs';
-const legacyCategory = 'crates/rustok-forum/src/entities/forum_category.rs';
-const categoryService = 'crates/rustok-forum/src/services/category.rs';
-const categoryMutationSupport = 'crates/rustok-forum/src/services/category_mutation_support.rs';
-const categoryImport = 'crates/rustok-forum/src/services/category_import.rs';
-const categoryProjectionOwner = 'crates/rustok-forum/src/services/category_projection_owner.rs';
-const forumServices = 'crates/rustok-forum/src/services/mod.rs';
+const relation = 'crates/modules/rustok-forum/src/entities/forum_category_taxonomy_binding.rs';
+const runtimeTest = 'crates/modules/rustok-forum/tests/category_taxonomy_binding.rs';
+const entities = 'crates/modules/rustok-forum/src/entities/mod.rs';
+const legacyCategory = 'crates/modules/rustok-forum/src/entities/forum_category.rs';
+const categoryService = 'crates/modules/rustok-forum/src/services/category.rs';
+const categoryMutationSupport = 'crates/modules/rustok-forum/src/services/category_mutation_support.rs';
+const categoryImport = 'crates/modules/rustok-forum/src/services/category_import.rs';
+const categoryProjectionOwner = 'crates/modules/rustok-forum/src/services/category_projection_owner.rs';
+const forumServices = 'crates/modules/rustok-forum/src/services/mod.rs';
 
 for (const path of [
   migration,

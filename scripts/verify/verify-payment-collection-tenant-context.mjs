@@ -9,14 +9,14 @@ const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
-const source = read('crates/rustok-payment/src/ports.rs');
+const source = read('crates/modules/rustok-payment/src/ports.rs');
 const tenantEvidence = JSON.parse(read(
-  'crates/rustok-payment/contracts/evidence/payment-collection-tenant-diagnostic-safety-source.json',
+  'crates/modules/rustok-payment/contracts/evidence/payment-collection-tenant-diagnostic-safety-source.json',
 ));
 const ownerEvidence = JSON.parse(read(
-  'crates/rustok-payment/contracts/evidence/payment-collection-owner-error-diagnostic-safety-source.json',
+  'crates/modules/rustok-payment/contracts/evidence/payment-collection-owner-error-diagnostic-safety-source.json',
 ));
-const doc = read('crates/rustok-payment/docs/payment-collection-tenant-context.md');
+const doc = read('crates/modules/rustok-payment/docs/payment-collection-tenant-context.md');
 const failures = [];
 
 const requireText = (content, value, label) => {

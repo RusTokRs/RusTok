@@ -5,7 +5,7 @@ Status: **source-ready / unvalidated**
 ## Scope
 
 This source slice closes the retained-context gap for customer projection reads in
-`crates/rustok-commerce/src/controllers/store/orders.rs`:
+`crates/modules/rustok-commerce/src/controllers/store/orders.rs`:
 
 - customer lookup used by storefront order-access and ownership helpers;
 - the `/store/customers/me` route.

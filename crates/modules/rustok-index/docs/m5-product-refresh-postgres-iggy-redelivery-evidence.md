@@ -9,7 +9,7 @@ Status: `source_ready_maintainer_execution_pending`
 The source contract is:
 
 ```text
-crates/rustok-index/contracts/evidence/product-refresh-postgres-iggy-source.json
+crates/modules/rustok-index/contracts/evidence/product-refresh-postgres-iggy-source.json
 ```
 
 The source verifier is:

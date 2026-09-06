@@ -22,7 +22,7 @@ Document the runtime purpose, expected format, and default behavior for this env
 
 ## Evidence
 
-- `crates/rustok-workflow/admin/src/transport/graphql_adapter.rs:48`
+- `crates/modules/rustok-workflow/admin/src/transport/graphql_adapter.rs:48`
 
 ## Notes
 

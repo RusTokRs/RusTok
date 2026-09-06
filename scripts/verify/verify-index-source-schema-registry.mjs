@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const sourceRegistryPath = 'crates/rustok-index/src/application/source_schema_registry.rs';
+const sourceRegistryPath = 'crates/modules/rustok-index/src/application/source_schema_registry.rs';
 const sourceRegistry = requireMarkers(sourceRegistryPath, [
   'pub struct IndexSchemaSourceCatalog',
   'BTreeMap<SchemaRef, IndexSchemaSourceDescriptor>',
@@ -52,19 +52,19 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'mod source_schema_registry;',
   'IndexSchemaSourceCatalog',
   'SharedIndexSchemaRegistry',
   'materialize_index_schema_registry',
   'register_index_schema_source',
 ]);
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'fn register_runtime_extensions(',
   'get_or_insert_with::<IndexSchemaSourceCatalog',
 ]);
 
-const socialGraph = requireMarkers('crates/rustok-social-graph/src/lib.rs', [
+const socialGraph = requireMarkers('crates/modules/rustok-social-graph/src/lib.rs', [
   '#[cfg(feature = "index")]',
   '&["index", "outbox"]',
   'social_graph_relation_index_schema()',
@@ -75,7 +75,7 @@ if (socialGraph.includes('PostgresIndexQueryPort::new')) {
   fail('Social Graph module composition must not construct the query port');
 }
 
-const distributionPath = 'crates/rustok-distribution/src/lib.rs';
+const distributionPath = 'crates/modules/rustok-distribution/src/lib.rs';
 const distribution = requireMarkers(distributionPath, [
   'materialize_index_schema_sources(&mut extensions)?;',
   'fn materialize_index_schema_sources(',
@@ -102,7 +102,7 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-source-replay-contract.mjs'",
   "'verify-index-query-runtime-composition.mjs'",
 ]);
-requireMarkers('crates/rustok-index/docs/m4-source-schema-registry.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-source-schema-registry.md', [
   'Status: `source_complete_execution_pending`',
   '`social_graph`',
   'entire schema identity across versions',
@@ -110,12 +110,12 @@ requireMarkers('crates/rustok-index/docs/m4-source-schema-registry.md', [
   'does not:',
   'Not run by the implementation agent',
 ]);
-requireMarkers('crates/rustok-index/docs/m4-query-planner.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-query-planner.md', [
   'M4 source-owned immutable schema registry: `source_complete_execution_pending`',
   '`SharedIndexSchemaRegistry`',
   'M4 server-owned shared query runtime composition: `source_complete_execution_pending`',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- [x] Add retained v4 plan/SQL snapshots and synchronized source guards.',
   '- [ ] Execute PostgreSQL/reference-engine equivalence capture and admit retained live evidence.',
 ]);

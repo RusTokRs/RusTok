@@ -8,28 +8,28 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(".");
 const failures = [];
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-search-locale-date-filter.json",
-  note: "crates/rustok-forum/docs/forum-23b2f3-search-locale-date-filter.md",
-  projection: "crates/rustok-forum/src/search_projection.rs",
-  filters: "crates/rustok-search/src/forum_document_filters.rs",
-  execution: "crates/rustok-search/src/forum_storefront_execution.rs",
-  searchLib: "crates/rustok-search/src/lib.rs",
-  graphqlOwner: "crates/rustok-search/src/graphql/forum_storefront.rs",
-  graphqlTypes: "crates/rustok-search/src/graphql/types.rs",
-  storefrontModel: "crates/rustok-search/storefront/src/model.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-search-locale-date-filter.json",
+  note: "crates/modules/rustok-forum/docs/forum-23b2f3-search-locale-date-filter.md",
+  projection: "crates/modules/rustok-forum/src/search_projection.rs",
+  filters: "crates/modules/rustok-search/src/forum_document_filters.rs",
+  execution: "crates/modules/rustok-search/src/forum_storefront_execution.rs",
+  searchLib: "crates/modules/rustok-search/src/lib.rs",
+  graphqlOwner: "crates/modules/rustok-search/src/graphql/forum_storefront.rs",
+  graphqlTypes: "crates/modules/rustok-search/src/graphql/types.rs",
+  storefrontModel: "crates/modules/rustok-search/storefront/src/model.rs",
   graphqlAdapter:
-    "crates/rustok-search/storefront/src/transport/forum_graphql_adapter.rs",
+    "crates/modules/rustok-search/storefront/src/transport/forum_graphql_adapter.rs",
   nativeAdapter:
-    "crates/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
-  transportFacade: "crates/rustok-search/storefront/src/transport/mod.rs",
-  engine: "crates/rustok-search/src/engine.rs",
+    "crates/modules/rustok-search/storefront/src/transport/forum_native_server_adapter.rs",
+  transportFacade: "crates/modules/rustok-search/storefront/src/transport/mod.rs",
+  engine: "crates/modules/rustok-search/src/engine.rs",
 };
 const forbiddenParallelPaths = [
-  "crates/rustok-search/src/forum_storefront_date_execution.rs",
-  "crates/rustok-search/src/forum_storefront_date_execution/types_and_execute.rs",
-  "crates/rustok-search/src/forum_storefront_date_execution/result_scan.rs",
-  "crates/rustok-search/src/forum_storefront_date_execution/normalization.rs",
-  "crates/rustok-search/src/forum_storefront_locale_date_filters.rs",
+  "crates/modules/rustok-search/src/forum_storefront_date_execution.rs",
+  "crates/modules/rustok-search/src/forum_storefront_date_execution/types_and_execute.rs",
+  "crates/modules/rustok-search/src/forum_storefront_date_execution/result_scan.rs",
+  "crates/modules/rustok-search/src/forum_storefront_date_execution/normalization.rs",
+  "crates/modules/rustok-search/src/forum_storefront_locale_date_filters.rs",
 ];
 
 function read(relativePath) {

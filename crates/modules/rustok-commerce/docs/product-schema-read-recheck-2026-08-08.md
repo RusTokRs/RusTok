@@ -4,7 +4,7 @@
 
 Rechecked the canonical ecommerce execution plan and the currently mounted Product GraphQL/HTTP paths against `main` at `442e5e591f68ec93a527630a14fbce8e6de2ba5e`, then continued the Product owner-boundary cutover through the current implementation branch.
 
-The source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`. This packet does not promote FBA/FFA or verification status and does not replace that plan.
+The source of truth remains `crates/modules/rustok-commerce/docs/implementation-plan.md`. This packet does not promote FBA/FFA or verification status and does not replace that plan.
 
 ## Recheck findings
 

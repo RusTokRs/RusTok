@@ -40,7 +40,7 @@ and remains represented as `CheckoutCompletionTransportError::ServerFn`. No new 
 
 This slice does not change:
 
-- `crates/rustok-order/storefront/src/transport.rs`;
+- `crates/modules/rustok-order/storefront/src/transport.rs`;
 - explicit native/GraphQL transport selection or the no-fallback policy;
 - the GraphQL adapter or `GraphqlCallContext` policy;
 - `CompleteCheckoutRequest`, `CheckoutCompletion`, or adjustment DTOs;
@@ -55,8 +55,8 @@ This slice does not change:
 
 Source evidence is recorded in:
 
-- `crates/rustok-order/contracts/evidence/storefront-native-client-diagnostics-source.json`;
-- `crates/rustok-order/contracts/evidence/storefront-native-client-diagnostics-source-review.json`.
+- `crates/modules/rustok-order/contracts/evidence/storefront-native-client-diagnostics-source.json`;
+- `crates/modules/rustok-order/contracts/evidence/storefront-native-client-diagnostics-source-review.json`.
 
 The focused guard is:
 

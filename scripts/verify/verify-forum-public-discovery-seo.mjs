@@ -14,23 +14,23 @@ const rejectText = (source, needle, label) => {
   }
 };
 
-const owner = read('crates/rustok-forum/src/services/public_discovery.rs');
-const services = read('crates/rustok-forum/src/services/mod.rs');
-const lib = read('crates/rustok-forum/src/lib.rs');
-const seo = read('crates/rustok-forum/src/seo_audience_targets.rs');
-const legacySeo = read('crates/rustok-forum/src/seo_targets.rs');
-const searchProjection = read('crates/rustok-forum/src/search_projection.rs');
-const searchEngine = read('crates/rustok-search/src/engine.rs');
-const searchIngestion = read('crates/rustok-search/src/ingestion.rs');
-const storefrontCore = read('crates/rustok-forum/storefront/src/core.rs');
+const owner = read('crates/modules/rustok-forum/src/services/public_discovery.rs');
+const services = read('crates/modules/rustok-forum/src/services/mod.rs');
+const lib = read('crates/modules/rustok-forum/src/lib.rs');
+const seo = read('crates/modules/rustok-forum/src/seo_audience_targets.rs');
+const legacySeo = read('crates/modules/rustok-forum/src/seo_targets.rs');
+const searchProjection = read('crates/modules/rustok-forum/src/search_projection.rs');
+const searchEngine = read('crates/modules/rustok-search/src/engine.rs');
+const searchIngestion = read('crates/modules/rustok-search/src/ingestion.rs');
+const storefrontCore = read('crates/modules/rustok-forum/storefront/src/core.rs');
 const contract = JSON.parse(
-  read('crates/rustok-forum/contracts/forum-public-discovery-seo.json'),
+  read('crates/modules/rustok-forum/contracts/forum-public-discovery-seo.json'),
 );
 const routeCutover = JSON.parse(
-  read('crates/rustok-forum/contracts/forum-search-canonical-route-cutover.json'),
+  read('crates/modules/rustok-forum/contracts/forum-search-canonical-route-cutover.json'),
 );
 const upstream = JSON.parse(
-  read('crates/rustok-forum/contracts/forum-category-audience-read.json'),
+  read('crates/modules/rustok-forum/contracts/forum-category-audience-read.json'),
 );
 
 for (const marker of [
@@ -218,7 +218,7 @@ if (routeCutover.reindex?.compatibility_fallback_added) {
 }
 if (
   upstream.downstream_completion !==
-  'crates/rustok-forum/contracts/forum-public-discovery-seo.json'
+  'crates/modules/rustok-forum/contracts/forum-public-discovery-seo.json'
 ) {
   throw new Error('category-read handoff must point to FORUM-20BI completion');
 }

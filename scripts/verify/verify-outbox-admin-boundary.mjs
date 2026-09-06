@@ -57,17 +57,17 @@ function rustFunctionBody(text, functionName) {
 }
 
 function assertOutboxAdminBoundary() {
-  const libPath = "crates/rustok-outbox/admin/src/lib.rs";
-  const corePath = "crates/rustok-outbox/admin/src/core.rs";
-  const transportPath = "crates/rustok-outbox/admin/src/transport/mod.rs";
-  const nativePath = "crates/rustok-outbox/admin/src/transport/native_server_adapter.rs";
-  const uiPath = "crates/rustok-outbox/admin/src/ui/leptos.rs";
-  const planPath = "crates/rustok-outbox/docs/implementation-plan.md";
+  const libPath = "crates/modules/rustok-outbox/admin/src/lib.rs";
+  const corePath = "crates/modules/rustok-outbox/admin/src/core.rs";
+  const transportPath = "crates/modules/rustok-outbox/admin/src/transport/mod.rs";
+  const nativePath = "crates/modules/rustok-outbox/admin/src/transport/native_server_adapter.rs";
+  const uiPath = "crates/modules/rustok-outbox/admin/src/ui/leptos.rs";
+  const planPath = "crates/modules/rustok-outbox/docs/implementation-plan.md";
   const registryPath = "docs/modules/registry.md";
 
   for (const removedPath of [
-    "crates/rustok-outbox/admin/src/api.rs",
-    "crates/rustok-outbox/admin/src/transport.rs",
+    "crates/modules/rustok-outbox/admin/src/api.rs",
+    "crates/modules/rustok-outbox/admin/src/transport.rs",
   ]) {
     if (existsSync(repoPath(removedPath))) {
       fail(`${removedPath}: legacy pre-FFA admin transport path must stay absent`);

@@ -6,22 +6,22 @@ import { ConsumerFbaRuntimeOrderError, verifyConsumerFbaRuntimeOrder } from './v
 
 const repoRoot = process.cwd();
 const files = [
-  'crates/rustok-blog/contracts/blog-fba-registry.json',
-  'crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json',
-  'crates/rustok-blog/rustok-module.toml',
-  'crates/rustok-blog/src/services/comment.rs',
-  'crates/rustok-blog/src/dto/comment.rs',
-  'crates/rustok-blog/src/error.rs',
-  'crates/rustok-comments/contracts/comments-fba-registry.json',
-  'crates/rustok-seo/contracts/seo-fba-registry.json',
-  'crates/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json',
-  'crates/rustok-seo/rustok-module.toml',
-  'crates/rustok-seo/src/services/targets.rs',
-  'crates/rustok-media/contracts/media-fba-registry.json',
-  'crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json',
-  'crates/rustok-media/src/ports.rs',
-  'crates/rustok-media/src/dto.rs',
-  'crates/rustok-seo-targets/src/lib.rs',
+  'crates/modules/rustok-blog/contracts/blog-fba-registry.json',
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json',
+  'crates/modules/rustok-blog/rustok-module.toml',
+  'crates/modules/rustok-blog/src/services/comment.rs',
+  'crates/modules/rustok-blog/src/dto/comment.rs',
+  'crates/modules/rustok-blog/src/error.rs',
+  'crates/modules/rustok-comments/contracts/comments-fba-registry.json',
+  'crates/modules/rustok-seo/contracts/seo-fba-registry.json',
+  'crates/modules/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json',
+  'crates/modules/rustok-seo/rustok-module.toml',
+  'crates/modules/rustok-seo/src/services/targets.rs',
+  'crates/modules/rustok-media/contracts/media-fba-registry.json',
+  'crates/modules/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json',
+  'crates/modules/rustok-media/src/ports.rs',
+  'crates/modules/rustok-media/src/dto.rs',
+  'crates/modules/rustok-seo-targets/src/lib.rs',
 ];
 
 function fixture() {
@@ -47,7 +47,7 @@ function expectFailure(root, pattern) {
 verifyConsumerFbaRuntimeOrder();
 
 const blogDrift = fixture();
-const commentService = path.join(blogDrift, 'crates/rustok-blog/src/services/comment.rs');
+const commentService = path.join(blogDrift, 'crates/modules/rustok-blog/src/services/comment.rs');
 fs.writeFileSync(
   commentService,
   fs.readFileSync(commentService, 'utf8').replace('self.ensure_post_exists(tenant_id, post_id).await?;', '/* missing post ownership guard */'),
@@ -55,7 +55,7 @@ fs.writeFileSync(
 expectFailure(blogDrift, /blog create_comment source marker missing: ensure_post_exists/);
 
 const seoImageBoundaryDrift = fixture();
-const seoTargets = path.join(seoImageBoundaryDrift, 'crates/rustok-seo-targets/src/lib.rs');
+const seoTargets = path.join(seoImageBoundaryDrift, 'crates/modules/rustok-seo-targets/src/lib.rs');
 fs.writeFileSync(
   seoTargets,
   fs.readFileSync(seoTargets, 'utf8').replace(

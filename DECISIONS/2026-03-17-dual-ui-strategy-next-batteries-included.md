@@ -12,7 +12,7 @@ RusToK supports two UI stacks:
 - **Next.js** — secondary, for JS developers familiar with the React ecosystem
 
 History of changes to the UI package structure approach:
-1. *(before 2026-03-17)* Next.js UI was stored as npm packages inside crates (`crates/rustok-blog/ui/admin/`)
+1. *(before 2026-03-17)* Next.js UI was stored as npm packages inside crates (`crates/modules/rustok-blog/ui/admin/`)
 2. *(2026-03-17)* Next.js moved to "batteries included" — all UI directly in `apps/next-admin/src/features/`; Leptos UI via feature flags in `src/admin/` of a single crate
 3. *(2026-03-18)* **Current solution**: both stacks get separate publishable packages, but structured differently. Details below.
 
@@ -25,7 +25,7 @@ Leptos UI is located inside the module crate's directory in subdirectories `admi
 In the main module code (backend), feature flags may exist for logical connection with the UI, but physically they are separate crates.
 
 ```text
-crates/rustok-blog/
+crates/modules/rustok-blog/
   Cargo.toml           # rustok-blog (backend)
   src/
   admin/               # rustok-blog-admin → crates.io
@@ -104,7 +104,7 @@ To remove a module from Next.js:
 ### 4. rustok-module.toml — declaring UI crates/packages
 
 ```toml
-# crates/rustok-blog/rustok-module.toml
+# crates/modules/rustok-blog/rustok-module.toml
 [provides.admin_ui]
 leptos_crate = "rustok-blog-admin"   # Cargo crate name
 next_package = "@rustok/blog-admin"  # npm package name

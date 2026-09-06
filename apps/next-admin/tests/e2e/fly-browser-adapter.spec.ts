@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 const adapterPath = resolve(
   process.cwd(),
-  '../../crates/fly-browser/assets/fly-browser.js'
+  '../../crates/ui/fly-browser/assets/fly-browser.js'
 );
 
 async function mountAdapter(page: Page) {

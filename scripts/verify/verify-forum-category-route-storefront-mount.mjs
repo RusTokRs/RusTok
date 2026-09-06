@@ -11,16 +11,16 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  core: "crates/rustok-forum/storefront/src/core.rs",
-  packageLib: "crates/rustok-forum/storefront/src/lib.rs",
-  transport: "crates/rustok-forum/storefront/src/transport/mod.rs",
+  core: "crates/modules/rustok-forum/storefront/src/core.rs",
+  packageLib: "crates/modules/rustok-forum/storefront/src/lib.rs",
+  transport: "crates/modules/rustok-forum/storefront/src/transport/mod.rs",
   host: "apps/storefront/src/forum_category_route.rs",
   hostLib: "apps/storefront/src/lib.rs",
   contract:
-    "crates/rustok-forum/contracts/forum-category-route-storefront-mount.json",
+    "crates/modules/rustok-forum/contracts/forum-category-route-storefront-mount.json",
   contractTest:
-    "crates/rustok-forum/tests/category_route_storefront_mount_contract.rs",
-  docs: "crates/rustok-forum/docs/forum-24o-category-route-storefront-mount.md",
+    "crates/modules/rustok-forum/tests/category_route_storefront_mount_contract.rs",
+  docs: "crates/modules/rustok-forum/docs/forum-24o-category-route-storefront-mount.md",
 };
 
 function read(relativePath) {

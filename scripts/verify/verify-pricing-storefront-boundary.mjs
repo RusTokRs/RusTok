@@ -41,15 +41,15 @@ function assertNotContains(text, pattern, description) {
 }
 
 const files = {
-  lib: "crates/rustok-pricing/storefront/src/lib.rs",
-  core: "crates/rustok-pricing/storefront/src/core.rs",
-  ui: "crates/rustok-pricing/storefront/src/ui/leptos.rs",
-  transport: "crates/rustok-pricing/storefront/src/transport/mod.rs",
-  cargo: "crates/rustok-pricing/storefront/Cargo.toml",
-  legacyApi: "crates/rustok-pricing/storefront/src/api.rs",
-  graphqlAdapter: "crates/rustok-pricing/storefront/src/transport/graphql_adapter.rs",
-  nativeServerAdapter: "crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs",
-  implementationPlan: "crates/rustok-pricing/docs/implementation-plan.md",
+  lib: "crates/modules/rustok-pricing/storefront/src/lib.rs",
+  core: "crates/modules/rustok-pricing/storefront/src/core.rs",
+  ui: "crates/modules/rustok-pricing/storefront/src/ui/leptos.rs",
+  transport: "crates/modules/rustok-pricing/storefront/src/transport/mod.rs",
+  cargo: "crates/modules/rustok-pricing/storefront/Cargo.toml",
+  legacyApi: "crates/modules/rustok-pricing/storefront/src/api.rs",
+  graphqlAdapter: "crates/modules/rustok-pricing/storefront/src/transport/graphql_adapter.rs",
+  nativeServerAdapter: "crates/modules/rustok-pricing/storefront/src/transport/native_server_adapter.rs",
+  implementationPlan: "crates/modules/rustok-pricing/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
   packageJson: "package.json",
 };

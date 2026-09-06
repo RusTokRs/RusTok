@@ -82,11 +82,11 @@ add Blog-owned dead-letter state or automatic replay.
 
 Source packet:
 
-`crates/rustok-outbox/contracts/evidence/blog-comments-audit-relay-postgres-source.json`
+`crates/modules/rustok-outbox/contracts/evidence/blog-comments-audit-relay-postgres-source.json`
 
 Harness:
 
-`crates/rustok-outbox/tests/blog_comments_audit_relay_postgres.rs`
+`crates/modules/rustok-outbox/tests/blog_comments_audit_relay_postgres.rs`
 
 Guard:
 

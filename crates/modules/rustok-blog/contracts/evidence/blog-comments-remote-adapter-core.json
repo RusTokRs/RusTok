@@ -6,10 +6,10 @@
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "runtime_status": "not_run",
-  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-67.md",
+  "generated_from": "crates/modules/rustok-blog/docs/implementation-plan-slice-67.md",
   "source_contract": {
-    "provider_adapter": "crates/rustok-comments/src/remote.rs",
-    "provider_export": "crates/rustok-comments/src/lib.rs",
+    "provider_adapter": "crates/modules/rustok-comments/src/remote.rs",
+    "provider_export": "crates/modules/rustok-comments/src/lib.rs",
     "port": "rustok_comments::CommentsThreadPort",
     "transport": "rustok_comments::CommentsThreadTransport",
     "context": "rustok_api::PortContext",

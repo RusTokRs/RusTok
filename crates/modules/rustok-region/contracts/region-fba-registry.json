@@ -37,10 +37,10 @@
     "cached_snapshot"
   ],
   "evidence": {
-    "local_plan": "crates/rustok-region/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-region/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-region-fba.mjs",
-    "runtime_order_smoke": "crates/rustok-region/contracts/evidence/region-provider-runtime-order-smoke.json",
+    "runtime_order_smoke": "crates/modules/rustok-region/contracts/evidence/region-provider-runtime-order-smoke.json",
     "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs"
   },
   "contract_tests": {

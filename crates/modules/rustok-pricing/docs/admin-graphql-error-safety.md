@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This slice hardens the public and diagnostic boundary for the four Pricing admin
 GraphQL read operations selected by
-`crates/rustok-pricing/admin/src/transport.rs`:
+`crates/modules/rustok-pricing/admin/src/transport.rs`:
 
 - `fetch_bootstrap`;
 - `fetch_active_price_lists`;
@@ -98,8 +98,8 @@ This work does not change:
 
 ## Static evidence
 
-- `crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source.json`;
-- `crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source-review.json`;
+- `crates/modules/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source.json`;
+- `crates/modules/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source-review.json`;
 - `scripts/verify/verify-pricing-admin-graphql-error-safety.mjs`.
 
 The focused verifier is imported by

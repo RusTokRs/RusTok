@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "slice": "FORUM-12E/NOTIFY-03B-03H/NOTIFY-07C",
-  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
   "owner": "rustok-forum",
-  "forum_source_provider": "crates/rustok-forum/src/notification_source.rs",
-  "notifications_candidate_service": "crates/rustok-notifications/src/candidate.rs",
-  "notifications_candidate_contract": "crates/rustok-notifications/contracts/notifications-candidate-policy.json",
+  "forum_source_provider": "crates/modules/rustok-forum/src/notification_source.rs",
+  "notifications_candidate_service": "crates/modules/rustok-notifications/src/candidate.rs",
+  "notifications_candidate_contract": "crates/modules/rustok-notifications/contracts/notifications-candidate-policy.json",
   "recipient_policy_runtime": "apps/server/src/services/notification_recipient_policy.rs",
-  "social_graph_policy_contract": "crates/rustok-social-graph/contracts/social-graph-notification-policy.json",
+  "social_graph_policy_contract": "crates/modules/rustok-social-graph/contracts/social-graph-notification-policy.json",
   "delivered_invariants": {
     "forum_source": [
       "only an exact immutable forum_user_mentions relation can describe or resolve a user-mention event",

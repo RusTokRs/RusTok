@@ -43,7 +43,7 @@ compatibility.
 
 ## Retained PostgreSQL promotion packet — source complete
 
-`crates/rustok-distribution/tests/product_current_schema_promotion_postgres.rs` retains an isolated PostgreSQL
+`crates/modules/rustok-distribution/tests/product_current_schema_promotion_postgres.rs` retains an isolated PostgreSQL
 scenario using production Product and Index migrations plus the selected distribution runtime.
 
 The packet obtains the exact current Product schema from `SharedIndexSchemaRegistry` and asserts key `4`; it

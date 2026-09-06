@@ -114,12 +114,12 @@
     "fba_promoted": false
   },
   "required_source_files": [
-    "crates/rustok-telemetry/src/page_builder_provider_metrics.rs",
+    "crates/libs/rustok-telemetry/src/page_builder_provider_metrics.rs",
     "apps/server/Dockerfile.release",
     ".github/workflows/release.yml",
-    "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
     "scripts/evidence/capture-page-builder-provider-health-deployment-identity.mjs",
-    "crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs",
+    "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs",
     "docs/modules/page-builder-provider-health-deployment-identity-actualization-2026-08-09.md"
   ],
   "next_cursor": {

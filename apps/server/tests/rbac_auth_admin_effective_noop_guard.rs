@@ -27,7 +27,7 @@ fn update_user_block(admin: &str) -> &str {
 
 #[test]
 fn owner_policy_retains_exact_noop_and_malformed_repair() {
-    let policy = source("crates/rustok-rbac/src/role_mutation.rs");
+    let policy = source("crates/modules/rustok-rbac/src/role_mutation.rs");
 
     for required in [
         "RbacRoleMutationOutcome::Noop",

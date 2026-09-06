@@ -97,9 +97,9 @@ The direct-publish recovery path remains valid. If no exact rollback activation 
 New execution-pending packet:
 
 ```text
-crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs
-crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs
-crates/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json
+crates/modules/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs
+crates/modules/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs
+crates/modules/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json
 ```
 
 It retains three source scenarios:

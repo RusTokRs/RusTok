@@ -2,15 +2,15 @@
   "schema_version": 1,
   "status": "inventory_port_diagnostic_safety_source_unvalidated",
   "scope": {
-    "owner_source": "crates/rustok-inventory/src/ports.rs",
-    "owner_error": "crates/rustok-commerce-foundation/src/error.rs",
+    "owner_source": "crates/modules/rustok-inventory/src/ports.rs",
+    "owner_error": "crates/modules/rustok-commerce-foundation/src/error.rs",
     "owner_mapper": "inventory_error_to_port_error",
     "storage_mapper": "storage_unavailable_with_context",
     "tenant_parser": "parse_port_tenant_id",
     "variant_lookup": "load_tenant_variant",
     "focused_verifier": "scripts/verify/verify-inventory-port-diagnostic-safety.mjs",
     "aggregate_verifier": "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
-    "documentation": "crates/rustok-inventory/docs/inventory-port-diagnostic-safety.md"
+    "documentation": "crates/modules/rustok-inventory/docs/inventory-port-diagnostic-safety.md"
   },
   "source_contract": {
     "commerce_error_variant_count": 15,

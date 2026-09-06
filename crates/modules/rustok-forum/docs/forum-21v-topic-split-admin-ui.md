@@ -9,7 +9,7 @@ FORUM-21V composes the existing FORUM-21P selected-reply split owner and FORUM-2
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-split-admin-ui.json
+crates/modules/rustok-forum/contracts/forum-topic-split-admin-ui.json
 ```
 
 ## Leptos admin

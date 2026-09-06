@@ -57,7 +57,7 @@ composition and all other checkout owners are unchanged.
 
 ## Evidence
 
-- `crates/rustok-inventory/contracts/evidence/availability-quantity-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-inventory/contracts/evidence/availability-quantity-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-inventory-availability-quantity-context.mjs`
 - `scripts/verify/verify-inventory-availability-quantity-local-context.mjs`
 

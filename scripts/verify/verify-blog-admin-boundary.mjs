@@ -42,27 +42,27 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-blog/admin/src/lib.rs";
-const corePath = "crates/rustok-blog/admin/src/core.rs";
-const modelPath = "crates/rustok-blog/admin/src/model.rs";
-const uiPath = "crates/rustok-blog/admin/src/ui/leptos.rs";
-const richtextAdapterPath = "crates/rustok-blog/admin/src/ui/richtext.rs";
-const sharedRichtextAdapterPath = "crates/leptos-ui/src/richtext.rs";
-const moderationPath = "crates/rustok-blog/admin/src/moderation.rs";
-const transportPath = "crates/rustok-blog/admin/src/transport/mod.rs";
-const graphqlAdapterPath = "crates/rustok-blog/admin/src/transport/graphql_adapter.rs";
-const moderationAdapterPath = "crates/rustok-blog/admin/src/transport/moderation_adapter.rs";
-const nativeAdapterPath = "crates/rustok-blog/admin/src/transport/native_server_adapter.rs";
+const libPath = "crates/modules/rustok-blog/admin/src/lib.rs";
+const corePath = "crates/modules/rustok-blog/admin/src/core.rs";
+const modelPath = "crates/modules/rustok-blog/admin/src/model.rs";
+const uiPath = "crates/modules/rustok-blog/admin/src/ui/leptos.rs";
+const richtextAdapterPath = "crates/modules/rustok-blog/admin/src/ui/richtext.rs";
+const sharedRichtextAdapterPath = "crates/ui/leptos-ui/src/richtext.rs";
+const moderationPath = "crates/modules/rustok-blog/admin/src/moderation.rs";
+const transportPath = "crates/modules/rustok-blog/admin/src/transport/mod.rs";
+const graphqlAdapterPath = "crates/modules/rustok-blog/admin/src/transport/graphql_adapter.rs";
+const moderationAdapterPath = "crates/modules/rustok-blog/admin/src/transport/moderation_adapter.rs";
+const nativeAdapterPath = "crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs";
 const hostCargoPath = "apps/admin/Cargo.toml";
-const graphqlTypesPath = "crates/rustok-blog/src/graphql/types.rs";
-const graphqlMutationPath = "crates/rustok-blog/src/graphql/mutation.rs";
-const graphqlRateLimitPath = "crates/rustok-blog/src/graphql/rate_limit.rs";
-const legacyApiPath = "crates/rustok-blog/admin/src/api.rs";
-const implementationPlanPath = "crates/rustok-blog/docs/implementation-plan.md";
+const graphqlTypesPath = "crates/modules/rustok-blog/src/graphql/types.rs";
+const graphqlMutationPath = "crates/modules/rustok-blog/src/graphql/mutation.rs";
+const graphqlRateLimitPath = "crates/modules/rustok-blog/src/graphql/rate_limit.rs";
+const legacyApiPath = "crates/modules/rustok-blog/admin/src/api.rs";
+const implementationPlanPath = "crates/modules/rustok-blog/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
-const adminRichtextEvidencePath = "crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json";
-const adminEnLocalePath = "crates/rustok-blog/admin/locales/en.json";
-const adminRuLocalePath = "crates/rustok-blog/admin/locales/ru.json";
+const adminRichtextEvidencePath = "crates/modules/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json";
+const adminEnLocalePath = "crates/modules/rustok-blog/admin/locales/en.json";
+const adminRuLocalePath = "crates/modules/rustok-blog/admin/locales/ru.json";
 
 if (existsSync(repoPath(legacyApiPath))) {
   fail(`${legacyApiPath}: legacy GraphQL api adapter must live under transport/graphql_adapter.rs`);

@@ -1,5 +1,5 @@
 ---
-id: doc://crates/rustok-forum/docs/forum-12b2-owner-write-integration.md
+id: doc://crates/modules/rustok-forum/docs/forum-12b2-owner-write-integration.md
 kind: implementation_record
 language: en
 status: delivered

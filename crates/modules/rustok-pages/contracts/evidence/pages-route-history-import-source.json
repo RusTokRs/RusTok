@@ -76,7 +76,7 @@
     "page_foreign_key": false
   },
   "regression": {
-    "path": "crates/rustok-pages/tests/page_route_history_import_sqlite.rs",
+    "path": "crates/modules/rustok-pages/tests/page_route_history_import_sqlite.rs",
     "tests": [
       "existing_page_import_is_replay_safe_and_becomes_gone_after_delete",
       "deleted_page_import_preserves_redirects_and_rejects_provenance_drift",
@@ -84,6 +84,6 @@
     ],
     "backend": "sqlite_in_memory"
   },
-  "source_verifier": "crates/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs",
+  "source_verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs",
   "packet": "docs/modules/pages-page-builder-route-history-import-packet-2026-08-06.md"
 }

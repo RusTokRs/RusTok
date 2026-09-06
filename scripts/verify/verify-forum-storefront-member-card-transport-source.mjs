@@ -14,14 +14,14 @@ function forbid(text, marker, label) {
   if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
 }
 
-const memberCardQuery = read("crates/rustok-forum/src/graphql/member_card_query.rs");
-const unreadQuery = read("crates/rustok-forum/src/graphql/storefront_read_state.rs");
-const owner = read("crates/rustok-forum/src/services/member_card.rs");
-const model = read("crates/rustok-forum/storefront/src/model.rs");
-const graphql = read("crates/rustok-forum/storefront/src/transport/graphql_adapter.rs");
-const native = read("crates/rustok-forum/storefront/src/transport/native_server_adapter.rs");
-const ui = read("crates/rustok-forum/storefront/src/ui/leptos.rs");
-const cargo = read("crates/rustok-forum/storefront/Cargo.toml");
+const memberCardQuery = read("crates/modules/rustok-forum/src/graphql/member_card_query.rs");
+const unreadQuery = read("crates/modules/rustok-forum/src/graphql/storefront_read_state.rs");
+const owner = read("crates/modules/rustok-forum/src/services/member_card.rs");
+const model = read("crates/modules/rustok-forum/storefront/src/model.rs");
+const graphql = read("crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs");
+const native = read("crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs");
+const ui = read("crates/modules/rustok-forum/storefront/src/ui/leptos.rs");
+const cargo = read("crates/modules/rustok-forum/storefront/Cargo.toml");
 const packet = read(
   "docs/modules/forum-15-storefront-member-card-transport-actualization-2026-08-10.md",
 );

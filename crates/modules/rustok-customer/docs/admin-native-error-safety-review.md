@@ -21,11 +21,11 @@ Source review confirms:
 
 Expected changed files are limited to:
 
-- `crates/rustok-customer/admin/src/transport/native_server_adapter.rs`;
+- `crates/modules/rustok-customer/admin/src/transport/native_server_adapter.rs`;
 - `scripts/verify/verify-customer-admin-native-error-safety.mjs`;
-- `crates/rustok-customer/contracts/evidence/admin-native-error-safety-source.json`;
-- `crates/rustok-customer/docs/admin-native-error-safety.md`;
-- `crates/rustok-customer/docs/admin-native-error-safety-review.md`.
+- `crates/modules/rustok-customer/contracts/evidence/admin-native-error-safety-source.json`;
+- `crates/modules/rustok-customer/docs/admin-native-error-safety.md`;
+- `crates/modules/rustok-customer/docs/admin-native-error-safety-review.md`.
 
 No Customer core error variants, services, DTOs, Cargo dependencies, transport routes, or host composition are changed.
 

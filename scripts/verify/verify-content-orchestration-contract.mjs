@@ -3,14 +3,14 @@ import { readFileSync } from 'node:fs';
 
 const checks = [];
 const read = (path) => readFileSync(path, 'utf8');
-const service = read('crates/rustok-content/src/services/content_orchestration_service.rs');
-const resolver = read('crates/rustok-content/src/services/canonical_url_service.rs');
-const serverBridge = read('crates/rustok-content-orchestration/src/lib.rs');
+const service = read('crates/modules/rustok-content/src/services/content_orchestration_service.rs');
+const resolver = read('crates/modules/rustok-content/src/services/canonical_url_service.rs');
+const serverBridge = read('crates/modules/rustok-content-orchestration/src/lib.rs');
 const productionBridge = serverBridge.split('#[cfg(all(\n    test,')[0];
-const plan = read('crates/rustok-content/docs/implementation-plan.md');
-const docs = read('crates/rustok-content/docs/README.md');
-const runbook = read('crates/rustok-content/docs/runbook.md');
-const integrationTests = read('crates/rustok-content/tests/integration.rs');
+const plan = read('crates/modules/rustok-content/docs/implementation-plan.md');
+const docs = read('crates/modules/rustok-content/docs/README.md');
+const runbook = read('crates/modules/rustok-content/docs/runbook.md');
+const integrationTests = read('crates/modules/rustok-content/tests/integration.rs');
 const registry = read('docs/modules/registry.md');
 const pkg = read('package.json');
 

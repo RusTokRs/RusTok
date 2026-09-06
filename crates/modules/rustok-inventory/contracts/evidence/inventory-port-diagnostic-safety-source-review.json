@@ -2,11 +2,11 @@
   "schema_version": 1,
   "status": "inventory_port_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-inventory/src/ports.rs",
-    "crates/rustok-commerce-foundation/src/error.rs",
+    "crates/modules/rustok-inventory/src/ports.rs",
+    "crates/modules/rustok-commerce-foundation/src/error.rs",
     "scripts/verify/verify-inventory-port-diagnostic-safety.mjs",
-    "crates/rustok-inventory/contracts/evidence/inventory-port-diagnostic-safety-source.json",
-    "crates/rustok-inventory/docs/inventory-port-diagnostic-safety.md",
+    "crates/modules/rustok-inventory/contracts/evidence/inventory-port-diagnostic-safety-source.json",
+    "crates/modules/rustok-inventory/docs/inventory-port-diagnostic-safety.md",
     "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
     "scripts/verify/verify-ecommerce-public-port-error-safety-v2.test.mjs"
   ],

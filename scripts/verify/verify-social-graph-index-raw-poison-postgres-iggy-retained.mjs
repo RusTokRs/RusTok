@@ -8,13 +8,13 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution-contract.json";
+  "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution-contract.json";
 const sourceContractPath =
-  "crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-source.json";
+  "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-source.json";
 const runnerPath =
   "scripts/evidence/capture-social-graph-index-raw-poison-postgres-iggy.mjs";
 const evidencePath =
-  "crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution.json";
+  "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution.json";
 const expectedVerifier =
   "scripts/verify/verify-social-graph-index-raw-poison-postgres-iggy-retained.mjs";
 const expectedCases = [

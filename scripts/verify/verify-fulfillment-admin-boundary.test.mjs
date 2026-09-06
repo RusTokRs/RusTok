@@ -93,13 +93,13 @@ pub async fn reactivate_shipping_option() {}
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-fulfillment-boundary-"));
-  writeFixtureFile(root, "crates/rustok-fulfillment/admin/src/lib.rs", libSource(options));
-  writeFixtureFile(root, "crates/rustok-fulfillment/admin/src/core.rs", coreSource(options));
-  writeFixtureFile(root, "crates/rustok-fulfillment/admin/src/ui/leptos.rs", uiSource(options));
-  writeFixtureFile(root, "crates/rustok-fulfillment/admin/src/transport.rs", transportSource(options));
-  writeFixtureFile(root, "crates/rustok-fulfillment/admin/src/transport/graphql_adapter.rs", apiSource());
-  if (options.legacyApi) writeFixtureFile(root, "crates/rustok-fulfillment/admin/src/api.rs", apiSource());
-  writeFixtureFile(root, "crates/rustok-fulfillment/docs/implementation-plan.md", "verify-fulfillment-admin-boundary.mjs");
+  writeFixtureFile(root, "crates/modules/rustok-fulfillment/admin/src/lib.rs", libSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-fulfillment/admin/src/core.rs", coreSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-fulfillment/admin/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-fulfillment/admin/src/transport.rs", transportSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-fulfillment/admin/src/transport/graphql_adapter.rs", apiSource());
+  if (options.legacyApi) writeFixtureFile(root, "crates/modules/rustok-fulfillment/admin/src/api.rs", apiSource());
+  writeFixtureFile(root, "crates/modules/rustok-fulfillment/docs/implementation-plan.md", "verify-fulfillment-admin-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-fulfillment-admin-boundary.mjs");
   return root;
 }

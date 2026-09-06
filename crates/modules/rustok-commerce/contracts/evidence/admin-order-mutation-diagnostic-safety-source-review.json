@@ -1,11 +1,11 @@
 {
   "status": "commerce_admin_order_mutation_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/controllers/admin/orders.rs",
-    "crates/rustok-commerce/docs/admin-order-mutation-diagnostic-safety.md",
+    "crates/modules/rustok-commerce/src/controllers/admin/orders.rs",
+    "crates/modules/rustok-commerce/docs/admin-order-mutation-diagnostic-safety.md",
     "scripts/verify/verify-commerce-admin-order-mutation-diagnostic-safety.mjs",
     "scripts/verify/verify-commerce-admin-order-route-error-context.mjs",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_contract": {
     "raw_order_error_logged": false,

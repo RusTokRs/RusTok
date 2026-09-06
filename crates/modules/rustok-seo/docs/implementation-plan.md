@@ -53,8 +53,8 @@ Rust gate passes on the same revision.
   owner-provided descriptors. Other target providers and live consumer
   execution remain required before `boundary_ready`.
   The source-locked contract and evidence are
-  `crates/rustok-seo/contracts/seo-fba-registry.json` and
-  `crates/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json`.
+  `crates/modules/rustok-seo/contracts/seo-fba-registry.json` and
+  `crates/modules/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json`.
 
 ## Next results
 

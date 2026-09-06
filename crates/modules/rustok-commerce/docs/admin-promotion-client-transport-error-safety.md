@@ -5,9 +5,9 @@ Status: **source-ready / unvalidated**
 ## Scope
 
 This source slice covers the final Commerce Admin promotion facade in
-`crates/rustok-commerce/admin/src/transport/promotion.rs` and its client error
+`crates/modules/rustok-commerce/admin/src/transport/promotion.rs` and its client error
 policy in
-`crates/rustok-commerce/admin/src/transport/promotion_client_error_safety.rs`.
+`crates/modules/rustok-commerce/admin/src/transport/promotion_client_error_safety.rs`.
 
 Covered operations:
 

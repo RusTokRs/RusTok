@@ -60,9 +60,9 @@ deployment run is still required as live evidence.
 - Leptos remains native `#[server]` first with the parallel GraphQL/headless
   contract. `apps/server` is a composition root, not the owner of AI
   capability logic.
-- Static evidence: `crates/rustok-ai/contracts/ai-fba-registry.json`,
-  `crates/rustok-ai/contracts/evidence/ai-runtime-static-matrix.json`,
-  `crates/rustok-ai/contracts/evidence/ai-runtime-fallback-smoke.json`,
+- Static evidence: `crates/modules/rustok-ai/contracts/ai-fba-registry.json`,
+  `crates/modules/rustok-ai/contracts/evidence/ai-runtime-static-matrix.json`,
+  `crates/modules/rustok-ai/contracts/evidence/ai-runtime-fallback-smoke.json`,
   `scripts/verify/verify-ai-fba-baseline.mjs`, and
   `scripts/verify/verify-orchestrator-fba-runtime-order.mjs`. Domain support
   ownership is checked by `scripts/verify/verify-ai-domain-verticals.mjs`.

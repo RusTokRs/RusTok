@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
-const testPath = "crates/rustok-groups/tests/moderation_subject_postgres.rs";
-const docPath = "crates/rustok-groups/docs/moderation-subject-postgres-contract.md";
+const testPath = "crates/modules/rustok-groups/tests/moderation_subject_postgres.rs";
+const docPath = "crates/modules/rustok-groups/docs/moderation-subject-postgres-contract.md";
 const workflowPath = ".github/workflows/groups-moderation-subject-postgres.yml";
 
 const test = fs.readFileSync(testPath, "utf8");

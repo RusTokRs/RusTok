@@ -4,7 +4,7 @@ Status: **source-ready / maintainer execution pending**
 
 ## Scope
 
-`crates/rustok-forum/tests/moderation_effect_contract_postgres.rs` retains real PostgreSQL producer evidence for Forum reply moderation effects that were intentionally left distinct in FORUM-19:
+`crates/modules/rustok-forum/tests/moderation_effect_contract_postgres.rs` retains real PostgreSQL producer evidence for Forum reply moderation effects that were intentionally left distinct in FORUM-19:
 
 - `RejectPublication` accounting, audit, idempotent replay, and already-rejected no-op behavior;
 - `Remove + SetVisibility(Removed)` through the complete Forum reply-removal owner path, including accepted-solution cleanup and tombstone preservation;

@@ -12,15 +12,15 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const routing = read('crates/rustok-commerce/src/graphql/mod.rs');
+const routing = read('crates/modules/rustok-commerce/src/graphql/mod.rs');
 const facade = readCommerceSafeQuerySource(read);
 const boundary = read(
-  'crates/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs',
+  'crates/modules/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs',
 );
-const source = read('crates/rustok-commerce/src/graphql/query.rs');
-const orderErrors = read('crates/rustok-order/src/error.rs');
-const paymentErrors = read('crates/rustok-payment/src/error.rs');
-const fulfillmentErrors = read('crates/rustok-fulfillment/src/error.rs');
+const source = read('crates/modules/rustok-commerce/src/graphql/query.rs');
+const orderErrors = read('crates/modules/rustok-order/src/error.rs');
+const paymentErrors = read('crates/modules/rustok-payment/src/error.rs');
+const fulfillmentErrors = read('crates/modules/rustok-fulfillment/src/error.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {

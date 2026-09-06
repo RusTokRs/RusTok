@@ -2,7 +2,7 @@ import fs from "node:fs";
 
 const testPath = "apps/server/tests/groups_leave_enforcement_postgres.rs";
 const sqliteTestPath = "apps/server/tests/groups_leave_enforcement_sqlite.rs";
-const contractPath = "crates/rustok-groups/contracts/groups-effective-membership-access.json";
+const contractPath = "crates/modules/rustok-groups/contracts/groups-effective-membership-access.json";
 
 const test = fs.readFileSync(testPath, "utf8");
 const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));

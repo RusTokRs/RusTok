@@ -5,7 +5,7 @@
   "format": "page_builder_generic_accessibility_browser_packet_verifier_source_v1",
   "status": "source_ready_maintainer_execution_pending",
   "input": {
-    "execution_contract": "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json",
+    "execution_contract": "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json",
     "required_format": "page_builder_generic_accessibility_browser_execution_v1",
     "required_status": "browser_keyboard_accessibility_tree_passed_screen_reader_pending",
     "source_commit_must_equal_checkout_head": true,

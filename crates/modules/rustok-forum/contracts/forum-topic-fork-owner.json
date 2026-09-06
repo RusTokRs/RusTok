@@ -111,7 +111,7 @@
   ],
   "migration": "m20260804_000021_add_forum_topic_fork_operations",
   "verification": {
-    "sqlite_contract": "crates/rustok-forum/tests/topic_fork_sqlite.rs",
+    "sqlite_contract": "crates/modules/rustok-forum/tests/topic_fork_sqlite.rs",
     "static_verifier": "scripts/verify/verify-forum-topic-fork-owner.mjs",
     "commands_run_by_implementation_agent": false
   },

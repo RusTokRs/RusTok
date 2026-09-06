@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const compilerPath = 'crates/rustok-index/src/application/postgres_compiler.rs';
+const compilerPath = 'crates/modules/rustok-index/src/application/postgres_compiler.rs';
 const compiler = requireMarkers(compilerPath, [
   'pub enum PostgresBindValue',
   'pub struct CompiledManyRelationColumn',
@@ -38,7 +38,7 @@ if (validation < 0 || emission < 0 || validation >= emission) {
   fail('plan and cursor invariants must be checked before SQL emission');
 }
 
-const sqlPath = 'crates/rustok-index/src/application/postgres_query_sql.rs';
+const sqlPath = 'crates/modules/rustok-index/src/application/postgres_query_sql.rs';
 const sql = requireMarkers(sqlPath, [
   'pub(super) fn compile_postgres_plan(',
   'let mut many_relations = Vec::new();',
@@ -88,7 +88,7 @@ for (const [relative, source] of [[compilerPath, compiler], [sqlPath, sql]]) {
   }
 }
 
-requireMarkers('crates/rustok-index/src/application/postgres_compiler_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/postgres_compiler_tests.rs', [
   'compiles_root_projection_with_bound_scope_and_limit',
   'compiles_one_link_projection_without_interpolating_contract_values',
   'compiles_typed_filters_order_exact_count_and_bounded_offset',
@@ -99,24 +99,24 @@ requireMarkers('crates/rustok-index/src/application/postgres_compiler_tests.rs',
   'rejects_tampered_many_projection_plan',
   'PostgresQueryCompileError::ManyProjectionPlanMismatch',
 ]);
-requireMarkers('crates/rustok-index/src/application/query_snapshot_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/query_snapshot_tests.rs', [
   'SQL_SNAPSHOT',
   'COMPILED_SNAPSHOT',
   'format!("{}\\n", compiled.sql)',
   'render_compiled(&compiled.binds, &compiled.columns, &compiled.many_relations)',
 ]);
-requireMarkers('crates/rustok-index/src/application/snapshots/m4_many_projection.sql', [
+requireMarkers('crates/modules/rustok-index/src/application/snapshots/m4_many_projection.sql', [
   'AS "__many_0"',
   'jsonb_agg(',
   'ORDER BY "mp0_l1".ordinal ASC',
   'LIMIT $12',
 ]);
-requireMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-query-snapshots.md', [
   'complete controlled PostgreSQL statement',
   'ordered bind DTOs',
   'byte-for-byte',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   'M4 controlled PostgreSQL query compilation: `complete`',
   'M4 nested many-link projection aggregation: `complete`',
   '- [x] Add retained v4 plan/SQL snapshots and synchronized source guards.',

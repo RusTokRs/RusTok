@@ -124,11 +124,11 @@ This slice does not:
 ## Source evidence
 
 - `apps/admin/Cargo.toml`
-- `crates/rustok-pages/admin/Cargo.toml`
-- `crates/rustok-pages/admin/src/lib.rs`
-- `crates/rustok-pages/admin/src/inline_edit_launch.rs`
-- `crates/rustok-pages/contracts/evidence/pages-inline-edit-admin-launch-source.json`
-- `crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs`
+- `crates/modules/rustok-pages/admin/Cargo.toml`
+- `crates/modules/rustok-pages/admin/src/lib.rs`
+- `crates/modules/rustok-pages/admin/src/inline_edit_launch.rs`
+- `crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-admin-launch-source.json`
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs`
 
 ## Next cursor
 
@@ -146,7 +146,7 @@ No tests, static verifiers, formatting, Cargo checks, admin WASM builds, embedde
 Suggested commands, intentionally not run:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
 cargo test -p rustok-pages-admin --features inline-edit-launch --all-targets -- --nocapture
 cargo check -p rustok-admin --no-default-features \
   --features hydrate,pages-inline-edit-launch \

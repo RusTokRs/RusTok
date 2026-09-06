@@ -46,15 +46,15 @@ const validForumSource = `
 const files = {
   "modules.toml": `
     [modules]
-    notifications = { crate = "rustok-notifications", source = "path", path = "crates/rustok-notifications", depends_on = ["outbox"] }
+    notifications = { crate = "rustok-notifications", source = "path", path = "crates/modules/rustok-notifications", depends_on = ["outbox"] }
     [settings]
     default_enabled = ["content"]
   `,
-  "crates/rustok-distribution/Cargo.toml": `
+  "crates/modules/rustok-distribution/Cargo.toml": `
     [features]
     mod-notifications = ["dep:rustok-notifications"]
   `,
-  "crates/rustok-distribution/src/lib.rs": `
+  "crates/modules/rustok-distribution/src/lib.rs": `
     registry.register(rustok_notifications::NotificationsModule);
   `,
   "apps/server/Cargo.toml": `
@@ -65,26 +65,26 @@ const files = {
     extensions.apply_to_host_runtime(host);
     materialize_notification_source_registry(&mut extensions, &host);
   `,
-  "apps/admin/Cargo.toml": `rustok-notifications-admin = { path = "../../crates/rustok-notifications/admin" }`,
-  "apps/storefront/Cargo.toml": `rustok-notifications-storefront = { path = "../../crates/rustok-notifications/storefront" }`,
-  "crates/rustok-notifications-api/Cargo.toml": `server = ["dep:rustok-api"]`,
-  "crates/rustok-notifications-api/src/provider.rs": `
+  "apps/admin/Cargo.toml": `rustok-notifications-admin = { path = "../../crates/modules/rustok-notifications/admin" }`,
+  "apps/storefront/Cargo.toml": `rustok-notifications-storefront = { path = "../../crates/modules/rustok-notifications/storefront" }`,
+  "crates/modules/rustok-notifications-api/Cargo.toml": `server = ["dep:rustok-api"]`,
+  "crates/modules/rustok-notifications-api/src/provider.rs": `
     trait NotificationSourceProviderFactory {}
     struct NotificationSourceFactoryRegistry;
     fn register_notification_source_provider_factory() {}
     fn materialize_notification_source_registry() {}
     enum Error { FactorySourceMismatch, FactoryBuild }
   `,
-  "crates/rustok-notifications-api/src/keys.rs": `fn safe_route_query() {}`,
-  "crates/rustok-forum/Cargo.toml": `
+  "crates/modules/rustok-notifications-api/src/keys.rs": `fn safe_route_query() {}`,
+  "crates/modules/rustok-forum/Cargo.toml": `
     [dependencies]
     rustok-notifications-api.workspace = true
     [dev-dependencies]
     rustok-notifications.workspace = true
   `,
-  "crates/rustok-forum/src/lib.rs": `fn register() { register_notification_source_provider_factory(); }`,
-  "crates/rustok-forum/src/notification_source.rs": validForumSource,
-  "crates/rustok-forum/tests/notification_source_sqlite.rs": `
+  "crates/modules/rustok-forum/src/lib.rs": `fn register() { register_notification_source_provider_factory(); }`,
+  "crates/modules/rustok-forum/src/notification_source.rs": validForumSource,
+  "crates/modules/rustok-forum/tests/notification_source_sqlite.rs": `
     // notifications owner is absent
     use rustok_notifications::NotificationsModule;
     materialize_notification_source_registry();
@@ -93,7 +93,7 @@ const files = {
     db.execute_unprepared("DROP TABLE forum_domain_events");
     let error = Internal { retryable: true };
   `,
-  "crates/rustok-notifications/docs/implementation-plan.md": `
+  "crates/modules/rustok-notifications/docs/implementation-plan.md": `
     NOTIFY-00 remains \`in_progress\` until maintainer-run verification.
     ### Delivered in \`NOTIFY-00B\`
   `,
@@ -118,17 +118,17 @@ try {
   write("modules.toml", files["modules.toml"]);
 
   write(
-    "crates/rustok-forum/src/notification_source.rs",
+    "crates/modules/rustok-forum/src/notification_source.rs",
     `${validForumSource}\nuse rustok_notifications::NotificationsService;`,
   );
   const ownerImport = run();
   if (ownerImport.status === 0 || !ownerImport.stderr.includes("imports the notifications owner")) {
     throw new Error(`owner-import fixture did not fail correctly:\n${ownerImport.stdout}\n${ownerImport.stderr}`);
   }
-  write("crates/rustok-forum/src/notification_source.rs", validForumSource);
+  write("crates/modules/rustok-forum/src/notification_source.rs", validForumSource);
 
   write(
-    "crates/rustok-forum/src/notification_source.rs",
+    "crates/modules/rustok-forum/src/notification_source.rs",
     validForumSource.replace("forum_topic_channel_access::Entity::find();", ""),
   );
   const channelBypass = run();

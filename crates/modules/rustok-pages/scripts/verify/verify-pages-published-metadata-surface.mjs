@@ -5,21 +5,21 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const contract = JSON.parse(
-  read("crates/rustok-page-builder/contracts/page-builder-consumer-properties.json"),
+  read("crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json"),
 );
 const evidence = JSON.parse(
   read(
-    "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
   ),
 );
 const revisionEvidence = JSON.parse(
   read(
-    "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json",
   ),
 );
 const surface = read(contract.pages_consumer.published_surface_source);
@@ -136,9 +136,9 @@ const registration =
 if (
   registration?.state !== "source_ready_execution_pending" ||
   registration?.contract !==
-    "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json" ||
+    "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json" ||
   registration?.verifier !==
-    "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
 ) {
   failures.push("published metadata surface evidence registration is invalid");
 }

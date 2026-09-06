@@ -2,11 +2,11 @@
   "status": "commerce_admin_promotion_client_transport_error_safety_source_reviewed_unvalidated",
   "reviewed_at": "2026-07-31",
   "review_scope": [
-    "crates/rustok-commerce/admin/src/transport/mod.rs",
-    "crates/rustok-commerce/admin/src/transport/promotion.rs",
-    "crates/rustok-commerce/admin/src/transport/promotion_client_error_safety.rs",
-    "crates/rustok-commerce/admin/src/transport/native_server_adapter.rs",
-    "crates/rustok-commerce/admin/src/transport/native_server_adapter_ssr.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/mod.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/promotion.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/promotion_client_error_safety.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/native_server_adapter_ssr.rs",
     "scripts/verify/verify-commerce-admin-promotion-client-transport-error-safety.mjs"
   ],
   "findings": {

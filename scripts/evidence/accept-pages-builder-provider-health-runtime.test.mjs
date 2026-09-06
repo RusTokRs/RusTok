@@ -16,16 +16,16 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const runner = path.join(repoRoot, "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs");
 const runtimeContract = readJson(
-  "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json",
 );
 const identitySource = readJson(
-  "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
+  "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
 );
 const evaluatorSource = readJson(
-  "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
+  "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
 );
 const bindingSource = readJson(
-  "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
 );
 const testRoot = path.join(repoRoot, "target/pages-builder-provider-health-owner-runner-tests");
 const deploymentId = "synthetic-provider-health-owner-test";

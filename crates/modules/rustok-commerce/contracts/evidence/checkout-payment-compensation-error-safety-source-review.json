@@ -2,11 +2,11 @@
   "schema_version": 1,
   "status": "commerce_checkout_payment_compensation_error_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/services/mod.rs",
-    "crates/rustok-commerce/src/services/checkout_compensation_error_safe.rs",
-    "crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs",
-    "crates/rustok-payment/src/checkout_compensation_context.rs",
-    "crates/rustok-commerce/docs/checkout-payment-compensation-error-safety.md",
+    "crates/modules/rustok-commerce/src/services/mod.rs",
+    "crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs",
+    "crates/modules/rustok-commerce/src/services/checkout_compensation_owner_ports.rs",
+    "crates/modules/rustok-payment/src/checkout_compensation_context.rs",
+    "crates/modules/rustok-commerce/docs/checkout-payment-compensation-error-safety.md",
     "scripts/verify/verify-commerce-checkout-payment-compensation-error-safety.mjs",
     "scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs"
   ],

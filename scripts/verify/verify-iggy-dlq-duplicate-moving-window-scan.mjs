@@ -6,20 +6,20 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json";
 const serverContractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json";
-const sourcePath = "crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs";
-const rollingPath = "crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs";
-const classifierPath = "crates/rustok-iggy/src/dlq_duplicate_inspection.rs";
-const iggyObserverPath = "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json";
+const sourcePath = "crates/modules/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs";
+const rollingPath = "crates/modules/rustok-iggy/src/dlq_duplicate_rolling_window.rs";
+const classifierPath = "crates/modules/rustok-iggy/src/dlq_duplicate_inspection.rs";
+const iggyObserverPath = "crates/modules/rustok-iggy/src/dlq_duplicate_alert_observer.rs";
 const serverPath = "apps/server/src/services/event_dlq_duplicate_alert_observer.rs";
-const libPath = "crates/rustok-iggy/src/lib.rs";
+const libPath = "crates/modules/rustok-iggy/src/lib.rs";
 const documentationPath =
-  "crates/rustok-iggy/docs/dlq-duplicate-moving-window-scan.md";
+  "crates/modules/rustok-iggy/docs/dlq-duplicate-moving-window-scan.md";
 const profilesCheckpointPath =
-  "crates/rustok-profiles/docs/poison-duplicate-moving-window-scan-checkpoint.md";
-const planPath = "crates/rustok-profiles/docs/implementation-plan.md";
+  "crates/modules/rustok-profiles/docs/poison-duplicate-moving-window-scan-checkpoint.md";
+const planPath = "crates/modules/rustok-profiles/docs/implementation-plan.md";
 const verifierPath =
   "scripts/verify/verify-iggy-dlq-duplicate-moving-window-scan.mjs";
 

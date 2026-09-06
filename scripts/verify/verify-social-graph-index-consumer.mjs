@@ -3,16 +3,16 @@
 import { readFileSync } from "node:fs";
 
 const files = {
-  cargo: readFileSync("crates/rustok-social-graph/Cargo.toml", "utf8"),
-  lib: readFileSync("crates/rustok-social-graph/src/lib.rs", "utf8"),
-  adapter: readFileSync("crates/rustok-social-graph/src/index.rs", "utf8"),
-  api: readFileSync("crates/rustok-social-graph/CRATE_API.md", "utf8"),
+  cargo: readFileSync("crates/modules/rustok-social-graph/Cargo.toml", "utf8"),
+  lib: readFileSync("crates/modules/rustok-social-graph/src/lib.rs", "utf8"),
+  adapter: readFileSync("crates/modules/rustok-social-graph/src/index.rs", "utf8"),
+  api: readFileSync("crates/modules/rustok-social-graph/CRATE_API.md", "utf8"),
   socialPlan: readFileSync(
-    "crates/rustok-social-graph/docs/implementation-plan.md",
+    "crates/modules/rustok-social-graph/docs/implementation-plan.md",
     "utf8",
   ),
   profilesPlan: readFileSync(
-    "crates/rustok-profiles/docs/implementation-plan.md",
+    "crates/modules/rustok-profiles/docs/implementation-plan.md",
     "utf8",
   ),
 };

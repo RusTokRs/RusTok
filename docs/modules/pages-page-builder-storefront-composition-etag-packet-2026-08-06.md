@@ -52,13 +52,13 @@ A matching strong, weak or comma-separated `If-None-Match` returns `304 Not Modi
 
 ## Source evidence
 
-- `crates/rustok-pages/storefront/src/transport/host_route_adapter.rs`;
-- `crates/rustok-navigation/storefront/src/model.rs`;
-- `crates/rustok-navigation/storefront/src/ui/menu.rs`;
+- `crates/modules/rustok-pages/storefront/src/transport/host_route_adapter.rs`;
+- `crates/modules/rustok-navigation/storefront/src/model.rs`;
+- `crates/modules/rustok-navigation/storefront/src/ui/menu.rs`;
 - `apps/storefront/src/shared/context/pages_composition.rs`;
 - `apps/storefront/src/lib.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-storefront-composition-etag-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-storefront-composition-etag.mjs`.
+- `crates/modules/rustok-pages/contracts/evidence/pages-storefront-composition-etag-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-storefront-composition-etag.mjs`.
 
 ## Deliberate limits
 
@@ -80,7 +80,7 @@ This slice does not:
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-storefront-composition-etag.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-storefront-composition-etag.mjs
 cargo test -p rustok-storefront --features ssr --lib -- --nocapture
 cargo test -p rustok-pages-storefront --features ssr \
   --test host_route_decision_sqlite -- --nocapture

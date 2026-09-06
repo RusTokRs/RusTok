@@ -6,11 +6,11 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 const checks = [
   {
-    file: "crates/rustok-pages/tests/rbac.rs",
+    file: "crates/modules/rustok-pages/tests/rbac.rs",
     label: "rustok-pages RBAC regression coverage",
     tokens: [
       "manager_cannot_publish_during_create_or_non_builder_lifecycle_transition",

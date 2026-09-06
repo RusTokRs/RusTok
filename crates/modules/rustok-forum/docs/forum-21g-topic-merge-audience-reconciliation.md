@@ -15,7 +15,7 @@ source-ready FORUM-21B same-category topic merge. It has two responsibilities:
 The machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-audience-reconciliation.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-audience-reconciliation.json
 ```
 
 The historical repair API is:

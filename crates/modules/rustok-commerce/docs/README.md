@@ -1,6 +1,6 @@
 # Documentation `rustok-commerce`
 
-This folder contains the documentation for the umbrella module `crates/rustok-commerce`.
+This folder contains the documentation for the umbrella module `crates/modules/rustok-commerce`.
 
 ## Purpose
 

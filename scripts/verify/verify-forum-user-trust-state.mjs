@@ -27,7 +27,7 @@ function rejectText(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
 
-const contractPath = "crates/rustok-forum/contracts/forum-user-trust-state.json";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-user-trust-state.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const migration = read(contract.migration);
 const stateEntity = read(contract.state_entity);
@@ -35,10 +35,10 @@ const revisionEntity = read(contract.revision_entity);
 const service = read(contract.owner_service);
 const sqliteProof = read(contract.sqlite_proof);
 const note = read(contract.owner_note);
-const migrationMod = read("crates/rustok-forum/src/migrations/mod.rs");
-const entityMod = read("crates/rustok-forum/src/entities/mod.rs");
-const serviceMod = read("crates/rustok-forum/src/services/mod.rs");
-const crateRoot = read("crates/rustok-forum/src/lib.rs");
+const migrationMod = read("crates/modules/rustok-forum/src/migrations/mod.rs");
+const entityMod = read("crates/modules/rustok-forum/src/entities/mod.rs");
+const serviceMod = read("crates/modules/rustok-forum/src/services/mod.rs");
+const crateRoot = read("crates/modules/rustok-forum/src/lib.rs");
 
 if (
   contract.schema_version !== 1 ||
@@ -257,7 +257,7 @@ for (const marker of [
   "no trust facts adapter",
   "no automatic posting-policy evaluator",
   "The next bounded slice should publish a read-only trust facts adapter",
-  "canonical `crates/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten",
+  "canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten",
   "were not run by the implementation agent",
 ]) {
   requireText(note, marker, `FORUM-26A owner note is missing ${marker}`);

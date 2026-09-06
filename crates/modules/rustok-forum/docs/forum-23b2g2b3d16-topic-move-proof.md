@@ -13,7 +13,7 @@ invalidation, one-inbox, production reconciler and storefront path.
 The machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-link-forum-03-topic-move-proof.json
+crates/modules/rustok-forum/contracts/forum-search-link-forum-03-topic-move-proof.json
 ```
 
 The executable proof is:

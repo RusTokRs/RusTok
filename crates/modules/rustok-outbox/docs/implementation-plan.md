@@ -33,10 +33,10 @@ surfaces.
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `OutboxRelayPort` / `outbox.relay_control.v1` in
-  `crates/rustok-outbox/contracts/outbox-fba-registry.json`.
+  `crates/modules/rustok-outbox/contracts/outbox-fba-registry.json`.
 - Static and runtime-order evidence:
-  `crates/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json`
-  and `crates/rustok-outbox/contracts/evidence/outbox-provider-runtime-order-smoke.json`.
+  `crates/modules/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json`
+  and `crates/modules/rustok-outbox/contracts/evidence/outbox-provider-runtime-order-smoke.json`.
 - `npm run verify:outbox:admin-boundary` and `npm run verify:outbox:fba` lock
   the UI boundary, provider metadata, owner-service invocation order, and
   tenant/RBAC invariants for DLQ administration.
@@ -48,7 +48,7 @@ surfaces.
   implementations, including in its development dependency graph.
 - A representative sealed Blog Comments schedule-audit PostgreSQL packet is
   retained in
-  `crates/rustok-outbox/contracts/evidence/blog-comments-audit-relay-postgres-source.json`.
+  `crates/modules/rustok-outbox/contracts/evidence/blog-comments-audit-relay-postgres-source.json`.
   Its outbox-owned harness covers retry, relay-owner reconstruction, delivery
   acknowledgement ordering and attempt-budget DLQ transition for the exact
   write-once envelope identity. The packet is source-ready and unexecuted; it

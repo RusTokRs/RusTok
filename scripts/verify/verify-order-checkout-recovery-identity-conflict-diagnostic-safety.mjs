@@ -46,11 +46,11 @@ function functionBody(source, functionName) {
 }
 
 const paths = {
-  source: 'crates/rustok-order/src/checkout_order_recovery.rs',
+  source: 'crates/modules/rustok-order/src/checkout_order_recovery.rs',
   evidence:
-    'crates/rustok-order/contracts/evidence/checkout-order-recovery-identity-conflict-diagnostic-safety-source-review.json',
-  doc: 'crates/rustok-order/docs/checkout-order-recovery-identity-conflict-diagnostic-safety.md',
-  plan: 'crates/rustok-commerce/docs/implementation-plan.md',
+    'crates/modules/rustok-order/contracts/evidence/checkout-order-recovery-identity-conflict-diagnostic-safety-source-review.json',
+  doc: 'crates/modules/rustok-order/docs/checkout-order-recovery-identity-conflict-diagnostic-safety.md',
+  plan: 'crates/modules/rustok-commerce/docs/implementation-plan.md',
 };
 
 const source = read(paths.source);

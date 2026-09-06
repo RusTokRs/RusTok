@@ -58,7 +58,7 @@ and canonical checkout composition are unchanged. The owner implementation in `p
 
 ## Evidence
 
-- `crates/rustok-inventory/contracts/evidence/availability-quantity-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-inventory/contracts/evidence/availability-quantity-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-inventory-availability-quantity-local-context.mjs`
 - `scripts/verify/verify-inventory-availability-quantity-context.mjs`
 

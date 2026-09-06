@@ -39,17 +39,17 @@ function assertNotContains(text, pattern, description) {
 }
 
 const paths = {
-  mediaPublic: "crates/rustok-media/src/public_image.rs",
-  mediaLib: "crates/rustok-media/src/lib.rs",
-  mediaController: "crates/rustok-media/src/controllers/mod.rs",
-  mediaTest: "crates/rustok-media/tests/public_image_proxy.rs",
-  transportProto: "crates/rustok-media-transport/proto/rustok/media/media.proto",
-  transportClient: "crates/rustok-media-transport/src/client.rs",
-  transportServer: "crates/rustok-media-transport/src/server.rs",
-  transportTest: "crates/rustok-media-transport/tests/port_conformance.rs",
-  profileMedia: "crates/rustok-profiles/src/media.rs",
-  profileGraphql: "crates/rustok-profiles/src/graphql/types.rs",
-  profileNative: "crates/rustok-profiles/storefront/src/transport/native_server_adapter.rs",
+  mediaPublic: "crates/modules/rustok-media/src/public_image.rs",
+  mediaLib: "crates/modules/rustok-media/src/lib.rs",
+  mediaController: "crates/modules/rustok-media/src/controllers/mod.rs",
+  mediaTest: "crates/modules/rustok-media/tests/public_image_proxy.rs",
+  transportProto: "crates/modules/rustok-media-transport/proto/rustok/media/media.proto",
+  transportClient: "crates/modules/rustok-media-transport/src/client.rs",
+  transportServer: "crates/modules/rustok-media-transport/src/server.rs",
+  transportTest: "crates/modules/rustok-media-transport/tests/port_conformance.rs",
+  profileMedia: "crates/modules/rustok-profiles/src/media.rs",
+  profileGraphql: "crates/modules/rustok-profiles/src/graphql/types.rs",
+  profileNative: "crates/modules/rustok-profiles/storefront/src/transport/native_server_adapter.rs",
 };
 
 for (const value of Object.values(paths)) assertExists(value);

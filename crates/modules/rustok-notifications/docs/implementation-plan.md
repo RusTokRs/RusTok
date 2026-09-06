@@ -1,7 +1,7 @@
 # `rustok-notifications` module-local implementation gates
 
 The canonical cross-module roadmap remains
-`crates/rustok-forum/docs/implementation-plan.md`. This ledger records the
+`crates/modules/rustok-forum/docs/implementation-plan.md`. This ledger records the
 owner-local boundaries that every Notifications slice must preserve. The program
 remains `in_progress` until maintainer-run verification and canonical promotion
 are recorded.
@@ -218,7 +218,7 @@ delivery transports, and PostgreSQL cross-consumer evidence remain open.
 - owner command/read ports;
 - server adapters into Notifications policy contracts;
 - relation-policy readiness true while candidate enablement remains separate;
-- contract `crates/rustok-social-graph/contracts/social-graph-notification-policy.json`.
+- contract `crates/modules/rustok-social-graph/contracts/social-graph-notification-policy.json`.
 
 ### `NOTIFY-03C`
 
@@ -333,7 +333,7 @@ delivery transports, and PostgreSQL cross-consumer evidence remain open.
 - retryable privacy or source failures abort the page without a partial result;
 - the typed list item adds no route or structural target fields and listing mutates
   neither read state nor delivery attempts;
-- contract `crates/rustok-forum/contracts/forum-notification-inbox-listing.json`,
+- contract `crates/modules/rustok-forum/contracts/forum-notification-inbox-listing.json`,
   verifier `scripts/verify/verify-forum-notification-inbox-listing.mjs`, and SQLite
   evidence `tests/inbox_listing_sqlite.rs`.
 
@@ -352,7 +352,7 @@ delivery transports, and PostgreSQL cross-consumer evidence remain open.
 - mark-unread, bulk/mark-all, counts, grouped views, external transport, and UI
   remained closed at this milestone;
 - contract
-  `crates/rustok-forum/contracts/forum-notification-inbox-state-mutations.json`,
+  `crates/modules/rustok-forum/contracts/forum-notification-inbox-state-mutations.json`,
   verifier `scripts/verify/verify-forum-notification-inbox-state-mutations.mjs`, and
   SQLite evidence `tests/inbox_state_sqlite.rs`.
 
@@ -372,7 +372,7 @@ delivery transports, and PostgreSQL cross-consumer evidence remain open.
 - tenant-wide scheduled reconciliation, payload redaction, transport, and UI remain
   closed;
 - contract
-  `crates/rustok-forum/contracts/forum-notification-inbox-reconciliation.json`,
+  `crates/modules/rustok-forum/contracts/forum-notification-inbox-reconciliation.json`,
   verifier `scripts/verify/verify-forum-notification-inbox-reconciliation.mjs`, and
   SQLite evidence `tests/inbox_reconcile_sqlite.rs`.
 
@@ -390,7 +390,7 @@ delivery transports, and PostgreSQL cross-consumer evidence remain open.
 - bulk/mark-all mutations, canonical unread counts, grouped views, external
   transport, and UI remain closed;
 - contract
-  `crates/rustok-forum/contracts/forum-notification-inbox-mark-unread.json`,
+  `crates/modules/rustok-forum/contracts/forum-notification-inbox-mark-unread.json`,
   verifier `scripts/verify/verify-forum-notification-inbox-mark-unread.mjs`, and
   SQLite evidence `tests/inbox_state_sqlite.rs`.
 
@@ -410,7 +410,7 @@ delivery transports, and PostgreSQL cross-consumer evidence remain open.
   delivery state, and returns no source, target, route, notification, or cursor data;
 - transport, UI, bulk/mark-all mutations, and grouped views remain closed;
 - contract
-  `crates/rustok-forum/contracts/forum-notification-inbox-unread-count.json`,
+  `crates/modules/rustok-forum/contracts/forum-notification-inbox-unread-count.json`,
   verifier `scripts/verify/verify-forum-notification-inbox-unread-count.mjs`, and
   SQLite evidence `tests/inbox_count_sqlite.rs`.
 
@@ -433,7 +433,7 @@ delivery transports, and PostgreSQL cross-consumer evidence remain open.
 - mark-all-unread, mark-all-archive, arbitrary selected-ID bulk commands, grouped
   views, transport, and UI remain closed at this milestone;
 - contract
-  `crates/rustok-forum/contracts/forum-notification-inbox-mark-all-read.json`,
+  `crates/modules/rustok-forum/contracts/forum-notification-inbox-mark-all-read.json`,
   verifier `scripts/verify/verify-forum-notification-inbox-mark-all-read.mjs`, and
   SQLite evidence `tests/inbox_mark_all_read_sqlite.rs`.
 
@@ -456,7 +456,7 @@ delivery transports, and PostgreSQL cross-consumer evidence remain open.
 - mark-all-archive, arbitrary selected-ID bulk commands, grouped views, transport,
   and UI remain closed at this milestone;
 - contract
-  `crates/rustok-forum/contracts/forum-notification-inbox-mark-all-unread.json`,
+  `crates/modules/rustok-forum/contracts/forum-notification-inbox-mark-all-unread.json`,
   verifier `scripts/verify/verify-forum-notification-inbox-mark-all-unread.mjs`, and
   SQLite evidence `tests/inbox_mark_all_unread_sqlite.rs`.
 
@@ -480,7 +480,7 @@ delivery transports, and PostgreSQL cross-consumer evidence remain open.
 - arbitrary selected-ID bulk commands, grouped views, transport, and UI remain
   closed;
 - contract
-  `crates/rustok-forum/contracts/forum-notification-inbox-mark-all-archive.json`,
+  `crates/modules/rustok-forum/contracts/forum-notification-inbox-mark-all-archive.json`,
   verifier `scripts/verify/verify-forum-notification-inbox-mark-all-archive.mjs`, and
   SQLite evidence `tests/inbox_mark_all_archive_sqlite.rs`.
 

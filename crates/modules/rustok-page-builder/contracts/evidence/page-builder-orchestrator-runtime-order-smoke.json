@@ -1,5 +1,5 @@
 {
-  "generated_from": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+  "generated_from": "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
   "runner": "scripts/verify/verify-orchestrator-fba-runtime-order.mjs",
   "status": "executable_no_compile",
   "fallback_profiles": [
@@ -65,7 +65,7 @@
   "source_assertions": [
     {
       "name": "policy defaults",
-      "path": "crates/rustok-page-builder/src/service.rs",
+      "path": "crates/modules/rustok-page-builder/src/service.rs",
       "markers": [
         "preview: PortCallPolicy::read()",
         "tree: PortCallPolicy::read()",
@@ -76,7 +76,7 @@
     },
     {
       "name": "transport envelope",
-      "path": "crates/rustok-page-builder/src/transport.rs",
+      "path": "crates/modules/rustok-page-builder/src/transport.rs",
       "markers": [
         "dispatch_transport_envelope",
         "handlers.handle(context, auth, request).await",
@@ -85,7 +85,7 @@
     },
     {
       "name": "endpoint adapters",
-      "path": "crates/rustok-page-builder/src/adapters.rs",
+      "path": "crates/modules/rustok-page-builder/src/adapters.rs",
       "markers": [
         "dispatch_graphql_envelope",
         "dispatch_leptos_server_function_envelope",

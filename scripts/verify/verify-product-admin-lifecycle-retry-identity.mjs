@@ -8,8 +8,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../..");
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 
-const lib = read("crates/rustok-product/admin/src/lib.rs");
-const identity = read("crates/rustok-product/admin/src/lifecycle_retry_identity.rs");
+const lib = read("crates/modules/rustok-product/admin/src/lib.rs");
+const identity = read("crates/modules/rustok-product/admin/src/lifecycle_retry_identity.rs");
 const failures = [];
 
 function requireText(source, text, label) {

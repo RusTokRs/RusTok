@@ -11,17 +11,17 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const failures = [];
 
-const ownerRuntime = read('crates/rustok-payment/src/collection_runtime.rs');
-const paymentLib = read('crates/rustok-payment/src/lib.rs');
-const paymentPort = read('crates/rustok-payment/src/ports.rs');
-const paymentCartRead = read('crates/rustok-payment/src/cart_read.rs');
-const paymentCommands = read('crates/rustok-commerce/src/graphql_runtime/payment_commands.rs');
+const ownerRuntime = read('crates/modules/rustok-payment/src/collection_runtime.rs');
+const paymentLib = read('crates/modules/rustok-payment/src/lib.rs');
+const paymentPort = read('crates/modules/rustok-payment/src/ports.rs');
+const paymentCartRead = read('crates/modules/rustok-payment/src/cart_read.rs');
+const paymentCommands = read('crates/modules/rustok-commerce/src/graphql_runtime/payment_commands.rs');
 const server = read('apps/server/src/services/commerce_provider_runtime.rs');
-const checkout = read('crates/rustok-commerce/src/graphql/mutations/checkout.rs');
-const routing = read('crates/rustok-commerce/src/graphql/mutations/mod.rs');
-const plan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const checkout = read('crates/modules/rustok-commerce/src/graphql/mutations/checkout.rs');
+const routing = read('crates/modules/rustok-commerce/src/graphql/mutations/mod.rs');
+const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 const record = read(
-  'crates/rustok-commerce/docs/graphql-storefront-payment-collection-owner-port-cutover-2026-08-09.md',
+  'crates/modules/rustok-commerce/docs/graphql-storefront-payment-collection-owner-port-cutover-2026-08-09.md',
 );
 
 const need = (source, marker, label) => {

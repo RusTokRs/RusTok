@@ -6,7 +6,7 @@
   "source_execution_input": {
     "format": "pages_consumer_properties_source_execution_v1",
     "required_status": "rust_source_execution_passed_browser_evidence_pending",
-    "source_contract": "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
+    "source_contract": "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
     "source_commit_must_be_checkout_head_or_ancestor": true,
     "ancestry_must_be_verified_offline_by_git": true,
     "retained_source_hashes_must_match_contract_and_checkout": true,
@@ -23,7 +23,7 @@
   "browser_input": {
     "format": "pages_published_metadata_browser_execution_v1",
     "required_status": "browser_execution_passed_consumer_properties_admission_pending",
-    "source_contract": "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
+    "source_contract": "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
     "source_commit_must_equal_checkout_head": true,
     "deployment_digest_must_be_immutable_repo_digest": true,
     "retained_source_hashes_must_match_contract_and_checkout": true,
@@ -63,14 +63,14 @@
   },
   "target_preconditions": {
     "consumer_contract": {
-      "path": "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json",
+      "path": "crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json",
       "required_format": "page_builder_consumer_properties_v1",
       "required_status": "metadata_surface_cutover_complete",
       "executed_evidence_json_pointer": "/executed_evidence",
       "required_before_value": "pending"
     },
     "fba_registry": {
-      "path": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+      "path": "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
       "required_status": "boundary_ready",
       "executed_evidence_json_pointer": "/provider/consumer_properties_contract/executed_evidence",
       "required_before_value": "pending"
@@ -136,21 +136,21 @@
     "page_builder_fba_promoted": false
   },
   "required_source_files": [
-    "crates/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json",
     "scripts/evidence/admit-pages-consumer-properties.mjs",
     "scripts/verify/verify-pages-consumer-properties-admission.mjs",
     "scripts/evidence/admit-pages-consumer-properties.test.mjs",
     "docs/modules/pages-consumer-properties-admission-actualization-2026-08-18.md",
-    "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
     "scripts/evidence/record-pages-consumer-properties-source-execution.mjs",
     "scripts/verify/verify-pages-consumer-properties-source-execution.mjs",
     ".github/workflows/pages-consumer-properties-source-evidence.yml",
-    "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
     ".github/workflows/pages-published-metadata-browser-evidence.yml",
-    "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs",
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs",
     "apps/next-admin/tests/pages-published-metadata/browser-evidence.spec.ts",
-    "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json",
-    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
+    "crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json",
+    "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json"
   ],
   "next_cursor": {
     "source_execution": "successor_exact_main_receipt_required_after_this_lineage_policy_merges_then_reusable_across_unrelated_descendants_while_bound_hashes_match",

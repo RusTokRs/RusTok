@@ -47,9 +47,9 @@ function requireText(source, marker, label) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json";
 const predecessorPath =
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json";
 const runnerPath = "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.mjs";
 const testsPath = "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.test.mjs";
 const actualizationPath =

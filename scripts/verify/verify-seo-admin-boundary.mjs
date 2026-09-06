@@ -26,20 +26,20 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-seo/admin/src/lib.rs";
-const corePath = "crates/rustok-seo/admin/src/core.rs";
-const transportModPath = "crates/rustok-seo/admin/src/transport/mod.rs";
-const nativeAdapterPath = "crates/rustok-seo/admin/src/transport/native_server_adapter.rs";
-const cargoPath = "crates/rustok-seo/admin/Cargo.toml";
-const uiPath = "crates/rustok-seo/admin/src/ui/leptos.rs";
-const defaultsSectionPath = "crates/rustok-seo/admin/src/sections/defaults.rs";
-const localPlanPath = "crates/rustok-seo/docs/implementation-plan.md";
+const libPath = "crates/modules/rustok-seo/admin/src/lib.rs";
+const corePath = "crates/modules/rustok-seo/admin/src/core.rs";
+const transportModPath = "crates/modules/rustok-seo/admin/src/transport/mod.rs";
+const nativeAdapterPath = "crates/modules/rustok-seo/admin/src/transport/native_server_adapter.rs";
+const cargoPath = "crates/modules/rustok-seo/admin/Cargo.toml";
+const uiPath = "crates/modules/rustok-seo/admin/src/ui/leptos.rs";
+const defaultsSectionPath = "crates/modules/rustok-seo/admin/src/sections/defaults.rs";
+const localPlanPath = "crates/modules/rustok-seo/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 
 for (const filePath of [libPath, corePath, transportModPath, nativeAdapterPath, cargoPath, uiPath, defaultsSectionPath, localPlanPath, registryPath]) {
   assertExists(filePath, `${filePath}: expected SEO admin FFA boundary file`);
 }
-assertMissing("crates/rustok-seo/admin/src/transport.rs", "crates/rustok-seo/admin/src/transport.rs: monolithic pre-split transport facade must stay removed");
+assertMissing("crates/modules/rustok-seo/admin/src/transport.rs", "crates/modules/rustok-seo/admin/src/transport.rs: monolithic pre-split transport facade must stay removed");
 
 const lib = readRepo(libPath);
 const core = readRepo(corePath);

@@ -24,7 +24,7 @@ const forbidMarkers = (relative, source, markers) => {
 };
 
 const channelMigrationPath =
-  'crates/rustok-channel/src/migrations/m20260807_000012_add_channel_index_identity_generation.rs';
+  'crates/modules/rustok-channel/src/migrations/m20260807_000012_add_channel_index_identity_generation.rs';
 const channelMigration = requireMarkers(channelMigrationPath, [
   'CREATE TABLE channel_index_identity_generations',
   'tenant_id UUID PRIMARY KEY',
@@ -48,13 +48,13 @@ forbidMarkers(channelMigrationPath, channelMigration, [
   'index_entities',
   'index_links',
 ]);
-requireMarkers('crates/rustok-channel/src/migrations/mod.rs', [
+requireMarkers('crates/modules/rustok-channel/src/migrations/mod.rs', [
   'mod m20260807_000012_add_channel_index_identity_generation;',
   'Box::new(m20260807_000012_add_channel_index_identity_generation::Migration)',
 ]);
 
 const freshnessMigrationPath =
-  'crates/rustok-product/src/migrations/m20260807_000011_add_product_sales_channel_relation_freshness.rs';
+  'crates/modules/rustok-product/src/migrations/m20260807_000011_add_product_sales_channel_relation_freshness.rs';
 const freshnessMigration = requireMarkers(freshnessMigrationPath, [
   'CREATE TABLE product_sales_channel_index_relation_freshness_snapshots',
   'relation_epoch BIGINT NOT NULL',
@@ -83,13 +83,13 @@ forbidMarkers(freshnessMigrationPath, freshnessMigration, [
   'index_entities',
   'index_links',
 ]);
-requireMarkers('crates/rustok-product/src/migrations/mod.rs', [
+requireMarkers('crates/modules/rustok-product/src/migrations/mod.rs', [
   'mod m20260807_000011_add_product_sales_channel_relation_freshness;',
   'Box::new(m20260807_000011_add_product_sales_channel_relation_freshness::Migration)',
 ]);
 
 const freshnessStorePath =
-  'crates/rustok-product/src/services/index_channel_relation_freshness.rs';
+  'crates/modules/rustok-product/src/services/index_channel_relation_freshness.rs';
 const freshnessStore = requireMarkers(freshnessStorePath, [
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES: usize = 131_072',
   'RELATION_LOCK_DOMAIN: &str = "product-sales-channel-index-relation"',
@@ -116,10 +116,10 @@ forbidMarkers(freshnessStorePath, freshnessStore, [
   'tokio::spawn',
   'loop {',
 ]);
-const productCargo = read('crates/rustok-product/Cargo.toml');
-forbidMarkers('crates/rustok-product/Cargo.toml', productCargo, ['rustok-channel', 'rustok-index']);
+const productCargo = read('crates/modules/rustok-product/Cargo.toml');
+forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-channel', 'rustok-index']);
 
-const visibilityPath = 'crates/rustok-distribution/src/product_index/channel_visibility.rs';
+const visibilityPath = 'crates/modules/rustok-distribution/src/product_index/channel_visibility.rs';
 const visibility = requireMarkers(visibilityPath, [
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS: usize = 1024',
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUG_BYTES: usize = 100',
@@ -132,7 +132,7 @@ const visibility = requireMarkers(visibilityPath, [
 ]);
 forbidMarkers(visibilityPath, visibility, ['IndexMutation', 'FROM channels', 'JOIN channels']);
 
-const resolverPath = 'crates/rustok-distribution/src/product_index/channel_relation_resolver.rs';
+const resolverPath = 'crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs';
 const resolver = requireMarkers(resolverPath, [
   'ProductSalesChannelIndexRelationFreshnessStore::new',
   'load_channel_identity_generation(&transaction, tenant_id).await?',
@@ -153,7 +153,7 @@ forbidMarkers(resolverPath, resolver, [
   'OutboxRelay',
 ]);
 
-const productSourcePath = 'crates/rustok-distribution/src/product_index/product.rs';
+const productSourcePath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 requireMarkers(productSourcePath, [
   'product_sales_channel_index_relation_freshness_snapshots',
   'channel_index_identity_generations',
@@ -166,7 +166,7 @@ requireMarkers(productSourcePath, [
   'does not require a live freshness witness',
 ]);
 
-const absencePath = 'crates/rustok-distribution/src/product_index/absence.rs';
+const absencePath = 'crates/modules/rustok-distribution/src/product_index/absence.rs';
 const absence = requireMarkers(absencePath, [
   'product_sales_channel_index_relation_freshness_snapshots',
   'channel_index_identity_generations',
@@ -177,7 +177,7 @@ const absence = requireMarkers(absencePath, [
 ]);
 forbidMarkers(absencePath, absence, ['INSERT ', 'UPDATE ', 'DELETE FROM']);
 
-requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-freshness.md', [
+requireMarkers('crates/modules/rustok-product/docs/index-sales-channel-relation-freshness.md', [
   'Status: `source_convergence_and_materialized_fence_complete_runtime_evidence_pending`',
   'freshness-only change does not pretend that the graph membership changed',
   '`channel_index_identity_generations`',
@@ -189,21 +189,21 @@ requireMarkers('crates/rustok-product/docs/index-sales-channel-relation-freshnes
   'cannot become query-authoritative',
   'first retained PostgreSQL materialized-freshness packet is source-ready',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-resolver.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-resolver.md', [
   'Status: `automatic_convergence_and_query_fence_source_complete_runtime_evidence_pending`',
   'ProductSalesChannelIndexRelationFreshnessStore::record',
   'Automatic convergence composition',
   'Automatic convergence now re-establishes stale/missing relation freshness',
   'materialized/query freshness fence separately closes',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-sales-channel-convergence.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-convergence.md', [
   'Automatic relation convergence is now source complete',
   'materialized/query freshness fence is also source complete',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-graph-source.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-graph-source.md', [
   'Status: `single_current_product_and_storefront_query_source_complete_execution_admission_pending`',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
   'Product-SalesChannel freshness witness',
   'Channel identity generation',
   'Freshness watermark source complete',

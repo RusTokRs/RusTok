@@ -16,7 +16,7 @@ fn source(relative: &str) -> String {
 
 #[test]
 fn redis_status_separates_configuration_client_and_connectivity() {
-    let status = source("crates/rustok-cache/src/redis_status.rs");
+    let status = source("crates/modules/rustok-cache/src/redis_status.rs");
     for field in [
         "pub url_present: bool",
         "pub client_initialized: bool",
@@ -32,8 +32,8 @@ fn redis_status_separates_configuration_client_and_connectivity() {
 
 #[test]
 fn legacy_health_report_is_derived_from_exact_redis_status() {
-    let service = source("crates/rustok-cache/src/service.rs");
-    let regression = source("crates/rustok-cache/tests/redis_health_regression.rs");
+    let service = source("crates/modules/rustok-cache/src/service.rs");
+    let regression = source("crates/modules/rustok-cache/tests/redis_health_regression.rs");
 
     assert!(service.contains("let status = self.redis_status().await;"));
     assert!(service.contains("redis_configured: status.url_present"));
@@ -47,8 +47,8 @@ fn legacy_health_report_is_derived_from_exact_redis_status() {
 
 #[test]
 fn exact_redis_gauges_use_the_shared_telemetry_registry() {
-    let status = source("crates/rustok-cache/src/redis_status.rs");
-    let telemetry = source("crates/rustok-telemetry/src/lib.rs");
+    let status = source("crates/modules/rustok-cache/src/redis_status.rs");
+    let telemetry = source("crates/libs/rustok-telemetry/src/lib.rs");
     for metric in [
         "rustok_cache_redis_url_present",
         "rustok_cache_redis_client_initialized",
@@ -67,7 +67,7 @@ fn exact_redis_gauges_use_the_shared_telemetry_registry() {
 
 #[test]
 fn cache_module_logs_lifecycle_without_redis_url() {
-    let cache_module = source("crates/rustok-cache/src/lib.rs");
+    let cache_module = source("crates/modules/rustok-cache/src/lib.rs");
     assert!(cache_module.contains("service.redis_configuration_present()"));
     assert!(cache_module.contains("service.redis_client_initialized()"));
     assert!(cache_module.contains("self.service.redis_status().await"));
@@ -77,7 +77,7 @@ fn cache_module_logs_lifecycle_without_redis_url() {
 
 #[test]
 fn invalid_config_cannot_become_a_local_shared_generation() {
-    let generation = source("crates/rustok-cache/src/backend_generation.rs");
+    let generation = source("crates/modules/rustok-cache/src/backend_generation.rs");
     assert!(generation.contains("self.redis_configuration_present()"));
     assert!(generation.contains("!self.redis_client_initialized()"));
     assert!(generation.contains("CacheBackendGenerationError::RedisClientUnavailable"));

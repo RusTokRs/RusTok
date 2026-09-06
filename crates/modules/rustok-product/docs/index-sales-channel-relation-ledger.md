@@ -32,7 +32,7 @@ When current owner inputs change but the resolved UUID set stays identical, rela
 and only the freshness witness advances.
 
 Detailed freshness contract:
-`crates/rustok-product/docs/index-sales-channel-relation-freshness.md`.
+`crates/modules/rustok-product/docs/index-sales-channel-relation-freshness.md`.
 
 ## Cross-owner composition
 

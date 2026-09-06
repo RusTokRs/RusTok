@@ -84,25 +84,25 @@
     }
   ],
   "evidence": {
-    "local_plan": "crates/rustok-search/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-search/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-search-fba.mjs",
-    "static_matrix": "crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json",
-    "runtime_fallback_smoke": "crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json",
+    "static_matrix": "crates/modules/rustok-search/contracts/evidence/search-contract-test-static-matrix.json",
+    "runtime_fallback_smoke": "crates/modules/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json",
     "runtime_fallback_smoke_runner": "scripts/verify/verify-search-fba-runtime-smoke.mjs",
-    "runtime_contract_smoke": "crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json",
+    "runtime_contract_smoke": "crates/modules/rustok-search/contracts/evidence/search-runtime-contract-smoke.json",
     "runtime_contract_smoke_runner": "scripts/verify/verify-search-fba-runtime-contract.mjs",
-    "runtime_invocation_trace": "crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json",
+    "runtime_invocation_trace": "crates/modules/rustok-search/contracts/evidence/search-runtime-invocation-trace.json",
     "runtime_invocation_trace_runner": "scripts/verify/verify-search-fba-runtime-invocation.mjs"
   },
   "in_process_provider_impl": {
     "service": "PgSearchEngine",
-    "source": "crates/rustok-search/src/ports.rs",
+    "source": "crates/modules/rustok-search/src/ports.rs",
     "status": "query_and_suggestion_impl_source_locked"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
-    "source": "crates/rustok-search/contracts/search-fba-registry.json",
+    "source": "crates/modules/rustok-search/contracts/search-fba-registry.json",
     "runner": "scripts/verify/verify-search-fba.mjs",
     "profiles": [
       "in_process",
@@ -144,12 +144,12 @@
         "disable_preview",
         "show_last_diagnostics_snapshot"
       ],
-      "evidence": "crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json",
+      "evidence": "crates/modules/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json",
       "runner": "scripts/verify/verify-search-fba-runtime-smoke.mjs"
     },
     "runtime_contract_smoke": {
       "status": "executable_no_compile",
-      "evidence": "crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json",
+      "evidence": "crates/modules/rustok-search/contracts/evidence/search-runtime-contract-smoke.json",
       "runner": "scripts/verify/verify-search-fba-runtime-contract.mjs",
       "assertions": [
         "provider_operation_order",
@@ -160,7 +160,7 @@
     },
     "runtime_invocation_trace": {
       "status": "executable_no_compile_invocation_trace",
-      "evidence": "crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json",
+      "evidence": "crates/modules/rustok-search/contracts/evidence/search-runtime-invocation-trace.json",
       "runner": "scripts/verify/verify-search-fba-runtime-invocation.mjs",
       "assertions": [
         "read_policy_short_circuit",

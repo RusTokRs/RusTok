@@ -15,13 +15,13 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json";
+  "crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json";
 const expectedRunnerPath =
   "scripts/evidence/capture-product-catalog-separate-process-runtime.mjs";
 const expectedVerifierPath =
   "scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs";
 const expectedEvidencePath =
-  "crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime.json";
+  "crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime.json";
 const expectedCommands = {
   provider: {
     program: "cargo",

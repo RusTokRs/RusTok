@@ -137,7 +137,7 @@ def scan_modules(
     if surface not in {"admin", "storefront"}:
         raise ValueError(f"Unsupported mobile surface: {surface}")
 
-    manifests = sorted(repo_root.glob("crates/*/rustok-module.toml"))
+    manifests = sorted(set(repo_root.glob("crates/**/rustok-module.toml")))
     modules: list[dict[str, object]] = []
     used_segments: dict[str, pathlib.Path] = {}
     provides_key = f"{surface}_ui"

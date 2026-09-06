@@ -1,11 +1,11 @@
 {
   "status": "commerce_graphql_cart_port_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/graphql/mutations/safe_helpers.rs",
+    "crates/modules/rustok-commerce/src/graphql/mutations/safe_helpers.rs",
     "scripts/verify/verify-commerce-graphql-cart-port-diagnostic-safety.mjs",
     "scripts/verify/verify-commerce-graphql-cart-helper-error-safety.mjs",
-    "crates/rustok-commerce/docs/graphql-cart-port-diagnostic-safety.md",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/graphql-cart-port-diagnostic-safety.md",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_contract": {
     "cart_or_pricing_port_error_payload_logged": false,

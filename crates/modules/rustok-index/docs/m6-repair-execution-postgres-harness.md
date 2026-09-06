@@ -21,10 +21,10 @@ documented separately in
 The harness lives in:
 
 ```text
-crates/rustok-index/tests/drift_repair_postgres_environment_test.rs
-crates/rustok-index/tests/drift_repair_recovery_postgres_test.rs
-crates/rustok-index/tests/drift_repair_concrete_execution_postgres_test.rs
-crates/rustok-index/tests/support/drift_repair.rs
+crates/modules/rustok-index/tests/drift_repair_postgres_environment_test.rs
+crates/modules/rustok-index/tests/drift_repair_recovery_postgres_test.rs
+crates/modules/rustok-index/tests/drift_repair_concrete_execution_postgres_test.rs
+crates/modules/rustok-index/tests/support/drift_repair.rs
 ```
 
 All targets read `RUSTOK_INDEX_TEST_DATABASE_URL`, with PostgreSQL `DATABASE_URL` as a fallback. When
@@ -132,7 +132,7 @@ leave the repair command prepared, and reject the stale exact-edge owner call.
 The source-ready packet is locked by:
 
 ```text
-crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json
+crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json
 scripts/evidence/capture-index-repair-postgres.mjs
 scripts/verify/verify-index-repair-retained-evidence.mjs
 ```

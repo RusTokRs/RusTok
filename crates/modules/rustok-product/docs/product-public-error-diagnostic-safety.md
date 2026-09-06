@@ -42,8 +42,8 @@ Database/core errors, product UUIDs, handles, locales, SKUs, validation messages
 
 ## Evidence
 
-- `crates/rustok-product/contracts/evidence/product-public-error-diagnostic-safety-source.json`
-- `crates/rustok-product/contracts/evidence/product-public-error-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-product/contracts/evidence/product-public-error-diagnostic-safety-source.json`
+- `crates/modules/rustok-product/contracts/evidence/product-public-error-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-product-public-error-diagnostic-safety.mjs`
 
 ## Remaining gaps

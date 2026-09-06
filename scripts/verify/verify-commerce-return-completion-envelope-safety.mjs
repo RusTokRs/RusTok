@@ -11,7 +11,7 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const source = read(
-  'crates/rustok-commerce/src/controllers/return_completion_operations.rs',
+  'crates/modules/rustok-commerce/src/controllers/return_completion_operations.rs',
 );
 const failures = [];
 

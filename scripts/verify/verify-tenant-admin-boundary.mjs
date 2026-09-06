@@ -42,18 +42,18 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-tenant/admin/src/lib.rs";
-const corePath = "crates/rustok-tenant/admin/src/core.rs";
-const uiPath = "crates/rustok-tenant/admin/src/ui/leptos.rs";
-const transportModPath = "crates/rustok-tenant/admin/src/transport/mod.rs";
-const nativeAdapterPath = "crates/rustok-tenant/admin/src/transport/native_server_adapter.rs";
+const libPath = "crates/modules/rustok-tenant/admin/src/lib.rs";
+const corePath = "crates/modules/rustok-tenant/admin/src/core.rs";
+const uiPath = "crates/modules/rustok-tenant/admin/src/ui/leptos.rs";
+const transportModPath = "crates/modules/rustok-tenant/admin/src/transport/mod.rs";
+const nativeAdapterPath = "crates/modules/rustok-tenant/admin/src/transport/native_server_adapter.rs";
 
 for (const filePath of [libPath, corePath, uiPath, transportModPath, nativeAdapterPath]) {
   assertExists(filePath, `${filePath}: expected tenant admin FFA boundary file`);
 }
 assertMissing(
-  "crates/rustok-tenant/admin/src/api.rs",
-  "crates/rustok-tenant/admin/src/api.rs: pre-FFA api facade must stay removed",
+  "crates/modules/rustok-tenant/admin/src/api.rs",
+  "crates/modules/rustok-tenant/admin/src/api.rs: pre-FFA api facade must stay removed",
 );
 
 const lib = readRepo(libPath);

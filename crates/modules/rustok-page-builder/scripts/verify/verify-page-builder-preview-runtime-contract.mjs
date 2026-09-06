@@ -5,11 +5,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (...segments) => fs.readFileSync(path.join(repoRoot, ...segments), "utf8");
 
 const registry = JSON.parse(
-  read("crates", "rustok-page-builder", "contracts", "page-builder-fba-registry.json"),
+  read("crates", "modules", "rustok-page-builder", "contracts", "page-builder-fba-registry.json"),
 );
 const wavePackets = [
   "pages-wave0-dry-run-evidence.json",
@@ -17,53 +17,47 @@ const wavePackets = [
 ].map((filename) => ({
   filename,
   packet: JSON.parse(
-    read("crates", "rustok-page-builder", "contracts", "evidence", filename),
+    read("crates", "modules", "rustok-page-builder", "contracts", "evidence", filename),
   ),
 }));
-const manifest = read("crates", "rustok-page-builder", "Cargo.toml");
-const dto = read("crates", "rustok-page-builder", "src", "dto.rs");
-const previewPort = read("crates", "rustok-page-builder", "src", "preview_port.rs");
+const manifest = read("crates", "modules", "rustok-page-builder", "Cargo.toml");
+const dto = read("crates", "modules", "rustok-page-builder", "src", "dto.rs");
+const previewPort = read("crates", "modules", "rustok-page-builder", "src", "preview_port.rs");
 const flyService = read(
-  "crates",
-  "rustok-page-builder",
+  "crates", "modules", "rustok-page-builder",
   "src",
   "adapters",
   "fly_service.rs",
 );
-const staticLanding = read("crates", "rustok-page-builder", "src", "static_landing.rs");
+const staticLanding = read("crates", "modules", "rustok-page-builder", "src", "static_landing.rs");
 const staticMaterialization = read(
-  "crates",
-  "rustok-page-builder",
+  "crates", "modules", "rustok-page-builder",
   "src",
   "static_landing_materialization.rs",
 );
-const health = read("crates", "rustok-page-builder", "src", "health.rs");
-const pagesBuilder = read("crates", "rustok-pages", "admin", "src", "builder.rs");
+const health = read("crates", "modules", "rustok-page-builder", "src", "health.rs");
+const pagesBuilder = read("crates", "modules", "rustok-pages", "admin", "src", "builder.rs");
 const pagesArtifact = read(
-  "crates",
-  "rustok-pages",
+  "crates", "modules", "rustok-pages",
   "src",
   "services",
   "page_builder_artifact.rs",
 );
 const pagesArtifactEntity = read(
-  "crates",
-  "rustok-pages",
+  "crates", "modules", "rustok-pages",
   "src",
   "entities",
   "page_static_landing_artifact.rs",
 );
-const pagesMigrations = read("crates", "rustok-pages", "src", "migrations", "mod.rs");
+const pagesMigrations = read("crates", "modules", "rustok-pages", "src", "migrations", "mod.rs");
 const pagesMaterializationMigration = read(
-  "crates",
-  "rustok-pages",
+  "crates", "modules", "rustok-pages",
   "src",
   "migrations",
   "m20260721_000006_add_static_landing_materialization_evidence.rs",
 );
 const adminRuntime = read(
-  "crates",
-  "rustok-page-builder",
+  "crates", "modules", "rustok-page-builder",
   "admin",
   "src",
   "editor",

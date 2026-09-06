@@ -27,12 +27,12 @@ function reject(source, pattern, message) {
   if (pattern.test(source)) failures.push(message);
 }
 
-const contractPath = "crates/rustok-forum/src/mentions.rs";
-const errorPath = "crates/rustok-forum/src/error.rs";
-const libPath = "crates/rustok-forum/src/lib.rs";
-const testPath = "crates/rustok-forum/tests/mention_contract.rs";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
-const crateApiPath = "crates/rustok-forum/CRATE_API.md";
+const contractPath = "crates/modules/rustok-forum/src/mentions.rs";
+const errorPath = "crates/modules/rustok-forum/src/error.rs";
+const libPath = "crates/modules/rustok-forum/src/lib.rs";
+const testPath = "crates/modules/rustok-forum/tests/mention_contract.rs";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
+const crateApiPath = "crates/modules/rustok-forum/CRATE_API.md";
 
 const contract = read(contractPath);
 const error = read(errorPath);

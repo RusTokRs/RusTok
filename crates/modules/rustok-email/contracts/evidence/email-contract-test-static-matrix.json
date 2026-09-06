@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "email",
   "status": "runtime_verified",
-  "generated_from": "crates/rustok-email/contracts/email-fba-registry.json",
+  "generated_from": "crates/modules/rustok-email/contracts/email-fba-registry.json",
   "runner": "scripts/verify/verify-email-fba.mjs",
   "contract_version": "email.delivery.v1",
   "profiles": [
@@ -20,7 +20,7 @@
         "disabled_provider_noop_preserved",
         "template_error_not_retryable"
       ],
-      "test_source": "crates/rustok-email/src/ports.rs",
+      "test_source": "crates/modules/rustok-email/src/ports.rs",
       "test_names": [
         "delivery_policy_maps_missing_deadline_to_email_specific_timeout",
         "delivery_policy_accepts_shared_write_context",

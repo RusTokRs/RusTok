@@ -33,7 +33,7 @@ standalone integration must be host-owned, versioned, capability-constrained,
 and admitted before the template can generate executable Index-specific code.
 
 Native in-repository modules use the separate host integration contract in
-`crates/rustok-index/docs/module-source-integration.md`.
+`crates/modules/rustok-index/docs/module-source-integration.md`.
 
 The renderer validates the sandbox scenario and renders the Index boundary
 guide before returning the ordered file set. The static verifier additionally

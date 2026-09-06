@@ -3,7 +3,7 @@
 Status: `canonical_source_cursor_actualized_through_taxonomy_cat_17_docs`.
 
 This document is the canonical **current** source cursor for `rustok-blog`.
-`crates/rustok-blog/docs/implementation-plan.md` and the standalone
+`crates/modules/rustok-blog/docs/implementation-plan.md` and the standalone
 `implementation-plan-slice-*.md` files are historical implementation records.
 They remain useful for provenance, but statements in them about a live Blog
 Category Translation provider, Blog Category translation donor tables, or a

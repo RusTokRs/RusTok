@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This bounded source slice hardens the read/write admission diagnostics for the two operations
 published by `CheckoutFulfillmentExecutionPort` in
-`crates/rustok-fulfillment/src/checkout_execution.rs`:
+`crates/modules/rustok-fulfillment/src/checkout_execution.rs`:
 
 - `ensure_checkout_fulfillments`;
 - `read_checkout_fulfillments`.
@@ -113,7 +113,7 @@ It requires:
 
 Source evidence is recorded in:
 
-- `crates/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-admission-diagnostic-safety-source.json`.
 
 The previously closed local-`PortError` contract is synchronized to treat admission cleanup as
 a separate source-ready/unvalidated contract rather than an open unsafe payload site.
@@ -123,8 +123,8 @@ a separate source-ready/unvalidated contract rather than an open unsafe payload 
 Causation validation is source-ready / unvalidated under its own bounded contract:
 
 - `scripts/verify/verify-fulfillment-checkout-context-validation.mjs`;
-- `crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`;
-- `crates/rustok-fulfillment/docs/checkout-context-validation.md`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`;
+- `crates/modules/rustok-fulfillment/docs/checkout-context-validation.md`.
 
 That contract preserves admission-before-tenant-before-causation ordering and does not change
 the admission mapper covered here.
@@ -138,8 +138,8 @@ and retryability while preserving `Uuid::parse_str`, `map_err`, and the exact co
 The tenant guard and evidence are:
 
 - `scripts/verify/verify-fulfillment-checkout-context-validation.mjs`;
-- `crates/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json`;
-- `crates/rustok-fulfillment/docs/checkout-context-validation.md`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json`;
+- `crates/modules/rustok-fulfillment/docs/checkout-context-validation.md`.
 
 That contract does not change admission selection or ordering.
 
@@ -153,8 +153,8 @@ service operation remains unchanged.
 The owner guard and evidence are:
 
 - `scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`;
-- `crates/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`;
-- `crates/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`;
+- `crates/modules/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md`.
 
 That contract does not change admission selection, phases, pass-through, or ordering.
 

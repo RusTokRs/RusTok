@@ -2,7 +2,7 @@
 
 > **MANDATORY FOR AI AGENTS — Read these guides BEFORE any code changes:**
 >
-> **Module UI Package Guides (for `crates/rustok-*/storefront` packages):**
+> **Module UI Package Guides (for `crates/modules/rustok-*/storefront` packages):**
 > - [Architecture Guide](../../../docs/UI/module-package-architecture.md) — explains **FFA** (Fluid Frontend Architecture), `core/transport/ui` split, dual-path model
 > - [Implementation Guide](../../../docs/UI/module-package-implementation.md) — **internal libraries** (`leptos-ui`, `leptos-ui-routing`, `rustok-graphql`, etc.), **i18n rules**, file structure, forbidden patterns
 > - [Verification Guide](../../../docs/UI/module-package-verification.md) — verification commands, common errors
@@ -34,7 +34,7 @@ route facade and perform only HTTP composition in the host.
 ## Responsibility boundaries
 
 - own the Leptos storefront host and its SSR/runtime wiring;
-- mount module-owned storefront packages from `crates/rustok-*/storefront`;
+- mount module-owned storefront packages from `crates/modules/rustok-*/storefront`;
 - maintain the generic route contract for storefront modules;
 - mount owner-admitted canonical route families without reading module persistence or historical ledgers;
 - pass `UiRouteContext` and effective locale to module-owned packages;
@@ -135,7 +135,7 @@ The GraphQL path remains a working and supported headless contract for module-ow
 ## Interactions
 
 - `apps/server` provides GraphQL and Leptos server-function surfaces.
-- `crates/rustok-*` publish module-owned storefront packages and runtime transport contracts.
+- `crates/modules/rustok-*` publish module-owned storefront packages and runtime transport contracts.
 - `apps/next-frontend` is a parallel storefront host and must maintain parity at the contract level, not at the literal code structure level.
 - `leptos-ui-routing` serves as the common Leptos route/query plumbing for both admin and storefront;
   the storefront host must not duplicate this layer with a separate Rust helper crate.
@@ -150,7 +150,7 @@ The GraphQL path remains a working and supported headless contract for module-ow
 ## Related documents
 
 - [Implementation plan](./implementation-plan.md)
-- [FORUM-24I canonical topic route mount](../../../crates/rustok-forum/docs/forum-24i-topic-route-storefront-mount.md)
+- [FORUM-24I canonical topic route mount](../../../crates/modules/rustok-forum/docs/forum-24i-topic-route-storefront-mount.md)
 - [Storefront architecture notes](../../../docs/UI/storefront.md)
 - [Manifest layer contract](../../../docs/modules/manifest.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)

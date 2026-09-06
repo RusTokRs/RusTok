@@ -39,13 +39,13 @@
     "workflows_or_ci_run": false
   },
   "linked_sources": {
-    "audit_owner": "crates/rustok-pages/src/services/page/artifact_integrity_audit.rs",
-    "reviewed_publish_owner": "crates/rustok-pages/src/services/page/reviewed_publish.rs",
-    "rebuild_owner": "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
-    "artifact_entity": "crates/rustok-pages/src/entities/page_static_landing_artifact.rs"
+    "audit_owner": "crates/modules/rustok-pages/src/services/page/artifact_integrity_audit.rs",
+    "reviewed_publish_owner": "crates/modules/rustok-pages/src/services/page/reviewed_publish.rs",
+    "rebuild_owner": "crates/modules/rustok-pages/src/services/page/artifact_rebuild.rs",
+    "artifact_entity": "crates/modules/rustok-pages/src/entities/page_static_landing_artifact.rs"
   },
   "harness": {
-    "path": "crates/rustok-pages/tests/immutable_artifact_integrity_audit_sqlite.rs",
+    "path": "crates/modules/rustok-pages/tests/immutable_artifact_integrity_audit_sqlite.rs",
     "tests": [
       "audit_manage_scope_is_all_or_none_and_public_read_is_denied",
       "audit_accepts_canonical_and_rebuilt_records_and_truncates_at_requested_limit",
@@ -54,7 +54,7 @@
     ]
   },
   "suggested_execution": [
-    "node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-sqlite.mjs",
+    "node crates/modules/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-sqlite.mjs",
     "cargo test -p rustok-pages --test immutable_artifact_integrity_audit_sqlite -- --nocapture",
     "cargo check -p rustok-pages --all-targets"
   ],

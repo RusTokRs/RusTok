@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const failures = [];
 const need = (text, marker, label) => {
@@ -43,16 +43,16 @@ const featureBody = (manifest, feature, label) => {
 };
 
 const evidence = JSON.parse(read(
-  "crates/rustok-page-builder/contracts/evidence/page-builder-authenticated-inline-edit-adapter-source.json",
+  "crates/modules/rustok-page-builder/contracts/evidence/page-builder-authenticated-inline-edit-adapter-source.json",
 ));
-const flyCargo = read("crates/fly-leptos/Cargo.toml");
-const flyRoot = read("crates/fly-leptos/src/root.rs");
-const realDom = read("crates/fly-leptos/src/real_dom_inline.rs");
-const storefrontCargo = read("crates/rustok-page-builder-storefront/Cargo.toml");
-const storefrontLib = read("crates/rustok-page-builder-storefront/src/lib.rs");
-const inline = read("crates/rustok-page-builder-storefront/src/inline_edit.rs");
-const pagesStorefrontCargo = read("crates/rustok-pages/storefront/Cargo.toml");
-const pagesStorefrontLib = read("crates/rustok-pages/storefront/src/lib.rs");
+const flyCargo = read("crates/ui/fly-leptos/Cargo.toml");
+const flyRoot = read("crates/ui/fly-leptos/src/root.rs");
+const realDom = read("crates/ui/fly-leptos/src/real_dom_inline.rs");
+const storefrontCargo = read("crates/modules/rustok-page-builder-storefront/Cargo.toml");
+const storefrontLib = read("crates/modules/rustok-page-builder-storefront/src/lib.rs");
+const inline = read("crates/modules/rustok-page-builder-storefront/src/inline_edit.rs");
+const pagesStorefrontCargo = read("crates/modules/rustok-pages/storefront/Cargo.toml");
+const pagesStorefrontLib = read("crates/modules/rustok-pages/storefront/src/lib.rs");
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
 const actualization = read(
   "docs/modules/page-builder-parity-actualization-2026-08-06-inline-edit.md",

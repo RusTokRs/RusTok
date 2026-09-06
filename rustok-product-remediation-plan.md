@@ -2,7 +2,7 @@
 
 **Reviewed:** 2026-07-26
 
-**Scope:** `crates/rustok-product` and its product GraphQL and migration boundaries.
+**Scope:** `crates/modules/rustok-product` and its product GraphQL and migration boundaries.
 **Status terms:** `resolved` is implemented and source-verified; `open` remains a valid
 engineering task; `partial` mitigates the risk but does not yet meet the target contract;
 `blocked` needs an external dependency or production data audit.

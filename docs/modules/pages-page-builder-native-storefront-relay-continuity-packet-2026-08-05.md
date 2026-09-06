@@ -14,7 +14,7 @@ This correction preserves the useful source contract and removes the unsupported
 
 ## Source harness
 
-`crates/rustok-pages/storefront/tests/native_storefront_relay_continuity_sqlite.rs` uses one isolated SQLite database and one shared in-memory cache port.
+`crates/modules/rustok-pages/storefront/tests/native_storefront_relay_continuity_sqlite.rs` uses one isolated SQLite database and one shared in-memory cache port.
 
 It applies the real Outbox, Channel and Pages migrations, creates an enabled `web` channel through `ChannelService`, creates a channel-constrained Fly document through `PageService::create`, and publishes it through `PageService::publish_reviewed` with the exact body revision and a valid `PageBuilderReviewedPublishRuntime`.
 
@@ -131,9 +131,9 @@ These facts do not combine into a claim that the production Pages listener compl
 
 Machine evidence is recorded in:
 
-- `crates/rustok-pages/contracts/evidence/pages-native-storefront-relay-continuity-source.json`;
-- `crates/rustok-pages/storefront/tests/native_storefront_relay_continuity_sqlite.rs`;
-- `crates/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-native-storefront-relay-continuity-source.json`;
+- `crates/modules/rustok-pages/storefront/tests/native_storefront_relay_continuity_sqlite.rs`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs`;
 - `docs/modules/pages-page-builder-native-storefront-relay-topology-correction-2026-08-05.md`.
 
 The execution list is empty and every validation flag remains false. Tests, Cargo, formatting, verifier execution, SQLite/Axum, Leptos server functions, production server topology, workflows and CI were not run.
@@ -167,7 +167,7 @@ Only after that production topology is source-connected should execution evidenc
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs
 cargo test -p rustok-pages-storefront --features ssr --test native_storefront_relay_continuity_sqlite -- --nocapture
 cargo check -p rustok-pages-storefront --features ssr --all-targets
 cargo check -p rustok-pages --all-targets

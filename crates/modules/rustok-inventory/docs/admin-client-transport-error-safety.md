@@ -5,7 +5,7 @@ Status: **source-ready / unvalidated**
 ## Scope
 
 This source slice covers the eight public Inventory Admin transport operations in
-`crates/rustok-inventory/admin/src/transport/mod.rs`.
+`crates/modules/rustok-inventory/admin/src/transport/mod.rs`.
 
 Covered operations:
 

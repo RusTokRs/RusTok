@@ -4,23 +4,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  contract: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
-  consumer: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
-  binding: "crates/rustok-pages/src/provider_health_binding.rs",
-  lib: "crates/rustok-pages/src/lib.rs",
-  manifest: "crates/rustok-pages/rustok-module.toml",
-  graphqlMod: "crates/rustok-pages/src/graphql/mod.rs",
-  runtimeData: "crates/rustok-pages/src/graphql/runtime_data.rs",
-  owner: "crates/rustok-pages/src/graphql/builder_rollout.rs",
-  composition: "crates/rustok-pages/admin/src/composition.rs",
-  builder: "crates/rustok-pages/admin/src/builder.rs",
+  contract: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
+  consumer: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
+  binding: "crates/modules/rustok-pages/src/provider_health_binding.rs",
+  lib: "crates/modules/rustok-pages/src/lib.rs",
+  manifest: "crates/modules/rustok-pages/rustok-module.toml",
+  graphqlMod: "crates/modules/rustok-pages/src/graphql/mod.rs",
+  runtimeData: "crates/modules/rustok-pages/src/graphql/runtime_data.rs",
+  owner: "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
+  composition: "crates/modules/rustok-pages/admin/src/composition.rs",
+  builder: "crates/modules/rustok-pages/admin/src/builder.rs",
   adminMain: "apps/admin/src/main.rs",
-  acceptance: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
+  acceptance: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
   acceptanceRunner: "scripts/evidence/accept-pages-builder-provider-health-deployment.mjs",
-  transport: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-transport-source.json",
+  transport: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-transport-source.json",
   overlay: "docs/modules/pages-page-builder-provider-health-server-binding-actualization-2026-08-09.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };

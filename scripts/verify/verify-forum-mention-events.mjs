@@ -54,17 +54,17 @@ function collectRustFiles(root, relative = "") {
 }
 
 const contract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-mention-write-boundary.json") || "{}",
+  read("crates/modules/rustok-forum/contracts/forum-mention-write-boundary.json") || "{}",
 );
 const eventFamily = read(contract.event_contract?.family ?? "");
 const eventRegistry = read(contract.event_contract?.payload_registry ?? "");
-const eventCrate = read("crates/rustok-events/src/lib.rs");
-const relationService = read("crates/rustok-forum/src/services/mention_relation.rs");
+const eventCrate = read("crates/libs/rustok-events/src/lib.rs");
+const relationService = read("crates/modules/rustok-forum/src/services/mention_relation.rs");
 const migration = read(contract.owner_journal?.migration ?? "");
 const readService = read(contract.owner_read?.service ?? "");
 const readDto = read(contract.owner_read?.dto ?? "");
-const serviceRegistry = read("crates/rustok-forum/src/services/mod.rs");
-const crateRoot = read("crates/rustok-forum/src/lib.rs");
+const serviceRegistry = read("crates/modules/rustok-forum/src/services/mod.rs");
+const crateRoot = read("crates/modules/rustok-forum/src/lib.rs");
 
 for (const eventType of contract.event_contract?.event_types ?? []) {
   requireText(eventFamily, eventType, `event family is missing ${eventType}`);

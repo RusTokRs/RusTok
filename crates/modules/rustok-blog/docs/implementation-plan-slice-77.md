@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 77 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-76.md`. Slices 1–66 remain in
+`crates/modules/rustok-blog/docs/implementation-plan-slice-76.md`. Slices 1–66 remain in
 the original plan; slices 67–76 retain the typed Comments remote core, bounded
 framing and listener lifecycle, bearer-authenticated reads, signed user write
 delegation, process-local replay admission, generic channel interfaces,

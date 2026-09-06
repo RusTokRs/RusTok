@@ -1,12 +1,12 @@
 ---
-id: doc://crates/rustok-forum/docs/forum-16-postgres-runtime-proof.md
+id: doc://crates/modules/rustok-forum/docs/forum-16-postgres-runtime-proof.md
 kind: implementation_record
 language: en
 status: source_ready
 owners:
   - rustok-forum
 last_reviewed: 2026-07-24
-canonical_plan: doc://crates/rustok-forum/docs/implementation-plan.md
+canonical_plan: doc://crates/modules/rustok-forum/docs/implementation-plan.md
 ---
 
 # FORUM-16 PostgreSQL read-state runtime proof

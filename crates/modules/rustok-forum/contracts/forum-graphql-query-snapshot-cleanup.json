@@ -3,12 +3,12 @@
   "task": "FORUM-20BN",
   "upstream_task": "FORUM-20BM",
   "scope": "Delete the uncompiled Forum GraphQL query snapshot after moving every source verifier and diagnostic workflow to the canonical compiled query_runtime.rs owner",
-  "canonical_graphql_runtime": "crates/rustok-forum/src/graphql/query_runtime.rs",
-  "graphql_module_selector": "crates/rustok-forum/src/graphql/mod.rs",
-  "removed_snapshot": "crates/rustok-forum/src/graphql/query.rs",
-  "owner_note": "crates/rustok-forum/docs/forum-20bn-graphql-query-snapshot-cleanup.md",
+  "canonical_graphql_runtime": "crates/modules/rustok-forum/src/graphql/query_runtime.rs",
+  "graphql_module_selector": "crates/modules/rustok-forum/src/graphql/mod.rs",
+  "removed_snapshot": "crates/modules/rustok-forum/src/graphql/query.rs",
+  "owner_note": "crates/modules/rustok-forum/docs/forum-20bn-graphql-query-snapshot-cleanup.md",
   "source_verifier": "scripts/verify/verify-forum-graphql-query-snapshot-cleanup.mjs",
-  "approved_reply_search_contract": "crates/rustok-forum/contracts/forum-approved-reply-search.json",
+  "approved_reply_search_contract": "crates/modules/rustok-forum/contracts/forum-approved-reply-search.json",
   "migrated_consumers": [
     "scripts/verify/verify-channel-proof-points.mjs",
     "scripts/verify/verify-forum-reply-audience-read.mjs",
@@ -17,13 +17,13 @@
     ".github/workflows/forum11-diagnostics.yml"
   ],
   "upstream_contracts": [
-    "crates/rustok-forum/contracts/forum-reply-legacy-cutover.json",
-    "crates/rustok-forum/contracts/forum-category-audience-read.json",
-    "crates/rustok-forum/contracts/forum-public-discovery-seo.json",
-    "crates/rustok-forum/contracts/forum-search-projection.json",
-    "crates/rustok-forum/contracts/forum-projection-invalidation.json",
-    "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json",
-    "crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json"
+    "crates/modules/rustok-forum/contracts/forum-reply-legacy-cutover.json",
+    "crates/modules/rustok-forum/contracts/forum-category-audience-read.json",
+    "crates/modules/rustok-forum/contracts/forum-public-discovery-seo.json",
+    "crates/modules/rustok-forum/contracts/forum-search-projection.json",
+    "crates/modules/rustok-forum/contracts/forum-projection-invalidation.json",
+    "crates/modules/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json",
+    "crates/modules/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json"
   ],
   "cleanup_boundary": {
     "legacy_query_snapshot_removed": true,
@@ -41,7 +41,7 @@
   "downstream_handoff": {
     "approved_public_reply_documents_completed": true,
     "completion_task": "FORUM-20BO",
-    "completion_contract": "crates/rustok-forum/contracts/forum-approved-reply-search.json"
+    "completion_contract": "crates/modules/rustok-forum/contracts/forum-approved-reply-search.json"
   },
   "compatibility": {
     "existing_graphql_field_names_changed": false,

@@ -50,7 +50,7 @@
     }
   ],
   "evidence": {
-    "local_plan": "crates/rustok-product/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-product/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "runtime_composition_verifier": "scripts/verify/verify-product-catalog-read-runtime-composition.mjs",
@@ -61,20 +61,20 @@
     "grpc_deployment_verifier": "scripts/verify/verify-product-catalog-grpc-deployment.mjs",
     "grpc_authentication_verifier": "scripts/verify/verify-product-catalog-grpc-authentication.mjs",
     "grpc_service_host_verifier": "scripts/verify/verify-product-catalog-grpc-service-host.mjs",
-    "grpc_maintainer_test_attestation": "crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json",
+    "grpc_maintainer_test_attestation": "crates/modules/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json",
     "grpc_maintainer_test_attestation_verifier": "scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs",
-    "separate_process_runtime_contract": "crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json",
+    "separate_process_runtime_contract": "crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json",
     "separate_process_runtime_contract_verifier": "scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs",
     "separate_process_runtime_capture_runner": "scripts/evidence/capture-product-catalog-separate-process-runtime.mjs",
     "remote_consumer_behavior_verifier": "scripts/verify/verify-product-remote-consumer-behavior.mjs",
-    "runtime_contract_smoke": "crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
+    "runtime_contract_smoke": "crates/modules/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
     "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
-    "runtime_fallback_smoke": "crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json",
+    "runtime_fallback_smoke": "crates/modules/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json",
     "runtime_fallback_smoke_runner": "scripts/verify/verify-product-runtime-fallback-smoke.mjs"
   },
   "runtime_composition": {
     "runtime": "ProductCatalogReadRuntime",
-    "source": "crates/rustok-product/src/runtime.rs",
+    "source": "crates/modules/rustok-product/src/runtime.rs",
     "host_composition": "apps/server/src/services/commerce_provider_runtime.rs",
     "profiles": [
       "embedded_native",
@@ -92,7 +92,7 @@
   },
   "external_transport": {
     "crate": "rustok-product-transport",
-    "source": "crates/rustok-product-transport",
+    "source": "crates/modules/rustok-product-transport",
     "protocol": "tonic_grpc_json_owner_contract",
     "client": "GrpcProductCatalogReadProvider",
     "connection_config": "GrpcProductCatalogReadConnectionConfig",
@@ -111,8 +111,8 @@
       "secret_debug_redacted",
       "authentication_failure_secret_not_echoed"
     ],
-    "proto": "crates/rustok-product-transport/proto/rustok/product/product_catalog.proto",
-    "conformance_test": "crates/rustok-product-transport/tests/port_conformance.rs",
+    "proto": "crates/modules/rustok-product-transport/proto/rustok/product/product_catalog.proto",
+    "conformance_test": "crates/modules/rustok-product-transport/tests/port_conformance.rs",
     "host_deployment": "apps/server/src/services/product_catalog_deployment.rs",
     "runtime_factory": "ProductCatalogReadRuntime::external",
     "provider_selector_env": "RUSTOK_PRODUCT_CATALOG_PROVIDER",
@@ -120,7 +120,7 @@
     "bearer_token_env": "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
     "authentication_status": "source_complete_execution_pending",
     "provider_host_crate": "rustok-product-catalog-service",
-    "provider_host_source": "crates/rustok-product-catalog-service/src/main.rs",
+    "provider_host_source": "crates/modules/rustok-product-catalog-service/src/main.rs",
     "provider_host_binary": "rustok-product-catalog-service",
     "provider_host_owner_service": "CatalogService",
     "provider_host_event_transport": "OutboxTransport",
@@ -146,8 +146,8 @@
   "remote_consumer_behavior": {
     "status": "source_complete_execution_pending",
     "transport_profile": "grpc_loopback_external_runtime",
-    "commerce_test": "crates/rustok-commerce/tests/product_remote_consumer_behavior.rs",
-    "ai_source_test": "crates/rustok-ai/src/direct_product_attributes.rs",
+    "commerce_test": "crates/modules/rustok-commerce/tests/product_remote_consumer_behavior.rs",
+    "ai_source_test": "crates/modules/rustok-ai/src/direct_product_attributes.rs",
     "failure_profiles": [
       "unavailable",
       "timeout"
@@ -166,7 +166,7 @@
   },
   "maintainer_test_attestation": {
     "status": "passed_no_raw_logs_end_to_end_pending",
-    "source": "crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json",
+    "source": "crates/modules/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json",
     "verifier": "scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs",
     "attested_at": "2026-07-29T16:33:00+03:00",
     "observed_repository_head": "6655bda2068911bf010be2d950638a4473f953f1",
@@ -184,11 +184,11 @@
   "separate_process_runtime": {
     "status": "source_complete_execution_pending",
     "execution_scope": "provider_schema_preflight_authenticated_rpc_and_consumer_remote_startup",
-    "contract": "crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json",
+    "contract": "crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json",
     "runner": "scripts/evidence/capture-product-catalog-separate-process-runtime.mjs",
     "verifier": "scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs",
-    "probe": "crates/rustok-product-transport/examples/product_catalog_runtime_probe.rs",
-    "evidence_path": "crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime.json",
+    "probe": "crates/modules/rustok-product-transport/examples/product_catalog_runtime_probe.rs",
+    "evidence_path": "crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime.json",
     "transport_profile": "explicit_loopback_plaintext_local_evidence",
     "processes": [
       "standalone_provider",
@@ -211,12 +211,12 @@
     "service": "CatalogService",
     "runtime": "ProductCatalogReadRuntime",
     "profile": "embedded_native",
-    "source": "crates/rustok-product/src/ports.rs",
+    "source": "crates/modules/rustok-product/src/ports.rs",
     "status": "implemented"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
-    "source": "crates/rustok-product/contracts/product-fba-registry.json",
+    "source": "crates/modules/rustok-product/contracts/product-fba-registry.json",
     "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "execution_attestation": "maintainer_attested_passed_no_raw_logs",
     "profiles": [

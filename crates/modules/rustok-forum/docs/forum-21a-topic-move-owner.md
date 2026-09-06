@@ -12,7 +12,7 @@ relations owned by that topic.
 The machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-move-owner.json
+crates/modules/rustok-forum/contracts/forum-topic-move-owner.json
 ```
 
 The owner API is:

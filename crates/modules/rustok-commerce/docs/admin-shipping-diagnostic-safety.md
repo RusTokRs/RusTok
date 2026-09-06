@@ -47,7 +47,7 @@ The broad ecommerce correlation-safe mapper and non-`PortError` public-envelope 
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/admin-shipping-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/admin-shipping-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-admin-shipping-option-error-context.mjs`
 - `scripts/verify/verify-commerce-admin-shipping-http-error-safety.mjs`
 

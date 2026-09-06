@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 88 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-87.md`.
+`crates/modules/rustok-blog/docs/implementation-plan-slice-87.md`.
 
 Slices 1–87 retain the typed Comments remote boundary, delegated-write signing,
 scheduled key lifecycle, authorized schedule mutation, canonical schedule
@@ -52,14 +52,14 @@ comments_tcp_delegation_schedule
 The family is implemented in:
 
 ```text
-crates/rustok-events/src/blog_comments_schedule_audit.rs
+crates/libs/rustok-events/src/blog_comments_schedule_audit.rs
 ```
 
 It is registered and re-exported through:
 
 ```text
-crates/rustok-events/src/lib.rs
-crates/rustok-events/src/contract.rs
+crates/libs/rustok-events/src/lib.rs
+crates/libs/rustok-events/src/contract.rs
 ```
 
 ### Payload
@@ -132,7 +132,7 @@ The ordinary typed-envelope path now:
 Focused source coverage is in:
 
 ```text
-crates/rustok-events/tests/blog_comments_schedule_audit.rs
+crates/libs/rustok-events/tests/blog_comments_schedule_audit.rs
 ```
 
 ### Release digest generation
@@ -163,7 +163,7 @@ it does not change established root event or root envelope wire formats.
 The committed artifact is:
 
 ```text
-crates/rustok-events/contracts/event-contract-digests.json
+crates/libs/rustok-events/contracts/event-contract-digests.json
 ```
 
 ### Preserved ownership

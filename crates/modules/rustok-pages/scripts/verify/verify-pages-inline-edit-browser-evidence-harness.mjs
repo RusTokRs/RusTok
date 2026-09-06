@@ -4,22 +4,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
   contract:
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json",
   evidence:
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-browser-evidence-harness-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-browser-evidence-harness-source.json",
   config: "apps/next-admin/playwright.pages-inline-edit.config.ts",
   test: "apps/next-admin/tests/pages-inline-edit/browser-evidence.spec.ts",
   package: "apps/next-admin/package.json",
-  pageBuilderInline: "crates/rustok-page-builder-storefront/src/inline_edit.rs",
-  pagesInline: "crates/rustok-pages/storefront/src/inline_edit.rs",
-  adminLaunch: "crates/rustok-pages/admin/src/inline_edit_launch.rs",
-  realDom: "crates/fly-leptos/src/real_dom_inline.rs",
+  pageBuilderInline: "crates/modules/rustok-page-builder-storefront/src/inline_edit.rs",
+  pagesInline: "crates/modules/rustok-pages/storefront/src/inline_edit.rs",
+  adminLaunch: "crates/modules/rustok-pages/admin/src/inline_edit_launch.rs",
+  realDom: "crates/ui/fly-leptos/src/real_dom_inline.rs",
   artifactContract:
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
   packet:
     "docs/modules/pages-page-builder-inline-edit-browser-evidence-harness-packet-2026-08-06.md",
   executionPlan: "docs/modules/pages-page-builder-inline-edit-execution-plan.md",

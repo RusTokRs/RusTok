@@ -4,20 +4,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const evidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-production-gate-postgres-restart-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-production-gate-postgres-restart-source.json",
 ));
 const harness = read("apps/server/tests/pages_production_gate_postgres_restart.rs");
 const gate = read("apps/server/src/services/tenant_generation_delivery_gate.rs");
 const port = read("apps/server/src/services/pages_cache_invalidation.rs");
-const relay = read("crates/rustok-outbox/src/relay.rs");
-const historicalOwner = read("crates/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs");
-const historicalRestart = read("crates/rustok-pages/tests/outbox_relay_restart_postgres.rs");
+const relay = read("crates/modules/rustok-outbox/src/relay.rs");
+const historicalOwner = read("crates/modules/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs");
+const historicalRestart = read("crates/modules/rustok-pages/tests/outbox_relay_restart_postgres.rs");
 const packet = read("docs/modules/pages-page-builder-production-gate-postgres-restart-packet-2026-08-05.md");
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
-const localPlan = read("crates/rustok-pages/docs/implementation-plan.md");
+const localPlan = read("crates/modules/rustok-pages/docs/implementation-plan.md");
 const failures = [];
 
 const need = (text, marker, label) => {

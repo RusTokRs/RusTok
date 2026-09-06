@@ -1,5 +1,5 @@
 ---
-id: doc://crates/rustok-translation/docs/media-postgres-evidence-2026-09-02.md
+id: doc://crates/modules/rustok-translation/docs/media-postgres-evidence-2026-09-02.md
 kind: evidence_handoff
 language: en
 status: verified
@@ -27,7 +27,7 @@ deployment database.
   runtime evidence all passed.
 - The PR changed only
   `.github/workflows/media-translation-target-postgres.yml` and
-  `crates/rustok-media/tests/translation_target_postgres.rs`; production code
+  `crates/modules/rustok-media/tests/translation_target_postgres.rs`; production code
   was unchanged.
 - PR #3807 was squash-merged as
   `47f700ea638ea5bd0978f05db654c725d5164576`.

@@ -120,9 +120,9 @@ read diagnostic payloads remain separate open slices.
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `fulfillment.shipping_selection.v1` in
-  `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`.
+  `crates/modules/rustok-fulfillment/contracts/fulfillment-fba-registry.json`.
 - Additional workflow contract: `fulfillment.checkout_execution.v1` in
-  `crates/rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json`.
+  `crates/modules/rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json`.
 - Published checkout execution port: `CheckoutFulfillmentExecutionPort`.
 - Mounted checkout provider: `TypedCheckoutFulfillmentExecutionPort` over the
   owner execution adapter.
@@ -134,15 +134,15 @@ read diagnostic payloads remain separate open slices.
 - Contract/provider evidence remains in the existing fulfillment evidence
   matrices and live-adapter files.
 - Shipping-selection diagnostic source evidence:
-  `crates/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source.json`.
+  `crates/modules/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source.json`.
 - Shipping-option source evidence:
-  `crates/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-source.json`.
+  `crates/modules/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-source.json`.
 - Fulfillment lifecycle read source evidence:
-  `crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json`.
+  `crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json`.
 - Fulfillment lifecycle mounted capture contract:
-  `crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json`.
+  `crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json`.
 - Fulfillment lifecycle deadline/failure contract:
-  `crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-failure-execution-contract.json`.
+  `crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-failure-execution-contract.json`.
 - Source evidence and both execution contracts are unvalidated and do not promote
   status.
 - Focused guards cover owner boundaries, application-host runtime composition,

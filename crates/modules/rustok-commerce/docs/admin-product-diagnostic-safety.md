@@ -43,7 +43,7 @@ This slice does not close raw diagnostic payloads in the separate shipping-profi
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/admin-product-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/admin-product-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-admin-product-diagnostic-safety.mjs`
 
 ## Validation disclosure

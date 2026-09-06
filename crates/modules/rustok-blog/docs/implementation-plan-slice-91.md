@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 91 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-90.md`.
+`crates/modules/rustok-blog/docs/implementation-plan-slice-90.md`.
 
 Slices 87–90 retain the bounded canonical publication port, the sealed Blog
 Comments schedule-audit event, the `rustok-outbox` exact write-once writer, and

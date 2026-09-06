@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root = process.env.SEARCH_FBA_ROOT || process.cwd();
-const registryPath = 'crates/rustok-search/contracts/search-fba-registry.json';
-const contractPath = 'crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json';
+const registryPath = 'crates/modules/rustok-search/contracts/search-fba-registry.json';
+const contractPath = 'crates/modules/rustok-search/contracts/evidence/search-runtime-contract-smoke.json';
 function resolve(repoPath) { return path.join(root, repoPath); }
 function read(repoPath) { return fs.readFileSync(resolve(repoPath), 'utf8'); }
 function json(repoPath) { return JSON.parse(read(repoPath)); }
@@ -57,9 +57,9 @@ for (const testCase of contract.cases) {
   assert(executionIndex > localeIndex && executionIndex < errorIndex, `${testCase.operation} embedded PostgreSQL execution order drift`);
 }
 
-const readme = read('crates/rustok-search/README.md');
+const readme = read('crates/modules/rustok-search/README.md');
 assert(readme.includes('contracts/evidence/search-runtime-contract-smoke.json'), 'README missing runtime contract evidence');
-const plan = read('crates/rustok-search/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-search/docs/implementation-plan.md');
 assert(plan.includes('search-runtime-contract-smoke.json'), 'implementation plan missing runtime contract evidence');
 const central = read('docs/modules/registry.md');
 assert(central.includes('search-runtime-contract-smoke.json'), 'central readiness board missing runtime contract evidence');

@@ -15,17 +15,17 @@ import { spawnSync } from 'node:child_process';
 
 const verifier = path.resolve('scripts/verify/verify-blog-comments-storefront-write-surface.mjs');
 const files = [
-  'crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
-  'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json',
-  'crates/rustok-blog/contracts/blog-fba-registry.json',
-  'crates/rustok-comments/contracts/comments-fba-registry.json',
-  'crates/rustok-blog/storefront/README.md',
-  'crates/rustok-blog/storefront/src/ui/leptos.rs',
-  'crates/rustok-blog/storefront/src/transport/graphql_adapter.rs',
-  'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs',
-  'crates/rustok-blog/storefront/src/transport/mod.rs',
-  'crates/rustok-blog/storefront/src/model.rs',
-  'crates/rustok-blog/docs/implementation-plan-slice-100.md',
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json',
+  'crates/modules/rustok-blog/contracts/blog-fba-registry.json',
+  'crates/modules/rustok-comments/contracts/comments-fba-registry.json',
+  'crates/modules/rustok-blog/storefront/README.md',
+  'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
+  'crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs',
+  'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs',
+  'crates/modules/rustok-blog/storefront/src/transport/mod.rs',
+  'crates/modules/rustok-blog/storefront/src/model.rs',
+  'crates/modules/rustok-blog/docs/implementation-plan-slice-100.md',
 ];
 
 function copy(root, relativePath) {
@@ -85,7 +85,7 @@ test('rejects a newly added storefront comment form', () => {
   const result = rejects((root) =>
     mutate(
       root,
-      'crates/rustok-blog/storefront/src/ui/leptos.rs',
+      'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
       (source) => `${source}\n<form><textarea></textarea></form>`,
     ),
   );
@@ -96,7 +96,7 @@ test('rejects a storefront create-comment transport', () => {
   const result = rejects((root) =>
     mutate(
       root,
-      'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs',
+      'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs',
       (source) => `${source}\ncreate_comment(`,
     ),
   );
@@ -107,7 +107,7 @@ test('rejects a storefront GraphQL mutation', () => {
   const result = rejects((root) =>
     mutate(
       root,
-      'crates/rustok-blog/storefront/src/transport/graphql_adapter.rs',
+      'crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs',
       (source) => source.replace('query StorefrontBlog', 'mutation StorefrontBlog'),
     ),
   );
@@ -118,7 +118,7 @@ test('rejects inventory promotion to a present form', () => {
   const result = rejects((root) =>
     mutateJson(
       root,
-      'crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
+      'crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
       (evidence) => {
         evidence.source_contract.comment_form_present = true;
       },
@@ -131,7 +131,7 @@ test('rejects fallback actualization back to an implementation target', () => {
   const result = rejects((root) =>
     mutateJson(
       root,
-      'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json',
+      'crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json',
       (evidence) => {
         evidence.storefront_write_surface.comment_form_fallback = 'planned';
       },
@@ -142,7 +142,7 @@ test('rejects fallback actualization back to an implementation target', () => {
 
 test('rejects loss of legacy registry compatibility vocabulary without schema migration', () => {
   const result = rejects((root) =>
-    mutateJson(root, 'crates/rustok-blog/contracts/blog-fba-registry.json', (registry) => {
+    mutateJson(root, 'crates/modules/rustok-blog/contracts/blog-fba-registry.json', (registry) => {
       registry.provider_dependencies[0].degraded_modes = ['show_cached_thread_snapshot'];
     }),
   );
@@ -153,7 +153,7 @@ test('rejects runtime or browser execution claims', () => {
   const result = rejects((root) =>
     mutateJson(
       root,
-      'crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
+      'crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json',
       (evidence) => {
         evidence.source_contract.runtime_execution_observed = true;
       },
@@ -165,7 +165,7 @@ test('rejects runtime or browser execution claims', () => {
 test('rejects slice-100 planning drift', () => {
   const result = rejects((root) =>
     writeFileSync(
-      path.join(root, 'crates/rustok-blog/docs/implementation-plan-slice-100.md'),
+      path.join(root, 'crates/modules/rustok-blog/docs/implementation-plan-slice-100.md'),
       '',
     ),
   );

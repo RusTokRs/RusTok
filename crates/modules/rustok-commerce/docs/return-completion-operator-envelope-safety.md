@@ -50,7 +50,7 @@ The owner still represents these operator states through validation text, so rep
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/return-completion-operator-envelope-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/return-completion-operator-envelope-safety-source-review.json`
 - `scripts/verify/verify-commerce-return-completion-envelope-safety.mjs`
 
 ## Validation disclosure

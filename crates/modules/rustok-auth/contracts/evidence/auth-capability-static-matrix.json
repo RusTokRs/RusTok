@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_from": "crates/rustok-auth/contracts/auth-fba-registry.json",
+  "generated_from": "crates/modules/rustok-auth/contracts/auth-fba-registry.json",
   "status": "planned_cases_locked",
   "capability_profile": "auth_identity_permission_surface",
   "cases": [

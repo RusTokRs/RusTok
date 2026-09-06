@@ -49,11 +49,11 @@ function collectRustFiles(root, relative = "") {
   return files;
 }
 
-const servicesModPath = "crates/rustok-forum/src/services/mod.rs";
-const categoryOwnerPath = "crates/rustok-forum/src/services/category_owner.rs";
-const topicFacadePath = "crates/rustok-forum/src/services/topic_facade.rs";
-const replyFacadePath = "crates/rustok-forum/src/services/reply_facade.rs";
-const libPath = "crates/rustok-forum/src/lib.rs";
+const servicesModPath = "crates/modules/rustok-forum/src/services/mod.rs";
+const categoryOwnerPath = "crates/modules/rustok-forum/src/services/category_owner.rs";
+const topicFacadePath = "crates/modules/rustok-forum/src/services/topic_facade.rs";
+const replyFacadePath = "crates/modules/rustok-forum/src/services/reply_facade.rs";
+const libPath = "crates/modules/rustok-forum/src/lib.rs";
 
 for (const filePath of [
   servicesModPath,
@@ -146,7 +146,7 @@ const forbiddenExternalPatterns = [
   /services::reply_owner::ReplyService/,
 ];
 for (const relativePath of collectRustFiles(repoRoot)) {
-  if (relativePath.startsWith("crates/rustok-forum/src/services/")) continue;
+  if (relativePath.startsWith("crates/modules/rustok-forum/src/services/")) continue;
   const source = readRepo(relativePath);
   for (const pattern of forbiddenExternalPatterns) {
     if (pattern.test(source)) {

@@ -3,7 +3,7 @@
   "module": "order",
   "packet": "contract-test-placeholder-matrix",
   "status": "static_matrix_locked",
-  "generated_from": "crates/rustok-order/contracts/order-fba-registry.json",
+  "generated_from": "crates/modules/rustok-order/contracts/order-fba-registry.json",
   "runner": "scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
   "contract_version": "order.checkout_completion.v1",
   "profiles": [

@@ -1,21 +1,21 @@
 import fs from 'node:fs';
 
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-tcp-user-delegation.json';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-73.md';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-user-delegation.json';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-73.md';
 const lockPath = 'Cargo.lock';
-const apiManifestPath = 'crates/rustok-api/Cargo.toml';
-const digestPath = 'crates/rustok-api/src/digest.rs';
-const apiExportPath = 'crates/rustok-api/src/lib.rs';
-const commentsManifestPath = 'crates/rustok-comments/Cargo.toml';
-const commentsExportPath = 'crates/rustok-comments/src/lib.rs';
-const authPath = 'crates/rustok-comments/src/tcp_auth.rs';
-const delegationPath = 'crates/rustok-comments/src/tcp_delegation.rs';
-const serverPath = 'crates/rustok-comments/src/tcp_server.rs';
-const transportPath = 'crates/rustok-comments/src/tcp_transport.rs';
+const apiManifestPath = 'crates/libs/rustok-api/Cargo.toml';
+const digestPath = 'crates/libs/rustok-api/src/digest.rs';
+const apiExportPath = 'crates/libs/rustok-api/src/lib.rs';
+const commentsManifestPath = 'crates/modules/rustok-comments/Cargo.toml';
+const commentsExportPath = 'crates/modules/rustok-comments/src/lib.rs';
+const authPath = 'crates/modules/rustok-comments/src/tcp_auth.rs';
+const delegationPath = 'crates/modules/rustok-comments/src/tcp_delegation.rs';
+const serverPath = 'crates/modules/rustok-comments/src/tcp_server.rs';
+const transportPath = 'crates/modules/rustok-comments/src/tcp_transport.rs';
 const runtimePath = 'apps/server/src/services/comments_provider_runtime.rs';
-const blogContextPath = 'crates/rustok-blog/src/services/comment.rs';
-const commentsPolicyPath = 'crates/rustok-comments/src/services.rs';
+const blogContextPath = 'crates/modules/rustok-blog/src/services/comment.rs';
+const commentsPolicyPath = 'crates/modules/rustok-comments/src/services.rs';
 
 function read(path) {
   return fs.readFileSync(path, 'utf8');

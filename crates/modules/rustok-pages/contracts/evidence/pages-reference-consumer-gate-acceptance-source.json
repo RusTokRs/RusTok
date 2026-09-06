@@ -5,7 +5,7 @@
   "candidate_input": {
     "format": "pages_reference_consumer_gate_candidate_v1",
     "required_status": "component_execution_passed_owner_review_pending",
-    "source_contract": "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
+    "source_contract": "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
     "source_commit_must_equal_checkout_head": true,
     "deployment_image_digest_must_be_immutable_repo_digest": true,
     "retained_source_hashes_must_match_contract_and_checkout": true,
@@ -27,7 +27,7 @@
   "observed_health_input": {
     "format": "pages_builder_provider_health_observed_acceptance_v1",
     "required_status": "owner_accepted_observed_runtime_evidence_gate_review_pending",
-    "source_contract": "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
+    "source_contract": "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
     "required_decision": "accept_observed_runtime_evidence",
     "source_commit_must_equal_checkout_head_and_candidate": true,
     "deployment_image_digest_must_equal_candidate": true,
@@ -92,7 +92,7 @@
     "ffa_fba_remain_unclaimed_in_source": true
   },
   "downstream_forum_wave": {
-    "admission_source": "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
+    "admission_source": "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
     "admission_output_format": "forum_page_builder_wave_admission_v1",
     "admission_output_status": "forum_wave_inputs_admitted_observed_control_plane_pending",
     "accepted_gate_packet_is_required_input": true,
@@ -118,14 +118,14 @@
     "workflow_or_ci_run": false
   },
   "required_source_files": [
-    "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
-    "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
-    "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
     "scripts/evidence/pages-reference-consumer-gate-evidence.mjs",
     "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs",
-    "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
     "scripts/evidence/accept-pages-reference-consumer-gate.mjs",
-    "crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs",
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs",
     "docs/modules/pages-page-builder-reference-consumer-gate-acceptance-actualization-2026-08-10.md",
     "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md"
   ],

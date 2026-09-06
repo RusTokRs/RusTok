@@ -15,10 +15,10 @@ function forbid(text, marker, label) {
 }
 
 const files = {
-  lib: "crates/rustok-forum/src/lib.rs",
-  resolution: "crates/rustok-forum/src/import_resolution.rs",
-  inspection: "crates/rustok-forum/src/import_inspection.rs",
-  mapping: "crates/rustok-forum/src/import_mapping.rs",
+  lib: "crates/modules/rustok-forum/src/lib.rs",
+  resolution: "crates/modules/rustok-forum/src/import_resolution.rs",
+  inspection: "crates/modules/rustok-forum/src/import_inspection.rs",
+  mapping: "crates/modules/rustok-forum/src/import_mapping.rs",
   packet: "docs/modules/forum-34-import-application-resolution-actualization-2026-08-09.md",
 };
 

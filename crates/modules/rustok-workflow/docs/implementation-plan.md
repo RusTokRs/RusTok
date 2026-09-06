@@ -23,11 +23,11 @@ transfer to this package.
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `WorkflowReadPort` / `workflow.read_projection.v1` in
-  `crates/rustok-workflow/contracts/workflow-fba-registry.json`.
+  `crates/modules/rustok-workflow/contracts/workflow-fba-registry.json`.
 - Static, runtime-order, and compile-free evidence:
-  `crates/rustok-workflow/contracts/evidence/workflow-contract-test-static-matrix.json`,
-  `crates/rustok-workflow/contracts/evidence/workflow-provider-runtime-order-smoke.json`,
-  and `crates/rustok-workflow/contracts/evidence/workflow-read-projection-runtime-smoke.json`.
+  `crates/modules/rustok-workflow/contracts/evidence/workflow-contract-test-static-matrix.json`,
+  `crates/modules/rustok-workflow/contracts/evidence/workflow-provider-runtime-order-smoke.json`,
+  and `crates/modules/rustok-workflow/contracts/evidence/workflow-read-projection-runtime-smoke.json`.
 - `scripts/verify/verify-workflow-admin-boundary.mjs` and
   `npm run verify:workflow:fba` lock the FFA boundary and FBA provider order.
 

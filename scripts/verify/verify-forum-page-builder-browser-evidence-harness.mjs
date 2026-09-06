@@ -15,7 +15,7 @@ function requireAbsent(text, needle, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json";
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json";
 const configPath = "apps/next-admin/playwright.forum-page-builder.config.ts";
 const setupPath = "apps/next-admin/tests/forum-page-builder/global-setup.ts";
 const runnerPath = "apps/next-admin/tests/forum-page-builder/browser-evidence.spec.ts";
@@ -28,14 +28,14 @@ const setup = read(setupPath);
 const runner = read(runnerPath);
 const packet = read(packetPath);
 const packageJson = JSON.parse(read("apps/next-admin/package.json"));
-const moduleManifest = read("crates/rustok-forum/rustok-module.toml");
+const moduleManifest = read("crates/modules/rustok-forum/rustok-module.toml");
 const propertyPanel = read(
-  "crates/rustok-page-builder/admin/src/editor/contribution_properties.rs",
+  "crates/modules/rustok-page-builder/admin/src/editor/contribution_properties.rs",
 );
 const previewPanel = read(
-  "crates/rustok-page-builder/admin/src/editor/contribution_preview.rs",
+  "crates/modules/rustok-page-builder/admin/src/editor/contribution_preview.rs",
 );
-const palette = read("crates/rustok-page-builder/admin/src/editor/palette_layers.rs");
+const palette = read("crates/modules/rustok-page-builder/admin/src/editor/palette_layers.rs");
 const composition = read("apps/admin/src/app/page_builder_contributions.rs");
 
 if (contract.status !== "source_ready_maintainer_execution_pending") {

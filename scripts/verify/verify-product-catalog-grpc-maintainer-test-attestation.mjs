@@ -11,7 +11,7 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const evidencePath =
-  "crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json";
+  "crates/modules/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json";
 const verifierPath =
   "scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs";
 const expectedCommands = [
@@ -62,13 +62,13 @@ function requireText(source, marker, description) {
 
 const evidence = parseJson(evidencePath);
 const productRegistry = parseJson(
-  "crates/rustok-product/contracts/product-fba-registry.json",
+  "crates/modules/rustok-product/contracts/product-fba-registry.json",
 );
 const aiProductRegistry = parseJson(
-  "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
+  "crates/modules/rustok-ai-product/contracts/ai-product-fba-registry.json",
 );
-const productPlan = read("crates/rustok-product/docs/implementation-plan.md");
-const aiProductPlan = read("crates/rustok-ai-product/docs/implementation-plan.md");
+const productPlan = read("crates/modules/rustok-product/docs/implementation-plan.md");
+const aiProductPlan = read("crates/modules/rustok-ai-product/docs/implementation-plan.md");
 const cargoLock = read("Cargo.lock");
 
 if (evidence) {

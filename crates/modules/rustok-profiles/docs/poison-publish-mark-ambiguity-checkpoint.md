@@ -19,13 +19,13 @@ This checkpoint adds the missing cross-system ambiguity boundary: the broker may
 Machine contract:
 
 ```text
-crates/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-source.json
+crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-source.json
 ```
 
 Harness:
 
 ```text
-crates/rustok-social-graph/tests/index_raw_poison_publish_mark_ambiguity.rs
+crates/modules/rustok-social-graph/tests/index_raw_poison_publish_mark_ambiguity.rs
 ```
 
 Verifier:

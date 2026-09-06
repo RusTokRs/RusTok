@@ -19,7 +19,7 @@ const requireMarkers = (relative, markers) => {
 };
 
 const inspectorPath =
-  'crates/rustok-index/src/infrastructure/postgres/drift_finding_inspector.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/drift_finding_inspector.rs';
 const inspector = requireMarkers(inspectorPath, [
   'pub enum IndexDriftFindingSeverity',
   'pub enum IndexDriftFindingScope',
@@ -115,7 +115,7 @@ for (const marker of [
   }
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod drift_finding_inspector;',
   'pub use drift_finding_inspector::{',
   'IndexDriftFindingInspection, IndexDriftFindingInspectionError, IndexDriftFindingScope,',
@@ -164,7 +164,7 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-index/docs/m6-drift-finding-inspection.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-drift-finding-inspection.md', [
   'Status: `source_complete_server_authorized_snapshot_reader_and_repair_pending`.',
   '`PostgresIndexDriftFindingInspector`',
   "`state = 'open'`",
@@ -184,11 +184,11 @@ requireMarkers('apps/server/docs/index-reconciliation-operator-runtime.md', [
   'Both inspection methods and requeue authorize before adapter or recovery-request validation',
   'Drift inspection is read-only and is not scheduled.',
 ]);
-requireMarkers('crates/rustok-index/docs/README.md', [
+requireMarkers('crates/modules/rustok-index/docs/README.md', [
   '[M6 Drift Finding Inspection](./m6-drift-finding-inspection.md)',
   '[M6 Locale-Optional Drift-Finding Scope](./m6-drift-finding-locale-scope.md)',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add drift diagnosis, targeted repair commands, and admitted repair evidence.',
   '- [ ] Add in-page interruption/timeouts, dry-run, and targeted/full/shadow rebuild modes.',
 ]);

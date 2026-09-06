@@ -3,15 +3,15 @@
   "task": "FORUM-20BB",
   "upstream_task": "FORUM-20BA",
   "scope": "Exact owner composition for one storefront topic read through the canonical base visibility and richer category/topic audience decision",
-  "owner_service": "crates/rustok-forum/src/services/topic_audience_read.rs",
-  "base_visibility_owner": "crates/rustok-forum/src/services/topic_visibility.rs",
-  "richer_visibility_owner": "crates/rustok-forum/src/services/topic_audience_visibility.rs",
-  "topic_owner_facade": "crates/rustok-forum/src/services/topic_facade.rs",
-  "source_test": "crates/rustok-forum/tests/topic_audience_exact_read_sqlite.rs",
-  "owner_note": "crates/rustok-forum/docs/forum-20bb-topic-audience-exact-read.md",
+  "owner_service": "crates/modules/rustok-forum/src/services/topic_audience_read.rs",
+  "base_visibility_owner": "crates/modules/rustok-forum/src/services/topic_visibility.rs",
+  "richer_visibility_owner": "crates/modules/rustok-forum/src/services/topic_audience_visibility.rs",
+  "topic_owner_facade": "crates/modules/rustok-forum/src/services/topic_facade.rs",
+  "source_test": "crates/modules/rustok-forum/tests/topic_audience_exact_read_sqlite.rs",
+  "owner_note": "crates/modules/rustok-forum/docs/forum-20bb-topic-audience-exact-read.md",
   "source_verifier": "scripts/verify/verify-forum-topic-audience-exact-read.mjs",
-  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
-  "crate_api": "crates/rustok-forum/CRATE_API.md",
+  "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
+  "crate_api": "crates/modules/rustok-forum/CRATE_API.md",
   "owner_boundary": {
     "public_exact_read_published": true,
     "authenticated_exact_read_published": true,
@@ -61,7 +61,7 @@
     "capture maintainer-executed SQLite PostgreSQL native and GraphQL runtime evidence"
   ],
   "downstream_task": "FORUM-20BC",
-  "downstream_contract": "crates/rustok-forum/contracts/forum-topic-audience-transport-composition.json",
+  "downstream_contract": "crates/modules/rustok-forum/contracts/forum-topic-audience-transport-composition.json",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [

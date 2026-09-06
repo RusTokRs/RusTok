@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const timeoutPath = 'crates/rustok-index/src/application/source_timeout.rs';
+const timeoutPath = 'crates/modules/rustok-index/src/application/source_timeout.rs';
 const timeoutSource = requireMarkers(timeoutPath, [
   'const DEFAULT_INDEX_SOURCE_CALL_TIMEOUT: Duration = Duration::from_secs(30);',
   'const INDEX_SOURCE_SCAN_TIMEOUT_CODE: &str = "index_source_scan_timeout";',
@@ -46,7 +46,7 @@ for (const forbidden of [
   }
 }
 
-const applicationPath = 'crates/rustok-index/src/application/mod.rs';
+const applicationPath = 'crates/modules/rustok-index/src/application/mod.rs';
 const application = requireMarkers(applicationPath, [
   'mod mutation_event;',
   'mod source_registry;',
@@ -59,7 +59,7 @@ if (application.includes('materialize_index_source_registry, register_index_sour
   fail(`${applicationPath} must not bypass the timeout wrapper through the public source-registry export`);
 }
 
-const cargoPath = 'crates/rustok-index/Cargo.toml';
+const cargoPath = 'crates/modules/rustok-index/Cargo.toml';
 const cargo = read(cargoPath);
 const dependencies = cargo.slice(
   cargo.indexOf('[dependencies]'),
@@ -74,9 +74,9 @@ if (devDependencies.includes('tokio.workspace = true')) {
 }
 
 for (const bridgePath of [
-  'crates/rustok-distribution/src/channel_index.rs',
-  'crates/rustok-distribution/src/product_index/product.rs',
-  'crates/rustok-distribution/src/product_variant_index.rs',
+  'crates/modules/rustok-distribution/src/channel_index.rs',
+  'crates/modules/rustok-distribution/src/product_index/product.rs',
+  'crates/modules/rustok-distribution/src/product_variant_index.rs',
 ]) {
   const bridge = requireMarkers(bridgePath, ['register_index_source(']);
   if (bridge.includes('IndexSourceCatalog::register')) {
@@ -84,7 +84,7 @@ for (const bridgePath of [
   }
 }
 
-requireMarkers('crates/rustok-index/docs/m6-source-call-timeout.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-source-call-timeout.md', [
   'Status: `source_complete_owner_execution_pending`',
   'The default source-call deadline is `30 seconds`.',
   '`index_source_scan_timeout`',
@@ -93,10 +93,10 @@ requireMarkers('crates/rustok-index/docs/m6-source-call-timeout.md', [
   'complete in-page interruption/timeouts remains open',
   'maintainer-run',
 ]);
-requireMarkers('crates/rustok-index/docs/README.md', [
+requireMarkers('crates/modules/rustok-index/docs/README.md', [
   '[M6 Bounded Source-call Timeout](./m6-source-call-timeout.md)',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add in-page interruption/timeouts, dry-run, and targeted/full/shadow rebuild modes.',
 ]);
 

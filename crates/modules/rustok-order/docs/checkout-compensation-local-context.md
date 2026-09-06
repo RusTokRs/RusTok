@@ -129,8 +129,8 @@ This slice does not change:
 
 ## Static evidence
 
-- `crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source.json`
-- `crates/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source.json`
+- `crates/modules/rustok-order/contracts/evidence/checkout-compensation-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-order-compensation-local-context.mjs`
 - `scripts/verify/verify-order-checkout-compensation-error-context.mjs`
 - `scripts/verify/verify-order-checkout-owner-context.mjs`

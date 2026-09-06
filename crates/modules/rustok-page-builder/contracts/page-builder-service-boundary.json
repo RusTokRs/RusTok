@@ -84,8 +84,8 @@
   },
   "production_consumers": {
     "pages": {
-      "source": "crates/rustok-pages/admin/src/builder.rs",
-      "manifest": "crates/rustok-pages/admin/Cargo.toml",
+      "source": "crates/modules/rustok-pages/admin/src/builder.rs",
+      "manifest": "crates/modules/rustok-pages/admin/Cargo.toml",
       "server_feature_marker": "\"rustok-page-builder/server\"",
       "capability_server_function": "pages_page_builder_capability",
       "capability_server_function_markers": [
@@ -161,9 +161,9 @@
         "impl PageBuilderRenderingAdapter for PagesPageBuilderRenderer"
       ],
       "admin_preview": {
-        "runtime_source": "crates/rustok-page-builder/admin/src/editor/runtime.rs",
-        "surface_source": "crates/rustok-page-builder/admin/src/editor/server_preview.rs",
-        "host_source": "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
+        "runtime_source": "crates/modules/rustok-page-builder/admin/src/editor/runtime.rs",
+        "surface_source": "crates/modules/rustok-page-builder/admin/src/editor/server_preview.rs",
+        "host_source": "crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs",
         "runtime_markers": [
           "PageBuilderPreviewRuntime::new",
           "let runtime_context = if self.runtime_context_configured",

@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "scope": "FORUM-12 PostgreSQL owner runtime proof",
-  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
-  "test_file": "crates/rustok-forum/tests/mention_quote_runtime_postgres.rs",
+  "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
+  "test_file": "crates/modules/rustok-forum/tests/mention_quote_runtime_postgres.rs",
   "test_environment": {
     "database": "PostgreSQL",
     "url_env": "RUSTOK_FORUM_TEST_DATABASE_URL",

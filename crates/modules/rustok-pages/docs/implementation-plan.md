@@ -419,15 +419,15 @@ Suggested commands, intentionally not run:
 
 ```bash
 node scripts/verify/verify-fly-ui-contributions.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-activation-recovery-postgres.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-repeated-artifact-loss-recovery.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-multilocale-repair-rollback-evidence.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-repair-rollback-continuity.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-loss-activation-recovery-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-repeated-artifact-loss-recovery.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-multilocale-repair-rollback-evidence.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-rollback-activated-repair-rollback-continuity.mjs
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_loss_activation_recovery_postgres -- --nocapture
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_loss_multilocale_activation_recovery_postgres -- --nocapture
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_repeated_loss_recovery_postgres -- --nocapture
@@ -435,11 +435,11 @@ RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test 
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_multilocale_repair_rollback_evidence_postgres -- --nocapture
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_loss_after_rollback_activation_recovery_postgres -- --nocapture
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... cargo test -p rustok-pages --test artifact_rollback_activated_repair_rollback_continuity_postgres -- --nocapture
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-release-composition.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-admin-launch.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-asset-delivery.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-authenticated-authoring-route.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs
 node scripts/verify/verify-release-infra-self-test.mjs
 node scripts/verify/verify-release-supply-chain-contract.mjs
 node scripts/verify/verify-release-readiness-contract.mjs

@@ -18,8 +18,8 @@ ssr = [
 inline-edit = ["dep:fly-leptos"]
 
 [dependencies]
-fly = { path = "../fly" }
-fly-leptos = { path = "../fly-leptos", optional = true, default-features = false }
+fly = { path = "../../ui/fly" }
+fly-leptos = { path = "../../ui/fly-leptos", optional = true, default-features = false }
 rustok-page-builder = { path = "../rustok-page-builder", default-features = false }
 leptos.workspace = true
 serde.workspace = true

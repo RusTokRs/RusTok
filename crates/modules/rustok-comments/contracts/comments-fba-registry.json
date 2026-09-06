@@ -56,20 +56,20 @@
     }
   ],
   "evidence": {
-    "local_plan": "crates/rustok-comments/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-comments/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-comments-fba.mjs",
-    "static_matrix": "crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json",
+    "static_matrix": "crates/modules/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json",
     "port_boundary_runner": "scripts/verify/verify-comments-port-boundary.mjs",
     "port_boundary_self_test": "scripts/verify/verify-comments-port-boundary.test.mjs",
-    "runtime_order_smoke": "crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json",
+    "runtime_order_smoke": "crates/modules/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json",
     "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs",
-    "thread_write_invariants": "crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json",
+    "thread_write_invariants": "crates/modules/rustok-comments/contracts/evidence/comments-thread-write-invariants.json",
     "thread_write_invariants_runner": "scripts/verify/verify-comments-thread-write-invariants.mjs",
     "thread_write_invariants_self_test": "scripts/verify/verify-comments-thread-write-invariants.test.mjs",
-    "thread_insert_error_classifier_test": "crates/rustok-comments/src/entities/thread_insert_error_tests.rs",
-    "thread_write_invariants_test": "crates/rustok-comments/tests/thread_write_invariants.rs",
-    "thread_creation_concurrency_test": "crates/rustok-comments/tests/thread_creation_concurrency.rs"
+    "thread_insert_error_classifier_test": "crates/modules/rustok-comments/src/entities/thread_insert_error_tests.rs",
+    "thread_write_invariants_test": "crates/modules/rustok-comments/tests/thread_write_invariants.rs",
+    "thread_creation_concurrency_test": "crates/modules/rustok-comments/tests/thread_creation_concurrency.rs"
   },
   "verification_chain": {
     "package_script": "verify:comments:fba",
@@ -91,21 +91,21 @@
         "test_package_script": "test:verify:comments:port-boundary",
         "verifier": "scripts/verify/verify-comments-port-boundary.mjs",
         "self_test": "scripts/verify/verify-comments-port-boundary.test.mjs",
-        "evidence": "crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json"
+        "evidence": "crates/modules/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json"
       },
       "thread_write_invariants": {
         "package_script": "verify:comments:thread-write-invariants",
         "test_package_script": "test:verify:comments:thread-write-invariants",
         "verifier": "scripts/verify/verify-comments-thread-write-invariants.mjs",
         "self_test": "scripts/verify/verify-comments-thread-write-invariants.test.mjs",
-        "unit_test": "crates/rustok-comments/src/entities/thread_insert_error_tests.rs",
-        "evidence": "crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json"
+        "unit_test": "crates/modules/rustok-comments/src/entities/thread_insert_error_tests.rs",
+        "evidence": "crates/modules/rustok-comments/contracts/evidence/comments-thread-write-invariants.json"
       }
     }
   },
   "in_process_provider_impl": {
     "service": "InProcessCommentsThreadProvider",
-    "source": "crates/rustok-comments/src/ports.rs",
+    "source": "crates/modules/rustok-comments/src/ports.rs",
     "marker": "impl CommentsThreadPort for InProcessCommentsThreadProvider",
     "status": "implemented"
   },
@@ -128,7 +128,7 @@
   "contract_tests": {
     "status": "source_verified_no_compile",
     "runtime_status": "pending",
-    "source": "crates/rustok-comments/contracts/comments-fba-registry.json",
+    "source": "crates/modules/rustok-comments/contracts/comments-fba-registry.json",
     "runner": "scripts/verify/verify-comments-port-boundary.mjs",
     "profiles": [
       "in_process",

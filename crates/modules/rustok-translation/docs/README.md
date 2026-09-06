@@ -224,7 +224,7 @@ provider-specific database evidence; Blog Category does not add a second
 provider evidence gate beyond the canonical Taxonomy owner.
 
 `rustok-translation-targets` remains a separate Cargo package even if its
-physical directory is later moved under `crates/rustok-translation/`. This
+physical directory is later moved under `crates/modules/rustok-translation/`. This
 preserves the dependency direction: owners may depend on the neutral SPI but
 must never depend on the Translation control-plane crate.
 

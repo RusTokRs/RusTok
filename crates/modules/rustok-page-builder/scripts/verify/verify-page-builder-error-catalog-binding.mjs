@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 const moduleArg = process.argv[2] ?? "pages";
 const moduleToCrate = {
@@ -64,11 +64,11 @@ function assertMapContains(map, expected, label) {
   }
 }
 
-const providerManifest = readFile("crates/rustok-page-builder/rustok-module.toml");
-const consumerManifest = readFile(`crates/${crateName}/rustok-module.toml`);
-const consumerErrorRs = readFile(`crates/${crateName}/src/error.rs`);
+const providerManifest = readFile("crates/modules/rustok-page-builder/rustok-module.toml");
+const consumerManifest = readFile(`crates/modules/${crateName}/rustok-module.toml`);
+const consumerErrorRs = readFile(`crates/modules/${crateName}/src/error.rs`);
 const registry = JSON.parse(
-  readFile("crates/rustok-page-builder/contracts/page-builder-fba-registry.json"),
+  readFile("crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json"),
 );
 
 const expectedCatalog = {

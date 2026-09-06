@@ -14,7 +14,7 @@ This packet adds a non-mutating server-owned preflight for the canonical provide
 
 ## Server-owned non-mutating preflight
 
-`crates/rustok-pages/src/graphql/builder_rollout.rs` now exposes `pageBuilderCapabilityPreflight`.
+`crates/modules/rustok-pages/src/graphql/builder_rollout.rs` now exposes `pageBuilderCapabilityPreflight`.
 
 The query:
 
@@ -36,11 +36,11 @@ The source guard verifies both mappings together. Any future change in `PageBuil
 
 The source packet consists of:
 
-- `crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json`
+- `crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json`
 - `apps/next-admin/playwright.pages-builder-rollout-feature-preflight.config.ts`
 - `apps/next-admin/tests/pages-builder-rollout-feature-preflight/feature-preflight.spec.ts`
-- `crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-harness-source.json`
-- `crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs`
+- `crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-harness-source.json`
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs`
 
 The execution chain is strictly:
 
@@ -126,7 +126,7 @@ npx --no-install playwright test --config playwright.pages-builder-rollout-featu
 Source guard:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-rollout-feature-preflight-harness.mjs
 ```
 
 No tests, Node verifiers, Cargo commands, formatting, GraphQL/HTTP requests, Playwright/browser runs, workflows, CI, builds or migrations were executed by this implementation slice.

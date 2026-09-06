@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 90 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-89.md`.
+`crates/modules/rustok-blog/docs/implementation-plan-slice-89.md`.
 
 Slices 83–89 retain the PostgreSQL schedule-state/audit transaction, fail-stop
 handling for indeterminate audited writes, the bounded canonical publication

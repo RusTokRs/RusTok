@@ -10,14 +10,14 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const source = read('crates/rustok-fulfillment/src/checkout_execution.rs');
-const portContract = read('crates/rustok-api/src/ports.rs');
+const source = read('crates/modules/rustok-fulfillment/src/checkout_execution.rs');
+const portContract = read('crates/libs/rustok-api/src/ports.rs');
 const evidence = JSON.parse(
   read(
-    'crates/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json',
+    'crates/modules/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json',
   ),
 );
-const doc = read('crates/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md');
+const doc = read('crates/modules/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md');
 const failures = [];
 
 const requireText = (content, value, label) => {

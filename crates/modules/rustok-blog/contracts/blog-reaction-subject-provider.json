@@ -20,10 +20,10 @@
     "must_be_positive": true
   },
   "required_files": [
-    "crates/rustok-blog/src/reaction_subject.rs",
-    "crates/rustok-blog/src/lib.rs",
-    "crates/rustok-blog/Cargo.toml",
-    "crates/rustok-reactions/docs/implementation-plan.md",
+    "crates/modules/rustok-blog/src/reaction_subject.rs",
+    "crates/modules/rustok-blog/src/lib.rs",
+    "crates/modules/rustok-blog/Cargo.toml",
+    "crates/modules/rustok-reactions/docs/implementation-plan.md",
     "scripts/verify/verify-blog-reaction-subject-provider.mjs"
   ],
   "required_source_fragments": [

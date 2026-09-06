@@ -6,12 +6,12 @@
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "runtime_status": "not_run",
-  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-76.md",
+  "generated_from": "crates/modules/rustok-blog/docs/implementation-plan-slice-76.md",
   "source_contract": {
-    "delegation": "crates/rustok-comments/src/tcp_delegation.rs",
-    "provider_export": "crates/rustok-comments/src/lib.rs",
-    "client_transport": "crates/rustok-comments/src/tcp_transport.rs",
-    "server_adapter": "crates/rustok-comments/src/tcp_server.rs",
+    "delegation": "crates/modules/rustok-comments/src/tcp_delegation.rs",
+    "provider_export": "crates/modules/rustok-comments/src/lib.rs",
+    "client_transport": "crates/modules/rustok-comments/src/tcp_transport.rs",
+    "server_adapter": "crates/modules/rustok-comments/src/tcp_server.rs",
     "host_runtime": "apps/server/src/services/comments_provider_runtime.rs"
   },
   "key_id": {

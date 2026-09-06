@@ -9,8 +9,8 @@
       "name": "ChannelReadPort",
       "contract_version": "channel.read_projection.v1",
       "operations": ["read_channel", "list_channels_for_tenant"],
-      "context": "crates/rustok-channel/src/ports.rs::PortContext",
-      "error": "crates/rustok-channel/src/ports.rs::PortError",
+      "context": "crates/modules/rustok-channel/src/ports.rs::PortContext",
+      "error": "crates/modules/rustok-channel/src/ports.rs::PortError",
       "deadline_required": true,
       "idempotency_required": false,
       "semantics": "read_only"
@@ -30,10 +30,10 @@
   ],
   "fallback_profiles": ["embedded_native", "rest_compatibility", "unresolved_context"],
   "evidence": {
-    "local_plan": "crates/rustok-channel/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-channel/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-channel-fba.mjs",
-    "runtime_fallback_smoke": "crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json"
+    "runtime_fallback_smoke": "crates/modules/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json"
   },
   "contract_tests": {
     "status": "planned_cases_locked",

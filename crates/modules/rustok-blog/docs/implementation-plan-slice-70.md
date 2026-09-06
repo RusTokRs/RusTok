@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 70 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-69.md`. Slices 1–66 remain in
+`crates/modules/rustok-blog/docs/implementation-plan-slice-69.md`. Slices 1–66 remain in
 the original plan; slices 67–69 retain the typed remote core, TCP client, and
 trusted accepted-stream server adapter.
 
@@ -42,11 +42,11 @@ remains maintainer-owned.
   host-provider extension composition. `ModuleRuntimeExtensions::apply_to_host_runtime`
   then publishes the same selected port into GraphQL and server-function/Axum
   host snapshots without separate transport-specific wiring.
-- `crates/rustok-distribution/Cargo.toml` enables the existing
+- `crates/modules/rustok-distribution/Cargo.toml` enables the existing
   `rustok-comments/tcp-transport` feature whenever the Comments distribution
   feature is selected.
 - Source evidence is retained at
-  `crates/rustok-blog/contracts/evidence/blog-comments-host-provider-selection.json`.
+  `crates/modules/rustok-blog/contracts/evidence/blog-comments-host-provider-selection.json`.
 - The standalone fail-closed verifier is
   `scripts/verify/verify-blog-comments-host-provider-selection.mjs`.
 

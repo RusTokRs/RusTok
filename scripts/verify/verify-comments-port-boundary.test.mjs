@@ -8,15 +8,15 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const verifier = path.resolve("scripts/verify/verify-comments-port-boundary.mjs");
-const registryPath = "crates/rustok-comments/contracts/comments-fba-registry.json";
+const registryPath = "crates/modules/rustok-comments/contracts/comments-fba-registry.json";
 const evidencePath =
-  "crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json";
-const sharedPolicyPath = "crates/rustok-api/src/ports.rs";
-const providerPath = "crates/rustok-comments/src/ports.rs";
-const publicReadPath = "crates/rustok-comments/src/public_read.rs";
-const dtoPath = "crates/rustok-comments/src/dto.rs";
-const richtextPath = "crates/rustok-comments/src/richtext.rs";
-const planPath = "crates/rustok-comments/docs/implementation-plan.md";
+  "crates/modules/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json";
+const sharedPolicyPath = "crates/libs/rustok-api/src/ports.rs";
+const providerPath = "crates/modules/rustok-comments/src/ports.rs";
+const publicReadPath = "crates/modules/rustok-comments/src/public_read.rs";
+const dtoPath = "crates/modules/rustok-comments/src/dto.rs";
+const richtextPath = "crates/modules/rustok-comments/src/richtext.rs";
+const planPath = "crates/modules/rustok-comments/docs/implementation-plan.md";
 const verifierPath = "scripts/verify/verify-comments-port-boundary.mjs";
 const selfTestPath = "scripts/verify/verify-comments-port-boundary.test.mjs";
 

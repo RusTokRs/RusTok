@@ -19,7 +19,7 @@ const requireMarkers = (relative, markers) => {
 };
 
 const writerPath =
-  'crates/rustok-index/src/infrastructure/postgres/drift_finding_writer.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/drift_finding_writer.rs';
 const writer = requireMarkers(writerPath, [
   'const FINDING_KEY_CONTRACT: &[u8] = b"index_drift_finding_key_v1";',
   'const NO_LOCALE_KEY_COMPONENT: &[u8] = b"\\0";',
@@ -193,7 +193,7 @@ for (const [name, markers] of [
   }
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod drift_finding_writer;',
   'pub use drift_finding_writer::{',
   'IndexDriftDigestFindingRequest, IndexDriftFindingWriteError, IndexDriftFindingWriteOutcome,',
@@ -212,7 +212,7 @@ for (const premature of [
   }
 }
 
-requireMarkers('crates/rustok-index/docs/m6-drift-finding-writer.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-drift-finding-writer.md', [
   'Status: `source_complete_snapshot_reader_and_repair_pending`.',
   '`PostgresIndexDriftFindingWriter`',
   'Expected and actual digests are deliberately excluded from the key.',
@@ -224,17 +224,17 @@ requireMarkers('crates/rustok-index/docs/m6-drift-finding-writer.md', [
   'The canonical roadmap item `Add drift diagnosis, targeted repair commands, and admitted repair evidence` remains open.',
   'maintainer-run',
 ]);
-requireMarkers('crates/rustok-index/docs/m6-drift-finding-inspection.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-drift-finding-inspection.md', [
   'The separate `PostgresIndexDriftFindingWriter` can now persist',
   'The writer is not composed into this server runtime.',
   'authoritative source/index digest computation and producer composition',
 ]);
-requireMarkers('crates/rustok-index/docs/README.md', [
+requireMarkers('crates/modules/rustok-index/docs/README.md', [
   '[M6 Drift Finding Inspection](./m6-drift-finding-inspection.md)',
   '[M6 Drift Digest Finding Writer](./m6-drift-finding-writer.md)',
   '[M6 Locale-Optional Drift-Finding Scope](./m6-drift-finding-locale-scope.md)',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add drift diagnosis, targeted repair commands, and admitted repair evidence.',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [

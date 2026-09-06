@@ -12,14 +12,14 @@ const mustNotContain = (text, needle, label) => {
   }
 };
 
-const route = read("crates/rustok-forum/src/services/topic_route.rs");
-const owner = read("crates/rustok-forum/src/services/topic_owner.rs");
-const facade = read("crates/rustok-forum/src/services/topic_facade.rs");
+const route = read("crates/modules/rustok-forum/src/services/topic_route.rs");
+const owner = read("crates/modules/rustok-forum/src/services/topic_owner.rs");
+const facade = read("crates/modules/rustok-forum/src/services/topic_facade.rs");
 const contract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-topic-slug-rename-owner.json"),
+  read("crates/modules/rustok-forum/contracts/forum-topic-slug-rename-owner.json"),
 );
-const test = read("crates/rustok-forum/tests/topic_slug_rename_sqlite.rs");
-const plan = read("crates/rustok-forum/docs/implementation-plan.md");
+const test = read("crates/modules/rustok-forum/tests/topic_slug_rename_sqlite.rs");
+const plan = read("crates/modules/rustok-forum/docs/implementation-plan.md");
 
 if (contract.task !== "FORUM-24D") {
   throw new Error("FORUM-24D contract task drifted");

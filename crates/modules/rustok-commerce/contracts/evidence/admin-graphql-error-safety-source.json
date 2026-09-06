@@ -48,13 +48,13 @@
     "ci_executed": false
   },
   "reviewed_sources": [
-    "crates/rustok-commerce/admin/Cargo.toml",
-    "crates/rustok-commerce/admin/src/transport/mod.rs",
-    "crates/rustok-commerce/admin/src/transport/graphql_adapter.rs",
-    "crates/rustok-commerce/admin/src/transport/graphql_error_safety.rs",
-    "crates/rustok-commerce/admin/src/transport/shipping_profile.rs",
-    "crates/rustok-commerce/admin/src/transport/order_change.rs",
-    "crates/rustok-graphql/src/lib.rs",
+    "crates/modules/rustok-commerce/admin/Cargo.toml",
+    "crates/modules/rustok-commerce/admin/src/transport/mod.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/graphql_adapter.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/graphql_error_safety.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/shipping_profile.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/order_change.rs",
+    "crates/ui/rustok-graphql/src/lib.rs",
     "scripts/verify/verify-commerce-admin-graphql-error-safety.mjs"
   ],
   "promotion_gate": "No FFA, FBA, browser, SSR, transport, runtime, or production status is promoted from this source inspection."

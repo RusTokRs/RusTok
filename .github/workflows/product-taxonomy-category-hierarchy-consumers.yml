@@ -3,9 +3,9 @@ name: Product Taxonomy Category Hierarchy Consumers
 on:
   pull_request:
     paths:
-      - "crates/rustok-taxonomy/src/owner_category_read.rs"
-      - "crates/rustok-product/src/services/catalog_schema_service/effective_forms.rs"
-      - "crates/rustok-product/docs/category-taxonomy-binding.md"
+      - "crates/modules/rustok-taxonomy/src/owner_category_read.rs"
+      - "crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms.rs"
+      - "crates/modules/rustok-product/docs/category-taxonomy-binding.md"
       - "scripts/verify/verify-product-taxonomy-category-hierarchy-consumers.mjs"
       - ".github/workflows/product-taxonomy-category-hierarchy-consumers.yml"
       - ".github/workflows/product-category-legacy-storage-retirement.yml"
@@ -51,7 +51,7 @@ jobs:
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          runtime='crates/rustok-product/src/services/catalog_schema_service/effective_forms.rs'
+          runtime='crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms.rs'
           verifier='scripts/verify/verify-product-taxonomy-category-hierarchy-consumers.mjs'
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
@@ -60,14 +60,14 @@ jobs:
             echo "CAT-30 runtime/verifier unchanged; PR-wide CAT-30 slice restriction is not applicable."
             exit 0
           fi
-          allowed='^(crates/rustok-taxonomy/src/owner_category_read\.rs|crates/rustok-product/src/services/catalog_schema_service/effective_forms\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|scripts/verify/verify-product-taxonomy-category-hierarchy-consumers\.mjs|\.github/workflows/product-taxonomy-category-hierarchy-consumers\.yml|\.github/workflows/product-category-legacy-storage-retirement\.yml)$'
+          allowed='^(crates/modules/rustok-taxonomy/src/owner_category_read\.rs|crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms\.rs|crates/modules/rustok-product/docs/category-taxonomy-binding\.md|scripts/verify/verify-product-taxonomy-category-hierarchy-consumers\.mjs|\.github/workflows/product-taxonomy-category-hierarchy-consumers\.yml|\.github/workflows/product-category-legacy-storage-retirement\.yml)$'
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           test -z "$unexpected"
       - name: Check Taxonomy and Product formatting
         shell: bash
         run: |
-          cargo fmt --check --manifest-path crates/rustok-taxonomy/Cargo.toml
-          cargo fmt --check --manifest-path crates/rustok-product/Cargo.toml
+          cargo fmt --check --manifest-path crates/modules/rustok-taxonomy/Cargo.toml
+          cargo fmt --check --manifest-path crates/modules/rustok-product/Cargo.toml
       - name: Run Product Category Taxonomy hierarchy unit regressions
         run: cargo test -p rustok-product --lib category_taxonomy_hierarchy -- --nocapture
       - name: Run Taxonomy owner reader unit regressions

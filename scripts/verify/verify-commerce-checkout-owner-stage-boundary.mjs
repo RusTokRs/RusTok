@@ -12,37 +12,37 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const services = read('crates/rustok-commerce/src/services/mod.rs');
+const services = read('crates/modules/rustok-commerce/src/services/mod.rs');
 const orderStageFacade = read(
-  'crates/rustok-commerce/src/services/checkout_order_stages.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_order_stages.rs',
 );
 const orderStageLegacy = read(
-  'crates/rustok-commerce/src/services/checkout_order_stages_legacy.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_order_stages_legacy.rs',
 );
 const orderStage = `${orderStageFacade}\n${orderStageLegacy}`;
 const paymentStageFacade = read(
-  'crates/rustok-commerce/src/services/checkout_payment_stages.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_payment_stages.rs',
 );
 const paymentStageLegacy = read(
-  'crates/rustok-commerce/src/services/checkout_payment_stages_legacy.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_payment_stages_legacy.rs',
 );
 const paymentStage = `${paymentStageFacade}\n${paymentStageLegacy}`;
 const fulfillmentStageFacade = read(
-  'crates/rustok-commerce/src/services/checkout_fulfillment_stages.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages.rs',
 );
 const fulfillmentStageLegacy = read(
-  'crates/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs',
 );
 const fulfillmentStage = `${fulfillmentStageFacade}\n${fulfillmentStageLegacy}`;
 const pipeline = read(
-  'crates/rustok-commerce/src/services/checkout_stage_pipeline_owner_ports.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_stage_pipeline_owner_ports.rs',
 );
-const orderCompletionOwner = read('crates/rustok-order/src/ports.rs');
-const orderRecoveryOwner = read('crates/rustok-order/src/checkout_order_recovery.rs');
-const paymentOwner = read('crates/rustok-payment/src/checkout_execution.rs');
-const fulfillmentOwner = read('crates/rustok-fulfillment/src/checkout_execution.rs');
+const orderCompletionOwner = read('crates/modules/rustok-order/src/ports.rs');
+const orderRecoveryOwner = read('crates/modules/rustok-order/src/checkout_order_recovery.rs');
+const paymentOwner = read('crates/modules/rustok-payment/src/checkout_execution.rs');
+const fulfillmentOwner = read('crates/modules/rustok-fulfillment/src/checkout_execution.rs');
 const orderSettlementOwner = read(
-  'crates/rustok-order/src/checkout_payment_settlement.rs',
+  'crates/modules/rustok-order/src/checkout_payment_settlement.rs',
 );
 
 requireText(

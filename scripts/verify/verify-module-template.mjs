@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const templateRoot = path.join(root, 'crates/rustok-module-template');
+const templateRoot = path.join(root, 'crates/utils/rustok-module-template');
 const source = fs.readFileSync(path.join(templateRoot, 'src/lib.rs'), 'utf8');
 const cargoTemplate = fs.readFileSync(
   path.join(templateRoot, 'assets/Cargo.toml.template'),
@@ -33,15 +33,15 @@ const toolchainTemplate = fs.readFileSync(
   'utf8',
 );
 const buildContract = fs.readFileSync(
-  path.join(root, 'crates/rustok-modules/src/build.rs'),
+  path.join(root, 'crates/modules/rustok-modules/src/build.rs'),
   'utf8',
 );
 const sdkManifest = fs.readFileSync(
-  path.join(root, 'crates/rustok-module-sdk/Cargo.toml'),
+  path.join(root, 'crates/utils/rustok-module-sdk/Cargo.toml'),
   'utf8',
 );
 const nativeIndexGuide = fs.readFileSync(
-  path.join(root, 'crates/rustok-index/docs/module-source-integration.md'),
+  path.join(root, 'crates/modules/rustok-index/docs/module-source-integration.md'),
   'utf8',
 );
 
@@ -98,7 +98,7 @@ assert.ok(
     guestTemplate.includes('does not register an') &&
     indexIntegrationGuide.includes('does not publish a `platform.index` capability') &&
     /Index integration not yet\s+available/.test(indexIntegrationGuide) &&
-    indexIntegrationGuide.includes('crates/rustok-index/docs/module-source-integration.md'),
+    indexIntegrationGuide.includes('crates/modules/rustok-index/docs/module-source-integration.md'),
   'standalone template must explain the fail-closed Index compatibility boundary',
 );
 assert.ok(

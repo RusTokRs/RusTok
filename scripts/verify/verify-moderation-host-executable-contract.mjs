@@ -13,7 +13,7 @@ const host = fs.readFileSync(
   "utf8",
 );
 const docs = fs.readFileSync(
-  "crates/rustok-moderation/docs/host-composition-executable-contract.md",
+  "crates/modules/rustok-moderation/docs/host-composition-executable-contract.md",
   "utf8",
 );
 

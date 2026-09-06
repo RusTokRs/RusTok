@@ -13,13 +13,13 @@ existing ID-based REST topic route as an authorization-safe permanent redirect.
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-canonical-resolution.json
+crates/modules/rustok-forum/contracts/forum-topic-canonical-resolution.json
 ```
 
 Cumulative merge contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-owner.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json
 ```
 
 ## One source of truth
@@ -152,7 +152,7 @@ explicit operator repair rather than automatic request replay.
 
 ## Source-ready regression
 
-`crates/rustok-forum/tests/topic_canonical_resolution_sqlite.rs` is source-ready
+`crates/modules/rustok-forum/tests/topic_canonical_resolution_sqlite.rs` is source-ready
 to verify:
 
 - a two-edge `A -> B -> C` chain resolves both archived source IDs to `C`;
@@ -165,7 +165,7 @@ to verify:
 - a direct receipt with an active source is rejected.
 
 The controller tests in
-`crates/rustok-forum/src/controllers/topic_redirect.rs` are source-ready to
+`crates/modules/rustok-forum/src/controllers/topic_redirect.rs` are source-ready to
 verify through a real Axum router and real SQLite owner merge:
 
 - merged source GET returns `308` with the target ID;

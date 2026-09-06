@@ -8,7 +8,7 @@ const resolution = fs.readFileSync("apps/server/src/middleware/tenant_resolution
 const routePolicy = fs.readFileSync("apps/server/src/middleware/tenant_route_policy.rs", "utf8");
 const integration = fs.readFileSync("apps/server/tests/tenant_resolver_invariants_test.rs", "utf8");
 const graphql = fs.readFileSync("apps/server/src/controllers/graphql.rs", "utf8");
-const telemetry = fs.readFileSync("crates/rustok-telemetry/src/metrics.rs", "utf8");
+const telemetry = fs.readFileSync("crates/libs/rustok-telemetry/src/metrics.rs", "utf8");
 
 const failures = [];
 const requireMatch = (source, pattern, message) => {

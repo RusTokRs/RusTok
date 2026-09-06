@@ -56,7 +56,7 @@
   },
   "static_gates": {
     "script": "scripts/verify/verify-alloy-runtime-contract.mjs",
-    "evidence": "crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json"
+    "evidence": "crates/modules/alloy/contracts/evidence/alloy-runtime-static-matrix.json"
   },
   "sandbox_contract": {
     "profiles": {

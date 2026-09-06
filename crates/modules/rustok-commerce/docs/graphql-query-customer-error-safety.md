@@ -6,7 +6,7 @@ Status: `source_closed_unvalidated`
 
 This source contract closes the currently identified dynamic customer `PortError` handling gap in the mounted Commerce GraphQL query facade and records the correlation-safe Customer read diagnostics consumed by that facade.
 
-The compatibility resolver source in `crates/rustok-commerce/src/graphql/query.rs` remains unchanged. Its three customer-by-user reads continue to serve:
+The compatibility resolver source in `crates/modules/rustok-commerce/src/graphql/query.rs` remains unchanged. Its three customer-by-user reads continue to serve:
 
 - `storefrontMe`;
 - storefront order ownership validation used by order, return, refund, and order-change reads;

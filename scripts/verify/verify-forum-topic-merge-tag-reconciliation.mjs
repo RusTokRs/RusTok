@@ -4,21 +4,21 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-topic-merge-tag-reconciliation.json",
-  docs: "crates/rustok-forum/docs/forum-21e-topic-merge-tag-reconciliation.md",
-  entity: "crates/rustok-forum/src/entities/forum_topic_merge_tag_reconciliation.rs",
-  entitiesMod: "crates/rustok-forum/src/entities/mod.rs",
-  error: "crates/rustok-forum/src/error.rs",
-  lib: "crates/rustok-forum/src/lib.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-tag-reconciliation.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21e-topic-merge-tag-reconciliation.md",
+  entity: "crates/modules/rustok-forum/src/entities/forum_topic_merge_tag_reconciliation.rs",
+  entitiesMod: "crates/modules/rustok-forum/src/entities/mod.rs",
+  error: "crates/modules/rustok-forum/src/error.rs",
+  lib: "crates/modules/rustok-forum/src/lib.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260803_000013_add_forum_topic_merge_tag_reconciliations.rs",
-  migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
-  owner: "crates/rustok-forum/src/services/topic_merge_tag_reconciliation.rs",
-  lock: "crates/rustok-forum/src/services/topic_tag_lock.rs",
-  servicesMod: "crates/rustok-forum/src/services/mod.rs",
-  topicInline: "crates/rustok-forum/src/services/topic_inline.rs",
-  test: "crates/rustok-forum/tests/topic_merge_tag_reconciliation_sqlite.rs",
-  plan: "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/src/migrations/m20260803_000013_add_forum_topic_merge_tag_reconciliations.rs",
+  migrationsMod: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  owner: "crates/modules/rustok-forum/src/services/topic_merge_tag_reconciliation.rs",
+  lock: "crates/modules/rustok-forum/src/services/topic_tag_lock.rs",
+  servicesMod: "crates/modules/rustok-forum/src/services/mod.rs",
+  topicInline: "crates/modules/rustok-forum/src/services/topic_inline.rs",
+  test: "crates/modules/rustok-forum/tests/topic_merge_tag_reconciliation_sqlite.rs",
+  plan: "crates/modules/rustok-forum/docs/implementation-plan.md",
   verifier: "scripts/verify/verify-forum-topic-merge-tag-reconciliation.mjs",
 };
 

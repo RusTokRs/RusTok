@@ -21,9 +21,9 @@ const legacyPolicyPath =
   "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_source_retry_postgres.rs";
 const activePolicyPath =
   "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_source_retry_active.rs";
-const planPath = "crates/rustok-blog/docs/implementation-plan-slice-93.md";
+const planPath = "crates/modules/rustok-blog/docs/implementation-plan-slice-93.md";
 const evidencePath =
-  "crates/rustok-blog/contracts/evidence/blog-comments-audit-source-retry-runner.json";
+  "crates/modules/rustok-blog/contracts/evidence/blog-comments-audit-source-retry-runner.json";
 
 for (const file of [
   runtimePath,

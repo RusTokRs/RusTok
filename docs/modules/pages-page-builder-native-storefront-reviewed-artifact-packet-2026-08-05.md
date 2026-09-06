@@ -12,7 +12,7 @@ This packet closes that source cursor without changing production behavior.
 
 ## Reviewed publication fixture
 
-`crates/rustok-pages/storefront/tests/native_storefront_reviewed_artifact_sqlite.rs` creates a real GrapesJS/Fly body through `PageService::create` and publishes it through `PageService::publish_reviewed` with:
+`crates/modules/rustok-pages/storefront/tests/native_storefront_reviewed_artifact_sqlite.rs` creates a real GrapesJS/Fly body through `PageService::create` and publishes it through `PageService::publish_reviewed` with:
 
 - the exact current page version;
 - the exact localized body revision;
@@ -88,9 +88,9 @@ A cache value cannot be created from an unverified immutable artifact.
 
 Machine evidence is recorded in:
 
-- `crates/rustok-pages/contracts/evidence/pages-native-storefront-reviewed-artifact-source.json`;
-- `crates/rustok-pages/storefront/tests/native_storefront_reviewed_artifact_sqlite.rs`;
-- `crates/rustok-pages/scripts/verify/verify-pages-native-storefront-reviewed-artifact.mjs`.
+- `crates/modules/rustok-pages/contracts/evidence/pages-native-storefront-reviewed-artifact-source.json`;
+- `crates/modules/rustok-pages/storefront/tests/native_storefront_reviewed_artifact_sqlite.rs`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-reviewed-artifact.mjs`.
 
 The execution list is empty and every validation flag remains false. Tests, Cargo, formatting, verifiers, SQLite/Axum, the Leptos route, workflows and CI were not run.
 
@@ -114,7 +114,7 @@ The next vertical source packet should connect one exact reviewed publish revisi
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-reviewed-artifact.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-reviewed-artifact.mjs
 cargo test -p rustok-pages-storefront --features ssr --test native_storefront_reviewed_artifact_sqlite -- --nocapture
 cargo check -p rustok-pages-storefront --features ssr --all-targets
 cargo check -p rustok-page-builder --all-targets

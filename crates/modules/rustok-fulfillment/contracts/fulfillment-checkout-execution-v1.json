@@ -35,7 +35,7 @@
     "consumer_fulfillment_sql": false,
     "typed_identity_migration_required": true
   },
-  "source": "crates/rustok-fulfillment/src/checkout_execution.rs",
+  "source": "crates/modules/rustok-fulfillment/src/checkout_execution.rs",
   "verification": {
     "guard": "scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs",
     "runtime_evidence": "not_executed"

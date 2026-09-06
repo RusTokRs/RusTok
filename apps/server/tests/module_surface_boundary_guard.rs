@@ -206,7 +206,7 @@ fn removed_content_graphql_entity_loaders_remain_absent() {
 #[test]
 fn flex_attached_payload_logic_is_owned_by_flex_crate() {
     let repo = repo_root();
-    let owner_attached = std::fs::read_to_string(repo.join("crates/flex/src/attached.rs"))
+    let owner_attached = std::fs::read_to_string(repo.join("crates/modules/flex/src/attached.rs"))
         .expect("owner Flex attached source should read");
     let server_adapter =
         std::fs::read_to_string(repo.join("apps/server/src/services/flex_attached_values.rs"))
@@ -256,7 +256,7 @@ fn flex_attached_payload_logic_is_owned_by_flex_crate() {
     ] {
         assert!(
             !server_adapter.contains(forbidden),
-            "attached Flex payload ownership must live in crates/flex, not apps/server: {forbidden}"
+            "attached Flex payload ownership must live in crates/modules/flex, not apps/server: {forbidden}"
         );
     }
 }
@@ -300,10 +300,10 @@ fn media_usage_graphql_is_owned_by_media_crate() {
     }
 
     let media_query =
-        std::fs::read_to_string(repo.join("crates/rustok-media/src/graphql/query.rs"))
+        std::fs::read_to_string(repo.join("crates/modules/rustok-media/src/graphql/query.rs"))
             .expect("rustok-media GraphQL query should read");
     let media_types =
-        std::fs::read_to_string(repo.join("crates/rustok-media/src/graphql/types.rs"))
+        std::fs::read_to_string(repo.join("crates/modules/rustok-media/src/graphql/types.rs"))
             .expect("rustok-media GraphQL types should read");
     assert!(media_query.contains("async fn media_usage"));
     assert!(media_types.contains("pub struct MediaUsageStats"));
@@ -330,7 +330,7 @@ fn order_dashboard_snapshot_is_owned_by_order_crate() {
     );
 
     let order_analytics =
-        std::fs::read_to_string(repo.join("crates/rustok-order/src/analytics.rs"))
+        std::fs::read_to_string(repo.join("crates/modules/rustok-order/src/analytics.rs"))
             .expect("rustok-order analytics source should read");
     assert!(order_analytics.contains("pub struct OrderStatsSnapshot"));
     assert!(order_analytics.contains("pub async fn load_order_stats_snapshot"));
@@ -359,7 +359,7 @@ fn content_dashboard_post_snapshot_is_owned_by_content_crate() {
     );
 
     let content_analytics =
-        std::fs::read_to_string(repo.join("crates/rustok-content/src/analytics.rs"))
+        std::fs::read_to_string(repo.join("crates/modules/rustok-content/src/analytics.rs"))
             .expect("rustok-content analytics source should read");
     assert!(content_analytics.contains("pub struct ContentCountSnapshot"));
     assert!(content_analytics.contains("pub async fn load_post_stats_snapshot"));
@@ -412,10 +412,10 @@ fn flex_graphql_surface_is_owned_by_flex_crate() {
     let server_graphql_dir = repo.join("apps/server/src/graphql/flex");
     assert!(
         !server_graphql_dir.exists(),
-        "Flex GraphQL query/mutation/types/runtime must live in crates/flex, not apps/server"
+        "Flex GraphQL query/mutation/types/runtime must live in crates/modules/flex, not apps/server"
     );
 
-    let owner_graphql_dir = repo.join("crates/flex/src/graphql");
+    let owner_graphql_dir = repo.join("crates/modules/flex/src/graphql");
     let runtime = std::fs::read_to_string(owner_graphql_dir.join("runtime.rs"))
         .expect("owner Flex GraphQL runtime source should read");
     assert!(runtime.contains("Arc<dyn FlexStandaloneService>"));
@@ -474,7 +474,7 @@ fn flex_graphql_surface_is_owned_by_flex_crate() {
     assert!(!schema.contains("FlexMutation"));
     assert!(schema.contains(".data(flex_runtime)"));
 
-    let manifest = std::fs::read_to_string(repo.join("crates/flex/rustok-module.toml"))
+    let manifest = std::fs::read_to_string(repo.join("crates/modules/flex/rustok-module.toml"))
         .expect("Flex module manifest should read");
     assert!(manifest.contains("[provides.graphql]"));
     assert!(manifest.contains("query = \"graphql::FlexQuery\""));
@@ -507,14 +507,14 @@ fn flex_rest_contract_dtos_are_owned_by_flex_crate() {
     ] {
         assert!(
             !server_controller.contains(forbidden),
-            "Flex REST DTO and view mapping ownership must live in crates/flex, not apps/server: {forbidden}"
+            "Flex REST DTO and view mapping ownership must live in crates/modules/flex, not apps/server: {forbidden}"
         );
     }
     assert!(server_controller.contains("use flex::rest::{"));
     assert!(server_controller.contains("FlexSchemaResponse::from"));
     assert!(server_controller.contains("FlexEntryResponse::from"));
 
-    let owner_rest = std::fs::read_to_string(repo.join("crates/flex/src/rest.rs"))
+    let owner_rest = std::fs::read_to_string(repo.join("crates/modules/flex/src/rest.rs"))
         .expect("owner Flex REST contract source should read");
     for owner_owned_type in [
         "pub struct CreateFlexSchemaRequest",
@@ -554,10 +554,10 @@ fn flex_standalone_validation_contract_is_owned_by_flex_crate() {
         !repo
             .join("apps/server/src/services/flex_standalone_validation_service.rs")
             .exists(),
-        "standalone Flex entry normalization/validation must live in crates/flex, not apps/server"
+        "standalone Flex entry normalization/validation must live in crates/modules/flex, not apps/server"
     );
 
-    let owner_standalone = std::fs::read_to_string(repo.join("crates/flex/src/standalone.rs"))
+    let owner_standalone = std::fs::read_to_string(repo.join("crates/modules/flex/src/standalone.rs"))
         .expect("owner Flex standalone source should read");
     for owner_owned_symbol in [
         "pub fn normalize_and_validate_standalone_entry",
@@ -600,7 +600,7 @@ fn flex_standalone_validation_contract_is_owned_by_flex_crate() {
     ] {
         assert!(
             !server_adapter.contains(forbidden),
-            "standalone entry/schema view and JSON split/merge ownership must live in crates/flex, not apps/server: {forbidden}"
+            "standalone entry/schema view and JSON split/merge ownership must live in crates/modules/flex, not apps/server: {forbidden}"
         );
     }
 
@@ -626,7 +626,7 @@ fn flex_standalone_validation_contract_is_owned_by_flex_crate() {
     ] {
         assert!(
             !server_schema_model.contains(forbidden),
-            "standalone schema fields_config interpretation must live in crates/flex, not apps/server: {forbidden}"
+            "standalone schema fields_config interpretation must live in crates/modules/flex, not apps/server: {forbidden}"
         );
     }
 
@@ -651,7 +651,7 @@ fn flex_standalone_validation_contract_is_owned_by_flex_crate() {
     ] {
         assert!(
             !server_adapter.contains(forbidden),
-            "standalone fields_config/key derivation ownership must live in crates/flex, not apps/server: {forbidden}"
+            "standalone fields_config/key derivation ownership must live in crates/modules/flex, not apps/server: {forbidden}"
         );
     }
 }
@@ -659,7 +659,7 @@ fn flex_standalone_validation_contract_is_owned_by_flex_crate() {
 #[test]
 fn flex_field_definition_view_mapping_is_owned_by_flex_crate() {
     let repo = repo_root();
-    let owner_registry = std::fs::read_to_string(repo.join("crates/flex/src/registry.rs"))
+    let owner_registry = std::fs::read_to_string(repo.join("crates/modules/flex/src/registry.rs"))
         .expect("owner Flex registry source should read");
     for owner_owned_symbol in [
         "pub trait FieldDefinitionViewSource",
@@ -711,7 +711,7 @@ fn flex_field_definition_view_mapping_is_owned_by_flex_crate() {
     ] {
         assert!(
             !server_bootstrap.contains(forbidden),
-            "field-definition view shape mapping must live in crates/flex, not apps/server: {forbidden}"
+            "field-definition view shape mapping must live in crates/modules/flex, not apps/server: {forbidden}"
         );
     }
 
@@ -759,7 +759,7 @@ fn flex_field_definition_view_mapping_is_owned_by_flex_crate() {
         ] {
             assert!(
                 !production.contains(forbidden),
-                "field-definition lifecycle policy must live in crates/flex, not apps/server: {service_path} contains {forbidden}"
+                "field-definition lifecycle policy must live in crates/modules/flex, not apps/server: {service_path} contains {forbidden}"
             );
         }
     }
@@ -780,7 +780,7 @@ fn flex_field_definition_view_mapping_is_owned_by_flex_crate() {
     ] {
         assert!(
             !cache_production.contains(forbidden),
-            "field-definition cache event taxonomy must live in crates/flex, not apps/server: {forbidden}"
+            "field-definition cache event taxonomy must live in crates/modules/flex, not apps/server: {forbidden}"
         );
     }
 
@@ -802,7 +802,7 @@ fn flex_field_definition_view_mapping_is_owned_by_flex_crate() {
         ] {
             assert!(
                 !model.contains(forbidden),
-                "field-definition row-to-core mapping must live in crates/flex, not apps/server: {model_path} contains {forbidden}"
+                "field-definition row-to-core mapping must live in crates/modules/flex, not apps/server: {model_path} contains {forbidden}"
             );
         }
     }
@@ -817,7 +817,7 @@ fn search_graphql_surface_is_owned_by_search_crate() {
         "search GraphQL query/mutation/types must live in rustok-search, not apps/server"
     );
 
-    let search_graphql_dir = repo.join("crates/rustok-search/src/graphql");
+    let search_graphql_dir = repo.join("crates/modules/rustok-search/src/graphql");
     let forbidden = [
         "crate::common",
         "crate::context",
@@ -861,7 +861,7 @@ fn ai_graphql_surface_is_owned_by_ai_crate() {
         "AI GraphQL query/mutation/subscription/types must live in rustok-ai, not apps/server"
     );
 
-    let graphql_dir = repo.join("crates/rustok-ai/src/graphql");
+    let graphql_dir = repo.join("crates/modules/rustok-ai/src/graphql");
     for file in [
         "mod.rs",
         "query.rs",
@@ -913,7 +913,7 @@ fn rbac_graphql_surface_is_owned_by_rbac_crate() {
         "RBAC GraphQL query/mutation/types must live in rustok-rbac, not apps/server"
     );
 
-    let rbac_graphql_dir = repo.join("crates/rustok-rbac/src/graphql");
+    let rbac_graphql_dir = repo.join("crates/modules/rustok-rbac/src/graphql");
     let forbidden = [
         "crate::common",
         "crate::context",
@@ -948,7 +948,7 @@ fn rbac_graphql_surface_is_owned_by_rbac_crate() {
 #[test]
 fn auth_graphql_surface_is_owned_by_auth_crate() {
     let repo = repo_root();
-    let auth_graphql_dir = repo.join("crates/rustok-auth/src/graphql");
+    let auth_graphql_dir = repo.join("crates/modules/rustok-auth/src/graphql");
     assert!(auth_graphql_dir.join("query.rs").exists());
     assert!(auth_graphql_dir.join("mutation.rs").exists());
     assert!(auth_graphql_dir.join("types.rs").exists());
@@ -993,7 +993,7 @@ fn auth_graphql_surface_is_owned_by_auth_crate() {
 #[test]
 fn auth_rest_dto_surface_is_owned_by_auth_crate() {
     let repo = repo_root();
-    let rest = std::fs::read_to_string(repo.join("crates/rustok-auth/src/rest.rs"))
+    let rest = std::fs::read_to_string(repo.join("crates/modules/rustok-auth/src/rest.rs"))
         .expect("rustok-auth REST contract should read");
     let controller = std::fs::read_to_string(repo.join("apps/server/src/controllers/auth.rs"))
         .expect("server auth controller should read");
@@ -1054,7 +1054,7 @@ fn auth_rest_dto_surface_is_owned_by_auth_crate() {
 #[test]
 fn oauth_rest_dto_surface_is_owned_by_auth_crate() {
     let repo = repo_root();
-    let rest = std::fs::read_to_string(repo.join("crates/rustok-auth/src/rest.rs"))
+    let rest = std::fs::read_to_string(repo.join("crates/modules/rustok-auth/src/rest.rs"))
         .expect("rustok-auth REST contract should read");
     let controller = std::fs::read_to_string(repo.join("apps/server/src/controllers/oauth.rs"))
         .expect("server OAuth controller should read");
@@ -1102,7 +1102,7 @@ fn oauth_rest_dto_surface_is_owned_by_auth_crate() {
 #[test]
 fn users_rest_dto_surface_is_owned_by_auth_crate() {
     let repo = repo_root();
-    let rest = std::fs::read_to_string(repo.join("crates/rustok-auth/src/rest.rs"))
+    let rest = std::fs::read_to_string(repo.join("crates/modules/rustok-auth/src/rest.rs"))
         .expect("rustok-auth REST contract should read");
     let controller = std::fs::read_to_string(repo.join("apps/server/src/controllers/users.rs"))
         .expect("server users controller should read");
@@ -1141,7 +1141,7 @@ fn users_rest_dto_surface_is_owned_by_auth_crate() {
 #[test]
 fn mcp_graphql_surface_is_owned_by_mcp_crate() {
     let repo = repo_root();
-    let graphql_dir = repo.join("crates/rustok-mcp/src/graphql");
+    let graphql_dir = repo.join("crates/modules/rustok-mcp/src/graphql");
     for file in ["mod.rs", "query.rs", "mutation.rs", "types.rs"] {
         assert!(
             graphql_dir.join(file).exists(),
@@ -1182,9 +1182,9 @@ fn mcp_graphql_surface_is_owned_by_mcp_crate() {
 #[test]
 fn mcp_rest_control_plane_dto_is_owned_by_mcp_crate() {
     let repo = repo_root();
-    let management = std::fs::read_to_string(repo.join("crates/rustok-mcp/src/management.rs"))
+    let management = std::fs::read_to_string(repo.join("crates/modules/rustok-mcp/src/management.rs"))
         .expect("rustok-mcp management contract should read");
-    let access = std::fs::read_to_string(repo.join("crates/rustok-mcp/src/access.rs"))
+    let access = std::fs::read_to_string(repo.join("crates/modules/rustok-mcp/src/access.rs"))
         .expect("rustok-mcp access contract should read");
     let controller = std::fs::read_to_string(repo.join("apps/server/src/controllers/mcp.rs"))
         .expect("server MCP controller should read");
@@ -1232,7 +1232,7 @@ fn mcp_rest_control_plane_dto_is_owned_by_mcp_crate() {
 #[test]
 fn channel_rest_control_plane_dto_is_owned_by_channel_crate() {
     let repo = repo_root();
-    let dto = std::fs::read_to_string(repo.join("crates/rustok-channel/src/dto/mod.rs"))
+    let dto = std::fs::read_to_string(repo.join("crates/modules/rustok-channel/src/dto/mod.rs"))
         .expect("rustok-channel DTO contract should read");
     let controller = std::fs::read_to_string(repo.join("apps/server/src/controllers/channel.rs"))
         .expect("server channel controller should read");
@@ -1307,7 +1307,7 @@ fn product_translation_search_helper_is_not_server_owned() {
     );
 
     let foundation_search =
-        std::fs::read_to_string(repo.join("crates/rustok-commerce-foundation/src/search.rs"))
+        std::fs::read_to_string(repo.join("crates/modules/rustok-commerce-foundation/src/search.rs"))
             .expect("commerce foundation search helper should read");
     assert!(
         foundation_search.contains("pub fn product_translation_title_search_condition"),

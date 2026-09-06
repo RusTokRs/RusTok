@@ -105,7 +105,7 @@ It requires:
 
 Source evidence is recorded in:
 
-- `crates/rustok-payment/contracts/evidence/payment-collection-tenant-diagnostic-safety-source.json`.
+- `crates/modules/rustok-payment/contracts/evidence/payment-collection-tenant-diagnostic-safety-source.json`.
 
 The evidence remains source-only: `execution` is empty and every validation flag is false.
 
@@ -115,9 +115,9 @@ Canonical `payment_error_to_port_error` is now closed by a separate source-only 
 
 - verifier: `scripts/verify/verify-payment-collection-owner-error-diagnostic-safety.mjs`;
 - evidence:
-  `crates/rustok-payment/contracts/evidence/payment-collection-owner-error-diagnostic-safety-source.json`;
+  `crates/modules/rustok-payment/contracts/evidence/payment-collection-owner-error-diagnostic-safety-source.json`;
 - documentation:
-  `crates/rustok-payment/docs/payment-collection-owner-error-diagnostic-safety.md`.
+  `crates/modules/rustok-payment/docs/payment-collection-owner-error-diagnostic-safety.md`.
 
 That contract replaces raw validation/transition text, provider identifiers and operations,
 database errors, raw delegated context, and UUID-bearing public not-found messages with closed

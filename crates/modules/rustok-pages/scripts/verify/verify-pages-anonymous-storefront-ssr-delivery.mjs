@@ -7,20 +7,20 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
-  : path.resolve(scriptDir, "..", "..", "..", "..");
+  : path.resolve(scriptDir, "..", "..", "..", "..", "..");
 const failures = [];
 
 const files = {
   evidence:
-    "crates/rustok-pages/contracts/evidence/pages-anonymous-storefront-ssr-delivery-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-anonymous-storefront-ssr-delivery-source.json",
   graphEvidence:
-    "crates/rustok-pages/contracts/evidence/pages-anonymous-storefront-graph-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-anonymous-storefront-graph-source.json",
   authoringEvidence:
-    "crates/rustok-pages/contracts/evidence/pages-authenticated-authoring-route-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-authenticated-authoring-route-source.json",
   graphVerifier:
-    "crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs",
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs",
   inspector:
-    "crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs",
+    "crates/modules/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs",
   packet:
     "docs/modules/pages-page-builder-anonymous-storefront-ssr-delivery-packet-2026-08-05.md",
   plan: "docs/modules/pages-page-builder-parity-continuation-plan.md",
@@ -113,7 +113,7 @@ for (const marker of [
   'hydrate = ["leptos/hydrate", "leptos_i18n/hydrate"]',
   '"dep:rustok-pages-storefront"',
   '"rustok-pages-storefront/ssr"',
-  'rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront", default-features = false, optional = true }',
+  'rustok-pages-storefront = { path = "../../crates/modules/rustok-pages/storefront", default-features = false, optional = true }',
   "pages-inline-edit-hydrate = [",
   '"rustok-pages-storefront/hydrate"',
 ]) {

@@ -4,7 +4,7 @@ Status: **source-ready / maintainer execution pending**
 
 ## Scope
 
-`crates/rustok-moderation/tests/postgres_scheduler_contract.rs` is an opt-in PostgreSQL integration target for the shared `ModuleWorkScheduler` boundary used by Moderation decision application.
+`crates/modules/rustok-moderation/tests/postgres_scheduler_contract.rs` is an opt-in PostgreSQL integration target for the shared `ModuleWorkScheduler` boundary used by Moderation decision application.
 
 Unlike direct dispatcher tests, this target registers Moderation through the same public composition path used by the host:
 

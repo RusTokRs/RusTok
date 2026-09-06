@@ -2,9 +2,9 @@
   "status": "order_checkout_payment_settlement_diagnostic_safety_source_unvalidated",
   "scope": {
     "public_operation": "settle_checkout_payment",
-    "shared_wrapper": "crates/rustok-order/src/checkout_owner_context.rs",
-    "canonical_owner": "crates/rustok-order/src/checkout_payment_settlement.rs",
-    "documentation": "crates/rustok-order/docs/checkout-payment-settlement-local-context.md",
+    "shared_wrapper": "crates/modules/rustok-order/src/checkout_owner_context.rs",
+    "canonical_owner": "crates/modules/rustok-order/src/checkout_payment_settlement.rs",
+    "documentation": "crates/modules/rustok-order/docs/checkout-payment-settlement-local-context.md",
     "local_mapper_verifier": "scripts/verify/verify-order-payment-settlement-local-context.mjs",
     "owner_verifier": "scripts/verify/verify-order-payment-settlement-error-context.mjs",
     "shared_wrapper_verifier": "scripts/verify/verify-order-checkout-owner-context.mjs"

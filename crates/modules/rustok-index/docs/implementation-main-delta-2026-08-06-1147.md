@@ -15,7 +15,7 @@ The seven intervening commits cover:
 - server cleanup and dependency metadata;
 - a small Search storefront eligibility adjustment.
 
-The complete compared file list contains no `crates/rustok-index` source, documentation, migration,
+The complete compared file list contains no `crates/modules/rustok-index` source, documentation, migration,
 export, or verifier path. It does not modify Index source registries, absence registries,
 `PostgresMutationStore`, repair reservations/receipts, lifecycle storage, or runtime extensions.
 

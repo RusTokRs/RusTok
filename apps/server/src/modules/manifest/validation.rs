@@ -921,7 +921,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "index",
             first_party_module(
                 "rustok-index",
-                "crates/rustok-index",
+                "crates/modules/rustok-index",
                 true,
                 &[],
                 &["leptos-admin"],
@@ -932,7 +932,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "outbox",
             first_party_module(
                 "rustok-outbox",
-                "crates/rustok-outbox",
+                "crates/modules/rustok-outbox",
                 true,
                 &[],
                 &["leptos-admin"],
@@ -943,7 +943,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "content",
             first_party_module(
                 "rustok-content",
-                "crates/rustok-content",
+                "crates/modules/rustok-content",
                 false,
                 &[],
                 &["leptos-admin"],
@@ -954,7 +954,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "cart",
             first_party_module(
                 "rustok-cart",
-                "crates/rustok-cart",
+                "crates/modules/rustok-cart",
                 false,
                 &[],
                 &["leptos-admin"],
@@ -965,7 +965,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "customer",
             first_party_module(
                 "rustok-customer",
-                "crates/rustok-customer",
+                "crates/modules/rustok-customer",
                 false,
                 &[],
                 &["leptos-admin"],
@@ -976,7 +976,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "product",
             first_party_module(
                 "rustok-product",
-                "crates/rustok-product",
+                "crates/modules/rustok-product",
                 false,
                 &[],
                 &["leptos-admin"],
@@ -987,7 +987,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "region",
             first_party_module(
                 "rustok-region",
-                "crates/rustok-region",
+                "crates/modules/rustok-region",
                 false,
                 &[],
                 &["leptos-admin"],
@@ -998,7 +998,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "pricing",
             first_party_module(
                 "rustok-pricing",
-                "crates/rustok-pricing",
+                "crates/modules/rustok-pricing",
                 false,
                 &["product"],
                 &["leptos-admin"],
@@ -1009,7 +1009,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "inventory",
             first_party_module(
                 "rustok-inventory",
-                "crates/rustok-inventory",
+                "crates/modules/rustok-inventory",
                 false,
                 &["product"],
                 &["leptos-admin"],
@@ -1020,7 +1020,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "order",
             first_party_module(
                 "rustok-order",
-                "crates/rustok-order",
+                "crates/modules/rustok-order",
                 false,
                 &[],
                 &["leptos-admin"],
@@ -1031,7 +1031,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "payment",
             first_party_module(
                 "rustok-payment",
-                "crates/rustok-payment",
+                "crates/modules/rustok-payment",
                 false,
                 &[],
                 &["leptos-admin"],
@@ -1042,7 +1042,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "fulfillment",
             first_party_module(
                 "rustok-fulfillment",
-                "crates/rustok-fulfillment",
+                "crates/modules/rustok-fulfillment",
                 false,
                 &[],
                 &["leptos-admin"],
@@ -1053,7 +1053,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "commerce",
             first_party_module(
                 "rustok-commerce",
-                "crates/rustok-commerce",
+                "crates/modules/rustok-commerce",
                 false,
                 &[
                     "cart",
@@ -1074,7 +1074,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "comments",
             first_party_module(
                 "rustok-comments",
-                "crates/rustok-comments",
+                "crates/modules/rustok-comments",
                 false,
                 &[],
                 &["leptos-admin"],
@@ -1085,7 +1085,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "blog",
             first_party_module(
                 "rustok-blog",
-                "crates/rustok-blog",
+                "crates/modules/rustok-blog",
                 false,
                 &["content", "comments"],
                 &["leptos-admin"],
@@ -1096,7 +1096,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "forum",
             first_party_module(
                 "rustok-forum",
-                "crates/rustok-forum",
+                "crates/modules/rustok-forum",
                 false,
                 &["content"],
                 &["leptos-admin"],
@@ -1107,7 +1107,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "pages",
             first_party_module(
                 "rustok-pages",
-                "crates/rustok-pages",
+                "crates/modules/rustok-pages",
                 false,
                 &["content"],
                 &["leptos-admin"],
@@ -1118,7 +1118,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "tenant",
             first_party_module(
                 "rustok-tenant",
-                "crates/rustok-tenant",
+                "crates/modules/rustok-tenant",
                 true,
                 &[],
                 &["leptos-admin"],
@@ -1129,7 +1129,7 @@ pub fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             "rbac",
             first_party_module(
                 "rustok-rbac",
-                "crates/rustok-rbac",
+                "crates/modules/rustok-rbac",
                 true,
                 &[],
                 &["leptos-admin"],

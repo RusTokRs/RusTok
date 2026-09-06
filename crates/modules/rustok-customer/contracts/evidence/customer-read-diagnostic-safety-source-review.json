@@ -2,15 +2,15 @@
   "schema_version": 1,
   "status": "customer_read_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-customer/src/read_context.rs",
-    "crates/rustok-customer/src/ports.rs",
-    "crates/rustok-customer/src/lib.rs",
+    "crates/modules/rustok-customer/src/read_context.rs",
+    "crates/modules/rustok-customer/src/ports.rs",
+    "crates/modules/rustok-customer/src/lib.rs",
     "scripts/verify/verify-customer-read-local-context.mjs",
     "scripts/verify/verify-customer-read-policy-context.mjs",
-    "crates/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source.json",
-    "crates/rustok-customer/docs/read-local-context.md",
-    "crates/rustok-customer/docs/read-port-policy-context.md",
-    "crates/rustok-customer/docs/implementation-plan.md"
+    "crates/modules/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source.json",
+    "crates/modules/rustok-customer/docs/read-local-context.md",
+    "crates/modules/rustok-customer/docs/read-port-policy-context.md",
+    "crates/modules/rustok-customer/docs/implementation-plan.md"
   ],
   "review_findings": {
     "all_four_read_operations_preserved": true,

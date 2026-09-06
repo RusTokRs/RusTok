@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 function fail(message) {
   console.error("[verify-page-builder-flutter-parity] FAIL");
@@ -29,7 +29,7 @@ const barrel = read("rustok_mobile/packages/app_core/lib/app_core.dart");
 const testFile = read(
   "rustok_mobile/packages/app_core/test/page_builder_errors_test.dart",
 );
-const consumerManifest = read("crates/rustok-pages/rustok-module.toml");
+const consumerManifest = read("crates/modules/rustok-pages/rustok-module.toml");
 
 for (const token of [
   "PageBuilderErrorCatalog",

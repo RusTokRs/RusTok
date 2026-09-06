@@ -24,23 +24,23 @@ const files = {
   health: readFileSync("apps/server/src/controllers/health.rs", "utf8"),
   metrics: readFileSync("apps/server/src/controllers/metrics.rs", "utf8"),
   telemetry: readFileSync(
-    "crates/rustok-telemetry/src/runtime_consumer_metrics.rs",
+    "crates/libs/rustok-telemetry/src/runtime_consumer_metrics.rs",
     "utf8",
   ),
   consumer: readFileSync(
-    "crates/rustok-social-graph/src/index_consumer.rs",
+    "crates/modules/rustok-social-graph/src/index_consumer.rs",
     "utf8",
   ),
   receipt: readFileSync(
-    "crates/rustok-social-graph/src/index_dlq_receipt.rs",
+    "crates/modules/rustok-social-graph/src/index_dlq_receipt.rs",
     "utf8",
   ),
   poisonReceipt: readFileSync(
-    "crates/rustok-iggy-connector/src/consumer_poison_receipt.rs",
+    "crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs",
     "utf8",
   ),
   contractCursor: readFileSync(
-    "crates/rustok-iggy/src/contract_consumer.rs",
+    "crates/modules/rustok-iggy/src/contract_consumer.rs",
     "utf8",
   ),
 };

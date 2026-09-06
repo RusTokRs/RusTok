@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_from": "crates/rustok-media/contracts/media-fba-registry.json",
+  "generated_from": "crates/modules/rustok-media/contracts/media-fba-registry.json",
   "runner": "scripts/verify/verify-owner-fba-runtime-order.mjs",
   "status": "executable_no_compile",
   "contract_version": "media.asset_read.v1",

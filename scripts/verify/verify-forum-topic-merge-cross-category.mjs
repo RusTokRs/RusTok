@@ -4,24 +4,24 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-topic-merge-cross-category.json",
-  cumulativeContract: "crates/rustok-forum/contracts/forum-topic-merge-owner.json",
-  docs: "crates/rustok-forum/docs/forum-21m-topic-merge-cross-category.md",
-  cumulativeDocs: "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
-  owner: "crates/rustok-forum/src/services/topic_merge.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-cross-category.json",
+  cumulativeContract: "crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21m-topic-merge-cross-category.md",
+  cumulativeDocs: "crates/modules/rustok-forum/docs/forum-21b-topic-merge-owner.md",
+  owner: "crates/modules/rustok-forum/src/services/topic_merge.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260803_000019_allow_cross_category_topic_merge_redirect_edges.rs",
-  migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
-  test: "crates/rustok-forum/tests/topic_merge_cross_category_sqlite.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260803_000019_allow_cross_category_topic_merge_redirect_edges.rs",
+  migrationsMod: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  test: "crates/modules/rustok-forum/tests/topic_merge_cross_category_sqlite.rs",
   subscriptionReconciliation:
-    "crates/rustok-forum/src/services/topic_merge_subscription_reconciliation.rs",
+    "crates/modules/rustok-forum/src/services/topic_merge_subscription_reconciliation.rs",
   readStateReconciliation:
-    "crates/rustok-forum/src/services/topic_merge_read_state_reconciliation.rs",
-  tagReconciliation: "crates/rustok-forum/src/services/topic_merge_tag_reconciliation.rs",
-  voteReconciliation: "crates/rustok-forum/src/services/topic_merge_vote_reconciliation.rs",
+    "crates/modules/rustok-forum/src/services/topic_merge_read_state_reconciliation.rs",
+  tagReconciliation: "crates/modules/rustok-forum/src/services/topic_merge_tag_reconciliation.rs",
+  voteReconciliation: "crates/modules/rustok-forum/src/services/topic_merge_vote_reconciliation.rs",
   audienceReconciliation:
-    "crates/rustok-forum/src/services/topic_merge_audience_reconciliation.rs",
-  plan: "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/src/services/topic_merge_audience_reconciliation.rs",
+  plan: "crates/modules/rustok-forum/docs/implementation-plan.md",
 };
 
 const read = (path) => readFileSync(path, "utf8");

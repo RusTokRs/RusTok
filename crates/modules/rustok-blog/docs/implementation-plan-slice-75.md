@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 75 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-74.md`. Slices 1–66 remain in
+`crates/modules/rustok-blog/docs/implementation-plan-slice-74.md`. Slices 1–66 remain in
 the original plan; slices 67–74 retain the typed Comments remote core, bounded
 framing and listener lifecycle, bearer-authenticated reads, signed user
 delegation, process-local replay admission, and transport-owned client/server
@@ -82,7 +82,7 @@ continuation. Execution remains maintainer-owned.
 - The retained slice-70 host-provider and slice-71 listener guards are
   reconciled with the new runtime channel selection.
 - Source evidence is retained at
-  `crates/rustok-blog/contracts/evidence/blog-comments-tcp-host-channel-selection.json`.
+  `crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-host-channel-selection.json`.
 - The standalone source verifier is
   `scripts/verify/verify-blog-comments-tcp-host-channel-selection.mjs`.
 - No dependency or feature declaration is added, and `Cargo.lock` is unchanged.

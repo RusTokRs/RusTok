@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const registryPath = 'crates/rustok-index/src/application/source_registry.rs';
+const registryPath = 'crates/modules/rustok-index/src/application/source_registry.rs';
 const registry = requireMarkers(registryPath, [
   'pub trait IndexSource: Send + Sync',
   'async fn scan(',
@@ -69,7 +69,7 @@ for (const forbidden of [
   }
 }
 
-const workerPath = 'crates/rustok-index/src/application/source_replay.rs';
+const workerPath = 'crates/modules/rustok-index/src/application/source_replay.rs';
 const worker = requireMarkers(workerPath, [
   'pub struct IndexReplayWorker',
   'pub async fn run_next_page(',
@@ -116,7 +116,7 @@ if (
   fail(`${workerPath} must validate the full page, apply mutations, then commit the checkpoint`);
 }
 
-const postgresPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay.rs';
+const postgresPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay.rs';
 const postgres = requireMarkers(postgresPath, [
   'impl IndexReplayMutationSink for PostgresMutationStore',
   'MutationDelivery::from_event(source_name, mutation.clone())',
@@ -145,7 +145,7 @@ for (const forbidden of ['tokio::spawn', 'DELETE FROM index_checkpoints']) {
   }
 }
 
-const testsPath = 'crates/rustok-index/src/application/source_replay_tests.rs';
+const testsPath = 'crates/modules/rustok-index/src/application/source_replay_tests.rs';
 requireMarkers(testsPath, [
   'replay_page_commits_checkpoint_after_mutations',
   'checkpoint_failure_replays_the_same_event_delivery',
@@ -156,7 +156,7 @@ requireMarkers(testsPath, [
   'vec![event_id, event_id]',
 ]);
 
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'mod source_registry;',
   'mod source_replay;',
   'mod source_replay_tests;',
@@ -167,22 +167,22 @@ requireMarkers('crates/rustok-index/src/application/mod.rs', [
   'materialize_index_source_registry',
   'register_index_source',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod source_replay;',
   'mod source_replay_job;',
   'PostgresIndexReplayCheckpointStore',
   'PostgresIndexReplayJobStore',
 ]);
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'get_or_insert_with::<IndexSchemaSourceCatalog',
   'get_or_insert_with::<IndexSourceCatalog',
   'PostgresIndexReplayCheckpointStore',
   'PostgresIndexReplayJobStore',
 ]);
-requireMarkers('crates/rustok-index/Cargo.toml', [
+requireMarkers('crates/modules/rustok-index/Cargo.toml', [
   'tracing.workspace = true',
 ]);
-requireMarkers('crates/rustok-index/docs/m5-m6-source-replay-contract.md', [
+requireMarkers('crates/modules/rustok-index/docs/m5-m6-source-replay-contract.md', [
   'one to 256 unique `EntityKey` values',
   'limit from 1 through 1000',
   'at most 8 KiB',
@@ -199,7 +199,7 @@ requireMarkers('crates/rustok-index/docs/m5-m6-source-replay-contract.md', [
   'reserved empty values',
   'maintainer-run',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- M5/M6 bounded source replay contract: `source_complete_owner_execution_pending`',
   '- M6 one-page replay and durable checkpoint progression: `source_complete`',
   '- M6 replay job leases and checkpoint attempt fencing: `source_complete_owner_execution_pending`',

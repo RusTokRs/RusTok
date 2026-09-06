@@ -12,13 +12,13 @@ slice adds a second merge transaction.
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-graphql-transport.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-graphql-transport.json
 ```
 
 Cumulative owner contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-owner.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json
 ```
 
 ## Ordinary GraphQL command

@@ -58,14 +58,14 @@ function collectRustFiles(root, relative = "") {
   return files;
 }
 
-const contractPath = "crates/rustok-forum/contracts/forum-mention-write-boundary.json";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-mention-write-boundary.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const topicEntry = read(contract.source_entrypoints?.topic ?? "");
 const replyEntry = read(contract.source_entrypoints?.reply ?? "");
 const topicOwner = read(contract.owner_entrypoints?.topic_create?.owner ?? "");
 const replyOwner = read(contract.owner_entrypoints?.reply_create?.owner ?? "");
-const mentionService = read("crates/rustok-forum/src/services/mention_relation.rs");
-const b2Record = read("crates/rustok-forum/docs/forum-12b2-owner-write-integration.md");
+const mentionService = read("crates/modules/rustok-forum/src/services/mention_relation.rs");
+const b2Record = read("crates/modules/rustok-forum/docs/forum-12b2-owner-write-integration.md");
 
 requireText(topicOwner, "create_with_relations", "topic owner must route relation-aware create");
 requireText(topicOwner, "update_with_relations", "topic owner must route relation-aware edit");

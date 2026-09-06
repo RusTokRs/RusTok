@@ -4,16 +4,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  telemetryMetrics: "crates/rustok-telemetry/src/page_builder_provider_metrics.rs",
-  telemetryLib: "crates/rustok-telemetry/src/lib.rs",
-  pageBuilderCargo: "crates/rustok-page-builder/Cargo.toml",
-  runtimeTelemetry: "crates/rustok-page-builder/src/runtime_telemetry.rs",
-  pagesGraphql: "crates/rustok-pages/src/graphql/builder_rollout.rs",
-  pagesFacade: "crates/rustok-pages/admin/src/builder.rs",
-  evidence: "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-metrics-source.json",
+  telemetryMetrics: "crates/libs/rustok-telemetry/src/page_builder_provider_metrics.rs",
+  telemetryLib: "crates/libs/rustok-telemetry/src/lib.rs",
+  pageBuilderCargo: "crates/modules/rustok-page-builder/Cargo.toml",
+  runtimeTelemetry: "crates/modules/rustok-page-builder/src/runtime_telemetry.rs",
+  pagesGraphql: "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
+  pagesFacade: "crates/modules/rustok-pages/admin/src/builder.rs",
+  evidence: "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-metrics-source.json",
   overlay: "docs/modules/page-builder-provider-health-deployment-metrics-actualization-2026-08-09.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };

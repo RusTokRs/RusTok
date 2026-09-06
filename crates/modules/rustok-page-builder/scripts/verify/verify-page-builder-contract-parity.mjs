@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 const moduleArg = process.argv[2] ?? "pages";
 const moduleToCrate = {
@@ -27,8 +27,8 @@ if (!crateName) {
   fail(`unsupported module '${moduleArg}'. supported: ${Object.keys(moduleToCrate).join(", ")}`);
 }
 
-const providerManifest = path.join(repoRoot, "crates", "rustok-page-builder", "rustok-module.toml");
-const consumerManifest = path.join(repoRoot, "crates", crateName, "rustok-module.toml");
+const providerManifest = path.join(repoRoot, "crates", "modules", "rustok-page-builder", "rustok-module.toml");
+const consumerManifest = path.join(repoRoot, "crates", "modules", crateName, "rustok-module.toml");
 
 function readFile(filePath) {
   if (!fs.existsSync(filePath)) {

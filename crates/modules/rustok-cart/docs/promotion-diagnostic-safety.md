@@ -113,8 +113,8 @@ This change does not alter:
 
 Retained source and review evidence remain at:
 
-- `crates/rustok-cart/contracts/evidence/cart-promotion-diagnostic-safety-source.json`;
-- `crates/rustok-cart/contracts/evidence/cart-promotion-diagnostic-safety-source-review.json`.
+- `crates/modules/rustok-cart/contracts/evidence/cart-promotion-diagnostic-safety-source.json`;
+- `crates/modules/rustok-cart/contracts/evidence/cart-promotion-diagnostic-safety-source-review.json`.
 
 ## Validation boundary
 

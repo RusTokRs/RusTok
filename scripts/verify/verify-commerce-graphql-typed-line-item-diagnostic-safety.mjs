@@ -11,10 +11,10 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const source = read(
-  'crates/rustok-commerce/src/graphql/mutations/typed_line_item_helpers.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/typed_line_item_helpers.rs',
 );
 const layeredSource = read(
-  'crates/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs',
+  'crates/modules/rustok-commerce/src/graphql/mutations/layered_order_helpers.rs',
 );
 const failures = [];
 

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 function fail(message) {
   console.error("[verify-page-builder-flutter-handoff] FAIL");
@@ -32,7 +32,7 @@ function requireArrayIncludes(array, expected, label) {
 }
 
 const contract = readJson(
-  "crates/rustok-page-builder/contracts/page-builder-flutter-wave-handoff.json",
+  "crates/modules/rustok-page-builder/contracts/page-builder-flutter-wave-handoff.json",
 );
 const helper = read("rustok_mobile/packages/app_core/lib/src/page_builder_errors.dart");
 const helperTest = read("rustok_mobile/packages/app_core/test/page_builder_errors_test.dart");

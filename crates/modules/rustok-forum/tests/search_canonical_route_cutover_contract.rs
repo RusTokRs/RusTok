@@ -4,6 +4,7 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|path| path.parent())
+        .and_then(|path| path.parent())
         .expect("workspace root")
         .to_path_buf()
 }
@@ -15,7 +16,7 @@ fn read(relative: &str) -> String {
 
 #[test]
 fn forum_projection_publishes_only_exact_owner_routes() {
-    let source = read("crates/rustok-forum/src/search_projection.rs");
+    let source = read("crates/modules/rustok-forum/src/search_projection.rs");
 
     for marker in [
         "ForumCategoryRouteService",
@@ -46,7 +47,7 @@ fn forum_projection_publishes_only_exact_owner_routes() {
 
 #[test]
 fn search_validates_owner_route_without_rebuilding_forum_identity() {
-    let source = read("crates/rustok-search/src/engine.rs");
+    let source = read("crates/modules/rustok-search/src/engine.rs");
 
     for marker in [
         "canonical_forum_projected_result_url(value)",
@@ -81,10 +82,10 @@ fn search_validates_owner_route_without_rebuilding_forum_identity() {
 
 #[test]
 fn contract_locks_reindex_fail_closed_and_transport_compatibility() {
-    let contract = read("crates/rustok-forum/contracts/forum-search-canonical-route-cutover.json");
-    let docs = read("crates/rustok-forum/docs/forum-24q-search-canonical-route-cutover.md");
+    let contract = read("crates/modules/rustok-forum/contracts/forum-search-canonical-route-cutover.json");
+    let docs = read("crates/modules/rustok-forum/docs/forum-24q-search-canonical-route-cutover.md");
     let evidence =
-        read("crates/rustok-search/contracts/evidence/search-canonical-url-contract.json");
+        read("crates/modules/rustok-search/contracts/evidence/search-canonical-url-contract.json");
 
     for marker in [
         "\"task\": \"FORUM-24Q\"",
@@ -119,7 +120,7 @@ fn contract_locks_reindex_fail_closed_and_transport_compatibility() {
     }
 
     for marker in [
-        "\"forum_projection_owner\": \"crates/rustok-forum/src/search_projection.rs\"",
+        "\"forum_projection_owner\": \"crates/modules/rustok-forum/src/search_projection.rs\"",
         "\"name\": \"forum_projection_owner_routes\"",
         "\"name\": \"forum_stale_projection_fail_closed\"",
         "no compatibility fallback exists",

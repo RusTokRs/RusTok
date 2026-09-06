@@ -7,9 +7,9 @@ use uuid::Uuid;
 
 pub const GENERATED_DISTRIBUTION_MANIFEST_PATH: &str = ".rustok/generated/static-distribution.json";
 pub const GENERATED_DISTRIBUTION_CARGO_MANIFEST_PATH: &str =
-    "crates/rustok-distribution/Cargo.toml";
+    "crates/modules/rustok-distribution/Cargo.toml";
 pub const GENERATED_DISTRIBUTION_REGISTRY_PATH: &str =
-    "crates/rustok-distribution/src/generated_promotions.rs";
+    "crates/modules/rustok-distribution/src/generated_promotions.rs";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeneratedStaticDistributionSource {

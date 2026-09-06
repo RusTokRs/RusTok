@@ -37,7 +37,7 @@ The FORUM-20Q Groups and FORUM-20AT Channel contracts remain historical source r
 
 ## Canonical plan debt
 
-The canonical `crates/rustok-forum/docs/implementation-plan.md` is intentionally not replaced through the GitHub contents API. The file exceeds two thousand lines and complete replacement risks unrelated roadmap loss. A later safe repository-local edit must mark FORUM-26 `in_progress`, record FORUM-26A/B, advance the FORUM-20 trust dependency, and retain explainable evaluation, posting limits, duplicate hashing, shared rate limiting and optional scoring as remaining work.
+The canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is intentionally not replaced through the GitHub contents API. The file exceeds two thousand lines and complete replacement risks unrelated roadmap loss. A later safe repository-local edit must mark FORUM-26 `in_progress`, record FORUM-26A/B, advance the FORUM-20 trust dependency, and retain explainable evaluation, posting limits, duplicate hashing, shared rate limiting and optional scoring as remaining work.
 
 `CRATE_API.md` is likewise not completely replaced in this slice. The public adapter is source-exported from the crate root and recorded by the machine contract and verifier.
 

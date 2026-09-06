@@ -4,10 +4,10 @@ Status: `source_reviewed_unvalidated_owner_composition_pending`.
 
 ## Reviewed scope
 
-- `crates/rustok-index/src/application/drift_repair.rs`
-- `crates/rustok-index/src/application/drift_repair_tests.rs`
-- `crates/rustok-index/src/infrastructure/postgres/drift_repair.rs`
-- `crates/rustok-index/src/migrations/m20260806_000007_add_index_finding_repair_commands.rs`
+- `crates/modules/rustok-index/src/application/drift_repair.rs`
+- `crates/modules/rustok-index/src/application/drift_repair_tests.rs`
+- `crates/modules/rustok-index/src/infrastructure/postgres/drift_repair.rs`
+- `crates/modules/rustok-index/src/migrations/m20260806_000007_add_index_finding_repair_commands.rs`
 - application, PostgreSQL, crate, and migration exports
 - targeted-repair, lifecycle, persistence, confirmation, README, and live-plan documentation
 - targeted-repair and downstream static guards

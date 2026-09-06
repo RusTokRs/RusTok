@@ -2,10 +2,10 @@
   "schema_version": 3,
   "slice": "NOTIFY-03E",
   "promoted_by_slices": ["NOTIFY-03F"],
-  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
-  "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
-  "owner_worker": "crates/rustok-notifications/src/fanout_worker.rs",
-  "canonical_service": "crates/rustok-notifications/src/fanout.rs",
+  "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
+  "owner_plan": "crates/modules/rustok-notifications/docs/implementation-plan.md",
+  "owner_worker": "crates/modules/rustok-notifications/src/fanout_worker.rs",
+  "canonical_service": "crates/modules/rustok-notifications/src/fanout.rs",
   "server_worker": "apps/server/src/services/notification_fanout_worker.rs",
   "bootstrap": "apps/server/src/services/server_bootstrap.rs",
   "source_selection": {
@@ -70,8 +70,8 @@
     "prevents_disabled_tenant_head_of_line_starvation": true
   },
   "tests": [
-    "crates/rustok-notifications/tests/fanout_worker_sqlite.rs",
-    "crates/rustok-notifications/tests/fanout_policy_deferral_sqlite.rs"
+    "crates/modules/rustok-notifications/tests/fanout_worker_sqlite.rs",
+    "crates/modules/rustok-notifications/tests/fanout_policy_deferral_sqlite.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-notifications-fanout-worker.mjs",

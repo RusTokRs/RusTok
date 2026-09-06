@@ -6,7 +6,7 @@
   "status": "source_ready_maintainer_execution_pending",
   "owner_dependency": {
     "task": "FORUM-21A",
-    "contract": "crates/rustok-forum/contracts/forum-topic-move-owner.json",
+    "contract": "crates/modules/rustok-forum/contracts/forum-topic-move-owner.json",
     "service": "ForumTopicMoveService",
     "operation_receipt": "forum_topic_move_operations",
     "semantic_event": "forum.topic.moved"

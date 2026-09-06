@@ -3,9 +3,9 @@ name: Product Taxonomy Category Directory Order
 on:
   pull_request:
     paths:
-      - "crates/rustok-product/src/services/catalog_schema_service/categories.rs"
-      - "crates/rustok-product/docs/category-taxonomy-binding.md"
-      - "crates/rustok-product/docs/category-locale-contract.md"
+      - "crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs"
+      - "crates/modules/rustok-product/docs/category-taxonomy-binding.md"
+      - "crates/modules/rustok-product/docs/category-locale-contract.md"
       - "scripts/verify/verify-product-taxonomy-category-directory-order.mjs"
       - ".github/workflows/product-taxonomy-category-directory-order.yml"
       - ".github/workflows/product-taxonomy-category-hierarchy-consumers.yml"
@@ -69,11 +69,11 @@ jobs:
             echo "CAT-31 runtime/verifier unchanged; PR-wide CAT-31 slice restriction is not applicable."
             exit 0
           fi
-          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-directory-order\.mjs|\.github/workflows/product-taxonomy-category-directory-order\.yml|\.github/workflows/product-taxonomy-category-hierarchy-consumers\.yml|\.github/workflows/product-category-legacy-write-retirement\.yml)$'
+          allowed='^(crates/modules/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/modules/rustok-product/docs/category-taxonomy-binding\.md|crates/modules/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-directory-order\.mjs|\.github/workflows/product-taxonomy-category-directory-order\.yml|\.github/workflows/product-taxonomy-category-hierarchy-consumers\.yml|\.github/workflows/product-category-legacy-write-retirement\.yml)$'
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           test -z "$unexpected"
       - name: Check Product formatting
-        run: cargo fmt --check --manifest-path crates/rustok-product/Cargo.toml
+        run: cargo fmt --check --manifest-path crates/modules/rustok-product/Cargo.toml
       - name: Run Product Category Taxonomy directory-order regressions
         run: cargo test -p rustok-product --lib category_taxonomy_directory_order -- --nocapture
       - name: Compile Product Category schema directory

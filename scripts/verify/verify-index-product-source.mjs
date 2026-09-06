@@ -24,10 +24,10 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const productCargo = read('crates/rustok-product/Cargo.toml');
-forbidMarkers('crates/rustok-product/Cargo.toml', productCargo, ['rustok-index', 'rustok-channel']);
+const productCargo = read('crates/modules/rustok-product/Cargo.toml');
+forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-index', 'rustok-channel']);
 
-const modulePath = 'crates/rustok-distribution/src/product_index/mod.rs';
+const modulePath = 'crates/modules/rustok-distribution/src/product_index/mod.rs';
 const moduleSource = requireMarkers(modulePath, [
   'mod attribute_terms;',
   'mod channel_visibility;',
@@ -44,17 +44,17 @@ const moduleSource = requireMarkers(modulePath, [
 forbidMarkers(modulePath, moduleSource, ['mod graph;', 'graph::', 'four_schemas']);
 
 for (const removed of [
-  'crates/rustok-distribution/src/product_index/graph.rs',
-  'crates/rustok-index/docs/m7-product-source.md',
-  'crates/rustok-index/docs/m7-product-variant-source.md',
-  'crates/rustok-product/docs/index-graph-v3-projection-ledger.md',
+  'crates/modules/rustok-distribution/src/product_index/graph.rs',
+  'crates/modules/rustok-index/docs/m7-product-source.md',
+  'crates/modules/rustok-index/docs/m7-product-variant-source.md',
+  'crates/modules/rustok-product/docs/index-graph-v3-projection-ledger.md',
   'scripts/verify/verify-index-product-graph-source.mjs',
   'scripts/verify/verify-index-product-v3-projection-ledger.mjs',
 ]) {
   if (fs.existsSync(resolve(removed))) fail(`removed Product compatibility artifact still exists: ${removed}`);
 }
 
-const sourcePath = 'crates/rustok-distribution/src/product_index/product.rs';
+const sourcePath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 const source = requireMarkers(sourcePath, [
   'PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary"',
   'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay"',
@@ -123,8 +123,8 @@ forbidMarkers(sourcePath, source, [
 ]);
 
 for (const currentConsumer of [
-  'crates/rustok-distribution/src/product_index/absence.rs',
-  'crates/rustok-distribution/src/product_index/query_admission.rs',
+  'crates/modules/rustok-distribution/src/product_index/absence.rs',
+  'crates/modules/rustok-distribution/src/product_index/query_admission.rs',
 ]) {
   const consumer = requireMarkers(currentConsumer, [
     'PRODUCT_SCHEMA_ROUTING_KEY',
@@ -133,13 +133,13 @@ for (const currentConsumer of [
   forbidMarkers(currentConsumer, consumer, ['SchemaVersion::new(3)']);
 }
 
-requireMarkers('crates/rustok-distribution/src/product_index/attribute_terms.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/attribute_terms.rs', [
   'PRODUCT_ATTRIBUTE_TERMS_CTE',
   'localized_text_filter(',
   'localized_present',
 ]);
 
-const graphDocPath = 'crates/rustok-index/docs/m7-product-graph-source.md';
+const graphDocPath = 'crates/modules/rustok-index/docs/m7-product-graph-source.md';
 const graphDoc = requireMarkers(graphDocPath, [
   'Status: `single_current_product_and_storefront_query_source_complete_execution_admission_pending`',
   'Current Product runtime code owns exactly one such Product key, `4`',

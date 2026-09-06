@@ -208,14 +208,14 @@ Suggested commands, intentionally not run in this slice:
 ```bash
 cargo test -p rustok-pages --test explicit_artifact_repair_transport_contract -- --nocapture
 cargo test -p rustok-pages --test explicit_artifact_repair_request_contract -- --nocapture
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport-contract.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-request-contract.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-transport.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport-contract.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-request-contract.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-transport.mjs
 cargo test -p rustok-pages --test explicit_artifact_binding_replacement_sqlite -- --nocapture
 cargo test -p rustok-pages --test explicit_artifact_rebuild_sqlite -- --nocapture
 cargo check -p rustok-pages --all-targets

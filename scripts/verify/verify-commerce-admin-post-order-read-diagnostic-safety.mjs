@@ -12,12 +12,12 @@ const read = (relativePath) => readFileSync(path.join(root, relativePath), "utf8
 const failures = [];
 
 const paths = {
-  source: "crates/rustok-commerce/src/controllers/admin/post_order_reads.rs",
+  source: "crates/modules/rustok-commerce/src/controllers/admin/post_order_reads.rs",
   evidence:
-    "crates/rustok-commerce/contracts/evidence/admin-post-order-read-diagnostic-safety-source-review.json",
-  doc: "crates/rustok-commerce/docs/admin-post-order-read-diagnostic-safety.md",
+    "crates/modules/rustok-commerce/contracts/evidence/admin-post-order-read-diagnostic-safety-source-review.json",
+  doc: "crates/modules/rustok-commerce/docs/admin-post-order-read-diagnostic-safety.md",
   cutoverVerifier: "scripts/verify/verify-commerce-admin-post-order-read-cutover.mjs",
-  plan: "crates/rustok-commerce/docs/implementation-plan.md",
+  plan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
 const requireText = (source, value, label) => {

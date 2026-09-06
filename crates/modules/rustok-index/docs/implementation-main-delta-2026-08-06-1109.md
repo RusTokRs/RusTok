@@ -10,7 +10,7 @@ The three intervening commits add:
 - Forum localized category slug-history ownership and migration;
 - Pages authenticated authoring route, client bootstrap, and guards.
 
-The complete compare contains no file under `crates/rustok-index` and no Index verifier. It does not
+The complete compare contains no file under `crates/modules/rustok-index` and no Index verifier. It does not
 modify the targeted-repair application contract, PostgreSQL reservation store, Index migrations,
 crate exports, live plan, or Index static guards.
 

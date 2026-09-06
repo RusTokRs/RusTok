@@ -29,21 +29,21 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-const enginePath = "crates/rustok-search/src/engine.rs";
-const forumProjectionPath = "crates/rustok-forum/src/search_projection.rs";
-const libPath = "crates/rustok-search/src/lib.rs";
-const graphqlPath = "crates/rustok-search/src/graphql/types.rs";
+const enginePath = "crates/modules/rustok-search/src/engine.rs";
+const forumProjectionPath = "crates/modules/rustok-forum/src/search_projection.rs";
+const libPath = "crates/modules/rustok-search/src/lib.rs";
+const graphqlPath = "crates/modules/rustok-search/src/graphql/types.rs";
 const storefrontNativePath =
-  "crates/rustok-search/storefront/src/transport/native_server_adapter.rs";
-const storefrontFacadePath = "crates/rustok-search/storefront/src/transport/mod.rs";
-const adminNativeRootPath = "crates/rustok-search/admin/src/transport/native_server_adapter.rs";
+  "crates/modules/rustok-search/storefront/src/transport/native_server_adapter.rs";
+const storefrontFacadePath = "crates/modules/rustok-search/storefront/src/transport/mod.rs";
+const adminNativeRootPath = "crates/modules/rustok-search/admin/src/transport/native_server_adapter.rs";
 const adminNativeMappingPath =
-  "crates/rustok-search/admin/src/transport/native_server_adapter/mapping.rs";
+  "crates/modules/rustok-search/admin/src/transport/native_server_adapter/mapping.rs";
 const adminShellPath = "apps/admin/src/widgets/app_shell/native_server_adapter.rs";
 const removedCompatibilityPath =
-  "crates/rustok-search/storefront/src/transport/navigation.rs";
-const evidencePath = "crates/rustok-search/contracts/evidence/search-canonical-url-contract.json";
-const planPath = "crates/rustok-search/docs/implementation-plan.md";
+  "crates/modules/rustok-search/storefront/src/transport/navigation.rs";
+const evidencePath = "crates/modules/rustok-search/contracts/evidence/search-canonical-url-contract.json";
+const planPath = "crates/modules/rustok-search/docs/implementation-plan.md";
 
 const engine = read(enginePath);
 const forumProjection = read(forumProjectionPath);

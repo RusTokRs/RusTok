@@ -9,7 +9,7 @@ FORUM-21S adds the remaining copy-free reply movement owner from the canonical F
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-reply-range-move-owner.json
+crates/modules/rustok-forum/contracts/forum-reply-range-move-owner.json
 ```
 
 ## Command and replay identity

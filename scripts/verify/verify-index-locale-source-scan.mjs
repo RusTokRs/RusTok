@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const sourcePath = 'crates/rustok-index/src/application/source_registry.rs';
+const sourcePath = 'crates/modules/rustok-index/src/application/source_registry.rs';
 const source = requireMarkers(sourcePath, [
   'locale: Option<LocaleKey>',
   'pub fn for_locale(',
@@ -51,7 +51,7 @@ for (const forbidden of [
   }
 }
 
-const productPath = 'crates/rustok-distribution/src/product_index/product.rs';
+const productPath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 const product = requireMarkers(productPath, [
   'locale_mode: LocaleMode::Required',
   'match (request.locale(), cursor)',
@@ -88,7 +88,7 @@ if (product.includes('partition_key') || product.includes('scope_kind = \'locale
   fail('Product source slice must not absorb durable locale job/checkpoint or partition scope');
 }
 
-requireMarkers('crates/rustok-index/docs/m6-locale-scoped-source-scan.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-locale-scoped-source-scan.md', [
   'Status: `product_source_complete_durable_replay_scope_pending`.',
   '`IndexSourceScanRequest::new(...)`',
   '`IndexSourceScanRequest::for_locale(...)`',

@@ -12,13 +12,13 @@ const forbidText = (source, text, label) => {
   if (source.includes(text)) throw new Error(`forbidden ${label}: ${text}`);
 };
 
-const mounted = read("crates/rustok-commerce/src/controllers/admin/payments_owner_reads.rs");
-const adminModule = read("crates/rustok-commerce/src/controllers/admin/mod.rs");
-const httpRuntime = read("crates/rustok-commerce/src/controllers/mod.rs");
-const paymentLib = read("crates/rustok-payment/src/lib.rs");
-const owner = read("crates/rustok-payment/src/admin_refund_command.rs");
-const plan = read("crates/rustok-commerce/docs/implementation-plan.md");
-const doc = read("crates/rustok-commerce/docs/admin-refund-owner-command-cutover-2026-08-09.md");
+const mounted = read("crates/modules/rustok-commerce/src/controllers/admin/payments_owner_reads.rs");
+const adminModule = read("crates/modules/rustok-commerce/src/controllers/admin/mod.rs");
+const httpRuntime = read("crates/modules/rustok-commerce/src/controllers/mod.rs");
+const paymentLib = read("crates/modules/rustok-payment/src/lib.rs");
+const owner = read("crates/modules/rustok-payment/src/admin_refund_command.rs");
+const plan = read("crates/modules/rustok-commerce/docs/implementation-plan.md");
+const doc = read("crates/modules/rustok-commerce/docs/admin-refund-owner-command-cutover-2026-08-09.md");
 
 requireText(paymentLib, "mod admin_refund_command;", "Payment refund command module");
 requireText(paymentLib, "PaymentAdminRefundCommandPort", "Payment refund command port export");

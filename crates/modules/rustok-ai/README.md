@@ -136,7 +136,7 @@ implementation plan.
   profiles, runs, traces, and approvals.
 - Owns AI GraphQL resolvers and native transport contributions; the future host consumes only
   their generic module contribution contract.
-- Ships a large Leptos operator/admin UI package in `crates/rustok-ai/admin`.
+- Ships a large Leptos operator/admin UI package in `crates/modules/rustok-ai/admin`.
 - Ships a large Next.js operator/admin UI package through `apps/next-admin/packages/rustok-ai`.
 
 ## Entry points

@@ -111,7 +111,7 @@
     "m20260804_000023_advance_forum_reply_range_move_positions"
   ],
   "verification": {
-    "sqlite_contract": "crates/rustok-forum/tests/reply_range_move_sqlite.rs",
+    "sqlite_contract": "crates/modules/rustok-forum/tests/reply_range_move_sqlite.rs",
     "static_verifier": "scripts/verify/verify-forum-reply-range-move-owner.mjs",
     "commands_run_by_implementation_agent": false
   },

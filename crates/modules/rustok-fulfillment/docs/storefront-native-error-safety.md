@@ -7,9 +7,9 @@ Status: **source-ready / unvalidated**
 The fulfillment-owned native shipping-selection path has two source-only safety boundaries:
 
 - mounted server-function safety in
-  `crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs`;
+  `crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs`;
 - final native client-adapter safety in
-  `crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/native_client_error_safety.rs`.
+  `crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter/native_client_error_safety.rs`.
 
 The mounted boundary covers host runtime dependency resolution, tenant and authentication context extraction, optional request-context diagnostics, and the Commerce checkout runtime call. The client boundary prevents an unexpected server-function or framework string from becoming the selected native-path text inside public `UiTransportError`.
 
@@ -80,7 +80,7 @@ It locks validation ordering and messages, adapter context placement, the static
 
 Retained mounted source evidence:
 
-- `crates/rustok-fulfillment/contracts/evidence/storefront-native-error-safety-source.json`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/storefront-native-error-safety-source.json`.
 
 No test, verifier, Cargo command, formatting command, mounted execution, workflow, CI job, or runtime trace was executed for this source slice.
 

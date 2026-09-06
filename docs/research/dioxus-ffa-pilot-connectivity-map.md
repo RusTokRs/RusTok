@@ -92,9 +92,9 @@ with mandatory evidence per checklist:
 
 ### What has already been done in `rustok-pages`
 
-- added `crates/rustok-pages/storefront/src/core.rs`;
+- added `crates/modules/rustok-pages/storefront/src/core.rs`;
 - `SelectedPageCard` migrated to `core::*` functions;
-- Leptos storefront render/bind layer moved to `crates/rustok-pages/storefront/src/ui/leptos.rs`, crate root only wires modules/re-exports `PagesView`;
+- Leptos storefront render/bind layer moved to `crates/modules/rustok-pages/storefront/src/ui/leptos.rs`, crate root only wires modules/re-exports `PagesView`;
 - dual-path transport contract (`native #[server]` + GraphQL selected path) not changed.
 
 ### Double-check after completion
@@ -108,14 +108,14 @@ with mandatory evidence per checklist:
 ### Next module (new iteration)
 
 - [x] Started and completed the current `rustok-search` pilot slices (#1-#9).
-- [x] Iteration goal achieved: core use-cases sequentially extracted into `crates/rustok-search/storefront` and synchronized with `admin` surface without changing the product transport contract.
+- [x] Iteration goal achieved: core use-cases sequentially extracted into `crates/modules/rustok-search/storefront` and synchronized with `admin` surface without changing the product transport contract.
 
 ### Scope matrix for `rustok-search` (to avoid omissions)
 
-- [x] `crates/rustok-search/storefront` (Leptos storefront UI package)
+- [x] `crates/modules/rustok-search/storefront` (Leptos storefront UI package)
   - [x] first `core` use-case extracted (query/filter input normalization: `parse_csv`, `optional_text`);
   - [x] selected use-case extracted to `storefront/src/core.rs` and used by UI layer.
-- [x] `crates/rustok-search/admin` (Leptos admin UI package)
+- [x] `crates/modules/rustok-search/admin` (Leptos admin UI package)
   - [x] impact of the same use-case verified;
   - [x] same `core` approach applied in `admin/src/core.rs` without contract divergence.
 - [x] Headless parity (Next/mobile/external)
@@ -131,7 +131,7 @@ with mandatory evidence per checklist:
 
 ### Completed in current iteration (`rustok-search`, slice #1)
 
-- added `crates/rustok-search/storefront/src/core.rs` and `crates/rustok-search/admin/src/core.rs`;
+- added `crates/modules/rustok-search/storefront/src/core.rs` and `crates/modules/rustok-search/admin/src/core.rs`;
 - removed local duplicates of `parse_csv`/`optional_text` in storefront/admin UI and connected `core::*`;
 - dual-path transport (`native #[server]` + GraphQL selected path) not modified.
 
@@ -174,7 +174,7 @@ with mandatory evidence per checklist:
 ### Double-check after slices #2-#8 (rustok-pages/admin)
 
 - [x] Pass #1 (code/docs consistency):
-  - form helper logic, status badge and busy-key in `crates/rustok-pages/admin` extracted to `admin/src/core.rs`;
+  - form helper logic, status badge and busy-key in `crates/modules/rustok-pages/admin` extracted to `admin/src/core.rs`;
   - storefront and admin surfaces use `core::*` without changing transport contract.
 - [x] Pass #2 (cleanup stale wording):
   - central docs updated/removed formulations where these helper responsibilities were described as inline logic in `lib.rs`;
@@ -195,7 +195,7 @@ with mandatory evidence per checklist:
 
 ### Additional iteration evidence
 
-- blog slice #1 evidence: `crates/rustok-blog/storefront/src/core.rs` used by `crates/rustok-blog/storefront/src/lib.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
+- blog slice #1 evidence: `crates/modules/rustok-blog/storefront/src/core.rs` used by `crates/modules/rustok-blog/storefront/src/lib.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
 - `rustok-search` slice #10 evidence: admin relevance editor JSON formatting/profile/preset extraction moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
 - `rustok-search` slice #11 evidence: admin analytics/diagnostics metric formatting moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.
 - `rustok-search` slice #12 evidence: admin preview summary/preset rendering and diagnostics fallback text moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL selected path) not changed.

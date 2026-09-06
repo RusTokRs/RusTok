@@ -5,7 +5,7 @@ Status: **source-ready / unvalidated**
 ## Scope
 
 This source slice covers the public Customer Admin transport facade in
-`crates/rustok-customer/admin/src/transport/mod.rs`.
+`crates/modules/rustok-customer/admin/src/transport/mod.rs`.
 
 Covered operations:
 

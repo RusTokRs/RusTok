@@ -12,14 +12,14 @@ const read = (relativePath) => readFileSync(path.join(root, relativePath), "utf8
 const failures = [];
 
 const paths = {
-  owner: "crates/rustok-fulfillment/src/ports.rs",
-  error: "crates/rustok-fulfillment/src/error.rs",
-  doc: "crates/rustok-fulfillment/docs/shipping-selection-diagnostic-safety.md",
-  plan: "crates/rustok-fulfillment/docs/implementation-plan.md",
+  owner: "crates/modules/rustok-fulfillment/src/ports.rs",
+  error: "crates/modules/rustok-fulfillment/src/error.rs",
+  doc: "crates/modules/rustok-fulfillment/docs/shipping-selection-diagnostic-safety.md",
+  plan: "crates/modules/rustok-fulfillment/docs/implementation-plan.md",
   evidence:
-    "crates/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source.json",
+    "crates/modules/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source.json",
   review:
-    "crates/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source-review.json",
+    "crates/modules/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source-review.json",
 };
 
 const owner = read(paths.owner);

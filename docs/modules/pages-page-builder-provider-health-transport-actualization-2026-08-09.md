@@ -122,13 +122,13 @@ Source inspection cannot substitute for steps 1–3.
 Machine contract:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-builder-provider-health-transport-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-transport-source.json
 ```
 
 Fail-closed source guard:
 
 ```text
-crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs
 ```
 
 The guard locks the GraphQL shape, boolean/payload consistency, canonical re-evaluation, optional admin snapshot seam and continued absence of production health binding.
@@ -154,9 +154,9 @@ Per maintainer instruction, tests were not run. No Node verifier, Cargo command,
 Suggested maintainer source checks, intentionally not run:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-server-snapshot.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
-node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-rollout-server-snapshot.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
 ```

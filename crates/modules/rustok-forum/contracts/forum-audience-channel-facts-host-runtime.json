@@ -9,9 +9,9 @@
   "historical_group_adapter_file": "apps/server/src/services/forum_audience_group_facts.rs",
   "services_file": "apps/server/src/services/mod.rs",
   "runtime_composition_file": "apps/server/src/services/module_event_dispatcher.rs",
-  "forum_audience_owner_file": "crates/rustok-forum/src/audience.rs",
-  "channel_owner_port_file": "crates/rustok-channel/src/ports.rs",
-  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "forum_audience_owner_file": "crates/modules/rustok-forum/src/audience.rs",
+  "channel_owner_port_file": "crates/modules/rustok-channel/src/ports.rs",
+  "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
   "source_verifier": "scripts/verify/verify-forum-audience-channel-facts-host-runtime.mjs",
   "policy": {
     "request": "exact normalized tenant and user plus bounded requested channel slugs and group IDs",

@@ -12,7 +12,7 @@ locked redirect-ready tombstone.
 The machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-subscription-reconciliation.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-subscription-reconciliation.json
 ```
 
 The owner API is:

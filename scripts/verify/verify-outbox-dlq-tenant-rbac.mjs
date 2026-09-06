@@ -17,7 +17,7 @@ const requireMarkers = (source, markers, label) => {
 };
 
 const controllerPath = 'apps/server/src/controllers/admin_events.rs';
-const nativePath = 'crates/rustok-outbox/admin/src/transport/native_server_adapter.rs';
+const nativePath = 'crates/modules/rustok-outbox/admin/src/transport/native_server_adapter.rs';
 const controller = read(controllerPath);
 const native = read(nativePath);
 

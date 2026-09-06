@@ -50,7 +50,7 @@ correlation-safe mapper task remains open.
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/admin-checkout-operation-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/admin-checkout-operation-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-admin-checkout-operation-diagnostic-safety.mjs`
 - `scripts/verify/verify-commerce-admin-checkout-operation-error-context.mjs`
 

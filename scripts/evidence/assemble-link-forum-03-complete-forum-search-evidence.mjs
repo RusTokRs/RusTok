@@ -13,16 +13,16 @@ import { dirname, resolve } from "node:path";
 
 const root = process.cwd();
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-assembler.json";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-assembler.json";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const d13ContractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-evidence-assembler.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-evidence-assembler.json";
 const d14ContractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-translation-moderation-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-translation-moderation-proof.json";
 const d15ContractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-private-trusted-exclusion-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-private-trusted-exclusion-proof.json";
 const d16ContractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-topic-move-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-topic-move-proof.json";
 const d13ArtifactPath =
   "target/link-forum-03-forum-index-search-ordering-visibility-evidence.json";
 const d14ArtifactPath =

@@ -1,5 +1,5 @@
 ---
-id: doc://crates/rustok-forum/docs/implementation-plan.md
+id: doc://crates/modules/rustok-forum/docs/implementation-plan.md
 kind: module_implementation_plan
 language: en
 status: active

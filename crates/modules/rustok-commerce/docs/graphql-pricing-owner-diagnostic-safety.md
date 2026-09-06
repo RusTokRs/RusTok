@@ -68,7 +68,7 @@ The broad ecommerce correlation-safe mapper cleanup remains open.
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/graphql-pricing-owner-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/graphql-pricing-owner-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-graphql-pricing-owner-diagnostic-safety.mjs`
 
 ## Validation disclosure

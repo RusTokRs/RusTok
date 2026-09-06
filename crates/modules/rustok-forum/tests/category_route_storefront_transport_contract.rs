@@ -4,6 +4,7 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|path| path.parent())
+        .and_then(|path| path.parent())
         .expect("workspace root")
         .to_path_buf()
 }
@@ -15,7 +16,7 @@ fn read(relative: &str) -> String {
 
 #[test]
 fn graphql_route_resolution_rechecks_exact_category_visibility() {
-    let source = read("crates/rustok-forum/src/graphql/category_route_query.rs");
+    let source = read("crates/modules/rustok-forum/src/graphql/category_route_query.rs");
     for marker in [
         "forum_storefront_category_route",
         "ForumCategoryRouteService::new(db.clone())",
@@ -36,7 +37,7 @@ fn graphql_route_resolution_rechecks_exact_category_visibility() {
 #[test]
 fn native_route_resolution_uses_trusted_context_and_same_owners() {
     let source = read(
-        "crates/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
+        "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
     );
     for marker in [
         "expect_context::<HostRuntimeContext>()",
@@ -59,9 +60,9 @@ fn native_route_resolution_uses_trusted_context_and_same_owners() {
 
 #[test]
 fn storefront_deep_link_uses_existing_category_list_permission_boundary() {
-    let inline_owner = read("crates/rustok-forum/src/services/category_audience_read_inline.rs");
+    let inline_owner = read("crates/modules/rustok-forum/src/services/category_audience_read_inline.rs");
     let contract =
-        read("crates/rustok-forum/contracts/forum-category-route-storefront-transport.json");
+        read("crates/modules/rustok-forum/contracts/forum-category-route-storefront-transport.json");
     assert!(
         inline_owner.contains("enforce_scope(&security, Resource::ForumCategories, Action::List)")
     );
@@ -73,14 +74,14 @@ fn storefront_deep_link_uses_existing_category_list_permission_boundary() {
 
 #[test]
 fn public_dto_and_adapters_have_graphql_native_parity() {
-    let model = read("crates/rustok-forum/storefront/src/model.rs");
+    let model = read("crates/modules/rustok-forum/storefront/src/model.rs");
     let graphql =
-        read("crates/rustok-forum/storefront/src/transport/category_route_graphql_adapter.rs");
+        read("crates/modules/rustok-forum/storefront/src/transport/category_route_graphql_adapter.rs");
     let native = read(
-        "crates/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
+        "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
     );
-    let transport = read("crates/rustok-forum/storefront/src/transport/mod.rs");
-    let storefront_lib = read("crates/rustok-forum/storefront/src/lib.rs");
+    let transport = read("crates/modules/rustok-forum/storefront/src/transport/mod.rs");
+    let storefront_lib = read("crates/modules/rustok-forum/storefront/src/lib.rs");
 
     for marker in [
         "StorefrontForumCategoryRouteDisposition",
@@ -102,8 +103,8 @@ fn public_dto_and_adapters_have_graphql_native_parity() {
 #[test]
 fn transport_slice_does_not_mount_or_add_seo_policy() {
     let contract =
-        read("crates/rustok-forum/contracts/forum-category-route-storefront-transport.json");
-    let docs = read("crates/rustok-forum/docs/forum-24n-category-route-storefront-transport.md");
+        read("crates/modules/rustok-forum/contracts/forum-category-route-storefront-transport.json");
+    let docs = read("crates/modules/rustok-forum/docs/forum-24n-category-route-storefront-transport.md");
     for marker in [
         "\"category_route_mounted_in_host\": false",
         "\"category_links_changed\": false",

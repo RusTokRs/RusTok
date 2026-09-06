@@ -7,77 +7,77 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const nonOwnerRoots = [
   'apps/server/src',
-  'crates/rustok-installer-persistence/src',
-  'crates/rustok-module-build-worker/src',
-  'crates/rustok-registry-validation-worker/src',
-  'crates/rustok-module-build-transport/src',
-  'crates/rustok-verification-worker/src',
-  'crates/rustok-verification-transport/src',
-  'crates/rustok-module-build-dispatcher/src',
-  'crates/rustok-static-distribution-worker/src',
-  'crates/rustok-worker-transport/src',
+  'crates/utils/rustok-installer-persistence/src',
+  'crates/workers/rustok-module-build-worker/src',
+  'crates/workers/rustok-registry-validation-worker/src',
+  'crates/workers/rustok-module-build-transport/src',
+  'crates/workers/rustok-verification-worker/src',
+  'crates/workers/rustok-verification-transport/src',
+  'crates/workers/rustok-module-build-dispatcher/src',
+  'crates/workers/rustok-static-distribution-worker/src',
+  'crates/workers/rustok-worker-transport/src',
 ].map((relativePath) => path.join(root, relativePath));
-const ownerRoot = path.join(root, 'crates/rustok-modules/src');
+const ownerRoot = path.join(root, 'crates/modules/rustok-modules/src');
 const adminModuleTransportRoot = path.join(root, 'apps/admin/src/features/modules/transport');
-const ownerManifestPath = path.join(root, 'crates/rustok-modules/Cargo.toml');
-const ownerContractsPath = path.join(root, 'crates/rustok-modules/src/contracts.rs');
-const lifecycleOwnerPath = path.join(root, 'crates/rustok-modules/src/installation.rs');
+const ownerManifestPath = path.join(root, 'crates/modules/rustok-modules/Cargo.toml');
+const ownerContractsPath = path.join(root, 'crates/modules/rustok-modules/src/contracts.rs');
+const lifecycleOwnerPath = path.join(root, 'crates/modules/rustok-modules/src/installation.rs');
 const artifactAdmissionReverificationMigrationPath = path.join(
   root,
-  'crates/rustok-modules/src/migrations/m20260901_000045_artifact_admission_reverification_operations.rs',
+  'crates/modules/rustok-modules/src/migrations/m20260901_000045_artifact_admission_reverification_operations.rs',
 );
-const artifactDataOwnerPath = path.join(root, 'crates/rustok-modules/src/data.rs');
-const moduleBuildOwnerPath = path.join(root, 'crates/rustok-modules/src/build.rs');
+const artifactDataOwnerPath = path.join(root, 'crates/modules/rustok-modules/src/data.rs');
+const moduleBuildOwnerPath = path.join(root, 'crates/modules/rustok-modules/src/build.rs');
 const artifactDataExportMigrationPath = path.join(
   root,
-  'crates/rustok-modules/src/migrations/m20260718_000031_artifact_data_exports.rs',
+  'crates/modules/rustok-modules/src/migrations/m20260718_000031_artifact_data_exports.rs',
 );
 const artifactBindingIdempotencyOwnerPath = path.join(
   root,
-  'crates/rustok-modules/src/binding_idempotency.rs',
+  'crates/modules/rustok-modules/src/binding_idempotency.rs',
 );
 const artifactBindingIdempotencyMigrationPath = path.join(
   root,
-  'crates/rustok-modules/src/migrations/m20260717_000023_artifact_binding_operations.rs',
+  'crates/modules/rustok-modules/src/migrations/m20260717_000023_artifact_binding_operations.rs',
 );
 const serverArtifactBindingPath = path.join(root, 'apps/server/src/services/artifact_binding.rs');
 const artifactSettingsRecoveryOwnerPath = path.join(
   root,
-  'crates/rustok-modules/src/artifact_settings_recovery.rs',
+  'crates/modules/rustok-modules/src/artifact_settings_recovery.rs',
 );
 const artifactDataSnapshotOwnerPath = path.join(
   root,
-  'crates/rustok-modules/src/data_snapshot.rs',
+  'crates/modules/rustok-modules/src/data_snapshot.rs',
 );
-const artifactSecretOwnerPath = path.join(root, 'crates/rustok-modules/src/secrets.rs');
+const artifactSecretOwnerPath = path.join(root, 'crates/modules/rustok-modules/src/secrets.rs');
 const artifactSecurityStateOwnerPath = path.join(
   root,
-  'crates/rustok-modules/src/security_state.rs',
+  'crates/modules/rustok-modules/src/security_state.rs',
 );
-const staticPromotionOwnerPath = path.join(root, 'crates/rustok-modules/src/promotion.rs');
+const staticPromotionOwnerPath = path.join(root, 'crates/modules/rustok-modules/src/promotion.rs');
 const staticDistributionBootstrapOwnerPath = path.join(
   root,
-  'crates/rustok-modules/src/distribution_bootstrap.rs',
+  'crates/modules/rustok-modules/src/distribution_bootstrap.rs',
 );
 const staticDistributionReleaseOwnerPath = path.join(
   root,
-  'crates/rustok-modules/src/distribution_release.rs',
+  'crates/modules/rustok-modules/src/distribution_release.rs',
 );
 const staticDistributionRolloutOwnerPath = path.join(
   root,
-  'crates/rustok-modules/src/distribution_rollout.rs',
+  'crates/modules/rustok-modules/src/distribution_rollout.rs',
 );
-const staticDistributionOwnerPath = path.join(root, 'crates/rustok-modules/src/distribution.rs');
+const staticDistributionOwnerPath = path.join(root, 'crates/modules/rustok-modules/src/distribution.rs');
 const artifactNodeReconciliationOwnerPath = path.join(
   root,
-  'crates/rustok-modules/src/artifact_node_reconciliation.rs',
+  'crates/modules/rustok-modules/src/artifact_node_reconciliation.rs',
 );
-const runtimeManifestPath = path.join(root, 'crates/rustok-runtime/Cargo.toml');
-const registryValidationWorkerRoot = path.join(root, 'crates/rustok-registry-validation-worker');
+const runtimeManifestPath = path.join(root, 'crates/libs/rustok-runtime/Cargo.toml');
+const registryValidationWorkerRoot = path.join(root, 'crates/workers/rustok-registry-validation-worker');
 const registryValidationWorkerManifestPath = path.join(registryValidationWorkerRoot, 'Cargo.toml');
 const registryValidationWorkerMainPath = path.join(registryValidationWorkerRoot, 'src/main.rs');
 const registryValidationWorkerLibraryPath = path.join(registryValidationWorkerRoot, 'src/lib.rs');
-const staticDistributionWorkerRoot = path.join(root, 'crates/rustok-static-distribution-worker');
+const staticDistributionWorkerRoot = path.join(root, 'crates/workers/rustok-static-distribution-worker');
 const staticDistributionWorkerManifestPath = path.join(staticDistributionWorkerRoot, 'Cargo.toml');
 const publicationEvidencePath = path.join(ownerRoot, 'publication_evidence.rs');
 const recoveryPath = path.join(ownerRoot, 'recovery.rs');
@@ -89,11 +89,11 @@ const staticLifecycleJournalPath = path.join(ownerRoot, 'operation_store.rs');
 const alloyOwnerSourcePath = path.join(ownerRoot, 'governance.rs');
 const registryPublicationEvidenceMigrationPath = path.join(
   root,
-  'crates/rustok-migrations/src/m20260717_000001_create_registry_publication_evidence.rs',
+  'crates/utils/rustok-migrations/src/m20260717_000001_create_registry_publication_evidence.rs',
 );
 const registryPublicationMigrationPath = path.join(
   root,
-  'crates/rustok-migrations/src/m20260718_000002_add_registry_publication_idempotency.rs',
+  'crates/utils/rustok-migrations/src/m20260718_000002_add_registry_publication_idempotency.rs',
 );
 const registryHttpControllerPath = path.join(
   root,
@@ -103,20 +103,20 @@ const alloyServerImportPath = path.join(
   root,
   'apps/server/src/services/registry_governance/alloy_import.rs',
 );
-const alloyHttpControllerPath = path.join(root, 'crates/alloy/src/controllers/mod.rs');
-const alloyGraphqlMutationPath = path.join(root, 'crates/alloy/src/graphql/mutation.rs');
-const alloyMcpImportPath = path.join(root, 'crates/rustok-mcp/src/alloy_import.rs');
-const alloyMcpAccessPath = path.join(root, 'crates/rustok-mcp/src/access.rs');
-const alloyMcpStdioServerPath = path.join(root, 'crates/rustok-mcp/src/server.rs');
+const alloyHttpControllerPath = path.join(root, 'crates/modules/alloy/src/controllers/mod.rs');
+const alloyGraphqlMutationPath = path.join(root, 'crates/modules/alloy/src/graphql/mutation.rs');
+const alloyMcpImportPath = path.join(root, 'crates/modules/rustok-mcp/src/alloy_import.rs');
+const alloyMcpAccessPath = path.join(root, 'crates/modules/rustok-mcp/src/access.rs');
+const alloyMcpStdioServerPath = path.join(root, 'crates/modules/rustok-mcp/src/server.rs');
 const serverMcpControllerPath = path.join(root, 'apps/server/src/controllers/mcp.rs');
-const alloySandboxRuntimePath = path.join(root, 'crates/alloy/src/sandbox_request.rs');
-const alloyTestRunnerPath = path.join(root, 'crates/alloy/src/runner/test.rs');
-const alloyReleaseStagerPath = path.join(root, 'crates/alloy/src/runner/release.rs');
-const alloyImportModelPath = path.join(root, 'crates/alloy/src/model/import.rs');
+const alloySandboxRuntimePath = path.join(root, 'crates/modules/alloy/src/sandbox_request.rs');
+const alloyTestRunnerPath = path.join(root, 'crates/modules/alloy/src/runner/test.rs');
+const alloyReleaseStagerPath = path.join(root, 'crates/modules/alloy/src/runner/release.rs');
+const alloyImportModelPath = path.join(root, 'crates/modules/alloy/src/model/import.rs');
 const serverAppRuntimePath = path.join(root, 'apps/server/src/services/app_runtime.rs');
 const alloyPublicationMigrationPath = path.join(
   root,
-  'crates/rustok-modules/src/migrations/m20260727_000041_registry_release_artifact_contracts.rs',
+  'crates/modules/rustok-modules/src/migrations/m20260727_000041_registry_release_artifact_contracts.rs',
 );
 const forbiddenOwnerDependencies = [
   'alloy',
@@ -138,43 +138,43 @@ const adminBackendLogicPattern = /\b(?:Statement::from|DatabaseBackend::|query_(
 const staticDistributionWorkerOwnerTypePattern = /\b(?:ModuleStaticDistribution(?:Rollout(?:Request|Receipt|State|Node(?:Report|Phase|Failure|Receipt))?|Release(?:Activation|Rollback|Revocation)?(?:Command|Receipt|State)?|TopologySnapshot)|SeaOrmModuleStaticDistribution(?:Rollout|Release)Service)\b/;
 const ownerBoundaries = [
   {
-    path: 'crates/rustok-modules/src/composition.rs',
+    path: 'crates/modules/rustok-modules/src/composition.rs',
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+platform_state\b/i,
   },
   {
-    path: 'crates/rustok-modules/src/operation_store.rs',
+    path: 'crates/modules/rustok-modules/src/operation_store.rs',
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:module_operations|tenant_modules)\b/i,
   },
   {
-    path: 'crates/rustok-modules/src/installation.rs',
+    path: 'crates/modules/rustok-modules/src/installation.rs',
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_artifact_[a-z_]+\b/i,
   },
   {
-    path: 'crates/rustok-modules/src/data.rs',
+    path: 'crates/modules/rustok-modules/src/data.rs',
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_artifact_data[a-z_]*\b/i,
   },
   {
-    path: 'crates/rustok-modules/src/data_snapshot.rs',
+    path: 'crates/modules/rustok-modules/src/data_snapshot.rs',
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_artifact_data[a-z_]*\b/i,
   },
   {
-    path: 'crates/rustok-modules/src/build.rs',
+    path: 'crates/modules/rustok-modules/src/build.rs',
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_build_requests\b/i,
   },
   {
-    path: 'crates/rustok-modules/src/governance.rs',
+    path: 'crates/modules/rustok-modules/src/governance.rs',
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+registry_[a-z_]+\b/i,
   },
   {
-    path: 'crates/rustok-modules/src/promotion.rs',
+    path: 'crates/modules/rustok-modules/src/promotion.rs',
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_static_[a-z_]+\b/i,
   },
   {
-    path: 'crates/rustok-modules/src/distribution.rs',
+    path: 'crates/modules/rustok-modules/src/distribution.rs',
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_static_distribution_[a-z_]+\b/i,
   },
   {
-    path: 'crates/rustok-modules/src/distribution_release.rs',
+    path: 'crates/modules/rustok-modules/src/distribution_release.rs',
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_static_distribution_release[a-z_]*\b/i,
   },
 ];
@@ -291,7 +291,7 @@ try {
   const directEventEnvelopeViolations = rustFiles(ownerRoot)
     .filter(isProductionSource)
     .filter((filePath) => !relative(filePath).includes('/migrations/'))
-    .filter((filePath) => relative(filePath) !== 'crates/rustok-modules/src/infrastructure.rs')
+    .filter((filePath) => relative(filePath) !== 'crates/modules/rustok-modules/src/infrastructure.rs')
     .filter((filePath) => directEventEnvelopePattern.test(fs.readFileSync(filePath, 'utf8')))
     .map(relative);
   const adminBackendLogicViolations = rustFiles(adminModuleTransportRoot)
@@ -663,7 +663,7 @@ try {
   const alloyMcpImport = fs.readFileSync(alloyMcpImportPath, 'utf8');
   const alloyMcpAccess = fs.readFileSync(alloyMcpAccessPath, 'utf8');
   const alloyMcpStdioServer = fs.readFileSync(alloyMcpStdioServerPath, 'utf8');
-  const alloyMcpScaffold = read('crates/rustok-mcp/src/alloy_scaffold.rs');
+  const alloyMcpScaffold = read('crates/modules/rustok-mcp/src/alloy_scaffold.rs');
   const serverMcpController = fs.readFileSync(serverMcpControllerPath, 'utf8');
   const alloySandboxRuntime = fs.readFileSync(alloySandboxRuntimePath, 'utf8');
   const alloyTestRunner = fs.readFileSync(alloyTestRunnerPath, 'utf8');
@@ -977,8 +977,8 @@ try {
   if (alloyMcpStdioServer.includes('alloy_import_published_release')) {
     fail('generic stdio MCP must not advertise the tenant-bound published Alloy release import');
   }
-  const alloyMcpAuthoring = read('crates/rustok-mcp/src/alloy_authoring.rs');
-  const alloyAuthoringService = read('crates/alloy/src/authoring.rs');
+  const alloyMcpAuthoring = read('crates/modules/rustok-mcp/src/alloy_authoring.rs');
+  const alloyAuthoringService = read('crates/modules/alloy/src/authoring.rs');
   if (
     !alloyMcpAuthoring.includes('REMOTE_ALLOY_AUTHORING_TOOL_NAMES') ||
     !alloyMcpAuthoring.includes('TOOL_ALLOY_CREATE_SCRIPT') ||
@@ -1054,13 +1054,13 @@ try {
   }
 
   const bindingStore = fs.readFileSync(
-    path.join(root, 'crates/rustok-modules/src/binding_idempotency.rs'),
+    path.join(root, 'crates/modules/rustok-modules/src/binding_idempotency.rs'),
     'utf8',
   );
   const bindingRlsMigration = fs.readFileSync(
     path.join(
       root,
-      'crates/rustok-modules/src/migrations/m20260720_000032_artifact_binding_operation_rls.rs',
+      'crates/modules/rustok-modules/src/migrations/m20260720_000032_artifact_binding_operation_rls.rs',
     ),
     'utf8',
   );

@@ -18,11 +18,11 @@ function requireAbsent(text, needle, message) {
   }
 }
 
-const cargo = read("crates/rustok-reactions-storefront/Cargo.toml");
-const model = read("crates/rustok-reactions-storefront/src/model.rs");
-const transport = read("crates/rustok-reactions-storefront/src/transport.rs");
+const cargo = read("crates/modules/rustok-reactions-storefront/Cargo.toml");
+const model = read("crates/modules/rustok-reactions-storefront/src/model.rs");
+const transport = read("crates/modules/rustok-reactions-storefront/src/transport.rs");
 const transportRuntime = transport.split("#[cfg(test)]", 1)[0];
-const ui = read("crates/rustok-reactions-storefront/src/ui/leptos.rs");
+const ui = read("crates/modules/rustok-reactions-storefront/src/ui/leptos.rs");
 
 for (const forbidden of ["rustok-forum", "rustok-blog", "rustok-reactions ="]) {
   requireAbsent(

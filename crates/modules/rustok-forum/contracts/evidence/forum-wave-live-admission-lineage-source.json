@@ -8,7 +8,7 @@
   "tests": "scripts/verify/verify-forum-wave-admission-lineage.test.mjs",
   "required_gate": "node scripts/verify/verify-forum-wave-admission-lineage.mjs",
   "wave_evidence": {
-    "default_path": "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
+    "default_path": "crates/modules/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
     "environment": "RUSTOK_FORUM_WAVE_EVIDENCE_PATH",
     "source_ready_requires_admission_file": false,
     "live_requires_admission_file": true
@@ -37,9 +37,9 @@
     "FFA/FBA promotion"
   ],
   "required_source_files": [
-    "crates/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json",
-    "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
-    "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
+    "crates/modules/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json",
+    "crates/modules/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
+    "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
     "scripts/evidence/admit-forum-page-builder-wave.mjs",
     "scripts/verify/verify-forum-wave-evidence-freshness.mjs",
     "scripts/verify/verify-forum-wave-admission-lineage.mjs",

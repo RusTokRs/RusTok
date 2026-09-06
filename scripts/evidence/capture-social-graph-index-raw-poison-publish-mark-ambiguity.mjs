@@ -16,13 +16,13 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution-contract.json";
+  "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution-contract.json";
 const expectedRunner =
   "scripts/evidence/capture-social-graph-index-raw-poison-publish-mark-ambiguity.mjs";
 const expectedVerifier =
   "scripts/verify/verify-social-graph-index-raw-poison-publish-mark-ambiguity-retained.mjs";
 const expectedEvidence =
-  "crates/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution.json";
+  "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution.json";
 const expectedCases = [
   "dedup_enabled_closes_publish_mark_ambiguity_without_physical_duplicate",
   "dedup_disabled_exposes_publish_mark_ambiguity_as_physical_duplicate",

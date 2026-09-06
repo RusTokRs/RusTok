@@ -12,17 +12,17 @@
     "comment.deleted"
   ],
   "production_contract": {
-    "handler": "crates/rustok-blog/src/services/comment_projection.rs",
-    "service_export": "crates/rustok-blog/src/services/mod.rs",
-    "delivery_entity": "crates/rustok-blog/src/entities/blog_comment_projection_delivery.rs",
-    "delivery_migration": "crates/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs",
-    "migration_registry": "crates/rustok-blog/src/migrations/mod.rs",
-    "module_registration": "crates/rustok-blog/src/lib.rs",
-    "consumer_registry": "crates/rustok-blog/contracts/blog-fba-registry.json"
+    "handler": "crates/modules/rustok-blog/src/services/comment_projection.rs",
+    "service_export": "crates/modules/rustok-blog/src/services/mod.rs",
+    "delivery_entity": "crates/modules/rustok-blog/src/entities/blog_comment_projection_delivery.rs",
+    "delivery_migration": "crates/modules/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs",
+    "migration_registry": "crates/modules/rustok-blog/src/migrations/mod.rs",
+    "module_registration": "crates/modules/rustok-blog/src/lib.rs",
+    "consumer_registry": "crates/modules/rustok-blog/contracts/blog-fba-registry.json"
   },
   "source_harness": {
     "status": "executable_no_run",
-    "path": "crates/rustok-blog/src/services/comment_projection.rs",
+    "path": "crates/modules/rustok-blog/src/services/comment_projection.rs",
     "module": "services::comment_projection::tests",
     "command": "cargo test -p rustok-blog --lib services::comment_projection::tests",
     "cases": [
@@ -36,7 +36,7 @@
   "host_registration_harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
-    "path": "crates/rustok-blog/src/lib.rs",
+    "path": "crates/modules/rustok-blog/src/lib.rs",
     "module": "tests",
     "command": "cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing",
     "scope": "module_registry_handler_identity_and_routing_only",
@@ -47,7 +47,7 @@
   "dispatcher_harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
-    "path": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
+    "path": "crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
     "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact",
     "isolation": "unique_schema_one_connection_pool",
@@ -59,7 +59,7 @@
   "concurrency_harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
-    "path": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
+    "path": "crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
     "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact",
     "isolation": "unique_schema_four_independent_connections_barrier",
@@ -71,7 +71,7 @@
   "retry_limit_harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
-    "path": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
+    "path": "crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
     "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears -- --exact",
     "isolation": "unique_schema_one_connection_pool_before_update_skip_trigger_nontransactional_attempt_sequence",
@@ -84,7 +84,7 @@
   "postgres_harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
-    "path": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
+    "path": "crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
     "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test",
     "isolation": "unique_schema_one_connection_pool",
@@ -99,7 +99,7 @@
   "restart_harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
-    "path": "crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
+    "path": "crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
     "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test",
     "isolation": "unique_schema_new_connection",
@@ -111,7 +111,7 @@
   "process_restart_harness": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
-    "path": "crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
+    "path": "crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
     "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact",
     "isolation": "unique_schema_two_sequential_test_processes_same_envelope",

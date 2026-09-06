@@ -1,5 +1,5 @@
 ---
-id: doc://crates/rustok-forum/docs/forum-12d1-quote-commands.md
+id: doc://crates/modules/rustok-forum/docs/forum-12d1-quote-commands.md
 kind: implementation_record
 language: en
 status: delivered

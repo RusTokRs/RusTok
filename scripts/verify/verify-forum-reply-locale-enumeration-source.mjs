@@ -14,9 +14,9 @@ function requireAbsent(text, marker, message) {
   if (text.includes(marker)) throw new Error(message);
 }
 
-const storagePath = "crates/rustok-forum/src/services/reply_inline.rs";
-const ownerPath = "crates/rustok-forum/src/services/reply_owner_inline.rs";
-const facadePath = "crates/rustok-forum/src/services/reply_facade.rs";
+const storagePath = "crates/modules/rustok-forum/src/services/reply_inline.rs";
+const ownerPath = "crates/modules/rustok-forum/src/services/reply_owner_inline.rs";
+const facadePath = "crates/modules/rustok-forum/src/services/reply_facade.rs";
 const packetPath = "docs/modules/forum-34-reply-locale-enumeration-actualization-2026-08-09.md";
 
 const storage = read(storagePath);

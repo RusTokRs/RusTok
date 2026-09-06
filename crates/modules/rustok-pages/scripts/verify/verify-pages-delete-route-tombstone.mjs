@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const failures = [];
 const need = (text, marker, label) => {
@@ -26,17 +26,17 @@ const ordered = (text, markers, label) => {
 };
 
 const evidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-delete-route-tombstone-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-delete-route-tombstone-source.json",
 ));
 const migration = read(
-  "crates/rustok-pages/src/migrations/m20260806_000011_create_page_route_publications.rs",
+  "crates/modules/rustok-pages/src/migrations/m20260806_000011_create_page_route_publications.rs",
 );
-const migrations = read("crates/rustok-pages/src/migrations/mod.rs");
-const entity = read("crates/rustok-pages/src/entities/page_route_publication.rs");
-const entities = read("crates/rustok-pages/src/entities/mod.rs");
-const route = read("crates/rustok-pages/src/services/page/route.rs");
-const lifecycle = read("crates/rustok-pages/src/services/page/lifecycle.rs");
-const regression = read("crates/rustok-pages/tests/page_delete_route_tombstone_sqlite.rs");
+const migrations = read("crates/modules/rustok-pages/src/migrations/mod.rs");
+const entity = read("crates/modules/rustok-pages/src/entities/page_route_publication.rs");
+const entities = read("crates/modules/rustok-pages/src/entities/mod.rs");
+const route = read("crates/modules/rustok-pages/src/services/page/route.rs");
+const lifecycle = read("crates/modules/rustok-pages/src/services/page/lifecycle.rs");
+const regression = read("crates/modules/rustok-pages/tests/page_delete_route_tombstone_sqlite.rs");
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
 const actualization = read("docs/modules/page-builder-parity-actualization-2026-08-06.md");
 const packet = read("docs/modules/pages-page-builder-delete-route-tombstone-packet-2026-08-06.md");

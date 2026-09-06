@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_from": "crates/alloy/contracts/alloy-runtime-contract.json",
+  "generated_from": "crates/modules/alloy/contracts/alloy-runtime-contract.json",
   "status": "runtime_hardening",
   "cases": [
     {

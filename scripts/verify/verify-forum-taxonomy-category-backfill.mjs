@@ -13,13 +13,13 @@ const rejectMarker = (path, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`${path}: must not contain ${label}`);
 };
 
-const migration = 'crates/rustok-forum/src/migrations/m20260823_000030_backfill_forum_categories_to_taxonomy.rs';
-const registry = 'crates/rustok-forum/src/migrations/mod.rs';
+const migration = 'crates/modules/rustok-forum/src/migrations/m20260823_000030_backfill_forum_categories_to_taxonomy.rs';
+const registry = 'crates/modules/rustok-forum/src/migrations/mod.rs';
 const contracts = 'docs/migrations/backfill-contracts.json';
-const entitiesRegistry = 'crates/rustok-forum/src/entities/mod.rs';
-const legacyCategory = 'crates/rustok-forum/src/entities/forum_category.rs';
-const legacyTranslation = 'crates/rustok-forum/src/entities/forum_category_translation.rs';
-const forumServices = 'crates/rustok-forum/src/services/mod.rs';
+const entitiesRegistry = 'crates/modules/rustok-forum/src/entities/mod.rs';
+const legacyCategory = 'crates/modules/rustok-forum/src/entities/forum_category.rs';
+const legacyTranslation = 'crates/modules/rustok-forum/src/entities/forum_category_translation.rs';
+const forumServices = 'crates/modules/rustok-forum/src/services/mod.rs';
 
 for (const path of [
   migration,

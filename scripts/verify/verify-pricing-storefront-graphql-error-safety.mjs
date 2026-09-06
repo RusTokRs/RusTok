@@ -18,23 +18,23 @@ const forbidText = (source, value, label) => {
 };
 const countText = (source, value) => source.split(value).length - 1;
 
-const cargoPath = "crates/rustok-pricing/storefront/Cargo.toml";
-const transportPath = "crates/rustok-pricing/storefront/src/transport/mod.rs";
+const cargoPath = "crates/modules/rustok-pricing/storefront/Cargo.toml";
+const transportPath = "crates/modules/rustok-pricing/storefront/src/transport/mod.rs";
 const graphqlPath =
-  "crates/rustok-pricing/storefront/src/transport/graphql_adapter.rs";
+  "crates/modules/rustok-pricing/storefront/src/transport/graphql_adapter.rs";
 const safetyPath =
-  "crates/rustok-pricing/storefront/src/transport/graphql_error_safety.rs";
+  "crates/modules/rustok-pricing/storefront/src/transport/graphql_error_safety.rs";
 const nativePath =
-  "crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs";
-const corePath = "crates/rustok-pricing/storefront/src/core.rs";
-const graphqlHttpPath = "crates/rustok-graphql/src/lib.rs";
+  "crates/modules/rustok-pricing/storefront/src/transport/native_server_adapter.rs";
+const corePath = "crates/modules/rustok-pricing/storefront/src/core.rs";
+const graphqlHttpPath = "crates/ui/rustok-graphql/src/lib.rs";
 const evidencePath =
-  "crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source.json";
+  "crates/modules/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source.json";
 const reviewPath =
-  "crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source-review.json";
+  "crates/modules/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source-review.json";
 const docPath =
-  "crates/rustok-pricing/docs/storefront-graphql-error-safety.md";
-const masterPlanPath = "crates/rustok-commerce/docs/implementation-plan.md";
+  "crates/modules/rustok-pricing/docs/storefront-graphql-error-safety.md";
+const masterPlanPath = "crates/modules/rustok-commerce/docs/implementation-plan.md";
 
 const cargo = read(cargoPath);
 const transport = read(transportPath);

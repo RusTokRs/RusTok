@@ -8,12 +8,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../..");
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 
-const mutations = read("crates/rustok-commerce/src/graphql/mutations/catalog.rs");
-const graphqlRuntime = read("crates/rustok-commerce/src/graphql_runtime.rs");
-const ownerPort = read("crates/rustok-product/src/catalog_command_port.rs");
+const mutations = read("crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs");
+const graphqlRuntime = read("crates/modules/rustok-commerce/src/graphql_runtime.rs");
+const ownerPort = read("crates/modules/rustok-product/src/catalog_command_port.rs");
 const hostComposition = read("apps/server/src/services/commerce_provider_runtime.rs");
-const catalogFixture = read("crates/rustok-commerce/tests/graphql_runtime_parity_test/catalog.rs");
-const shippingFixture = read("crates/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs");
+const catalogFixture = read("crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/catalog.rs");
+const shippingFixture = read("crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/shipping.rs");
 const failures = [];
 
 function fail(message) {

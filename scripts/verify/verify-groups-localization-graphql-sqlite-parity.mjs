@@ -1,8 +1,8 @@
 import fs from "node:fs";
 
 const testPath = "apps/server/tests/groups_localization_graphql_sqlite_parity.rs";
-const docsPath = "crates/rustok-groups/docs/localization-graphql-sqlite-parity-contract.md";
-const registryPath = "crates/rustok-groups/contracts/groups-fba-registry.json";
+const docsPath = "crates/modules/rustok-groups/docs/localization-graphql-sqlite-parity-contract.md";
+const registryPath = "crates/modules/rustok-groups/contracts/groups-fba-registry.json";
 const test = fs.readFileSync(testPath, "utf8");
 const docs = fs.readFileSync(docsPath, "utf8");
 const registry = JSON.parse(fs.readFileSync(registryPath, "utf8"));

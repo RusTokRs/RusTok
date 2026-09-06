@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
-  : path.resolve(__dirname, "..", "..", "..", "..");
+  : path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 const arg = process.argv[2];
 if (!arg) {
@@ -28,20 +28,18 @@ if (!crateName) {
   process.exit(1);
 }
 
-const moduleTomlPath = path.join(repoRoot, "crates", crateName, "rustok-module.toml");
-const implPlanPath = path.join(repoRoot, "crates", crateName, "docs", "implementation-plan.md");
+const moduleTomlPath = path.join(repoRoot, "crates", "modules", crateName, "rustok-module.toml");
+const implPlanPath = path.join(repoRoot, "crates", "modules", crateName, "docs", "implementation-plan.md");
 const forumFallbackMatrixPath = path.join(
   repoRoot,
-  "crates",
-  "rustok-forum",
+  "crates", "modules", "rustok-forum",
   "contracts",
   "evidence",
   "fw2-fallback-static-matrix.json",
 );
 const forumWave1EvidencePath = path.join(
   repoRoot,
-  "crates",
-  "rustok-forum",
+  "crates", "modules", "rustok-forum",
   "contracts",
   "evidence",
   "forum-wave1-rollout-evidence.json",
@@ -224,11 +222,11 @@ if (arg === "forum") {
   }
 
   const routesSource = fs.readFileSync(
-    path.join(repoRoot, "crates", "rustok-forum", "src", "controllers", "mod.rs"),
+    path.join(repoRoot, "crates", "modules", "rustok-forum", "src", "controllers", "mod.rs"),
     "utf8",
   );
   const moderationSource = fs.readFileSync(
-    path.join(repoRoot, "crates", "rustok-forum", "src", "services", "moderation.rs"),
+    path.join(repoRoot, "crates", "modules", "rustok-forum", "src", "services", "moderation.rs"),
     "utf8",
   );
   const combinedForumSource = `${routesSource}\n${moderationSource}`;

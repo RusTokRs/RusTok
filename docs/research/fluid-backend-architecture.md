@@ -330,14 +330,14 @@ Be cautious about extracting:
 For an FBA-ready backend module, think in layers:
 
 ```text
-crates/rustok-<module>/
+crates/modules/rustok-<module>/
   domain types
   application service trait
   in-process service implementation
   repository interfaces
   errors/DTOs/context contracts
 
-crates/rustok-<module>-grpc/       optional
+crates/modules/rustok-<module>-grpc/       optional
   protobuf/service schema
   grpc server adapter
   grpc client adapter

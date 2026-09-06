@@ -9,11 +9,11 @@
     "plain_text": "server-derived",
     "resolver_conversion": "typed input.into() delegation with direct content mapping"
   },
-  "scan_scope": "crates/rustok-blog/src/graphql/**/*.rs",
+  "scan_scope": "crates/modules/rustok-blog/src/graphql/**/*.rs",
   "legacy_adapter_fields": [],
   "legacy_adapter_files": [],
   "conversion_owner": {
-    "file": "crates/rustok-blog/src/graphql/types.rs",
+    "file": "crates/modules/rustok-blog/src/graphql/types.rs",
     "scopes": [
       "impl From<CreatePostInput> for DomainCreatePostInput",
       "impl From<UpdatePostInput> for DomainUpdatePostInput"
@@ -22,7 +22,7 @@
   },
   "conversion_tests": {
     "create": {
-      "file": "crates/rustok-blog/tests/graphql_create_post_input_conversion_test.rs",
+      "file": "crates/modules/rustok-blog/tests/graphql_create_post_input_conversion_test.rs",
       "markers": [
         "create_post_input_conversion_preserves_canonical_content",
         "RichTextDocument::single_paragraph",
@@ -31,7 +31,7 @@
       ]
     },
     "update": {
-      "file": "crates/rustok-blog/src/graphql/types.rs",
+      "file": "crates/modules/rustok-blog/src/graphql/types.rs",
       "markers": [
         "update_post_input_conversion_preserves_canonical_content",
         "RichTextDocument::single_paragraph",

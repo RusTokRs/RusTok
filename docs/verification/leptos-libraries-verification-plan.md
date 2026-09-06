@@ -31,15 +31,15 @@ Verification relies on the current-state contract:
 
 ### Shared Leptos crates
 
-- [ ] `crates/leptos-auth`
-- [ ] `crates/leptos-forms`
-- [ ] `crates/leptos-zustand`
-- [ ] `crates/rustok-graphql`
-- [ ] `crates/leptos-shadcn-pagination`
-- [ ] `crates/leptos-ui`
-- [ ] `crates/leptos-zod`
-- [ ] `crates/leptos-table`
-- [ ] `crates/leptos-hook-form`
+- [ ] `crates/ui/leptos-auth`
+- [ ] `crates/ui/leptos-forms`
+- [ ] `crates/ui/leptos-zustand`
+- [ ] `crates/ui/rustok-graphql`
+- [ ] `crates/ui/leptos-shadcn-pagination`
+- [ ] `crates/ui/leptos-ui`
+- [ ] `crates/ui/leptos-zod`
+- [ ] `crates/ui/leptos-table`
+- [ ] `crates/ui/leptos-hook-form`
 
 ### Host consumers
 
@@ -51,7 +51,7 @@ Verification relies on the current-state contract:
 ### 1.1 Root README and local docs
 
 - [ ] Each library maintains an up-to-date `README.md` with `Purpose`, `Responsibilities`, `Entry points`, `Interactions`.
-- [ ] Local docs inside `crates/leptos-*` do not diverge from the actual public contract.
+- [ ] Local docs inside `crates/modules/leptos-*` do not diverge from the actual public contract.
 - [ ] The library explicitly documents where the reusable layer ends and host/module-owned logic begins.
 
 ### 1.2 Ownership boundary
@@ -103,7 +103,7 @@ Verification relies on the current-state contract:
 
 ## Targeted Local Checks
 
-- [ ] targeted `cargo check` / `cargo test` for affected `crates/leptos-*`
+- [ ] targeted `cargo check` / `cargo test` for affected `crates/modules/leptos-*`
 - [ ] targeted `cargo check` / `cargo test` for `apps/admin` and `apps/storefront`, if the host integration path changed
 - [ ] `npm run verify:i18n:ui`, if shared locale/UI contracts changed
 - [ ] `npm run verify:i18n:contract`, if locale/runtime contract changed

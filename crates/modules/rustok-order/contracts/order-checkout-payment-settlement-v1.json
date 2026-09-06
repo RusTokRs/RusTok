@@ -32,7 +32,7 @@
     "conflicting payment identity fails closed",
     "raw storage and invariant errors never cross the port"
   ],
-  "source": "crates/rustok-order/src/checkout_payment_settlement.rs",
+  "source": "crates/modules/rustok-order/src/checkout_payment_settlement.rs",
   "verification": {
     "guard": "scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs",
     "runtime_evidence": "not_executed"

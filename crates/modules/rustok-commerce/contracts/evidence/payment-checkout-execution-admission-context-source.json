@@ -34,11 +34,11 @@
     "ci_executed": false
   },
   "reviewed_sources": [
-    "crates/rustok-commerce/docs/implementation-plan.md",
-    "crates/rustok-payment/src/checkout_execution.rs",
-    "crates/rustok-payment/src/checkout_execution/port_impl.rs",
-    "crates/rustok-payment/src/checkout_execution/validation_errors.rs",
-    "crates/rustok-payment/src/checkout_compensation.rs",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-payment/src/checkout_execution.rs",
+    "crates/modules/rustok-payment/src/checkout_execution/port_impl.rs",
+    "crates/modules/rustok-payment/src/checkout_execution/validation_errors.rs",
+    "crates/modules/rustok-payment/src/checkout_compensation.rs",
     "scripts/verify/verify-payment-checkout-execution-local-context.mjs"
   ],
   "promotion_gate": "No FFA, FBA, transport, runtime, browser, SSR, or production status is promoted from this source inspection."

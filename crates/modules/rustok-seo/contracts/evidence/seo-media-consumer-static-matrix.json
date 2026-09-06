@@ -3,7 +3,7 @@
   "module": "seo",
   "role": "consumer",
   "provider": "media",
-  "generated_from": "crates/rustok-seo/contracts/seo-fba-registry.json",
+  "generated_from": "crates/modules/rustok-seo/contracts/seo-fba-registry.json",
   "status": "source_locked_pending_consumer_runtime",
   "cases": [
     {
@@ -21,9 +21,9 @@
       ],
       "runtime_evidence": "pending_consumer_runtime",
       "source_markers": {
-        "provider_port": "crates/rustok-media/src/ports.rs",
-        "provider_descriptor": "crates/rustok-media/src/dto.rs",
-        "consumer_alias": "crates/rustok-seo-targets/src/lib.rs"
+        "provider_port": "crates/modules/rustok-media/src/ports.rs",
+        "provider_descriptor": "crates/modules/rustok-media/src/dto.rs",
+        "consumer_alias": "crates/modules/rustok-seo-targets/src/lib.rs"
       }
     },
     {
@@ -39,9 +39,9 @@
       ],
       "runtime_evidence": "pending_consumer_runtime",
       "source_markers": {
-        "provider_port": "crates/rustok-media/src/ports.rs",
-        "provider_descriptor": "crates/rustok-media/src/dto.rs",
-        "consumer_alias": "crates/rustok-seo-targets/src/lib.rs"
+        "provider_port": "crates/modules/rustok-media/src/ports.rs",
+        "provider_descriptor": "crates/modules/rustok-media/src/dto.rs",
+        "consumer_alias": "crates/modules/rustok-seo-targets/src/lib.rs"
       }
     }
   ],
@@ -55,13 +55,13 @@
       "keep_existing_seo_image",
       "proxy_storage_relative_url"
     ],
-    "provider_source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
+    "provider_source": "crates/modules/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
     "consumer_runtime_evidence": "pending"
   },
   "static_source_assertions": [
     {
       "name": "media read port exposes descriptor operation",
-      "path": "crates/rustok-media/src/ports.rs",
+      "path": "crates/modules/rustok-media/src/ports.rs",
       "must_contain": [
         "trait MediaAssetReadPort",
         "async fn get_image_descriptor",
@@ -73,7 +73,7 @@
     },
     {
       "name": "media descriptor normalization helpers stay typed",
-      "path": "crates/rustok-media/src/dto.rs",
+      "path": "crates/modules/rustok-media/src/dto.rs",
       "must_contain": [
         "pub struct MediaImageDescriptor",
         "pub fn from_parts",
@@ -86,7 +86,7 @@
     },
     {
       "name": "seo targets own an independent image descriptor",
-      "path": "crates/rustok-seo-targets/src/lib.rs",
+      "path": "crates/modules/rustok-seo-targets/src/lib.rs",
       "must_contain": [
         "pub struct SeoTargetImageRecord",
         "impl SeoTargetImageRecord",
@@ -100,7 +100,7 @@
     },
     {
       "name": "seo docs preserve image boundary guardrail",
-      "path": "crates/rustok-seo/docs/README.md",
+      "path": "crates/modules/rustok-seo/docs/README.md",
       "must_contain": [
         "MediaImageDescriptor",
         "missing_image_alt",

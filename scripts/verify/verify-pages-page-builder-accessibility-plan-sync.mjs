@@ -10,16 +10,16 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const paths = {
   shared: "docs/modules/pages-page-builder-parity-continuation-plan.md",
   central: "docs/modules/page-builder-implementation-plan.md",
-  local: "crates/rustok-page-builder/docs/implementation-plan.md",
+  local: "crates/modules/rustok-page-builder/docs/implementation-plan.md",
   actualization: "docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md",
   accessibilityActualization: "docs/modules/page-builder-admin-accessibility-actualization-2026-08-10.md",
   accessibilityGuard: "scripts/verify/verify-page-builder-admin-accessibility.mjs",
   accessibilityBrowserGuard:
     "scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs",
   accessibilityBrowserContract:
-    "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json",
   accessibilityPacketVerifierContract:
-    "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json",
   accessibilityPacketVerifierRunner:
     "scripts/evidence/verify-page-builder-accessibility-browser-packet.mjs",
   accessibilityPacketVerifierTest:

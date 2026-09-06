@@ -27,19 +27,19 @@ immutable-artifact-audit-sqlite-harness-source-ready
 Harness:
 
 ```text
-crates/rustok-pages/tests/immutable_artifact_integrity_audit_sqlite.rs
+crates/modules/rustok-pages/tests/immutable_artifact_integrity_audit_sqlite.rs
 ```
 
 Machine evidence:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-immutable-artifact-integrity-audit-sqlite-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-immutable-artifact-integrity-audit-sqlite-source.json
 ```
 
 Fail-closed source guard:
 
 ```text
-crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-sqlite.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-sqlite.mjs
 ```
 
 ## Reviewed publish revision contract
@@ -165,9 +165,9 @@ pages_immutable_artifact_integrity_audit_sqlite_source_unvalidated
 Suggested commands, intentionally not run here:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-sqlite.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-postgres.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-sqlite.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-immutable-artifact-integrity-audit.mjs
 cargo test -p rustok-pages --test immutable_artifact_integrity_audit_sqlite -- --nocapture
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-pages --test immutable_artifact_integrity_audit_postgres -- --nocapture

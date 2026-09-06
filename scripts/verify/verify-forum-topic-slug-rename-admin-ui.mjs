@@ -5,22 +5,22 @@ import { readFileSync } from "node:fs";
 
 const paths = {
   contract:
-    "crates/rustok-forum/contracts/forum-topic-slug-rename-admin-ui.json",
-  ownerContract: "crates/rustok-forum/contracts/forum-topic-slug-rename-owner.json",
+    "crates/modules/rustok-forum/contracts/forum-topic-slug-rename-admin-ui.json",
+  ownerContract: "crates/modules/rustok-forum/contracts/forum-topic-slug-rename-owner.json",
   transportContract:
-    "crates/rustok-forum/contracts/forum-topic-slug-rename-graphql-transport.json",
-  docs: "crates/rustok-forum/docs/forum-24g-topic-slug-rename-admin-ui.md",
-  docsIndex: "crates/rustok-forum/docs/README.md",
-  adminReadme: "crates/rustok-forum/admin/README.md",
-  manifest: "crates/rustok-forum/rustok-module.toml",
-  leptosModel: "crates/rustok-forum/admin/src/topic_slug_rename_model.rs",
-  leptosTransport: "crates/rustok-forum/admin/src/transport.rs",
+    "crates/modules/rustok-forum/contracts/forum-topic-slug-rename-graphql-transport.json",
+  docs: "crates/modules/rustok-forum/docs/forum-24g-topic-slug-rename-admin-ui.md",
+  docsIndex: "crates/modules/rustok-forum/docs/README.md",
+  adminReadme: "crates/modules/rustok-forum/admin/README.md",
+  manifest: "crates/modules/rustok-forum/rustok-module.toml",
+  leptosModel: "crates/modules/rustok-forum/admin/src/topic_slug_rename_model.rs",
+  leptosTransport: "crates/modules/rustok-forum/admin/src/transport.rs",
   leptosGraphql:
-    "crates/rustok-forum/admin/src/transport/topic_slug_rename_graphql_adapter.rs",
-  leptosRoot: "crates/rustok-forum/admin/src/ui/root.rs",
-  leptosUi: "crates/rustok-forum/admin/src/ui/topic_slug_rename.rs",
-  leptosEn: "crates/rustok-forum/admin/locales/en.json",
-  leptosRu: "crates/rustok-forum/admin/locales/ru.json",
+    "crates/modules/rustok-forum/admin/src/transport/topic_slug_rename_graphql_adapter.rs",
+  leptosRoot: "crates/modules/rustok-forum/admin/src/ui/root.rs",
+  leptosUi: "crates/modules/rustok-forum/admin/src/ui/topic_slug_rename.rs",
+  leptosEn: "crates/modules/rustok-forum/admin/locales/en.json",
+  leptosRu: "crates/modules/rustok-forum/admin/locales/ru.json",
   nextCore:
     "apps/next-admin/packages/forum/src/core/topic-slug-rename.ts",
   nextApi: "apps/next-admin/packages/forum/src/api/forum.ts",

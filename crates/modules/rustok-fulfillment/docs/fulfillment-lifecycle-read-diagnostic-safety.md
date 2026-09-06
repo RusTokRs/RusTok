@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice closes the payload-diagnostic gap in the owner lifecycle projection-read boundary implemented by `crates/rustok-fulfillment/src/fulfillment_read.rs`:
+This slice closes the payload-diagnostic gap in the owner lifecycle projection-read boundary implemented by `crates/modules/rustok-fulfillment/src/fulfillment_read.rs`:
 
 - single fulfillment lookup;
 - filtered and paginated fulfillment list;
@@ -34,8 +34,8 @@ Owner failures retain only a closed static variant and aggregate text, UUID, and
 
 ## Evidence
 
-- `crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-diagnostic-safety-source.json`
-- `crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-diagnostic-safety-source.json`
+- `crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-fulfillment-lifecycle-read-diagnostic-safety.mjs`
 
 ## Remaining gaps

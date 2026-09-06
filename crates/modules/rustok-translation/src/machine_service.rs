@@ -3086,7 +3086,7 @@ mod tests {
     #[tokio::test]
     async fn separate_process_recovers_both_machine_save_crash_boundaries() {
         let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
+            .join("../../..")
             .canonicalize()
             .expect("workspace path");
         let evidence_dir = workspace.join("target/translation-recovery-process-tests");

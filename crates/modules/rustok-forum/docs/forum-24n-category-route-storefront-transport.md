@@ -18,7 +18,7 @@ Both return the same public decision shape for:
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-category-route-storefront-transport.json
+crates/modules/rustok-forum/contracts/forum-category-route-storefront-transport.json
 ```
 
 ## Public response

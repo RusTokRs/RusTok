@@ -4,18 +4,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 const failures = [];
 
 const files = {
-  evidence: "crates/rustok-pages/contracts/evidence/pages-artifact-loss-rebuild-postgres-source.json",
-  harness: "crates/rustok-pages/tests/artifact_loss_rebuild_postgres.rs",
-  reviewedPublish: "crates/rustok-pages/src/services/page/reviewed_publish.rs",
-  rebuildOwner: "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
-  artifactOwner: "crates/rustok-pages/src/services/page_builder_artifact.rs",
-  provenanceMigration: "crates/rustok-pages/src/migrations/m20260806_000013_create_page_publish_rebuild_sources.rs",
-  rebuildMigration: "crates/rustok-pages/src/migrations/m20260806_000014_add_explicit_artifact_rebuild.rs",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-artifact-loss-rebuild-postgres-source.json",
+  harness: "crates/modules/rustok-pages/tests/artifact_loss_rebuild_postgres.rs",
+  reviewedPublish: "crates/modules/rustok-pages/src/services/page/reviewed_publish.rs",
+  rebuildOwner: "crates/modules/rustok-pages/src/services/page/artifact_rebuild.rs",
+  artifactOwner: "crates/modules/rustok-pages/src/services/page_builder_artifact.rs",
+  provenanceMigration: "crates/modules/rustok-pages/src/migrations/m20260806_000013_create_page_publish_rebuild_sources.rs",
+  rebuildMigration: "crates/modules/rustok-pages/src/migrations/m20260806_000014_add_explicit_artifact_rebuild.rs",
   continuation: "docs/modules/pages-page-builder-artifact-loss-rebuild-continuation-2026-08-07.md",
 };
 

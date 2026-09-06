@@ -21,7 +21,7 @@ spec or turning into a provider/model host.
 - Alloy-related MCP tools and scaffold draft review/apply boundary;
 - MCP-module-owned admin UI for reviewing Alloy drafts, reading MCP audit and read-side
   clients/policies/token previews: Next package
-  `apps/next-admin/packages/rustok-mcp` and Leptos FFA crate `crates/rustok-mcp/admin`;
+  `apps/next-admin/packages/rustok-mcp` and Leptos FFA crate `crates/modules/rustok-mcp/admin`;
 - typed `McpManagementPort` in the owner crate and DB-provider in `apps/server`, which
   delegates management reads/writes to the canonical transactional `McpManagementService`;
 - owner-owned REST/control-plane request and response DTOs for MCP remote transport,

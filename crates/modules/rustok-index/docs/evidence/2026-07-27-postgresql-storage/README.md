@@ -22,8 +22,8 @@ Verify the accepted ADR from the repository root with:
 
 ```bash
 node scripts/verify/index-storage-tooling.mjs verify-adr \
-  --comparison crates/rustok-index/docs/evidence/2026-07-27-postgresql-storage/comparison.json \
-  --decision crates/rustok-index/docs/evidence/2026-07-27-postgresql-storage/decision.json \
+  --comparison crates/modules/rustok-index/docs/evidence/2026-07-27-postgresql-storage/comparison.json \
+  --decision crates/modules/rustok-index/docs/evidence/2026-07-27-postgresql-storage/decision.json \
   --adr DECISIONS/2026-07-24-index-storage-layout.md
 ```
 

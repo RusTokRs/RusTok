@@ -32,7 +32,7 @@ This checkpoint records the combined PostgreSQL + external Iggy evidence boundar
 The machine contract is:
 
 ```text
-crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-source.json
+crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-source.json
 ```
 
 The static parity guard is:

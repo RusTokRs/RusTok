@@ -17,7 +17,7 @@ evidence.
 The machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-link-forum-03-translation-moderation-proof.json
+crates/modules/rustok-forum/contracts/forum-search-link-forum-03-translation-moderation-proof.json
 ```
 
 The executable test is:

@@ -67,7 +67,7 @@ result-eligibility ports.
 ## Source-ready verification
 
 The machine contract is
-`crates/rustok-forum/contracts/forum-search-result-eligibility.json`. The static
+`crates/modules/rustok-forum/contracts/forum-search-result-eligibility.json`. The static
 guardrail is
 `scripts/verify/verify-forum-search-result-eligibility.mjs`.
 

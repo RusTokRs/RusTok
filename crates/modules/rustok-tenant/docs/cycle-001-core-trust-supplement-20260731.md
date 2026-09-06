@@ -1,7 +1,7 @@
 # Cycle-001 Tenant/Core trust sweep supplement
 
 This supplement records verified cycle-001 evidence discovered after the current
-`crates/rustok-tenant/docs/implementation-plan.md` handoff was written. The main
+`crates/modules/rustok-tenant/docs/implementation-plan.md` handoff was written. The main
 Tenant handoff remains `in_progress`; this file does not mark the component
 complete or replace its required same-SHA gates.
 

@@ -13,7 +13,7 @@ target topic fields and a bounded reason, then submit the complete command to
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-fork-admin-ui.json
+crates/modules/rustok-forum/contracts/forum-topic-fork-admin-ui.json
 ```
 
 ## Surfaces

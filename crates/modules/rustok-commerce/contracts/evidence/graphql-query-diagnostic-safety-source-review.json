@@ -1,13 +1,13 @@
 {
   "status": "commerce_graphql_query_borrowed_message_envelope_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs",
-    "crates/rustok-commerce/src/graphql/safe_query.rs",
-    "crates/rustok-commerce/src/graphql/safe_query/source.rs",
-    "crates/rustok-commerce/src/graphql/query.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query/source.rs",
+    "crates/modules/rustok-commerce/src/graphql/query.rs",
     "scripts/verify/verify-commerce-graphql-query-error-boundary.mjs",
     "scripts/verify/verify-commerce-graphql-borrowed-message-envelope-safety.mjs",
-    "crates/rustok-commerce/docs/graphql-query-diagnostic-safety.md"
+    "crates/modules/rustok-commerce/docs/graphql-query-diagnostic-safety.md"
   ],
   "source_contract": {
     "owned_message_content_logged": false,

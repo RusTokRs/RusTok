@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const failures = [];
 
@@ -36,21 +36,21 @@ const between = (text, start, end, label) => {
 };
 
 const evidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-route-history-import-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-route-history-import-source.json",
 ));
 const migration = read(
-  "crates/rustok-pages/src/migrations/m20260806_000012_create_page_route_history_imports.rs",
+  "crates/modules/rustok-pages/src/migrations/m20260806_000012_create_page_route_history_imports.rs",
 );
-const migrations = read("crates/rustok-pages/src/migrations/mod.rs");
-const entity = read("crates/rustok-pages/src/entities/page_route_history_import.rs");
-const entities = read("crates/rustok-pages/src/entities/mod.rs");
-const service = read("crates/rustok-pages/src/services/page/route_history_import.rs");
-const pageServices = read("crates/rustok-pages/src/services/page/mod.rs");
-const services = read("crates/rustok-pages/src/services/mod.rs");
-const pagesLib = read("crates/rustok-pages/src/lib.rs");
-const regression = read("crates/rustok-pages/tests/page_route_history_import_sqlite.rs");
+const migrations = read("crates/modules/rustok-pages/src/migrations/mod.rs");
+const entity = read("crates/modules/rustok-pages/src/entities/page_route_history_import.rs");
+const entities = read("crates/modules/rustok-pages/src/entities/mod.rs");
+const service = read("crates/modules/rustok-pages/src/services/page/route_history_import.rs");
+const pageServices = read("crates/modules/rustok-pages/src/services/page/mod.rs");
+const services = read("crates/modules/rustok-pages/src/services/mod.rs");
+const pagesLib = read("crates/modules/rustok-pages/src/lib.rs");
+const regression = read("crates/modules/rustok-pages/tests/page_route_history_import_sqlite.rs");
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
-const localPlan = read("crates/rustok-pages/docs/implementation-plan.md");
+const localPlan = read("crates/modules/rustok-pages/docs/implementation-plan.md");
 const packet = read(
   "docs/modules/pages-page-builder-route-history-import-packet-2026-08-06.md",
 );

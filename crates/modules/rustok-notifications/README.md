@@ -464,4 +464,4 @@ continue to succeed when the module is absent or disabled.
 - [Fanout worker contract](contracts/notifications-fanout-worker.json)
 - [Candidate worker contract](contracts/notifications-candidate-worker.json)
 - Canonical cross-module roadmap:
-  `crates/rustok-forum/docs/implementation-plan.md`
+  `crates/modules/rustok-forum/docs/implementation-plan.md`

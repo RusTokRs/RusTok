@@ -118,12 +118,12 @@ The retained Pages `default`, `hydrate`, `ssr` profiles and host `csr`, `hydrate
 
 ## Source evidence
 
-- `crates/rustok-pages/src/services/page/inline_edit.rs`;
-- `crates/rustok-pages/src/services/page/inline_edit_feature.rs`;
-- `crates/rustok-pages/src/services/page/inline_edit_runtime.rs`;
-- `crates/rustok-pages/storefront/src/inline_edit.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-authenticated-inline-consumer-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs`;
+- `crates/modules/rustok-pages/src/services/page/inline_edit.rs`;
+- `crates/modules/rustok-pages/src/services/page/inline_edit_feature.rs`;
+- `crates/modules/rustok-pages/src/services/page/inline_edit_runtime.rs`;
+- `crates/modules/rustok-pages/storefront/src/inline_edit.rs`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-authenticated-inline-consumer-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs`;
 - updated anonymous-storefront and adapter guards;
 - opt-in storefront/server feature declarations.
 
@@ -156,14 +156,14 @@ This slice does not:
 Suggested commands, intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-authenticated-inline-consumer.mjs
 cargo test -p rustok-pages --all-targets -- --nocapture
 cargo test -p rustok-pages-storefront --features inline-edit,ssr --all-targets -- --nocapture
 cargo check -p rustok-storefront --no-default-features \
   --features pages-inline-edit-hydrate --target wasm32-unknown-unknown
 cargo check -p rustok-server --features pages-inline-edit
-node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs
 ```
 
 Execution evidence remains pending.

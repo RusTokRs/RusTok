@@ -6,7 +6,7 @@
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "runtime_status": "not_run",
-  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-81.md",
+  "generated_from": "crates/modules/rustok-blog/docs/implementation-plan-slice-81.md",
   "source_contract": {
     "runtime_facade": "apps/server/src/services/comments_provider_runtime.rs",
     "schedule_public_facade": "apps/server/src/services/comments_provider_runtime_keyring_schedule.rs",

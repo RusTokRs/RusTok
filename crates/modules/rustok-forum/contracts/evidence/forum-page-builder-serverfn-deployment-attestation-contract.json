@@ -65,12 +65,12 @@
     "atomic_replace": true
   },
   "required_source_files": [
-    "crates/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json",
+    "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json",
     "scripts/evidence/capture-forum-page-builder-serverfn-attestation.mjs",
     "scripts/verify/verify-forum-page-builder-serverfn-deployment-attestation.mjs",
-    "crates/rustok-forum/admin/src/widget_preview_transport.rs",
-    "crates/rustok-forum/admin/src/widget_property_transport.rs",
-    "crates/rustok-forum/admin/src/lib.rs",
+    "crates/modules/rustok-forum/admin/src/widget_preview_transport.rs",
+    "crates/modules/rustok-forum/admin/src/widget_property_transport.rs",
+    "crates/modules/rustok-forum/admin/src/lib.rs",
     "apps/server/src/services/app_router.rs",
     "apps/server/Dockerfile",
     "apps/server/Dockerfile.release",

@@ -4,7 +4,7 @@
   "packet": "dlq-duplicate-inspection-source",
   "status": "source_complete_runtime_evidence_pending",
   "owner": "rustok-iggy",
-  "source": "crates/rustok-iggy/src/dlq_duplicate_inspection.rs",
+  "source": "crates/modules/rustok-iggy/src/dlq_duplicate_inspection.rs",
   "public_exports": [
     "DlqDuplicateObservation",
     "DlqDuplicateSummary",
@@ -80,23 +80,23 @@
   },
   "runtime_adapter": {
     "status": "source_complete_runtime_pending",
-    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-source.json",
-    "source": "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs",
+    "contract": "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-source.json",
+    "source": "crates/modules/rustok-iggy/src/dlq_duplicate_external_scan.rs",
     "auto_commit": false,
     "result": "DlqDuplicateSummary"
   },
   "rolling_window": {
     "status": "source_complete_server_composed_runtime_pending",
-    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-rolling-window-source.json",
-    "source": "crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs",
+    "contract": "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-rolling-window-source.json",
+    "source": "crates/modules/rustok-iggy/src/dlq_duplicate_rolling_window.rs",
     "result": "DlqDuplicateRollingWindowSnapshot",
     "complete_cycle_retention": true,
     "history_truncated_after_eviction": true,
     "identifier_export": false,
     "moving_scanner": {
       "status": "source_complete_server_composed_runtime_pending",
-      "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json",
-      "source": "crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs",
+      "contract": "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json",
+      "source": "crates/modules/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs",
       "independent_process_local_partition_cursors": true,
       "complete_cycle_atomicity": true,
       "progress_persisted": false,
@@ -106,8 +106,8 @@
   },
   "alert_policy": {
     "status": "source_complete_server_observer_execution_pending",
-    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json",
-    "source": "crates/rustok-iggy/src/dlq_duplicate_alert_policy.rs",
+    "contract": "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json",
+    "source": "crates/modules/rustok-iggy/src/dlq_duplicate_alert_policy.rs",
     "input": "DlqDuplicateSummary",
     "result": "DlqDuplicateAlertEvaluation",
     "identity_conflict_always_critical": true,
@@ -117,8 +117,8 @@
   },
   "alert_runtime": {
     "status": "source_complete_server_observer_execution_pending",
-    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json",
-    "source": "crates/rustok-iggy/src/dlq_duplicate_alert_runtime.rs",
+    "contract": "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json",
+    "source": "crates/modules/rustok-iggy/src/dlq_duplicate_alert_runtime.rs",
     "input": "DlqDuplicateSummary",
     "result": "DlqDuplicateAlertRuntimeSnapshot",
     "latest_value": true,
@@ -129,8 +129,8 @@
   },
   "server_observer": {
     "status": "source_complete_runtime_execution_pending",
-    "contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json",
-    "iggy_source": "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs",
+    "contract": "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json",
+    "iggy_source": "crates/modules/rustok-iggy/src/dlq_duplicate_alert_observer.rs",
     "server_source": "apps/server/src/services/event_dlq_duplicate_alert_observer.rs",
     "memory": "not_applicable",
     "outbox": "not_applicable",
@@ -162,7 +162,7 @@
     "correlation_with_count_only_receipt_health_without_identifier_export"
   ],
   "verifier": "scripts/verify/verify-iggy-dlq-duplicate-inspection.mjs",
-  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-inspection.md",
-  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-dlq-operations-checkpoint.md",
+  "documentation": "crates/modules/rustok-iggy/docs/dlq-duplicate-inspection.md",
+  "profiles_checkpoint": "crates/modules/rustok-profiles/docs/poison-duplicate-dlq-operations-checkpoint.md",
   "execution_status": "source_not_run"
 }

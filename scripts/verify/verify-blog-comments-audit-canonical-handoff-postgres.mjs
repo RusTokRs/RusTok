@@ -8,14 +8,14 @@ const read = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), "utf8");
 
 const migrationPath =
-  "crates/rustok-blog/src/migrations/m20260803_000009_add_blog_comments_audit_canonical_handoff.rs";
-const migrationsModPath = "crates/rustok-blog/src/migrations/mod.rs";
+  "crates/modules/rustok-blog/src/migrations/m20260803_000009_add_blog_comments_audit_canonical_handoff.rs";
+const migrationsModPath = "crates/modules/rustok-blog/src/migrations/mod.rs";
 const servicePath =
   "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_postgres.rs";
 const runtimePath = "apps/server/src/services/comments_provider_runtime.rs";
-const planPath = "crates/rustok-blog/docs/implementation-plan-slice-90.md";
+const planPath = "crates/modules/rustok-blog/docs/implementation-plan-slice-90.md";
 const evidencePath =
-  "crates/rustok-blog/contracts/evidence/blog-comments-audit-canonical-handoff-postgres.json";
+  "crates/modules/rustok-blog/contracts/evidence/blog-comments-audit-canonical-handoff-postgres.json";
 
 for (const file of [
   migrationPath,

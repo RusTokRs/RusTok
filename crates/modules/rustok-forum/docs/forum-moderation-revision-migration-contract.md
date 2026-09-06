@@ -4,7 +4,7 @@ Status: **source-ready / maintainer execution pending**
 
 ## Scope
 
-`crates/rustok-forum/tests/moderation_revision_migration_contract.rs` retains SQLite/PostgreSQL evidence for Forum-owned moderation subject revision clocks introduced by `m20260807_000027_add_forum_moderation_subject_revisions`.
+`crates/modules/rustok-forum/tests/moderation_revision_migration_contract.rs` retains SQLite/PostgreSQL evidence for Forum-owned moderation subject revision clocks introduced by `m20260807_000027_add_forum_moderation_subject_revisions`.
 
 These rows are current-state fencing clocks only. They do not replace Forum lifecycle state and do not copy Moderation cases, decisions, application operations or audit history into Forum.
 

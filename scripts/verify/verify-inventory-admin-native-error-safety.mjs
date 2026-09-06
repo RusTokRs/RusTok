@@ -33,13 +33,13 @@ const between = (source, start, end, label) => {
 };
 
 const paths = {
-  adapter: "crates/rustok-inventory/admin/src/transport/native_server_adapter.rs",
+  adapter: "crates/modules/rustok-inventory/admin/src/transport/native_server_adapter.rs",
   evidence:
-    "crates/rustok-inventory/contracts/evidence/admin-native-error-safety-source.json",
-  doc: "crates/rustok-inventory/docs/admin-native-error-safety.md",
+    "crates/modules/rustok-inventory/contracts/evidence/admin-native-error-safety-source.json",
+  doc: "crates/modules/rustok-inventory/docs/admin-native-error-safety.md",
   clientGuard:
     "scripts/verify/verify-inventory-admin-client-transport-error-safety.mjs",
-  masterPlan: "crates/rustok-commerce/docs/implementation-plan.md",
+  masterPlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
 const adapter = read(paths.adapter);

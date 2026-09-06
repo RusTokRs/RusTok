@@ -15,7 +15,7 @@ The route uses the locale-aware slug already stored with the selected category t
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-category-route-identity-owner.json
+crates/modules/rustok-forum/contracts/forum-category-route-identity-owner.json
 ```
 
 ## Persistence contract

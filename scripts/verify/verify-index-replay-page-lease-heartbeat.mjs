@@ -18,14 +18,14 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const sourceTimeoutPath = 'crates/rustok-index/src/application/source_timeout.rs';
+const sourceTimeoutPath = 'crates/modules/rustok-index/src/application/source_timeout.rs';
 requireMarkers(sourceTimeoutPath, [
   'DEFAULT_INDEX_SOURCE_CALL_TIMEOUT: Duration = Duration::from_secs(30)',
   'INDEX_SOURCE_SCAN_TIMEOUT_CODE: &str = "index_source_scan_timeout"',
   'TimedIndexSource::new(source, DEFAULT_INDEX_SOURCE_CALL_TIMEOUT)',
 ]);
 
-const storageTimeoutPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_timeout.rs';
+const storageTimeoutPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_timeout.rs';
 requireMarkers(storageTimeoutPath, [
   'DEFAULT_INDEX_REPLAY_STORAGE_FUTURE_TIMEOUT: Duration = Duration::from_secs(30)',
   'INDEX_REPLAY_CHECKPOINT_READ_TIMEOUT_CODE: &str = "index_replay_checkpoint_read_timeout"',
@@ -36,7 +36,7 @@ requireMarkers(storageTimeoutPath, [
   'bounded_replay_checkpoint_commit',
 ]);
 
-const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
+const runnerPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = requireMarkers(runnerPath, [
   'const MIN_REPLAY_RUN_LEASE_DURATION: Duration = Duration::from_secs(60);',
   'const PAGE_LEASE_HEARTBEAT_DIVISOR: u32 = 3;',
@@ -70,7 +70,7 @@ if (ordinaryHelper < 0 || ordinaryPage <= ordinaryHelper || ordinaryMatch <= ord
   fail('ordinary replay page must be nested inside the common lease-heartbeat await before result handling');
 }
 
-const gracefulPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
+const gracefulPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
 const graceful = requireMarkers(gracefulPath, [
   'let page_future = worker.run_next_page_interruptible(',
   'await_page_with_lease_heartbeats(',
@@ -87,7 +87,7 @@ requireMarkers('apps/server/src/graphql/index_replay.rs', [
   'Duration::from_secs(GRAPHQL_REPLAY_LEASE_SECONDS)',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m6-replay-page-lease-heartbeat.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-page-lease-heartbeat.md', [
   'Status: `source_complete_execution_pending`.',
   '`index_replay_checkpoint_read_timeout`',
   '`IndexReplayRunRequest` now rejects lease durations shorter than `60s`',
@@ -99,14 +99,14 @@ requireMarkers('crates/rustok-index/docs/m6-replay-page-lease-heartbeat.md', [
   'The retained Rust tests and Node verifiers were not executed',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m6-replay-pending-future-timeouts.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-pending-future-timeouts.md', [
   '`index_replay_checkpoint_read_timeout`',
   '`IndexReplayRunRequest` requires at least a 60-second lease',
   '`m6-replay-page-lease-heartbeat.md`',
   'There is deliberately no generic `index_replay_page_timeout` code.',
 ]);
 
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Define/retain whole-page duration versus lease/heartbeat policy beyond per-dependency bounds',
   'Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.',
   'Execute/admit retained multi-host reclaim evidence.',

@@ -25,13 +25,13 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-const policyPath = "crates/rustok-blog/src/graphql/rate_limit.rs";
-const integrationPath = "crates/rustok-blog/tests/graphql_rate_limit_policy_test.rs";
+const policyPath = "crates/modules/rustok-blog/src/graphql/rate_limit.rs";
+const integrationPath = "crates/modules/rustok-blog/tests/graphql_rate_limit_policy_test.rs";
 const adapterPath = "apps/server/src/graphql/blog_rate_limit.rs";
 const controllerPath = "apps/server/src/controllers/graphql.rs";
 const evidencePath =
-  "crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json";
-const planPath = "crates/rustok-blog/docs/implementation-plan.md";
+  "crates/modules/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json";
+const planPath = "crates/modules/rustok-blog/docs/implementation-plan.md";
 
 const policy = read(policyPath);
 const integration = read(integrationPath);

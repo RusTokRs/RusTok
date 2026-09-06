@@ -6,8 +6,8 @@ Status: **source-ready / unvalidated**
 
 This slice hardens the mounted Commerce storefront aggregate read in:
 
-- `crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs`;
-- `crates/rustok-commerce/storefront/src/transport/shared_adapter.rs`.
+- `crates/modules/rustok-commerce/storefront/src/transport/native_server_adapter.rs`;
+- `crates/modules/rustok-commerce/storefront/src/transport/shared_adapter.rs`.
 
 The aggregate still delegates cart reads to `rustok-cart-storefront` and payment collection reads to `rustok-payment-storefront`. It does not reconstruct owner services, change checkout DTOs, or change native/GraphQL transport selection.
 

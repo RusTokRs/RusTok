@@ -3,9 +3,9 @@ import process from 'node:process';
 
 const root = process.cwd();
 const [lib, services, graphql] = await Promise.all([
-  readFile(`${root}/crates/rustok-pages/src/lib.rs`, 'utf8'),
-  readFile(`${root}/crates/rustok-pages/src/services/mod.rs`, 'utf8'),
-  readFile(`${root}/crates/rustok-pages/src/graphql/scenario_baseline.rs`, 'utf8'),
+  readFile(`${root}/crates/modules/rustok-pages/src/lib.rs`, 'utf8'),
+  readFile(`${root}/crates/modules/rustok-pages/src/services/mod.rs`, 'utf8'),
+  readFile(`${root}/crates/modules/rustok-pages/src/graphql/scenario_baseline.rs`, 'utf8'),
 ]);
 
 const failures = [];

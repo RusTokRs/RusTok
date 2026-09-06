@@ -5,22 +5,22 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const evidence = JSON.parse(
   read(
-    "crates/rustok-pages/contracts/evidence/pages-native-storefront-cache-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-native-storefront-cache-source.json",
   ),
 );
 const harness = read(
-  "crates/rustok-pages/tests/native_storefront_cache_contract.rs",
+  "crates/modules/rustok-pages/tests/native_storefront_cache_contract.rs",
 );
 const nativeAdapter = read(
-  "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs",
 );
-const cacheContract = read("crates/rustok-pages/src/cache_invalidation.rs");
+const cacheContract = read("crates/modules/rustok-pages/src/cache_invalidation.rs");
 const parityPlan = read(
   "docs/modules/pages-page-builder-parity-continuation-plan.md",
 );
@@ -130,7 +130,7 @@ for (const [key, expected] of Object.entries({
 
 if (
   evidence.harness?.path !==
-    "crates/rustok-pages/tests/native_storefront_cache_contract.rs" ||
+    "crates/modules/rustok-pages/tests/native_storefront_cache_contract.rs" ||
   evidence.harness?.test !==
     "native_storefront_cache_misses_refills_hits_rotates_and_fails_open" ||
   evidence.harness?.backend !== "recording_pages_cache_port"

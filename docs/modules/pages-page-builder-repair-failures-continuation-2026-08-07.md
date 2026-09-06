@@ -25,7 +25,7 @@ Marker:
 explicit-artifact-repair-failure-harness-source-ready
 ```
 
-`crates/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs` adds five isolated SQLite regressions. Each test creates its own in-memory database, applies the real Pages/Channel migrations plus the canonical `sys_events` migration, creates and reviewed-publishes a Page Builder page using the current canonical body revision shape, and snapshots durable repair state before the rejected command.
+`crates/modules/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs` adds five isolated SQLite regressions. Each test creates its own in-memory database, applies the real Pages/Channel migrations plus the canonical `sys_events` migration, creates and reviewed-publishes a Page Builder page using the current canonical body revision shape, and snapshots durable repair state before the rejected command.
 
 The snapshot includes:
 
@@ -104,7 +104,7 @@ This packet does not:
 Machine source evidence:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-failures-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-failures-source.json
 ```
 
 Status remains:
@@ -118,7 +118,7 @@ Execution is empty and every validation flag remains false until maintainer exec
 Fail-closed source guard:
 
 ```text
-crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-failures.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-failures.mjs
 ```
 
 The guard is intentionally not run in this slice.
@@ -152,9 +152,9 @@ The guard is intentionally not run in this slice.
 Suggested commands, intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-failures.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-failures.mjs
 cargo test -p rustok-pages --test explicit_artifact_repair_failures_sqlite -- --nocapture
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-pages --test explicit_artifact_repair_postgres -- --nocapture
 cargo check -p rustok-pages --all-targets

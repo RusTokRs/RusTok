@@ -16,11 +16,11 @@ physical DLQ scan
 ## Delivered boundaries
 
 ```text
-classifier:       crates/rustok-iggy/src/dlq_duplicate_inspection.rs
-fixed scanner:    crates/rustok-iggy/src/dlq_duplicate_external_scan.rs
-rolling state:    crates/rustok-iggy/src/dlq_duplicate_rolling_window.rs
-moving scanner:   crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs
-Iggy observer:    crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs
+classifier:       crates/modules/rustok-iggy/src/dlq_duplicate_inspection.rs
+fixed scanner:    crates/modules/rustok-iggy/src/dlq_duplicate_external_scan.rs
+rolling state:    crates/modules/rustok-iggy/src/dlq_duplicate_rolling_window.rs
+moving scanner:   crates/modules/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs
+Iggy observer:    crates/modules/rustok-iggy/src/dlq_duplicate_alert_observer.rs
 server observer:  apps/server/src/services/event_dlq_duplicate_alert_observer.rs
 ```
 

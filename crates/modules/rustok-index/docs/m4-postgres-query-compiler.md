@@ -77,7 +77,7 @@ timestamp fields and only with bounded offset pagination. Boolean, UUID, list-va
 singular-path, cursor-paginated, and unsortable aggregate orders fail closed.
 
 Decimal uses the exact tagged wire fixed by
-`crates/rustok-index/contracts/m4-decimal-aggregate-order-wire.json`. The correlated aggregate
+`crates/modules/rustok-index/contracts/m4-decimal-aggregate-order-wire.json`. The correlated aggregate
 and `ORDER BY` remain typed PostgreSQL `numeric`; only the hidden tagged `__order_N` value is
 converted through `numeric::text` and stored as a JSON string. That matches
 `IndexValue::Decimal` Serde without a JSON-number or float round-trip. Ordinary Decimal filters

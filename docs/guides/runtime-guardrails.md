@@ -236,11 +236,11 @@ node scripts/verify/verify-inventory-admin-boundary.mjs
 
 What to check:
 
-1. `crates/rustok-inventory/src/services/inventory.rs` - typed write result
+1. `crates/modules/rustok-inventory/src/services/inventory.rs` - typed write result
    is built from committed quantity + inventory policy.
-2. `crates/rustok-inventory/admin/src/transport/mod.rs` - write facades go
+2. `crates/modules/rustok-inventory/admin/src/transport/mod.rs` - write facades go
    through `transport/native_server_adapter.rs` without GraphQL fallback inputs.
-3. `crates/rustok-inventory/admin/src/transport/native_server_adapter.rs` -
+3. `crates/modules/rustok-inventory/admin/src/transport/native_server_adapter.rs` -
    native server functions consume `HostRuntimeContext` and do not use host
    service locators or package-local token/tenant fallback chains.
 

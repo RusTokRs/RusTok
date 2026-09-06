@@ -37,12 +37,12 @@ shadow types.
 
 Storage-owner domain scenarios are verified inside their owning crates:
 
-- `crates/rustok-blog/tests/*`
-- `crates/rustok-forum/tests/*`
-- `crates/rustok-pages/tests/*`
-- `crates/rustok-comments/tests/*`
-- `crates/rustok-content/tests/*`
-- `crates/rustok-commerce/tests/*`
+- `crates/modules/rustok-blog/tests/*`
+- `crates/modules/rustok-forum/tests/*`
+- `crates/modules/rustok-pages/tests/*`
+- `crates/modules/rustok-comments/tests/*`
+- `crates/modules/rustok-content/tests/*`
+- `crates/modules/rustok-commerce/tests/*`
 
 This keeps server tests focused on host/runtime wiring and avoids reintroducing
 removed product surfaces into `apps/server`.

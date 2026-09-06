@@ -50,14 +50,14 @@ transaction.
 Run diagnostics against the same database/tenant that serves the affected
 request. The retained psql script is:
 
-`crates/rustok-taxonomy/docs/sql/route-registry-drift.sql`
+`crates/modules/rustok-taxonomy/docs/sql/route-registry-drift.sql`
 
 Invoke it with an explicit tenant UUID:
 
 ```bash
 psql "$DATABASE_URL" --set=ON_ERROR_STOP=1 \
   --set=tenant_id='00000000-0000-0000-0000-000000000000' \
-  --file=crates/rustok-taxonomy/docs/sql/route-registry-drift.sql
+  --file=crates/modules/rustok-taxonomy/docs/sql/route-registry-drift.sql
 ```
 
 The diagnostic is one read-only `WITH ... SELECT` statement. It normalizes

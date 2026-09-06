@@ -10,7 +10,7 @@ The canonical broad ecommerce topology task remains open because other mounted C
 
 ## Mounted route
 
-`crates/rustok-commerce/src/controllers/admin/mod.rs` mounts `orders_owner_ports.rs` as the `orders` module. The previous `orders.rs` source remains in the tree for compatibility/history but is not the mounted admin Order implementation.
+`crates/modules/rustok-commerce/src/controllers/admin/mod.rs` mounts `orders_owner_ports.rs` as the `orders` module. The previous `orders.rs` source remains in the tree for compatibility/history but is not the mounted admin Order implementation.
 
 The mounted adapter uses:
 

@@ -8,13 +8,13 @@
   "test_target": {
     "crate": "rustok-commerce",
     "name": "fulfillment_read_port_failure_contract",
-    "path": "crates/rustok-commerce/tests/fulfillment_read_port_failure_contract.rs",
+    "path": "crates/modules/rustok-commerce/tests/fulfillment_read_port_failure_contract.rs",
     "command": "cargo test -p rustok-commerce --test fulfillment_read_port_failure_contract -- --nocapture"
   },
   "source_fix": {
-    "entry_file": "crates/rustok-commerce/src/graphql/safe_query.rs",
-    "shim_file": "crates/rustok-commerce/src/graphql/safe_query/source/rustok_fulfillment_shim.rs",
-    "boundary_file": "crates/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_boundary.rs",
+    "entry_file": "crates/modules/rustok-commerce/src/graphql/safe_query.rs",
+    "shim_file": "crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_fulfillment_shim.rs",
+    "boundary_file": "crates/modules/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_boundary.rs",
     "typed_shim_error": "rustok_fulfillment_shim::error::FulfillmentError",
     "owner_message_control_flow": false,
     "query_source_changed": false,

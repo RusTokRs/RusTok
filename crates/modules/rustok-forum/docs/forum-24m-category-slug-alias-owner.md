@@ -15,7 +15,7 @@ It records immutable redirects when one existing category translation changes it
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-category-slug-alias-owner.json
+crates/modules/rustok-forum/contracts/forum-category-slug-alias-owner.json
 ```
 
 ## Historical route namespace

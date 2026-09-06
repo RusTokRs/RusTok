@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const leasePath = 'crates/rustok-index/src/infrastructure/postgres/schema_lease.rs';
+const leasePath = 'crates/modules/rustok-index/src/infrastructure/postgres/schema_lease.rs';
 const lease = requireMarkers(leasePath, [
   'pub struct SchemaApplicationLeaseRequest',
   'pub struct SchemaApplicationLease',
@@ -65,7 +65,7 @@ for (const forbidden of [
   if (lease.includes(forbidden)) fail(`${leasePath} contains forbidden marker ${forbidden}`);
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/schema_lease_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/schema_lease_tests.rs', [
   'acquire_excludes_other_workers_and_completion_is_terminal',
   'expired_lease_is_reclaimed_with_attempt_fencing',
   'schema_registration_and_request_identity_fail_closed',
@@ -73,18 +73,18 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/schema_lease_tes
   'SchemaLeaseAcquireOutcome::AlreadyApplied',
   'SchemaLeaseError::LeaseLost',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod schema_lease;',
   'mod schema_lease_tests;',
   'PostgresSchemaLeaseStore',
   'SchemaApplicationLeaseRequest',
 ]);
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'PostgresSchemaLeaseStore',
   'SchemaApplicationLease',
   'SchemaLeaseAcquireOutcome',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- [x] Add locking/leases for schema application.',
   'M3 schema-application leases: `complete`',
 ]);

@@ -14,7 +14,7 @@ checkpoint identities.
 The machine-readable proof contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-normal-delivery-proof.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-normal-delivery-proof.json
 ```
 
 The executable test is:

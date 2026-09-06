@@ -13,8 +13,8 @@ base. Their changed files are limited to:
 
 No compared `main` file modifies:
 
-- `crates/rustok-index`;
-- `crates/rustok-distribution` Product Index composition;
+- `crates/modules/rustok-index`;
+- `crates/modules/rustok-distribution` Product Index composition;
 - `apps/server/src/graphql/index_drift_diagnosis.rs` or the server GraphQL root;
 - `apps/server/src/services/index_*diagnosis*.rs`;
 - Index query-contract or server reconciliation guards changed by PR #2986.

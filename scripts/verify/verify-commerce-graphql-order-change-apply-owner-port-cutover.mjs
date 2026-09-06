@@ -10,11 +10,11 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const mutationsMod = read('crates/rustok-commerce/src/graphql/mutations/mod.rs');
-const graphql = read('crates/rustok-commerce/src/graphql/mutations/fulfillment.rs');
-const graphqlRuntime = read('crates/rustok-commerce/src/graphql_runtime.rs');
-const orchestration = read('crates/rustok-commerce/src/services/order_change_orchestration.rs');
-const plan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const mutationsMod = read('crates/modules/rustok-commerce/src/graphql/mutations/mod.rs');
+const graphql = read('crates/modules/rustok-commerce/src/graphql/mutations/fulfillment.rs');
+const graphqlRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.rs');
+const orchestration = read('crates/modules/rustok-commerce/src/services/order_change_orchestration.rs');
+const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 const failures = [];
 
 const requireText = (content, value, label) => {

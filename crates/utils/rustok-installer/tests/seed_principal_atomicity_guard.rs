@@ -4,7 +4,8 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
-        .expect("crates/rustok-installer should live under workspace root")
+        .and_then(Path::parent)
+        .expect("crates/utils/rustok-installer should live under workspace root")
         .to_path_buf()
 }
 
@@ -16,7 +17,7 @@ fn source(relative: &str) -> String {
 
 #[test]
 fn typed_seed_executor_requires_composite_principal_port() {
-    let seed = source("crates/rustok-installer/src/seed.rs");
+    let seed = source("crates/utils/rustok-installer/src/seed.rs");
 
     assert!(seed.contains("principal_port: &dyn SeedPrincipalPort"));
     assert!(seed.contains("ensure_seed_principal(admin, UserRole::SuperAdmin)"));
@@ -27,7 +28,7 @@ fn typed_seed_executor_requires_composite_principal_port() {
 
 #[test]
 fn seaorm_principal_adapter_uses_one_transaction() {
-    let adapter = source("crates/rustok-installer-persistence/src/seaorm_ports.rs");
+    let adapter = source("crates/utils/rustok-installer-persistence/src/seaorm_ports.rs");
     let start = adapter
         .find("impl SeedPrincipalPort for SeaOrmInstallerBootstrapPorts")
         .expect("SeaORM adapter must implement SeedPrincipalPort");
@@ -46,7 +47,7 @@ fn seaorm_principal_adapter_uses_one_transaction() {
 
 #[test]
 fn installer_cli_uses_three_port_seed_contract() {
-    let cli = source("crates/rustok-installer-cli/src/lib.rs");
+    let cli = source("crates/utils/rustok-installer-cli/src/lib.rs");
     let call = cli
         .find("let result = execute_seed_profile(")
         .expect("installer CLI must call typed seed executor");

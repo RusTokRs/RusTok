@@ -14,10 +14,10 @@ const requireMarker = (source, marker, label) => {
   if (!source.includes(marker)) fail(`${label} is missing ${marker}`);
 };
 
-const bridge = read('crates/rustok-distribution/src/product_index/refresh_event.rs');
+const bridge = read('crates/modules/rustok-distribution/src/product_index/refresh_event.rs');
 const host = read('apps/server/src/services/product_index_refresh_worker.rs');
 const bootstrap = read('apps/server/src/services/server_bootstrap.rs');
-const genericWorker = read('crates/rustok-index/src/application/source_refresh_event.rs');
+const genericWorker = read('crates/modules/rustok-index/src/application/source_refresh_event.rs');
 const workflow = read('.github/workflows/index-contract-ci.yml');
 
 for (const marker of [

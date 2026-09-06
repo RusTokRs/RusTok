@@ -13,7 +13,7 @@ offset.
 The machine-readable proof contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-ack-restart-proof.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-ack-restart-proof.json
 ```
 
 The executable cross-module host test is:

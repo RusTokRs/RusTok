@@ -60,7 +60,7 @@ locale absence uses the same gate. Product hard-delete replay does not require a
 it removes the graph.
 
 Detailed freshness contract:
-`crates/rustok-product/docs/index-sales-channel-relation-freshness.md`.
+`crates/modules/rustok-product/docs/index-sales-channel-relation-freshness.md`.
 
 ## Remaining admission
 

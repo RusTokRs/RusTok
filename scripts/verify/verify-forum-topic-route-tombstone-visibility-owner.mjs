@@ -12,23 +12,23 @@ const failures = [];
 
 const paths = {
   migration:
-    "crates/rustok-forum/src/migrations/m20260806_000025_add_forum_topic_route_tombstone_visibility.rs",
-  migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
-  topicOwner: "crates/rustok-forum/src/services/topic_owner.rs",
-  topicOwnerInline: "crates/rustok-forum/src/services/topic_owner_inline.rs",
-  servicesMod: "crates/rustok-forum/src/services/mod.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260806_000025_add_forum_topic_route_tombstone_visibility.rs",
+  migrationsMod: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  topicOwner: "crates/modules/rustok-forum/src/services/topic_owner.rs",
+  topicOwnerInline: "crates/modules/rustok-forum/src/services/topic_owner_inline.rs",
+  servicesMod: "crates/modules/rustok-forum/src/services/mod.rs",
   snapshotOwner:
-    "crates/rustok-forum/src/services/topic_route_tombstone_visibility.rs",
-  categoryVisibility: "crates/rustok-forum/src/services/category_visibility.rs",
-  topicAudienceLock: "crates/rustok-forum/src/services/topic_audience_lock.rs",
-  graphql: "crates/rustok-forum/src/graphql/topic_route_query.rs",
+    "crates/modules/rustok-forum/src/services/topic_route_tombstone_visibility.rs",
+  categoryVisibility: "crates/modules/rustok-forum/src/services/category_visibility.rs",
+  topicAudienceLock: "crates/modules/rustok-forum/src/services/topic_audience_lock.rs",
+  graphql: "crates/modules/rustok-forum/src/graphql/topic_route_query.rs",
   native:
-    "crates/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
+    "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
   host: "apps/storefront/src/forum_topic_route.rs",
   contract:
-    "crates/rustok-forum/contracts/forum-topic-route-tombstone-visibility-owner.json",
-  test: "crates/rustok-forum/tests/topic_route_tombstone_visibility_contract.rs",
-  docs: "crates/rustok-forum/docs/forum-24j-topic-route-tombstone-visibility.md",
+    "crates/modules/rustok-forum/contracts/forum-topic-route-tombstone-visibility-owner.json",
+  test: "crates/modules/rustok-forum/tests/topic_route_tombstone_visibility_contract.rs",
+  docs: "crates/modules/rustok-forum/docs/forum-24j-topic-route-tombstone-visibility.md",
 };
 
 function read(relativePath) {

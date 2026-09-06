@@ -10,7 +10,7 @@ Reply text is not folded into the parent topic document. Keeping a separate iden
 
 `ForumReplyAudienceReadService` now publishes an exact selected anonymous-public reply read. It resolves the typed allowed status and parent-topic visibility before loading reply content. `ForumPublicDiscoveryService` exposes that decision to cross-consumer projection code.
 
-`crates/rustok-forum/src/search_projection.rs` remains the Forum-owned source mapper. Its direct reply-body query is limited to bounded raw locale candidate enumeration; it does not load reply status or content directly. Search receives only already-authorized `ReplyResponse` values.
+`crates/modules/rustok-forum/src/search_projection.rs` remains the Forum-owned source mapper. Its direct reply-body query is limited to bounded raw locale candidate enumeration; it does not load reply status or content directly. Search receives only already-authorized `ReplyResponse` values.
 
 A reply document is emitted only when all of the following are true:
 

@@ -14,7 +14,7 @@
   "status": "source_ready_maintainer_execution_pending",
   "canonical_plan_status": "planned_stale_ledger",
   "projection_owner": {
-    "source": "crates/rustok-forum/src/search_projection.rs",
+    "source": "crates/modules/rustok-forum/src/search_projection.rs",
     "category_route_owner": "ForumCategoryRouteService",
     "topic_route_owner": "ForumTopicRouteService",
     "category_exact_locale_required": true,
@@ -24,7 +24,7 @@
     "uuid_module_routes_projected": false
   },
   "search_boundary": {
-    "source": "crates/rustok-search/src/engine.rs",
+    "source": "crates/modules/rustok-search/src/engine.rs",
     "search_reconstructs_forum_slug": false,
     "search_reconstructs_topic_short_id": false,
     "owner_projected_route_required": true,
@@ -50,8 +50,8 @@
     "owner_event_schema_changed": false,
     "projection_invalidation_protocol_changed": false,
     "harness_task": "FORUM-24R",
-    "evidence_contract": "crates/rustok-forum/contracts/forum-search-canonical-route-reindex-harness.json",
-    "executable_target": "crates/rustok-search/tests/forum_canonical_route_reindex_postgres.rs",
+    "evidence_contract": "crates/modules/rustok-forum/contracts/forum-search-canonical-route-reindex-harness.json",
+    "executable_target": "crates/modules/rustok-search/tests/forum_canonical_route_reindex_postgres.rs",
     "execution_status": "maintainer_pending"
   },
   "compatibility": {

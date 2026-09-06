@@ -157,7 +157,7 @@ the monolithic/SSR path; divergences are recorded as parity debt, not as an acce
 
 For standalone `trunk serve`, CSS is part of the startup contract. `apps/admin/input.css` uses Tailwind v4
 `@import "tailwindcss"` + `@source`, and `tailwind.config.js` must scan not only `apps/admin/src`, but also
-module-owned admin UI packages in `crates/**/admin/src/**/*.rs`, as well as shared Leptos UI crates. Otherwise, the host shell may
+module-owned admin UI packages in `crates/modules/**/admin/src/**/*.rs`, as well as shared Leptos UI crates. Otherwise, the host shell may
 load, but module-owned pages will lack spacing/layout utilities and visually diverge from Next admin.
 The Trunk post-build hook `scripts\tailwind-build.cmd` places `output.css` in staging/dist; missing `dist/output.css`
 is considered a startup blocker for Leptos admin debug.

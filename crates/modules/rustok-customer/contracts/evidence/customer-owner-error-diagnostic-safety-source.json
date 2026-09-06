@@ -2,15 +2,15 @@
   "schema_version": 1,
   "status": "customer_read_boundary_diagnostic_safety_source_unvalidated",
   "scope": {
-    "owner_source": "crates/rustok-customer/src/ports.rs",
-    "owner_error": "crates/rustok-customer/src/error.rs",
+    "owner_source": "crates/modules/rustok-customer/src/ports.rs",
+    "owner_error": "crates/modules/rustok-customer/src/error.rs",
     "mapper": "customer_error_to_port_error",
     "admission": "require_customer_read_policy",
     "list_validation": "validate_customer_list_projection_request",
     "tenant_parser": "parse_port_tenant_id",
     "focused_verifier": "scripts/verify/verify-customer-owner-error-diagnostic-safety.mjs",
     "aggregate_verifier": "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
-    "documentation": "crates/rustok-customer/docs/customer-owner-error-diagnostic-safety.md"
+    "documentation": "crates/modules/rustok-customer/docs/customer-owner-error-diagnostic-safety.md"
   },
   "source_contract": {
     "owner_error_variant_count": 7,

@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const typesPath = 'crates/rustok-product/src/services/catalog/types.rs';
+const typesPath = 'crates/modules/rustok-product/src/services/catalog/types.rs';
 const types = requireMarkers(typesPath, [
   'pub const MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022;',
   'pub(crate) fn validate_storefront_product_search(',
@@ -28,7 +28,7 @@ const types = requireMarkers(typesPath, [
   'fn storefront_search_bound_uses_effective_utf8_bytes()',
 ]);
 
-const ownerPath = 'crates/rustok-product/src/services/catalog/queries.rs';
+const ownerPath = 'crates/modules/rustok-product/src/services/catalog/queries.rs';
 const owner = requireMarkers(ownerPath, [
   'pub async fn list_published_products_with_query(',
   'types::validate_storefront_product_search(list_query.search.as_deref())?;',
@@ -43,7 +43,7 @@ if (ownerValidation < 0 || ownerQuery <= ownerValidation) {
   fail(`${ownerPath} must validate the Storefront search before constructing owner SQL`);
 }
 
-const shadowPath = 'crates/rustok-distribution/src/product_index/storefront_shadow.rs';
+const shadowPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow.rs';
 const shadow = requireMarkers(shadowPath, [
   'services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',
   'if search.len() > MAX_STOREFRONT_PRODUCT_SEARCH_BYTES',
@@ -55,7 +55,7 @@ if (shadow.includes('const MAX_TEXT_LIKE_PATTERN_BYTES')) {
   fail(`${shadowPath} must consume the Product-owned search bound instead of owning another limit`);
 }
 
-const indexValidationPath = 'crates/rustok-index/src/application/validation.rs';
+const indexValidationPath = 'crates/modules/rustok-index/src/application/validation.rs';
 const indexValidation = requireMarkers(indexValidationPath, [
   'const MAX_TEXT_LIKE_PATTERN_BYTES: usize = 1024;',
 ]);
@@ -70,8 +70,8 @@ if (ownerBytes + 2 !== indexBytes) {
 }
 
 for (const relative of [
-  'crates/rustok-product/src/services/catalog.rs',
-  'crates/rustok-product/src/services/mod.rs',
+  'crates/modules/rustok-product/src/services/catalog.rs',
+  'crates/modules/rustok-product/src/services/mod.rs',
 ]) {
   requireMarkers(relative, ['MAX_STOREFRONT_PRODUCT_SEARCH_BYTES']);
 }

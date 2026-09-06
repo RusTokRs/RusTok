@@ -140,7 +140,7 @@ The canonical packet is written atomically only after both exact cases pass.
 Canonical path:
 
 ```text
-crates/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution.json
+crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution.json
 ```
 
 The packet retains:

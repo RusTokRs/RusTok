@@ -18,14 +18,14 @@ const forbidText = (source, value, label) => {
 };
 
 const files = {
-  transport: "crates/rustok-cart/storefront/src/transport/mod.rs",
-  adapter: "crates/rustok-cart/storefront/src/transport/graphql_adapter.rs",
-  safety: "crates/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
-  nativeSafety: "crates/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
-  evidence: "crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json",
-  review: "crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json",
-  doc: "crates/rustok-cart/docs/storefront-graphql-error-safety.md",
-  masterPlan: "crates/rustok-commerce/docs/implementation-plan.md",
+  transport: "crates/modules/rustok-cart/storefront/src/transport/mod.rs",
+  adapter: "crates/modules/rustok-cart/storefront/src/transport/graphql_adapter.rs",
+  safety: "crates/modules/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
+  nativeSafety: "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
+  evidence: "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json",
+  review: "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json",
+  doc: "crates/modules/rustok-cart/docs/storefront-graphql-error-safety.md",
+  masterPlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
 for (const filePath of Object.values(files)) {

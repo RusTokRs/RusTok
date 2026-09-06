@@ -25,7 +25,7 @@ It does **not** own:
 
 The source inventory is retained in:
 
-`crates/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json`
+`crates/modules/rustok-blog/contracts/evidence/blog-comments-storefront-write-surface.json`
 
 Fail-closed source guard:
 

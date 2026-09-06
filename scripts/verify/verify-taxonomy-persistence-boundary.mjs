@@ -22,7 +22,7 @@ function normalize(relativePath) {
 
 function isExcluded(relativePath) {
   const normalized = normalize(relativePath);
-  if (normalized.startsWith('crates/rustok-taxonomy/')) return true;
+  if (normalized.startsWith('crates/modules/rustok-taxonomy/')) return true;
   if (normalized.includes('/src/migrations/')) return true;
   if (normalized.includes('/src/entities/')) return true;
   if (normalized.includes('/tests/')) return true;

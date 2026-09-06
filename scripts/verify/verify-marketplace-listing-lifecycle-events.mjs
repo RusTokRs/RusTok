@@ -6,12 +6,12 @@ import process from "node:process";
 
 const root = process.cwd();
 const files = {
-  lifecycle: "crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs",
-  moderation: "crates/rustok-marketplace-listing/src/evented_commands.rs",
-  storage: "crates/rustok-marketplace-listing/src/listing_events.rs",
-  ports: "crates/rustok-marketplace-listing/src/ports.rs",
-  migration: "crates/rustok-marketplace-listing/src/migrations/m20260717_000002_create_marketplace_listing_events.rs",
-  registry: "crates/rustok-marketplace-listing/contracts/marketplace-listing-fba-registry.json",
+  lifecycle: "crates/modules/rustok-marketplace-listing/src/lifecycle_event_commands.rs",
+  moderation: "crates/modules/rustok-marketplace-listing/src/evented_commands.rs",
+  storage: "crates/modules/rustok-marketplace-listing/src/listing_events.rs",
+  ports: "crates/modules/rustok-marketplace-listing/src/ports.rs",
+  migration: "crates/modules/rustok-marketplace-listing/src/migrations/m20260717_000002_create_marketplace_listing_events.rs",
+  registry: "crates/modules/rustok-marketplace-listing/contracts/marketplace-listing-fba-registry.json",
 };
 
 const failures = [];

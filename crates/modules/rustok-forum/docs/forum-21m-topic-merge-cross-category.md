@@ -12,13 +12,13 @@ GraphQL field or canonical-resolution lane.
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-cross-category.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-cross-category.json
 ```
 
 Cumulative owner contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-owner.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json
 ```
 
 ## Owner commands

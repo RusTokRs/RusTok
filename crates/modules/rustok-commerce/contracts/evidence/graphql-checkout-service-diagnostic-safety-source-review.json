@@ -1,10 +1,10 @@
 {
   "status": "commerce_graphql_checkout_service_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/graphql/mutations/safe_checkout.rs",
-    "crates/rustok-commerce/src/graphql/mutations/checkout.rs",
+    "crates/modules/rustok-commerce/src/graphql/mutations/safe_checkout.rs",
+    "crates/modules/rustok-commerce/src/graphql/mutations/checkout.rs",
     "scripts/verify/verify-commerce-graphql-checkout-service-error-safety.mjs",
-    "crates/rustok-commerce/docs/graphql-checkout-service-diagnostic-safety.md"
+    "crates/modules/rustok-commerce/docs/graphql-checkout-service-diagnostic-safety.md"
   ],
   "source_contract": {
     "complete_commerce_error_logged": false,

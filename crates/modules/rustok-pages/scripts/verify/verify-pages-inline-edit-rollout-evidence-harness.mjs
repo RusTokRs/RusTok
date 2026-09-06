@@ -4,15 +4,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
   contract:
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-rollout-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-rollout-execution-contract.json",
   evidence:
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-rollout-evidence-harness-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-rollout-evidence-harness-source.json",
   browserContract:
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json",
   assembler: "scripts/evidence/assemble-pages-inline-edit-rollout-evidence.mjs",
   packet:
     "docs/modules/pages-page-builder-inline-edit-rollout-evidence-harness-packet-2026-08-06.md",

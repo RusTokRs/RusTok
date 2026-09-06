@@ -3,32 +3,32 @@ name: Groups Moderation Subject PostgreSQL Evidence
 on:
   pull_request:
     paths:
-      - "crates/rustok-groups/Cargo.toml"
-      - "crates/rustok-groups/src/moderation_subject.rs"
-      - "crates/rustok-groups/src/membership_enforcement_command.rs"
-      - "crates/rustok-groups/src/membership_enforcement_transaction.rs"
-      - "crates/rustok-groups/src/migrations/**"
-      - "crates/rustok-groups/tests/moderation_subject_postgres.rs"
-      - "crates/rustok-groups/docs/moderation-subject-postgres-contract.md"
-      - "crates/rustok-groups/docs/implementation-plan.md"
-      - "crates/rustok-moderation-api/src/model.rs"
-      - "crates/rustok-outbox/src/**"
+      - "crates/modules/rustok-groups/Cargo.toml"
+      - "crates/modules/rustok-groups/src/moderation_subject.rs"
+      - "crates/modules/rustok-groups/src/membership_enforcement_command.rs"
+      - "crates/modules/rustok-groups/src/membership_enforcement_transaction.rs"
+      - "crates/modules/rustok-groups/src/migrations/**"
+      - "crates/modules/rustok-groups/tests/moderation_subject_postgres.rs"
+      - "crates/modules/rustok-groups/docs/moderation-subject-postgres-contract.md"
+      - "crates/modules/rustok-groups/docs/implementation-plan.md"
+      - "crates/modules/rustok-moderation-api/src/model.rs"
+      - "crates/modules/rustok-outbox/src/**"
       - "scripts/verify/verify-groups-moderation-subject-postgres.mjs"
       - ".github/workflows/groups-moderation-subject-postgres.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-groups/Cargo.toml"
-      - "crates/rustok-groups/src/moderation_subject.rs"
-      - "crates/rustok-groups/src/membership_enforcement_command.rs"
-      - "crates/rustok-groups/src/membership_enforcement_transaction.rs"
-      - "crates/rustok-groups/src/migrations/**"
-      - "crates/rustok-groups/tests/moderation_subject_postgres.rs"
-      - "crates/rustok-groups/docs/moderation-subject-postgres-contract.md"
-      - "crates/rustok-groups/docs/implementation-plan.md"
-      - "crates/rustok-moderation-api/src/model.rs"
-      - "crates/rustok-outbox/src/**"
+      - "crates/modules/rustok-groups/Cargo.toml"
+      - "crates/modules/rustok-groups/src/moderation_subject.rs"
+      - "crates/modules/rustok-groups/src/membership_enforcement_command.rs"
+      - "crates/modules/rustok-groups/src/membership_enforcement_transaction.rs"
+      - "crates/modules/rustok-groups/src/migrations/**"
+      - "crates/modules/rustok-groups/tests/moderation_subject_postgres.rs"
+      - "crates/modules/rustok-groups/docs/moderation-subject-postgres-contract.md"
+      - "crates/modules/rustok-groups/docs/implementation-plan.md"
+      - "crates/modules/rustok-moderation-api/src/model.rs"
+      - "crates/modules/rustok-outbox/src/**"
       - "scripts/verify/verify-groups-moderation-subject-postgres.mjs"
       - ".github/workflows/groups-moderation-subject-postgres.yml"
   workflow_dispatch:
@@ -87,7 +87,7 @@ jobs:
       - name: Verify Groups moderation PostgreSQL evidence source
         run: node scripts/verify/verify-groups-moderation-subject-postgres.mjs
       - name: Check focused Rust formatting
-        run: rustfmt +1.96.0 --edition 2024 --check crates/rustok-groups/tests/moderation_subject_postgres.rs
+        run: rustfmt +1.96.0 --edition 2024 --check crates/modules/rustok-groups/tests/moderation_subject_postgres.rs
       - name: Execute Groups moderation PostgreSQL evidence
         run: cargo test --locked -p rustok-groups --test moderation_subject_postgres -- --ignored --nocapture
       - name: Compile Groups test targets with locked graph

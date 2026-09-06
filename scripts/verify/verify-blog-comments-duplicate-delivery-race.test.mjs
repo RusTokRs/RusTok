@@ -25,9 +25,9 @@ function fixture({
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-duplicate-race-'));
   const evidencePath =
-    'crates/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json';
+    'crates/modules/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json';
   const harnessPath =
-    'crates/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs';
+    'crates/modules/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs';
   const command =
     'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --exact';
 

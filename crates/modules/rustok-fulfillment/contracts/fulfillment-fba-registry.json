@@ -33,18 +33,18 @@
     }
   ],
   "evidence": {
-    "local_plan": "crates/rustok-fulfillment/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-fulfillment/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
   },
   "in_process_provider_impl": {
     "service": "FulfillmentService",
-    "source": "crates/rustok-fulfillment/src/ports.rs",
+    "source": "crates/modules/rustok-fulfillment/src/ports.rs",
     "status": "implemented"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
-    "source": "crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json",
+    "source": "crates/modules/rustok-fulfillment/contracts/fulfillment-fba-registry.json",
     "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "profiles": [
       "in_process",
@@ -89,7 +89,7 @@
   },
   "provider_spi": {
     "status": "manual_baseline_locked",
-    "source": "crates/rustok-fulfillment/src/providers.rs",
+    "source": "crates/modules/rustok-fulfillment/src/providers.rs",
     "default_provider_id": "manual",
     "operations": [
       "quote_rates",

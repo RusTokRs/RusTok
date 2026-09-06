@@ -27,15 +27,15 @@ That composite value is not the current production owner contract and could reje
 The following harnesses now pass the created body DTO's `updated_at` value directly:
 
 ```text
-crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs
-crates/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs
-crates/rustok-pages/tests/explicit_artifact_repair_cache_postgres.rs
+crates/modules/rustok-pages/tests/explicit_artifact_repair_postgres.rs
+crates/modules/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs
+crates/modules/rustok-pages/tests/explicit_artifact_repair_cache_postgres.rs
 ```
 
 Their corresponding source guards read:
 
 ```text
-crates/rustok-pages/src/services/page/reviewed_publish.rs
+crates/modules/rustok-pages/src/services/page/reviewed_publish.rs
 ```
 
 and require the fixture to match `body_revision_snapshot`. The guards also forbid the stale SHA-256 revision construction and SHA-256 import in those repair harnesses.
@@ -51,9 +51,9 @@ reviewed_publish_revision_matches_owner_updated_at_snapshot = true
 The dedicated reviewed-publish provenance PostgreSQL packet now exists:
 
 ```text
-crates/rustok-pages/tests/publish_rebuild_provenance_postgres.rs
-crates/rustok-pages/contracts/evidence/pages-publish-rebuild-provenance-postgres-source.json
-crates/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance-postgres.mjs
+crates/modules/rustok-pages/tests/publish_rebuild_provenance_postgres.rs
+crates/modules/rustok-pages/contracts/evidence/pages-publish-rebuild-provenance-postgres-source.json
+crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance-postgres.mjs
 docs/modules/pages-page-builder-publish-provenance-postgres-continuation-2026-08-07.md
 ```
 

@@ -16,28 +16,28 @@ const fail = (message) => { throw new CustomerFbaNoCompileVerificationError(mess
 const sameSet = (actual, expected) => Array.isArray(actual) && actual.length === expected.length && expected.every((item) => actual.includes(item));
 
 export function verifyCustomerFbaNoCompile() {
-  const registryPath = 'crates/rustok-customer/contracts/customer-fba-registry.json';
-  const staticEvidencePath = 'crates/rustok-customer/contracts/evidence/customer-contract-test-static-matrix.json';
-  const runtimeSmokePath = 'crates/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json';
-  const planPath = 'crates/rustok-customer/docs/implementation-plan.md';
+  const registryPath = 'crates/modules/rustok-customer/contracts/customer-fba-registry.json';
+  const staticEvidencePath = 'crates/modules/rustok-customer/contracts/evidence/customer-contract-test-static-matrix.json';
+  const runtimeSmokePath = 'crates/modules/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json';
+  const planPath = 'crates/modules/rustok-customer/docs/implementation-plan.md';
   const registry = readJson(registryPath);
   const staticEvidence = readJson(staticEvidencePath);
   const runtimeSmoke = readJson(runtimeSmokePath);
-  const libSource = read('crates/rustok-customer/src/lib.rs');
-  const portSource = read('crates/rustok-customer/src/ports.rs');
-  const wrapperSource = read('crates/rustok-customer/src/read_context.rs');
-  const cargo = read('crates/rustok-customer/Cargo.toml');
-  const manifest = read('crates/rustok-customer/rustok-module.toml');
+  const libSource = read('crates/modules/rustok-customer/src/lib.rs');
+  const portSource = read('crates/modules/rustok-customer/src/ports.rs');
+  const wrapperSource = read('crates/modules/rustok-customer/src/read_context.rs');
+  const cargo = read('crates/modules/rustok-customer/Cargo.toml');
+  const manifest = read('crates/modules/rustok-customer/rustok-module.toml');
   const plan = read(planPath);
-  const readme = read('crates/rustok-customer/README.md');
-  const localDocs = read('crates/rustok-customer/docs/README.md');
+  const readme = read('crates/modules/rustok-customer/README.md');
+  const localDocs = read('crates/modules/rustok-customer/docs/README.md');
   const centralRegistry = read('docs/modules/registry.md');
   const commerceCustomerConsumers = [
-    'crates/rustok-commerce/src/graphql/mutations/helpers.rs',
-    'crates/rustok-commerce/src/graphql/query.rs',
-    'crates/rustok-commerce/src/controllers/store/mod.rs',
-    'crates/rustok-commerce/src/controllers/store/orders.rs',
-    'crates/rustok-commerce/src/storefront_checkout_runtime.rs',
+    'crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs',
+    'crates/modules/rustok-commerce/src/graphql/query.rs',
+    'crates/modules/rustok-commerce/src/controllers/store/mod.rs',
+    'crates/modules/rustok-commerce/src/controllers/store/orders.rs',
+    'crates/modules/rustok-commerce/src/storefront_checkout_runtime.rs',
   ].map(read);
 
   if (registry.schema_version !== 1) fail('customer registry schema_version must be 1');
@@ -75,7 +75,7 @@ export function verifyCustomerFbaNoCompile() {
   if (staticEvidence.promotion_gate !== 'does_not_raise_boundary_ready_without_runtime_execution') fail('static evidence must keep promotion gated');
   if (runtimeSmoke.status !== 'source_locked_live_runtime_pending') fail('runtime smoke status drift');
   if (runtimeSmoke.promotion_allowed !== false) fail('runtime smoke must block promotion');
-  if (runtimeSmoke.source_tests !== 'crates/rustok-customer/tests/customer_service_test.rs') fail('runtime smoke source tests drift');
+  if (runtimeSmoke.source_tests !== 'crates/modules/rustok-customer/tests/customer_service_test.rs') fail('runtime smoke source tests drift');
   for (const expectedCode of ['port.deadline_required', 'customer.context_invalid', 'customer.customer_not_found']) {
     if (!JSON.stringify(runtimeSmoke.typed_error_matrix).includes(expectedCode)) fail(`runtime smoke missing typed error ${expectedCode}`);
   }

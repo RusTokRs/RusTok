@@ -9,7 +9,7 @@ FORUM-21P adds the first owner-level split workflow left after the FORUM-21 move
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-split-owner.json
+crates/modules/rustok-forum/contracts/forum-topic-split-owner.json
 ```
 
 ## Command and idempotency

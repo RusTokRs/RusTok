@@ -5,9 +5,9 @@ const root = path.resolve(
   process.env.RUSTOK_TAXONOMY_RECOVERY_ROOT || process.cwd(),
 );
 const failures = [];
-const sqlPath = "crates/rustok-taxonomy/docs/sql/route-registry-drift.sql";
-const runbookPath = "crates/rustok-taxonomy/docs/route-registry-recovery.md";
-const testPath = "crates/rustok-taxonomy/tests/route_key_registry.rs";
+const sqlPath = "crates/modules/rustok-taxonomy/docs/sql/route-registry-drift.sql";
+const runbookPath = "crates/modules/rustok-taxonomy/docs/route-registry-recovery.md";
+const testPath = "crates/modules/rustok-taxonomy/tests/route_key_registry.rs";
 
 function read(relative) {
   const absolute = path.join(root, relative);

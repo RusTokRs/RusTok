@@ -33,54 +33,54 @@ if (knownDefects && postgres) {
 }
 
 const files = {
-  support: "crates/rustok-forum/tests/support/postgres.rs",
-  greenBaseline: "crates/rustok-forum/tests/runtime_regression_baseline.rs",
-  knownRegressions: "crates/rustok-forum/tests/known_regressions.rs",
+  support: "crates/modules/rustok-forum/tests/support/postgres.rs",
+  greenBaseline: "crates/modules/rustok-forum/tests/runtime_regression_baseline.rs",
+  knownRegressions: "crates/modules/rustok-forum/tests/known_regressions.rs",
   statusMigration:
-    "crates/rustok-forum/src/migrations/m20260712_000004_enforce_forum_status_lifecycle.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260712_000004_enforce_forum_status_lifecycle.rs",
   categoryTreeMigration:
-    "crates/rustok-forum/src/migrations/m20260712_000005_enforce_forum_category_tree.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260712_000005_enforce_forum_category_tree.rs",
   counterLockMigration:
-    "crates/rustok-forum/src/migrations/m20260712_000006_serialize_forum_counter_mutations.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260712_000006_serialize_forum_counter_mutations.rs",
   replyPublicationMigration:
-    "crates/rustok-forum/src/migrations/m20260713_000007_enforce_forum_reply_publication.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000007_enforce_forum_reply_publication.rs",
   replyPositionMigration:
-    "crates/rustok-forum/src/migrations/m20260713_000008_enforce_forum_reply_positions.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000008_enforce_forum_reply_positions.rs",
   softDeleteMigration:
-    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions.rs",
   softDeletePostgresUp:
-    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/postgres_up.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/postgres_up.rs",
   softDeletePostgresDown:
-    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/postgres_down.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/postgres_down.rs",
   softDeleteSqliteUp:
-    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_up.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_up.rs",
   softDeleteSqliteDown:
-    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_down.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_down.rs",
   softDeleteSqliteSetup:
-    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_setup.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_setup.rs",
   softDeleteSqliteRevisions:
-    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_revisions.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_revisions.rs",
   softDeleteSqliteDeletes:
-    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_deletes.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_deletes.rs",
   softDeleteSqliteCounters:
-    "crates/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_counters.rs",
-  revisionService: "crates/rustok-forum/src/services/revision.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_counters.rs",
+  revisionService: "crates/modules/rustok-forum/src/services/revision.rs",
   categoryTreePostgres:
-    "crates/rustok-forum/tests/category_tree_integrity_postgres.rs",
+    "crates/modules/rustok-forum/tests/category_tree_integrity_postgres.rs",
   counterIntegrityPostgres:
-    "crates/rustok-forum/tests/counter_integrity_postgres.rs",
+    "crates/modules/rustok-forum/tests/counter_integrity_postgres.rs",
   moderationPostgres:
-    "crates/rustok-forum/tests/moderation_semantics_postgres.rs",
+    "crates/modules/rustok-forum/tests/moderation_semantics_postgres.rs",
   moderationSqlite:
-    "crates/rustok-forum/tests/moderation_semantics_sqlite.rs",
+    "crates/modules/rustok-forum/tests/moderation_semantics_sqlite.rs",
   replyPositionPostgres:
-    "crates/rustok-forum/tests/reply_position_integrity_postgres.rs",
+    "crates/modules/rustok-forum/tests/reply_position_integrity_postgres.rs",
   replyPositionSqlite:
-    "crates/rustok-forum/tests/reply_position_integrity_sqlite.rs",
+    "crates/modules/rustok-forum/tests/reply_position_integrity_sqlite.rs",
   softDeletePostgres:
-    "crates/rustok-forum/tests/soft_delete_revision_postgres.rs",
+    "crates/modules/rustok-forum/tests/soft_delete_revision_postgres.rs",
   softDeleteSqlite:
-    "crates/rustok-forum/tests/soft_delete_revision_sqlite.rs",
+    "crates/modules/rustok-forum/tests/soft_delete_revision_sqlite.rs",
 };
 
 const resolvedCompatibilityIgnores = new Map([

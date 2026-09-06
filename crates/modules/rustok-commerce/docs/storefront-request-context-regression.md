@@ -5,7 +5,7 @@ Status: `source_corrected_unvalidated`.
 ## Source-of-truth relation
 
 The ecommerce execution source of truth remains
-`crates/rustok-commerce/docs/implementation-plan.md`. Its immediate execution item 10
+`crates/modules/rustok-commerce/docs/implementation-plan.md`. Its immediate execution item 10
 remains open: this correction removes one false-complete regression but does not finish
 raw public error cleanup across all ecommerce owners and non-`PortError` envelopes.
 

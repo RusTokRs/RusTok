@@ -67,7 +67,7 @@ permission or relation lists are not written to the packet.
 ## Source evidence
 
 Machine-readable source evidence is recorded at
-`crates/rustok-rbac/contracts/evidence/rbac-policy-incident-trace-source.json`.
+`crates/modules/rustok-rbac/contracts/evidence/rbac-policy-incident-trace-source.json`.
 The focused source guard is
 `scripts/verify/verify-rbac-policy-incident-trace.mjs`.
 

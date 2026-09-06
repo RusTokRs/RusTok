@@ -13,10 +13,10 @@ import { dirname, resolve } from "node:path";
 
 const root = process.cwd();
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-canonical-promotion-packet.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-canonical-promotion-packet.json";
 const reviewContractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-promotion.json";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-complete-evidence-promotion.json";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 const candidatePath =
   "target/link-forum-03-forum-index-search-complete-promotion-candidate.json";
 const completePath =

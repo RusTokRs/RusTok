@@ -4,17 +4,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  service: "crates/rustok-pages/src/services/page/artifact_set.rs",
-  rollback: "crates/rustok-pages/src/services/page/rollback.rs",
-  activation: "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
-  test: "crates/rustok-pages/tests/artifact_multilocale_repair_rollback_evidence_postgres.rs",
-  repeatedTest: "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-multilocale-repair-rollback-evidence-source.json",
+  service: "crates/modules/rustok-pages/src/services/page/artifact_set.rs",
+  rollback: "crates/modules/rustok-pages/src/services/page/rollback.rs",
+  activation: "crates/modules/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+  test: "crates/modules/rustok-pages/tests/artifact_multilocale_repair_rollback_evidence_postgres.rs",
+  repeatedTest: "crates/modules/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-multilocale-repair-rollback-evidence-source.json",
   latestOverlay: "docs/modules/pages-page-builder-repeated-artifact-loss-recovery-actualization-2026-08-07.md",
-  fba: "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+  fba: "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
 };
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);

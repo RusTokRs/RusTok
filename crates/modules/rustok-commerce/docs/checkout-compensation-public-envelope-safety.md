@@ -59,7 +59,7 @@ task remains open.
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/checkout-compensation-public-envelope-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/checkout-compensation-public-envelope-safety-source-review.json`
 - `scripts/verify/verify-commerce-checkout-compensation-public-envelope-safety.mjs`
 
 ## Validation disclosure

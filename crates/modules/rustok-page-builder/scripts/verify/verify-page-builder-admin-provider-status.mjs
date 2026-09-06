@@ -4,24 +4,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  coreRollout: "crates/rustok-page-builder/src/rollout.rs",
-  status: "crates/rustok-page-builder/admin/src/provider_status.rs",
-  facade: "crates/rustok-page-builder/admin/src/transport/mod.rs",
-  canvas: "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
-  policyPanel: "crates/rustok-page-builder/admin/src/editor/capability_controls.rs",
-  preview: "crates/rustok-page-builder/admin/src/editor/server_preview.rs",
-  enLocale: "crates/rustok-page-builder/admin/locales/en.json",
-  ruLocale: "crates/rustok-page-builder/admin/locales/ru.json",
-  pagesFacade: "crates/rustok-pages/admin/src/builder.rs",
-  pagesRollout: "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
-  evidence: "crates/rustok-page-builder/contracts/evidence/page-builder-admin-provider-status-source.json",
-  consumerEvidence: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
+  coreRollout: "crates/modules/rustok-page-builder/src/rollout.rs",
+  status: "crates/modules/rustok-page-builder/admin/src/provider_status.rs",
+  facade: "crates/modules/rustok-page-builder/admin/src/transport/mod.rs",
+  canvas: "crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs",
+  policyPanel: "crates/modules/rustok-page-builder/admin/src/editor/capability_controls.rs",
+  preview: "crates/modules/rustok-page-builder/admin/src/editor/server_preview.rs",
+  enLocale: "crates/modules/rustok-page-builder/admin/locales/en.json",
+  ruLocale: "crates/modules/rustok-page-builder/admin/locales/ru.json",
+  pagesFacade: "crates/modules/rustok-pages/admin/src/builder.rs",
+  pagesRollout: "crates/modules/rustok-pages/admin/src/builder_rollout_settings.rs",
+  evidence: "crates/modules/rustok-page-builder/contracts/evidence/page-builder-admin-provider-status-source.json",
+  consumerEvidence: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
   overlay: "docs/modules/page-builder-provider-degraded-controls-actualization-2026-08-07.md",
   consumerOverlay: "docs/modules/pages-page-builder-provider-health-consumer-binding-actualization-2026-08-09.md",
-  localPlan: "crates/rustok-page-builder/docs/implementation-plan.md",
+  localPlan: "crates/modules/rustok-page-builder/docs/implementation-plan.md",
   centralPlan: "docs/modules/page-builder-implementation-plan.md",
 };
 

@@ -11,21 +11,21 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  graphql: "crates/rustok-forum/src/graphql/topic_route_query.rs",
-  graphqlMod: "crates/rustok-forum/src/graphql/mod.rs",
-  servicesMod: "crates/rustok-forum/src/services/mod.rs",
-  owner: "crates/rustok-forum/src/services/topic_route_tombstone_visibility.rs",
-  model: "crates/rustok-forum/storefront/src/model.rs",
+  graphql: "crates/modules/rustok-forum/src/graphql/topic_route_query.rs",
+  graphqlMod: "crates/modules/rustok-forum/src/graphql/mod.rs",
+  servicesMod: "crates/modules/rustok-forum/src/services/mod.rs",
+  owner: "crates/modules/rustok-forum/src/services/topic_route_tombstone_visibility.rs",
+  model: "crates/modules/rustok-forum/storefront/src/model.rs",
   graphqlAdapter:
-    "crates/rustok-forum/storefront/src/transport/topic_route_graphql_adapter.rs",
+    "crates/modules/rustok-forum/storefront/src/transport/topic_route_graphql_adapter.rs",
   nativeAdapter:
-    "crates/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
+    "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
   host: "apps/storefront/src/forum_topic_route.rs",
   hostLib: "apps/storefront/src/lib.rs",
   contract:
-    "crates/rustok-forum/contracts/forum-topic-route-authorized-gone-transport.json",
-  test: "crates/rustok-forum/tests/topic_route_authorized_gone_transport_contract.rs",
-  docs: "crates/rustok-forum/docs/forum-24k-topic-route-authorized-gone.md",
+    "crates/modules/rustok-forum/contracts/forum-topic-route-authorized-gone-transport.json",
+  test: "crates/modules/rustok-forum/tests/topic_route_authorized_gone_transport_contract.rs",
+  docs: "crates/modules/rustok-forum/docs/forum-24k-topic-route-authorized-gone.md",
 };
 
 function read(relativePath) {

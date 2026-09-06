@@ -43,12 +43,12 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-rbac/admin/src/lib.rs";
-const corePath = "crates/rustok-rbac/admin/src/core.rs";
-const uiPath = "crates/rustok-rbac/admin/src/ui/leptos.rs";
-const transportModPath = "crates/rustok-rbac/admin/src/transport/mod.rs";
-const nativeAdapterPath = "crates/rustok-rbac/admin/src/transport/native_server_adapter.rs";
-const localPlanPath = "crates/rustok-rbac/docs/implementation-plan.md";
+const libPath = "crates/modules/rustok-rbac/admin/src/lib.rs";
+const corePath = "crates/modules/rustok-rbac/admin/src/core.rs";
+const uiPath = "crates/modules/rustok-rbac/admin/src/ui/leptos.rs";
+const transportModPath = "crates/modules/rustok-rbac/admin/src/transport/mod.rs";
+const nativeAdapterPath = "crates/modules/rustok-rbac/admin/src/transport/native_server_adapter.rs";
+const localPlanPath = "crates/modules/rustok-rbac/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 
 for (const filePath of [
@@ -63,8 +63,8 @@ for (const filePath of [
   assertExists(filePath, `${filePath}: expected RBAC admin FFA boundary file`);
 }
 assertMissing(
-  "crates/rustok-rbac/admin/src/api.rs",
-  "crates/rustok-rbac/admin/src/api.rs: pre-FFA api facade must stay removed",
+  "crates/modules/rustok-rbac/admin/src/api.rs",
+  "crates/modules/rustok-rbac/admin/src/api.rs: pre-FFA api facade must stay removed",
 );
 
 const lib = readRepo(libPath);

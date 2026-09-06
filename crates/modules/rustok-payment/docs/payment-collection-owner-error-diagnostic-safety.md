@@ -62,7 +62,7 @@ The focused guard is:
 
 Source evidence is recorded in:
 
-- `crates/rustok-payment/contracts/evidence/payment-collection-owner-error-diagnostic-safety-source.json`.
+- `crates/modules/rustok-payment/contracts/evidence/payment-collection-owner-error-diagnostic-safety-source.json`.
 
 The aggregate ecommerce guard and its negative fixture are synchronized so raw Payment collection
 context or owner payloads fail closed instead of being treated as canonical.

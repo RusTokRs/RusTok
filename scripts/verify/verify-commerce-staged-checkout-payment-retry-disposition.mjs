@@ -26,13 +26,13 @@ const between = (source, start, end, label) => {
   return source.slice(startIndex, endIndex);
 };
 
-const staged = read('crates/rustok-commerce/src/services/staged_checkout.rs');
-const paymentStage = read('crates/rustok-commerce/src/services/checkout_payment_stages_legacy.rs');
-const operation = read('crates/rustok-commerce/src/services/checkout_operation.rs');
-const recovery = read('crates/rustok-commerce/src/services/recovering_staged_checkout.rs');
-const doc = read('crates/rustok-commerce/docs/checkout-payment-stage-context.md');
+const staged = read('crates/modules/rustok-commerce/src/services/staged_checkout.rs');
+const paymentStage = read('crates/modules/rustok-commerce/src/services/checkout_payment_stages_legacy.rs');
+const operation = read('crates/modules/rustok-commerce/src/services/checkout_operation.rs');
+const recovery = read('crates/modules/rustok-commerce/src/services/recovering_staged_checkout.rs');
+const doc = read('crates/modules/rustok-commerce/docs/checkout-payment-stage-context.md');
 const evidence = JSON.parse(read(
-  'crates/rustok-commerce/contracts/evidence/checkout-payment-stage-error-safety-source-review.json',
+  'crates/modules/rustok-commerce/contracts/evidence/checkout-payment-stage-error-safety-source-review.json',
 ));
 
 const disposition = between(

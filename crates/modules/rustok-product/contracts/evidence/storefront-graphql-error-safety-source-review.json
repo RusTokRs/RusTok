@@ -5,20 +5,20 @@
   "base_main_sha": "ba2b49ac520253f8d648123be712164abb9d7cda",
   "scope": "product storefront GraphQL public and diagnostic boundary",
   "reviewed_sources": [
-    "crates/rustok-commerce/docs/implementation-plan.md",
-    "crates/rustok-product/storefront/Cargo.toml",
-    "crates/rustok-product/storefront/src/catalog_controls.rs",
-    "crates/rustok-product/storefront/src/core.rs",
-    "crates/rustok-product/storefront/src/transport/mod.rs",
-    "crates/rustok-product/storefront/src/transport/graphql_adapter.rs",
-    "crates/rustok-product/storefront/src/transport/graphql_error_safety.rs",
-    "crates/rustok-product/storefront/src/transport/catalog_list_native.rs",
-    "crates/rustok-product/storefront/src/transport/native_server_adapter.rs",
-    "crates/rustok-product/contracts/evidence/storefront-graphql-error-safety-source.json",
-    "crates/rustok-product/docs/storefront-graphql-error-safety.md",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-product/storefront/Cargo.toml",
+    "crates/modules/rustok-product/storefront/src/catalog_controls.rs",
+    "crates/modules/rustok-product/storefront/src/core.rs",
+    "crates/modules/rustok-product/storefront/src/transport/mod.rs",
+    "crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs",
+    "crates/modules/rustok-product/storefront/src/transport/graphql_error_safety.rs",
+    "crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs",
+    "crates/modules/rustok-product/storefront/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-product/contracts/evidence/storefront-graphql-error-safety-source.json",
+    "crates/modules/rustok-product/docs/storefront-graphql-error-safety.md",
     "scripts/verify/verify-product-storefront-graphql-error-safety.mjs",
-    "crates/rustok-ui-transport/src/lib.rs",
-    "crates/rustok-graphql/src/lib.rs"
+    "crates/ui/rustok-ui-transport/src/lib.rs",
+    "crates/ui/rustok-graphql/src/lib.rs"
   ],
   "findings": [
     {

@@ -43,7 +43,7 @@ the activation receipt is intentionally **not** contiguous with P1's old publish
 
 ## Source change
 
-`crates/rustok-pages/src/services/page/artifact_set.rs` now applies the same exact anchor contract when reconstructing the minimal physical-loss activation prefix.
+`crates/modules/rustok-pages/src/services/page/artifact_set.rs` now applies the same exact anchor contract when reconstructing the minimal physical-loss activation prefix.
 
 The prefix anchor is:
 
@@ -97,9 +97,9 @@ This slice does not change:
 New execution-pending packet:
 
 ```text
-crates/rustok-pages/tests/artifact_rollback_activated_repair_rollback_continuity_postgres.rs
-crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-repair-rollback-continuity.mjs
-crates/rustok-pages/contracts/evidence/pages-rollback-activated-repair-rollback-continuity-source.json
+crates/modules/rustok-pages/tests/artifact_rollback_activated_repair_rollback_continuity_postgres.rs
+crates/modules/rustok-pages/scripts/verify/verify-pages-rollback-activated-repair-rollback-continuity.mjs
+crates/modules/rustok-pages/contracts/evidence/pages-rollback-activated-repair-rollback-continuity-source.json
 ```
 
 It retains two source scenarios:

@@ -79,7 +79,7 @@ Marker:
 explicit-artifact-repair-postgres-harness-source-ready
 ```
 
-`crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs` applies the real Outbox and Pages migrations in an isolated PostgreSQL schema and executes activation through this owner command after a reviewed publish and append-only rebuild.
+`crates/modules/rustok-pages/tests/explicit_artifact_repair_postgres.rs` applies the real Outbox and Pages migrations in an isolated PostgreSQL schema and executes activation through this owner command after a reviewed publish and append-only rebuild.
 
 When executed, the packet requires:
 
@@ -116,10 +116,10 @@ Bounded GraphQL/HTTP/OpenAPI transports now expose activation separately from re
 Suggested commands, intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance.mjs
 cargo test -p rustok-pages --test explicit_artifact_binding_replacement_sqlite -- --nocapture
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-pages --test explicit_artifact_repair_postgres -- --nocapture

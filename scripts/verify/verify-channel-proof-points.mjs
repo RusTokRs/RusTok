@@ -15,7 +15,7 @@ const assertAll = (path, markers) => {
   return source;
 };
 
-const pagesStorefront = assertAll('crates/rustok-pages/storefront/src/transport/native_server_adapter.rs', [
+const pagesStorefront = assertAll('crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs', [
   'ChannelService::new',
   '.is_module_enabled(channel_id, MODULE_SLUG)',
   'normalize_channel_slug',
@@ -24,26 +24,26 @@ const pagesStorefront = assertAll('crates/rustok-pages/storefront/src/transport/
 ]);
 assertContains(pagesStorefront, "Module '{MODULE_SLUG}' is not enabled for channel", 'pages storefront must return channel-binding denial context');
 
-assertAll('crates/rustok-pages/src/graphql/query.rs', [
+assertAll('crates/modules/rustok-pages/src/graphql/query.rs', [
   'ChannelService::new',
   '.is_module_enabled(channel_id, MODULE_SLUG)',
   'public_channel_slug(ctx)',
   'is_page_visible_for_channel',
   'public_request_rejects_disabled_pages_channel_binding',
 ]);
-assertAll('crates/rustok-pages/src/services/page.rs', [
+assertAll('crates/modules/rustok-pages/src/services/page.rs', [
   'apply_public_page_channel_filter',
   'matching_page_channel_visibility_subquery',
   'normalize_public_channel_slug',
   'is_page_visible_for_channel',
 ]);
-assertAll('crates/rustok-pages/README.md', [
+assertAll('crates/modules/rustok-pages/README.md', [
   'channel_module_bindings',
   'channelSlugs',
   'rustok-channel',
 ]);
 
-const blogStorefront = assertAll('crates/rustok-blog/storefront/src/transport/native_server_adapter.rs', [
+const blogStorefront = assertAll('crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs', [
   'ChannelService::new',
   '.is_module_enabled(channel_id, MODULE_SLUG)',
   'normalize_channel_slug',
@@ -51,66 +51,66 @@ const blogStorefront = assertAll('crates/rustok-blog/storefront/src/transport/na
   'request_context.channel_slug',
 ]);
 assertContains(blogStorefront, "Module '{MODULE_SLUG}' is not enabled for channel", 'blog storefront must return channel-binding denial context');
-assertAll('crates/rustok-blog/src/graphql/query.rs', [
+assertAll('crates/modules/rustok-blog/src/graphql/query.rs', [
   'ChannelService::new',
   '.is_module_enabled(channel_id, MODULE_SLUG)',
   'public_channel_slug(ctx)',
   'is_post_visible_for_channel',
   'public_request_rejects_disabled_blog_channel_binding',
 ]);
-assertAll('crates/rustok-blog/src/seo_targets.rs', [
+assertAll('crates/modules/rustok-blog/src/seo_targets.rs', [
   'channel_visible',
   'normalize_channel_slug',
   'request.channel_slug',
 ]);
-assertAll('crates/rustok-blog/README.md', [
+assertAll('crates/modules/rustok-blog/README.md', [
   'channel_module_bindings',
   'channelSlugs',
   'rustok-channel',
 ]);
-assertAll('crates/rustok-blog/CRATE_API.md', [
+assertAll('crates/modules/rustok-blog/CRATE_API.md', [
   'channel_slugs',
   'channelSlugs',
 ]);
 
-assertAll('crates/rustok-commerce/src/controllers/store/mod.rs', [
+assertAll('crates/modules/rustok-commerce/src/controllers/store/mod.rs', [
   'is_module_enabled_for_request_channel',
   "Module '{MODULE_SLUG}' is not enabled for channel",
   'request_context',
 ]);
-assertAll('crates/rustok-commerce/src/graphql/mod.rs', [
+assertAll('crates/modules/rustok-commerce/src/graphql/mod.rs', [
   'is_module_enabled_for_request_channel',
   "Module '{MODULE_SLUG}' is not enabled for channel",
 ]);
-assertAll('crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs', [
+assertAll('crates/modules/rustok-commerce/storefront/src/transport/native_server_adapter.rs', [
   'request_context.channel_slug',
   'channel_resolution_source',
 ]);
-assertAll('crates/rustok-commerce/storefront/src/core/presentation.rs', [
+assertAll('crates/modules/rustok-commerce/storefront/src/core/presentation.rs', [
   'channel_resolution_source',
   'channel_slug',
 ]);
-assertAll('crates/rustok-commerce/tests/support.rs', [
+assertAll('crates/modules/rustok-commerce/tests/support.rs', [
   'rustok_channel::entities',
   'channel_module_binding::Entity',
 ]);
-assertAll('crates/rustok-commerce/tests/pricing_service_test/resolve.rs', [
+assertAll('crates/modules/rustok-commerce/tests/pricing_service_test/resolve.rs', [
   'test_resolve_variant_price_matches_channel_slug_without_channel_id',
   'test_resolve_variant_price_prefers_channel_scoped_base_price',
   'test_resolve_variant_price_does_not_leak_channel_scoped_price',
 ]);
-assertAll('crates/rustok-commerce/docs/README.md', [
+assertAll('crates/modules/rustok-commerce/docs/README.md', [
   'ChannelContext',
   'channel_module_bindings',
   'channel_slug',
 ]);
-assertAll('crates/rustok-commerce/README.md', [
+assertAll('crates/modules/rustok-commerce/README.md', [
   'ChannelContext',
   'rustok-channel',
   'without introducing a second sales-channel domain',
 ]);
 
-assertAll('crates/rustok-forum/src/graphql/query_runtime.rs', [
+assertAll('crates/modules/rustok-forum/src/graphql/query_runtime.rs', [
   'ChannelService::new',
   '.is_module_enabled(channel_id, MODULE_SLUG)',
   'public_channel_slug(ctx)',
@@ -119,31 +119,31 @@ assertAll('crates/rustok-forum/src/graphql/query_runtime.rs', [
   'list_public_storefront_visible_with_locale_fallback',
   'Some(&PUBLIC_REPLY_STATUSES)',
 ]);
-assertAll('crates/rustok-forum/src/services/topic.rs', [
+assertAll('crates/modules/rustok-forum/src/services/topic.rs', [
   'apply_public_topic_channel_filter',
   'matching_topic_channel_access_subquery',
   'normalize_public_channel_slug',
   'forum_topic_channel_access::Entity',
 ]);
-assertAll('crates/rustok-forum/src/seo_targets.rs', [
+assertAll('crates/modules/rustok-forum/src/seo_targets.rs', [
   'channel_visible',
   'normalize_channel_slug',
   'request.channel_slug',
 ]);
-assertAll('crates/rustok-forum/README.md', [
+assertAll('crates/modules/rustok-forum/README.md', [
   'rustok-channel',
   'channel-restricted topics',
   'channel access',
 ]);
-assertAll('crates/rustok-forum/docs/README.md', [
+assertAll('crates/modules/rustok-forum/docs/README.md', [
   'rustok-channel',
   'visibility/pilot gating',
 ]);
 
 for (const path of [
-  'crates/rustok-channel/docs/implementation-plan.md',
-  'crates/rustok-channel/docs/README.md',
-  'crates/rustok-channel/README.md',
+  'crates/modules/rustok-channel/docs/implementation-plan.md',
+  'crates/modules/rustok-channel/docs/README.md',
+  'crates/modules/rustok-channel/README.md',
   'docs/modules/registry.md',
 ]) {
   assertAll(path, [

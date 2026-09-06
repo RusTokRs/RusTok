@@ -1,10 +1,10 @@
 {
   "status": "commerce_admin_reconciliation_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/controllers/reconciliation.rs",
+    "crates/modules/rustok-commerce/src/controllers/reconciliation.rs",
     "scripts/verify/verify-commerce-admin-fulfillment-reconciliation-error-context.mjs",
-    "crates/rustok-commerce/docs/admin-reconciliation-diagnostic-safety.md",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/admin-reconciliation-diagnostic-safety.md",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_contract": {
     "raw_fulfillment_error_logged": false,

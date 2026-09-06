@@ -6,7 +6,7 @@ Status: `source_closed_unvalidated`
 
 This source wave keeps the mounted Commerce GraphQL payment query contract unchanged while removing concrete `rustok_payment::PaymentService` construction from its private compatibility facade.
 
-The resolver source in `crates/rustok-commerce/src/graphql/query.rs` remains unchanged. Its seven `PaymentService::new(db.clone())` expressions still call the same six logical reads and return the same successful payment collection/refund DTOs. Existing `PaymentCollectionNotFound` and `RefundNotFound` branches continue to return `None` where the GraphQL contract already requires that behavior.
+The resolver source in `crates/modules/rustok-commerce/src/graphql/query.rs` remains unchanged. Its seven `PaymentService::new(db.clone())` expressions still call the same six logical reads and return the same successful payment collection/refund DTOs. Existing `PaymentCollectionNotFound` and `RefundNotFound` branches continue to return `None` where the GraphQL contract already requires that behavior.
 
 ## Owner capabilities
 
@@ -64,7 +64,7 @@ The Payment admin read owner adapter was also tightened in this slice: its techn
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/graphql-query-payment-error-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/graphql-query-payment-error-safety-source-review.json`
 - `scripts/verify/verify-commerce-graphql-query-payment-error-safety.mjs`
 
 ## Still open

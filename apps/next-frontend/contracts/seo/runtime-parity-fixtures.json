@@ -154,15 +154,15 @@
     },
     {
       "gate": "rust_renderer_static_review",
-      "scope": "crates/rustok-seo/render/src/lib.rs",
-      "command": "rg -n \"render_head_html|robots_directives|structured_data_blocks\" crates/rustok-seo/render/src/lib.rs",
+      "scope": "crates/modules/rustok-seo/render/src/lib.rs",
+      "command": "rg -n \"render_head_html|robots_directives|structured_data_blocks\" crates/modules/rustok-seo/render/src/lib.rs",
       "compileFree": true,
       "expected": "shared Rust renderer still owns head serialization for canonical SeoPageContext"
     },
     {
       "gate": "backend_transport_static_review",
-      "scope": "crates/rustok-seo/src/graphql/mod.rs;apps/next-admin/src/shared/api/seo.ts",
-      "command": "rg -n \"seoPageContext|seoDiagnostics|seoIndexDeliveryStatus|/api/seo/index/tracking|/api/seo/index/repair-replay\" crates/rustok-seo/src/graphql/mod.rs apps/next-admin/src/shared/api/seo.ts",
+      "scope": "crates/modules/rustok-seo/src/graphql/mod.rs;apps/next-admin/src/shared/api/seo.ts",
+      "command": "rg -n \"seoPageContext|seoDiagnostics|seoIndexDeliveryStatus|/api/seo/index/tracking|/api/seo/index/repair-replay\" crates/modules/rustok-seo/src/graphql/mod.rs apps/next-admin/src/shared/api/seo.ts",
       "compileFree": true,
       "expected": "GraphQL page context/diagnostics/index status and REST tracking/replay adapter strings remain present"
     },
@@ -175,15 +175,15 @@
     },
     {
       "gate": "backend_rbac_gating_static_review",
-      "scope": "crates/rustok-seo/src/graphql/mod.rs;crates/rustok-seo/src/controllers/mod.rs",
-      "command": "rg -n \"require_seo_permission|ensure_seo_permission|SEO_MANAGE|SEO_READ\" crates/rustok-seo/src/graphql/mod.rs crates/rustok-seo/src/controllers/mod.rs",
+      "scope": "crates/modules/rustok-seo/src/graphql/mod.rs;crates/modules/rustok-seo/src/controllers/mod.rs",
+      "command": "rg -n \"require_seo_permission|ensure_seo_permission|SEO_MANAGE|SEO_READ\" crates/modules/rustok-seo/src/graphql/mod.rs crates/modules/rustok-seo/src/controllers/mod.rs",
       "compileFree": true,
       "expected": "GraphQL and REST control-plane surfaces keep explicit SEO_READ/SEO_MANAGE permission guards."
     },
     {
       "gate": "replay_index_idempotency_static_review",
-      "scope": "crates/rustok-seo/src/services/events.rs;crates/rustok-seo/src/entities/mod.rs;crates/rustok-seo/src/migrations",
-      "command": "rg -n \"idempotency_key|idx_seo_event_deliveries_idempotency|idx_seo_index_deliveries_unique_transition|ReplayCompleted|RepairOnly\" crates/rustok-seo/src/services/events.rs crates/rustok-seo/src/entities/mod.rs crates/rustok-seo/src/migrations",
+      "scope": "crates/modules/rustok-seo/src/services/events.rs;crates/modules/rustok-seo/src/entities/mod.rs;crates/modules/rustok-seo/src/migrations",
+      "command": "rg -n \"idempotency_key|idx_seo_event_deliveries_idempotency|idx_seo_index_deliveries_unique_transition|ReplayCompleted|RepairOnly\" crates/modules/rustok-seo/src/services/events.rs crates/modules/rustok-seo/src/entities/mod.rs crates/modules/rustok-seo/src/migrations",
       "compileFree": true,
       "expected": "Delivery trackers and replay state symbols keep idempotency and forward-only replay invariants visible."
     },
@@ -196,7 +196,7 @@
     },
     {
       "gate": "d8_unit_inventory_static_review",
-      "scope": "crates/rustok-seo/src/services/events.rs;crates/rustok-seo/src/services/sitemaps.rs;crates/rustok-seo/src/graphql/mod.rs;apps/storefront/src/lib.rs",
+      "scope": "crates/modules/rustok-seo/src/services/events.rs;crates/modules/rustok-seo/src/services/sitemaps.rs;crates/modules/rustok-seo/src/graphql/mod.rs;apps/storefront/src/lib.rs",
       "command": "npm --prefix apps/next-frontend run verify:seo-runtime-fixtures",
       "compileFree": true,
       "expected": "targeted unit/integration test inventory remains source-locked without executing Rust or Next compilers"
@@ -266,7 +266,7 @@
   "docsSyncMatrix": [
     {
       "scope": "rustok-seo runtime docs",
-      "path": "crates/rustok-seo/docs/README.md",
+      "path": "crates/modules/rustok-seo/docs/README.md",
       "covers": [
         "Phase D status",
         "D8/D9 verification policy",
@@ -306,7 +306,7 @@
     },
     {
       "scope": "SEO operations runbook",
-      "path": "crates/rustok-seo/docs/operations-runbook.md",
+      "path": "crates/modules/rustok-seo/docs/operations-runbook.md",
       "covers": [
         "D9 incident drill templates",
         "live evidence closeout criteria",
@@ -415,7 +415,7 @@
     },
     {
       "name": "rust_renderer_head_contract",
-      "path": "crates/rustok-seo/render/src/lib.rs",
+      "path": "crates/modules/rustok-seo/render/src/lib.rs",
       "mustContain": [
         "render_head_html",
         "robots_directives",
@@ -452,7 +452,7 @@
   "rbacModuleGatingMatrix": [
     {
       "surface": "GraphQL page context read",
-      "path": "crates/rustok-seo/src/graphql/mod.rs",
+      "path": "crates/modules/rustok-seo/src/graphql/mod.rs",
       "mustContain": [
         "seo_page_context",
         "Permission::SEO_READ",
@@ -462,7 +462,7 @@
     },
     {
       "surface": "GraphQL index tracking/replay manage",
-      "path": "crates/rustok-seo/src/graphql/mod.rs",
+      "path": "crates/modules/rustok-seo/src/graphql/mod.rs",
       "mustContain": [
         "seo_index_delivery_status",
         "run_seo_index_repair_replay",
@@ -472,7 +472,7 @@
     },
     {
       "surface": "REST diagnostics/tracking/replay manage",
-      "path": "crates/rustok-seo/src/controllers/mod.rs",
+      "path": "crates/modules/rustok-seo/src/controllers/mod.rs",
       "mustContain": [
         "ensure_seo_permission",
         "Permission::SEO_MANAGE",
@@ -495,7 +495,7 @@
   "replayIndexInvariantMatrix": [
     {
       "invariant": "event delivery idempotency",
-      "path": "crates/rustok-seo/src/services/events.rs",
+      "path": "crates/modules/rustok-seo/src/services/events.rs",
       "mustContain": [
         "load_delivery_by_idempotency_key",
         "skipping duplicate SEO domain event emission",
@@ -504,7 +504,7 @@
     },
     {
       "invariant": "index delivery unique transition",
-      "path": "crates/rustok-seo/src/services/events.rs",
+      "path": "crates/modules/rustok-seo/src/services/events.rs",
       "mustContain": [
         "upsert_index_delivery",
         "idx_seo_index_deliveries_unique_transition",
@@ -513,7 +513,7 @@
     },
     {
       "invariant": "forward-only replay modes",
-      "path": "crates/rustok-seo/src/dto.rs",
+      "path": "crates/modules/rustok-seo/src/dto.rs",
       "mustContain": [
         "NotStarted",
         "RepairOnly",
@@ -572,7 +572,7 @@
   "semanticErrorParityMatrix": [
     {
       "surface": "GraphQL validation errors",
-      "path": "crates/rustok-seo/src/graphql/mod.rs",
+      "path": "crates/modules/rustok-seo/src/graphql/mod.rs",
       "mustContain": [
         "GraphQLError>::bad_user_input",
         "SeoIndexRepairReplayInput",
@@ -582,7 +582,7 @@
     },
     {
       "surface": "GraphQL permission errors",
-      "path": "crates/rustok-seo/src/graphql/mod.rs",
+      "path": "crates/modules/rustok-seo/src/graphql/mod.rs",
       "mustContain": [
         "GraphQLError>::permission_denied",
         "Permission::SEO_MANAGE",
@@ -592,7 +592,7 @@
     },
     {
       "surface": "REST error envelope",
-      "path": "crates/rustok-seo/src/controllers/mod.rs",
+      "path": "crates/modules/rustok-seo/src/controllers/mod.rs",
       "mustContain": [
         "ErrorCode::BadUserInput",
         "ErrorCode::PermissionDenied",
@@ -694,7 +694,7 @@
   "incidentEvidenceTemplates": [
     {
       "scenario": "seo_event_backlog_stuck",
-      "runbook": "crates/rustok-seo/docs/operations-runbook.md",
+      "runbook": "crates/modules/rustok-seo/docs/operations-runbook.md",
       "requiredEvidence": [
         "initial queued/failed counters",
         "worker/outbox health sample",
@@ -705,7 +705,7 @@
     },
     {
       "scenario": "partial_indexing_failures",
-      "runbook": "crates/rustok-seo/docs/operations-runbook.md",
+      "runbook": "crates/modules/rustok-seo/docs/operations-runbook.md",
       "requiredEvidence": [
         "failed/dead-letter deliveries by target_kind",
         "root cause classification",
@@ -716,7 +716,7 @@
     },
     {
       "scenario": "safe_replay_reindex",
-      "runbook": "crates/rustok-seo/docs/replay-repair-runbook.md",
+      "runbook": "crates/modules/rustok-seo/docs/replay-repair-runbook.md",
       "requiredEvidence": [
         "selected replay mode",
         "cursor before/after",
@@ -770,7 +770,7 @@
   "unitCoverageInventory": [
     {
       "batch": "D8.1 normalization and validation",
-      "path": "crates/rustok-seo/src/services/sitemaps.rs",
+      "path": "crates/modules/rustok-seo/src/services/sitemaps.rs",
       "commandWhenCompilationAllowed": "cargo test -p rustok-seo normalize_sitemap_submission_endpoints_filters_invalid_and_deduplicates --lib --config profile.dev.debug=0",
       "mustContain": [
         "normalize_sitemap_submission_endpoints_filters_invalid_and_deduplicates",
@@ -780,7 +780,7 @@
     },
     {
       "batch": "D8.1 replay transitions and idempotency",
-      "path": "crates/rustok-seo/src/services/events.rs",
+      "path": "crates/modules/rustok-seo/src/services/events.rs",
       "commandWhenCompilationAllowed": "cargo test -p rustok-seo replay_mode_is_forward_only historical_replay_deduplicates_repeat_runs --lib --config profile.dev.debug=0",
       "mustContain": [
         "replay_mode_is_forward_only",
@@ -791,7 +791,7 @@
     },
     {
       "batch": "D8.1 GraphQL page-context contract",
-      "path": "crates/rustok-seo/src/graphql/mod.rs",
+      "path": "crates/modules/rustok-seo/src/graphql/mod.rs",
       "commandWhenCompilationAllowed": "cargo test -p rustok-seo graphql_seo_page_context_matches_redirect_service_contract --lib --config profile.dev.debug=0",
       "mustContain": [
         "graphql_seo_page_context_matches_redirect_service_contract",
@@ -1073,7 +1073,7 @@
   "liveEvidenceRunbookCrosswalk": [
     {
       "scenario": "seo_event_backlog_stuck",
-      "runbook": "crates/rustok-seo/docs/operations-runbook.md",
+      "runbook": "crates/modules/rustok-seo/docs/operations-runbook.md",
       "artifact": "outbox-index-before-after-counters.json",
       "mustCapture": [
         "delivery status before repair",
@@ -1089,7 +1089,7 @@
     },
     {
       "scenario": "partial_indexing_failures",
-      "runbook": "crates/rustok-seo/docs/operations-runbook.md",
+      "runbook": "crates/modules/rustok-seo/docs/operations-runbook.md",
       "artifact": "backend-graphql-rest-parity.json",
       "mustCapture": [
         "failed target kind/id sample",
@@ -1105,7 +1105,7 @@
     },
     {
       "scenario": "replay_reindex_drill",
-      "runbook": "crates/rustok-seo/docs/replay-repair-runbook.md",
+      "runbook": "crates/modules/rustok-seo/docs/replay-repair-runbook.md",
       "artifact": "owner-signoff.md",
       "mustCapture": [
         "repair_only dry-run decision",

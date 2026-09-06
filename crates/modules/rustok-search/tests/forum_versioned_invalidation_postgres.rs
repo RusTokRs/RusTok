@@ -587,7 +587,7 @@ fn source_commit() -> TestResult<String> {
 }
 
 fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")
 }
 
 fn postgres_database_url() -> Option<String> {

@@ -4,7 +4,7 @@
 
 `apps/admin` is an FFA-compatible Leptos composition host. It owns shell, routing,
 host-level operator screens and cross-module composition, while module business UI
-belongs in owner packages under `crates/rustok-*/admin`.
+belongs in owner packages under `crates/modules/rustok-*/admin`.
 
 The live host structure is:
 

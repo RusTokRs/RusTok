@@ -876,7 +876,7 @@ mod tests {
         let mut modules = HashMap::new();
         modules.insert(
             "content".to_string(),
-            path_module("rustok-content", "crates/rustok-content", false),
+            path_module("rustok-content", "crates/modules/rustok-content", false),
         );
         let manifest = ModulesManifest {
             schema: 2,
@@ -919,7 +919,7 @@ mod tests {
         let mut modules = HashMap::new();
         modules.insert(
             "content".to_string(),
-            path_module("rustok-content", "crates/rustok-content", false),
+            path_module("rustok-content", "crates/modules/rustok-content", false),
         );
         let manifest = ModulesManifest {
             schema: 2,
@@ -1021,7 +1021,7 @@ mod tests {
         let mut modules = HashMap::new();
         modules.insert(
             "tenant".to_string(),
-            path_module("rustok-tenant", "crates/rustok-tenant", true),
+            path_module("rustok-tenant", "crates/modules/rustok-tenant", true),
         );
         let manifest = ModulesManifest {
             schema: 2,
@@ -1090,7 +1090,7 @@ showSummaries = { type = "boolean", default = true }
         let mut modules = HashMap::new();
         modules.insert(
             "content".to_string(),
-            path_module("rustok-content", "crates/rustok-content", false),
+            path_module("rustok-content", "crates/modules/rustok-content", false),
         );
         let manifest = ModulesManifest {
             schema: 2,

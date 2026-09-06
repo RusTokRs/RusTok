@@ -27,7 +27,7 @@ The assessment distinguishes disabled, insufficient expiry, insufficient capacit
 Machine contract:
 
 ```text
-crates/rustok-iggy/contracts/evidence/dedup-recovery-window-policy-source.json
+crates/modules/rustok-iggy/contracts/evidence/dedup-recovery-window-policy-source.json
 ```
 
 Static verifier:
@@ -41,9 +41,9 @@ node scripts/verify/verify-iggy-dedup-recovery-window-policy.mjs
 The retained slice adds:
 
 ```text
-crates/rustok-iggy/contracts/evidence/
+crates/modules/rustok-iggy/contracts/evidence/
   dedup-recovery-window-calibration-execution-contract.json
-crates/rustok-iggy/tests/
+crates/modules/rustok-iggy/tests/
   dedup_recovery_window_calibration.rs
 scripts/evidence/
   capture-iggy-dedup-recovery-window-calibration.mjs

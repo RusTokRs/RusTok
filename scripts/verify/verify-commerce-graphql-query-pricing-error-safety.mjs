@@ -12,14 +12,14 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  query: 'crates/rustok-commerce/src/graphql/query.rs',
-  safeSource: 'crates/rustok-commerce/src/graphql/safe_query/source.rs',
+  query: 'crates/modules/rustok-commerce/src/graphql/query.rs',
+  safeSource: 'crates/modules/rustok-commerce/src/graphql/safe_query/source.rs',
   pricingShim:
-    'crates/rustok-commerce/src/graphql/safe_query/source/rustok_pricing_shim.rs',
-  ownerPorts: 'crates/rustok-pricing/src/ports.rs',
+    'crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_pricing_shim.rs',
+  ownerPorts: 'crates/modules/rustok-pricing/src/ports.rs',
   evidence:
-    'crates/rustok-commerce/contracts/evidence/graphql-query-pricing-error-safety-source-review.json',
-  document: 'crates/rustok-commerce/docs/graphql-query-pricing-error-safety.md',
+    'crates/modules/rustok-commerce/contracts/evidence/graphql-query-pricing-error-safety-source-review.json',
+  document: 'crates/modules/rustok-commerce/docs/graphql-query-pricing-error-safety.md',
 };
 
 const query = read(paths.query);
@@ -330,7 +330,7 @@ if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
 for (const marker of [
   '# Commerce GraphQL pricing error safety',
   'Status: `source_closed_unvalidated`',
-  'The compatibility resolver source in `crates/rustok-commerce/src/graphql/query.rs` remains unchanged',
+  'The compatibility resolver source in `crates/modules/rustok-commerce/src/graphql/query.rs` remains unchanged',
   'derived only from `PortErrorKind`',
   '`PRICING_TEMPORARILY_UNAVAILABLE`',
   'Owner code strings and owner message text are not used for control flow.',

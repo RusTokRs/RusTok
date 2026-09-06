@@ -1,5 +1,5 @@
 ---
-id: doc://crates/rustok-forum/docs/forum-12c-mention-events.md
+id: doc://crates/modules/rustok-forum/docs/forum-12c-mention-events.md
 kind: implementation_record
 language: en
 status: delivered

@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This slice hardens the context-extraction and runtime-error mappers used by the Order-owned native checkout endpoint:
 
-- `crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs`.
+- `crates/modules/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs`.
 
 The underlying Commerce runtime already exposes stable public checkout codes and messages. This slice keeps that public contract intact while limiting Order transport diagnostics to bounded type and request-shape facts.
 

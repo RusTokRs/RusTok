@@ -34,7 +34,7 @@ function requireMarkers(relative, markers) {
   }
 }
 
-const taxonomySourceFiles = walkRust("crates/rustok-taxonomy/src");
+const taxonomySourceFiles = walkRust("crates/modules/rustok-taxonomy/src");
 if (taxonomySourceFiles.length === 0) {
   failures.push("Taxonomy production source tree is missing or empty");
 }
@@ -94,18 +94,18 @@ requireMarkers(
 );
 
 requireMarkers(
-  "crates/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs",
+  "crates/modules/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs",
   [
     ".table(BlogPostTags::Table)",
     ".to(TaxonomyTerms::Table, TaxonomyTerms::Id)",
   ],
 );
-requireMarkers("crates/rustok-blog/src/entities/blog_post_tag.rs", [
+requireMarkers("crates/modules/rustok-blog/src/entities/blog_post_tag.rs", [
   'table_name = "blog_post_tags"',
 ]);
 
 requireMarkers(
-  "crates/rustok-forum/src/migrations/m20260329_000005_create_forum_topic_tags.rs",
+  "crates/modules/rustok-forum/src/migrations/m20260329_000005_create_forum_topic_tags.rs",
   [
     ".table(ForumTopicTags::Table)",
     "ForumTopicTags::TopicId",
@@ -113,12 +113,12 @@ requireMarkers(
     ".to(TaxonomyTerms::Table, TaxonomyTerms::Id)",
   ],
 );
-requireMarkers("crates/rustok-forum/src/entities/forum_topic_tag.rs", [
+requireMarkers("crates/modules/rustok-forum/src/entities/forum_topic_tag.rs", [
   'table_name = "forum_topic_tags"',
 ]);
 
 requireMarkers(
-  "crates/rustok-product/src/migrations/m20260329_000001_create_product_tags.rs",
+  "crates/modules/rustok-product/src/migrations/m20260329_000001_create_product_tags.rs",
   [
     ".table(ProductTags::Table)",
     "ProductTags::ProductId",
@@ -126,12 +126,12 @@ requireMarkers(
     ".to(TaxonomyTerms::Table, TaxonomyTerms::Id)",
   ],
 );
-requireMarkers("crates/rustok-product/src/entities/product_tag.rs", [
+requireMarkers("crates/modules/rustok-product/src/entities/product_tag.rs", [
   'table_name = "product_tags"',
 ]);
 
 requireMarkers(
-  "crates/rustok-profiles/src/migrations/m20260330_000002_create_profile_tags.rs",
+  "crates/modules/rustok-profiles/src/migrations/m20260330_000002_create_profile_tags.rs",
   [
     ".table(ProfileTags::Table)",
     "ProfileTags::ProfileUserId",
@@ -139,7 +139,7 @@ requireMarkers(
     ".to(TaxonomyTerms::Table, TaxonomyTerms::Id)",
   ],
 );
-requireMarkers("crates/rustok-profiles/src/entities/profile_tag.rs", [
+requireMarkers("crates/modules/rustok-profiles/src/entities/profile_tag.rs", [
   'table_name = "profile_tags"',
 ]);
 

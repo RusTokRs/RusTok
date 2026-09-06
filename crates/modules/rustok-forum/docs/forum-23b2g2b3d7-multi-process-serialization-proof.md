@@ -13,7 +13,7 @@ trigger from independent `rustok-server` integration-target OS processes.
 The machine-readable proof contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-multi-process-proof.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-multi-process-proof.json
 ```
 
 The executable test is:

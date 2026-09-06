@@ -13,14 +13,14 @@
     "required_backend": "postgresql",
     "isolation": "unique schema first in search_path with public extensions available"
   },
-  "test_target": "crates/rustok-search/tests/forum_canonical_route_reindex_postgres.rs",
+  "test_target": "crates/modules/rustok-search/tests/forum_canonical_route_reindex_postgres.rs",
   "production_contract": {
-    "forum_projection": "crates/rustok-forum/src/search_projection.rs",
+    "forum_projection": "crates/modules/rustok-forum/src/search_projection.rs",
     "category_route_owner": "ForumCategoryRouteService",
     "topic_route_owner": "ForumTopicRouteService",
-    "search_ingestion": "crates/rustok-search/src/ingestion.rs",
-    "search_projector": "crates/rustok-search/src/forum_projector.rs",
-    "search_url_projection": "crates/rustok-search/src/engine.rs",
+    "search_ingestion": "crates/modules/rustok-search/src/ingestion.rs",
+    "search_projector": "crates/modules/rustok-search/src/forum_projector.rs",
+    "search_url_projection": "crates/modules/rustok-search/src/engine.rs",
     "source_guardrail": "scripts/verify/verify-forum-search-canonical-route-reindex-harness.mjs"
   },
   "cases": [

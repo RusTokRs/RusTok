@@ -36,15 +36,15 @@ function requireOrder(source, first, second, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-topic-audience-exact-read.json";
+  "crates/modules/rustok-forum/contracts/forum-topic-audience-exact-read.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const owner = read(contract.owner_service);
 const sourceTest = read(contract.source_test);
 const ownerNote = read(contract.owner_note);
-const servicesMod = read("crates/rustok-forum/src/services/mod.rs");
-const crateRoot = read("crates/rustok-forum/src/lib.rs");
+const servicesMod = read("crates/modules/rustok-forum/src/services/mod.rs");
+const crateRoot = read("crates/modules/rustok-forum/src/lib.rs");
 const upstream = read(
-  "crates/rustok-forum/contracts/forum-audience-plan-sync.json",
+  "crates/modules/rustok-forum/contracts/forum-audience-plan-sync.json",
 );
 
 if (
@@ -142,7 +142,7 @@ for (const marker of [
 
 for (const marker of [
   '"downstream_task": "FORUM-20BB"',
-  '"downstream_contract": "crates/rustok-forum/contracts/forum-topic-audience-exact-read.json"',
+  '"downstream_contract": "crates/modules/rustok-forum/contracts/forum-topic-audience-exact-read.json"',
 ]) {
   requireText(upstream, marker, `FORUM-20BA handoff is missing ${marker}`);
 }

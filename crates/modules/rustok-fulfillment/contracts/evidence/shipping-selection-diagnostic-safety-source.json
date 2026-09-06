@@ -1,13 +1,13 @@
 {
   "status": "fulfillment_shipping_selection_diagnostic_safety_source_unvalidated",
   "scope": {
-    "owner_source": "crates/rustok-fulfillment/src/ports.rs",
+    "owner_source": "crates/modules/rustok-fulfillment/src/ports.rs",
     "public_trait": "ShippingSelectionPort",
     "operations": [
       "list_seller_shipping_options",
       "select_shipping_option"
     ],
-    "documentation": "crates/rustok-fulfillment/docs/shipping-selection-diagnostic-safety.md",
+    "documentation": "crates/modules/rustok-fulfillment/docs/shipping-selection-diagnostic-safety.md",
     "focused_verifier": "scripts/verify/verify-fulfillment-shipping-selection-diagnostic-safety.mjs",
     "broad_verifier": "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs"
   },

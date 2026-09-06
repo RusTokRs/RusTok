@@ -16,7 +16,7 @@ remain strings until migrations and consumer parity are proven.
   for unknown legacy or external values.
 - predicates for checkout admission, completion, and terminal state live on the
   canonical enum.
-- a second cart status enum or `crates/rustok-cart/src/status.rs` is forbidden.
+- a second cart status enum or `crates/modules/rustok-cart/src/status.rs` is forbidden.
 
 ### Order
 

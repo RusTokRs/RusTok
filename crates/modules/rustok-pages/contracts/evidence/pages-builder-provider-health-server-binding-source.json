@@ -118,7 +118,7 @@
     "formatting_run": false,
     "workflow_or_ci_run": false
   },
-  "verifier": "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs",
+  "verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs",
   "next_cursor": {
     "server_provider_health_binding": "source_ready_maintainer_activation_pending",
     "ui_ssr_browser_intent_health_binding": "source_ready_runtime_activation_pending",

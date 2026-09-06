@@ -2756,7 +2756,7 @@ mod tests {
     #[tokio::test]
     async fn separate_process_recovers_and_reclaims_an_expired_execution() {
         let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
+            .join("../../..")
             .canonicalize()
             .expect("workspace path");
         let evidence_dir = workspace.join("target/structured-process-tests");

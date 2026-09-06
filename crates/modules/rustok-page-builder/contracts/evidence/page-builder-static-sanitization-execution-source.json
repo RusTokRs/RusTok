@@ -4,7 +4,7 @@
   "scope": "page_builder_fba_static_sanitization",
   "purpose": "Produce a bounded retained GitHub Actions execution packet for the canonical Page Builder static publish sanitization boundary without mutating the FBA registry or claiming transport_verified.",
   "target": {
-    "fba_registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "fba_registry": "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
     "registry_required_status": "boundary_ready",
     "executed_evidence_json_pointer": "/provider/static_sanitization_contract/executed_evidence",
     "required_before_value": "pending",
@@ -13,7 +13,7 @@
   "execution": {
     "workflow": ".github/workflows/page-builder-static-sanitization-evidence.yml",
     "source_verifiers": [
-      "node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs",
+      "node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs",
       "node scripts/verify/verify-page-builder-static-sanitization-execution.mjs"
     ],
     "test_list_command": "cargo test --locked -p rustok-page-builder --lib -- --list",
@@ -50,14 +50,14 @@
     "credentials_or_cookies_retained": false
   },
   "required_source_files": [
-    "crates/rustok-page-builder/src/publish_sanitization.rs",
-    "crates/rustok-page-builder/src/static_publish_policy.rs",
-    "crates/rustok-page-builder/src/static_publish_resource_limits.rs",
-    "crates/rustok-page-builder/src/static_landing.rs",
-    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
-    "crates/rustok-page-builder/contracts/evidence/page-builder-static-publish-resource-limits-source.json",
-    "crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs",
-    "crates/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-execution-source.json",
+    "crates/modules/rustok-page-builder/src/publish_sanitization.rs",
+    "crates/modules/rustok-page-builder/src/static_publish_policy.rs",
+    "crates/modules/rustok-page-builder/src/static_publish_resource_limits.rs",
+    "crates/modules/rustok-page-builder/src/static_landing.rs",
+    "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-static-publish-resource-limits-source.json",
+    "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-execution-source.json",
     "scripts/evidence/record-page-builder-static-sanitization-execution.mjs",
     "scripts/verify/verify-page-builder-static-sanitization-execution.mjs",
     ".github/workflows/page-builder-static-sanitization-evidence.yml",

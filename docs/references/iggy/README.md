@@ -195,7 +195,7 @@ iggy:
 
 ## 8) Synchronization with code (procedure)
 
-- When changes are made to `crates/rustok-iggy/**`, `crates/rustok-iggy-connector/**`, `crates/rustok-outbox/**`:
+- When changes are made to `crates/modules/rustok-iggy/**`, `crates/modules/rustok-iggy-connector/**`, `crates/modules/rustok-outbox/**`:
   1) update examples and signatures in this reference;
   2) update the date in the header;
   3) verify that the anti-patterns are still relevant.

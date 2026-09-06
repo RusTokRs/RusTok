@@ -1,14 +1,14 @@
 {
   "status": "payment_checkout_execution_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-payment/src/checkout_execution.rs",
-    "crates/rustok-payment/src/checkout_execution/diagnostic_safety.rs",
-    "crates/rustok-payment/src/checkout_execution/port_impl.rs",
-    "crates/rustok-payment/src/checkout_execution/validation_errors.rs",
-    "crates/rustok-payment/src/checkout_execution/prepare_authorize.rs",
-    "crates/rustok-payment/src/checkout_execution/capture_provider.rs",
-    "crates/rustok-payment/src/checkout_execution/provider_helpers.rs",
-    "crates/rustok-payment/docs/checkout-execution-local-context.md",
+    "crates/modules/rustok-payment/src/checkout_execution.rs",
+    "crates/modules/rustok-payment/src/checkout_execution/diagnostic_safety.rs",
+    "crates/modules/rustok-payment/src/checkout_execution/port_impl.rs",
+    "crates/modules/rustok-payment/src/checkout_execution/validation_errors.rs",
+    "crates/modules/rustok-payment/src/checkout_execution/prepare_authorize.rs",
+    "crates/modules/rustok-payment/src/checkout_execution/capture_provider.rs",
+    "crates/modules/rustok-payment/src/checkout_execution/provider_helpers.rs",
+    "crates/modules/rustok-payment/docs/checkout-execution-local-context.md",
     "scripts/verify/verify-payment-checkout-execution-local-context.mjs",
     "scripts/verify/verify-payment-checkout-execution-error-safety.mjs"
   ],

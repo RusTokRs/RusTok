@@ -4,17 +4,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-topic-merge-native-admin.json",
-  docs: "crates/rustok-forum/docs/forum-21o-topic-merge-native-admin.md",
-  readme: "crates/rustok-forum/admin/README.md",
-  packageCargo: "crates/rustok-forum/admin/Cargo.toml",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-native-admin.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21o-topic-merge-native-admin.md",
+  readme: "crates/modules/rustok-forum/admin/README.md",
+  packageCargo: "crates/modules/rustok-forum/admin/Cargo.toml",
   hostCargo: "apps/admin/Cargo.toml",
-  facade: "crates/rustok-forum/admin/src/transport.rs",
+  facade: "crates/modules/rustok-forum/admin/src/transport.rs",
   native:
-    "crates/rustok-forum/admin/src/transport/topic_merge_native_server_adapter.rs",
+    "crates/modules/rustok-forum/admin/src/transport/topic_merge_native_server_adapter.rs",
   graphql:
-    "crates/rustok-forum/admin/src/transport/topic_merge_graphql_adapter.rs",
-  ui: "crates/rustok-forum/admin/src/ui/topic_merge.rs",
+    "crates/modules/rustok-forum/admin/src/transport/topic_merge_graphql_adapter.rs",
+  ui: "crates/modules/rustok-forum/admin/src/ui/topic_merge.rs",
 };
 
 const read = (path) => readFileSync(path, "utf8");

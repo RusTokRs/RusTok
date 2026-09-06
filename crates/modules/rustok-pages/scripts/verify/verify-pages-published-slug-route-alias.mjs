@@ -4,24 +4,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const failures = [];
 
 const evidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-published-slug-route-alias-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-published-slug-route-alias-source.json",
 ));
-const migration = read("crates/rustok-pages/src/migrations/m20260805_000010_create_page_route_aliases.rs");
-const migrations = read("crates/rustok-pages/src/migrations/mod.rs");
-const entity = read("crates/rustok-pages/src/entities/page_route_alias.rs");
-const entities = read("crates/rustok-pages/src/entities/mod.rs");
-const route = read("crates/rustok-pages/src/services/page/route.rs");
-const metadata = read("crates/rustok-pages/src/services/page/metadata.rs");
-const persistence = read("crates/rustok-pages/src/services/page/persistence.rs");
-const seo = read("crates/rustok-pages/src/seo_targets.rs");
-const regression = read("crates/rustok-pages/tests/page_published_slug_route_alias_sqlite.rs");
+const migration = read("crates/modules/rustok-pages/src/migrations/m20260805_000010_create_page_route_aliases.rs");
+const migrations = read("crates/modules/rustok-pages/src/migrations/mod.rs");
+const entity = read("crates/modules/rustok-pages/src/entities/page_route_alias.rs");
+const entities = read("crates/modules/rustok-pages/src/entities/mod.rs");
+const route = read("crates/modules/rustok-pages/src/services/page/route.rs");
+const metadata = read("crates/modules/rustok-pages/src/services/page/metadata.rs");
+const persistence = read("crates/modules/rustok-pages/src/services/page/persistence.rs");
+const seo = read("crates/modules/rustok-pages/src/seo_targets.rs");
+const regression = read("crates/modules/rustok-pages/tests/page_published_slug_route_alias_sqlite.rs");
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
-const localPlan = read("crates/rustok-pages/docs/implementation-plan.md");
+const localPlan = read("crates/modules/rustok-pages/docs/implementation-plan.md");
 const packet = read("docs/modules/pages-page-builder-published-slug-route-alias-packet-2026-08-05.md");
 
 const need = (text, marker, label) => {

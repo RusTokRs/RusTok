@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const productPath = 'crates/rustok-distribution/src/product_index/product.rs';
+const productPath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 const product = requireMarkers(productPath, [
   'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay"',
   'FROM product_index_tombstones tombstone',
@@ -44,7 +44,7 @@ forbidMarkers(productPath, product, [
   'product_v2_schema',
 ]);
 
-const variantPath = 'crates/rustok-distribution/src/product_variant_index.rs';
+const variantPath = 'crates/modules/rustok-distribution/src/product_variant_index.rs';
 const variant = requireMarkers(variantPath, [
   'PRODUCT_VARIANT_EVENT_DOMAIN: &str = "rustok-product.product-variant-replay"',
   'FROM product_variant_index_tombstones tombstone',
@@ -66,7 +66,7 @@ forbidMarkers(variantPath, variant, [
 ]);
 
 const migrationPath =
-  'crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs';
+  'crates/modules/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs';
 const migration = requireMarkers(migrationPath, [
   'CREATE TABLE product_index_tombstones (',
   'PRIMARY KEY (tenant_id, product_id, locale)',
@@ -94,8 +94,8 @@ forbidMarkers(migrationPath, migration, [
   'rustok_index',
 ]);
 
-const productCargo = read('crates/rustok-product/Cargo.toml');
-forbidMarkers('crates/rustok-product/Cargo.toml', productCargo, ['rustok-index']);
+const productCargo = read('crates/modules/rustok-product/Cargo.toml');
+forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-index']);
 
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-product-tombstone-source.mjs'",

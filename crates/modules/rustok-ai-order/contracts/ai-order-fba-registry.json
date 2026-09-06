@@ -8,7 +8,7 @@
   "provider_dependencies": [
     {
       "module": "order",
-      "registry": "crates/rustok-order/contracts/order-fba-registry.json",
+      "registry": "crates/modules/rustok-order/contracts/order-fba-registry.json",
       "contract_version": "order.checkout_completion.v1",
       "port": "CheckoutCompletionPort",
       "operations": [
@@ -31,8 +31,8 @@
     }
   ],
   "support_adapter": {
-    "source": "crates/rustok-ai-order/src/lib.rs",
-    "runtime_binding": "crates/rustok-ai/src/direct_domain_orders.rs",
+    "source": "crates/modules/rustok-ai-order/src/lib.rs",
+    "runtime_binding": "crates/modules/rustok-ai/src/direct_domain_orders.rs",
     "task_slugs": [
       "order_analytics",
       "order_ops_assistant"
@@ -49,15 +49,15 @@
     ]
   },
   "evidence": {
-    "local_plan": "crates/rustok-ai-order/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-ai-order/docs/implementation-plan.md",
     "central_registry": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ai-fba-baseline.mjs",
-    "static_matrix": "crates/rustok-ai-order/contracts/evidence/ai-order-consumer-static-matrix.json",
-    "runtime_fallback_smoke": "crates/rustok-ai-order/contracts/evidence/ai-order-runtime-fallback-smoke.json"
+    "static_matrix": "crates/modules/rustok-ai-order/contracts/evidence/ai-order-consumer-static-matrix.json",
+    "runtime_fallback_smoke": "crates/modules/rustok-ai-order/contracts/evidence/ai-order-runtime-fallback-smoke.json"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
-    "source": "crates/rustok-ai-order/contracts/ai-order-fba-registry.json",
+    "source": "crates/modules/rustok-ai-order/contracts/ai-order-fba-registry.json",
     "runner": "scripts/verify/verify-ai-fba-baseline.mjs",
     "profiles": [
       "in_process",

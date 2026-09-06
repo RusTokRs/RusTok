@@ -6,14 +6,14 @@
   "compile_policy": "not_run_by_request",
   "owner": "rustok-search",
   "production_contract": {
-    "normalized_result": "crates/rustok-search/src/engine.rs",
-    "forum_projection_owner": "crates/rustok-forum/src/search_projection.rs",
-    "public_export": "crates/rustok-search/src/lib.rs",
-    "graphql_projection": "crates/rustok-search/src/graphql/types.rs",
-    "storefront_native_projection": "crates/rustok-search/storefront/src/transport/native_server_adapter.rs",
-    "storefront_transport_facade": "crates/rustok-search/storefront/src/transport/mod.rs",
-    "admin_native_root": "crates/rustok-search/admin/src/transport/native_server_adapter.rs",
-    "admin_native_mapping": "crates/rustok-search/admin/src/transport/native_server_adapter/mapping.rs",
+    "normalized_result": "crates/modules/rustok-search/src/engine.rs",
+    "forum_projection_owner": "crates/modules/rustok-forum/src/search_projection.rs",
+    "public_export": "crates/modules/rustok-search/src/lib.rs",
+    "graphql_projection": "crates/modules/rustok-search/src/graphql/types.rs",
+    "storefront_native_projection": "crates/modules/rustok-search/storefront/src/transport/native_server_adapter.rs",
+    "storefront_transport_facade": "crates/modules/rustok-search/storefront/src/transport/mod.rs",
+    "admin_native_root": "crates/modules/rustok-search/admin/src/transport/native_server_adapter.rs",
+    "admin_native_mapping": "crates/modules/rustok-search/admin/src/transport/native_server_adapter/mapping.rs",
     "admin_shell_projection": "apps/admin/src/widgets/app_shell/native_server_adapter.rs"
   },
   "cases": [

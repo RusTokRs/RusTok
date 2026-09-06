@@ -7,9 +7,9 @@ Status: **source-ready / unvalidated**
 This contract tracks the currently identified Pricing public-message and payload-diagnostic
 gaps across the complete canonical boundary:
 
-- owner `crates/rustok-pricing/src/ports.rs`;
-- canonical read `crates/rustok-pricing/src/read_context.rs`;
-- canonical write `crates/rustok-pricing/src/write_context.rs`.
+- owner `crates/modules/rustok-pricing/src/ports.rs`;
+- canonical read `crates/modules/rustok-pricing/src/read_context.rs`;
+- canonical write `crates/modules/rustok-pricing/src/write_context.rs`.
 
 The six `PricingReadPort` operations and four `PricingWritePort` operations remain
 unchanged. Request and response DTOs, policy and write-semantics checks, service
@@ -64,10 +64,10 @@ open.
 
 ## Evidence
 
-- `crates/rustok-pricing/contracts/evidence/pricing-owner-port-error-safety-source.json`
-- `crates/rustok-pricing/contracts/evidence/pricing-owner-port-error-safety-source-review.json`
-- `crates/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source.json`
-- `crates/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source.json`
+- `crates/modules/rustok-pricing/contracts/evidence/pricing-owner-port-error-safety-source.json`
+- `crates/modules/rustok-pricing/contracts/evidence/pricing-owner-port-error-safety-source-review.json`
+- `crates/modules/rustok-pricing/contracts/evidence/pricing-read-local-diagnostic-safety-source.json`
+- `crates/modules/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source.json`
 - `scripts/verify/verify-pricing-owner-port-error-safety.mjs`
 - `scripts/verify/verify-pricing-read-local-context.mjs`
 - `scripts/verify/verify-pricing-write-local-context.mjs`

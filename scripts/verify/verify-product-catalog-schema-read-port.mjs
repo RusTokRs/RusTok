@@ -34,7 +34,7 @@ function resolverSlice(source, name, nextName) {
   return source.slice(start, end < 0 ? source.length : end);
 }
 
-const port = read("crates/rustok-product/src/catalog_schema_read_port.rs");
+const port = read("crates/modules/rustok-product/src/catalog_schema_read_port.rs");
 for (const required of [
   "pub trait ProductCatalogSchemaReadPort",
   "async fn list_attributes(",
@@ -68,7 +68,7 @@ for (const required of [
   requireText(port, required, `schema read port must contain ${required}`);
 }
 
-const runtime = read("crates/rustok-product/src/runtime.rs");
+const runtime = read("crates/modules/rustok-product/src/runtime.rs");
 for (const required of [
   "schema_read_port: Option<Arc<dyn ProductCatalogSchemaReadPort>>",
   "schema_read_port: None",
@@ -79,7 +79,7 @@ for (const required of [
   requireText(runtime, required, `Product read runtime must contain ${required}`);
 }
 
-const lib = read("crates/rustok-product/src/lib.rs");
+const lib = read("crates/modules/rustok-product/src/lib.rs");
 for (const required of [
   "mod catalog_schema_read_port;",
   "pub use catalog_schema_read_port::{",
@@ -93,14 +93,14 @@ for (const required of [
   requireText(lib, required, `Product root must contain ${required}`);
 }
 
-const productCatalog = read("crates/rustok-commerce/src/graphql/product_catalog.rs");
+const productCatalog = read("crates/modules/rustok-commerce/src/graphql/product_catalog.rs");
 requireText(
   productCatalog,
   "pub(crate) fn product_catalog_port_error(",
   "Product GraphQL port-error mapper must be reusable by schema directory resolvers",
 );
 
-const commerceQuery = read("crates/rustok-commerce/src/graphql/query.rs");
+const commerceQuery = read("crates/modules/rustok-commerce/src/graphql/query.rs");
 for (const required of [
   "fn product_schema_read_port_context(",
   ".with_deadline(std::time::Duration::from_secs(2))",

@@ -38,7 +38,7 @@ The production inventory runner still derives blocker paths recursively from the
 
 ## Pages FFA blocker remains unchanged
 
-`crates/rustok-pages/docs/implementation-plan.md` still contains `execution-rollout-pending`. Therefore the Pages FFA side of terminal readiness remains blocked independently of the Page Builder FBA blocker count.
+`crates/modules/rustok-pages/docs/implementation-plan.md` still contains `execution-rollout-pending`. Therefore the Pages FFA side of terminal readiness remains blocked independently of the Page Builder FBA blocker count.
 
 The recomputed state remains:
 
@@ -53,7 +53,7 @@ A reduction from 2 blockers to 1 is progress evidence only. Completion still req
 
 This recomputation updates only the terminal-inventory source snapshot, its fail-closed verifier and this retained dated actualization:
 
-- `crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json` records `current_source_rechecked_blocker_count = 1`;
+- `crates/modules/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json` records `current_source_rechecked_blocker_count = 1`;
 - `scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs` expects exactly `/provider/consumer_properties_contract/executed_evidence` as the current one-node blocker set;
 - this actualization retains the rollback-continuity lineage and adds the cache-consumer harness/evidence/admission lineage through #3622, #3623, run `32060695197`, artifact `9298820347`, #3626 and merge SHA `967bbbfbebdf3bfcedef35745029b0149aa07321`;
 - the production inventory runner and its synthetic evaluator tests are unchanged;

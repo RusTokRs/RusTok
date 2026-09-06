@@ -24,6 +24,6 @@ This slice makes the existing exact-group listing usable for persisted notificat
 
 SQLite source evidence is in `tests/group_key_population_sqlite.rs`. It covers pre-migration backfill, new-row population, same-target grouping across notification variants and target kinds, target-owner isolation, explicit-key preservation, unchanged inbox state, and zero delivery attempts.
 
-The static source contract is `scripts/verify/verify-forum-notification-group-key-population.mjs`, and the machine-readable Forum contract is `crates/rustok-forum/contracts/forum-notification-group-key-population.json`.
+The static source contract is `scripts/verify/verify-forum-notification-group-key-population.mjs`, and the machine-readable Forum contract is `crates/modules/rustok-forum/contracts/forum-notification-group-key-population.json`.
 
 Tests, formatting, Cargo commands, verifiers, workflows, and CI were not run by the implementation agent.

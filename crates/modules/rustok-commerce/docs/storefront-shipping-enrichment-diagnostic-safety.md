@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This slice hardens only the owner-error diagnostic emitted by
 `log_cart_delivery_group_enrichment_error` in
-`crates/rustok-commerce/src/storefront_shipping.rs`.
+`crates/modules/rustok-commerce/src/storefront_shipping.rs`.
 
 The typed enrichment boundary already returned `FulfillmentResult<CartResponse>`, delegated to
 `FulfillmentService::list_shipping_options`, and classified all owner variants before choosing error
@@ -85,7 +85,7 @@ The verifier was added but not executed.
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/storefront-shipping-enrichment-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/storefront-shipping-enrichment-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-storefront-shipping-enrichment-diagnostic-safety.mjs`
 
 ## Validation disclosure

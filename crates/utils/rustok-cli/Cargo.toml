@@ -19,7 +19,7 @@ rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-migrations.workspace = true
 rustok-rbac.workspace = true
-rustok-server = { path = "../../apps/server", default-features = false }
+rustok-server = { path = "../../../apps/server", default-features = false }
 rustok-telemetry.workspace = true
 rustok-test-utils.workspace = true
 sea-orm.workspace = true

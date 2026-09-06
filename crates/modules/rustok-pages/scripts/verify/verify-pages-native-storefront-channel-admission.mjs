@@ -5,23 +5,23 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const evidence = JSON.parse(
   read(
-    "crates/rustok-pages/contracts/evidence/pages-native-storefront-channel-admission-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-native-storefront-channel-admission-source.json",
   ),
 );
 const harness = read(
-  "crates/rustok-pages/storefront/tests/native_storefront_channel_admission_sqlite.rs",
+  "crates/modules/rustok-pages/storefront/tests/native_storefront_channel_admission_sqlite.rs",
 );
 const nativeAdapter = read(
-  "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs",
 );
-const channelService = read("crates/rustok-channel/src/services/channel_service.rs");
-const cacheContract = read("crates/rustok-pages/src/cache_invalidation.rs");
+const channelService = read("crates/modules/rustok-channel/src/services/channel_service.rs");
+const cacheContract = read("crates/modules/rustok-pages/src/cache_invalidation.rs");
 const overlay = read(
   "docs/modules/pages-page-builder-native-storefront-channel-admission-packet-2026-08-05.md",
 );
@@ -138,7 +138,7 @@ for (const [key, expected] of Object.entries({
 
 if (
   evidence.harness?.path !==
-    "crates/rustok-pages/storefront/tests/native_storefront_channel_admission_sqlite.rs" ||
+    "crates/modules/rustok-pages/storefront/tests/native_storefront_channel_admission_sqlite.rs" ||
   evidence.harness?.test !==
     "native_storefront_channel_admission_precedes_cache_lookup" ||
   evidence.harness?.backend !== "sqlite_in_memory" ||

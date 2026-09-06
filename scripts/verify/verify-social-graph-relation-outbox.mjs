@@ -39,23 +39,23 @@ function assertNotContains(text, pattern, description) {
 
 const paths = {
   modules: "modules.toml",
-  moduleManifest: "crates/rustok-social-graph/rustok-module.toml",
-  api: "crates/rustok-social-graph/CRATE_API.md",
-  event: "crates/rustok-events/src/social_graph.rs",
-  contract: "crates/rustok-events/src/contract.rs",
-  eventsLib: "crates/rustok-events/src/lib.rs",
-  digestGenerator: "crates/rustok-events/examples/event_contract_digests.rs",
-  eventTest: "crates/rustok-events/tests/social_graph_contracts.rs",
-  cargo: "crates/rustok-social-graph/Cargo.toml",
-  mapper: "crates/rustok-social-graph/src/external_events.rs",
-  service: "crates/rustok-social-graph/src/service.rs",
-  receipts: "crates/rustok-social-graph/src/receipts.rs",
-  ports: "crates/rustok-social-graph/src/ports.rs",
-  error: "crates/rustok-social-graph/src/error.rs",
-  graphql: "crates/rustok-social-graph/src/graphql.rs",
-  storefrontCargo: "crates/rustok-profiles/storefront/Cargo.toml",
-  storefrontNative: "crates/rustok-profiles/storefront/src/transport/native_server_adapter.rs",
-  test: "crates/rustok-social-graph/tests/relation_outbox_sqlite.rs",
+  moduleManifest: "crates/modules/rustok-social-graph/rustok-module.toml",
+  api: "crates/modules/rustok-social-graph/CRATE_API.md",
+  event: "crates/libs/rustok-events/src/social_graph.rs",
+  contract: "crates/libs/rustok-events/src/contract.rs",
+  eventsLib: "crates/libs/rustok-events/src/lib.rs",
+  digestGenerator: "crates/libs/rustok-events/examples/event_contract_digests.rs",
+  eventTest: "crates/libs/rustok-events/tests/social_graph_contracts.rs",
+  cargo: "crates/modules/rustok-social-graph/Cargo.toml",
+  mapper: "crates/modules/rustok-social-graph/src/external_events.rs",
+  service: "crates/modules/rustok-social-graph/src/service.rs",
+  receipts: "crates/modules/rustok-social-graph/src/receipts.rs",
+  ports: "crates/modules/rustok-social-graph/src/ports.rs",
+  error: "crates/modules/rustok-social-graph/src/error.rs",
+  graphql: "crates/modules/rustok-social-graph/src/graphql.rs",
+  storefrontCargo: "crates/modules/rustok-profiles/storefront/Cargo.toml",
+  storefrontNative: "crates/modules/rustok-profiles/storefront/src/transport/native_server_adapter.rs",
+  test: "crates/modules/rustok-social-graph/tests/relation_outbox_sqlite.rs",
 };
 
 for (const value of Object.values(paths)) assertExists(value);
@@ -81,7 +81,7 @@ const test = readRepo(paths.test);
 
 assertContains(
   modules,
-  'social_graph = { crate = "rustok-social-graph", source = "path", path = "crates/rustok-social-graph", depends_on = ["outbox"] }',
+  'social_graph = { crate = "rustok-social-graph", source = "path", path = "crates/modules/rustok-social-graph", depends_on = ["outbox"] }',
   `${paths.modules}: Social Graph must declare its required Outbox dependency`,
 );
 assertContains(moduleManifest, "[dependencies]", `${paths.moduleManifest}: dependencies section missing`);

@@ -218,31 +218,31 @@ async fn apply_public_channel_inventory_to_product() {
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-inventory-boundary-"));
-  writeFixtureFile(root, "crates/rustok-inventory/src/services/inventory.rs", inventorySource(options));
-  writeFixtureFile(root, "crates/rustok-inventory/admin/src/transport/mod.rs", transportFacadeSource());
-  writeFixtureFile(root, "crates/rustok-inventory/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-inventory/src/services/inventory.rs", inventorySource(options));
+  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/transport/mod.rs", transportFacadeSource());
+  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
   if (options.includeTransportFile) {
-    writeFixtureFile(root, "crates/rustok-inventory/admin/src/transport.rs", transportSource());
+    writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/transport.rs", transportSource());
   }
   if (options.includeLegacyApiFile) {
-    writeFixtureFile(root, "crates/rustok-inventory/admin/src/api.rs", transportFacadeSource());
+    writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/api.rs", transportFacadeSource());
   }
-  writeFixtureFile(root, "crates/rustok-inventory/admin/src/lib.rs", "mod core;\nmod transport;\n");
-  writeFixtureFile(root, "crates/rustok-inventory/admin/src/core.rs", "");
-  writeFixtureFile(root, "crates/rustok-inventory/admin/src/model.rs", "");
-  writeFixtureFile(root, "crates/rustok-inventory/admin/src/ui/leptos.rs", "native inventory facade");
-  writeFixtureFile(root, "crates/rustok-inventory/admin/locales/en.json", "{\"inventory.subtitle\":\"native inventory facade\"}\n");
-  writeFixtureFile(root, "crates/rustok-inventory/admin/locales/ru.json", "{\"inventory.subtitle\":\"native inventory facade\"}\n");
-  writeFixtureFile(root, "crates/rustok-inventory/admin/Cargo.toml", "[package]\nname = \"rustok-inventory-admin\"\n");
-  writeFixtureFile(root, "crates/rustok-inventory/docs/implementation-plan.md", "Inventory admin stock operations are owned by native/transport mutations.\n- Next step: verification/CI evidence slice for inventory boundary.\n- [x] move current inventory admin UI stock operations to inventory-owned native/transport mutations\n");
+  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/lib.rs", "mod core;\nmod transport;\n");
+  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/core.rs", "");
+  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/model.rs", "");
+  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/ui/leptos.rs", "native inventory facade");
+  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/locales/en.json", "{\"inventory.subtitle\":\"native inventory facade\"}\n");
+  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/locales/ru.json", "{\"inventory.subtitle\":\"native inventory facade\"}\n");
+  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/Cargo.toml", "[package]\nname = \"rustok-inventory-admin\"\n");
+  writeFixtureFile(root, "crates/modules/rustok-inventory/docs/implementation-plan.md", "Inventory admin stock operations are owned by native/transport mutations.\n- Next step: verification/CI evidence slice for inventory boundary.\n- [x] move current inventory admin UI stock operations to inventory-owned native/transport mutations\n");
   for (const relativePath of [
-    "crates/rustok-commerce/src/graphql/mutations/helpers.rs",
-    "crates/rustok-commerce/src/controllers/store/mod.rs",
+    "crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs",
+    "crates/modules/rustok-commerce/src/controllers/store/mod.rs",
   ]) {
     writeFixtureFile(root, relativePath, commerceAvailabilityCallerSource(options));
   }
-  writeFixtureFile(root, "crates/rustok-commerce/src/services/checkout.rs", checkoutAvailabilityCallerSource(options));
-  writeFixtureFile(root, "crates/rustok-commerce/src/storefront_channel.rs", commerceStorefrontChannelSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-commerce/src/services/checkout.rs", checkoutAvailabilityCallerSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-commerce/src/storefront_channel.rs", commerceStorefrontChannelSource(options));
   return root;
 }
 

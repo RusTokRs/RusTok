@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_from": "crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json",
+  "generated_from": "crates/modules/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json",
   "status": "source_policy_locked",
   "cases": [
     {

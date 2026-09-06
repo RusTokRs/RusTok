@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 89 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-88.md`.
+`crates/modules/rustok-blog/docs/implementation-plan-slice-88.md`.
 
 Slices 1–88 retain the typed Comments remote boundary, delegated-write signing,
 scheduled key lifecycle, authorized schedule mutation, canonical schedule

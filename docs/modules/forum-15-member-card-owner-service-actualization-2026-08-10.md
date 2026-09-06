@@ -6,7 +6,7 @@ Status: `source-ready / shared-owner-service / graphql-adapter-thin / storefront
 
 This slice began from `main@1d557e8ce1108287befd80c340a534752d3fe0d2`, the FORUM-15B merge. During preparation `main` first advanced by three commits to `1de7925b1055917e5bc37a379c000e0fe611bb7f`, then advanced once more to `676861d89227b18ddbe51074de6ff3d38f2be8f2` before the final merge gate.
 
-The first intervening compare touched server composition/tests, Commerce, Distribution, Product, Page Builder sources/docs and one `crates/rustok-forum/admin/build.rs` line. The later single commit was Commerce/order-only. Neither movement touched the FORUM-15C GraphQL/member-card/user-stats files.
+The first intervening compare touched server composition/tests, Commerce, Distribution, Product, Page Builder sources/docs and one `crates/modules/rustok-forum/admin/build.rs` line. The later single commit was Commerce/order-only. Neither movement touched the FORUM-15C GraphQL/member-card/user-stats files.
 
 An attempted whole-tree rebase onto the first fresh main was rejected during static review because it would have reverted concurrent changes. The feature was reset and replayed only through its intended files. For the final main movement, the feature tree is rebuilt from the current main base tree with only the intended FORUM-15C blobs overlaid. The final branch must have no unrelated files and `behind 0` before merge.
 

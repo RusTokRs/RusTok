@@ -46,20 +46,20 @@
     "fba_promoted": false
   },
   "harness": {
-    "path": "crates/rustok-pages/tests/artifact_http_cache_sqlite.rs",
+    "path": "crates/modules/rustok-pages/tests/artifact_http_cache_sqlite.rs",
     "test": "artifact_http_misses_refills_hits_and_returns_conditional_304_across_generation_change",
     "backend": "sqlite_in_memory",
     "route": "/api/pages/{id}/artifact?locale=en"
   },
   "linked_sources": {
-    "artifact_http_controller": "crates/rustok-pages/src/controllers/mod.rs",
-    "artifact_owner": "crates/rustok-pages/src/services/page_builder_artifact.rs",
-    "cache_contract": "crates/rustok-pages/src/cache_invalidation.rs",
-    "page_builder_compiler": "crates/rustok-page-builder/src/static_landing.rs",
-    "previous_relay_packet": "crates/rustok-pages/contracts/evidence/pages-outbox-relay-restart-postgres-source.json"
+    "artifact_http_controller": "crates/modules/rustok-pages/src/controllers/mod.rs",
+    "artifact_owner": "crates/modules/rustok-pages/src/services/page_builder_artifact.rs",
+    "cache_contract": "crates/modules/rustok-pages/src/cache_invalidation.rs",
+    "page_builder_compiler": "crates/modules/rustok-page-builder/src/static_landing.rs",
+    "previous_relay_packet": "crates/modules/rustok-pages/contracts/evidence/pages-outbox-relay-restart-postgres-source.json"
   },
   "suggested_execution": [
-    "node crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs",
+    "node crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs",
     "cargo test -p rustok-pages --test artifact_http_cache_sqlite -- --nocapture",
     "cargo check -p rustok-pages --all-targets"
   ],

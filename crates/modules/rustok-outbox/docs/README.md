@@ -44,7 +44,7 @@ infrastructure for the platform event runtime.
 
 ## Incident response
 
-Primary owner for outbox/event delivery is the Platform foundation on-call. Escalation path: owner of `crates/rustok-outbox`, then owner of server runtime composition.
+Primary owner for outbox/event delivery is the Platform foundation on-call. Escalation path: owner of `crates/modules/rustok-outbox`, then owner of server runtime composition.
 
 When backlog, retry or DLQ grows:
 

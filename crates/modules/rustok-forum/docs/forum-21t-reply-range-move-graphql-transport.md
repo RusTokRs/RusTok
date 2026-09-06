@@ -9,7 +9,7 @@ FORUM-21T exposes the FORUM-21S bounded reply-range move owner through one addit
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-reply-range-move-graphql-transport.json
+crates/modules/rustok-forum/contracts/forum-reply-range-move-graphql-transport.json
 ```
 
 ## Command

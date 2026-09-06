@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const modePath = 'crates/rustok-index/src/application/replay_mode.rs';
+const modePath = 'crates/modules/rustok-index/src/application/replay_mode.rs';
 const mode = requireMarkers(modePath, [
   'pub enum IndexReplayMode {',
   'Full,',
@@ -53,14 +53,14 @@ for (const forbidden of [
   if (mode.includes(forbidden)) fail(`${modePath} must remain an application mode/routing contract: ${forbidden}`);
 }
 
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'mod replay_mode;',
   'mod targeted_replay;',
   'IndexReplayExecutionSurface, IndexReplayMode, IndexReplayModeSelection',
   'IndexReplayTargetedError, IndexReplayTargetedExecutor, IndexReplayTargetedOutcome',
 ]);
 
-const targetedPath = 'crates/rustok-index/src/application/targeted_replay.rs';
+const targetedPath = 'crates/modules/rustok-index/src/application/targeted_replay.rs';
 const targeted = requireMarkers(targetedPath, [
   'pub struct IndexReplayTargetedExecutor<M>',
   'IndexReplayModeSelection::Targeted(request) => request',
@@ -84,7 +84,7 @@ for (const forbidden of [
   }
 }
 
-const runtimePath = 'crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
+const runtimePath = 'crates/modules/rustok-index/src/infrastructure/postgres/replay_runtime.rs';
 const runtime = requireMarkers(runtimePath, [
   'targeted: Arc<IndexReplayTargetedExecutor<PostgresMutationStore>>',
   'pub async fn run_targeted(',
@@ -97,7 +97,7 @@ for (const forbidden of ['PostgresIndexReplayJobStore', 'PostgresIndexReplayChec
   }
 }
 
-const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
+const runnerPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = read(runnerPath);
 for (const forbidden of [
   'IndexReplayMode::Targeted',
@@ -111,7 +111,7 @@ for (const forbidden of [
   }
 }
 
-const dryRunPath = 'crates/rustok-index/src/replay_dry_run.rs';
+const dryRunPath = 'crates/modules/rustok-index/src/replay_dry_run.rs';
 requireMarkers(dryRunPath, [
   'No mutation, inbox delivery, job, checkpoint, or reconciliation progress is persisted',
   'pub struct SharedIndexReplayDryRunRuntime',
@@ -121,7 +121,7 @@ requireMarkers(dryRunPath, [
   '.scan(scan_request)',
 ]);
 
-const continuationPath = 'crates/rustok-index/src/application/source_continuation.rs';
+const continuationPath = 'crates/modules/rustok-index/src/application/source_continuation.rs';
 const continuation = requireMarkers(continuationPath, [
   'locale: Option<LocaleKey>',
   'pub fn for_locale(',
@@ -169,7 +169,7 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-mode-contract.md', [
   'Status: `source_complete_targeted_graphql_execution_pending`.',
   '`Full` — cursor-based durable source scan',
   '`Targeted` — bounded exact-key source load',
@@ -187,7 +187,7 @@ requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
   'No additional independent source-only M6 replay boundary is open',
 ]);
 
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Define explicit Full/Targeted/Shadow replay mode identity and fail-closed execution surfaces.',
   'Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.',
   'Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.',

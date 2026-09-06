@@ -153,9 +153,9 @@ Profiles continues to consume authoritative owner-port results. This path is ope
 Machine contracts:
 
 ```text
-crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json
-crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
-crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json
+crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-policy-source.json
+crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-runtime-source.json
+crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-server-observer-source.json
 ```
 
 Static verifiers:

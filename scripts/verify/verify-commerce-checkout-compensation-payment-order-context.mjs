@@ -12,9 +12,9 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const services = read('crates/rustok-commerce/src/services/mod.rs');
-const facade = read('crates/rustok-commerce/src/services/checkout_compensation_error_safe.rs');
-const retained = read('crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs');
+const services = read('crates/modules/rustok-commerce/src/services/mod.rs');
+const facade = read('crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs');
+const retained = read('crates/modules/rustok-commerce/src/services/checkout_compensation_owner_ports.rs');
 
 requireText(
   services,

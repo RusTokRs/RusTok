@@ -7,8 +7,8 @@ Status: **source-ready / unvalidated**
 This slice hardens only the Commerce-owned aggregate read:
 
 - `fetch_storefront_commerce`;
-- `crates/rustok-commerce/storefront/src/transport/mod.rs`;
-- `crates/rustok-commerce/storefront/src/transport/aggregate_error_safety.rs`.
+- `crates/modules/rustok-commerce/storefront/src/transport/mod.rs`;
+- `crates/modules/rustok-commerce/storefront/src/transport/aggregate_error_safety.rs`.
 
 It does not change the payment-collection, shipping-selection, or checkout-completion command wrappers. Those wrappers still use the generic `From<UiTransportError>` conversion and remain explicit follow-up work under the broad ecommerce mapper-cleanup item.
 
@@ -84,8 +84,8 @@ This slice does not change:
 
 Focused source evidence:
 
-- `crates/rustok-commerce/contracts/evidence/storefront-aggregate-error-safety-source.json`;
-- `crates/rustok-commerce/contracts/evidence/storefront-aggregate-error-safety-source-review.json`;
+- `crates/modules/rustok-commerce/contracts/evidence/storefront-aggregate-error-safety-source.json`;
+- `crates/modules/rustok-commerce/contracts/evidence/storefront-aggregate-error-safety-source-review.json`;
 - `scripts/verify/verify-commerce-storefront-aggregate-error-safety.mjs`.
 
 The focused verifier is imported by:

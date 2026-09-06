@@ -20,10 +20,10 @@
   },
   "authorities": {
     "central_registry": "docs/modules/registry.md",
-    "pages_local_plan": "crates/rustok-pages/docs/implementation-plan.md",
-    "page_builder_local_plan": "crates/rustok-page-builder/docs/implementation-plan.md",
-    "page_builder_fba_registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
-    "prerequisite_admission_source": "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json"
+    "pages_local_plan": "crates/modules/rustok-pages/docs/implementation-plan.md",
+    "page_builder_local_plan": "crates/modules/rustok-page-builder/docs/implementation-plan.md",
+    "page_builder_fba_registry": "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "prerequisite_admission_source": "crates/modules/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json"
   },
   "readiness_precondition": {
     "pages_row_required": "| `pages` | admin + storefront | `in_progress` | `boundary_ready` | `core_transport_ui` |",
@@ -105,15 +105,15 @@
     "terminal_change_requires_verification_evidence_in_pr": true
   },
   "required_source_files": [
-    "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json",
     "scripts/evidence/inventory-pages-page-builder-terminal-readiness.mjs",
     "scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs",
     "scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs",
-    "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json",
     "scripts/evidence/admit-pages-page-builder-terminal-readiness.mjs",
-    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
-    "crates/rustok-pages/docs/implementation-plan.md",
-    "crates/rustok-page-builder/docs/implementation-plan.md",
+    "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "crates/modules/rustok-pages/docs/implementation-plan.md",
+    "crates/modules/rustok-page-builder/docs/implementation-plan.md",
     "docs/modules/registry.md",
     "docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-14.md"
   ],

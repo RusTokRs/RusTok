@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const ownerQueryPath = 'crates/rustok-product/src/services/catalog/queries.rs';
+const ownerQueryPath = 'crates/modules/rustok-product/src/services/catalog/queries.rs';
 const ownerQuery = requireMarkers(ownerQueryPath, [
   'pub async fn list_published_products_with_query(',
   '.order_by_asc(entities::product::Column::Id)',
@@ -34,24 +34,24 @@ if (ownerQuery.slice(titleSearchStart).includes('pt.locale')) {
   fail(`${ownerQueryPath} title search became locale-scoped`);
 }
 
-requireMarkers('crates/rustok-product/src/services/catalog/types.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/catalog/types.rs', [
   'pub struct StorefrontProductListQuery',
   'pub search: Option<String>',
   'search: normalize_optional_text(search)',
 ]);
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
   'Lower keys are historical storage identities only.',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m7-product-storefront-localized-query-architecture.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-storefront-localized-query-architecture.md', [
   'Status: `runtime_text_pattern_identity_order_source_complete_adapter_and_evidence_pending`',
   '`identity_order_direction`',
   'entity_id DESC',
   'entity_id < cursor.entity_id',
   'Channel-less visibility',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Status overlay rechecked at `main@',
   'localized identity fold, cursor v3 and requested -> fallback projection',
   'localized PostgreSQL compiler/decoder/runtime with readiness/admission and repeatable-read page/count snapshot',

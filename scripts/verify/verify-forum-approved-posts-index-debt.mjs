@@ -24,7 +24,7 @@ function requireText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-approved-posts-posting-facts.json";
+  "crates/modules/rustok-forum/contracts/forum-approved-posts-posting-facts.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const schema = read(contract.initial_schema_owner);
 const note = read(contract.owner_note);

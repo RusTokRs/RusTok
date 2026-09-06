@@ -9,15 +9,15 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const failures = [];
 const files = {
-  evidence: 'crates/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
-  tagService: 'crates/rustok-blog/src/services/tag.rs',
-  taxonomyOwnerRead: 'crates/rustok-taxonomy/src/owner_read.rs',
-  blogReadHarness: 'crates/rustok-blog/tests/taxonomy_tags.rs',
-  projector: 'crates/rustok-search/src/blog_projector.rs',
-  searchHarness: 'crates/rustok-search/tests/blog_projection_postgres_test.rs',
-  searchEvidence: 'crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json',
-  slice: 'crates/rustok-blog/docs/implementation-plan-slice-103.md',
-  current: 'crates/rustok-blog/docs/implementation-plan-current.md',
+  evidence: 'crates/modules/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
+  tagService: 'crates/modules/rustok-blog/src/services/tag.rs',
+  taxonomyOwnerRead: 'crates/modules/rustok-taxonomy/src/owner_read.rs',
+  blogReadHarness: 'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
+  projector: 'crates/modules/rustok-search/src/blog_projector.rs',
+  searchHarness: 'crates/modules/rustok-search/tests/blog_projection_postgres_test.rs',
+  searchEvidence: 'crates/modules/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json',
+  slice: 'crates/modules/rustok-blog/docs/implementation-plan-slice-103.md',
+  current: 'crates/modules/rustok-blog/docs/implementation-plan-current.md',
 };
 function read(relativePath) {
   const target = path.join(repoRoot, relativePath);

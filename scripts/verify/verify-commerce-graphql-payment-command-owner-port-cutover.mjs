@@ -12,13 +12,13 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  providerOperations: 'crates/rustok-commerce/src/graphql/mutations/provider_operations.rs',
-  graphqlRuntime: 'crates/rustok-commerce/src/graphql_runtime.rs',
-  paymentCommands: 'crates/rustok-commerce/src/graphql_runtime/payment_commands.rs',
-  collectionOwner: 'crates/rustok-payment/src/admin_collection_command.rs',
-  refundOwner: 'crates/rustok-payment/src/admin_refund_command.rs',
-  plan: 'crates/rustok-commerce/docs/implementation-plan.md',
-  document: 'crates/rustok-commerce/docs/graphql-payment-command-owner-port-cutover-2026-08-09.md',
+  providerOperations: 'crates/modules/rustok-commerce/src/graphql/mutations/provider_operations.rs',
+  graphqlRuntime: 'crates/modules/rustok-commerce/src/graphql_runtime.rs',
+  paymentCommands: 'crates/modules/rustok-commerce/src/graphql_runtime/payment_commands.rs',
+  collectionOwner: 'crates/modules/rustok-payment/src/admin_collection_command.rs',
+  refundOwner: 'crates/modules/rustok-payment/src/admin_refund_command.rs',
+  plan: 'crates/modules/rustok-commerce/docs/implementation-plan.md',
+  document: 'crates/modules/rustok-commerce/docs/graphql-payment-command-owner-port-cutover-2026-08-09.md',
 };
 
 const providerOperations = read(paths.providerOperations);

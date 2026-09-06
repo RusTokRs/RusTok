@@ -59,8 +59,8 @@ This change does not alter:
 
 ## Static evidence
 
-- `crates/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source.json`;
-- `crates/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source-review.json`;
+- `crates/modules/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source.json`;
+- `crates/modules/rustok-product/contracts/evidence/admin-category-graphql-read-error-safety-source-review.json`;
 - `scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs`;
 - compatibility command `scripts/verify/verify-product-admin-category-read-error-safety.mjs`.
 

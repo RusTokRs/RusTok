@@ -8,7 +8,7 @@ FORUM-20BN migrates those consumers to the live runtime and deletes the unreacha
 
 ## Canonical runtime
 
-`crates/rustok-forum/src/graphql/mod.rs` continues to select:
+`crates/modules/rustok-forum/src/graphql/mod.rs` continues to select:
 
 ```rust
 #[path = "query_runtime.rs"]
@@ -42,7 +42,7 @@ The FORUM-11 diagnostics workflow no longer patches `query.rs` or includes it in
 
 ## Removal invariant
 
-`crates/rustok-forum/src/graphql/query.rs` must not exist after this task. The FORUM-20BN verifier fails if:
+`crates/modules/rustok-forum/src/graphql/query.rs` must not exist after this task. The FORUM-20BN verifier fails if:
 
 - the snapshot returns;
 - `mod.rs` stops selecting `query_runtime.rs`;

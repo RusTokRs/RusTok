@@ -39,7 +39,7 @@
     "fba_promoted": false
   },
   "harness": {
-    "path": "crates/rustok-outbox/tests/blog_comments_audit_relay_postgres.rs",
+    "path": "crates/modules/rustok-outbox/tests/blog_comments_audit_relay_postgres.rs",
     "database_env": "RUSTOK_OUTBOX_BLOG_AUDIT_TEST_DATABASE_URL",
     "fallback_database_env": "RUSTOK_OUTBOX_TEST_DATABASE_URL|DATABASE_URL",
     "restart_ack_test": "blog_audit_relay_restarts_and_acknowledges_only_after_delivery",
@@ -50,13 +50,13 @@
     "second_dlq_worker_id": "blog-audit-dlq-after-restart"
   },
   "linked_sources": {
-    "relay_owner": "crates/rustok-outbox/src/relay.rs",
-    "transactional_write_owner": "crates/rustok-outbox/src/transactional.rs",
-    "outbox_entity": "crates/rustok-outbox/src/entity.rs",
-    "event_contract": "crates/rustok-events/src/blog_comments_schedule_audit.rs",
+    "relay_owner": "crates/modules/rustok-outbox/src/relay.rs",
+    "transactional_write_owner": "crates/modules/rustok-outbox/src/transactional.rs",
+    "outbox_entity": "crates/modules/rustok-outbox/src/entity.rs",
+    "event_contract": "crates/libs/rustok-events/src/blog_comments_schedule_audit.rs",
     "blog_canonical_writer": "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_canonical_writer.rs",
-    "previous_blog_cursor": "crates/rustok-blog/docs/implementation-plan-slice-96.md",
-    "current_blog_cursor": "crates/rustok-blog/docs/implementation-plan-slice-97.md"
+    "previous_blog_cursor": "crates/modules/rustok-blog/docs/implementation-plan-slice-96.md",
+    "current_blog_cursor": "crates/modules/rustok-blog/docs/implementation-plan-slice-97.md"
   },
   "suggested_execution": [
     "node scripts/verify/verify-blog-comments-audit-outbox-relay-postgres-source.mjs",

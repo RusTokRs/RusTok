@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 
-const policyPath = 'crates/rustok-forum/admin/src/locale_switch.rs';
-const uiPath = 'crates/rustok-forum/admin/src/ui/leptos.rs';
-const categoryDndPath = 'crates/rustok-forum/admin/src/ui/category_dnd.rs';
-const transportPath = 'crates/rustok-forum/admin/src/transport/graphql_adapter.rs';
-const libPath = 'crates/rustok-forum/admin/src/lib.rs';
-const docsPath = 'crates/rustok-forum/docs/forum-28-admin-locale-switch-contract.md';
-const enLocalePath = 'crates/rustok-forum/admin/locales/en.json';
-const ruLocalePath = 'crates/rustok-forum/admin/locales/ru.json';
+const policyPath = 'crates/modules/rustok-forum/admin/src/locale_switch.rs';
+const uiPath = 'crates/modules/rustok-forum/admin/src/ui/leptos.rs';
+const categoryDndPath = 'crates/modules/rustok-forum/admin/src/ui/category_dnd.rs';
+const transportPath = 'crates/modules/rustok-forum/admin/src/transport/graphql_adapter.rs';
+const libPath = 'crates/modules/rustok-forum/admin/src/lib.rs';
+const docsPath = 'crates/modules/rustok-forum/docs/forum-28-admin-locale-switch-contract.md';
+const enLocalePath = 'crates/modules/rustok-forum/admin/locales/en.json';
+const ruLocalePath = 'crates/modules/rustok-forum/admin/locales/ru.json';
 
 for (const path of [
   policyPath,

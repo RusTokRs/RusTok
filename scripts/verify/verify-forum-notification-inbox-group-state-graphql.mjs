@@ -38,7 +38,7 @@ function between(source, start, end, label) {
 }
 
 const contract = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-notification-inbox-group-state-graphql.json") ||
+  read("crates/modules/rustok-forum/contracts/forum-notification-inbox-group-state-graphql.json") ||
     "{}",
 );
 const owner = read(contract.notifications_graphql_file ?? "");
@@ -54,7 +54,7 @@ const local = read(contract.notifications_local_plan ?? "");
 const ownerReadme = read(contract.notifications_owner_readme ?? "");
 const live = read(contract.notifications_live_contract ?? "");
 const residual = JSON.parse(
-  read("crates/rustok-forum/contracts/forum-notification-inbox-open-graphql.json") || "{}",
+  read("crates/modules/rustok-forum/contracts/forum-notification-inbox-open-graphql.json") || "{}",
 );
 
 if (

@@ -2,10 +2,10 @@
   "schema_version": 1,
   "status": "pricing_write_local_diagnostic_safety_source_unvalidated",
   "scope": {
-    "wrapper_source": "crates/rustok-pricing/src/write_context.rs",
-    "owner_source": "crates/rustok-pricing/src/ports.rs",
+    "wrapper_source": "crates/modules/rustok-pricing/src/write_context.rs",
+    "owner_source": "crates/modules/rustok-pricing/src/ports.rs",
     "focused_verifier": "scripts/verify/verify-pricing-write-local-context.mjs",
-    "documentation": "crates/rustok-pricing/docs/write-local-context.md"
+    "documentation": "crates/modules/rustok-pricing/docs/write-local-context.md"
   },
   "source_contract": {
     "write_operation_count": 4,

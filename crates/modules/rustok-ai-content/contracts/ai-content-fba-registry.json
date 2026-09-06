@@ -7,8 +7,8 @@
   "consumer_profile": "ai_content_generation_context",
   "provider_dependencies": [],
   "support_adapter": {
-    "source": "crates/rustok-ai-content/src/lib.rs",
-    "runtime_binding": "crates/rustok-ai/src/direct_domain_content.rs",
+    "source": "crates/modules/rustok-ai-content/src/lib.rs",
+    "runtime_binding": "crates/modules/rustok-ai/src/direct_domain_content.rs",
     "task_slugs": [
       "content_moderation",
       "blog_draft"
@@ -30,15 +30,15 @@
     ]
   },
   "evidence": {
-    "local_plan": "crates/rustok-ai-content/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-ai-content/docs/implementation-plan.md",
     "central_registry": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ai-fba-baseline.mjs",
-    "static_matrix": "crates/rustok-ai-content/contracts/evidence/ai-content-consumer-static-matrix.json",
-    "runtime_fallback_smoke": "crates/rustok-ai-content/contracts/evidence/ai-content-runtime-fallback-smoke.json"
+    "static_matrix": "crates/modules/rustok-ai-content/contracts/evidence/ai-content-consumer-static-matrix.json",
+    "runtime_fallback_smoke": "crates/modules/rustok-ai-content/contracts/evidence/ai-content-runtime-fallback-smoke.json"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
-    "source": "crates/rustok-ai-content/contracts/ai-content-fba-registry.json",
+    "source": "crates/modules/rustok-ai-content/contracts/ai-content-fba-registry.json",
     "runner": "scripts/verify/verify-ai-fba-baseline.mjs",
     "profiles": [
       "in_process",

@@ -4,19 +4,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  owner: "crates/rustok-pages/src/graphql/builder_rollout.rs",
-  transport: "crates/rustok-pages/admin/src/transport/builder_rollout_adapter.rs",
-  transportMod: "crates/rustok-pages/admin/src/transport/mod.rs",
-  snapshot: "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
-  composition: "crates/rustok-pages/admin/src/composition.rs",
-  builder: "crates/rustok-pages/admin/src/builder.rs",
+  owner: "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
+  transport: "crates/modules/rustok-pages/admin/src/transport/builder_rollout_adapter.rs",
+  transportMod: "crates/modules/rustok-pages/admin/src/transport/mod.rs",
+  snapshot: "crates/modules/rustok-pages/admin/src/builder_rollout_settings.rs",
+  composition: "crates/modules/rustok-pages/admin/src/composition.rs",
+  builder: "crates/modules/rustok-pages/admin/src/builder.rs",
   adminMain: "apps/admin/src/main.rs",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-transport-source.json",
-  serverBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
-  consumerBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-transport-source.json",
+  serverBinding: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
+  consumerBinding: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };
 

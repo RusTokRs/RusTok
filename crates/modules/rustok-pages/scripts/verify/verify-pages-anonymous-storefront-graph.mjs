@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
-  : path.resolve(scriptDir, "..", "..", "..", "..");
+  : path.resolve(scriptDir, "..", "..", "..", "..", "..");
 const failures = [];
 const read = (relativePath) => readFileSync(path.join(repoRoot, relativePath), "utf8");
 const need = (text, marker, label) => {
@@ -27,17 +27,17 @@ const featureBody = (manifest, feature, label) => {
 };
 
 const evidencePath =
-  "crates/rustok-pages/contracts/evidence/pages-anonymous-storefront-graph-source.json";
+  "crates/modules/rustok-pages/contracts/evidence/pages-anonymous-storefront-graph-source.json";
 const packetPath =
   "docs/modules/pages-page-builder-anonymous-storefront-graph-packet-2026-08-05.md";
 const planPath = "docs/modules/pages-page-builder-parity-continuation-plan.md";
-const localPlanPath = "crates/rustok-pages/docs/implementation-plan.md";
-const pagesManifestPath = "crates/rustok-pages/storefront/Cargo.toml";
-const pagesLibPath = "crates/rustok-pages/storefront/src/lib.rs";
-const pagesInlineSourcePath = "crates/rustok-pages/storefront/src/inline_edit.rs";
-const builderManifestPath = "crates/rustok-page-builder-storefront/Cargo.toml";
-const builderLibPath = "crates/rustok-page-builder-storefront/src/lib.rs";
-const builderInlineSourcePath = "crates/rustok-page-builder-storefront/src/inline_edit.rs";
+const localPlanPath = "crates/modules/rustok-pages/docs/implementation-plan.md";
+const pagesManifestPath = "crates/modules/rustok-pages/storefront/Cargo.toml";
+const pagesLibPath = "crates/modules/rustok-pages/storefront/src/lib.rs";
+const pagesInlineSourcePath = "crates/modules/rustok-pages/storefront/src/inline_edit.rs";
+const builderManifestPath = "crates/modules/rustok-page-builder-storefront/Cargo.toml";
+const builderLibPath = "crates/modules/rustok-page-builder-storefront/src/lib.rs";
+const builderInlineSourcePath = "crates/modules/rustok-page-builder-storefront/src/inline_edit.rs";
 const hostManifestPath = "apps/storefront/Cargo.toml";
 
 const evidence = JSON.parse(read(evidencePath));
@@ -196,7 +196,7 @@ for (const marker of [
   '"rustok-pages-storefront/ssr"',
   "pages-inline-edit = [",
   "pages-inline-edit-hydrate = [",
-  'rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront", default-features = false, optional = true }'
+  'rustok-pages-storefront = { path = "../../crates/modules/rustok-pages/storefront", default-features = false, optional = true }'
 ]) need(hostManifest, marker, "host storefront manifest");
 for (const feature of ["csr", "hydrate", "ssr"]) {
   forbid(
@@ -242,8 +242,8 @@ const forbiddenSourceMarkers = [
   "ConsumerPropertiesPanel"
 ];
 for (const sourceRoot of [
-  "crates/rustok-pages/storefront/src",
-  "crates/rustok-page-builder-storefront/src",
+  "crates/modules/rustok-pages/storefront/src",
+  "crates/modules/rustok-page-builder-storefront/src",
   "apps/storefront/src"
 ]) {
   for (const file of walkRustFiles(sourceRoot)) {

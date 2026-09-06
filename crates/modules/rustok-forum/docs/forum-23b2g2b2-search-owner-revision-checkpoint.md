@@ -138,8 +138,8 @@ The Forum and Search canonical plans remain `in_progress`. Runtime completion is
 now bounded by `FORUM-23B2G2B3D0`:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json
-crates/rustok-forum/docs/forum-23b2g2b3d-runtime-evidence.md
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json
+crates/modules/rustok-forum/docs/forum-23b2g2b3d-runtime-evidence.md
 ```
 
 The protocol requires executable proof for normal delivery, both duplicate

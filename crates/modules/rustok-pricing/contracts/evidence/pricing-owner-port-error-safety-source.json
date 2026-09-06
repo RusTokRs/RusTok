@@ -2,16 +2,16 @@
   "schema_version": 1,
   "status": "pricing_owner_port_error_safety_source_unvalidated",
   "scope": {
-    "owner_source": "crates/rustok-pricing/src/ports.rs",
-    "read_wrapper_source": "crates/rustok-pricing/src/read_context.rs",
-    "write_wrapper_source": "crates/rustok-pricing/src/write_context.rs",
-    "owner_error": "crates/rustok-commerce-foundation/src/error.rs",
+    "owner_source": "crates/modules/rustok-pricing/src/ports.rs",
+    "read_wrapper_source": "crates/modules/rustok-pricing/src/read_context.rs",
+    "write_wrapper_source": "crates/modules/rustok-pricing/src/write_context.rs",
+    "owner_error": "crates/modules/rustok-commerce-foundation/src/error.rs",
     "owner_mapper": "pricing_error_to_port_error",
     "tenant_parser": "parse_port_tenant_id",
     "actor_parser": "parse_port_actor_id",
     "focused_verifier": "scripts/verify/verify-pricing-owner-port-error-safety.mjs",
     "aggregate_verifier": "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
-    "documentation": "crates/rustok-pricing/docs/pricing-owner-port-error-safety.md"
+    "documentation": "crates/modules/rustok-pricing/docs/pricing-owner-port-error-safety.md"
   },
   "source_contract": {
     "port_operation_count": 10,

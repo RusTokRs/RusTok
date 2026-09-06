@@ -20,7 +20,7 @@ Marker:
 explicit-artifact-repair-transport-contract-harness-source-ready
 ```
 
-`crates/rustok-pages/tests/explicit_artifact_repair_transport_contract.rs` builds the real merged `PagesQuery`/`PagesMutation` GraphQL schema and serializes the real Pages OpenAPI document.
+`crates/modules/rustok-pages/tests/explicit_artifact_repair_transport_contract.rs` builds the real merged `PagesQuery`/`PagesMutation` GraphQL schema and serializes the real Pages OpenAPI document.
 
 The GraphQL contract test requires both explicit mutations:
 
@@ -65,13 +65,13 @@ docs/modules/pages-page-builder-repair-request-contract-continuation-2026-08-07.
 Source evidence for generated schema/OpenAPI remains in:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-transport-contract-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-transport-contract-source.json
 ```
 
 Request-level source evidence is retained separately in:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-request-contract-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-request-contract-source.json
 ```
 
 Both remain unvalidated; execution arrays are empty and validation flags remain false.
@@ -109,11 +109,11 @@ Suggested commands, intentionally not run in this slice:
 ```bash
 cargo test -p rustok-pages --test explicit_artifact_repair_transport_contract -- --nocapture
 cargo test -p rustok-pages --test explicit_artifact_repair_request_contract -- --nocapture
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport-contract.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-request-contract.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport-contract.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-request-contract.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-rebuild.mjs
 cargo check -p rustok-pages --all-targets
 ```
 

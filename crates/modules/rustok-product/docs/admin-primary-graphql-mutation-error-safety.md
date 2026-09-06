@@ -13,8 +13,8 @@ This slice covers the public and private diagnostic envelopes for four Product A
 
 The boundary lives in:
 
-- `crates/rustok-product/admin/src/catalog_transport.rs`;
-- `crates/rustok-product/admin/src/transport/graphql_error_safety.rs`.
+- `crates/modules/rustok-product/admin/src/catalog_transport.rs`;
+- `crates/modules/rustok-product/admin/src/transport/graphql_error_safety.rs`.
 
 The GraphQL mutation documents, variables, input builders, response DTOs and Product owner policy are unchanged.
 
@@ -88,8 +88,8 @@ This slice does not change:
 
 ## Static evidence
 
-- `crates/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source.json`;
-- `crates/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source-review.json`;
+- `crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source.json`;
+- `crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source-review.json`;
 - `scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs`.
 
 All execution flags remain `false`. Source review does not prove compilation, browser behavior, mounted

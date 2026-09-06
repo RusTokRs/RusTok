@@ -17,7 +17,7 @@ The six intervening commits:
 The compared files are confined to Commerce, Forum, Pages/Page Builder, storefront/server dependency
 metadata, `Cargo.lock`, and related documentation/verifiers. They do not modify:
 
-- `crates/rustok-index` source, migrations, docs, or exports;
+- `crates/modules/rustok-index` source, migrations, docs, or exports;
 - Index finding persistence or inspection;
 - Index candidate confirmation;
 - Index runtime extensions or public transports;

@@ -4,7 +4,7 @@ Status: `product_index_family_digest_admitted_maintainer_reverify_pending`.
 
 ## Purpose
 
-`crates/rustok-events/contracts/event-contract-digests.json` is a reviewed release artifact. The repository-owned
+`crates/libs/rustok-events/contracts/event-contract-digests.json` is a reviewed release artifact. The repository-owned
 Rust generator is the sole hashing authority; digest values must not be reconstructed, guessed or hand-authored.
 
 The previously stale baseline was regenerated and admitted through PR #3390. `ProductIndexRefreshEvent` was then
@@ -73,7 +73,7 @@ The remaining closeout is an exact post-merge local rerun on the new `main` head
 git rev-parse HEAD
 node scripts/verify/verify-event-contract-digest-admission.mjs
 cargo run --locked -p rustok-events --example event_contract_digests -- --write
-git diff --exit-code -- crates/rustok-events/contracts/event-contract-digests.json
+git diff --exit-code -- crates/libs/rustok-events/contracts/event-contract-digests.json
 node scripts/verify/verify-index-product-refresh-event-family.mjs
 ```
 

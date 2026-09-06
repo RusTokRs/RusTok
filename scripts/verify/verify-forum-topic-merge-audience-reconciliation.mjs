@@ -5,24 +5,24 @@ import { readFileSync } from "node:fs";
 
 const p = {
   contract:
-    "crates/rustok-forum/contracts/forum-topic-merge-audience-reconciliation.json",
-  docs: "crates/rustok-forum/docs/forum-21g-topic-merge-audience-reconciliation.md",
+    "crates/modules/rustok-forum/contracts/forum-topic-merge-audience-reconciliation.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21g-topic-merge-audience-reconciliation.md",
   entity:
-    "crates/rustok-forum/src/entities/forum_topic_merge_audience_reconciliation.rs",
-  entities: "crates/rustok-forum/src/entities/mod.rs",
-  error: "crates/rustok-forum/src/error.rs",
-  lib: "crates/rustok-forum/src/lib.rs",
+    "crates/modules/rustok-forum/src/entities/forum_topic_merge_audience_reconciliation.rs",
+  entities: "crates/modules/rustok-forum/src/entities/mod.rs",
+  error: "crates/modules/rustok-forum/src/error.rs",
+  lib: "crates/modules/rustok-forum/src/lib.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260803_000015_add_forum_topic_merge_audience_reconciliations.rs",
-  migrations: "crates/rustok-forum/src/migrations/mod.rs",
-  service: "crates/rustok-forum/src/services/topic_merge_audience_reconciliation.rs",
-  audience: "crates/rustok-forum/src/services/topic_audience.rs",
-  audienceOwner: "crates/rustok-forum/src/services/topic_audience_owner.rs",
-  audienceLock: "crates/rustok-forum/src/services/topic_audience_lock.rs",
-  services: "crates/rustok-forum/src/services/mod.rs",
-  merge: "crates/rustok-forum/src/services/topic_merge.rs",
-  test: "crates/rustok-forum/tests/topic_merge_audience_reconciliation_sqlite.rs",
-  plan: "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/src/migrations/m20260803_000015_add_forum_topic_merge_audience_reconciliations.rs",
+  migrations: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  service: "crates/modules/rustok-forum/src/services/topic_merge_audience_reconciliation.rs",
+  audience: "crates/modules/rustok-forum/src/services/topic_audience.rs",
+  audienceOwner: "crates/modules/rustok-forum/src/services/topic_audience_owner.rs",
+  audienceLock: "crates/modules/rustok-forum/src/services/topic_audience_lock.rs",
+  services: "crates/modules/rustok-forum/src/services/mod.rs",
+  merge: "crates/modules/rustok-forum/src/services/topic_merge.rs",
+  test: "crates/modules/rustok-forum/tests/topic_merge_audience_reconciliation_sqlite.rs",
+  plan: "crates/modules/rustok-forum/docs/implementation-plan.md",
   verifier: "scripts/verify/verify-forum-topic-merge-audience-reconciliation.mjs",
 };
 

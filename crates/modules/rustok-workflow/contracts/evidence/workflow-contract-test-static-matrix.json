@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "workflow",
   "status": "static_matrix_locked",
-  "generated_from": "crates/rustok-workflow/contracts/workflow-fba-registry.json",
+  "generated_from": "crates/modules/rustok-workflow/contracts/workflow-fba-registry.json",
   "runner": "scripts/verify/verify-workflow-fba.mjs",
   "contract_version": "workflow.read_projection.v1",
   "profiles": ["in_process", "remote_adapter_placeholder"],

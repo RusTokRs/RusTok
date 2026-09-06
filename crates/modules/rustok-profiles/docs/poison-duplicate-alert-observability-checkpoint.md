@@ -22,17 +22,17 @@ Duplicate observability does not authorize Profiles and does not participate in 
 
 ```text
 telemetry metrics:
-  crates/rustok-telemetry/src/dlq_duplicate_alert_metrics.rs
+  crates/libs/rustok-telemetry/src/dlq_duplicate_alert_metrics.rs
 server observer:
   apps/server/src/services/event_dlq_duplicate_alert_observer.rs
 server projection:
   apps/server/src/services/event_dlq_duplicate_alert_observability.rs
 machine contract:
-  crates/rustok-iggy/contracts/evidence/dlq-duplicate-alert-observability-source.json
+  crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-alert-observability-source.json
 verifier:
   scripts/verify/verify-event-dlq-duplicate-alert-observability.mjs
 owner guide:
-  crates/rustok-iggy/docs/dlq-duplicate-alert-observability.md
+  crates/modules/rustok-iggy/docs/dlq-duplicate-alert-observability.md
 ```
 
 ## Remaining work

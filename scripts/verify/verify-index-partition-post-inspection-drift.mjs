@@ -22,7 +22,7 @@ try {
   const review = read('scripts/verify/index-partition-review-core.mjs');
   const core = read('scripts/verify/index-partition-archive-manifest-core.mjs');
   const fixture = read('scripts/verify/index-partition-post-inspection-drift.test.mjs');
-  const runbook = read('crates/rustok-index/docs/partition-full-capture.md');
+  const runbook = read('crates/modules/rustok-index/docs/partition-full-capture.md');
 
   requireMarkers(assembly, [
     'readStableRegularFile',

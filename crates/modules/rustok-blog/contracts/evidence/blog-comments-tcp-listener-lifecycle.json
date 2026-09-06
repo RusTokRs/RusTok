@@ -6,11 +6,11 @@
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "runtime_status": "not_run",
-  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-71.md",
+  "generated_from": "crates/modules/rustok-blog/docs/implementation-plan-slice-71.md",
   "source_contract": {
     "host_runtime": "apps/server/src/services/comments_provider_runtime.rs",
     "bootstrap": "apps/server/src/services/server_bootstrap.rs",
-    "server_adapter": "crates/rustok-comments/src/tcp_server.rs",
+    "server_adapter": "crates/modules/rustok-comments/src/tcp_server.rs",
     "provider_factory": "rustok_comments::in_process_comments_thread_port",
     "authority_trait": "rustok_comments::CommentsTcpAuthorityResolver",
     "stop_handle": "apps/server/src/services/app_lifecycle.rs"

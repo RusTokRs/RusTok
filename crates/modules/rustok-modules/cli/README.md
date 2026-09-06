@@ -55,4 +55,4 @@ with every caller and is not retained as a fallback.
 - `ModuleCommandProvider`
 
 The selected distribution registers this provider through
-`crates/rustok-modules/rustok-module.toml`.
+`crates/modules/rustok-modules/rustok-module.toml`.

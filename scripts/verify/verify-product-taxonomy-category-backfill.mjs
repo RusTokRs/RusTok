@@ -3,16 +3,16 @@
 import fs from 'node:fs';
 
 const migrationPath =
-  'crates/rustok-product/src/migrations/m20260829_000016_backfill_product_categories_to_taxonomy.rs';
-const registryPath = 'crates/rustok-product/src/migrations/mod.rs';
-const contractPath = 'crates/rustok-product/docs/category-taxonomy-binding.md';
-const localeContractPath = 'crates/rustok-product/docs/category-locale-contract.md';
+  'crates/modules/rustok-product/src/migrations/m20260829_000016_backfill_product_categories_to_taxonomy.rs';
+const registryPath = 'crates/modules/rustok-product/src/migrations/mod.rs';
+const contractPath = 'crates/modules/rustok-product/docs/category-taxonomy-binding.md';
+const localeContractPath = 'crates/modules/rustok-product/docs/category-locale-contract.md';
 const bindingPath =
-  'crates/rustok-product/src/migrations/m20260828_000015_add_product_taxonomy_category_binding.rs';
+  'crates/modules/rustok-product/src/migrations/m20260828_000015_add_product_taxonomy_category_binding.rs';
 const productCatalogSchemaPath =
-  'crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs';
+  'crates/modules/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs';
 const taxonomyRouteRegistryPath =
-  'crates/rustok-taxonomy/src/migrations/m20260812_000008_add_route_key_registry.rs';
+  'crates/modules/rustok-taxonomy/src/migrations/m20260812_000008_add_route_key_registry.rs';
 
 const failures = [];
 const need = (source, marker, label = marker) => {

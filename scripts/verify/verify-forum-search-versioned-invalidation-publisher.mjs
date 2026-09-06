@@ -10,18 +10,18 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  event: "crates/rustok-events/src/forum_search_projection.rs",
-  eventTest: "crates/rustok-events/tests/forum_search_projection_contracts.rs",
-  eventLib: "crates/rustok-events/src/lib.rs",
-  eventPayload: "crates/rustok-events/src/contract.rs",
-  eventApi: "crates/rustok-events/CRATE_API.md",
-  digests: "crates/rustok-events/contracts/event-contract-digests.json",
-  outbox: "crates/rustok-outbox/src/transactional.rs",
-  publisher: "crates/rustok-forum/src/services/projection_invalidation.rs",
-  contract: "crates/rustok-forum/contracts/forum-search-versioned-invalidation-publisher.json",
-  note: "crates/rustok-forum/docs/forum-23b2g2b3b2-versioned-invalidation-publisher.md",
-  wireContract: "crates/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json",
-  causationContract: "crates/rustok-forum/contracts/forum-search-versioned-invalidation-causation-api.json",
+  event: "crates/libs/rustok-events/src/forum_search_projection.rs",
+  eventTest: "crates/libs/rustok-events/tests/forum_search_projection_contracts.rs",
+  eventLib: "crates/libs/rustok-events/src/lib.rs",
+  eventPayload: "crates/libs/rustok-events/src/contract.rs",
+  eventApi: "crates/libs/rustok-events/CRATE_API.md",
+  digests: "crates/libs/rustok-events/contracts/event-contract-digests.json",
+  outbox: "crates/modules/rustok-outbox/src/transactional.rs",
+  publisher: "crates/modules/rustok-forum/src/services/projection_invalidation.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-publisher.json",
+  note: "crates/modules/rustok-forum/docs/forum-23b2g2b3b2-versioned-invalidation-publisher.md",
+  wireContract: "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json",
+  causationContract: "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-causation-api.json",
 };
 
 function target(relativePath) {

@@ -12,7 +12,7 @@ The single intervening commit is:
 It changes Commerce Admin Shipping diagnostic projection, documentation, evidence, and Commerce
 verifiers. It does not modify:
 
-- `crates/rustok-index`;
+- `crates/modules/rustok-index`;
 - Product Index composition;
 - Index GraphQL transports or server diagnosis services;
 - the bounded drift candidate contract or its guards.

@@ -46,7 +46,7 @@ function executionSource() {
 
 function target() {
   return {
-    fba_registry: "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    fba_registry: "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
     registry_required_status: "boundary_ready",
     executed_evidence_json_pointer: "/provider/static_sanitization_contract/executed_evidence",
     required_before_value: "pending",

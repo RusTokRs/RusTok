@@ -4,26 +4,26 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
   contract:
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
   evidence:
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-evidence-harness-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-evidence-harness-source.json",
   buildCapture: "scripts/evidence/capture-pages-inline-edit-build-snapshot.mjs",
   dockerCapture: "scripts/evidence/capture-pages-inline-edit-docker-evidence.mjs",
   httpCapture: "scripts/evidence/capture-pages-inline-edit-http-evidence.mjs",
   assembler: "scripts/evidence/assemble-pages-inline-edit-artifact-http-evidence.mjs",
   anonymousInspector:
-    "crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs",
-  assetRoute: "crates/rustok-pages/src/http/inline_edit_assets.rs",
+    "crates/modules/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs",
+  assetRoute: "crates/modules/rustok-pages/src/http/inline_edit_assets.rs",
   auth: "apps/server/src/middleware/auth_context.rs",
   packet:
     "docs/modules/pages-page-builder-inline-edit-artifact-http-evidence-harness-packet-2026-08-06.md",
   executionPlan: "docs/modules/pages-page-builder-inline-edit-execution-plan.md",
   canonicalPlan: "docs/modules/pages-page-builder-parity-continuation-plan.md",
-  localPlan: "crates/rustok-pages/docs/implementation-plan.md",
+  localPlan: "crates/modules/rustok-pages/docs/implementation-plan.md",
 };
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);
@@ -69,7 +69,7 @@ exact(
     http_capture: "scripts/evidence/capture-pages-inline-edit-http-evidence.mjs",
     assembler: "scripts/evidence/assemble-pages-inline-edit-artifact-http-evidence.mjs",
     source_verifier:
-      "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-artifact-http-evidence-harness.mjs",
+      "crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-artifact-http-evidence-harness.mjs",
   },
   "execution contract tools",
 );
@@ -358,7 +358,7 @@ forbid(
 );
 forbid(
   sources.assembler,
-  "crates/rustok-pages/docs/implementation-plan.md",
+  "crates/modules/rustok-pages/docs/implementation-plan.md",
   "assembler canonical mutation",
 );
 

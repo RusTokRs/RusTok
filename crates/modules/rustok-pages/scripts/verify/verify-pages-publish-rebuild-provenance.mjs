@@ -4,18 +4,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
   migration:
-    "crates/rustok-pages/src/migrations/m20260806_000013_create_page_publish_rebuild_sources.rs",
-  migrations: "crates/rustok-pages/src/migrations/mod.rs",
-  entity: "crates/rustok-pages/src/entities/page_publish_rebuild_source.rs",
-  entities: "crates/rustok-pages/src/entities/mod.rs",
-  publishManifest: "crates/rustok-pages/src/services/page/publish_manifest.rs",
+    "crates/modules/rustok-pages/src/migrations/m20260806_000013_create_page_publish_rebuild_sources.rs",
+  migrations: "crates/modules/rustok-pages/src/migrations/mod.rs",
+  entity: "crates/modules/rustok-pages/src/entities/page_publish_rebuild_source.rs",
+  entities: "crates/modules/rustok-pages/src/entities/mod.rs",
+  publishManifest: "crates/modules/rustok-pages/src/services/page/publish_manifest.rs",
   evidence:
-    "crates/rustok-pages/contracts/evidence/pages-publish-rebuild-provenance-source.json",
-  packet: "crates/rustok-pages/docs/immutable-artifact-rebuild-provenance.md",
+    "crates/modules/rustok-pages/contracts/evidence/pages-publish-rebuild-provenance-source.json",
+  packet: "crates/modules/rustok-pages/docs/immutable-artifact-rebuild-provenance.md",
   actualization: "docs/modules/page-builder-parity-actualization-2026-08-05.md",
   continuation:
     "docs/modules/pages-page-builder-rebuild-provenance-continuation-2026-08-06.md",

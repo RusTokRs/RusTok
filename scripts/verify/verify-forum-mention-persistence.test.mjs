@@ -37,14 +37,14 @@ ${options.missingImmutable ? "" : "append_only"}
 `;
   writeFixture(
     root,
-    "crates/rustok-forum/src/migrations/m20260722_000004_add_forum_mention_quote_relations.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260722_000004_add_forum_mention_quote_relations.rs",
     options.missingImmutable
       ? migration.replace("forum_user_mentions_immutable_guard", "")
       : migration,
   );
   writeFixture(
     root,
-    "crates/rustok-forum/src/migrations/m20260722_000005_seed_forum_relation_revisions.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260722_000005_seed_forum_relation_revisions.rs",
     options.missingSeed
       ? "DatabaseBackend::Postgres\nDatabaseBackend::Sqlite\n"
       : `
@@ -63,7 +63,7 @@ forum_relation_revisions
   const firstWrite = "let revision = forum_relation_revision::ActiveModel";
   writeFixture(
     root,
-    "crates/rustok-forum/src/services/mention_relation.rs",
+    "crates/modules/rustok-forum/src/services/mention_relation.rs",
     `
 ProfilesReader
 DatabaseTransaction
@@ -89,7 +89,7 @@ ${options.publicService ? "pub struct MentionRelationService;" : ""}
   );
   writeFixture(
     root,
-    "crates/rustok-forum/src/services/mention_relation_tests.rs",
+    "crates/modules/rustok-forum/src/services/mention_relation_tests.rs",
     [
       "relation_revision_replay_diff_quotes_and_guards_are_atomic",
       "identical replay should persist idempotently",
@@ -101,7 +101,7 @@ ${options.publicService ? "pub struct MentionRelationService;" : ""}
   );
   writeFixture(
     root,
-    "crates/rustok-forum/src/migrations/mod.rs",
+    "crates/modules/rustok-forum/src/migrations/mod.rs",
     [
       "mod m20260722_000004_add_forum_mention_quote_relations;",
       "mod m20260722_000005_seed_forum_relation_revisions;",
@@ -111,27 +111,27 @@ ${options.publicService ? "pub struct MentionRelationService;" : ""}
   );
   writeFixture(
     root,
-    "crates/rustok-forum/src/services/mod.rs",
+    "crates/modules/rustok-forum/src/services/mod.rs",
     "mod mention_relation;",
   );
   writeFixture(
     root,
-    "crates/rustok-forum/src/entities/mod.rs",
+    "crates/modules/rustok-forum/src/entities/mod.rs",
     "forum_relation_revision\nforum_user_mention\nforum_audience_mention\nforum_quote\n",
   );
   writeFixture(
     root,
-    "crates/rustok-forum/src/error.rs",
+    "crates/modules/rustok-forum/src/error.rs",
     '"FORUM_QUOTE_TARGET_UNAVAILABLE"',
   );
   writeFixture(
     root,
-    "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/docs/implementation-plan.md",
     "Delivered in `FORUM-12B1`\nFORUM-12B2\n",
   );
   writeFixture(
     root,
-    "crates/rustok-forum/CRATE_API.md",
+    "crates/modules/rustok-forum/CRATE_API.md",
     [
       "forum_relation_revisions",
       "MentionRelationService",

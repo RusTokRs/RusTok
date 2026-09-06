@@ -12,15 +12,15 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  wrapper: 'crates/rustok-customer/src/read_context.rs',
-  ports: 'crates/rustok-customer/src/ports.rs',
-  lib: 'crates/rustok-customer/src/lib.rs',
+  wrapper: 'crates/modules/rustok-customer/src/read_context.rs',
+  ports: 'crates/modules/rustok-customer/src/ports.rs',
+  lib: 'crates/modules/rustok-customer/src/lib.rs',
   evidence:
-    'crates/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source.json',
+    'crates/modules/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source.json',
   review:
-    'crates/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source-review.json',
-  document: 'crates/rustok-customer/docs/read-local-context.md',
-  policyDocument: 'crates/rustok-customer/docs/read-port-policy-context.md',
+    'crates/modules/rustok-customer/contracts/evidence/customer-read-diagnostic-safety-source-review.json',
+  document: 'crates/modules/rustok-customer/docs/read-local-context.md',
+  policyDocument: 'crates/modules/rustok-customer/docs/read-port-policy-context.md',
 };
 
 const wrapper = read(paths.wrapper);

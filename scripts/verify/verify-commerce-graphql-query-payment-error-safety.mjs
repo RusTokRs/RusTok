@@ -12,21 +12,21 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  query: 'crates/rustok-commerce/src/graphql/query.rs',
-  safeSource: 'crates/rustok-commerce/src/graphql/safe_query/source.rs',
+  query: 'crates/modules/rustok-commerce/src/graphql/query.rs',
+  safeSource: 'crates/modules/rustok-commerce/src/graphql/safe_query/source.rs',
   paymentShim:
-    'crates/rustok-commerce/src/graphql/safe_query/source/rustok_payment_shim.rs',
-  graphqlRuntime: 'crates/rustok-commerce/src/graphql_runtime.rs',
-  paymentRuntime: 'crates/rustok-commerce/src/graphql_runtime/payment_reads.rs',
-  paymentLib: 'crates/rustok-payment/src/lib.rs',
-  adminRead: 'crates/rustok-payment/src/admin_read.rs',
-  orderRead: 'crates/rustok-payment/src/order_read.rs',
-  cartRead: 'crates/rustok-payment/src/cart_read.rs',
-  ownerService: 'crates/rustok-payment/src/services/payment.rs',
-  plan: 'crates/rustok-commerce/docs/implementation-plan.md',
+    'crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_payment_shim.rs',
+  graphqlRuntime: 'crates/modules/rustok-commerce/src/graphql_runtime.rs',
+  paymentRuntime: 'crates/modules/rustok-commerce/src/graphql_runtime/payment_reads.rs',
+  paymentLib: 'crates/modules/rustok-payment/src/lib.rs',
+  adminRead: 'crates/modules/rustok-payment/src/admin_read.rs',
+  orderRead: 'crates/modules/rustok-payment/src/order_read.rs',
+  cartRead: 'crates/modules/rustok-payment/src/cart_read.rs',
+  ownerService: 'crates/modules/rustok-payment/src/services/payment.rs',
+  plan: 'crates/modules/rustok-commerce/docs/implementation-plan.md',
   evidence:
-    'crates/rustok-commerce/contracts/evidence/graphql-query-payment-error-safety-source-review.json',
-  document: 'crates/rustok-commerce/docs/graphql-query-payment-error-safety.md',
+    'crates/modules/rustok-commerce/contracts/evidence/graphql-query-payment-error-safety-source-review.json',
+  document: 'crates/modules/rustok-commerce/docs/graphql-query-payment-error-safety.md',
 };
 
 const sources = Object.fromEntries(

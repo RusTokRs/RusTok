@@ -14,7 +14,7 @@
 
 **Главный production blocker вне самого connector path — открытая P0-проблема авторизации.** Issue #2680 подтверждает, что tenant-scoped permissions способны читать или изменять host-global operational state: в частности, глобальный event delivery profile и глобальную диагностическую информацию. В issue прямо указано, что в `AuthContext` нет отдельной типизированной platform/root authority, а обычного tenant equality check недостаточно. Issue остаётся открытым. До устранения этого дефекта либо отключения соответствующих transport surfaces fail-closed production-релиз считать безопасным нельзя. fileciteturn47file0L3-L7
 
-**Самая серьёзная найденная мной ошибка в sandbox execution path** находится в `crates/rustok-sandbox/src/runtime.rs`: результат выполнения уже может быть успешным, после чего `ExecutionObserver` вызывается с `.await?`. Ошибка observer-а превращает уже выполненную операцию в `Err` для вызывающей стороны. Если внешний caller считает `Err` основанием для retry, side effect может выполниться повторно. В ветке ошибки observer, в свою очередь, способен замаскировать первоначальную ошибку executor-а. Это не классическая data race, но это опасная **semantic race между фактом выполнения side effect и фиксацией его результата**. fileciteturn50file0L1-L5
+**Самая серьёзная найденная мной ошибка в sandbox execution path** находится в `crates/workers/rustok-sandbox/src/runtime.rs`: результат выполнения уже может быть успешным, после чего `ExecutionObserver` вызывается с `.await?`. Ошибка observer-а превращает уже выполненную операцию в `Err` для вызывающей стороны. Если внешний caller считает `Err` основанием для retry, side effect может выполниться повторно. В ветке ошибки observer, в свою очередь, способен замаскировать первоначальную ошибку executor-а. Это не классическая data race, но это опасная **semantic race между фактом выполнения side effect и фиксацией его результата**. fileciteturn50file0L1-L5
 
 **Второй серьёзный blocker — governance.** Единственный активный repository ruleset, возвращённый GitHub API, защищает default branch от deletion/non-fast-forward и включает Copilot review, но **не содержит `pull_request` и `required_status_checks` rules**. Одновременно issue #1837 по активации полноценной защиты `main` остаётся открытым и явно требует `Migration harness approval` и `Repository ruleset contract`. Сам `Repository Ruleset Contract` на проверенном SHA сейчас красный. Следовательно, собственная модель репозитория говорит: production branch governance ещё не доведён до требуемого состояния. fileciteturn58file0L1-L5 fileciteturn59file0L1-L5 fileciteturn48file0L3-L7 fileciteturn60file0L1-L5
 
@@ -292,8 +292,8 @@ docker rm -f rustok-postgres-test
 
 | Приоритет | Проблема | Местоположение | Влияние | Рекомендация |
 |---|---|---|---|---|
-| **Критично** | Tenant authority используется для host-global operations | `crates/rustok-events-module/admin/...`, `apps/server/src/graphql/system.rs`, issue #2680 fileciteturn47file0L3-L7 | Tenant admin может получить host-global diagnostics или менять global event delivery profile; собственный issue маркирует это P0 | Ввести отдельный typed platform principal/authority; до этого отключить эти transports fail-closed |
-| **Высоко** | Observer failure меняет результат уже выполненного execution | `crates/rustok-sandbox/src/runtime.rs` fileciteturn50file0L1-L5 | Успешный side effect может быть возвращён как `Err`, а retry способен повторить действие; observer также маскирует исходную execution error | Разделить business result и telemetry/audit persistence; durable audit сделать через transactional/outbox contract |
+| **Критично** | Tenant authority используется для host-global operations | `crates/modules/rustok-events-module/admin/...`, `apps/server/src/graphql/system.rs`, issue #2680 fileciteturn47file0L3-L7 | Tenant admin может получить host-global diagnostics или менять global event delivery profile; собственный issue маркирует это P0 | Ввести отдельный typed platform principal/authority; до этого отключить эти transports fail-closed |
+| **Высоко** | Observer failure меняет результат уже выполненного execution | `crates/workers/rustok-sandbox/src/runtime.rs` fileciteturn50file0L1-L5 | Успешный side effect может быть возвращён как `Err`, а retry способен повторить действие; observer также маскирует исходную execution error | Разделить business result и telemetry/audit persistence; durable audit сделать через transactional/outbox contract |
 | **Высоко** | `main` не требует PR/status checks через активный ruleset | Repository Rules API, issue #1837 fileciteturn58file0L1-L5 fileciteturn48file0L3-L7 | Изменение может попасть на production branch без требуемого verified gate | Required PR + exact required checks + no permanent bypass |
 | **Высоко** | Governance gate сейчас красный | `.github/workflows/repository-ruleset-audit.yml` run на `b9356d…` fileciteturn60file0L1-L5 | Собственный production governance contract не выполняется | Сделать этот workflow зелёным до release freeze |
 | **Высоко** | Mutable Actions refs + глобальные write/OIDC permissions | `.github/workflows/ci.yml` fileciteturn53file0L1-L5 | Compromised/moved action ref получает существенно больший blast radius | Full-SHA pinning; global `contents: read`; elevated permissions только в attestation/SARIF jobs. GitHub рекомендует именно это. citeturn23search4turn23search0 |
@@ -305,7 +305,7 @@ docker rm -f rustok-postgres-test
 | **Средне** | Dev secrets/debug config опасны при accidental promotion | `.env.dev.example`, Compose citeturn28view2turn28view3 | Предсказуемые credentials, debug logging/panel, data ports могут оказаться публичными | Prod profile отдельно; startup rejection known defaults; secret manager/Compose secrets; private networks |
 | **Средне** | Нет доказанного обязательного connector-specific SSRF/failure E2E gate | Основной CI запускает broad workspace tests, но отдельный outbound connector security suite в просмотренном `ci.yml` не выделен. fileciteturn53file0L1-L5 | Regression в redirect/DNS/timeout policy может попасть в release | Добавить отдельный `connector-contract` required job |
 | **Средне** | One-thread-per-execution требует capacity proof | `rustok-sandbox` runtime contract citeturn28view1 | При слишком либеральных лимитах возможны thread burst, context switching и memory pressure | Load test и лимиты на основе CPU/RSS, не «на глаз» |
-| **Низко** | Capability phase test неполон | `crates/alloy/src/bridge/mod.rs` fileciteturn57file0L1-L5 | Ошибка в будущей phase mapping может расширить privilege | Table-driven test всех phases + negative assertions |
+| **Низко** | Capability phase test неполон | `crates/modules/alloy/src/bridge/mod.rs` fileciteturn57file0L1-L5 | Ошибка в будущей phase mapping может расширить privilege | Table-driven test всех phases + negative assertions |
 
 Особого внимания заслуживает **observer bug**. Текущий pattern эквивалентен:
 
@@ -470,14 +470,14 @@ rg -n '\bunsafe\b' \
 
 # Паники/необработанные assumptions в runtime path
 rg -n '\b(unwrap|expect|panic!|unreachable!)\b' \
-  crates/alloy \
-  crates/rustok-sandbox \
+  crates/modules/alloy \
+  crates/workers/rustok-sandbox \
   apps/server
 
 # Потенциальные blocking operations в async code
 rg -n 'std::thread|std::fs|std::process|block_on' \
-  crates/alloy \
-  crates/rustok-sandbox \
+  crates/modules/alloy \
+  crates/workers/rustok-sandbox \
   apps/server
 ```
 

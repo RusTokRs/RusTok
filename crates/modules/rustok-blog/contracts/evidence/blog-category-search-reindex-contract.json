@@ -7,17 +7,17 @@
   "production_contract": {
     "permission_resource": "blog_categories",
     "category_service_constructor": "CategoryService::new(DatabaseConnection, TransactionalEventBus)",
-    "owner_service": "crates/rustok-blog/src/services/category.rs",
-    "owner_rbac": "crates/rustok-blog/src/services/rbac.rs",
-    "platform_permissions": "crates/rustok-api/src/permissions.rs",
-    "platform_rbac": "crates/rustok-core/src/rbac.rs",
-    "oauth_scope_policy": "crates/rustok-api/src/context/auth.rs",
-    "module_permissions": "crates/rustok-blog/src/lib.rs",
-    "http_adapter": "crates/rustok-blog/src/controllers/categories.rs",
-    "router": "crates/rustok-blog/src/controllers/mod.rs",
-    "openapi": "crates/rustok-blog/src/openapi.rs",
-    "search_projector": "crates/rustok-search/src/blog_projector.rs",
-    "search_ingestion": "crates/rustok-search/src/ingestion.rs"
+    "owner_service": "crates/modules/rustok-blog/src/services/category.rs",
+    "owner_rbac": "crates/modules/rustok-blog/src/services/rbac.rs",
+    "platform_permissions": "crates/libs/rustok-api/src/permissions.rs",
+    "platform_rbac": "crates/libs/rustok-core/src/rbac.rs",
+    "oauth_scope_policy": "crates/libs/rustok-api/src/context/auth.rs",
+    "module_permissions": "crates/modules/rustok-blog/src/lib.rs",
+    "http_adapter": "crates/modules/rustok-blog/src/controllers/categories.rs",
+    "router": "crates/modules/rustok-blog/src/controllers/mod.rs",
+    "openapi": "crates/modules/rustok-blog/src/openapi.rs",
+    "search_projector": "crates/modules/rustok-search/src/blog_projector.rs",
+    "search_ingestion": "crates/modules/rustok-search/src/ingestion.rs"
   },
   "cases": [
     {

@@ -26,7 +26,7 @@ The in-process adapter is the only new source in this slice that constructs `Pay
 
 ## Mounted adapter
 
-`crates/rustok-commerce/src/controllers/admin/mod.rs` now mounts `payments_owner_reads.rs` as the public `payments` module and loads the prior `payments.rs` as private `payments_legacy` compatibility source.
+`crates/modules/rustok-commerce/src/controllers/admin/mod.rs` now mounts `payments_owner_reads.rs` as the public `payments` module and loads the prior `payments.rs` as private `payments_legacy` compatibility source.
 
 The mounted module owns the four read handlers and wildcard-reexports the legacy public compatibility surface so existing mutation handlers and generated OpenAPI path symbols remain available. Its local GET handlers shadow the legacy GET names, so mounted payment/refund reads execute only through the new owner port while mutation execution remains unchanged.
 

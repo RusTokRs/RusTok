@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const failures = [];
 const need = (text, marker, label) => {
@@ -43,22 +43,22 @@ const featureBody = (manifest, feature, label) => {
 };
 
 const evidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-authenticated-inline-consumer-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-authenticated-inline-consumer-source.json",
 ));
-const grant = read("crates/rustok-pages/src/services/page/inline_edit.rs");
-const feature = read("crates/rustok-pages/src/services/page/inline_edit_feature.rs");
-const runtime = read("crates/rustok-pages/src/services/page/inline_edit_runtime.rs");
-const document = read("crates/rustok-pages/src/services/page/document.rs");
-const pageServices = read("crates/rustok-pages/src/services/page/mod.rs");
-const services = read("crates/rustok-pages/src/services/mod.rs");
-const pagesLib = read("crates/rustok-pages/src/lib.rs");
-const storefrontCargo = read("crates/rustok-pages/storefront/Cargo.toml");
-const storefrontLib = read("crates/rustok-pages/storefront/src/lib.rs");
-const storefront = read("crates/rustok-pages/storefront/src/inline_edit.rs");
+const grant = read("crates/modules/rustok-pages/src/services/page/inline_edit.rs");
+const feature = read("crates/modules/rustok-pages/src/services/page/inline_edit_feature.rs");
+const runtime = read("crates/modules/rustok-pages/src/services/page/inline_edit_runtime.rs");
+const document = read("crates/modules/rustok-pages/src/services/page/document.rs");
+const pageServices = read("crates/modules/rustok-pages/src/services/page/mod.rs");
+const services = read("crates/modules/rustok-pages/src/services/mod.rs");
+const pagesLib = read("crates/modules/rustok-pages/src/lib.rs");
+const storefrontCargo = read("crates/modules/rustok-pages/storefront/Cargo.toml");
+const storefrontLib = read("crates/modules/rustok-pages/storefront/src/lib.rs");
+const storefront = read("crates/modules/rustok-pages/storefront/src/inline_edit.rs");
 const hostCargo = read("apps/storefront/Cargo.toml");
 const serverCargo = read("apps/server/Cargo.toml");
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
-const localPlan = read("crates/rustok-pages/docs/implementation-plan.md");
+const localPlan = read("crates/modules/rustok-pages/docs/implementation-plan.md");
 const packet = read(
   "docs/modules/pages-page-builder-authenticated-inline-consumer-packet-2026-08-06.md",
 );

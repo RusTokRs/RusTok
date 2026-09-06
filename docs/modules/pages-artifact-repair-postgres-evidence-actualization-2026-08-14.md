@@ -27,7 +27,7 @@ The historical source packet intentionally keeps `execution=[]` and every valida
 This continuation adds:
 
 - `.github/workflows/pages-artifact-repair-postgres-evidence.yml`;
-- `crates/rustok-pages/contracts/evidence/pages-artifact-repair-postgres-execution.json`.
+- `crates/modules/rustok-pages/contracts/evidence/pages-artifact-repair-postgres-execution.json`.
 
 For pull requests the workflow executes the source verifier, PostgreSQL 16 integration test and `cargo check --locked -p rustok-pages --all-targets` against the event SHA. This validates the proposed merge context without minting deployment/governance evidence.
 

@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 71 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-70.md`. Slices 1–66 remain in
+`crates/modules/rustok-blog/docs/implementation-plan-slice-70.md`. Slices 1–66 remain in
 the original plan; slices 67–70 retain the typed remote core, TCP client,
 trusted accepted-stream adapter, and host-selected consumer publication.
 
@@ -62,7 +62,7 @@ remains maintainer-owned.
 - `apps/server/src/services/server_bootstrap.rs` starts the listener after app
   runtime composition and before the remaining worker startup path.
 - Source evidence is retained at
-  `crates/rustok-blog/contracts/evidence/blog-comments-tcp-listener-lifecycle.json`.
+  `crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-listener-lifecycle.json`.
 - The standalone fail-closed verifier is
   `scripts/verify/verify-blog-comments-tcp-listener-lifecycle.mjs`.
 

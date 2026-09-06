@@ -6,11 +6,11 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 const checks = [
   {
-    file: "crates/rustok-pages/tests/integration.rs",
+    file: "crates/modules/rustok-pages/tests/integration.rs",
     label: "page CRUD and body sanitization contract tests",
     tokens: [
       "page_create_emits_domain_event",
@@ -18,21 +18,21 @@ const checks = [
     ],
   },
   {
-    file: "crates/rustok-pages/src/dto/page.rs",
+    file: "crates/modules/rustok-pages/src/dto/page.rs",
     label: "single Page Builder document write DTO",
     tokens: [
       "pub struct PageBodyInput {\n    pub locale: String,\n    pub document: Value,\n}",
     ],
   },
   {
-    file: "crates/rustok-pages/src/graphql/types.rs",
+    file: "crates/modules/rustok-pages/src/graphql/types.rs",
     label: "single Page Builder document GraphQL input",
     tokens: [
       "pub struct GqlPageBodyInput {\n    pub locale: String,\n    pub document: Value,\n}",
     ],
   },
   {
-    file: "crates/rustok-pages/admin/src/transport/graphql_adapter.rs",
+    file: "crates/modules/rustok-pages/admin/src/transport/graphql_adapter.rs",
     label: "single Page Builder document admin transport",
     tokens: [
       "struct PageBodyWriteInput {\n    locale: String,\n    document: Value,\n}",
@@ -41,7 +41,7 @@ const checks = [
     ],
   },
   {
-    file: "crates/rustok-pages/tests/page_builder_roundtrip.rs",
+    file: "crates/modules/rustok-pages/tests/page_builder_roundtrip.rs",
     label: "visual builder and page content bridge contract tests",
     tokens: [
       "pages_write_api_is_split_by_owner_and_revision",
@@ -51,7 +51,7 @@ const checks = [
     ],
   },
   {
-    file: "crates/rustok-pages/tests/page_service_kind_guard.rs",
+    file: "crates/modules/rustok-pages/tests/page_service_kind_guard.rs",
     label: "Pages lifecycle and Page Builder ownership guard tests",
     tokens: [
       "lifecycle_operations_reject_unknown_page_ids",
@@ -61,7 +61,7 @@ const checks = [
     ],
   },
   {
-    file: "crates/rustok-pages/tests/page_locale_fallback.rs",
+    file: "crates/modules/rustok-pages/tests/page_locale_fallback.rs",
     label: "page locale fallback contract tests",
     tokens: [
       "get_by_slug_falls_back_to_platform_locale",
@@ -70,7 +70,7 @@ const checks = [
     ],
   },
   {
-    file: "crates/rustok-pages/tests/rbac.rs",
+    file: "crates/modules/rustok-pages/tests/rbac.rs",
     label: "RBAC and channel visibility contract tests",
     tokens: [
       "manager_cannot_publish_during_create_or_non_builder_lifecycle_transition",
@@ -78,7 +78,7 @@ const checks = [
     ],
   },
   {
-    file: "crates/rustok-pages/tests/contract_surface.rs",
+    file: "crates/modules/rustok-pages/tests/contract_surface.rs",
     label: "manifest and external builder contract drift tests",
     tokens: [
       "module_manifest_declares_fba_builder_consumer_contract",

@@ -6,17 +6,17 @@ const json = (path) => JSON.parse(read(path));
 const fail = (message) => { console.error(`[verify-rbac-fba] ${message}`); process.exit(1); };
 const sameSet = (actual, expected) => Array.isArray(actual) && Array.isArray(expected) && actual.length === expected.length && expected.every((item) => actual.includes(item));
 
-const registryPath = 'crates/rustok-rbac/contracts/rbac-fba-registry.json';
-const evidencePath = 'crates/rustok-rbac/contracts/evidence/rbac-contract-test-static-matrix.json';
+const registryPath = 'crates/modules/rustok-rbac/contracts/rbac-fba-registry.json';
+const evidencePath = 'crates/modules/rustok-rbac/contracts/evidence/rbac-contract-test-static-matrix.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const runtimeSmoke = json(registry.evidence.runtime_order_smoke);
-const manifest = read('crates/rustok-rbac/rustok-module.toml');
-const plan = read('crates/rustok-rbac/docs/implementation-plan.md');
+const manifest = read('crates/modules/rustok-rbac/rustok-module.toml');
+const plan = read('crates/modules/rustok-rbac/docs/implementation-plan.md');
 const central = read('docs/modules/registry.md');
-const cargo = read('crates/rustok-rbac/Cargo.toml');
-const lib = read('crates/rustok-rbac/src/lib.rs');
-const ports = read('crates/rustok-rbac/src/ports.rs');
+const cargo = read('crates/modules/rustok-rbac/Cargo.toml');
+const lib = read('crates/modules/rustok-rbac/src/lib.rs');
+const ports = read('crates/modules/rustok-rbac/src/ports.rs');
 
 if (registry.schema_version !== 1) fail('registry schema_version must be 1');
 if (registry.module !== 'rbac' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');

@@ -4,11 +4,11 @@ import { readFileSync } from "node:fs";
 
 const files = {
   migrations: readFileSync(
-    "crates/rustok-iggy-connector/src/migrations.rs",
+    "crates/modules/rustok-iggy-connector/src/migrations.rs",
     "utf8",
   ),
   inspection: readFileSync(
-    "crates/rustok-iggy-connector/src/consumer_poison_inspection.rs",
+    "crates/modules/rustok-iggy-connector/src/consumer_poison_inspection.rs",
     "utf8",
   ),
 };

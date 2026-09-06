@@ -112,7 +112,7 @@ It requires:
 
 Source evidence is recorded in:
 
-- `crates/rustok-payment/contracts/evidence/payment-collection-admission-diagnostic-safety-source.json`.
+- `crates/modules/rustok-payment/contracts/evidence/payment-collection-admission-diagnostic-safety-source.json`.
 
 The evidence remains source-only: `execution` is empty and every validation flag is false.
 
@@ -123,11 +123,11 @@ source-only contracts:
 
 - tenant verifier: `scripts/verify/verify-payment-collection-tenant-context.mjs`;
 - tenant evidence:
-  `crates/rustok-payment/contracts/evidence/payment-collection-tenant-diagnostic-safety-source.json`;
+  `crates/modules/rustok-payment/contracts/evidence/payment-collection-tenant-diagnostic-safety-source.json`;
 - owner mapper verifier:
   `scripts/verify/verify-payment-collection-owner-error-diagnostic-safety.mjs`;
 - owner mapper evidence:
-  `crates/rustok-payment/contracts/evidence/payment-collection-owner-error-diagnostic-safety-source.json`.
+  `crates/modules/rustok-payment/contracts/evidence/payment-collection-owner-error-diagnostic-safety-source.json`.
 
 The tenant contract replaces the complete parse error, complete constructed `PortError`, raw
 delegated context, internal message text, and Debug kind output with type/shape-only facts while

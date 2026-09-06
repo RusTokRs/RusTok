@@ -39,23 +39,23 @@ function forbidMarker(source, marker, message) {
 }
 
 const migrationPath =
-  "crates/rustok-payment/src/migrations/m20260714_000119_require_refund_creation_identity.rs";
-const migrationRegistryPath = "crates/rustok-payment/src/migrations/mod.rs";
-const refundServicePath = "crates/rustok-payment/src/services/refund_creation.rs";
-const legacyPaymentServicePath = "crates/rustok-payment/src/services/payment.rs";
-const orchestrationPath = "crates/rustok-commerce/src/services/payment_orchestration.rs";
-const restPath = "crates/rustok-commerce/src/controllers/admin/payments_owner_reads.rs";
+  "crates/modules/rustok-payment/src/migrations/m20260714_000119_require_refund_creation_identity.rs";
+const migrationRegistryPath = "crates/modules/rustok-payment/src/migrations/mod.rs";
+const refundServicePath = "crates/modules/rustok-payment/src/services/refund_creation.rs";
+const legacyPaymentServicePath = "crates/modules/rustok-payment/src/services/payment.rs";
+const orchestrationPath = "crates/modules/rustok-commerce/src/services/payment_orchestration.rs";
+const restPath = "crates/modules/rustok-commerce/src/controllers/admin/payments_owner_reads.rs";
 const graphqlPath =
-  "crates/rustok-commerce/src/graphql/mutations/provider_operations.rs";
+  "crates/modules/rustok-commerce/src/graphql/mutations/provider_operations.rs";
 const graphqlReturnPath =
-  "crates/rustok-commerce/src/services/return_completion_orchestration.rs";
+  "crates/modules/rustok-commerce/src/services/return_completion_orchestration.rs";
 const graphqlParityPath =
-  "crates/rustok-commerce/tests/graphql_runtime_parity_test/main.rs";
-const adminReturnPath = "crates/rustok-commerce/src/controllers/admin/returns.rs";
-const schemaSmokePath = "crates/rustok-migrations/tests/ecommerce_schema_smoke.rs";
-const paymentRegistryPath = "crates/rustok-payment/contracts/payment-fba-registry.json";
+  "crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/main.rs";
+const adminReturnPath = "crates/modules/rustok-commerce/src/controllers/admin/returns.rs";
+const schemaSmokePath = "crates/utils/rustok-migrations/tests/ecommerce_schema_smoke.rs";
+const paymentRegistryPath = "crates/modules/rustok-payment/contracts/payment-fba-registry.json";
 const packagePath = "package.json";
-const planPath = "crates/rustok-commerce/docs/implementation-plan.md";
+const planPath = "crates/modules/rustok-commerce/docs/implementation-plan.md";
 
 const migration = read(migrationPath);
 const migrationRegistry = read(migrationRegistryPath);

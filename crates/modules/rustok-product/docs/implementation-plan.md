@@ -93,7 +93,7 @@ gRPC verifier, service-host, authentication, loopback conformance, Commerce, and
 AI commands passed. The exact maintainer-local Git revision was not independently
 observed by the implementation agent and raw logs were not retained. The bounded
 attestation is stored in
-`crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json`.
+`crates/modules/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json`.
 It closes the requested unit, loopback, and remote-consumer harness commands only;
 it does not prove standalone PostgreSQL provider startup or authenticated
 separate-process Commerce and AI execution.
@@ -217,16 +217,16 @@ rustok-pricing` dependency cycle.
   maintainer-attested as passed without retained raw logs. Runtime capture
   execution and authenticated Commerce/AI business-request evidence remain open.
 - Structural shape: `core_transport_ui`
-- Evidence: `crates/rustok-product/contracts/product-fba-registry.json`,
-  `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`,
-  `crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json`,
-  `crates/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json`,
-  `crates/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json`,
-  `crates/rustok-product-transport/tests/port_conformance.rs`,
-  `crates/rustok-product-transport/examples/product_catalog_runtime_probe.rs`,
-  `crates/rustok-product-catalog-service/src/main.rs`,
-  `crates/rustok-commerce/tests/product_remote_consumer_behavior.rs`,
-  `crates/rustok-ai/src/direct_product_attributes.rs`,
+- Evidence: `crates/modules/rustok-product/contracts/product-fba-registry.json`,
+  `crates/modules/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`,
+  `crates/modules/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json`,
+  `crates/modules/rustok-product/contracts/evidence/product-catalog-grpc-maintainer-test-attestation.json`,
+  `crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json`,
+  `crates/modules/rustok-product-transport/tests/port_conformance.rs`,
+  `crates/modules/rustok-product-transport/examples/product_catalog_runtime_probe.rs`,
+  `crates/modules/rustok-product-catalog-service/src/main.rs`,
+  `crates/modules/rustok-commerce/tests/product_remote_consumer_behavior.rs`,
+  `crates/modules/rustok-ai/src/direct_product_attributes.rs`,
   `scripts/evidence/capture-product-catalog-separate-process-runtime.mjs`,
   `scripts/verify/verify-product-runtime-fallback-smoke.mjs`,
   `scripts/verify/verify-product-catalog-read-runtime-composition.mjs`,

@@ -6,7 +6,7 @@ Groups-owned state into Moderation.
 
 ## Runtime boundary
 
-`crates/rustok-groups/tests/moderation_subject_postgres.rs` runs the production
+`crates/modules/rustok-groups/tests/moderation_subject_postgres.rs` runs the production
 `GroupsModerationSubjectAdapterFactory` against PostgreSQL. The isolated schema installs the real
 Outbox idempotency migrations and the real Groups migrations, then seeds only Groups-owned group and
 membership rows. No Moderation owner tables are installed or read.

@@ -9,17 +9,17 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  eventTypes: "crates/rustok-events/src/types.rs",
+  eventTypes: "crates/libs/rustok-events/src/types.rs",
   auth: "apps/server/src/services/auth_admin_mutation_provider/user_admin.rs",
-  profilesRedaction: "crates/rustok-profiles/src/account_redaction.rs",
-  profilesRedactionTest: "crates/rustok-profiles/tests/account_redaction_test.rs",
-  profilesLib: "crates/rustok-profiles/src/lib.rs",
-  inbox: "crates/rustok-search/src/forum_inbox.rs",
-  ingestion: "crates/rustok-search/src/ingestion.rs",
-  contract: "crates/rustok-forum/contracts/forum-search-account-deletion-redaction.json",
-  umbrellaContract: "crates/rustok-forum/contracts/forum-search-public-author-summary.json",
-  note: "crates/rustok-forum/docs/forum-23a11-account-deletion-redaction.md",
-  umbrellaNote: "crates/rustok-forum/docs/forum-23a-search-public-author-summary.md",
+  profilesRedaction: "crates/modules/rustok-profiles/src/account_redaction.rs",
+  profilesRedactionTest: "crates/modules/rustok-profiles/tests/account_redaction_test.rs",
+  profilesLib: "crates/modules/rustok-profiles/src/lib.rs",
+  inbox: "crates/modules/rustok-search/src/forum_inbox.rs",
+  ingestion: "crates/modules/rustok-search/src/ingestion.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-search-account-deletion-redaction.json",
+  umbrellaContract: "crates/modules/rustok-forum/contracts/forum-search-public-author-summary.json",
+  note: "crates/modules/rustok-forum/docs/forum-23a11-account-deletion-redaction.md",
+  umbrellaNote: "crates/modules/rustok-forum/docs/forum-23a-search-public-author-summary.md",
   verifier: "scripts/verify/verify-forum-search-account-deletion-redaction.mjs",
 };
 

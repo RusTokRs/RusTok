@@ -9,7 +9,7 @@ FORUM-21R exposes the FORUM-21P selected-reply split owner through one additive 
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-split-graphql-transport.json
+crates/modules/rustok-forum/contracts/forum-topic-split-graphql-transport.json
 ```
 
 ## Command

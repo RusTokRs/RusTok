@@ -6,16 +6,16 @@ const json = (path) => JSON.parse(read(path));
 const fail = (message) => { console.error(`[verify-region-fba] ${message}`); process.exit(1); };
 const sameSet = (actual, expected) => Array.isArray(actual) && Array.isArray(expected) && actual.length === expected.length && expected.every((item) => actual.includes(item));
 
-const registryPath = 'crates/rustok-region/contracts/region-fba-registry.json';
-const evidencePath = 'crates/rustok-region/contracts/evidence/region-contract-test-static-matrix.json';
+const registryPath = 'crates/modules/rustok-region/contracts/region-fba-registry.json';
+const evidencePath = 'crates/modules/rustok-region/contracts/evidence/region-contract-test-static-matrix.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const runtimeOrderSmoke = json(registry.evidence.runtime_order_smoke);
-const manifest = read('crates/rustok-region/rustok-module.toml');
-const plan = read('crates/rustok-region/docs/implementation-plan.md');
+const manifest = read('crates/modules/rustok-region/rustok-module.toml');
+const plan = read('crates/modules/rustok-region/docs/implementation-plan.md');
 const central = read('docs/modules/registry.md');
-const lib = read('crates/rustok-region/src/lib.rs');
-const ports = read('crates/rustok-region/src/ports.rs');
+const lib = read('crates/modules/rustok-region/src/lib.rs');
+const ports = read('crates/modules/rustok-region/src/ports.rs');
 
 if (registry.schema_version !== 1) fail('registry schema_version must be 1');
 if (registry.module !== 'region' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');

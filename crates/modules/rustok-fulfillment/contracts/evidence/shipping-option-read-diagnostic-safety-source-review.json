@@ -1,11 +1,11 @@
 {
   "status": "fulfillment_shipping_option_read_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-fulfillment/src/shipping_option_read.rs",
-    "crates/rustok-fulfillment/src/error.rs",
+    "crates/modules/rustok-fulfillment/src/shipping_option_read.rs",
+    "crates/modules/rustok-fulfillment/src/error.rs",
     "scripts/verify/verify-fulfillment-shipping-option-read-port.mjs",
-    "crates/rustok-fulfillment/docs/shipping-option-read-diagnostic-safety.md",
-    "crates/rustok-fulfillment/docs/implementation-plan.md"
+    "crates/modules/rustok-fulfillment/docs/shipping-option-read-diagnostic-safety.md",
+    "crates/modules/rustok-fulfillment/docs/implementation-plan.md"
   ],
   "review_findings": {
     "public_traits_preserved": true,

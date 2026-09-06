@@ -4,7 +4,7 @@
   "date": "2026-08-05",
   "scope": "reviewed Page Builder publication through the registered Pages native storefront route with channel-constrained immutable artifact selection",
   "harness": {
-    "path": "crates/rustok-pages/storefront/tests/native_storefront_reviewed_artifact_sqlite.rs",
+    "path": "crates/modules/rustok-pages/storefront/tests/native_storefront_reviewed_artifact_sqlite.rs",
     "test": "native_storefront_returns_reviewed_artifact_for_visible_channel_and_refuses_unverified_fill",
     "backend": "sqlite_in_memory",
     "route": "/api/fn/pages/storefront-data",

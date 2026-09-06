@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_from": "crates/rustok-tax/contracts/tax-fba-registry.json",
+  "generated_from": "crates/modules/rustok-tax/contracts/tax-fba-registry.json",
   "runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
   "status": "executable_no_compile",
   "contract_version": "tax.calculation.v1",

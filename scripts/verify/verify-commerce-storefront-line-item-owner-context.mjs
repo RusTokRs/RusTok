@@ -11,7 +11,7 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const boundary = read(
-  'crates/rustok-commerce/src/controllers/store/line_item_resolution.rs',
+  'crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs',
 );
 const failures = [];
 

@@ -235,7 +235,7 @@ This is the active cross-cutting implementation plan. As of 2026-09-05:
   completion claim.
 
 The live module plan and FFA/FBA readiness row are maintained with the scaffold
-in `crates/rustok-translation/docs/implementation-plan.md`.
+in `crates/modules/rustok-translation/docs/implementation-plan.md`.
 
 ## Decisions fixed by this plan
 
@@ -1704,7 +1704,7 @@ The translation platform is complete when:
 When Phase 1 creates the path module, the same change must:
 
 - add `translation` to `modules.toml`;
-- create `crates/rustok-translation/{README.md,docs/README.md,docs/implementation-plan.md,rustok-module.toml}`;
+- create `crates/modules/rustok-translation/{README.md,docs/README.md,docs/implementation-plan.md,rustok-module.toml}`;
 - add the local plan to `docs/modules/implementation-plans-registry.md`;
 - add the module and owner map to `docs/modules/registry.md`;
 - keep FFA/FBA readiness synchronized as the admin UI and transports appear;
@@ -1747,7 +1747,7 @@ FFA/FBA status without provider/transport/runtime evidence.
 - [Backend module architecture](../backend/module-backend-architecture.md)
 - [Module UI package architecture](../UI/module-package-architecture.md)
 - [GraphQL and Leptos Server Functions](../UI/graphql-architecture.md)
-- [AI capability documentation](../../crates/rustok-ai/docs/README.md)
+- [AI capability documentation](../../crates/modules/rustok-ai/docs/README.md)
 - [Richtext implementation plan](./rich-text-implementation-plan.md)
 - [Page Builder implementation plan](./page-builder-implementation-plan.md)
 - [Proposed translation boundary ADR](../../DECISIONS/2026-07-26-translation-control-plane-boundary.md)

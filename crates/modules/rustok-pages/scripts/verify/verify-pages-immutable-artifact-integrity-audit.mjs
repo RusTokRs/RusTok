@@ -4,16 +4,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  audit: "crates/rustok-pages/src/services/page/artifact_integrity_audit.rs",
-  pageModule: "crates/rustok-pages/src/services/page/mod.rs",
-  services: "crates/rustok-pages/src/services/mod.rs",
-  lib: "crates/rustok-pages/src/lib.rs",
+  audit: "crates/modules/rustok-pages/src/services/page/artifact_integrity_audit.rs",
+  pageModule: "crates/modules/rustok-pages/src/services/page/mod.rs",
+  services: "crates/modules/rustok-pages/src/services/mod.rs",
+  lib: "crates/modules/rustok-pages/src/lib.rs",
   evidence:
-    "crates/rustok-pages/contracts/evidence/pages-immutable-artifact-integrity-audit-source.json",
-  packet: "crates/rustok-pages/docs/immutable-artifact-integrity-audit.md",
+    "crates/modules/rustok-pages/contracts/evidence/pages-immutable-artifact-integrity-audit-source.json",
+  packet: "crates/modules/rustok-pages/docs/immutable-artifact-integrity-audit.md",
   actualization: "docs/modules/page-builder-parity-actualization-2026-08-05.md",
 };
 

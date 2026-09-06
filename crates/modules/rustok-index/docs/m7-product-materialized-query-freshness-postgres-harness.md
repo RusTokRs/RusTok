@@ -14,7 +14,7 @@ The packet is source-ready but has not been executed by the implementation agent
 
 ## Production surfaces used
 
-`crates/rustok-distribution/tests/product_materialized_query_freshness_postgres.rs` creates an isolated
+`crates/modules/rustok-distribution/tests/product_materialized_query_freshness_postgres.rs` creates an isolated
 PostgreSQL schema and uses:
 
 - the real Product migration chain;

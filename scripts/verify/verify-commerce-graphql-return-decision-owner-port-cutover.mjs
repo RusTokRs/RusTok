@@ -10,12 +10,12 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const graphql = read('crates/rustok-commerce/src/graphql/mutations/fulfillment.rs');
-const graphqlRuntime = read('crates/rustok-commerce/src/graphql_runtime.rs');
+const graphql = read('crates/modules/rustok-commerce/src/graphql/mutations/fulfillment.rs');
+const graphqlRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.rs');
 const ownerDecision = read(
-  'crates/rustok-commerce/src/services/return_decision_owner_orchestration.rs',
+  'crates/modules/rustok-commerce/src/services/return_decision_owner_orchestration.rs',
 );
-const plan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 const failures = [];
 
 const requireText = (content, value, label) => {

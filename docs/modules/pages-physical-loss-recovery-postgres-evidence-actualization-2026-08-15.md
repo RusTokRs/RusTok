@@ -31,7 +31,7 @@ The historical contract `pages-explicit-artifact-binding-replacement-source.json
 
 ## Exact-main execution contract
 
-`crates/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json` defines a separate execution lineage:
+`crates/modules/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json` defines a separate execution lineage:
 
 - source status: `source_ready_main_execution_pending`;
 - target: `/consumers/0/artifact_repair/physical_loss_recovery/executed_evidence`;
@@ -59,8 +59,8 @@ Successful execution may produce only `postgres_execution_passed_physical_loss_r
 The PR preflight and exact-main execution run:
 
 ```text
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs
 cargo test --locked -p rustok-pages --test artifact_loss_activation_recovery_postgres -- --nocapture
 cargo test --locked -p rustok-pages --test artifact_loss_multilocale_activation_recovery_postgres -- --nocapture
 cargo check --locked -p rustok-pages --all-targets

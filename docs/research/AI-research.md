@@ -21,7 +21,7 @@ The key production risks in the current state are not the absence of an AI found
 
 ## Current RusTok State and What It Means for AI
 
-RusTok is a modular Rust monorepo where AI is already embedded as a capability alongside `alloy`, `rustok-mcp`, `rustok-rbac`, `rustok-product`, `rustok-order`, `rustok-search`, the Axum server and separate admin hosts. The server's GraphQL schema merges owner-owned AI, MCP, Search and RBAC roots into a single API circuit, and the AI transport surface lives in `crates/rustok-ai/src/graphql/*`. This is important: new AI functionality in RusTok should live not "on the side" but as a continuation of the existing capability pattern.
+RusTok is a modular Rust monorepo where AI is already embedded as a capability alongside `alloy`, `rustok-mcp`, `rustok-rbac`, `rustok-product`, `rustok-order`, `rustok-search`, the Axum server and separate admin hosts. The server's GraphQL schema merges owner-owned AI, MCP, Search and RBAC roots into a single API circuit, and the AI transport surface lives in `crates/modules/rustok-ai/src/graphql/*`. This is important: new AI functionality in RusTok should live not "on the side" but as a continuation of the existing capability pattern.
 
 The current `rustok-ai` core already covers the most important control plane elements: provider profiles, tool profiles, task profiles, chat sessions/runs/messages, approval requests, tool traces, recent stream events and runtime metrics snapshot. At the persisted model level, this is extracted into separate migrations and tables; at the API level — into GraphQL queries, mutations and the `aiSessionEvents` subscription; at the UI level — into capability-owned packages for Leptos and Next.js. The direct conclusion follows: **operator surface, audit and manageability already exist**, so new business scenarios should be connected to this circuit rather than building a parallel one.
 
@@ -165,13 +165,13 @@ Below is the recommended change map across RusTok code.
 
 | Module | What to Change/Add | Why |
 |---|---|---|
-| `crates/rustok-ai/src/direct.rs` | Add `ContentModerationHandler`, `ProductAttributesHandler`, `OrderAnalyticsHandler`, `OrderOpsAssistantHandler`. | This is the most natural extension point. |
-| `crates/rustok-ai/src/model.rs` | Add new task input structs; possibly extend `DirectExecutionTarget`, which currently only knows `Alloy`, `Media`, `Commerce`, `Blog`. | So new verticals are typed. |
-| `crates/rustok-ai/src/graphql/*` | Extend owner-owned query/mutation/types for new task jobs, quality stats, spend stats and domain-specific approvals. | For headless and Next/Leptos UI. |
+| `crates/modules/rustok-ai/src/direct.rs` | Add `ContentModerationHandler`, `ProductAttributesHandler`, `OrderAnalyticsHandler`, `OrderOpsAssistantHandler`. | This is the most natural extension point. |
+| `crates/modules/rustok-ai/src/model.rs` | Add new task input structs; possibly extend `DirectExecutionTarget`, which currently only knows `Alloy`, `Media`, `Commerce`, `Blog`. | So new verticals are typed. |
+| `crates/modules/rustok-ai/src/graphql/*` | Extend owner-owned query/mutation/types for new task jobs, quality stats, spend stats and domain-specific approvals. | For headless and Next/Leptos UI. |
 | `apps/next-admin/packages/rustok-ai` | Add sections for task health, spend, fallback history and domain job launchers. | So operators see not only sessions/runs but also business scenarios. |
 | `apps/next-admin/.../product-form.tsx` | Add `AI Fill` and `Apply Suggested Attributes` with preview diff. | This is the entry point for attribute autofill. |
-| `crates/rustok-order/admin/src/api.rs` and order service surfaces | Add helper flows for AI suggestions, but keep final execution through existing lifecycle mutations. | Does not break the current order contract. |
-| `crates/rustok-core/src/permissions.rs` | If needed, add narrower permissions like `ai:tasks:moderation` or `ai:tasks:orders`, if current text/image/multimodal groups are insufficient. | For more transparent governance. |
+| `crates/modules/rustok-order/admin/src/api.rs` and order service surfaces | Add helper flows for AI suggestions, but keep final execution through existing lifecycle mutations. | Does not break the current order contract. |
+| `crates/libs/rustok-core/src/permissions.rs` | If needed, add narrower permissions like `ai:tasks:moderation` or `ai:tasks:orders`, if current text/image/multimodal groups are insufficient. | For more transparent governance. |
 
 As a contract compatible with the current RusTok model, I recommend the following task job launch format. It does not copy the exact public API from the repository but **follows its current entities** `TaskProfile`, `ExecutionMode`, `ProviderProfile`, `tool_profile_id` and locale-aware contract.
 

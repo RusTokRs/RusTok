@@ -5,31 +5,31 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const contract = JSON.parse(
-  read("crates/rustok-page-builder/contracts/page-builder-publish-runtime-review.json"),
+  read("crates/modules/rustok-page-builder/contracts/page-builder-publish-runtime-review.json"),
 );
 const provider = read(contract.provider.source);
 const sanitizer = read(contract.provider.sanitization.source);
 const publishPolicy = read(contract.provider.sanitization.policy.source);
 const staticLanding = read(contract.provider.sanitization.exact_materialized_recheck_source);
-const providerLib = read("crates/rustok-page-builder/src/lib.rs");
+const providerLib = read("crates/modules/rustok-page-builder/src/lib.rs");
 const pages = read(contract.pages_consumer.source);
 const pagesDto = read(contract.pages_consumer.dto_source);
 const pagesErrors = read(contract.pages_consumer.error_source);
-const pagesModule = read("crates/rustok-pages/src/services/page/mod.rs");
-const pagesServices = read("crates/rustok-pages/src/services/mod.rs");
-const pagesLib = read("crates/rustok-pages/src/lib.rs");
+const pagesModule = read("crates/modules/rustok-pages/src/services/page/mod.rs");
+const pagesServices = read("crates/modules/rustok-pages/src/services/mod.rs");
+const pagesLib = read("crates/modules/rustok-pages/src/lib.rs");
 const receiptEntity = read(contract.pages_consumer.receipt.entity_source);
 const receiptMigration = read(contract.pages_consumer.receipt.migration);
-const pagesMigrations = read("crates/rustok-pages/src/migrations/mod.rs");
-const pagesEntities = read("crates/rustok-pages/src/entities/mod.rs");
-const artifactStore = read("crates/rustok-pages/src/services/page_builder_artifact.rs");
+const pagesMigrations = read("crates/modules/rustok-pages/src/migrations/mod.rs");
+const pagesEntities = read("crates/modules/rustok-pages/src/entities/mod.rs");
+const artifactStore = read("crates/modules/rustok-pages/src/services/page_builder_artifact.rs");
 const artifactEntity = read(
-  "crates/rustok-pages/src/entities/page_static_landing_artifact.rs",
+  "crates/modules/rustok-pages/src/entities/page_static_landing_artifact.rs",
 );
 
 function fail(message) {

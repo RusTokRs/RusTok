@@ -5,7 +5,7 @@ Status: **source-ready / unvalidated**
 ## Scope
 
 This slice hardens only the typed storefront line-item GraphQL mapper in
-`crates/rustok-commerce/src/graphql/mutations/typed_line_item_helpers.rs`.
+`crates/modules/rustok-commerce/src/graphql/mutations/typed_line_item_helpers.rs`.
 
 The mapper already selected public policy from typed failure kinds and retained truthful source
 owner, source operation, consumer operation, severity, and stable `CART_*` envelopes. Its diagnostic
@@ -99,7 +99,7 @@ The broad ecommerce correlation-safe mapper cleanup remains open.
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/graphql-typed-line-item-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/graphql-typed-line-item-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-graphql-typed-line-item-diagnostic-safety.mjs`
 - `scripts/verify/verify-commerce-graphql-cart-helper-error-safety.mjs`
 

@@ -6,7 +6,7 @@ Status: `source_closed_unvalidated`
 
 This source wave closes the identified typed-error loss in mounted Commerce GraphQL storefront cart reads.
 
-The compatibility resolver source in `crates/rustok-commerce/src/graphql/query.rs` remains unchanged. Its three existing calls to `read_storefront_cart` continue to use the same `PortContext`, `CartStorefrontReadRequest`, cart identity, successful `CartResponse`, access policy, shipping enrichment, storefront cart projection, and reusable payment-collection lookup.
+The compatibility resolver source in `crates/modules/rustok-commerce/src/graphql/query.rs` remains unchanged. Its three existing calls to `read_storefront_cart` continue to use the same `PortContext`, `CartStorefrontReadRequest`, cart identity, successful `CartResponse`, access policy, shipping enrichment, storefront cart projection, and reusable payment-collection lookup.
 
 Two existing resolver branches still compare the owner code `cart.cart_not_found` and return `None`. No not-found behavior or GraphQL nullability contract is changed.
 
@@ -62,7 +62,7 @@ The complete `PortError`, owner message content, actor id, tenant id, channel, l
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/graphql-query-cart-read-error-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/graphql-query-cart-read-error-safety-source-review.json`
 - `scripts/verify/verify-commerce-graphql-query-cart-read-error-safety.mjs`
 
 ## Still open

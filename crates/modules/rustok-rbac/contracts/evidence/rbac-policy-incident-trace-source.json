@@ -15,7 +15,7 @@
     "relation_store": "apps/server/src/services/rbac_authoritative.rs",
     "permission_cache": "apps/server/src/services/rbac_runtime.rs",
     "durable_generation": "apps/server/src/services/rbac_invalidation_generation.rs",
-    "recovery_metrics": "crates/rustok-telemetry/src/rbac_invalidation_metrics.rs"
+    "recovery_metrics": "crates/libs/rustok-telemetry/src/rbac_invalidation_metrics.rs"
   },
   "incident_packet_source": "apps/server/tests/rbac_policy_incident_trace.rs",
   "packet_contract": {

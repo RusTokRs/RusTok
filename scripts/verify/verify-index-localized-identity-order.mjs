@@ -18,22 +18,22 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-requireMarkers('crates/rustok-index/src/domain/localized_query.rs', [
+requireMarkers('crates/modules/rustok-index/src/domain/localized_query.rs', [
   'pub identity_order_direction: OrderDirection',
   'default_identity_order_direction',
   'identity_order_direction: OrderDirection::Asc',
   'pub fn with_identity_order_direction(',
 ]);
-requireMarkers('crates/rustok-index/src/application/localized_validation.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/localized_validation.rs', [
   'InvalidIdentityOrderDirection',
   'OrderDirection::Asc | OrderDirection::Desc',
 ]);
-requireMarkers('crates/rustok-index/src/application/localized_cursor.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/localized_cursor.rs', [
   'identity_order_direction: OrderDirection',
   'identity_order_direction: query.identity_order_direction',
   'LOCALIZED_SCOPED_CURSOR_VERSION: u8 = 3',
 ]);
-const compiler = requireMarkers('crates/rustok-index/src/application/postgres_localized_query.rs', [
+const compiler = requireMarkers('crates/modules/rustok-index/src/application/postgres_localized_query.rs', [
   'identity_order_direction: OrderDirection',
   'compile_keyset(query, plan, cursor, &mut bindings)',
   'compile_order(query, plan, &mut bindings)',
@@ -47,7 +47,7 @@ if (!compiler.includes('"{}.entity_id {identity_direction}"')) {
   fail('localized ORDER BY must use the explicit identity tie-break direction');
 }
 
-const ordinary = read('crates/rustok-index/src/application/postgres_query_sql.rs');
+const ordinary = read('crates/modules/rustok-index/src/application/postgres_query_sql.rs');
 if (!ordinary.includes('entity_id ASC')) {
   fail('ordinary exact-locale query identity tie-break must remain unchanged');
 }
@@ -55,7 +55,7 @@ if (ordinary.includes('identity_order_direction')) {
   fail('ordinary exact-locale compiler must not absorb localized identity ordering');
 }
 
-const owner = requireMarkers('crates/rustok-product/src/services/catalog/queries.rs', [
+const owner = requireMarkers('crates/modules/rustok-product/src/services/catalog/queries.rs', [
   '.order_by_asc(entities::product::Column::Id)',
   '.order_by_desc(entities::product::Column::Id)',
 ]);

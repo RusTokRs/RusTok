@@ -15,11 +15,11 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const runnerPath = path.join(repoRoot, "scripts/evidence/admit-pages-consumer-properties.mjs");
 const admissionContractPath =
-  "crates/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json";
+  "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json";
 const sourceContractPath =
-  "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json";
+  "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json";
 const browserContractPath =
-  "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json";
+  "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json";
 const tempRoot = path.join(repoRoot, "target", `pages-consumer-properties-admission-test-${process.pid}`);
 
 function fail(message) {

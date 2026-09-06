@@ -9,13 +9,13 @@ FORUM-24Q replaced Forum Search UUID query navigation with localized routes proj
 FORUM-24R adds an executable PostgreSQL harness for that handoff without changing production runtime behavior:
 
 ```text
-crates/rustok-search/tests/forum_canonical_route_reindex_postgres.rs
+crates/modules/rustok-search/tests/forum_canonical_route_reindex_postgres.rs
 ```
 
 The machine-readable evidence contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-canonical-route-reindex-harness.json
+crates/modules/rustok-forum/contracts/forum-search-canonical-route-reindex-harness.json
 ```
 
 ## Real composition
@@ -94,7 +94,7 @@ cargo test -p rustok-search --test forum_canonical_route_reindex_postgres -- --n
 FORUM-24S separately adds registered native-host SQLite evidence for the canonical and historical category/topic route decisions:
 
 ```text
-crates/rustok-forum/storefront/tests/native_host_route_decision_sqlite.rs
+crates/modules/rustok-forum/storefront/tests/native_host_route_decision_sqlite.rs
 ```
 
 That target confirms the route decisions are reachable through the real Axum/Leptos server-function dispatcher, but it also remains unexecuted.
@@ -107,4 +107,4 @@ No tests, Node verifiers, Cargo commands, formatting, PostgreSQL or SQLite scena
 
 ## Roadmap note
 
-`crates/rustok-forum/docs/implementation-plan.md` remains the only authoritative Forum roadmap. Its FORUM-24 ledger is stale relative to the merged source slices. These bounded evidence documents do not create a second roadmap or claim canonical ledger synchronization.
+`crates/modules/rustok-forum/docs/implementation-plan.md` remains the only authoritative Forum roadmap. Its FORUM-24 ledger is stale relative to the merged source slices. These bounded evidence documents do not create a second roadmap or claim canonical ledger synchronization.

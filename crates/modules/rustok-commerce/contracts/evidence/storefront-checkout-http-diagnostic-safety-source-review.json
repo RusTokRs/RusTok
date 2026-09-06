@@ -1,12 +1,12 @@
 {
   "status": "commerce_storefront_checkout_http_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/controllers/store/checkout.rs",
-    "crates/rustok-commerce/src/storefront_staged_checkout_runtime.rs",
-    "crates/rustok-payment/src/error.rs",
-    "crates/rustok-commerce/docs/storefront-checkout-http-diagnostic-safety.md",
+    "crates/modules/rustok-commerce/src/controllers/store/checkout.rs",
+    "crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs",
+    "crates/modules/rustok-payment/src/error.rs",
+    "crates/modules/rustok-commerce/docs/storefront-checkout-http-diagnostic-safety.md",
     "scripts/verify/verify-commerce-storefront-checkout-http-error-context.mjs",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "review_findings": {
     "checkout_runtime_variant_count": 7,

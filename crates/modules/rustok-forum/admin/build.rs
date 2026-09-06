@@ -1,4 +1,4 @@
-#[path = "../../rustok-build/src/module_manifest_contribution.rs"]
+#[path = "../../../utils/rustok-build/src/module_manifest_contribution.rs"]
 pub mod module_manifest_contribution;
 
 use module_manifest_contribution::normalize_module_contribution_manifest;
@@ -18,7 +18,7 @@ const OWNER_SCHEMA_REF_FORMAT: &str = "forum_widget_owner_schema_ref_v1";
 
 fn main() {
     println!("cargo:rerun-if-changed={MODULE_MANIFEST_RELATIVE_PATH}");
-    println!("cargo:rerun-if-changed=../../rustok-build/src/module_manifest_contribution.rs");
+    println!("cargo:rerun-if-changed=../../../utils/rustok-build/src/module_manifest_contribution.rs");
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let manifest_path = manifest_dir.join(MODULE_MANIFEST_RELATIVE_PATH);

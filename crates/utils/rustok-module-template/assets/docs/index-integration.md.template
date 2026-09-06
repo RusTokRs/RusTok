@@ -97,7 +97,7 @@ When the implementation is an in-repository native Rust module selected into
 the server distribution, use the host integration guide instead:
 
 ```text
-crates/rustok-index/docs/module-source-integration.md
+crates/modules/rustok-index/docs/module-source-integration.md
 ```
 
 That path registers versioned `IndexSchema` contracts, bounded `IndexSource`

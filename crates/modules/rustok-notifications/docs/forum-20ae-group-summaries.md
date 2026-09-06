@@ -31,6 +31,6 @@ The canonical Forum ledger still physically ends at `FORUM-20G`, and the Notific
 
 SQLite source evidence is in `tests/inbox_group_summary_sqlite.rs`. It covers exact stored counts, archived exclusion, latest-row ordering, cursor continuation, sparse authorization, owner isolation, validation, retryable abort, unchanged inbox state, and zero delivery attempts.
 
-The static source contract is `scripts/verify/verify-forum-notification-inbox-group-summaries.mjs`, and the machine-readable Forum contract is `crates/rustok-forum/contracts/forum-notification-inbox-group-summaries.json`.
+The static source contract is `scripts/verify/verify-forum-notification-inbox-group-summaries.mjs`, and the machine-readable Forum contract is `crates/modules/rustok-forum/contracts/forum-notification-inbox-group-summaries.json`.
 
 Tests, formatting, Cargo commands, verifiers, workflows, and CI were not run by the implementation agent.

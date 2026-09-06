@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "product",
   "status": "no_compile_executable_runtime_fallback_smoke",
-  "generated_from": "crates/rustok-product/contracts/product-fba-registry.json",
+  "generated_from": "crates/modules/rustok-product/contracts/product-fba-registry.json",
   "runner": "scripts/verify/verify-product-runtime-fallback-smoke.mjs",
   "contract_version": "product.catalog_read.v1",
   "profiles": [

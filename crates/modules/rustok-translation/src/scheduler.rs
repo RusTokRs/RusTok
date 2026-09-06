@@ -791,7 +791,7 @@ mod tests {
     #[tokio::test]
     async fn independent_replica_pools_converge_on_one_retention_receipt() {
         let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
+            .join("../../..")
             .canonicalize()
             .expect("workspace path");
         let evidence_dir = workspace.join("target/translation-retention-process-tests");
@@ -862,7 +862,7 @@ mod tests {
     #[tokio::test]
     async fn separate_process_recovers_claimed_retention_and_completes_purge() {
         let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
+            .join("../../..")
             .canonicalize()
             .expect("workspace path");
         let evidence_dir = workspace.join("target/translation-retention-process-tests");

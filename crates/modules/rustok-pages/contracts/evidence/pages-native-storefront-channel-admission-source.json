@@ -4,7 +4,7 @@
   "date": "2026-08-05",
   "scope": "registered Pages native storefront server function channel admission before composite cache lookup",
   "harness": {
-    "path": "crates/rustok-pages/storefront/tests/native_storefront_channel_admission_sqlite.rs",
+    "path": "crates/modules/rustok-pages/storefront/tests/native_storefront_channel_admission_sqlite.rs",
     "test": "native_storefront_channel_admission_precedes_cache_lookup",
     "backend": "sqlite_in_memory",
     "route": "/api/fn/pages/storefront-data",

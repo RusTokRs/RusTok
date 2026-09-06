@@ -12,15 +12,15 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const services = read('crates/rustok-commerce/src/services/mod.rs');
-const facade = read('crates/rustok-commerce/src/services/checkout_compensation_error_safe.rs');
-const retained = read('crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs');
-const ownerContract = read('crates/rustok-inventory/src/ports.rs');
-const ownerWrapper = read('crates/rustok-inventory/src/reservation_owner_context.rs');
+const services = read('crates/modules/rustok-commerce/src/services/mod.rs');
+const facade = read('crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs');
+const retained = read('crates/modules/rustok-commerce/src/services/checkout_compensation_owner_ports.rs');
+const ownerContract = read('crates/modules/rustok-inventory/src/ports.rs');
+const ownerWrapper = read('crates/modules/rustok-inventory/src/reservation_owner_context.rs');
 const evidence = JSON.parse(read(
-  'crates/rustok-commerce/contracts/evidence/checkout-inventory-compensation-error-safety-source-review.json',
+  'crates/modules/rustok-commerce/contracts/evidence/checkout-inventory-compensation-error-safety-source-review.json',
 ));
-const doc = read('crates/rustok-commerce/docs/checkout-compensation-inventory-context.md');
+const doc = read('crates/modules/rustok-commerce/docs/checkout-compensation-inventory-context.md');
 
 requireText(services, '#[path = "checkout_compensation_error_safe.rs"]\nmod checkout_compensation;', 'mounted facade');
 for (const marker of [

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath = path.join(
   repoRoot,
-  "crates/rustok-blog/contracts/blog-reaction-subject-provider.json",
+  "crates/modules/rustok-blog/contracts/blog-reaction-subject-provider.json",
 );
 const contract = JSON.parse(readFileSync(contractPath, "utf8"));
 
@@ -39,10 +39,10 @@ if (JSON.stringify(contract.catalog.keys) !== JSON.stringify(["like"])) {
 
 for (const relativePath of contract.required_files) read(relativePath);
 
-const provider = read("crates/rustok-blog/src/reaction_subject.rs");
-const blogLib = read("crates/rustok-blog/src/lib.rs");
-const blogCargo = read("crates/rustok-blog/Cargo.toml");
-const reactionsPlan = compact(read("crates/rustok-reactions/docs/implementation-plan.md"));
+const provider = read("crates/modules/rustok-blog/src/reaction_subject.rs");
+const blogLib = read("crates/modules/rustok-blog/src/lib.rs");
+const blogCargo = read("crates/modules/rustok-blog/Cargo.toml");
+const reactionsPlan = compact(read("crates/modules/rustok-reactions/docs/implementation-plan.md"));
 
 for (const fragment of contract.required_source_fragments) {
   if (!provider.includes(fragment)) fail(`provider is missing ${fragment}`);

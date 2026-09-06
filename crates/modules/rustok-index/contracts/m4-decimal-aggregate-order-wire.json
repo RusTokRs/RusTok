@@ -29,11 +29,11 @@
     "empty_or_all_null_result": "null"
   },
   "guardrails": {
-    "domain": "crates/rustok-index/src/domain/value.rs",
-    "validator": "crates/rustok-index/src/application/aggregate_ordering.rs",
-    "compiler": "crates/rustok-index/src/application/postgres_compiler.rs",
-    "sql": "crates/rustok-index/src/application/postgres_query_sql.rs",
-    "tests": "crates/rustok-index/src/application/aggregate_ordering_tests.rs",
+    "domain": "crates/modules/rustok-index/src/domain/value.rs",
+    "validator": "crates/modules/rustok-index/src/application/aggregate_ordering.rs",
+    "compiler": "crates/modules/rustok-index/src/application/postgres_compiler.rs",
+    "sql": "crates/modules/rustok-index/src/application/postgres_query_sql.rs",
+    "tests": "crates/modules/rustok-index/src/application/aggregate_ordering_tests.rs",
     "verifier": "scripts/verify/verify-index-decimal-aggregate-wire.mjs"
   },
   "validation": {

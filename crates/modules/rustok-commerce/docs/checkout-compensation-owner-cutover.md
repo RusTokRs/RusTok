@@ -6,9 +6,9 @@ Last reviewed: 2026-07-22
 
 ## Production mount
 
-`crates/rustok-commerce/src/services/mod.rs` mounts:
+`crates/modules/rustok-commerce/src/services/mod.rs` mounts:
 
-`crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs`
+`crates/modules/rustok-commerce/src/services/checkout_compensation_owner_ports.rs`
 
 The previous `checkout_compensation.rs` file is not mounted and remains temporary
 compatibility source until compile, replay, restart, and upgraded-path evidence is
@@ -18,17 +18,17 @@ retained.
 
 Order compensation uses:
 
-- contract: `crates/rustok-order/contracts/order-checkout-compensation-v1.json`
+- contract: `crates/modules/rustok-order/contracts/order-checkout-compensation-v1.json`
 - port: `CheckoutOrderCompensationPort`
 - operation: `compensate_checkout_order`
-- owner implementation: `crates/rustok-order/src/checkout_compensation.rs`
+- owner implementation: `crates/modules/rustok-order/src/checkout_compensation.rs`
 
 Payment compensation uses:
 
-- contract: `crates/rustok-payment/contracts/payment-checkout-compensation-v1.json`
+- contract: `crates/modules/rustok-payment/contracts/payment-checkout-compensation-v1.json`
 - port: `CheckoutPaymentCompensationPort`
 - operation: `compensate_checkout_payment`
-- owner implementation: `crates/rustok-payment/src/checkout_compensation.rs`
+- owner implementation: `crates/modules/rustok-payment/src/checkout_compensation.rs`
 
 Commerce retains only orchestration-owned checkout operation state, reservation
 mapping state, stage ordering, retry classification, and cart/inventory port calls.

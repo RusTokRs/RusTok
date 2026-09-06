@@ -1,13 +1,13 @@
 {
   "status": "commerce_graphql_query_fulfillment_diagnostic_and_channel_context_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/graphql_runtime.rs",
-    "crates/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_boundary.rs",
-    "crates/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_service.rs",
-    "crates/rustok-commerce/src/graphql/safe_query/source/rustok_fulfillment_shim.rs",
+    "crates/modules/rustok-commerce/src/graphql_runtime.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_boundary.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query/source/fulfillment_query_service.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_fulfillment_shim.rs",
     "scripts/verify/verify-commerce-graphql-query-fulfillment-context.mjs",
     "scripts/verify/verify-commerce-graphql-query-fulfillment-diagnostic-safety.mjs",
-    "crates/rustok-commerce/docs/graphql-query-fulfillment-context.md"
+    "crates/modules/rustok-commerce/docs/graphql-query-fulfillment-context.md"
   ],
   "source_contract": {
     "complete_port_error_logged": false,

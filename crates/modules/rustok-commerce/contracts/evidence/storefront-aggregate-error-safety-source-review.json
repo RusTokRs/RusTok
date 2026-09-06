@@ -5,14 +5,14 @@
   "review_base": "9d725de7bac2039c86d5b5dffdf5d6be1b4812a8",
   "scope": "Commerce storefront aggregate fetch public transport envelope",
   "reviewed_sources": [
-    "crates/rustok-commerce/docs/implementation-plan.md",
-    "crates/rustok-commerce/storefront/src/core/requests.rs",
-    "crates/rustok-commerce/storefront/src/transport/mod.rs",
-    "crates/rustok-commerce/storefront/src/transport/graphql_adapter.rs",
-    "crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs",
-    "crates/rustok-commerce/storefront/src/transport/shared_adapter.rs",
-    "crates/rustok-ui-transport/src/lib.rs",
-    "crates/rustok-commerce/storefront/Cargo.toml",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-commerce/storefront/src/core/requests.rs",
+    "crates/modules/rustok-commerce/storefront/src/transport/mod.rs",
+    "crates/modules/rustok-commerce/storefront/src/transport/graphql_adapter.rs",
+    "crates/modules/rustok-commerce/storefront/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-commerce/storefront/src/transport/shared_adapter.rs",
+    "crates/ui/rustok-ui-transport/src/lib.rs",
+    "crates/modules/rustok-commerce/storefront/Cargo.toml",
     "scripts/verify/verify-commerce-storefront-transport-error-safety.mjs"
   ],
   "findings": [
@@ -43,11 +43,11 @@
     }
   ],
   "changed_files_expected": [
-    "crates/rustok-commerce/contracts/evidence/storefront-aggregate-error-safety-source-review.json",
-    "crates/rustok-commerce/contracts/evidence/storefront-aggregate-error-safety-source.json",
-    "crates/rustok-commerce/docs/storefront-aggregate-public-error-safety.md",
-    "crates/rustok-commerce/storefront/src/transport/aggregate_error_safety.rs",
-    "crates/rustok-commerce/storefront/src/transport/mod.rs",
+    "crates/modules/rustok-commerce/contracts/evidence/storefront-aggregate-error-safety-source-review.json",
+    "crates/modules/rustok-commerce/contracts/evidence/storefront-aggregate-error-safety-source.json",
+    "crates/modules/rustok-commerce/docs/storefront-aggregate-public-error-safety.md",
+    "crates/modules/rustok-commerce/storefront/src/transport/aggregate_error_safety.rs",
+    "crates/modules/rustok-commerce/storefront/src/transport/mod.rs",
     "scripts/verify/verify-commerce-storefront-aggregate-error-safety.mjs",
     "scripts/verify/verify-commerce-storefront-transport-error-safety.mjs"
   ],

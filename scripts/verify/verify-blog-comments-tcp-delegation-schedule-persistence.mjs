@@ -24,10 +24,10 @@ const persistedTriggerPath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_persisted_trigger.rs';
 const triggerGuardPath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_trigger_guard.rs';
-const commentsSchedulePath = 'crates/rustok-comments/src/tcp_delegation_schedule.rs';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-81.md';
+const commentsSchedulePath = 'crates/modules/rustok-comments/src/tcp_delegation_schedule.rs';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-81.md';
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-persistence.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-persistence.json';
 
 const runtime = read(runtimePath);
 const scheduleFacade = read(scheduleFacadePath);

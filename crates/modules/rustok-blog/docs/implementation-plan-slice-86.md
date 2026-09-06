@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 86 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-85.md`.
+`crates/modules/rustok-blog/docs/implementation-plan-slice-85.md`.
 
 Slices 1–85 retain the typed Comments remote boundary, signed user-write
 delegation, scheduled key lifecycle, authorized mutation, canonical schedule
@@ -14,8 +14,8 @@ and a source-ready commit-acknowledgement fault harness.
 The slice-85 artifacts are present on current `main`:
 
 - `apps/server/tests/blog_comments_schedule_audit_postgres_faults.rs`;
-- `crates/rustok-blog/docs/implementation-plan-slice-85.md`;
-- `crates/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-audit-postgres-faults.json`;
+- `crates/modules/rustok-blog/docs/implementation-plan-slice-85.md`;
+- `crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-audit-postgres-faults.json`;
 - `scripts/verify/verify-blog-comments-tcp-delegation-schedule-audit-postgres-faults.mjs`.
 
 The production audited PostgreSQL store still maps a dropped worker response to

@@ -3,14 +3,14 @@ name: Blog Taxonomy Category Live Plan
 on:
   pull_request:
     paths:
-      - "crates/rustok-blog/docs/implementation-plan.md"
+      - "crates/modules/rustok-blog/docs/implementation-plan.md"
       - "scripts/verify/verify-blog-taxonomy-category-live-plan.mjs"
       - ".github/workflows/blog-taxonomy-category-live-plan.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-blog/docs/implementation-plan.md"
+      - "crates/modules/rustok-blog/docs/implementation-plan.md"
       - "scripts/verify/verify-blog-taxonomy-category-live-plan.mjs"
       - ".github/workflows/blog-taxonomy-category-live-plan.yml"
   workflow_dispatch:

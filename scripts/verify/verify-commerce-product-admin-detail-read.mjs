@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../..");
 const source = fs.readFileSync(
-  path.join(root, "crates/rustok-commerce/src/controllers/admin/products.rs"),
+  path.join(root, "crates/modules/rustok-commerce/src/controllers/admin/products.rs"),
   "utf8",
 );
 

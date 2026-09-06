@@ -6,7 +6,7 @@ Status: `source_closed_unvalidated`
 
 This source wave closes the currently identified Commerce GraphQL storefront-region error-envelope gap and the remaining raw correlation payload in the Region owner read diagnostics.
 
-The public resolver source in `crates/rustok-commerce/src/graphql/query.rs` remains unchanged. It still:
+The public resolver source in `crates/modules/rustok-commerce/src/graphql/query.rs` remains unchanged. It still:
 
 - resolves the current tenant and effective locale;
 - constructs the existing three-second Region read `PortContext`;

@@ -61,10 +61,10 @@
   },
   "diagnostic_safety": {
     "status": "source_closed_unvalidated",
-    "evidence": "crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-diagnostic-safety-source.json",
-    "review": "crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-diagnostic-safety-source-review.json",
+    "evidence": "crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-diagnostic-safety-source.json",
+    "review": "crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-diagnostic-safety-source-review.json",
     "verifier": "scripts/verify/verify-fulfillment-lifecycle-read-diagnostic-safety.mjs",
-    "runbook": "crates/rustok-fulfillment/docs/fulfillment-lifecycle-read-diagnostic-safety.md"
+    "runbook": "crates/modules/rustok-fulfillment/docs/fulfillment-lifecycle-read-diagnostic-safety.md"
   },
   "runtime_publication": {
     "runtime": "CommerceFulfillmentLifecycleReadRuntime",
@@ -104,17 +104,17 @@
     "concrete_service_read_construction": false
   },
   "runtime_capture": {
-    "contract": "crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json",
+    "contract": "crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json",
     "runner": "scripts/evidence/capture-fulfillment-lifecycle-transport-parity.mjs",
     "verifier": "scripts/verify/verify-fulfillment-lifecycle-transport-parity-capture.mjs",
-    "runbook": "crates/rustok-fulfillment/docs/fulfillment-lifecycle-transport-parity-capture.md",
+    "runbook": "crates/modules/rustok-fulfillment/docs/fulfillment-lifecycle-transport-parity-capture.md",
     "contract_published": true,
     "capture_executed": false,
     "transport_projection_parity_proven": false,
-    "failure_contract": "crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-failure-execution-contract.json",
-    "failure_harness": "crates/rustok-commerce/tests/fulfillment_read_port_failure_contract.rs",
+    "failure_contract": "crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-failure-execution-contract.json",
+    "failure_harness": "crates/modules/rustok-commerce/tests/fulfillment_read_port_failure_contract.rs",
     "failure_verifier": "scripts/verify/verify-fulfillment-lifecycle-read-failure-contract.mjs",
-    "failure_runbook": "crates/rustok-fulfillment/docs/fulfillment-lifecycle-read-failure-contract.md",
+    "failure_runbook": "crates/modules/rustok-fulfillment/docs/fulfillment-lifecycle-read-failure-contract.md",
     "failure_contract_published": true,
     "failure_harness_published": true,
     "failure_harness_executed": false,

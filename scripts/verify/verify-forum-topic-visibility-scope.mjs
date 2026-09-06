@@ -27,7 +27,7 @@ function rejectText(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
 
-const contractPath = "crates/rustok-forum/contracts/forum-topic-visibility-scope.json";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-topic-visibility-scope.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const owner = read(contract.owner_file ?? "");
 const categoryOwner = read(contract.category_owner_file ?? "");
@@ -37,8 +37,8 @@ const compatibilitySelector = read(contract.compatibility_selector_file ?? "");
 const testSource = read(contract.test_file ?? "");
 const authenticatedTestSource = read(contract.authenticated_test_file ?? "");
 const plan = read(contract.canonical_plan ?? "");
-const services = read("crates/rustok-forum/src/services/mod.rs");
-const lib = read("crates/rustok-forum/src/lib.rs");
+const services = read("crates/modules/rustok-forum/src/services/mod.rs");
+const lib = read("crates/modules/rustok-forum/src/lib.rs");
 
 if (contract.schema_version !== 2) {
   failures.push("topic visibility scope contract must use schema_version=2");

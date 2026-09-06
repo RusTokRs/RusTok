@@ -11,12 +11,12 @@ const rootPath = configuredRoot
 const read = (relativePath) => readFileSync(path.join(rootPath, relativePath), "utf8");
 
 const source = read(
-  "crates/rustok-region/storefront/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-region/storefront/src/transport/native_server_adapter.rs",
 );
-const cargo = read("crates/rustok-region/storefront/Cargo.toml");
+const cargo = read("crates/modules/rustok-region/storefront/Cargo.toml");
 const evidence = JSON.parse(
   read(
-    "crates/rustok-region/contracts/evidence/storefront-native-error-safety-source.json",
+    "crates/modules/rustok-region/contracts/evidence/storefront-native-error-safety-source.json",
   ),
 );
 

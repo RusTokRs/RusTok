@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(repoRoot, relativePath), "utf8"));
@@ -27,17 +27,17 @@ function expect(condition, message) {
 }
 
 const contract = readJson(
-  "crates/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json",
+  "crates/modules/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json",
 );
-const registry = readJson("crates/rustok-page-builder/contracts/page-builder-fba-registry.json");
+const registry = readJson("crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json");
 const wave0 = readJson(
-  "crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json",
+  "crates/modules/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json",
 );
 const wave1 = readJson(
-  "crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json",
+  "crates/modules/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json",
 );
-const rolloutSource = readText("crates/rustok-page-builder/src/rollout.rs");
-const plan = readText("crates/rustok-page-builder/docs/implementation-plan.md");
+const rolloutSource = readText("crates/modules/rustok-page-builder/src/rollout.rs");
+const plan = readText("crates/modules/rustok-page-builder/docs/implementation-plan.md");
 
 const expectedProfiles = ["all_on", "publish_off", "preview_off", "builder_off"];
 const expectedFlagKeys = [

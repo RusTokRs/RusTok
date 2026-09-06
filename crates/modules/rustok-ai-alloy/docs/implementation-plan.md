@@ -23,8 +23,8 @@ the role name.
   `runtime_operation`, and the current remote transport status. It must remain
   domain-owned; provider routing and execution transport remain in
   `rustok-ai`.
-- Evidence: `crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json`,
-  `crates/rustok-ai-alloy/contracts/evidence/ai-alloy-policy-static-matrix.json`,
+- Evidence: `crates/modules/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json`,
+  `crates/modules/rustok-ai-alloy/contracts/evidence/ai-alloy-policy-static-matrix.json`,
   and `scripts/verify/verify-ai-alloy-policy.mjs`. The verifier also locks the
   Alloy stage binding to the canonical `rustok-ai` task-run and approval flow.
 

@@ -22,7 +22,7 @@ fair_window_scans_each_partition_and_differs_from_global_budget
 Target:
 
 ```text
-crates/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs
+crates/modules/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs
 ```
 
 Exact Cargo command:
@@ -176,7 +176,7 @@ not retain partition IDs or offset values.
 Machine contract:
 
 ```text
-crates/rustok-iggy/contracts/evidence/
+crates/modules/rustok-iggy/contracts/evidence/
   dlq-duplicate-fair-window-external-scan-execution-contract.json
 ```
 
@@ -197,7 +197,7 @@ scripts/verify/
 Canonical packet path:
 
 ```text
-crates/rustok-iggy/contracts/evidence/
+crates/modules/rustok-iggy/contracts/evidence/
   dlq-duplicate-fair-window-external-scan-execution.json
 ```
 

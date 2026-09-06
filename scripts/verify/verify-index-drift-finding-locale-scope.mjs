@@ -3,16 +3,16 @@
 import { readFile } from "node:fs/promises";
 
 const files = {
-  writer: "crates/rustok-index/src/infrastructure/postgres/drift_finding_writer.rs",
-  inspector: "crates/rustok-index/src/infrastructure/postgres/drift_finding_inspector.rs",
-  recorder: "crates/rustok-index/src/infrastructure/postgres/drift_digest_recorder.rs",
-  migration: "crates/rustok-index/src/migrations/m20260804_000005_relax_index_finding_locale_scope.rs",
-  legacyMigration: "crates/rustok-index/src/migrations/m20260727_000003_create_index_operations.rs",
-  migrationsMod: "crates/rustok-index/src/migrations/mod.rs",
-  keyTest: "crates/rustok-index/tests/drift_finding_locale_key_contract.rs",
-  postgresTest: "crates/rustok-index/tests/drift_finding_locale_scope_postgres_test.rs",
-  doc: "crates/rustok-index/docs/m6-drift-finding-locale-scope.md",
-  plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  writer: "crates/modules/rustok-index/src/infrastructure/postgres/drift_finding_writer.rs",
+  inspector: "crates/modules/rustok-index/src/infrastructure/postgres/drift_finding_inspector.rs",
+  recorder: "crates/modules/rustok-index/src/infrastructure/postgres/drift_digest_recorder.rs",
+  migration: "crates/modules/rustok-index/src/migrations/m20260804_000005_relax_index_finding_locale_scope.rs",
+  legacyMigration: "crates/modules/rustok-index/src/migrations/m20260727_000003_create_index_operations.rs",
+  migrationsMod: "crates/modules/rustok-index/src/migrations/mod.rs",
+  keyTest: "crates/modules/rustok-index/tests/drift_finding_locale_key_contract.rs",
+  postgresTest: "crates/modules/rustok-index/tests/drift_finding_locale_scope_postgres_test.rs",
+  doc: "crates/modules/rustok-index/docs/m6-drift-finding-locale-scope.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
   queryVerifier: "scripts/verify/verify-index-query-contract.mjs",
 };
 

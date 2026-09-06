@@ -2,7 +2,7 @@
   "contract": "forum_search_versioned_invalidation_semantic_poison_proof_v1",
   "task": "FORUM-23B2G2B3D5",
   "status": "source_ready_maintainer_execution_pending",
-  "runtime_evidence_parent": "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
+  "runtime_evidence_parent": "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json",
   "test": "apps/server/tests/forum_versioned_invalidation_semantic_poison_iggy.rs",
   "evidence_artifact": {
     "path": "target/forum-search-versioned-invalidation-semantic-poison-evidence.json",

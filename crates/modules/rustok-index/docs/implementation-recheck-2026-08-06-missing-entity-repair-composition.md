@@ -6,7 +6,7 @@ Audited baseline: `main@3f9be66d3b3d3ed594ffa1f325b02db728212797`.
 
 ## Reviewed source scope
 
-- `crates/rustok-index/src/infrastructure/postgres/drift_missing_entity_repair.rs`
+- `crates/modules/rustok-index/src/infrastructure/postgres/drift_missing_entity_repair.rs`
 - PostgreSQL and crate exports
 - targeted-repair and concrete-composition documentation
 - live implementation plan

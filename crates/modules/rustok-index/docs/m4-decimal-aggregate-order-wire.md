@@ -8,7 +8,7 @@ This slice enables Decimal as a terminal type for explicit many-link `min_*` / `
 ordering while preserving an exact tagged `IndexValue` JSON contract.
 
 The machine-readable contract is
-`crates/rustok-index/contracts/m4-decimal-aggregate-order-wire.json`.
+`crates/modules/rustok-index/contracts/m4-decimal-aggregate-order-wire.json`.
 
 ## Domain wire
 

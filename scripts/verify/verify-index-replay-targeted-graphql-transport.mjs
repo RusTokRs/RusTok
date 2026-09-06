@@ -127,7 +127,7 @@ for (const forbidden of ['StopHandle', 'is_stopping', 'request_cancel', 'continu
   if (targetedMethod.includes(forbidden)) fail(`Targeted GraphQL method gained durable/scan lifecycle marker ${forbidden}`);
 }
 
-const sourceRegistry = requireMarkers('crates/rustok-index/src/application/source_registry.rs', [
+const sourceRegistry = requireMarkers('crates/modules/rustok-index/src/application/source_registry.rs', [
   'const MAX_LOAD_KEYS: usize = 256;',
   'pub struct IndexSourceLoadRequest',
   'IndexSourceError::EmptyLoadKeys',
@@ -147,7 +147,7 @@ requireMarkers('apps/server/src/services/index_replay_runtime_composition.rs', [
   'context.authorize_for(request.tenant_id())?;',
   'self.inner.run_targeted(request).await.map_err(Into::into)',
 ]);
-requireMarkers('crates/rustok-index/src/application/targeted_replay.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/targeted_replay.rs', [
   'IndexReplayModeSelection::Targeted(request) => request',
   'source_for_schema(request.schema())',
   '.load(request)',
@@ -162,19 +162,19 @@ requireMarkers('apps/server/docs/index-replay-graphql-transport.md', [
   'the GraphQL payload does not expose it',
   'Targeted has no durable pending state',
 ]);
-requireMarkers('crates/rustok-index/docs/m6-targeted-replay-mutation-application.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-targeted-replay-mutation-application.md', [
   'Status: `source_complete_transport_execution_pending`.',
   '## GraphQL transport',
   '`runIndexReplayTargeted(input: ...)`',
   'not expose it. Source routing remains server-owned.',
 ]);
-requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-mode-contract.md', [
   'Status: `source_complete_targeted_graphql_execution_pending`.',
   '## Targeted GraphQL transport',
   '`runIndexReplayTargeted` is a dedicated mutation',
   'No additional independent source-only M6 replay boundary is open',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   '[x] Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.',
   'There is no remaining independent source-only M6 replay expansion justified by the current contract.',
 ]);

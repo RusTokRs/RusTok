@@ -10,8 +10,8 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const moduleSource = read('crates/rustok-search/src/graphql/mod.rs');
-const mutationSource = read('crates/rustok-search/src/graphql/mutation.rs');
+const moduleSource = read('crates/modules/rustok-search/src/graphql/mod.rs');
+const mutationSource = read('crates/modules/rustok-search/src/graphql/mutation.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {

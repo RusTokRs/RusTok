@@ -36,7 +36,7 @@ function requireOrder(source, first, second, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-topic-audience-transport-composition.json";
+  "crates/modules/rustok-forum/contracts/forum-topic-audience-transport-composition.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const context = read(contract.transport_context);
 const graphqlQuery = read(contract.graphql_query);
@@ -47,8 +47,8 @@ const nativeAdapter = read(contract.native_storefront_adapter);
 const readStateOwner = read(contract.read_state_owner);
 const ownerNote = read(contract.owner_note);
 const upstream = read(contract.upstream_contract);
-const crateRoot = read("crates/rustok-forum/src/lib.rs");
-const graphqlMod = read("crates/rustok-forum/src/graphql/mod.rs");
+const crateRoot = read("crates/modules/rustok-forum/src/lib.rs");
+const graphqlMod = read("crates/modules/rustok-forum/src/graphql/mod.rs");
 
 if (
   contract.schema_version !== 1 ||
@@ -195,7 +195,7 @@ for (const marker of [
 
 for (const marker of [
   '"downstream_task": "FORUM-20BC"',
-  '"downstream_contract": "crates/rustok-forum/contracts/forum-topic-audience-transport-composition.json"',
+  '"downstream_contract": "crates/modules/rustok-forum/contracts/forum-topic-audience-transport-composition.json"',
 ]) {
   requireText(upstream, marker, `FORUM-20BB handoff is missing ${marker}`);
 }

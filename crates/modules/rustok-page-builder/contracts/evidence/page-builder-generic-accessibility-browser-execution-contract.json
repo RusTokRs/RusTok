@@ -47,14 +47,14 @@
     "read-only mutation controls are browser-disabled"
   ],
   "required_source_files": [
-    "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json",
     "apps/next-admin/playwright.page-builder-accessibility.config.ts",
     "apps/next-admin/tests/page-builder-accessibility/global-setup.ts",
     "apps/next-admin/tests/page-builder-accessibility/browser-evidence.spec.ts",
-    "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
-    "crates/rustok-page-builder/admin/src/editor/page_manager.rs",
-    "crates/rustok-page-builder/admin/src/editor/capability_controls.rs",
-    "crates/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs"
+    "crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs",
+    "crates/modules/rustok-page-builder/admin/src/editor/page_manager.rs",
+    "crates/modules/rustok-page-builder/admin/src/editor/capability_controls.rs",
+    "crates/modules/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs"
   ],
   "retained_data": [
     "exact source commit",

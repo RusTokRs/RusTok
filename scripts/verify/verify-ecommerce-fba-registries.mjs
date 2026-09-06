@@ -12,7 +12,7 @@ const expectedEcommerceFbaStatus = ({ module, registry }) => {
   if (
     module === 'product' &&
     registry.evidence?.runtime_fallback_smoke ===
-      'crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json'
+      'crates/modules/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json'
   ) {
     return 'boundary_ready';
   }
@@ -106,7 +106,7 @@ const assertOrderCheckoutCompletionNotPrematurelyImplemented = ({ registry, port
 
 const assertProviderSpiSource = ({ module, providerSpi, providerSource, libSource, ownerService }) => {
   if (providerSpi.status !== 'manual_baseline_locked') fail(`${module} provider SPI status drift`);
-  if (!providerSpi.source || !providerSpi.source.startsWith(`crates/rustok-${module}/src/`)) {
+  if (!providerSpi.source || !providerSpi.source.startsWith(`crates/modules/rustok-${module}/src/`)) {
     fail(`${module} provider SPI source must stay module-owned`);
   }
   if (!providerSpi.default_provider_id) fail(`${module} provider SPI lacks default_provider_id`);
@@ -162,13 +162,13 @@ export function verifyEcommerceFbaRegistries({
   const providerRegistries = new Map();
 
   for (const module of modules) {
-    const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
+    const registryPath = `crates/modules/rustok-${module}/contracts/${module}-fba-registry.json`;
     const registry = JSON.parse(read(registryPath));
-    const plan = read(`crates/rustok-${module}/docs/implementation-plan.md`);
-    const manifest = read(`crates/rustok-${module}/rustok-module.toml`);
-    const cargo = read(`crates/rustok-${module}/Cargo.toml`);
-    const portSource = read(`crates/rustok-${module}/src/ports.rs`);
-    const libSource = read(`crates/rustok-${module}/src/lib.rs`);
+    const plan = read(`crates/modules/rustok-${module}/docs/implementation-plan.md`);
+    const manifest = read(`crates/modules/rustok-${module}/rustok-module.toml`);
+    const cargo = read(`crates/modules/rustok-${module}/Cargo.toml`);
+    const portSource = read(`crates/modules/rustok-${module}/src/ports.rs`);
+    const libSource = read(`crates/modules/rustok-${module}/src/lib.rs`);
 
     if (registry.schema_version !== 1) fail(`${registryPath} schema_version must be 1`);
     if (registry.module !== module) fail(`${registryPath} has module=${registry.module}`);
@@ -243,7 +243,7 @@ export function verifyEcommerceFbaRegistries({
       if (!registry.in_process_provider_impl?.service) {
         fail(`${module} provider SPI must declare in_process_provider_impl.service as lifecycle owner`);
       }
-      if (!registry.provider_spi.source || !registry.provider_spi.source.startsWith(`crates/rustok-${module}/src/`)) {
+      if (!registry.provider_spi.source || !registry.provider_spi.source.startsWith(`crates/modules/rustok-${module}/src/`)) {
         fail(`${module} provider SPI source must stay module-owned`);
       }
       const providerSource = read(registry.provider_spi.source);
@@ -268,7 +268,7 @@ export function verifyEcommerceFbaRegistries({
 
     if (!plan.includes(`- FBA status: \`${expectedFbaStatus}\``)) fail(`${module} local plan FBA status drift`);
     if (!plan.includes(`${module}-fba-registry.json`)) fail(`${module} local plan lacks registry evidence`);
-    if (registry.evidence?.local_plan !== `crates/rustok-${module}/docs/implementation-plan.md`) {
+    if (registry.evidence?.local_plan !== `crates/modules/rustok-${module}/docs/implementation-plan.md`) {
       fail(`${module} registry local_plan evidence drift`);
     }
     if (registry.evidence?.central_board !== 'docs/modules/registry.md') {
@@ -277,7 +277,7 @@ export function verifyEcommerceFbaRegistries({
     if (registry.evidence?.verifier !== 'scripts/verify/verify-ecommerce-fba-registries.mjs') {
       fail(`${module} registry verifier evidence drift`);
     }
-    if (!central.includes(`| \`${module}\` |`) || !central.includes(`crates/rustok-${module}/contracts/${module}-fba-registry.json`)) {
+    if (!central.includes(`| \`${module}\` |`) || !central.includes(`crates/modules/rustok-${module}/contracts/${module}-fba-registry.json`)) {
       fail(`${module} central readiness board lacks registry evidence`);
     }
     if (registry.evidence?.runtime_contract_smoke) {
@@ -306,12 +306,12 @@ export function verifyEcommerceFbaRegistries({
     providerRegistries.set(module, registry);
   }
 
-  const commerceRegistryPath = 'crates/rustok-commerce/contracts/commerce-fba-registry.json';
+  const commerceRegistryPath = 'crates/modules/rustok-commerce/contracts/commerce-fba-registry.json';
   const commerceRegistry = JSON.parse(read(commerceRegistryPath));
-  const commerceManifest = read('crates/rustok-commerce/rustok-module.toml');
-  const commercePlan = read('crates/rustok-commerce/docs/implementation-plan.md');
-  const commerceLib = read('crates/rustok-commerce/src/lib.rs');
-  const commerceFbaSource = read('crates/rustok-commerce/src/fba.rs');
+  const commerceManifest = read('crates/modules/rustok-commerce/rustok-module.toml');
+  const commercePlan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
+  const commerceLib = read('crates/modules/rustok-commerce/src/lib.rs');
+  const commerceFbaSource = read('crates/modules/rustok-commerce/src/fba.rs');
 
   if (commerceRegistry.schema_version !== 1) fail(`${commerceRegistryPath} schema_version must be 1`);
   if (commerceRegistry.module !== 'commerce') fail('commerce FBA registry module must be commerce');
@@ -325,7 +325,7 @@ export function verifyEcommerceFbaRegistries({
     fail('commerce manifest consumer registry path drift');
   }
   if (!commercePlan.includes('commerce-fba-registry.json')) fail('commerce local plan lacks consumer registry evidence');
-  if (!central.includes('crates/rustok-commerce/contracts/commerce-fba-registry.json')) {
+  if (!central.includes('crates/modules/rustok-commerce/contracts/commerce-fba-registry.json')) {
     fail('commerce central readiness board lacks consumer registry evidence');
   }
   if (!commerceLib.includes('pub mod fba;')) fail('commerce lib.rs must export fba registry module');
@@ -340,7 +340,7 @@ export function verifyEcommerceFbaRegistries({
     if (consumer.contract_version !== provider.contract_version) {
       fail(`commerce provider ${module} contract version drift`);
     }
-    if (consumer.registry !== `crates/rustok-${module}/contracts/${module}-fba-registry.json`) {
+    if (consumer.registry !== `crates/modules/rustok-${module}/contracts/${module}-fba-registry.json`) {
       fail(`commerce provider ${module} registry path drift`);
     }
     if (!commercePlan.includes(consumer.registry)) {

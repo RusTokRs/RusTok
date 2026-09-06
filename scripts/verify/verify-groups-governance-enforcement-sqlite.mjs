@@ -1,8 +1,8 @@
 import fs from "node:fs";
 
 const testPath = "apps/server/tests/groups_governance_enforcement_sqlite.rs";
-const docsPath = "crates/rustok-groups/docs/governance-enforcement-sqlite-contract.md";
-const planPath = "crates/rustok-groups/docs/implementation-plan.md";
+const docsPath = "crates/modules/rustok-groups/docs/governance-enforcement-sqlite-contract.md";
+const planPath = "crates/modules/rustok-groups/docs/implementation-plan.md";
 
 const test = fs.readFileSync(testPath, "utf8");
 const docs = fs.readFileSync(docsPath, "utf8");

@@ -107,10 +107,10 @@ correlation-safe mapper and non-`PortError` envelope item remains open across ot
 
 ## Static evidence
 
-- `crates/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source.json`
-- `crates/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source-review.json`
-- `crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source.json`
-- `crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source.json`
+- `crates/modules/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source.json`
+- `crates/modules/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-payment-checkout-compensation-wrapper-error-diagnostic-safety.mjs`
 - `scripts/verify/verify-payment-checkout-compensation-owner-payload-diagnostic-safety.mjs`
 - `scripts/verify/verify-payment-checkout-compensation-local-context.mjs`

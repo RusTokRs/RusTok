@@ -15,7 +15,7 @@ The merged 34A-34D source was re-read before this slice. No ownership inversion 
 
 The canonical Forum ledger still says `FORUM-34` is `planned`, which is stale relative to merged 34A-34D. This dated packet records the truthful execution cursor without replacing the large concurrent canonical plan through a whole-file contents write.
 
-Fresh `main` for this slice is `777002dac974df22d1b3374c7313812f86149a55`. The commits after FORUM-34D are Commerce and Blog only and do not modify `crates/rustok-forum/*`.
+Fresh `main` for this slice is `777002dac974df22d1b3374c7313812f86149a55`. The commits after FORUM-34D are Commerce and Blog only and do not modify `crates/modules/rustok-forum/*`.
 
 ## Gap selected
 

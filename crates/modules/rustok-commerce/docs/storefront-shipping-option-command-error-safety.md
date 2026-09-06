@@ -7,8 +7,8 @@ Status: **source-ready / unvalidated**
 This slice hardens only the Commerce-owned wrapper:
 
 - `select_storefront_shipping_option`;
-- `crates/rustok-commerce/storefront/src/transport/mod.rs`;
-- `crates/rustok-commerce/storefront/src/transport/shipping_option_command_error_safety.rs`.
+- `crates/modules/rustok-commerce/storefront/src/transport/mod.rs`;
+- `crates/modules/rustok-commerce/storefront/src/transport/shipping_option_command_error_safety.rs`.
 
 The checkout-completion wrapper remains open on the generic `From<UiTransportError>` mapper. The aggregate read and payment-collection command policies remain unchanged.
 
@@ -92,8 +92,8 @@ This slice does not change:
 
 Focused source evidence:
 
-- `crates/rustok-commerce/contracts/evidence/storefront-shipping-command-error-safety-source.json`;
-- `crates/rustok-commerce/contracts/evidence/storefront-shipping-command-error-safety-source-review.json`;
+- `crates/modules/rustok-commerce/contracts/evidence/storefront-shipping-command-error-safety-source.json`;
+- `crates/modules/rustok-commerce/contracts/evidence/storefront-shipping-command-error-safety-source-review.json`;
 - `scripts/verify/verify-commerce-storefront-shipping-command-error-safety.mjs`.
 
 The focused verifier is imported by:

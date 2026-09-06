@@ -21,7 +21,7 @@ Target apps:
 ## Runtime implementations
 
 ### 1) Leptos (Rust)
-Rust helpers live in `crates/leptos-zod`.
+Rust helpers live in `crates/ui/leptos-zod`.
 
 Exports:
 - `ZodIssue`, `ZodError`

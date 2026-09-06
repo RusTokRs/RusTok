@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath = path.join(
   repoRoot,
-  "crates/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json",
+  "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-serverfn-deployment-attestation-contract.json",
 );
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;

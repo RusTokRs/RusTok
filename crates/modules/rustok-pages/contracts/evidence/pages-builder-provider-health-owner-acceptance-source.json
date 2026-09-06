@@ -103,13 +103,13 @@
     "workflow_or_ci_run": false
   },
   "required_source_files": [
-    "crates/rustok-page-builder/src/health.rs",
-    "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
+    "crates/modules/rustok-page-builder/src/health.rs",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
     "scripts/evidence/evaluate-page-builder-provider-health-deployment.mjs",
-    "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-transport-source.json",
-    "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-transport-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
     "scripts/evidence/accept-pages-builder-provider-health-deployment.mjs",
-    "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs",
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs",
     "docs/modules/pages-page-builder-provider-health-owner-acceptance-actualization-2026-08-09.md",
     "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md"
   ],

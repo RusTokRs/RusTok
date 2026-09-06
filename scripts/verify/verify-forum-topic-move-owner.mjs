@@ -6,19 +6,19 @@ import { resolve } from "node:path";
 
 const root = process.cwd();
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-topic-move-owner.json",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-move-owner.json",
   migration:
-    "crates/rustok-forum/src/migrations/m20260801_000009_add_forum_topic_move_operations.rs",
-  migrationMod: "crates/rustok-forum/src/migrations/mod.rs",
-  entity: "crates/rustok-forum/src/entities/forum_topic_move_operation.rs",
-  entityMod: "crates/rustok-forum/src/entities/mod.rs",
-  service: "crates/rustok-forum/src/services/topic_move.rs",
-  servicesMod: "crates/rustok-forum/src/services/mod.rs",
-  lib: "crates/rustok-forum/src/lib.rs",
-  error: "crates/rustok-forum/src/error.rs",
-  test: "crates/rustok-forum/tests/topic_move_sqlite.rs",
-  doc: "crates/rustok-forum/docs/forum-21a-topic-move-owner.md",
-  plan: "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/src/migrations/m20260801_000009_add_forum_topic_move_operations.rs",
+  migrationMod: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  entity: "crates/modules/rustok-forum/src/entities/forum_topic_move_operation.rs",
+  entityMod: "crates/modules/rustok-forum/src/entities/mod.rs",
+  service: "crates/modules/rustok-forum/src/services/topic_move.rs",
+  servicesMod: "crates/modules/rustok-forum/src/services/mod.rs",
+  lib: "crates/modules/rustok-forum/src/lib.rs",
+  error: "crates/modules/rustok-forum/src/error.rs",
+  test: "crates/modules/rustok-forum/tests/topic_move_sqlite.rs",
+  doc: "crates/modules/rustok-forum/docs/forum-21a-topic-move-owner.md",
+  plan: "crates/modules/rustok-forum/docs/implementation-plan.md",
 };
 
 const read = (path) => readFileSync(resolve(root, path), "utf8");

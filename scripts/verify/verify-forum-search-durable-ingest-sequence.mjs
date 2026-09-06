@@ -9,16 +9,16 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 const paths = {
   contract:
-    "crates/rustok-forum/contracts/forum-search-durable-ingest-sequence.json",
+    "crates/modules/rustok-forum/contracts/forum-search-durable-ingest-sequence.json",
   note:
-    "crates/rustok-forum/docs/forum-23b2g1-search-durable-ingest-sequence.md",
-  forumPlan: "crates/rustok-forum/docs/implementation-plan.md",
-  searchPlan: "crates/rustok-search/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/docs/forum-23b2g1-search-durable-ingest-sequence.md",
+  forumPlan: "crates/modules/rustok-forum/docs/implementation-plan.md",
+  searchPlan: "crates/modules/rustok-search/docs/implementation-plan.md",
   migration:
-    "crates/rustok-search/src/migrations/m20260731_000010_add_forum_projection_ingest_sequence.rs",
-  migrationRegistry: "crates/rustok-search/src/migrations/mod.rs",
-  inbox: "crates/rustok-search/src/forum_inbox.rs",
-  reconciliation: "crates/rustok-search/src/forum_reconciliation.rs",
+    "crates/modules/rustok-search/src/migrations/m20260731_000010_add_forum_projection_ingest_sequence.rs",
+  migrationRegistry: "crates/modules/rustok-search/src/migrations/mod.rs",
+  inbox: "crates/modules/rustok-search/src/forum_inbox.rs",
+  reconciliation: "crates/modules/rustok-search/src/forum_reconciliation.rs",
 };
 
 function read(relativePath) {

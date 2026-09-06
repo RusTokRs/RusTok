@@ -17,7 +17,7 @@ Their changed paths are confined to Commerce storefront-shipping code/evidence/v
 release-composition code/evidence/plans, release workflows/readiness contracts, server Docker build,
 and embedded-admin build scripts.
 
-No `crates/rustok-index` source, migration, documentation, contract, or Index verifier path changed.
+No `crates/modules/rustok-index` source, migration, documentation, contract, or Index verifier path changed.
 There is no source overlap with the prepared repair recovery slice.
 
 ## Branch review scope

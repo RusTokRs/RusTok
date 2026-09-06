@@ -41,7 +41,7 @@
     "unknown_outcome_auto_retry": false,
     "reconciliation_required_auto_retry": false
   },
-  "source": "crates/rustok-payment/src/checkout_compensation.rs",
+  "source": "crates/modules/rustok-payment/src/checkout_compensation.rs",
   "verification": {
     "guard": "scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs",
     "runtime_evidence": "not_executed"

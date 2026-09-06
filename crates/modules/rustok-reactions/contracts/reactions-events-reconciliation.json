@@ -45,16 +45,16 @@
     ]
   },
   "required_files": [
-    "crates/rustok-events/CRATE_API.md",
-    "crates/rustok-events/src/reactions.rs",
-    "crates/rustok-events/src/contract.rs",
-    "crates/rustok-events/src/lib.rs",
-    "crates/rustok-events/tests/reactions_contracts.rs",
-    "crates/rustok-reactions/src/service.rs",
-    "crates/rustok-reactions/src/reconciliation.rs",
-    "crates/rustok-reactions/src/lib.rs",
-    "crates/rustok-reactions/docs/implementation-plan.md",
-    "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/libs/rustok-events/CRATE_API.md",
+    "crates/libs/rustok-events/src/reactions.rs",
+    "crates/libs/rustok-events/src/contract.rs",
+    "crates/libs/rustok-events/src/lib.rs",
+    "crates/libs/rustok-events/tests/reactions_contracts.rs",
+    "crates/modules/rustok-reactions/src/service.rs",
+    "crates/modules/rustok-reactions/src/reconciliation.rs",
+    "crates/modules/rustok-reactions/src/lib.rs",
+    "crates/modules/rustok-reactions/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/docs/implementation-plan.md",
     "scripts/verify/verify-reactions-events-reconciliation.mjs"
   ],
   "deliberate_limits": [

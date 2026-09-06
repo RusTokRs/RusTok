@@ -74,12 +74,12 @@
     "storefront_ui_added": false,
     "graphql_field_is_additive": true
   },
-  "source_contract_test": "crates/rustok-forum/tests/reply_range_move_graphql_contract.rs",
-  "authorization_unit_test": "crates/rustok-forum/src/graphql/topic_reply_range_move_mutation.rs",
-  "owner_runtime_test": "crates/rustok-forum/tests/reply_range_move_sqlite.rs",
-  "documentation": "crates/rustok-forum/docs/forum-21t-reply-range-move-graphql-transport.md",
-  "owner_contract": "crates/rustok-forum/contracts/forum-reply-range-move-owner.json",
-  "owner_documentation": "crates/rustok-forum/docs/forum-21s-reply-range-move-owner.md",
+  "source_contract_test": "crates/modules/rustok-forum/tests/reply_range_move_graphql_contract.rs",
+  "authorization_unit_test": "crates/modules/rustok-forum/src/graphql/topic_reply_range_move_mutation.rs",
+  "owner_runtime_test": "crates/modules/rustok-forum/tests/reply_range_move_sqlite.rs",
+  "documentation": "crates/modules/rustok-forum/docs/forum-21t-reply-range-move-graphql-transport.md",
+  "owner_contract": "crates/modules/rustok-forum/contracts/forum-reply-range-move-owner.json",
+  "owner_documentation": "crates/modules/rustok-forum/docs/forum-21s-reply-range-move-owner.md",
   "verifier": "scripts/verify/verify-forum-reply-range-move-graphql-transport.mjs",
   "maintainer_commands": [
     "node scripts/verify/verify-forum-reply-range-move-owner.mjs",

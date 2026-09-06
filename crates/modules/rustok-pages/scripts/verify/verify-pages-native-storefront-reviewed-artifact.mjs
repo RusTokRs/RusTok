@@ -5,27 +5,27 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const evidence = JSON.parse(
   read(
-    "crates/rustok-pages/contracts/evidence/pages-native-storefront-reviewed-artifact-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-native-storefront-reviewed-artifact-source.json",
   ),
 );
-const cargo = read("crates/rustok-pages/storefront/Cargo.toml");
+const cargo = read("crates/modules/rustok-pages/storefront/Cargo.toml");
 const harness = read(
-  "crates/rustok-pages/storefront/tests/native_storefront_reviewed_artifact_sqlite.rs",
+  "crates/modules/rustok-pages/storefront/tests/native_storefront_reviewed_artifact_sqlite.rs",
 );
 const nativeAdapter = read(
-  "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs",
 );
 const reviewedPublish = read(
-  "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+  "crates/modules/rustok-pages/src/services/page/reviewed_publish.rs",
 );
 const artifactService = read(
-  "crates/rustok-pages/src/services/page_builder_artifact.rs",
+  "crates/modules/rustok-pages/src/services/page_builder_artifact.rs",
 );
 const packet = read(
   "docs/modules/pages-page-builder-native-storefront-reviewed-artifact-packet-2026-08-05.md",
@@ -103,7 +103,7 @@ for (const [key, expected] of Object.entries({
 
 if (
   evidence.harness?.path !==
-    "crates/rustok-pages/storefront/tests/native_storefront_reviewed_artifact_sqlite.rs" ||
+    "crates/modules/rustok-pages/storefront/tests/native_storefront_reviewed_artifact_sqlite.rs" ||
   evidence.harness?.test !==
     "native_storefront_returns_reviewed_artifact_for_visible_channel_and_refuses_unverified_fill" ||
   evidence.harness?.route !== "/api/fn/pages/storefront-data"

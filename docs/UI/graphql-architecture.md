@@ -27,7 +27,7 @@ CSR remains a mandatory compatibility/debug profile for standalone Trunk/WASM an
 - `#[server]` provides the shortest internal Rust path from Leptos UI to the service layer and does not force every internal host action to become a public GraphQL mutation.
 - GraphQL/REST remain mandatory because headless is a separate production mode for Next.js hosts, external clients, integrations, and mobile applications.
 - CSR/Trunk is retained as a debug/compatibility profile: it is needed for local verification of module-owned UI packages and catches accidental server-only dependencies in WASM builds.
-- The decision applies not only to `apps/admin` and `apps/storefront`, but to all module-owned UI packages in `crates/*/admin` and `crates/*/storefront`, because the host only mounts these surfaces.
+- The decision applies not only to `apps/admin` and `apps/storefront`, but to all module-owned UI packages in `crates/modules/*/admin` and `crates/modules/*/storefront`, because the host only mounts these surfaces.
 
 ## Matrix by UI Hosts
 

@@ -2,7 +2,7 @@
 
 ## Scope
 
-This source-only continuation rechecks mounted Product lifecycle caller identity after Product Admin FFA PRs #3263 and #3269 plus Commerce hardening PR #3272. The canonical ecommerce source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`; this packet does not promote FBA/FFA or verification state.
+This source-only continuation rechecks mounted Product lifecycle caller identity after Product Admin FFA PRs #3263 and #3269 plus Commerce hardening PR #3272. The canonical ecommerce source of truth remains `crates/modules/rustok-commerce/docs/implementation-plan.md`; this packet does not promote FBA/FFA or verification state.
 
 ## Recheck result
 

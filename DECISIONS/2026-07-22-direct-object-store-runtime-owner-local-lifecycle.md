@@ -102,7 +102,7 @@ allow-list, and is never accepted from serialized caller claims.
 
 ## Related contracts
 
-- [`rustok-storage`](../crates/rustok-storage/README.md)
-- [`rustok-media`](../crates/rustok-media/README.md)
+- [`rustok-storage`](../crates/utils/rustok-storage/README.md)
+- [`rustok-media`](../crates/modules/rustok-media/README.md)
 - [Shared owner-operation receipt ledger](./2026-08-03-owner-operation-receipts.md)
 - [Media and Search extraction boundaries](./2026-07-16-media-search-extraction-boundaries.md)

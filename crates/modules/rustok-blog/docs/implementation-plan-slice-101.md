@@ -2,7 +2,7 @@
 
 Status: `canonical_plan_current_cursor_source_ready_no_runtime_promotion`.
 
-This slice continues `crates/rustok-blog/docs/implementation-plan-slice-100.md`.
+This slice continues `crates/modules/rustok-blog/docs/implementation-plan-slice-100.md`.
 
 ## Goal
 
@@ -16,7 +16,7 @@ Slice 101 does not rewrite the 1,000+ line historical log. Instead it creates on
 
 New document:
 
-`crates/rustok-blog/docs/implementation-plan-current.md`
+`crates/modules/rustok-blog/docs/implementation-plan-current.md`
 
 It records the following current source interpretations:
 
@@ -69,7 +69,7 @@ Slice 99 retains the shared cached public Comments snapshot source across GraphQ
 
 Current-cursor evidence:
 
-`crates/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json`
+`crates/modules/rustok-blog/contracts/evidence/blog-canonical-plan-current-source.json`
 
 Fail-closed verifier:
 

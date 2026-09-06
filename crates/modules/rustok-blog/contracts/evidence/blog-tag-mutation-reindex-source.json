@@ -13,10 +13,10 @@
     "term_kind": "tag"
   },
   "production_contract": {
-    "taxonomy_module_mutation_api": "crates/rustok-taxonomy/src/module_term_mutation.rs",
-    "taxonomy_export": "crates/rustok-taxonomy/src/lib.rs",
-    "blog_tag_service": "crates/rustok-blog/src/services/tag.rs",
-    "blog_tag_relation_migration": "crates/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs",
+    "taxonomy_module_mutation_api": "crates/modules/rustok-taxonomy/src/module_term_mutation.rs",
+    "taxonomy_export": "crates/modules/rustok-taxonomy/src/lib.rs",
+    "blog_tag_service": "crates/modules/rustok-blog/src/services/tag.rs",
+    "blog_tag_relation_migration": "crates/modules/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs",
     "canonical_outbox_api": "rustok_outbox::TransactionalEventBus::publish_root_in_tx",
     "update_uses_supplied_transaction": true,
     "delete_uses_supplied_transaction": true,
@@ -41,7 +41,7 @@
     "fba_promoted": false
   },
   "source_harness": {
-    "path": "crates/rustok-blog/tests/taxonomy_tags.rs",
+    "path": "crates/modules/rustok-blog/tests/taxonomy_tags.rs",
     "status": "executable_no_run",
     "runtime_status": "not_run",
     "cases": [

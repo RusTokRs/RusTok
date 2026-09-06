@@ -2,16 +2,16 @@
   "schema_version": 2,
   "status": "commerce_graphql_payment_read_owner_ports_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/graphql/query.rs",
-    "crates/rustok-commerce/src/graphql/safe_query/source.rs",
-    "crates/rustok-commerce/src/graphql/safe_query/source/rustok_payment_shim.rs",
-    "crates/rustok-commerce/src/graphql_runtime.rs",
-    "crates/rustok-commerce/src/graphql_runtime/payment_reads.rs",
-    "crates/rustok-payment/src/admin_read.rs",
-    "crates/rustok-payment/src/order_read.rs",
-    "crates/rustok-payment/src/cart_read.rs",
+    "crates/modules/rustok-commerce/src/graphql/query.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query/source.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_payment_shim.rs",
+    "crates/modules/rustok-commerce/src/graphql_runtime.rs",
+    "crates/modules/rustok-commerce/src/graphql_runtime/payment_reads.rs",
+    "crates/modules/rustok-payment/src/admin_read.rs",
+    "crates/modules/rustok-payment/src/order_read.rs",
+    "crates/modules/rustok-payment/src/cart_read.rs",
     "scripts/verify/verify-commerce-graphql-query-payment-error-safety.mjs",
-    "crates/rustok-commerce/docs/graphql-query-payment-error-safety.md"
+    "crates/modules/rustok-commerce/docs/graphql-query-payment-error-safety.md"
   ],
   "source_contract": {
     "query_resolver_source_changed": false,

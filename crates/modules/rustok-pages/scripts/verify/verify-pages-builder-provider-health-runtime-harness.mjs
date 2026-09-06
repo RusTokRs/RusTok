@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  contract: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json",
-  source: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json",
+  contract: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json",
+  source: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json",
   config: "apps/next-admin/playwright.pages-builder-provider-health-runtime.config.ts",
   spec: "apps/next-admin/tests/pages-builder-provider-health-runtime/runtime.spec.ts",
-  identity: "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
-  evaluator: "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
-  acceptance: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
-  observedAcceptance: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
-  serverBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
-  consumerBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
-  preflight: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-capability-preflight-source.json",
-  browserIntent: "crates/rustok-pages/admin/src/contribution_browser_intent.rs",
+  identity: "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
+  evaluator: "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
+  acceptance: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
+  observedAcceptance: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
+  serverBinding: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
+  consumerBinding: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
+  preflight: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-capability-preflight-source.json",
+  browserIntent: "crates/modules/rustok-pages/admin/src/contribution_browser_intent.rs",
   adminMain: "apps/admin/src/main.rs",
   overlay: "docs/modules/pages-page-builder-provider-health-runtime-evidence-harness-actualization-2026-08-09.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",

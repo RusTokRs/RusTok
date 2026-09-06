@@ -2,11 +2,11 @@
   "schema_version": 1,
   "status": "customer_read_boundary_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-customer/src/ports.rs",
-    "crates/rustok-customer/src/error.rs",
+    "crates/modules/rustok-customer/src/ports.rs",
+    "crates/modules/rustok-customer/src/error.rs",
     "scripts/verify/verify-customer-owner-error-diagnostic-safety.mjs",
-    "crates/rustok-customer/contracts/evidence/customer-owner-error-diagnostic-safety-source.json",
-    "crates/rustok-customer/docs/customer-owner-error-diagnostic-safety.md",
+    "crates/modules/rustok-customer/contracts/evidence/customer-owner-error-diagnostic-safety-source.json",
+    "crates/modules/rustok-customer/docs/customer-owner-error-diagnostic-safety.md",
     "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs"
   ],
   "review_findings": {

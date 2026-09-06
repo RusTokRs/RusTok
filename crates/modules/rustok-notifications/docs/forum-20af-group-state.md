@@ -31,6 +31,6 @@ This slice does not deliver external GraphQL/native transport, grouped admin/sto
 
 SQLite source evidence is in `tests/inbox_group_state_sqlite.rs`. It covers bounded cursor progress, exact group and recipient isolation, eligible-state filtering, direct unread-to-read timestamps, seen history preservation, mark-unread clearing, archive history preservation, fail-closed validation, shared limits, unchanged foreign groups, and zero delivery attempts.
 
-The static source contract is `scripts/verify/verify-forum-notification-inbox-group-state.mjs`, and the machine-readable Forum contract is `crates/rustok-forum/contracts/forum-notification-inbox-group-state.json`.
+The static source contract is `scripts/verify/verify-forum-notification-inbox-group-state.mjs`, and the machine-readable Forum contract is `crates/modules/rustok-forum/contracts/forum-notification-inbox-group-state.json`.
 
 Tests, formatting, Cargo commands, verifiers, workflows, and CI were not run by the implementation agent.

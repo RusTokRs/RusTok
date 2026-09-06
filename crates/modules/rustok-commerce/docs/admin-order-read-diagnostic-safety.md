@@ -44,7 +44,7 @@ This slice does not close raw diagnostic payloads in the admin order mutation ma
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/admin-order-read-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/admin-order-read-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-admin-order-read-diagnostic-safety.mjs`
 - `scripts/verify/verify-commerce-admin-order-route-error-context.mjs`
 

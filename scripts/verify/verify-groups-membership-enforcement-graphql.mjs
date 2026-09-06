@@ -1,25 +1,25 @@
 import fs from "node:fs";
 
 const graphql = fs.readFileSync(
-  "crates/rustok-groups/src/graphql_membership_enforcement.rs",
+  "crates/modules/rustok-groups/src/graphql_membership_enforcement.rs",
   "utf8",
 );
 const finalRoot = fs.readFileSync(
-  "crates/rustok-groups/src/graphql_application_cas.rs",
+  "crates/modules/rustok-groups/src/graphql_application_cas.rs",
   "utf8",
 );
-const moduleSource = fs.readFileSync("crates/rustok-groups/src/lib.rs", "utf8");
-const manifest = fs.readFileSync("crates/rustok-groups/rustok-module.toml", "utf8");
+const moduleSource = fs.readFileSync("crates/modules/rustok-groups/src/lib.rs", "utf8");
+const manifest = fs.readFileSync("crates/modules/rustok-groups/rustok-module.toml", "utf8");
 const registry = fs.readFileSync(
-  "crates/rustok-groups/contracts/groups-fba-registry.json",
+  "crates/modules/rustok-groups/contracts/groups-fba-registry.json",
   "utf8",
 );
 const plan = fs.readFileSync(
-  "crates/rustok-groups/docs/implementation-plan.md",
+  "crates/modules/rustok-groups/docs/implementation-plan.md",
   "utf8",
 );
 const docs = fs.readFileSync(
-  "crates/rustok-groups/docs/membership-enforcement-graphql-contract.md",
+  "crates/modules/rustok-groups/docs/membership-enforcement-graphql-contract.md",
   "utf8",
 );
 const sqliteParity = fs.readFileSync(

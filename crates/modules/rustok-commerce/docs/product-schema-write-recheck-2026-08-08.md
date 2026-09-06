@@ -2,7 +2,7 @@
 
 ## Scope
 
-This source-only continuation follows Product schema-write capability publication, mounted consumer cutover, mandatory GraphQL caller identity, durable receipts for all six schema create operations, and durable receipts for the three unit-result schema state updates. The canonical ecommerce source of truth remains `crates/rustok-commerce/docs/implementation-plan.md`. This slice closes the remaining Product attribute-value source gap by capturing the exact completed projection inside the owner transaction before receipt completion and commit. Runtime, backend, restart, and lost-response evidence remain maintainer-run work and are not promoted here.
+This source-only continuation follows Product schema-write capability publication, mounted consumer cutover, mandatory GraphQL caller identity, durable receipts for all six schema create operations, and durable receipts for the three unit-result schema state updates. The canonical ecommerce source of truth remains `crates/modules/rustok-commerce/docs/implementation-plan.md`. This slice closes the remaining Product attribute-value source gap by capturing the exact completed projection inside the owner transaction before receipt completion and commit. Runtime, backend, restart, and lost-response evidence remain maintainer-run work and are not promoted here.
 
 ## Current source result
 

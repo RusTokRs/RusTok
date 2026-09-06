@@ -9,7 +9,7 @@ FORUM-21U exposes the FORUM-21Q reply-branch fork owner through one additive man
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-fork-graphql-transport.json
+crates/modules/rustok-forum/contracts/forum-topic-fork-graphql-transport.json
 ```
 
 ## Command

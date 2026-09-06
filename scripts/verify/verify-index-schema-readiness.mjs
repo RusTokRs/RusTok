@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const sourcePath = 'crates/rustok-index/src/infrastructure/postgres/schema_readiness.rs';
+const sourcePath = 'crates/modules/rustok-index/src/infrastructure/postgres/schema_readiness.rs';
 const source = requireMarkers(sourcePath, [
   'pub const MAX_INDEX_SCHEMA_READINESS_SCHEMAS: usize = 64;',
   'pub struct IndexSchemaReadinessRequest',
@@ -56,7 +56,7 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/schema_readiness_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/schema_readiness_tests.rs', [
   'readiness_requires_the_complete_exact_tenant_schema_set',
   'readiness_reports_a_missing_exact_schema_without_partial_success',
   'readiness_rejects_inactive_or_contract_drifted_rows',
@@ -69,7 +69,7 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/schema_readiness
   'PersistedSchemaReadinessFailure::ContractMismatch',
 ]);
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod schema_readiness;',
   'mod schema_readiness_tests;',
   'IndexSchemaReadinessRequest',
@@ -77,14 +77,14 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
   'MAX_INDEX_SCHEMA_READINESS_SCHEMAS',
 ]);
 
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'IndexSchemaReadinessRequest',
   'IndexSchemaReadinessReceipt',
   'PostgresIndexSchemaReadinessStore',
   'MAX_INDEX_SCHEMA_READINESS_SCHEMAS',
 ]);
 
-const doc = requireMarkers('crates/rustok-index/docs/m7-schema-readiness.md', [
+const doc = requireMarkers('crates/modules/rustok-index/docs/m7-schema-readiness.md', [
   'Status: `source_complete_owner_execution_pending`',
   '`index_schemas`',
   '`schema_fingerprint`',

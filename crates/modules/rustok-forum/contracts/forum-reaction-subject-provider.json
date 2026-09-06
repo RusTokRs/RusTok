@@ -10,11 +10,11 @@
     "keys": ["like"]
   },
   "required_files": [
-    "crates/rustok-forum/src/reaction_subject.rs",
-    "crates/rustok-forum/src/lib.rs",
-    "crates/rustok-forum/Cargo.toml",
-    "crates/rustok-forum/docs/implementation-plan.md",
-    "crates/rustok-reactions/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/src/reaction_subject.rs",
+    "crates/modules/rustok-forum/src/lib.rs",
+    "crates/modules/rustok-forum/Cargo.toml",
+    "crates/modules/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-reactions/docs/implementation-plan.md",
     "scripts/verify/verify-forum-reaction-subject-provider.mjs"
   ],
   "required_source_fragments": [

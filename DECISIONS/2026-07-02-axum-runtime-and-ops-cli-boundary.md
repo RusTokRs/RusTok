@@ -27,7 +27,7 @@ codes, and operator UX, which breaks the hexagonal boundary.
    Shared command/provider contracts live in `rustok-cli-core`.
 4. The module's domain core does not depend on CLI contracts.
 5. Module-specific commands live next to the module as a separate `cli/` adapter
-   package, for example `crates/rustok-index/cli`, and call the public typed API
+   package, for example `crates/modules/rustok-index/cli`, and call the public typed API
    of their module.
 6. `rustok-cli` aggregates command providers through an explicit module/distribution
    manifest or generated registry, not through a hardcoded list of all modules.

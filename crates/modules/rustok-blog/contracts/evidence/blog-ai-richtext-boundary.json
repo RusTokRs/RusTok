@@ -5,7 +5,7 @@
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "shim": {
-    "path": "crates/rustok-ai/src/rustok_blog.rs",
+    "path": "crates/modules/rustok-ai/src/rustok_blog.rs",
     "owner": "rustok_blog_owner",
     "allowed_reexports": [
       "CreatePostInput",
@@ -23,7 +23,7 @@
     ]
   },
   "writer": {
-    "path": "crates/rustok-ai/src/direct.rs",
+    "path": "crates/modules/rustok-ai/src/direct.rs",
     "required_markers": [
       "use crate::rustok_blog::{CreatePostInput, PostService, UpdatePostInput};",
       "impl DirectTaskHandler for BlogDraftHandler",

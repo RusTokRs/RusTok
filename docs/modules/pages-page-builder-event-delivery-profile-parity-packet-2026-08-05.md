@@ -38,8 +38,8 @@ The production factory continues to compose `OutboxIggy` through the same artifa
 ## Source retained
 
 - `apps/server/tests/pages_event_delivery_profiles_sqlite.rs`
-- `crates/rustok-pages/contracts/evidence/pages-event-delivery-profile-parity-source.json`
-- `crates/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs`
+- `crates/modules/rustok-pages/contracts/evidence/pages-event-delivery-profile-parity-source.json`
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs`
 
 The harness uses isolated SQLite databases with `rustok_migrations::Migrator`, initializes the shared production `CacheService` before runtime construction, and uses the real factory, relay, gate and `ServerPagesCachePort`.
 
@@ -59,9 +59,9 @@ This slice does not:
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-event-delivery-profile-parity.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs
 
 cargo test -p rustok-server --features mod-pages \
   --test pages_event_delivery_profiles_sqlite -- --nocapture

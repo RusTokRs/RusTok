@@ -3,25 +3,25 @@
   "task": "FORUM-20BA",
   "upstream_task": "FORUM-20AZ",
   "scope": "Conflict-safe synchronization of the canonical Forum roadmap and FORUM-20AV through FORUM-20AZ owner notes after reply-create, topic-local narrowing, moderation policy, and existing moderation transport composition were delivered",
-  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
-  "crate_api": "crates/rustok-forum/CRATE_API.md",
-  "owner_note": "crates/rustok-forum/docs/forum-20ba-audience-plan-sync.md",
+  "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
+  "crate_api": "crates/modules/rustok-forum/CRATE_API.md",
+  "owner_note": "crates/modules/rustok-forum/docs/forum-20ba-audience-plan-sync.md",
   "source_verifier": "scripts/verify/verify-forum-audience-plan-sync.mjs",
-  "upstream_contract": "crates/rustok-forum/contracts/forum-moderation-audience-transport-composition.json",
+  "upstream_contract": "crates/modules/rustok-forum/contracts/forum-moderation-audience-transport-composition.json",
   "required_ledger_through": "FORUM-20BA",
   "delivered_task_notes": [
-    "crates/rustok-forum/docs/forum-20av-reply-create-audience-enforcement.md",
-    "crates/rustok-forum/docs/forum-20aw-reply-create-audience-transport-composition.md",
-    "crates/rustok-forum/docs/forum-20ax-topic-reply-create-audience.md",
-    "crates/rustok-forum/docs/forum-20ay-moderation-audience-policy.md",
-    "crates/rustok-forum/docs/forum-20az-moderation-audience-transport-composition.md"
+    "crates/modules/rustok-forum/docs/forum-20av-reply-create-audience-enforcement.md",
+    "crates/modules/rustok-forum/docs/forum-20aw-reply-create-audience-transport-composition.md",
+    "crates/modules/rustok-forum/docs/forum-20ax-topic-reply-create-audience.md",
+    "crates/modules/rustok-forum/docs/forum-20ay-moderation-audience-policy.md",
+    "crates/modules/rustok-forum/docs/forum-20az-moderation-audience-transport-composition.md"
   ],
   "delivered_task_contracts": [
-    "crates/rustok-forum/contracts/forum-reply-create-audience-enforcement.json",
-    "crates/rustok-forum/contracts/forum-reply-create-audience-transport-composition.json",
-    "crates/rustok-forum/contracts/forum-topic-reply-create-audience-policy.json",
-    "crates/rustok-forum/contracts/forum-moderation-audience-policy.json",
-    "crates/rustok-forum/contracts/forum-moderation-audience-transport-composition.json"
+    "crates/modules/rustok-forum/contracts/forum-reply-create-audience-enforcement.json",
+    "crates/modules/rustok-forum/contracts/forum-reply-create-audience-transport-composition.json",
+    "crates/modules/rustok-forum/contracts/forum-topic-reply-create-audience-policy.json",
+    "crates/modules/rustok-forum/contracts/forum-moderation-audience-policy.json",
+    "crates/modules/rustok-forum/contracts/forum-moderation-audience-transport-composition.json"
   ],
   "synchronization": {
     "canonical_ledger_advanced_through_forum_20az": true,
@@ -50,7 +50,7 @@
     "PostgreSQL concurrency lease contention inheritance and cross-consumer runtime evidence"
   ],
   "downstream_task": "FORUM-20BB",
-  "downstream_contract": "crates/rustok-forum/contracts/forum-topic-audience-exact-read.json",
+  "downstream_contract": "crates/modules/rustok-forum/contracts/forum-topic-audience-exact-read.json",
   "verification": {
     "execution_status": "not_run_by_implementation_agent",
     "commands": [

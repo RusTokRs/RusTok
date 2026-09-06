@@ -30,10 +30,10 @@ function forbid(source, marker, location) {
   }
 }
 
-const releasePath = "crates/alloy/src/runner/release.rs";
-const testPath = "crates/alloy/src/runner/test.rs";
-const memoryPath = "crates/alloy/src/storage/memory.rs";
-const seaOrmPath = "crates/alloy/src/storage/sea_orm.rs";
+const releasePath = "crates/modules/alloy/src/runner/release.rs";
+const testPath = "crates/modules/alloy/src/runner/test.rs";
+const memoryPath = "crates/modules/alloy/src/storage/memory.rs";
+const seaOrmPath = "crates/modules/alloy/src/storage/sea_orm.rs";
 
 const release = read(releasePath);
 const testRunner = read(testPath);

@@ -31,7 +31,7 @@ function forbidAll(source, markers, description) {
   }
 }
 
-const crateRoot = "crates/rustok-product-transport";
+const crateRoot = "crates/modules/rustok-product-transport";
 const cargo = read(`${crateRoot}/Cargo.toml`);
 const build = read(`${crateRoot}/build.rs`);
 const proto = read(`${crateRoot}/proto/rustok/product/product_catalog.proto`);
@@ -40,8 +40,8 @@ const client = read(`${crateRoot}/src/client.rs`);
 const server = read(`${crateRoot}/src/server.rs`);
 const conformance = read(`${crateRoot}/tests/port_conformance.rs`);
 const readme = read(`${crateRoot}/README.md`);
-const registrySource = read("crates/rustok-product/contracts/product-fba-registry.json");
-const plan = read("crates/rustok-product/docs/implementation-plan.md");
+const registrySource = read("crates/modules/rustok-product/contracts/product-fba-registry.json");
+const plan = read("crates/modules/rustok-product/docs/implementation-plan.md");
 
 requireAll(cargo, [
   'name = "rustok-product-transport"',

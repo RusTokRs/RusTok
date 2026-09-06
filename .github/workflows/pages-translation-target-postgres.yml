@@ -3,21 +3,21 @@ name: Pages Translation Target PostgreSQL Evidence
 on:
   pull_request:
     paths:
-      - "crates/rustok-pages/**"
-      - "crates/rustok-translation-targets/**"
-      - "crates/rustok-outbox/**"
+      - "crates/modules/rustok-pages/**"
+      - "crates/modules/rustok-translation-targets/**"
+      - "crates/modules/rustok-outbox/**"
       - "docs/modules/translation-implementation-plan.md"
-      - "crates/rustok-translation/docs/implementation-plan.md"
+      - "crates/modules/rustok-translation/docs/implementation-plan.md"
       - ".github/workflows/pages-translation-target-postgres.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-pages/**"
-      - "crates/rustok-translation-targets/**"
-      - "crates/rustok-outbox/**"
+      - "crates/modules/rustok-pages/**"
+      - "crates/modules/rustok-translation-targets/**"
+      - "crates/modules/rustok-outbox/**"
       - "docs/modules/translation-implementation-plan.md"
-      - "crates/rustok-translation/docs/implementation-plan.md"
+      - "crates/modules/rustok-translation/docs/implementation-plan.md"
       - ".github/workflows/pages-translation-target-postgres.yml"
   workflow_dispatch:
 
@@ -70,7 +70,7 @@ jobs:
         with:
           shared-key: pages-translation-target-postgres
       - name: Check focused PostgreSQL test formatting
-        run: rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check crates/rustok-pages/tests/translation_target_postgres.rs
+        run: rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check crates/modules/rustok-pages/tests/translation_target_postgres.rs
       - name: Compile Pages PostgreSQL translation evidence
         run: cargo test --locked -p rustok-pages --test translation_target_postgres --no-run
       - name: Execute Pages PostgreSQL translation evidence

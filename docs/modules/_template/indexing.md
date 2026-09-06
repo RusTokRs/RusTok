@@ -49,7 +49,7 @@ Document:
 Reference implementation contract:
 
 ```text
-crates/rustok-index/docs/module-source-integration.md
+crates/modules/rustok-index/docs/module-source-integration.md
 ```
 
 ## Schema contract

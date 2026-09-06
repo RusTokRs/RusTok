@@ -1,11 +1,11 @@
 {
   "status": "commerce_admin_post_order_read_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/controllers/admin/post_order_reads.rs",
-    "crates/rustok-commerce/docs/admin-post-order-read-diagnostic-safety.md",
+    "crates/modules/rustok-commerce/src/controllers/admin/post_order_reads.rs",
+    "crates/modules/rustok-commerce/docs/admin-post-order-read-diagnostic-safety.md",
     "scripts/verify/verify-commerce-admin-post-order-read-diagnostic-safety.mjs",
     "scripts/verify/verify-commerce-admin-post-order-read-cutover.mjs",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_contract": {
     "raw_port_error_logged": false,

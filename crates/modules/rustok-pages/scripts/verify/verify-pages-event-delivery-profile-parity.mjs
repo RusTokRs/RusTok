@@ -4,17 +4,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
 const evidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-event-delivery-profile-parity-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-event-delivery-profile-parity-source.json",
 ));
 const harness = read("apps/server/tests/pages_event_delivery_profiles_sqlite.rs");
 const factory = read("apps/server/src/services/event_transport_factory.rs");
 const gate = read("apps/server/src/services/tenant_generation_delivery_gate.rs");
 const port = read("apps/server/src/services/pages_cache_invalidation.rs");
-const relay = read("crates/rustok-outbox/src/relay.rs");
+const relay = read("crates/modules/rustok-outbox/src/relay.rs");
 const packet = read("docs/modules/pages-page-builder-event-delivery-profile-parity-packet-2026-08-05.md");
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
 const failures = [];

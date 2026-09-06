@@ -92,7 +92,7 @@ No existing artifact payload, binding, rollback manifest, publish DTO, GraphQL/H
 Suggested commands, intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rebuild-provenance.mjs
 cargo test -p rustok-pages publish_rebuild_provenance -- --nocapture
 cargo test -p rustok-pages artifact_rollback -- --nocapture
 cargo check -p rustok-pages --all-targets

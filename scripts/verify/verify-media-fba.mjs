@@ -10,10 +10,10 @@ function sameSet(actual, expected, label) {
   if (a !== e) fail(`${label} drift: expected ${e}, got ${a}`);
 }
 
-const registryPath = 'crates/rustok-media/contracts/media-fba-registry.json';
-const evidencePath = 'crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json';
-const fallbackSmokePath = 'crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json';
-const portErrorMatrixPath = 'crates/rustok-media/contracts/evidence/media-port-error-matrix.json';
+const registryPath = 'crates/modules/rustok-media/contracts/media-fba-registry.json';
+const evidencePath = 'crates/modules/rustok-media/contracts/evidence/media-contract-test-static-matrix.json';
+const fallbackSmokePath = 'crates/modules/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json';
+const portErrorMatrixPath = 'crates/modules/rustok-media/contracts/evidence/media-port-error-matrix.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const fallbackSmoke = json(fallbackSmokePath);
@@ -40,13 +40,13 @@ sameSet(writePort.write_operations, writePort.operations, 'write operations');
 if ((writePort.read_operations ?? []).length !== 0 || writePort.idempotency_required !== true || writePort.deadline_required !== true) fail('media write port policy drift');
 sameSet(writePort.upload_body_transport, ['media_owned_streaming_rest', 'presigned_object_store'], 'upload body transport');
 
-const manifest = read('crates/rustok-media/rustok-module.toml');
+const manifest = read('crates/modules/rustok-media/rustok-module.toml');
 hasAll(manifest, ['[fba.provider]', 'registry = "contracts/media-fba-registry.json"', 'contract_version = "media.asset_read.v1"'], 'manifest');
 
-const lib = read('crates/rustok-media/src/lib.rs');
+const lib = read('crates/modules/rustok-media/src/lib.rs');
 hasAll(lib, ['pub mod ports;', 'pub use ports::*;'], 'lib.rs');
-const ports = read('crates/rustok-media/src/ports.rs');
-const dto = read('crates/rustok-media/src/dto.rs');
+const ports = read('crates/modules/rustok-media/src/ports.rs');
+const dto = read('crates/modules/rustok-media/src/dto.rs');
 hasAll(ports, ['pub trait MediaAssetReadPort', 'impl MediaAssetReadPort for MediaService', 'pub trait MediaAssetWritePort', 'impl MediaAssetWritePort for MediaService', 'MediaImageDescriptor', 'MediaUploadRequest', 'MEDIA_OWNER_STREAMING_UPLOAD_PATH', 'PortContext', 'PortError'], 'ports.rs');
 const implStart = ports.indexOf('impl MediaAssetReadPort for MediaService');
 if (implStart === -1) fail('ports.rs missing MediaService impl');
@@ -82,7 +82,7 @@ if (evidence.generated_from !== registryPath || evidence.status !== registry.con
 sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');
 if (registry.contract_tests.status !== 'runtime_verified' || registry.contract_tests.runner !== 'cargo test -p rustok-media-transport --test port_conformance') fail('runtime conformance evidence drift');
 sameSet(registry.contract_tests.profiles, ['in_process', 'loopback_grpc'], 'runtime conformance profiles');
-for (const testCase of evidence.cases) if (testCase.runtime_evidence !== 'crates/rustok-media-transport/tests/port_conformance.rs') fail(`${testCase.operation} runtime evidence drift`);
+for (const testCase of evidence.cases) if (testCase.runtime_evidence !== 'crates/modules/rustok-media-transport/tests/port_conformance.rs') fail(`${testCase.operation} runtime evidence drift`);
 sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'fallback profiles');
 sameSet(evidence.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'degraded modes');
 if (registry.contract_tests.fallback_smoke.status !== 'source_locked' || evidence.fallback_smoke.status !== 'source_locked') fail('fallback smoke status is not source_locked');
@@ -91,7 +91,7 @@ if (fallbackSmoke.generated_from !== registryPath || fallbackSmoke.profile !== '
 sameSet(fallbackSmoke.degraded_modes.map(mode => mode.name), registry.contract_tests.fallback_smoke.degraded_modes, 'runtime fallback degraded modes');
 
 if (registry.contract_tests.port_error_matrix?.status !== 'source_locked' || registry.contract_tests.port_error_matrix?.source !== portErrorMatrixPath) fail('port error matrix registry drift');
-if (portErrorMatrix.generated_from !== registryPath || portErrorMatrix.port !== 'MediaAssetReadPort' || portErrorMatrix.source !== 'crates/rustok-media/src/ports.rs') fail('port error matrix header drift');
+if (portErrorMatrix.generated_from !== registryPath || portErrorMatrix.port !== 'MediaAssetReadPort' || portErrorMatrix.source !== 'crates/modules/rustok-media/src/ports.rs') fail('port error matrix header drift');
 sameSet(portErrorMatrix.error_mappings.map(mapping => mapping.code), [
   'media.not_found',
   'media.forbidden',
@@ -108,10 +108,10 @@ for (const mapping of portErrorMatrix.error_mappings) {
 if (!ports.includes('media.invalid_tenant_id')) fail('ports.rs missing invalid tenant context guard');
 if (!ports.includes('fn require_media_read_policy') || !ports.includes('context.require_policy(PortCallPolicy::read())')) fail('ports.rs missing explicit media read policy guard helper');
 
-const plan = read('crates/rustok-media/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-media/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `boundary_ready`', 'media-fba-registry.json', 'MediaAssetReadPort', 'MediaAssetWritePort', 'media-contract-test-static-matrix.json', 'media-runtime-fallback-smoke.json', 'media-port-error-matrix.json', 'public URL policy', 'MediaAssetSummary', 'whole-module extraction pilot', '2026-07-16-media-search-extraction-boundaries.md'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `media` |', 'MediaAssetWritePort', 'streaming REST', 'crates/rustok-media/contracts/media-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
+hasAll(central, ['| `media` |', 'MediaAssetWritePort', 'streaming REST', 'crates/modules/rustok-media/contracts/media-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`media`', 'MediaAssetReadPort', 'media-fba-registry.json'], 'unified plan');
 

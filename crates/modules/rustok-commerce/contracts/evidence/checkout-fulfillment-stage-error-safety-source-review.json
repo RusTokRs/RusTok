@@ -2,9 +2,9 @@
   "schema_version": 1,
   "status": "commerce_checkout_fulfillment_stage_error_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/services/checkout_fulfillment_stages.rs",
-    "crates/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs",
-    "crates/rustok-commerce/docs/checkout-fulfillment-stage-context.md",
+    "crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages.rs",
+    "crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs",
+    "crates/modules/rustok-commerce/docs/checkout-fulfillment-stage-context.md",
     "scripts/verify/verify-commerce-checkout-fulfillment-stage-context.mjs",
     "scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs",
     "scripts/verify/verify-commerce-staged-checkout-fulfillment-retry-disposition.mjs",

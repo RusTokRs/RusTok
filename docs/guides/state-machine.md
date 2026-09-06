@@ -678,9 +678,9 @@ Invalid transition:    Compile error (no runtime cost!)
 ## Resources
 
 ### Implementation
-- [Content State Machine](../crates/rustok-content/src/state_machine.rs)
-- [Order State Machine](../crates/rustok-commerce/src/state_machine.rs)
-- [State Machine Framework](../crates/rustok-core/src/state_machine/)
+- [Content State Machine](../crates/modules/rustok-content/src/state_machine.rs)
+- [Order State Machine](../crates/modules/rustok-commerce/src/state_machine.rs)
+- [State Machine Framework](../crates/libs/rustok-core/src/state_machine/)
 
 ### External References
 - [Type-State Pattern](https://cliffle.com/blog/rust-typestate/)

@@ -7,16 +7,16 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const failures = [];
 const files = {
-  admission: "crates/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json",
-  source: "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
-  browser: "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
+  admission: "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json",
+  source: "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
+  browser: "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
   runner: "scripts/evidence/admit-pages-consumer-properties.mjs",
   test: "scripts/evidence/admit-pages-consumer-properties.test.mjs",
   sourceWorkflow: ".github/workflows/pages-consumer-properties-source-evidence.yml",
   browserWorkflow: ".github/workflows/pages-published-metadata-browser-evidence.yml",
   actualization: "docs/modules/pages-consumer-properties-admission-actualization-2026-08-18.md",
-  consumer: "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json",
-  registry: "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+  consumer: "crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json",
+  registry: "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
 };
 
 function read(relative) {

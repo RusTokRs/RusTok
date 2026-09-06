@@ -140,7 +140,7 @@ resource identity, public policy code, retryability, and deadline context.
 
 The locked execution contract is:
 
-`crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json`
+`crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-transport-parity-execution-contract.json`
 
 The maintainer-owned runner is:
 
@@ -165,13 +165,13 @@ restart, external-adapter identity, and remote-adapter behavior are retained.
 
 The capture runbook is:
 
-`crates/rustok-fulfillment/docs/fulfillment-lifecycle-transport-parity-capture.md`
+`crates/modules/rustok-fulfillment/docs/fulfillment-lifecycle-transport-parity-capture.md`
 
 ## Evidence
 
 Source evidence is retained at:
 
-`crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json`
+`crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json`
 
 Its status is `source_cutover_unvalidated`. It records completed default server
 composition, GraphQL lifecycle lookup/list/latest-by-order cutover, admin REST

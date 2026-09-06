@@ -4,14 +4,14 @@
   "status": "contract_frozen_implementation_pending",
   "scope": "Freeze the version-1 Forum Search owner-revision invalidation wire shape and rolling dual-delivery protocol before changing the sealed event registry or Search consumer runtime",
   "decision": "DECISIONS/2026-07-31-forum-search-versioned-invalidation-rollout.md",
-  "canonical_forum_plan": "crates/rustok-forum/docs/implementation-plan.md",
-  "canonical_search_plan": "crates/rustok-search/docs/implementation-plan.md",
+  "canonical_forum_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
+  "canonical_search_plan": "crates/modules/rustok-search/docs/implementation-plan.md",
   "predecessors": [
-    "crates/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
-    "crates/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json",
-    "crates/rustok-forum/contracts/forum-search-owner-revision-source.json",
-    "crates/rustok-forum/contracts/forum-search-owner-revision-checkpoint.json",
-    "crates/rustok-forum/contracts/forum-search-durable-ingest-sequence.json"
+    "crates/modules/rustok-forum/contracts/forum-search-owner-revision-ledger.json",
+    "crates/modules/rustok-forum/contracts/forum-search-owner-revision-counter-hardening.json",
+    "crates/modules/rustok-forum/contracts/forum-search-owner-revision-source.json",
+    "crates/modules/rustok-forum/contracts/forum-search-owner-revision-checkpoint.json",
+    "crates/modules/rustok-forum/contracts/forum-search-durable-ingest-sequence.json"
   ],
   "event_contract": {
     "registry_owner": "rustok-events",

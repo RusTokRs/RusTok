@@ -87,8 +87,8 @@ scripts/verify/verify-commerce-admin-promotion-native-error-safety.mjs
 Retained source evidence:
 
 ```text
-crates/rustok-commerce/contracts/evidence/admin-promotion-native-error-safety-source.json
-crates/rustok-commerce/contracts/evidence/admin-promotion-native-error-safety-source-review.json
+crates/modules/rustok-commerce/contracts/evidence/admin-promotion-native-error-safety-source.json
+crates/modules/rustok-commerce/contracts/evidence/admin-promotion-native-error-safety-source-review.json
 ```
 
 No test, verifier, Cargo command, formatting command, workflow, CI job, or runtime

@@ -15,7 +15,7 @@ This overlay makes that packet executable without claiming that it ran.
 
 ## PostgreSQL receipt/outbox/cache packet: ready, unvalidated
 
-`crates/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs` creates one
+`crates/modules/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs` creates one
 isolated PostgreSQL schema and applies the real `OutboxModule` and `PagesModule`
 migrations. It does not create replacement operation or outbox tables.
 
@@ -56,13 +56,13 @@ calls cache services inline.
 ## Evidence
 
 - harness:
-  `crates/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs`;
+  `crates/modules/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs`;
 - machine contract:
-  `crates/rustok-pages/contracts/evidence/pages-publish-rollback-outbox-cache-postgres-source.json`;
+  `crates/modules/rustok-pages/contracts/evidence/pages-publish-rollback-outbox-cache-postgres-source.json`;
 - focused verifier:
-  `crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs`;
+  `crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs`;
 - shared cache guard:
-  `crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`.
+  `crates/modules/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`.
 
 ## Evidence state
 
@@ -101,9 +101,9 @@ This slice does not:
 Suggested commands, intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-cache-correlation.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rollback-cache-correlation.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-pages --test publish_rollback_outbox_cache_postgres -- --nocapture
 cargo check -p rustok-pages --all-targets

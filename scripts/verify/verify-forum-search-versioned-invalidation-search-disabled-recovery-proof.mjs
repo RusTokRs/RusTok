@@ -18,11 +18,11 @@ const forbidAll = (text, markers, label) => {
 };
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-search-disabled-recovery-proof.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-search-disabled-recovery-proof.json";
 const parentContractPath =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
 const docPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d9-search-disabled-recovery-proof.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d9-search-disabled-recovery-proof.md";
 const testPath =
   "apps/server/tests/forum_versioned_invalidation_search_disabled_recovery.rs";
 const evidencePath =
@@ -133,11 +133,11 @@ const reconcilerIndex = test.indexOf(
 assert.ok(fixtureIndex >= 0 && fixtureIndex < enableIndex);
 assert.ok(enableIndex >= 0 && enableIndex < reconcilerIndex);
 
-const forumCargo = read("crates/rustok-forum/Cargo.toml");
+const forumCargo = read("crates/modules/rustok-forum/Cargo.toml");
 assert.ok(!forumCargo.includes("rustok-search"));
 
 const invalidation = read(
-  "crates/rustok-forum/src/services/projection_invalidation.rs",
+  "crates/modules/rustok-forum/src/services/projection_invalidation.rs",
 );
 requireAll(
   invalidation,
@@ -165,7 +165,7 @@ forbidAll(
 );
 
 requireAll(
-  read("crates/rustok-forum/src/services/category_projection_owner.rs"),
+  read("crates/modules/rustok-forum/src/services/category_projection_owner.rs"),
   [
     "CategoryProjectionOwnerService",
     "publish_forum_projection_scope_direct_in_tx",
@@ -174,7 +174,7 @@ requireAll(
   "Forum category owner transaction",
 );
 requireAll(
-  read("crates/rustok-forum/src/services/topic_inline.rs"),
+  read("crates/modules/rustok-forum/src/services/topic_inline.rs"),
   [
     "DomainEvent::ForumTopicCreated",
     "publish_forum_category_projection_in_tx",
@@ -183,7 +183,7 @@ requireAll(
   "Forum topic owner transaction",
 );
 requireAll(
-  read("crates/rustok-forum/src/services/event.rs"),
+  read("crates/modules/rustok-forum/src/services/event.rs"),
   [
     "ForumEventService",
     "list_projection_owner_revisions",
@@ -207,7 +207,7 @@ requireAll(
   "server Forum owner revision adapter",
 );
 requireAll(
-  read("crates/rustok-search/src/forum_owner_checkpoint.rs"),
+  read("crates/modules/rustok-search/src/forum_owner_checkpoint.rs"),
   [
     "list_tenant_heads(active_cursor, tenant_limit)",
     "resolve_forum_projection_owner_revisions",
@@ -221,7 +221,7 @@ requireAll(
   "Search owner-ledger recovery",
 );
 requireAll(
-  read("crates/rustok-search/src/forum_reconciliation.rs"),
+  read("crates/modules/rustok-search/src/forum_reconciliation.rs"),
   [
     "pub fn with_owner_revision_source(",
     "if let Some(owner_checkpoint)",
@@ -232,7 +232,7 @@ requireAll(
   "Search bounded reconciliation composition",
 );
 requireAll(
-  read("crates/rustok-search/src/forum_projector.rs"),
+  read("crates/modules/rustok-search/src/forum_projector.rs"),
   [
     "self.source.list_public_documents",
     "delete_forum_scope(&tx, tenant_id)",
@@ -327,7 +327,7 @@ assert.ok(
   ),
 );
 
-const plan = read("crates/rustok-forum/docs/implementation-plan.md");
+const plan = read("crates/modules/rustok-forum/docs/implementation-plan.md");
 const forum23Start = plan.indexOf("## `FORUM-23` — search/index integration");
 const forum24Start = plan.indexOf("## `FORUM-24` — localized routes", forum23Start);
 assert.ok(forum23Start >= 0 && forum24Start > forum23Start);

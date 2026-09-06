@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 93 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-92.md`.
+`crates/modules/rustok-blog/docs/implementation-plan-slice-92.md`.
 
 Slices 90–92 retain the atomic PostgreSQL source-to-canonical handoff, the
 single opt-in host worker, and the durable Blog-owned source retry/dead-letter

@@ -48,6 +48,6 @@ reconciliation primitive, not a user-facing file browser.
 
 ## Related contracts
 
-- [`rustok-storage`](../crates/rustok-storage/docs/README.md)
-- [`rustok-media`](../crates/rustok-media/docs/README.md)
+- [`rustok-storage`](../crates/utils/rustok-storage/docs/README.md)
+- [`rustok-media`](../crates/modules/rustok-media/docs/README.md)
 - [Neutral sandbox foundation](./2026-07-11-neutral-sandbox-foundation.md)

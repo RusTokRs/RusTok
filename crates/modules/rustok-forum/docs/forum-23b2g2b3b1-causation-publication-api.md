@@ -13,13 +13,13 @@ The frozen rollout remains defined by:
 
 ```text
 DECISIONS/2026-07-31-forum-search-versioned-invalidation-rollout.md
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-wire.json
 ```
 
 The machine-readable result for this slice is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-causation-api.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-causation-api.json
 ```
 
 ## Why this is a separate slice

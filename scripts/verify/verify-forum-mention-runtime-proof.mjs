@@ -27,14 +27,14 @@ function reject(source, pattern, message) {
   if (pattern.test(source)) failures.push(message);
 }
 
-const contractPath = "crates/rustok-forum/contracts/forum-mention-runtime-proof.json";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-mention-runtime-proof.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const testSource = read(contract.test_file ?? "");
-const postgresSupport = read("crates/rustok-forum/tests/support/postgres.rs");
-const mentionRelation = read("crates/rustok-forum/src/services/mention_relation.rs");
-const quoteService = read("crates/rustok-forum/src/services/quote_command.rs");
-const inlineResolver = read("crates/rustok-forum/src/services/relation_quote_input.rs");
-const record = read("crates/rustok-forum/docs/forum-12-postgres-runtime-proof.md");
+const postgresSupport = read("crates/modules/rustok-forum/tests/support/postgres.rs");
+const mentionRelation = read("crates/modules/rustok-forum/src/services/mention_relation.rs");
+const quoteService = read("crates/modules/rustok-forum/src/services/quote_command.rs");
+const inlineResolver = read("crates/modules/rustok-forum/src/services/relation_quote_input.rs");
+const record = read("crates/modules/rustok-forum/docs/forum-12-postgres-runtime-proof.md");
 
 if (contract.schema_version !== 1) {
   failures.push("runtime proof contract must use schema_version=1");

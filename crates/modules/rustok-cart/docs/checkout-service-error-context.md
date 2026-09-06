@@ -5,7 +5,7 @@ Status: **source-ready / unvalidated**
 ## Scope
 
 This source slice closes the delegated-context diagnostic gap for CartService failures
-crossing `CartCheckoutPort` in `crates/rustok-cart/src/checkout_snapshot.rs`.
+crossing `CartCheckoutPort` in `crates/modules/rustok-cart/src/checkout_snapshot.rs`.
 
 Five distinct owner-service operations are covered across six callsites:
 

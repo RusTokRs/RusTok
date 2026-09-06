@@ -9,7 +9,7 @@ FORUM-24B composes the FORUM-24A immutable topic route ledger into the existing 
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-route-alias-owner.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-route-alias-owner.json
 ```
 
 ## Owner composition

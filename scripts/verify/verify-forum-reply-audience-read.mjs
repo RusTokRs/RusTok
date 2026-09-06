@@ -10,29 +10,29 @@ const requireText = (source, needle, label) => {
 };
 
 const topicVisibility = read(
-  'crates/rustok-forum/src/services/topic_audience_visibility.rs',
+  'crates/modules/rustok-forum/src/services/topic_audience_visibility.rs',
 );
 const replyOwner = read(
-  'crates/rustok-forum/src/services/reply_audience_read.rs',
+  'crates/modules/rustok-forum/src/services/reply_audience_read.rs',
 );
-const transport = read('crates/rustok-forum/src/reply_read_transport.rs');
-const rest = read('crates/rustok-forum/src/controllers/replies.rs');
+const transport = read('crates/modules/rustok-forum/src/reply_read_transport.rs');
+const rest = read('crates/modules/rustok-forum/src/controllers/replies.rs');
 const additiveGraphql = read(
-  'crates/rustok-forum/src/graphql/reply_audience_query.rs',
+  'crates/modules/rustok-forum/src/graphql/reply_audience_query.rs',
 );
 const canonicalGraphql = read(
-  'crates/rustok-forum/src/graphql/query_runtime.rs',
+  'crates/modules/rustok-forum/src/graphql/query_runtime.rs',
 );
-const graphqlRuntime = read('crates/rustok-forum/src/graphql/runtime_data.rs');
+const graphqlRuntime = read('crates/modules/rustok-forum/src/graphql/runtime_data.rs');
 const nativeAdapter = read(
-  'crates/rustok-forum/storefront/src/transport/native_server_adapter.rs',
+  'crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs',
 );
-const selector = read('crates/rustok-forum/storefront/src/transport/mod.rs');
+const selector = read('crates/modules/rustok-forum/storefront/src/transport/mod.rs');
 const contract = JSON.parse(
-  read('crates/rustok-forum/contracts/forum-reply-audience-read.json'),
+  read('crates/modules/rustok-forum/contracts/forum-reply-audience-read.json'),
 );
 const completion = JSON.parse(
-  read('crates/rustok-forum/contracts/forum-reply-legacy-cutover.json'),
+  read('crates/modules/rustok-forum/contracts/forum-reply-legacy-cutover.json'),
 );
 
 requireText(
@@ -146,7 +146,7 @@ if (!contract.compatibility.temporary_reply_adapters_removed) {
 }
 if (
   contract.downstream_completion !==
-  'crates/rustok-forum/contracts/forum-reply-legacy-cutover.json'
+  'crates/modules/rustok-forum/contracts/forum-reply-legacy-cutover.json'
 ) {
   throw new Error('FORUM-20BF handoff must point to FORUM-20BG completion');
 }

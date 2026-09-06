@@ -40,7 +40,7 @@ function expectFailure(root, pattern) {
 verifyFoundationFbaRuntimeSmoke();
 
 const tenantPolicyDrift = fixture();
-const tenantPorts = path.join(tenantPolicyDrift, 'crates/rustok-tenant/src/ports.rs');
+const tenantPorts = path.join(tenantPolicyDrift, 'crates/modules/rustok-tenant/src/ports.rs');
 fs.writeFileSync(
   tenantPorts,
   fs.readFileSync(tenantPorts, 'utf8').replace('context.require_policy(PortCallPolicy::read())?;', '/* removed */')
@@ -48,7 +48,7 @@ fs.writeFileSync(
 expectFailure(tenantPolicyDrift, /tenant source marker missing/);
 
 const emailFallbackDrift = fixture();
-const emailSmokePath = path.join(emailFallbackDrift, 'crates/rustok-email/contracts/evidence/email-runtime-fallback-smoke.json');
+const emailSmokePath = path.join(emailFallbackDrift, 'crates/modules/rustok-email/contracts/evidence/email-runtime-fallback-smoke.json');
 const emailSmoke = JSON.parse(fs.readFileSync(emailSmokePath, 'utf8'));
 emailSmoke.profiles = emailSmoke.profiles.slice(1);
 fs.writeFileSync(emailSmokePath, `${JSON.stringify(emailSmoke, null, 2)}\n`);

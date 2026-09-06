@@ -8,17 +8,17 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const failures = [];
 const files = {
   contract:
-    "crates/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-execution-source.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-execution-source.json",
   recorder: "scripts/evidence/record-page-builder-static-sanitization-execution.mjs",
   workflow: ".github/workflows/page-builder-static-sanitization-evidence.yml",
   actualization:
     "docs/modules/page-builder-static-sanitization-execution-actualization-2026-08-13.md",
-  registry: "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
-  sanitization: "crates/rustok-page-builder/src/publish_sanitization.rs",
-  policy: "crates/rustok-page-builder/src/static_publish_policy.rs",
-  resourceLimits: "crates/rustok-page-builder/src/static_publish_resource_limits.rs",
+  registry: "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
+  sanitization: "crates/modules/rustok-page-builder/src/publish_sanitization.rs",
+  policy: "crates/modules/rustok-page-builder/src/static_publish_policy.rs",
+  resourceLimits: "crates/modules/rustok-page-builder/src/static_publish_resource_limits.rs",
   existingVerifier:
-    "crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs",
+    "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs",
 };
 
 function absolute(relativePath) {
@@ -189,7 +189,7 @@ for (const marker of [
   "permissions:",
   "contents: read",
   "persist-credentials: false",
-  "node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs",
+  "node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs",
   "node scripts/verify/verify-page-builder-static-sanitization-execution.mjs",
   "cargo test --locked -p rustok-page-builder --lib -- --list",
   "publish_sanitization::tests::sanitization_assigns_stable_ids_and_hashes_policy_bound_project",

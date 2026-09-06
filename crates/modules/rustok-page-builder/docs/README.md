@@ -113,7 +113,7 @@ paths and composition-order drift.
 - SSR form, selection and draft-route bindings;
 - lifecycle cleanup and idempotent late manual mount binding.
 
-`crates/rustok-page-builder/admin/src/ui/browser_adapter.rs` is a thin Leptos renderer over this
+`crates/modules/rustok-page-builder/admin/src/ui/browser_adapter.rs` is a thin Leptos renderer over this
 source. A future Dioxus renderer can use the same source without copying browser policy.
 
 ## Current entrypoints
@@ -156,15 +156,15 @@ unavailability narrows capabilities and never mounts a fallback editor.
 
 ## Verification
 
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs`;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs`;
+- `node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs`;
 - `cargo test -p fly`;
 - `cargo test -p rustok-page-builder --all-targets --all-features`;
 - `cargo xtask module validate page_builder`.
 
 ## Related documents
 
-- `crates/rustok-page-builder/docs/fly-runtime.md`;
+- `crates/modules/rustok-page-builder/docs/fly-runtime.md`;
 - `DECISIONS/2026-07-13-fly-page-builder-architecture.md`;
 - `docs/modules/page-builder-implementation-plan.md`;
-- `crates/rustok-pages/docs/implementation-plan.md`.
+- `crates/modules/rustok-pages/docs/implementation-plan.md`.

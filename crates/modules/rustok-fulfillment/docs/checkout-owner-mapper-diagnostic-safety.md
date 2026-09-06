@@ -5,7 +5,7 @@ Status: **source-ready / unvalidated**
 ## Scope
 
 This bounded source slice hardens only `fulfillment_error_to_port_error` in
-`crates/rustok-fulfillment/src/checkout_execution.rs`.
+`crates/modules/rustok-fulfillment/src/checkout_execution.rs`.
 
 The mapper still translates the same five `FulfillmentError` variants into the same typed
 `PortError` envelopes for checkout fulfillment create, lookup, adoption, and read operations.
@@ -94,7 +94,7 @@ the covered mapper.
 
 Source evidence is recorded in:
 
-- `crates/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`.
 
 ## Suggested maintainer checks
 

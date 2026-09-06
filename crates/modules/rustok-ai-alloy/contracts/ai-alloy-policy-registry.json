@@ -6,7 +6,7 @@
   "status": "in_progress",
   "consumer_profile": "alloy_script_descriptor",
   "support_adapter": {
-    "source": "crates/rustok-ai-alloy/src/lib.rs",
+    "source": "crates/modules/rustok-ai-alloy/src/lib.rs",
     "task_slug": "alloy_code",
     "tool_name": "direct.alloy.run_script",
     "registration_api": "register_alloy_ai_vertical_handlers",
@@ -50,14 +50,14 @@
     ]
   },
   "evidence": {
-    "local_plan": "crates/rustok-ai-alloy/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-ai-alloy/docs/implementation-plan.md",
     "central_registry": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ai-alloy-policy.mjs",
-    "static_matrix": "crates/rustok-ai-alloy/contracts/evidence/ai-alloy-policy-static-matrix.json"
+    "static_matrix": "crates/modules/rustok-ai-alloy/contracts/evidence/ai-alloy-policy-static-matrix.json"
   },
   "contract_tests": {
     "status": "source_policy_locked",
-    "source": "crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json",
+    "source": "crates/modules/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json",
     "runner": "scripts/verify/verify-ai-alloy-policy.mjs",
     "cases": [
       {

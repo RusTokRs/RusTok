@@ -7,7 +7,7 @@
   "config": "apps/next-admin/playwright.pages-published-metadata.config.ts",
   "global_setup": "apps/next-admin/tests/pages-published-metadata/global-setup.ts",
   "workflow": ".github/workflows/pages-published-metadata-browser-evidence.yml",
-  "workflow_verifier": "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs",
+  "workflow_verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs",
   "output": {
     "environment": "RUSTOK_PAGES_PUBLISHED_METADATA_BROWSER_EVIDENCE_OUTPUT",
     "default_path": "target/pages-published-metadata-browser-evidence.json",
@@ -72,17 +72,17 @@
     "missing selection does not admit the registered published metadata surface"
   ],
   "required_source_files": [
-    "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
     ".github/workflows/pages-published-metadata-browser-evidence.yml",
-    "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs",
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs",
     "apps/next-admin/playwright.pages-published-metadata.config.ts",
     "apps/next-admin/tests/pages-published-metadata/global-setup.ts",
     "apps/next-admin/tests/pages-published-metadata/browser-evidence.spec.ts",
-    "crates/rustok-pages/admin/src/standalone_metadata.rs",
-    "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs",
-    "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json",
-    "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
-    "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json"
+    "crates/modules/rustok-pages/admin/src/standalone_metadata.rs",
+    "crates/modules/rustok-page-builder/admin/src/editor/consumer_properties.rs",
+    "crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json"
   ],
   "retained_data": [
     "exact source commit",

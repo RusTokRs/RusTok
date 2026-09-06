@@ -11,17 +11,17 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  route: "crates/rustok-forum/src/services/category_route.rs",
-  retiredAlias: "crates/rustok-forum/src/services/category_route_alias.rs",
-  owner: "crates/rustok-forum/src/services/category_projection_owner.rs",
-  forumSync: "crates/rustok-forum/src/services/category_taxonomy_sync.rs",
-  taxonomySync: "crates/rustok-taxonomy/src/owner_category_route_sync.rs",
+  route: "crates/modules/rustok-forum/src/services/category_route.rs",
+  retiredAlias: "crates/modules/rustok-forum/src/services/category_route_alias.rs",
+  owner: "crates/modules/rustok-forum/src/services/category_projection_owner.rs",
+  forumSync: "crates/modules/rustok-forum/src/services/category_taxonomy_sync.rs",
+  taxonomySync: "crates/modules/rustok-taxonomy/src/owner_category_route_sync.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260806_000026_add_forum_category_route_aliases.rs",
-  migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
-  contractTest: "crates/rustok-forum/tests/category_slug_alias_contract.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260806_000026_add_forum_category_route_aliases.rs",
+  migrationsMod: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  contractTest: "crates/modules/rustok-forum/tests/category_slug_alias_contract.rs",
   ownedAliasTest:
-    "crates/rustok-forum/tests/category_taxonomy_owned_alias_history.rs",
+    "crates/modules/rustok-forum/tests/category_taxonomy_owned_alias_history.rs",
 };
 
 function read(relativePath) {

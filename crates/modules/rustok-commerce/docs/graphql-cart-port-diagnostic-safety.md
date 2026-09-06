@@ -53,7 +53,7 @@ Still open:
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/graphql-cart-port-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/graphql-cart-port-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-graphql-cart-port-diagnostic-safety.mjs`
 - `scripts/verify/verify-commerce-graphql-cart-helper-error-safety.mjs`
 

@@ -4,27 +4,27 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-topic-merge-subscription-reconciliation.json",
-  docs: "crates/rustok-forum/docs/forum-21c-topic-merge-subscription-reconciliation.md",
-  entity: "crates/rustok-forum/src/entities/forum_topic_merge_subscription_reconciliation.rs",
-  entitiesMod: "crates/rustok-forum/src/entities/mod.rs",
-  error: "crates/rustok-forum/src/error.rs",
-  lib: "crates/rustok-forum/src/lib.rs",
-  lock: "crates/rustok-forum/src/services/topic_subscription_lock.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-subscription-reconciliation.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21c-topic-merge-subscription-reconciliation.md",
+  entity: "crates/modules/rustok-forum/src/entities/forum_topic_merge_subscription_reconciliation.rs",
+  entitiesMod: "crates/modules/rustok-forum/src/entities/mod.rs",
+  error: "crates/modules/rustok-forum/src/error.rs",
+  lib: "crates/modules/rustok-forum/src/lib.rs",
+  lock: "crates/modules/rustok-forum/src/services/topic_subscription_lock.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260801_000011_add_forum_topic_merge_subscription_reconciliations.rs",
-  migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260801_000011_add_forum_topic_merge_subscription_reconciliations.rs",
+  migrationsMod: "crates/modules/rustok-forum/src/migrations/mod.rs",
   postgresEvents:
-    "crates/rustok-forum/src/migrations/m20260713_000013_add_forum_subscription_levels/postgres_up/events.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000013_add_forum_subscription_levels/postgres_up/events.rs",
   sqliteEvents:
-    "crates/rustok-forum/src/migrations/m20260713_000013_add_forum_subscription_levels/sqlite_up/events.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260713_000013_add_forum_subscription_levels/sqlite_up/events.rs",
   service:
-    "crates/rustok-forum/src/services/topic_merge_subscription_reconciliation.rs",
-  servicesMod: "crates/rustok-forum/src/services/mod.rs",
-  subscriptionWrite: "crates/rustok-forum/src/services/subscription/topic.rs",
+    "crates/modules/rustok-forum/src/services/topic_merge_subscription_reconciliation.rs",
+  servicesMod: "crates/modules/rustok-forum/src/services/mod.rs",
+  subscriptionWrite: "crates/modules/rustok-forum/src/services/subscription/topic.rs",
   test:
-    "crates/rustok-forum/tests/topic_merge_subscription_reconciliation_sqlite.rs",
-  plan: "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/tests/topic_merge_subscription_reconciliation_sqlite.rs",
+  plan: "crates/modules/rustok-forum/docs/implementation-plan.md",
   verifier:
     "scripts/verify/verify-forum-topic-merge-subscription-reconciliation.mjs",
 };

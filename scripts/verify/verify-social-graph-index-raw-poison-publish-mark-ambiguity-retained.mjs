@@ -8,13 +8,13 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution-contract.json";
+  "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution-contract.json";
 const sourceContractPath =
-  "crates/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-source.json";
+  "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-source.json";
 const runnerPath =
   "scripts/evidence/capture-social-graph-index-raw-poison-publish-mark-ambiguity.mjs";
 const evidencePath =
-  "crates/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution.json";
+  "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-publish-mark-ambiguity-execution.json";
 const expectedVerifier =
   "scripts/verify/verify-social-graph-index-raw-poison-publish-mark-ambiguity-retained.mjs";
 const expectedCases = [

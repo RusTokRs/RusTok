@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const decoderPath = 'crates/rustok-index/src/application/postgres_query_result.rs';
+const decoderPath = 'crates/modules/rustok-index/src/application/postgres_query_result.rs';
 const decoder = requireMarkers(decoderPath, [
   'pub struct CompiledPostgresPageQuery',
   'pub struct IndexNestedRelationItem',
@@ -69,7 +69,7 @@ for (const forbidden of [
   if (decoder.includes(forbidden)) fail(`${decoderPath} contains forbidden marker ${forbidden}`);
 }
 
-requireMarkers('crates/rustok-index/src/application/postgres_many_projection_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/postgres_many_projection_tests.rs', [
   'decodes_aligned_nested_identity_and_value_arrays',
   'rejects_nested_identity_and_field_arity_drift',
   'rejects_nil_and_duplicate_nested_identity_chains',
@@ -78,7 +78,7 @@ requireMarkers('crates/rustok-index/src/application/postgres_many_projection_tes
   'PostgresQueryDecodeError::NilNestedIdentity',
   'PostgresQueryDecodeError::DuplicateNestedIdentity',
 ]);
-requireMarkers('crates/rustok-index/src/application/postgres_query_result_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/postgres_query_result_tests.rs', [
   'page_compilation_adds_exactly_one_lookahead_row',
   'offset_page_compilation_preserves_offset_and_adds_lookahead',
   'decodes_projection_relations_exact_count_and_next_cursor',
@@ -86,19 +86,19 @@ requireMarkers('crates/rustok-index/src/application/postgres_query_result_tests.
   'rejects_page_compiled_for_different_query_semantics',
   'rejects_invalid_tagged_field_contract',
 ]);
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'mod postgres_many_projection_tests;',
   'mod query_snapshot_tests;',
   'IndexNestedRelationItem',
   'IndexNestedRelationProjection',
 ]);
-requireMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-query-snapshots.md', [
   'identity arity drift',
   'selected-field arity drift',
   'nil nested identities',
   'duplicate complete identity chains',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   'M4 deterministic PostgreSQL result decoding: `complete`',
   '- [x] Add nested many-link projection aggregation.',
   '- [x] Add retained v4 plan/SQL snapshots and synchronized source guards.',

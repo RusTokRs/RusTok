@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "generated_from": "crates/rustok-search/contracts/search-fba-registry.json",
+  "generated_from": "crates/modules/rustok-search/contracts/search-fba-registry.json",
   "runner": "scripts/verify/verify-search-fba-runtime-contract.mjs",
   "status": "executable_no_compile",
   "contract_version": "search.query.v1",
   "provider": "PgSearchEngine",
   "source_markers": {
-    "provider_source": "crates/rustok-search/src/ports.rs",
-    "engine_source": "crates/rustok-search/src/pg_engine.rs",
-    "suggestion_source": "crates/rustok-search/src/suggestions.rs"
+    "provider_source": "crates/modules/rustok-search/src/ports.rs",
+    "engine_source": "crates/modules/rustok-search/src/pg_engine.rs",
+    "suggestion_source": "crates/modules/rustok-search/src/suggestions.rs"
   },
   "cases": [
     {

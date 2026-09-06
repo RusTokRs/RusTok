@@ -15,7 +15,7 @@ FORUM-24Q cuts Forum Search navigation over from internal UUID module query URLs
 The machine-readable contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-canonical-route-cutover.json
+crates/modules/rustok-forum/contracts/forum-search-canonical-route-cutover.json
 ```
 
 ## Owner boundary
@@ -65,7 +65,7 @@ A full Forum Search projection rebuild is therefore required before runtime prom
 FORUM-24R adds the executable PostgreSQL handoff for this requirement:
 
 ```text
-crates/rustok-search/tests/forum_canonical_route_reindex_postgres.rs
+crates/modules/rustok-search/tests/forum_canonical_route_reindex_postgres.rs
 ```
 
 It exercises real Forum owner writes, the durable Forum inbox, staged tenant replacement, removal of legacy UUID routes, canonical Search URL acceptance, stale-orphan cleanup and cross-tenant isolation. Its source is present but has not been executed.
@@ -115,4 +115,4 @@ Runtime promotion additionally requires executing the PostgreSQL harness, rebuil
 - retain registered-host and browser evidence after the executable PostgreSQL reindex proof is run;
 - reconcile the canonical FORUM-24 ledger after maintainer execution.
 
-`crates/rustok-forum/docs/implementation-plan.md` remains the only authoritative roadmap. Its FORUM-24 ledger is stale relative to the merged source slices. The connected complete-file writer cannot safely replace that large document losslessly, so these bounded task documents do not create a second backlog or claim ledger synchronization.
+`crates/modules/rustok-forum/docs/implementation-plan.md` remains the only authoritative roadmap. Its FORUM-24 ledger is stale relative to the merged source slices. The connected complete-file writer cannot safely replace that large document losslessly, so these bounded task documents do not create a second backlog or claim ledger synchronization.

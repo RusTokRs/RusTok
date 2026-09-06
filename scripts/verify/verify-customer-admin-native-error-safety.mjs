@@ -28,14 +28,14 @@ const between = (source, start, end, label) => {
 };
 
 const paths = {
-  adapter: "crates/rustok-customer/admin/src/transport/native_server_adapter.rs",
-  cargo: "crates/rustok-customer/admin/Cargo.toml",
-  ownerError: "crates/rustok-customer/src/error.rs",
+  adapter: "crates/modules/rustok-customer/admin/src/transport/native_server_adapter.rs",
+  cargo: "crates/modules/rustok-customer/admin/Cargo.toml",
+  ownerError: "crates/modules/rustok-customer/src/error.rs",
   evidence:
-    "crates/rustok-customer/contracts/evidence/admin-native-error-safety-source.json",
-  doc: "crates/rustok-customer/docs/admin-native-error-safety.md",
-  review: "crates/rustok-customer/docs/admin-native-error-safety-review.md",
-  masterPlan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-customer/contracts/evidence/admin-native-error-safety-source.json",
+  doc: "crates/modules/rustok-customer/docs/admin-native-error-safety.md",
+  review: "crates/modules/rustok-customer/docs/admin-native-error-safety-review.md",
+  masterPlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
 const adapter = read(paths.adapter);

@@ -47,15 +47,15 @@ No post pagination, visibility, tag projection, author projection, Search SQL, o
 
 Production source:
 
-- `crates/rustok-blog/src/services/post.rs`
+- `crates/modules/rustok-blog/src/services/post.rs`
 
 DTO contract:
 
-- `crates/rustok-blog/src/dto/post.rs`
+- `crates/modules/rustok-blog/src/dto/post.rs`
 
 Executable source harness:
 
-- `crates/rustok-blog/tests/post_category_name_projection.rs`
+- `crates/modules/rustok-blog/tests/post_category_name_projection.rs`
 
 The harness retains one localized category attached to a published post and requires the same translated `category_name` across:
 
@@ -69,7 +69,7 @@ Suggested maintainer command:
 
 Machine evidence:
 
-- `crates/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json`
+- `crates/modules/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json`
 
 Fail-closed source guard:
 

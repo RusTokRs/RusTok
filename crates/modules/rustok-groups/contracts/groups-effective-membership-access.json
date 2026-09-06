@@ -30,9 +30,9 @@
     "direct_suspend_revoke_commands": "GroupMembershipEnforcementCommandPort",
     "forum_audience_provider_acl": "GroupMembershipEnforcementReadPort via ServerForumAudienceGroupFactsPort",
     "moderation_subject_adapter": [
-      "crates/rustok-groups/src/moderation_subject.rs",
-      "crates/rustok-moderation-api/src/model.rs",
-      "crates/rustok-moderation/src/application_dispatch.rs"
+      "crates/modules/rustok-groups/src/moderation_subject.rs",
+      "crates/modules/rustok-moderation-api/src/model.rs",
+      "crates/modules/rustok-moderation/src/application_dispatch.rs"
     ]
   },
   "access_semantics": {
@@ -70,7 +70,7 @@
       "owner_backed_runtime_source": "apps/server/src/services/forum_audience_group_facts/owner_backed_tests.rs",
       "sqlite_source": true,
       "postgres_source": true,
-      "upstream_contract": "crates/rustok-forum/contracts/forum-audience-group-facts-host-runtime.json"
+      "upstream_contract": "crates/modules/rustok-forum/contracts/forum-audience-group-facts-host-runtime.json"
     }
   },
   "remaining_paths": [
@@ -88,7 +88,7 @@
     "leave_postgresql_source": "apps/server/tests/groups_leave_enforcement_postgres.rs",
     "leave_runtime": null,
     "provider_acl_static_guard": "scripts/verify/verify-groups-membership-enforcement-access-path-integration.mjs",
-    "provider_acl_forum_audience_source": "crates/rustok-forum/contracts/forum-audience-group-facts-host-runtime.json",
+    "provider_acl_forum_audience_source": "crates/modules/rustok-forum/contracts/forum-audience-group-facts-host-runtime.json",
     "cargo_check": null,
     "unit_tests": null,
     "postgresql_runtime": null,

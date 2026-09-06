@@ -12,7 +12,7 @@ Leptos Forum package and the Next-admin Forum package compose the existing
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-admin-ui.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-admin-ui.json
 ```
 
 ## Shared owner boundary

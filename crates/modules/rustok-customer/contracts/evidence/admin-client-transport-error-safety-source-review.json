@@ -2,9 +2,9 @@
   "status": "customer_admin_client_transport_error_safety_source_reviewed_unvalidated",
   "reviewed_at": "2026-07-30",
   "review_scope": [
-    "crates/rustok-customer/admin/src/transport/mod.rs",
-    "crates/rustok-customer/admin/src/transport/error_safety.rs",
-    "crates/rustok-customer/admin/src/transport/native_server_adapter.rs"
+    "crates/modules/rustok-customer/admin/src/transport/mod.rs",
+    "crates/modules/rustok-customer/admin/src/transport/error_safety.rs",
+    "crates/modules/rustok-customer/admin/src/transport/native_server_adapter.rs"
   ],
   "findings": {
     "private_native_error_reexport_removed": true,

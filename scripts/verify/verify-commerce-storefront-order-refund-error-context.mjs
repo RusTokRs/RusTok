@@ -10,8 +10,8 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const controller = read('crates/rustok-commerce/src/controllers/store/orders.rs');
-const paymentOwner = read('crates/rustok-payment/src/order_read.rs');
+const controller = read('crates/modules/rustok-commerce/src/controllers/store/orders.rs');
+const paymentOwner = read('crates/modules/rustok-payment/src/order_read.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {

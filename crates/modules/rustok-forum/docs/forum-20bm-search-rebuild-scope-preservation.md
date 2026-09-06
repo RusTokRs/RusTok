@@ -13,7 +13,7 @@ stable owner boundary delivered by this slice; it is not a second roadmap.
 
 ## Active projector boundary
 
-`crates/rustok-search/src/projector.rs` is now the public `SearchProjector`
+`crates/modules/rustok-search/src/projector.rs` is now the public `SearchProjector`
 facade. It owns only the direct `node` and `product` rebuild sequence and delegates
 targeted operations to the previous implementation.
 
@@ -69,9 +69,9 @@ from Search ingestion.
 
 Source contract coverage lives in:
 
-- `crates/rustok-search/tests/search_scope_preservation_contract.rs`;
+- `crates/modules/rustok-search/tests/search_scope_preservation_contract.rs`;
 - `scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs`;
-- `crates/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json`.
+- `crates/modules/rustok-forum/contracts/forum-search-rebuild-scope-preservation.json`.
 
 The implementation agent did not run tests, Cargo commands, formatting,
 verifiers, workflows, or CI. Maintainer-executed PostgreSQL evidence should still

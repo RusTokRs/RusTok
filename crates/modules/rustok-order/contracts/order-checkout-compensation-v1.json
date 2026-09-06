@@ -41,7 +41,7 @@
     "new_consumer_metadata_lookup": false,
     "new_consumer_order_service_construction": false
   },
-  "source": "crates/rustok-order/src/checkout_compensation.rs",
+  "source": "crates/modules/rustok-order/src/checkout_compensation.rs",
   "verification": {
     "guard": "scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs",
     "runtime_evidence": "not_executed"

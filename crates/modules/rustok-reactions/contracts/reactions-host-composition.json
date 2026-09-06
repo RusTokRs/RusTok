@@ -55,14 +55,14 @@
   },
   "required_files": [
     "modules.toml",
-    "crates/rustok-forum/Cargo.toml",
-    "crates/rustok-distribution/Cargo.toml",
-    "crates/rustok-distribution/src/lib.rs",
+    "crates/modules/rustok-forum/Cargo.toml",
+    "crates/modules/rustok-distribution/Cargo.toml",
+    "crates/modules/rustok-distribution/src/lib.rs",
     "apps/server/Cargo.toml",
     "apps/server/src/services/module_event_dispatcher.rs",
     "apps/server/tests/reactions_composition_profiles.rs",
-    "crates/rustok-reactions/docs/implementation-plan.md",
-    "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-reactions/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/docs/implementation-plan.md",
     "scripts/verify/verify-reactions-host-composition.mjs",
     "scripts/verify/verify-reactions-composition-profiles.mjs"
   ]

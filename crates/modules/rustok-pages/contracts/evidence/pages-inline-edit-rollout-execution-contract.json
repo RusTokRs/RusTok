@@ -74,11 +74,11 @@
     "fba_only_argument": "--ffa"
   },
   "required_source_files": [
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-rollout-execution-contract.json",
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-rollout-evidence-harness-source.json",
-    "crates/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-rollout-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-rollout-evidence-harness-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json",
     "scripts/evidence/assemble-pages-inline-edit-rollout-evidence.mjs",
-    "crates/rustok-pages/scripts/verify/verify-pages-inline-edit-rollout-evidence-harness.mjs",
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-rollout-evidence-harness.mjs",
     "docs/modules/pages-page-builder-inline-edit-rollout-evidence-harness-packet-2026-08-06.md",
     "docs/modules/pages-page-builder-inline-edit-execution-plan.md"
   ],

@@ -62,7 +62,7 @@ and MCP tool surface, without extending `rustok-mcp` to the role of model host.
   - `ai_structured_reservations`
   - `ai_structured_cancellation_intents`
   - `ai_structured_results`
-- owner-owned GraphQL query/mutation/subscription surface in `crates/rustok-ai/src/graphql` for providers,
+- owner-owned GraphQL query/mutation/subscription surface in `crates/modules/rustok-ai/src/graphql` for providers,
   tool profiles, sessions, traces and approvals;
 - server-side orchestration service `AiManagementService`;
 - `AiHostRuntime` is a host-neutral runtime contract; `rustok-ai` accepts
@@ -92,7 +92,7 @@ and MCP tool surface, without extending `rustok-mcp` to the role of model host.
 
 ### UI Packages
 
-- major Leptos operator/admin UI package: `crates/rustok-ai/admin`;
+- major Leptos operator/admin UI package: `crates/modules/rustok-ai/admin`;
 - major Next.js operator/admin UI package: `apps/next-admin/packages/rustok-ai`;
 - both UIs already support provider registry with editable `capabilities` and `usage_policy`;
 - both UIs show execution metadata (`execution_mode`, `execution_path`) for session/run inspection;

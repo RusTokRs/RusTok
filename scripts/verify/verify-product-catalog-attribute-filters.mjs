@@ -25,20 +25,20 @@ function requireAll(source, markers, description) {
   }
 }
 
-const types = read("crates/rustok-product/src/services/catalog/types.rs");
-const execution = read("crates/rustok-product/src/services/catalog/attribute_filters.rs");
-const storefrontQuery = read("crates/rustok-product/src/services/catalog/queries.rs");
-const adminQuery = read("crates/rustok-product/src/services/catalog/admin_queries.rs");
-const storefrontControls = read("crates/rustok-product/storefront/src/catalog_controls.rs");
-const storefrontUi = read("crates/rustok-product/storefront/src/ui/leptos.rs");
-const storefrontNative = read("crates/rustok-product/storefront/src/transport/catalog_list_native.rs");
-const storefrontGraphql = read("crates/rustok-product/storefront/src/transport/graphql_adapter.rs");
-const adminControls = read("crates/rustok-product/admin/src/catalog_controls.rs");
-const adminUi = read("crates/rustok-product/admin/src/ui/catalog_admin.rs");
-const adminNative = read("crates/rustok-product/admin/src/transport/admin_catalog_native.rs");
-const adminGraphql = read("crates/rustok-product/admin/src/transport/admin_catalog_graphql.rs");
-const graphqlRoot = read("crates/rustok-commerce/src/graphql/product_catalog.rs");
-const plan = read("crates/rustok-product/docs/implementation-plan.md");
+const types = read("crates/modules/rustok-product/src/services/catalog/types.rs");
+const execution = read("crates/modules/rustok-product/src/services/catalog/attribute_filters.rs");
+const storefrontQuery = read("crates/modules/rustok-product/src/services/catalog/queries.rs");
+const adminQuery = read("crates/modules/rustok-product/src/services/catalog/admin_queries.rs");
+const storefrontControls = read("crates/modules/rustok-product/storefront/src/catalog_controls.rs");
+const storefrontUi = read("crates/modules/rustok-product/storefront/src/ui/leptos.rs");
+const storefrontNative = read("crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs");
+const storefrontGraphql = read("crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs");
+const adminControls = read("crates/modules/rustok-product/admin/src/catalog_controls.rs");
+const adminUi = read("crates/modules/rustok-product/admin/src/ui/catalog_admin.rs");
+const adminNative = read("crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs");
+const adminGraphql = read("crates/modules/rustok-product/admin/src/transport/admin_catalog_graphql.rs");
+const graphqlRoot = read("crates/modules/rustok-commerce/src/graphql/product_catalog.rs");
+const plan = read("crates/modules/rustok-product/docs/implementation-plan.md");
 
 requireAll(types, [
   "pub struct ProductAttributeFilter",

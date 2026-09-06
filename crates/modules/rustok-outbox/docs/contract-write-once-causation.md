@@ -32,7 +32,7 @@ ordinary typed publication.
 
 This is a constructor/API extension only. It does not add an event family,
 change a payload, alter the serialized envelope shape, or require an update to
-`crates/rustok-events/contracts/event-contract-digests.json`.
+`crates/libs/rustok-events/contracts/event-contract-digests.json`.
 
 ## Canonical outbox contract
 

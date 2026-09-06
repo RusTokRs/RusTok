@@ -5,7 +5,7 @@ Status: **source-ready / unvalidated**
 ## Scope
 
 This source contract records the two bounded context-validation diagnostics in
-`crates/rustok-fulfillment/src/checkout_execution.rs`:
+`crates/modules/rustok-fulfillment/src/checkout_execution.rs`:
 
 - checkout-operation causation validation in `require_operation_context`;
 - tenant UUID parse-failure validation in `parse_tenant_id`.
@@ -134,11 +134,11 @@ output inside the covered validators.
 
 Causation source evidence is recorded in:
 
-- `crates/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-causation-diagnostic-safety-source.json`.
 
 Tenant source evidence is recorded in:
 
-- `crates/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-tenant-diagnostic-safety-source.json`.
 
 Both records remain source-only: `execution` is empty and every validation flag remains false.
 
@@ -147,8 +147,8 @@ Both records remain source-only: `execution` is empty and every validation flag 
 Canonical `FulfillmentError` diagnostics are source-ready / unvalidated under their own bounded contract:
 
 - `scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`;
-- `crates/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`;
-- `crates/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md`.
+- `crates/modules/rustok-fulfillment/contracts/evidence/checkout-owner-mapper-diagnostic-safety-source.json`;
+- `crates/modules/rustok-fulfillment/docs/checkout-owner-mapper-diagnostic-safety.md`.
 
 That contract preserves all five public `PortError` envelopes and the existing warning/error
 severity while replacing raw owner causes, identities, transition values, database errors, and

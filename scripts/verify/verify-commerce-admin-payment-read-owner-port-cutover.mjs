@@ -16,14 +16,14 @@ const forbidText = (source, text, label) => {
   }
 };
 
-const adminMod = read("crates/rustok-commerce/src/controllers/admin/mod.rs");
-const mounted = read("crates/rustok-commerce/src/controllers/admin/payments_owner_reads.rs");
-const legacy = read("crates/rustok-commerce/src/controllers/admin/payments.rs");
-const httpRuntime = read("crates/rustok-commerce/src/controllers/mod.rs");
-const paymentLib = read("crates/rustok-payment/src/lib.rs");
-const ownerRead = read("crates/rustok-payment/src/admin_read.rs");
-const openapi = read("crates/rustok-commerce/src/openapi.rs");
-const plan = read("crates/rustok-commerce/docs/implementation-plan.md");
+const adminMod = read("crates/modules/rustok-commerce/src/controllers/admin/mod.rs");
+const mounted = read("crates/modules/rustok-commerce/src/controllers/admin/payments_owner_reads.rs");
+const legacy = read("crates/modules/rustok-commerce/src/controllers/admin/payments.rs");
+const httpRuntime = read("crates/modules/rustok-commerce/src/controllers/mod.rs");
+const paymentLib = read("crates/modules/rustok-payment/src/lib.rs");
+const ownerRead = read("crates/modules/rustok-payment/src/admin_read.rs");
+const openapi = read("crates/modules/rustok-commerce/src/openapi.rs");
+const plan = read("crates/modules/rustok-commerce/docs/implementation-plan.md");
 
 requireText(adminMod, '#[path = "payments.rs"]\nmod payments_legacy;', "legacy payment module alias");
 requireText(adminMod, '#[path = "payments_owner_reads.rs"]\npub mod payments;', "mounted payment owner read module");

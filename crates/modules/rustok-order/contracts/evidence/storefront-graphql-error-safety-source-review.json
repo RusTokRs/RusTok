@@ -5,17 +5,17 @@
   "base_main_sha": "aad0416fd68cea3d41b1fedf58958eb9cf6d0dd9",
   "scope": "order storefront checkout-completion GraphQL public and diagnostic boundary",
   "reviewed_sources": [
-    "crates/rustok-commerce/docs/implementation-plan.md",
-    "crates/rustok-order/storefront/Cargo.toml",
-    "crates/rustok-order/storefront/src/transport.rs",
-    "crates/rustok-order/storefront/src/transport/graphql_adapter.rs",
-    "crates/rustok-order/storefront/src/transport/graphql_error_safety.rs",
-    "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
-    "crates/rustok-order/contracts/evidence/storefront-graphql-error-safety-source.json",
-    "crates/rustok-order/docs/storefront-graphql-error-safety.md",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-order/storefront/Cargo.toml",
+    "crates/modules/rustok-order/storefront/src/transport.rs",
+    "crates/modules/rustok-order/storefront/src/transport/graphql_adapter.rs",
+    "crates/modules/rustok-order/storefront/src/transport/graphql_error_safety.rs",
+    "crates/modules/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "crates/modules/rustok-order/contracts/evidence/storefront-graphql-error-safety-source.json",
+    "crates/modules/rustok-order/docs/storefront-graphql-error-safety.md",
     "scripts/verify/verify-order-storefront-graphql-error-safety.mjs",
-    "crates/rustok-ui-transport/src/lib.rs",
-    "crates/rustok-graphql/src/lib.rs"
+    "crates/ui/rustok-ui-transport/src/lib.rs",
+    "crates/ui/rustok-graphql/src/lib.rs"
   ],
   "findings": [
     {

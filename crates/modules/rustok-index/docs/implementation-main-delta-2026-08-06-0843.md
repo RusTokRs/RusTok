@@ -12,7 +12,7 @@ The candidate-reader branch started from
 The reviewed diffs are confined to Commerce and Forum/storefront documentation, controllers,
 facades, routing, evidence, and verifiers. They do not modify:
 
-- `crates/rustok-index`;
+- `crates/modules/rustok-index`;
 - `index_entities` or `index_links` migrations;
 - Index application candidate contracts;
 - Index PostgreSQL infrastructure exports;

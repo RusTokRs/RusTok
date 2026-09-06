@@ -4,7 +4,7 @@ Status: **source-ready / maintainer execution pending**
 
 ## Scope
 
-`crates/rustok-moderation/tests/postgres_dispatch_contract.rs` is an opt-in PostgreSQL integration target for the one-attempt Moderation dispatcher boundary.
+`crates/modules/rustok-moderation/tests/postgres_dispatch_contract.rs` is an opt-in PostgreSQL integration target for the one-attempt Moderation dispatcher boundary.
 
 The test uses real Moderation migrations, cases, immutable typed decisions, application operations, leases, finalizers and owner audit storage. A small neutral `ModerationSubjectCommandPort` test double is used only at the domain-port boundary so the harness can deterministically observe routing/context and return controlled outcomes without inventing domain tables.
 

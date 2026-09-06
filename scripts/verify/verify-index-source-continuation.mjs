@@ -3,15 +3,15 @@
 import { readFile } from "node:fs/promises";
 
 const files = {
-  source: "crates/rustok-index/src/application/source_continuation.rs",
-  applicationMod: "crates/rustok-index/src/application/mod.rs",
-  cargo: "crates/rustok-index/Cargo.toml",
+  source: "crates/modules/rustok-index/src/application/source_continuation.rs",
+  applicationMod: "crates/modules/rustok-index/src/application/mod.rs",
+  cargo: "crates/modules/rustok-index/Cargo.toml",
   pageRuntime: "apps/server/src/services/index_drift_source_page_diagnosis.rs",
   exactGraphql: "apps/server/src/graphql/index_drift_diagnosis.rs",
   pageGraphql: "apps/server/src/graphql/index_drift_source_page_diagnosis.rs",
-  doc: "crates/rustok-index/docs/m6-source-continuation-codec.md",
-  serverDoc: "crates/rustok-index/docs/m6-source-continuation-server-keyring.md",
-  plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-08.md",
+  doc: "crates/modules/rustok-index/docs/m6-source-continuation-codec.md",
+  serverDoc: "crates/modules/rustok-index/docs/m6-source-continuation-server-keyring.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md",
   agents: "AGENTS.md",
   aggregate: "scripts/verify/verify-index-query-contract.mjs",
 };

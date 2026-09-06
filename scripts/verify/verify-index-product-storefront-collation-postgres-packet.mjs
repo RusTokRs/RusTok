@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const ownerPath = 'crates/rustok-product/src/services/catalog/queries.rs';
+const ownerPath = 'crates/modules/rustok-product/src/services/catalog/queries.rs';
 const owner = requireMarkers(ownerPath, [
   'fn product_title_search_condition(',
   'let pattern = format!("%{search}%");',
@@ -29,7 +29,7 @@ if (titleSearch.includes('COLLATE')) {
   fail(`${ownerPath} must remain the owner/default-collation side of the retained evidence packet`);
 }
 
-const localizedCompilerPath = 'crates/rustok-index/src/application/postgres_localized_query.rs';
+const localizedCompilerPath = 'crates/modules/rustok-index/src/application/postgres_localized_query.rs';
 const localizedCompiler = requireMarkers(localizedCompilerPath, [
   'FilterExpr::TextLike(path, pattern)',
   'IndexValueType::String => format!',
@@ -40,7 +40,7 @@ if (!localizedCompiler.includes('COALESCE({} LIKE {pattern}')) {
   fail(`${localizedCompilerPath} no longer compiles TextLike through PostgreSQL LIKE`);
 }
 
-const packetPath = 'crates/rustok-distribution/tests/product_storefront_search_collation_postgres.rs';
+const packetPath = 'crates/modules/rustok-distribution/tests/product_storefront_search_collation_postgres.rs';
 const packet = requireMarkers(packetPath, [
   'RUSTOK_PRODUCT_STOREFRONT_COLLATION_DATABASE_URL',
   'rustok_product::migrations::migrations()',
@@ -78,10 +78,10 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-product/src/services/catalog/types.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/catalog/types.rs', [
   'pub const MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022;',
 ]);
-requireMarkers('crates/rustok-index/src/application/validation.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/validation.rs', [
   'const MAX_TEXT_LIKE_PATTERN_BYTES: usize = 1024;',
 ]);
 

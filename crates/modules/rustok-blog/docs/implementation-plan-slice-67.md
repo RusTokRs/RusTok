@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 67 continuation
 
 This document is the current continuation of
-`crates/rustok-blog/docs/implementation-plan.md`. The original plan remains the
+`crates/modules/rustok-blog/docs/implementation-plan.md`. The original plan remains the
 immutable source-history for slices 1–66 and for the existing fail-closed source
 guards. This continuation records the re-audit and the next implementation slice
 without deleting or rewriting those retained markers.
@@ -42,7 +42,7 @@ The remaining transport gap is narrower:
 
 ### Implemented source scope
 
-- `crates/rustok-comments/src/remote.rs` owns typed request and response envelopes
+- `crates/modules/rustok-comments/src/remote.rs` owns typed request and response envelopes
   for all seven `CommentsThreadPort` operations.
 - `CommentsThreadTransport` is a transport-neutral async dispatch contract.
 - `RemoteCommentsThreadPort` implements the existing owner port without changing
@@ -57,7 +57,7 @@ The remaining transport gap is narrower:
   as `comments.remote_response_mismatch` with `InvariantViolation` semantics.
 - `rustok-comments` exports the remote adapter through its server feature.
 - Source evidence is retained at
-  `crates/rustok-blog/contracts/evidence/blog-comments-remote-adapter-core.json`.
+  `crates/modules/rustok-blog/contracts/evidence/blog-comments-remote-adapter-core.json`.
 - The standalone fail-closed verifier is
   `scripts/verify/verify-blog-comments-remote-adapter-core.mjs`.
 

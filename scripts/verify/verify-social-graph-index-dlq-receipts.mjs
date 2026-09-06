@@ -4,36 +4,36 @@ import { readFileSync } from "node:fs";
 
 const files = {
   migration: readFileSync(
-    "crates/rustok-social-graph/src/migrations/m20260727_000004_create_index_dlq_receipts.rs",
+    "crates/modules/rustok-social-graph/src/migrations/m20260727_000004_create_index_dlq_receipts.rs",
     "utf8",
   ),
   migrations: readFileSync(
-    "crates/rustok-social-graph/src/migrations/mod.rs",
+    "crates/modules/rustok-social-graph/src/migrations/mod.rs",
     "utf8",
   ),
-  module: readFileSync("crates/rustok-social-graph/src/lib.rs", "utf8"),
+  module: readFileSync("crates/modules/rustok-social-graph/src/lib.rs", "utf8"),
   receipt: readFileSync(
-    "crates/rustok-social-graph/src/index_dlq_receipt.rs",
+    "crates/modules/rustok-social-graph/src/index_dlq_receipt.rs",
     "utf8",
   ),
   messageId: readFileSync(
-    "crates/rustok-social-graph/src/index_dlq_message_id.rs",
+    "crates/modules/rustok-social-graph/src/index_dlq_message_id.rs",
     "utf8",
   ),
   consumer: readFileSync(
-    "crates/rustok-social-graph/src/index_consumer.rs",
+    "crates/modules/rustok-social-graph/src/index_consumer.rs",
     "utf8",
   ),
   worker: readFileSync(
     "apps/server/src/services/social_graph_index_worker.rs",
     "utf8",
   ),
-  dlq: readFileSync("crates/rustok-iggy/src/dlq.rs", "utf8"),
+  dlq: readFileSync("crates/modules/rustok-iggy/src/dlq.rs", "utf8"),
   dlqPublisher: readFileSync(
-    "crates/rustok-iggy/src/dlq_publisher.rs",
+    "crates/modules/rustok-iggy/src/dlq_publisher.rs",
     "utf8",
   ),
-  transport: readFileSync("crates/rustok-iggy/src/transport.rs", "utf8"),
+  transport: readFileSync("crates/modules/rustok-iggy/src/transport.rs", "utf8"),
 };
 
 const failures = [];

@@ -11,15 +11,15 @@ const rejectMarker = (source, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`must not contain ${label}`);
 };
 
-const commandPath = 'crates/rustok-blog/src/services/category.rs';
-const ownerPath = 'crates/rustok-blog/src/services/category_owner.rs';
-const syncPath = 'crates/rustok-blog/src/services/category_taxonomy_sync.rs';
-const servicesPath = 'crates/rustok-blog/src/services/mod.rs';
-const libPath = 'crates/rustok-blog/src/lib.rs';
-const entitiesPath = 'crates/rustok-blog/src/entities/mod.rs';
-const bridgePath = 'crates/rustok-blog/src/translation_evidence.rs';
-const journalEntityPath = 'crates/rustok-blog/src/entities/translation_change.rs';
-const runtimePath = 'crates/rustok-blog/tests/category_taxonomy_dual_write.rs';
+const commandPath = 'crates/modules/rustok-blog/src/services/category.rs';
+const ownerPath = 'crates/modules/rustok-blog/src/services/category_owner.rs';
+const syncPath = 'crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs';
+const servicesPath = 'crates/modules/rustok-blog/src/services/mod.rs';
+const libPath = 'crates/modules/rustok-blog/src/lib.rs';
+const entitiesPath = 'crates/modules/rustok-blog/src/entities/mod.rs';
+const bridgePath = 'crates/modules/rustok-blog/src/translation_evidence.rs';
+const journalEntityPath = 'crates/modules/rustok-blog/src/entities/translation_change.rs';
+const runtimePath = 'crates/modules/rustok-blog/tests/category_taxonomy_dual_write.rs';
 
 for (const path of [commandPath, ownerPath, syncPath, servicesPath, libPath, entitiesPath, runtimePath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);

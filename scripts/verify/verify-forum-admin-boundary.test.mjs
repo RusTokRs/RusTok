@@ -154,19 +154,19 @@ function packageJsonSource({ omitPackageScript = false, omitAggregateForumTest =
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-forum-boundary-"));
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/lib.rs", libSource(options));
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/core.rs", coreSource(options));
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/model.rs", modelSource(options));
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/ui/leptos.rs", uiSource(options));
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/ui/category_dnd.rs", categoryDndSource(options));
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport.rs", transportSource(options));
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/lib.rs", libSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/core.rs", coreSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/model.rs", modelSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/ui/category_dnd.rs", categoryDndSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/transport.rs", transportSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
   if (options.restoredFallback) {
-    writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/rest_adapter.rs", "pub async fn move_category() {}\n");
+    writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/transport/rest_adapter.rs", "pub async fn move_category() {}\n");
   }
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/category_tree_graphql_adapter.rs", categoryTreeGraphqlAdapterSource());
-  if (options.restoredApi) writeFixtureFile(root, "crates/rustok-forum/admin/src/api.rs", "use reqwest;\n");
-  writeFixtureFile(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-admin-boundary.mjs interactive drag-and-drop");
+  writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/transport/category_tree_graphql_adapter.rs", categoryTreeGraphqlAdapterSource());
+  if (options.restoredApi) writeFixtureFile(root, "crates/modules/rustok-forum/admin/src/api.rs", "use reqwest;\n");
+  writeFixtureFile(root, "crates/modules/rustok-forum/docs/implementation-plan.md", "verify-forum-admin-boundary.mjs interactive drag-and-drop");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-forum-admin-boundary.mjs forum-wave1-rollout-evidence.json");
   writeFixtureFile(root, "package.json", packageJsonSource(options));
   writeFixtureFile(

@@ -18,24 +18,24 @@ const forbidText = (source, value, label) => {
 };
 const countText = (source, value) => source.split(value).length - 1;
 
-const transportPath = "crates/rustok-commerce/storefront/src/transport/mod.rs";
+const transportPath = "crates/modules/rustok-commerce/storefront/src/transport/mod.rs";
 const safetyPath =
-  "crates/rustok-commerce/storefront/src/transport/checkout_completion_command_error_safety.rs";
-const orderTransportPath = "crates/rustok-order/storefront/src/transport.rs";
+  "crates/modules/rustok-commerce/storefront/src/transport/checkout_completion_command_error_safety.rs";
+const orderTransportPath = "crates/modules/rustok-order/storefront/src/transport.rs";
 const orderGraphqlPath =
-  "crates/rustok-order/storefront/src/transport/graphql_adapter.rs";
+  "crates/modules/rustok-order/storefront/src/transport/graphql_adapter.rs";
 const orderGraphqlSafetyPath =
-  "crates/rustok-order/storefront/src/transport/graphql_error_safety.rs";
+  "crates/modules/rustok-order/storefront/src/transport/graphql_error_safety.rs";
 const orderNativePath =
-  "crates/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs";
-const cargoPath = "crates/rustok-commerce/storefront/Cargo.toml";
+  "crates/modules/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs";
+const cargoPath = "crates/modules/rustok-commerce/storefront/Cargo.toml";
 const evidencePath =
-  "crates/rustok-commerce/contracts/evidence/storefront-checkout-command-error-safety-source.json";
+  "crates/modules/rustok-commerce/contracts/evidence/storefront-checkout-command-error-safety-source.json";
 const reviewPath =
-  "crates/rustok-commerce/contracts/evidence/storefront-checkout-command-error-safety-source-review.json";
+  "crates/modules/rustok-commerce/contracts/evidence/storefront-checkout-command-error-safety-source-review.json";
 const docPath =
-  "crates/rustok-commerce/docs/storefront-checkout-completion-command-error-safety.md";
-const planPath = "crates/rustok-commerce/docs/implementation-plan.md";
+  "crates/modules/rustok-commerce/docs/storefront-checkout-completion-command-error-safety.md";
+const planPath = "crates/modules/rustok-commerce/docs/implementation-plan.md";
 
 const transport = read(transportPath);
 const safety = read(safetyPath);

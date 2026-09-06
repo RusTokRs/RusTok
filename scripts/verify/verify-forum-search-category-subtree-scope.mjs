@@ -8,13 +8,13 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(".");
 const failures = [];
 
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
-const servicePath = "crates/rustok-forum/src/services/category_search_scope.rs";
-const exportPath = "crates/rustok-forum/src/services/mod.rs";
-const contractPath = "crates/rustok-forum/contracts/forum-search-category-subtree-scope.json";
-const exactContractPath = "crates/rustok-forum/contracts/forum-search-exact-category-filter.json";
-const notePath = "crates/rustok-forum/docs/forum-23b2-category-subtree-scope.md";
-const queryPath = "crates/rustok-search/src/engine.rs";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
+const servicePath = "crates/modules/rustok-forum/src/services/category_search_scope.rs";
+const exportPath = "crates/modules/rustok-forum/src/services/mod.rs";
+const contractPath = "crates/modules/rustok-forum/contracts/forum-search-category-subtree-scope.json";
+const exactContractPath = "crates/modules/rustok-forum/contracts/forum-search-exact-category-filter.json";
+const notePath = "crates/modules/rustok-forum/docs/forum-23b2-category-subtree-scope.md";
+const queryPath = "crates/modules/rustok-search/src/engine.rs";
 const verifierPath = "scripts/verify/verify-forum-search-category-subtree-scope.mjs";
 
 function read(relativePath) {

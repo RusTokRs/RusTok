@@ -14,9 +14,9 @@ function forbid(text, marker, label) {
   if (text.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
 }
 
-const forumQuery = read("crates/rustok-forum/src/graphql/query_runtime.rs");
-const presentation = read("crates/rustok-profiles/src/presentation.rs");
-const loader = read("crates/rustok-profiles/src/loader.rs");
+const forumQuery = read("crates/modules/rustok-forum/src/graphql/query_runtime.rs");
+const presentation = read("crates/modules/rustok-profiles/src/presentation.rs");
+const loader = read("crates/modules/rustok-profiles/src/loader.rs");
 const hostPolicy = read("apps/server/src/graphql/profile_summary_policy.rs");
 const packet = read(
   "docs/modules/forum-15-profile-presentation-fallback-actualization-2026-08-10.md",

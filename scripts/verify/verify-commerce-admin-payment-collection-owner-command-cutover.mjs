@@ -16,13 +16,13 @@ const forbidText = (source, text, label) => {
   }
 };
 
-const mounted = read("crates/rustok-commerce/src/controllers/admin/payments_owner_reads.rs");
-const legacy = read("crates/rustok-commerce/src/controllers/admin/payments.rs");
-const httpRuntime = read("crates/rustok-commerce/src/controllers/mod.rs");
-const paymentLib = read("crates/rustok-payment/src/lib.rs");
-const ownerCommand = read("crates/rustok-payment/src/admin_collection_command.rs");
-const plan = read("crates/rustok-commerce/docs/implementation-plan.md");
-const doc = read("crates/rustok-commerce/docs/admin-payment-collection-owner-command-cutover-2026-08-09.md");
+const mounted = read("crates/modules/rustok-commerce/src/controllers/admin/payments_owner_reads.rs");
+const legacy = read("crates/modules/rustok-commerce/src/controllers/admin/payments.rs");
+const httpRuntime = read("crates/modules/rustok-commerce/src/controllers/mod.rs");
+const paymentLib = read("crates/modules/rustok-payment/src/lib.rs");
+const ownerCommand = read("crates/modules/rustok-payment/src/admin_collection_command.rs");
+const plan = read("crates/modules/rustok-commerce/docs/implementation-plan.md");
+const doc = read("crates/modules/rustok-commerce/docs/admin-payment-collection-owner-command-cutover-2026-08-09.md");
 
 requireText(paymentLib, "mod admin_collection_command;", "Payment admin collection command module");
 requireText(paymentLib, "PaymentAdminCollectionCommandPort, PaymentAdminCollectionCommandRuntime", "Payment command exports");

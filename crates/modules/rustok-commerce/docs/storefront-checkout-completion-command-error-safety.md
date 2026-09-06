@@ -7,8 +7,8 @@ Status: **source-ready / unvalidated**
 This slice hardens only the Commerce-owned wrapper:
 
 - `complete_storefront_checkout`;
-- `crates/rustok-commerce/storefront/src/transport/mod.rs`;
-- `crates/rustok-commerce/storefront/src/transport/checkout_completion_command_error_safety.rs`.
+- `crates/modules/rustok-commerce/storefront/src/transport/mod.rs`;
+- `crates/modules/rustok-commerce/storefront/src/transport/checkout_completion_command_error_safety.rs`.
 
 The aggregate read, payment-collection command, and shipping-selection command policies remain unchanged.
 
@@ -122,8 +122,8 @@ and contains no `.map_err(ApiError::from)` owner-wrapper call sites.
 
 Focused source evidence:
 
-- `crates/rustok-commerce/contracts/evidence/storefront-checkout-command-error-safety-source.json`;
-- `crates/rustok-commerce/contracts/evidence/storefront-checkout-command-error-safety-source-review.json`;
+- `crates/modules/rustok-commerce/contracts/evidence/storefront-checkout-command-error-safety-source.json`;
+- `crates/modules/rustok-commerce/contracts/evidence/storefront-checkout-command-error-safety-source-review.json`;
 - `scripts/verify/verify-commerce-storefront-checkout-command-error-safety.mjs`.
 
 The focused verifier is imported by:

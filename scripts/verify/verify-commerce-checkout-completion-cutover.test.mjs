@@ -10,7 +10,7 @@ import {
 } from "./verify-commerce-checkout-completion-cutover.mjs";
 
 const files = {
-  "crates/rustok-commerce/src/services/checkout_order_stages.rs": `
+  "crates/modules/rustok-commerce/src/services/checkout_order_stages.rs": `
 CheckoutCompletionPort
 complete_checkout(write_context.clone(), request)
 CheckoutOrderRecoveryAdapter
@@ -25,16 +25,16 @@ next_stage: CheckoutOperationStage::OrderCreated
 expected_stage: CheckoutOperationStage::OrderCreated
 next_stage: CheckoutOperationStage::PaymentReady
 `,
-  "crates/rustok-commerce/src/services/checkout_stage_pipeline.rs": `
+  "crates/modules/rustok-commerce/src/services/checkout_stage_pipeline.rs": `
 self.order_stage
             .load_payment_ready_state
 `,
-  "crates/rustok-commerce/src/services/checkout_inventory_order_adoption.rs": `
+  "crates/modules/rustok-commerce/src/services/checkout_inventory_order_adoption.rs": `
 matches!(order.status.as_str(), "pending" | "confirmed")
 adopt_and_checkpoint(
 expected_stage: CheckoutOperationStage::InventoryReserved
 `,
-  "crates/rustok-order/src/checkout_order_recovery.rs": `
+  "crates/modules/rustok-order/src/checkout_order_recovery.rs": `
 pub struct CheckoutOrderRecoveryAdapter
 CheckoutOrderIdentityPort
 read_by_operation(
@@ -46,12 +46,12 @@ legacy_hashes_match
 PortError::unavailable(
 PortError::conflict(
 `,
-  "crates/rustok-order/src/ports.rs": `
+  "crates/modules/rustok-order/src/ports.rs": `
 trait CheckoutCompletionPort
 struct InProcessCheckoutCompletionPort
 read_checkout_result_by_operation(
 `,
-  "crates/rustok-order/src/lib.rs": `
+  "crates/modules/rustok-order/src/lib.rs": `
 pub mod checkout_order_recovery;
 pub use checkout_order_recovery::*;
 `,
@@ -73,9 +73,9 @@ test("accepts staged checkout completion cutover", () => {
 });
 
 test("rejects a restored direct order creation executor", () => {
-  const stage = `${files["crates/rustok-commerce/src/services/checkout_order_stages.rs"]}\nCheckoutOrderCreationExecutor`;
+  const stage = `${files["crates/modules/rustok-commerce/src/services/checkout_order_stages.rs"]}\nCheckoutOrderCreationExecutor`;
   const root = fixture({
-    "crates/rustok-commerce/src/services/checkout_order_stages.rs": stage,
+    "crates/modules/rustok-commerce/src/services/checkout_order_stages.rs": stage,
   });
   assert.throws(
     () => verifyCommerceCheckoutCompletionCutover({ root }),
@@ -86,9 +86,9 @@ test("rejects a restored direct order creation executor", () => {
 });
 
 test("rejects a pipeline-owned OrderService", () => {
-  const pipeline = `${files["crates/rustok-commerce/src/services/checkout_stage_pipeline.rs"]}\nOrderService`;
+  const pipeline = `${files["crates/modules/rustok-commerce/src/services/checkout_stage_pipeline.rs"]}\nOrderService`;
   const root = fixture({
-    "crates/rustok-commerce/src/services/checkout_stage_pipeline.rs": pipeline,
+    "crates/modules/rustok-commerce/src/services/checkout_stage_pipeline.rs": pipeline,
   });
   assert.throws(
     () => verifyCommerceCheckoutCompletionCutover({ root }),

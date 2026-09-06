@@ -2,9 +2,9 @@
   "status": "order_checkout_compensation_diagnostic_safety_source_unvalidated",
   "scope": {
     "public_operation": "compensate_checkout_order",
-    "public_wrapper": "crates/rustok-order/src/checkout_compensation_local_context.rs",
-    "shared_admission_wrapper": "crates/rustok-order/src/checkout_owner_context.rs",
-    "canonical_owner": "crates/rustok-order/src/checkout_compensation.rs"
+    "public_wrapper": "crates/modules/rustok-order/src/checkout_compensation_local_context.rs",
+    "shared_admission_wrapper": "crates/modules/rustok-order/src/checkout_owner_context.rs",
+    "canonical_owner": "crates/modules/rustok-order/src/checkout_compensation.rs"
   },
   "source_contract": {
     "wrapper_event_branch_count": 2,

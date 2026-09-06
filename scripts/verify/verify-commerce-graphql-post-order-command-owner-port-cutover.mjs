@@ -7,13 +7,13 @@ const expect = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
-const mutationPath = 'crates/rustok-commerce/src/graphql/mutations/fulfillment.rs';
-const runtimePath = 'crates/rustok-commerce/src/graphql_runtime.rs';
+const mutationPath = 'crates/modules/rustok-commerce/src/graphql/mutations/fulfillment.rs';
+const runtimePath = 'crates/modules/rustok-commerce/src/graphql_runtime.rs';
 const hostPath = 'apps/server/src/services/commerce_provider_runtime.rs';
-const ownerPath = 'crates/rustok-order/src/post_order_command.rs';
-const planPath = 'crates/rustok-commerce/docs/implementation-plan.md';
+const ownerPath = 'crates/modules/rustok-order/src/post_order_command.rs';
+const planPath = 'crates/modules/rustok-commerce/docs/implementation-plan.md';
 const recordPath =
-  'crates/rustok-commerce/docs/graphql-post-order-command-owner-port-cutover-2026-08-09.md';
+  'crates/modules/rustok-commerce/docs/graphql-post-order-command-owner-port-cutover-2026-08-09.md';
 
 const mutations = read(mutationPath);
 const runtime = read(runtimePath);

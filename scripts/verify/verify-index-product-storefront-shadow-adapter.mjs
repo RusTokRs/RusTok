@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const shadowPath = 'crates/rustok-distribution/src/product_index/storefront_shadow.rs';
+const shadowPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow.rs';
 const shadow = requireMarkers(shadowPath, [
   'pub(crate) fn build_product_storefront_index_shadow_query(',
   'resolved_attribute_filters: Vec<ProductResolvedAttributeFilter>',
@@ -60,18 +60,18 @@ for (const forbidden of [
   if (shadow.includes(forbidden)) fail(`${shadowPath} must remain a pure shadow query builder; found ${forbidden}`);
 }
 
-requireMarkers('crates/rustok-product/src/catalog_schema_read_port.rs', [
+requireMarkers('crates/modules/rustok-product/src/catalog_schema_read_port.rs', [
   'async fn resolve_storefront_attribute_filters(',
   'ProductResolvedAttributeFilter',
 ]);
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'mod storefront_shadow;',
   'build_product_storefront_index_shadow_query',
   'ProductStorefrontIndexShadowError',
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
 ]);
 
-const storefrontPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
+const storefrontPath = 'crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs';
 const storefront = requireMarkers(storefrontPath, [
   'CatalogService::new(runtime_ctx.db_clone(), event_bus)',
   '.list_published_products_with_query(',

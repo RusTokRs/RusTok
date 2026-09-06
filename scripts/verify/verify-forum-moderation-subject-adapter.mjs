@@ -1,17 +1,17 @@
 import fs from "node:fs";
 
-const forumCargo = fs.readFileSync("crates/rustok-forum/Cargo.toml", "utf8");
-const forumLib = fs.readFileSync("crates/rustok-forum/src/lib.rs", "utf8");
-const migrations = fs.readFileSync("crates/rustok-forum/src/migrations/mod.rs", "utf8");
+const forumCargo = fs.readFileSync("crates/modules/rustok-forum/Cargo.toml", "utf8");
+const forumLib = fs.readFileSync("crates/modules/rustok-forum/src/lib.rs", "utf8");
+const migrations = fs.readFileSync("crates/modules/rustok-forum/src/migrations/mod.rs", "utf8");
 const revisionMigration = fs.readFileSync(
-  "crates/rustok-forum/src/migrations/m20260807_000027_add_forum_moderation_subject_revisions.rs",
+  "crates/modules/rustok-forum/src/migrations/m20260807_000027_add_forum_moderation_subject_revisions.rs",
   "utf8",
 );
-const adapter = fs.readFileSync("crates/rustok-forum/src/moderation_subject.rs", "utf8");
-const replyOwner = fs.readFileSync("crates/rustok-forum/src/services/reply_owner.rs", "utf8");
+const adapter = fs.readFileSync("crates/modules/rustok-forum/src/moderation_subject.rs", "utf8");
+const replyOwner = fs.readFileSync("crates/modules/rustok-forum/src/services/reply_owner.rs", "utf8");
 const recoveryTransport = fs.readFileSync("apps/server/src/graphql/moderation_recovery.rs", "utf8");
 const contract = JSON.parse(
-  fs.readFileSync("crates/rustok-forum/contracts/forum-moderation-subject-adapter.json", "utf8"),
+  fs.readFileSync("crates/modules/rustok-forum/contracts/forum-moderation-subject-adapter.json", "utf8"),
 );
 
 function requireText(source, needle, message) {

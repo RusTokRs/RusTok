@@ -1,7 +1,7 @@
 {
   "status": "product_public_error_diagnostic_safety_source_unvalidated",
   "scope": {
-    "owner_source": "crates/rustok-product/src/public_error.rs",
+    "owner_source": "crates/modules/rustok-product/src/public_error.rs",
     "owner_error": "CommerceError",
     "mapper": "map_product_public_error",
     "shared_consumers": [
@@ -10,7 +10,7 @@
       "product_storefront_native"
     ],
     "focused_verifier": "scripts/verify/verify-product-public-error-diagnostic-safety.mjs",
-    "documentation": "crates/rustok-product/docs/product-public-error-diagnostic-safety.md"
+    "documentation": "crates/modules/rustok-product/docs/product-public-error-diagnostic-safety.md"
   },
   "source_contract": {
     "owner_error_variant_count": 8,

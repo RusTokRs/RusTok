@@ -57,7 +57,7 @@ Still open:
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/graphql-cart-owner-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/graphql-cart-owner-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-graphql-cart-owner-context.mjs`
 
 ## Validation disclosure

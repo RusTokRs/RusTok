@@ -74,8 +74,8 @@
     "fba_promoted": false
   },
   "required_source_files": [
-    "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json",
-    "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json",
+    "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json",
+    "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json",
     "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.mjs",
     "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.test.mjs",
     "scripts/verify/verify-forum-page-builder-ffa-fba-promotion-review.mjs",

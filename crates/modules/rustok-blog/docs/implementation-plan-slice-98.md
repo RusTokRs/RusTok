@@ -2,7 +2,7 @@
 
 Status: `category_translation_postgres_evidence_source_ready_maintainer_execution_pending`.
 
-This slice is an independent continuation of the Blog category Translation target pilot recorded in `crates/rustok-blog/docs/implementation-plan.md` and the active cross-module Translation plan. It does not bypass the separate slice-97 Comments audit relay execution boundary.
+This slice is an independent continuation of the Blog category Translation target pilot recorded in `crates/modules/rustok-blog/docs/implementation-plan.md` and the active cross-module Translation plan. It does not bypass the separate slice-97 Comments audit relay execution boundary.
 
 ## Re-audit
 
@@ -21,7 +21,7 @@ The root Blog plan correctly left three production-database results open: Postgr
 
 New harness:
 
-`crates/rustok-blog/tests/category_translation_target_postgres_test.rs`
+`crates/modules/rustok-blog/tests/category_translation_target_postgres_test.rs`
 
 The harness is environment-gated by `RUSTOK_BLOG_TRANSLATION_TEST_DATABASE_URL`, then falls back to `RUSTOK_BLOG_TEST_DATABASE_URL` and PostgreSQL `DATABASE_URL`. Every scenario creates a unique schema and sets `search_path` to that schema only; `public` is deliberately excluded.
 
@@ -68,7 +68,7 @@ Blog change IDs are generated through `rustok_core::generate_id`, which stores U
 
 Source evidence:
 
-`crates/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json`
+`crates/modules/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json`
 
 Fail-closed source guard:
 

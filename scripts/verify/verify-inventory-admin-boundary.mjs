@@ -66,7 +66,7 @@ function functionBody(text, functionName) {
 }
 
 function assertInventoryServiceWriteResults() {
-  const relativePath = "crates/rustok-inventory/src/services/inventory.rs";
+  const relativePath = "crates/modules/rustok-inventory/src/services/inventory.rs";
   const source = readRepo(relativePath);
   const adjustFacade = functionBody(source, "adjust_variant_quantity");
   const setFacade = functionBody(source, "set_variant_quantity");
@@ -134,15 +134,15 @@ function assertInventoryServiceWriteResults() {
 }
 
 function assertInventoryAdminTransportBoundary() {
-  const transportPath = "crates/rustok-inventory/admin/src/transport/mod.rs";
+  const transportPath = "crates/modules/rustok-inventory/admin/src/transport/mod.rs";
   const transport = readRepo(transportPath);
-  const nativeAdapterPath = "crates/rustok-inventory/admin/src/transport/native_server_adapter.rs";
+  const nativeAdapterPath = "crates/modules/rustok-inventory/admin/src/transport/native_server_adapter.rs";
   const nativeAdapter = readRepo(nativeAdapterPath);
-  const libPath = "crates/rustok-inventory/admin/src/lib.rs";
+  const libPath = "crates/modules/rustok-inventory/admin/src/lib.rs";
   const lib = readRepo(libPath);
-  const cargoPath = "crates/rustok-inventory/admin/Cargo.toml";
+  const cargoPath = "crates/modules/rustok-inventory/admin/Cargo.toml";
   const cargo = readRepo(cargoPath);
-  const legacyTransportPath = "crates/rustok-inventory/admin/src/transport.rs";
+  const legacyTransportPath = "crates/modules/rustok-inventory/admin/src/transport.rs";
   const removedGraphqlMarkers = [
     "rustok_graphql",
     "rustok-graphql",
@@ -160,7 +160,7 @@ function assertInventoryAdminTransportBoundary() {
     fail(`${legacyTransportPath}: removed GraphQL adapter file must stay absent after native read parity`);
   }
 
-  const legacyApiPath = "crates/rustok-inventory/admin/src/api.rs";
+  const legacyApiPath = "crates/modules/rustok-inventory/admin/src/api.rs";
   if (existsSync(path.join(repoRoot, legacyApiPath))) {
     fail(`${legacyApiPath}: remove the pre-FFA api facade after introducing transport/`);
   }
@@ -170,9 +170,9 @@ function assertInventoryAdminTransportBoundary() {
     [nativeAdapterPath, nativeAdapter],
     [libPath, lib],
     [cargoPath, cargo],
-    ["crates/rustok-inventory/admin/src/core.rs", readRepo("crates/rustok-inventory/admin/src/core.rs")],
-    ["crates/rustok-inventory/admin/src/model.rs", readRepo("crates/rustok-inventory/admin/src/model.rs")],
-    ["crates/rustok-inventory/admin/src/ui/leptos.rs", readRepo("crates/rustok-inventory/admin/src/ui/leptos.rs")],
+    ["crates/modules/rustok-inventory/admin/src/core.rs", readRepo("crates/modules/rustok-inventory/admin/src/core.rs")],
+    ["crates/modules/rustok-inventory/admin/src/model.rs", readRepo("crates/modules/rustok-inventory/admin/src/model.rs")],
+    ["crates/modules/rustok-inventory/admin/src/ui/leptos.rs", readRepo("crates/modules/rustok-inventory/admin/src/ui/leptos.rs")],
   ]) {
     for (const marker of removedGraphqlMarkers) {
       assertNotContains(source, marker, `${relativePath}: removed GraphQL fallback marker must stay absent: ${marker}`);
@@ -241,9 +241,9 @@ function assertInventoryAdminTransportBoundary() {
 
 
   for (const [relativePath, source] of [
-    ["crates/rustok-inventory/admin/src/ui/leptos.rs", readRepo("crates/rustok-inventory/admin/src/ui/leptos.rs")],
-    ["crates/rustok-inventory/admin/locales/en.json", readRepo("crates/rustok-inventory/admin/locales/en.json")],
-    ["crates/rustok-inventory/admin/locales/ru.json", readRepo("crates/rustok-inventory/admin/locales/ru.json")],
+    ["crates/modules/rustok-inventory/admin/src/ui/leptos.rs", readRepo("crates/modules/rustok-inventory/admin/src/ui/leptos.rs")],
+    ["crates/modules/rustok-inventory/admin/locales/en.json", readRepo("crates/modules/rustok-inventory/admin/locales/en.json")],
+    ["crates/modules/rustok-inventory/admin/locales/ru.json", readRepo("crates/modules/rustok-inventory/admin/locales/ru.json")],
   ]) {
     assertNotContains(
       source,
@@ -260,8 +260,8 @@ function assertInventoryAdminTransportBoundary() {
 
 function assertCommercePublicChannelAvailabilityBoundary() {
   const facadeCallerPaths = [
-    "crates/rustok-commerce/src/graphql/mutations/helpers.rs",
-    "crates/rustok-commerce/src/controllers/store/line_item_resolution.rs",
+    "crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs",
+    "crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs",
   ];
 
   for (const relativePath of facadeCallerPaths) {
@@ -283,7 +283,7 @@ function assertCommercePublicChannelAvailabilityBoundary() {
     );
   }
 
-  const checkoutPath = "crates/rustok-commerce/src/services/checkout.rs";
+  const checkoutPath = "crates/modules/rustok-commerce/src/services/checkout.rs";
   const checkout = readRepo(checkoutPath);
   assertContains(
     checkout,
@@ -315,7 +315,7 @@ function assertCommercePublicChannelAvailabilityBoundary() {
     "inventory_policy_allows_backorder",
     `${checkoutPath}: checkout must not duplicate inventory backorder policy branching`,
   );
-  const storefrontLineItemResolutionPath = "crates/rustok-commerce/src/controllers/store/line_item_resolution.rs";
+  const storefrontLineItemResolutionPath = "crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs";
   const storefrontLineItemResolution = readRepo(storefrontLineItemResolutionPath);
   assertContains(
     storefrontLineItemResolution,
@@ -345,7 +345,7 @@ function assertCommercePublicChannelAvailabilityBoundary() {
 }
 
 function assertInventoryDocsBoundaryEvidence() {
-  const planPath = "crates/rustok-inventory/docs/implementation-plan.md";
+  const planPath = "crates/modules/rustok-inventory/docs/implementation-plan.md";
   const plan = readRepo(planPath);
 
   assertContains(

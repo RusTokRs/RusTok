@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const jobPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_job.rs';
+const jobPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_job.rs';
 const job = requireMarkers(jobPath, [
   'pub struct IndexReplayJobLeaseRequest',
   'pub struct IndexReplayJobLease',
@@ -74,7 +74,7 @@ if (lockBody.includes('request.source_name')) {
   fail('replay claims must serialize the complete schema scope before source-owner validation');
 }
 
-const checkpointPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay.rs';
+const checkpointPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay.rs';
 const checkpoint = requireMarkers(checkpointPath, [
   'pub struct PostgresIndexReplayCheckpointStore',
   'lease: IndexReplayJobLease',
@@ -98,7 +98,7 @@ if (
   fail('checkpoint lease validation must occur before checkpoint persistence');
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_replay_job_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_replay_job_tests.rs', [
   'replay_job_excludes_other_workers_and_requires_complete_checkpoint',
   'expired_replay_job_is_reclaimed_and_old_checkpoint_writer_is_fenced',
   'failed_terminal_replay_job_blocks_scope_without_raw_details',
@@ -110,7 +110,7 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_replay_jo
   'second.attempt_count(), 2',
 ]);
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod source_replay_job;',
   'mod source_replay_job_tests;',
   'PostgresIndexReplayJobStore',
@@ -118,14 +118,14 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
   'IndexReplayJobAcquireOutcome',
 ]);
 
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'PostgresIndexReplayJobStore',
   'IndexReplayJobLease',
   'IndexReplayJobLeaseRequest',
   'IndexReplayJobAcquireOutcome',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m6-replay-job-leases.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-job-leases.md', [
   'Status: `source_complete_owner_execution_pending`',
   '`index_replay_job_v1`',
   'attempt count',
@@ -134,13 +134,13 @@ requireMarkers('crates/rustok-index/docs/m6-replay-job-leases.md', [
   'maintainer-run',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m6-bounded-multipage-runner.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-bounded-multipage-runner.md', [
   '`PostgresIndexReplayRunner::request_cancel`',
   'cancel_requested = FALSE',
   'A running cancellation request survives lease expiry and reclaim.',
 ]);
 
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- M6 replay job leases and checkpoint attempt fencing: `source_complete_owner_execution_pending`',
   '- M6 bounded multi-page replay and cancellation: `source_complete_owner_execution_pending`',
   '- [x] Add durable schema-scoped rebuild jobs, lease/heartbeat, reclaim, attempt fencing,',

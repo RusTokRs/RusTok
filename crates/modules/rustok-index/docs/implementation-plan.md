@@ -157,7 +157,7 @@ source modules
 ```
 
 ```text
-crates/rustok-index/src/
+crates/modules/rustok-index/src/
   domain/
   application/
     planner.rs
@@ -184,7 +184,7 @@ crates/rustok-index/src/
     query_port.rs
   api/
 
-crates/rustok-distribution/src/
+crates/modules/rustok-distribution/src/
   product_index/
   channel_index.rs
 

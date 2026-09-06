@@ -7,7 +7,7 @@ Status: **retained tooling source-complete; canonical runtime packet absent**.
 The external-Iggy physical duplicate scan now has a clean-commit retained path:
 
 ```text
-crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution-contract.json
+crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution-contract.json
 scripts/evidence/capture-iggy-dlq-duplicate-external-scan.mjs
 scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs
 ```
@@ -15,7 +15,7 @@ scripts/verify/verify-iggy-dlq-duplicate-external-scan-retained.mjs
 The canonical execution packet is intentionally absent:
 
 ```text
-crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution.json
+crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-execution.json
 ```
 
 No Profiles runtime, API, storage, presentation, or authorization code changed.

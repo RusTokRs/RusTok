@@ -31,7 +31,7 @@ SalesChannel entity mutation source version.
 
 ## Harness path
 
-`crates/rustok-distribution/tests/product_linked_target_recreate_postgres.rs` uses real Channel,
+`crates/modules/rustok-distribution/tests/product_linked_target_recreate_postgres.rs` uses real Channel,
 Product, and Index migrations; selected Index + Channel + Product distribution composition; persisted
 tenant schema registration; real Product/ProductVariant/SalesChannel source adapters; generic
 `PostgresMutationStore`; canonical shared query runtime; and the registered generic Product/Channel

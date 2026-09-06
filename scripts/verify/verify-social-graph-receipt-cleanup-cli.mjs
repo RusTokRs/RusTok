@@ -13,12 +13,12 @@ const failures = [];
 
 const paths = {
   rootCargo: "Cargo.toml",
-  manifest: "crates/rustok-social-graph/rustok-module.toml",
-  cargo: "crates/rustok-social-graph-cli/Cargo.toml",
-  source: "crates/rustok-social-graph-cli/src/lib.rs",
-  registryCargo: "crates/rustok-cli-registry/Cargo.toml",
-  generated: "crates/rustok-cli-registry/src/generated.rs",
-  docs: "crates/rustok-social-graph/docs/receipt-cleanup-cli.md",
+  manifest: "crates/modules/rustok-social-graph/rustok-module.toml",
+  cargo: "crates/modules/rustok-social-graph-cli/Cargo.toml",
+  source: "crates/modules/rustok-social-graph-cli/src/lib.rs",
+  registryCargo: "crates/utils/rustok-cli-registry/Cargo.toml",
+  generated: "crates/utils/rustok-cli-registry/src/generated.rs",
+  docs: "crates/modules/rustok-social-graph/docs/receipt-cleanup-cli.md",
 };
 
 function read(relativePath) {
@@ -48,10 +48,10 @@ const docs = read(paths.docs);
 
 requireText(
   rootCargo,
-  'rustok-social-graph-cli = { path = "crates/rustok-social-graph-cli" }',
+  'rustok-social-graph-cli = { path = "crates/modules/rustok-social-graph-cli" }',
   "workspace CLI dependency",
 );
-requireText(rootCargo, 'rustok-social-graph = { path = "crates/rustok-social-graph" }', "workspace owner dependency");
+requireText(rootCargo, 'rustok-social-graph = { path = "crates/modules/rustok-social-graph" }', "workspace owner dependency");
 requireText(manifest, "[provides.cli]", "module CLI declaration");
 requireText(manifest, 'namespace = "social_graph"', "module CLI namespace");
 requireText(

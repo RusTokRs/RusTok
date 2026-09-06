@@ -47,20 +47,20 @@ function collectRustFiles(relativeRoot) {
 }
 
 const modulesPath = "modules.toml";
-const distributionCargoPath = "crates/rustok-distribution/Cargo.toml";
-const distributionLibPath = "crates/rustok-distribution/src/lib.rs";
+const distributionCargoPath = "crates/modules/rustok-distribution/Cargo.toml";
+const distributionLibPath = "crates/modules/rustok-distribution/src/lib.rs";
 const serverCargoPath = "apps/server/Cargo.toml";
 const serverRuntimePath = "apps/server/src/services/module_event_dispatcher.rs";
 const adminCargoPath = "apps/admin/Cargo.toml";
 const storefrontCargoPath = "apps/storefront/Cargo.toml";
-const apiCargoPath = "crates/rustok-notifications-api/Cargo.toml";
-const providerPath = "crates/rustok-notifications-api/src/provider.rs";
-const keysPath = "crates/rustok-notifications-api/src/keys.rs";
-const forumCargoPath = "crates/rustok-forum/Cargo.toml";
-const forumLibPath = "crates/rustok-forum/src/lib.rs";
-const forumSourcePath = "crates/rustok-forum/src/notification_source.rs";
-const runtimeTestPath = "crates/rustok-forum/tests/notification_source_sqlite.rs";
-const localPlanPath = "crates/rustok-notifications/docs/implementation-plan.md";
+const apiCargoPath = "crates/modules/rustok-notifications-api/Cargo.toml";
+const providerPath = "crates/modules/rustok-notifications-api/src/provider.rs";
+const keysPath = "crates/modules/rustok-notifications-api/src/keys.rs";
+const forumCargoPath = "crates/modules/rustok-forum/Cargo.toml";
+const forumLibPath = "crates/modules/rustok-forum/src/lib.rs";
+const forumSourcePath = "crates/modules/rustok-forum/src/notification_source.rs";
+const runtimeTestPath = "crates/modules/rustok-forum/tests/notification_source_sqlite.rs";
+const localPlanPath = "crates/modules/rustok-notifications/docs/implementation-plan.md";
 
 const modules = read(modulesPath);
 const distributionCargo = read(distributionCargoPath);
@@ -150,7 +150,7 @@ for (const marker of [
   requireText(runtimeTest, marker, `${runtimeTestPath}: missing executable profile evidence ${marker}`);
 }
 
-for (const filePath of collectRustFiles("crates/rustok-forum/src/services")) {
+for (const filePath of collectRustFiles("crates/modules/rustok-forum/src/services")) {
   const source = readFileSync(filePath, "utf8");
   if (/rustok_notifications(?!(?:_api))/.test(source)) {
     failures.push(`${path.relative(repoRoot, filePath)}: Forum command service calls the notifications owner synchronously`);

@@ -29,19 +29,19 @@
     "fba_promoted": false
   },
   "source_regression": {
-    "path": "crates/rustok-pages/tests/publish_rollback_cache_correlation.rs",
+    "path": "crates/modules/rustok-pages/tests/publish_rollback_cache_correlation.rs",
     "test": "published_event_rotates_generations_and_forces_storefront_and_artifact_miss_refill"
   },
   "linked_sources": {
-    "reviewed_publish": "crates/rustok-pages/src/services/page/reviewed_publish.rs",
-    "rollback": "crates/rustok-pages/src/services/page/rollback.rs",
-    "cache_owner": "crates/rustok-pages/src/cache_invalidation.rs",
-    "storefront_reader": "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
-    "artifact_reader": "crates/rustok-pages/src/controllers/mod.rs"
+    "reviewed_publish": "crates/modules/rustok-pages/src/services/page/reviewed_publish.rs",
+    "rollback": "crates/modules/rustok-pages/src/services/page/rollback.rs",
+    "cache_owner": "crates/modules/rustok-pages/src/cache_invalidation.rs",
+    "storefront_reader": "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+    "artifact_reader": "crates/modules/rustok-pages/src/controllers/mod.rs"
   },
   "suggested_execution": [
-    "node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-cache-correlation.mjs",
-    "node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
+    "node crates/modules/rustok-pages/scripts/verify/verify-pages-publish-rollback-cache-correlation.mjs",
+    "node crates/modules/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
     "cargo test -p rustok-pages --test publish_rollback_cache_correlation -- --nocapture",
     "cargo check -p rustok-pages --all-targets"
   ],

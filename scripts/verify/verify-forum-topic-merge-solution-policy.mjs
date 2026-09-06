@@ -4,26 +4,26 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-topic-merge-solution-policy.json",
-  resolutionContract: "crates/rustok-forum/contracts/forum-topic-merge-solution-resolution.json",
-  cumulativeContract: "crates/rustok-forum/contracts/forum-topic-merge-owner.json",
-  docs: "crates/rustok-forum/docs/forum-21h-topic-merge-solution-policy.md",
-  resolutionDocs: "crates/rustok-forum/docs/forum-21l-topic-merge-solution-resolution.md",
-  cumulativeDocs: "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
-  error: "crates/rustok-forum/src/error.rs",
-  merge: "crates/rustok-forum/src/services/topic_merge.rs",
-  stats: "crates/rustok-forum/src/services/user_stats.rs",
-  moderationOwner: "crates/rustok-forum/src/services/moderation_owner.rs",
-  solutionLock: "crates/rustok-forum/src/services/topic_solution_lock.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-solution-policy.json",
+  resolutionContract: "crates/modules/rustok-forum/contracts/forum-topic-merge-solution-resolution.json",
+  cumulativeContract: "crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21h-topic-merge-solution-policy.md",
+  resolutionDocs: "crates/modules/rustok-forum/docs/forum-21l-topic-merge-solution-resolution.md",
+  cumulativeDocs: "crates/modules/rustok-forum/docs/forum-21b-topic-merge-owner.md",
+  error: "crates/modules/rustok-forum/src/error.rs",
+  merge: "crates/modules/rustok-forum/src/services/topic_merge.rs",
+  stats: "crates/modules/rustok-forum/src/services/user_stats.rs",
+  moderationOwner: "crates/modules/rustok-forum/src/services/moderation_owner.rs",
+  solutionLock: "crates/modules/rustok-forum/src/services/topic_solution_lock.rs",
   solutionMigration:
-    "crates/rustok-forum/src/migrations/m20260803_000016_add_forum_topic_merge_solution_policy.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260803_000016_add_forum_topic_merge_solution_policy.rs",
   resolutionMigration:
-    "crates/rustok-forum/src/migrations/m20260803_000018_add_forum_topic_merge_solution_resolution.rs",
-  migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
-  ordinaryTest: "crates/rustok-forum/tests/topic_merge_sqlite.rs",
-  resolutionTest: "crates/rustok-forum/tests/topic_merge_solution_resolution_sqlite.rs",
-  graphqlTest: "crates/rustok-forum/tests/topic_merge_solution_resolution_graphql_contract.rs",
-  plan: "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/src/migrations/m20260803_000018_add_forum_topic_merge_solution_resolution.rs",
+  migrationsMod: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  ordinaryTest: "crates/modules/rustok-forum/tests/topic_merge_sqlite.rs",
+  resolutionTest: "crates/modules/rustok-forum/tests/topic_merge_solution_resolution_sqlite.rs",
+  graphqlTest: "crates/modules/rustok-forum/tests/topic_merge_solution_resolution_graphql_contract.rs",
+  plan: "crates/modules/rustok-forum/docs/implementation-plan.md",
 };
 
 const read = (path) => readFileSync(path, "utf8");

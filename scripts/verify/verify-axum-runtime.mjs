@@ -11,8 +11,8 @@ const requiredMarkers = [
   ['apps/server/src/services/server_bootstrap.rs', 'ServerRuntimeContext'],
   ['apps/server/src/services/app_router.rs', 'Router'],
   ['apps/server/src/services/app_lifecycle.rs', 'ServerRuntimeContext'],
-  ['crates/rustok-cli/src/main.rs', 'run_with_environment'],
-  ['crates/rustok-runtime/src/lib.rs', 'RuntimeComposition'],
+  ['crates/utils/rustok-cli/src/main.rs', 'run_with_environment'],
+  ['crates/libs/rustok-runtime/src/lib.rs', 'RuntimeComposition'],
 ];
 
 function fail(message) {

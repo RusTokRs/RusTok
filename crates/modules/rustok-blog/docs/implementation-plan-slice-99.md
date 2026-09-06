@@ -20,7 +20,7 @@ A second Comments table, queue, relay, Redis client, or storefront-only cache ow
 
 New source:
 
-`crates/rustok-blog/src/public_comments_snapshot.rs`
+`crates/modules/rustok-blog/src/public_comments_snapshot.rs`
 
 `list_public_comments_with_snapshot` remains downstream of the canonical `CommentService::list_for_post_with_locale_fallback` public-read path. It never queries or mutates Comments persistence directly.
 
@@ -107,7 +107,7 @@ Stale Comments are therefore visible but never presented as live.
 
 The existing fail-closed source boundary remains authoritative:
 
-- `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json` remains schema v2 and is extended additively with the cached-snapshot contract;
+- `crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json` remains schema v2 and is extended additively with the cached-snapshot contract;
 - `scripts/verify/verify-blog-comments-port-boundary.mjs` source-locks the shared snapshot policy, host cache bounds, GraphQL/native parity, UI stale disclosure, and preserved fail-closed error policy.
 
 The broader fallback smoke remains `planned` because comment-form fallback is still a separate unfinished result.

@@ -79,7 +79,7 @@ Architecture classification: `apps/next-frontend` is a Next.js composition host,
 
 - `apps/server` — backend/API provider;
 - `apps/storefront` — parallel Leptos storefront host for contract parity;
-- `crates/rustok-*` and module-owned surfaces connect through the backend and frontend integration layer, not through host-local business logic.
+- `crates/modules/rustok-*` and module-owned surfaces connect through the backend and frontend integration layer, not through host-local business logic.
 
 ## Verification
 

@@ -2,14 +2,14 @@
 # Localized message catalogs and fixture text intentionally contain
 # non-English words that are valid for those locales.
 extend-exclude = [
-  "crates/rustok-core/src/i18n.rs",
-  "crates/rustok-commerce/tests/catalog_service_test.rs",
+  "crates/libs/rustok-core/src/i18n.rs",
+  "crates/modules/rustok-commerce/tests/catalog_service_test.rs",
   "apps/next-admin/src/styles/globals.css",
-  "crates/rustok-ai/src/direct.rs",
-  "crates/rustok-ai/src/provider.rs",
-  "crates/rustok-commerce/src/controllers/store.rs",
-  "crates/rustok-commerce/tests/checkout_service_test.rs",
-  "crates/rustok-commerce/tests/graphql_runtime_parity_test.rs",
+  "crates/modules/rustok-ai/src/direct.rs",
+  "crates/modules/rustok-ai/src/provider.rs",
+  "crates/modules/rustok-commerce/src/controllers/store.rs",
+  "crates/modules/rustok-commerce/tests/checkout_service_test.rs",
+  "crates/modules/rustok-commerce/tests/graphql_runtime_parity_test.rs",
   "packages/richtext/dist/**",
   "PAGE_BUILDER_CURRENT_CLEANUP_FAILURE.md",
   "migration-export-output.txt",

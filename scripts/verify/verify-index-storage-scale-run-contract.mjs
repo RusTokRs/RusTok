@@ -13,8 +13,8 @@ const fail = (message) => {
 const reusableWorkflow = read('.github/workflows/index-storage-scale-run.yml');
 const orchestrationWorkflow = read('.github/workflows/index-storage-scale-evidence.yml');
 const contractWorkflow = read('.github/workflows/index-storage-scale-run-contract.yml');
-const readme = read('crates/rustok-index/README.md');
-const runbook = read('crates/rustok-index/docs/storage-evidence-runbook.md');
+const readme = read('crates/modules/rustok-index/README.md');
+const runbook = read('crates/modules/rustok-index/docs/storage-evidence-runbook.md');
 
 const requireMarkers = (content, label, markers) => {
   for (const marker of markers) {
@@ -87,7 +87,7 @@ requireMarkers(reusableEvidenceBlock, 'reusable evidence job', [
 requireMarkers(orchestrationWorkflow, 'scale evidence orchestration workflow', [
   '  workflow_dispatch:',
   '  pull_request:',
-  '      - "crates/rustok-index/**"',
+  '      - "crates/modules/rustok-index/**"',
   '      - "ops/benches/**"',
   '      - "scripts/verify/*index-storage*.mjs"',
   '      - "scripts/verify/storage-decision*.mjs"',
@@ -174,8 +174,8 @@ requireMarkers(contractWorkflow, 'scale workflow contract workflow', [
   '      - ".github/workflows/index-storage-scale-evidence.yml"',
   '      - ".github/workflows/index-storage-scale-run-contract.yml"',
   '      - "scripts/verify/verify-index-storage-scale-run-contract.mjs"',
-  '      - "crates/rustok-index/README.md"',
-  '      - "crates/rustok-index/docs/storage-evidence-runbook.md"',
+  '      - "crates/modules/rustok-index/README.md"',
+  '      - "crates/modules/rustok-index/docs/storage-evidence-runbook.md"',
   '        run: node scripts/verify/verify-index-storage-scale-run-contract.mjs',
 ]);
 

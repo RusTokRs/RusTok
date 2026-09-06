@@ -1,10 +1,10 @@
 {
   "status": "return_completion_operator_envelope_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/controllers/return_completion_operations.rs",
+    "crates/modules/rustok-commerce/src/controllers/return_completion_operations.rs",
     "scripts/verify/verify-commerce-return-completion-envelope-safety.mjs",
-    "crates/rustok-commerce/docs/return-completion-operator-envelope-safety.md",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/return-completion-operator-envelope-safety.md",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_contract": {
     "raw_conflict_validation_message_public": false,

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "tenant",
   "status": "runtime_verified",
-  "generated_from": "crates/rustok-tenant/contracts/tenant-fba-registry.json",
+  "generated_from": "crates/modules/rustok-tenant/contracts/tenant-fba-registry.json",
   "runner": "scripts/verify/verify-tenant-fba.mjs",
   "contract_version": "tenant.read_projection.v1",
   "profiles": [

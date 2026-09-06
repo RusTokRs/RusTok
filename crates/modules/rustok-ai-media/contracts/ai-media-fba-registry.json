@@ -8,7 +8,7 @@
   "provider_dependencies": [
     {
       "module": "media",
-      "registry": "crates/rustok-media/contracts/media-fba-registry.json",
+      "registry": "crates/modules/rustok-media/contracts/media-fba-registry.json",
       "contract_version": "media.asset_read.v1",
       "port": "MediaAssetReadPort",
       "operations": [
@@ -32,21 +32,21 @@
     }
   ],
   "support_adapter": {
-    "source": "crates/rustok-ai-media/src/lib.rs",
+    "source": "crates/modules/rustok-ai-media/src/lib.rs",
     "task_slug": "image_asset",
     "tool_name": "direct.media.generate_image",
     "registration_api": "register_media_ai_vertical_handlers",
     "validation_helper": "normalize_image_size"
   },
   "evidence": {
-    "local_plan": "crates/rustok-ai-media/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-ai-media/docs/implementation-plan.md",
     "central_registry": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ai-media-fba.mjs",
-    "static_matrix": "crates/rustok-ai-media/contracts/evidence/ai-media-consumer-static-matrix.json"
+    "static_matrix": "crates/modules/rustok-ai-media/contracts/evidence/ai-media-consumer-static-matrix.json"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
-    "source": "crates/rustok-ai-media/contracts/ai-media-fba-registry.json",
+    "source": "crates/modules/rustok-ai-media/contracts/ai-media-fba-registry.json",
     "runner": "scripts/verify/verify-ai-media-fba.mjs",
     "profiles": [
       "in_process",

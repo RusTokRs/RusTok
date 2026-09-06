@@ -4,14 +4,14 @@
 import { existsSync, readFileSync } from "node:fs";
 
 const files = {
-  lib: "crates/rustok-forum/storefront/src/lib.rs",
-  core: "crates/rustok-forum/storefront/src/core.rs",
-  ui: "crates/rustok-forum/storefront/src/ui/leptos.rs",
-  transport: "crates/rustok-forum/storefront/src/transport/mod.rs",
-  graphqlAdapter: "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs",
-  cargo: "crates/rustok-forum/storefront/Cargo.toml",
-  removedApi: "crates/rustok-forum/storefront/src/api.rs",
-  plan: "crates/rustok-forum/docs/implementation-plan.md",
+  lib: "crates/modules/rustok-forum/storefront/src/lib.rs",
+  core: "crates/modules/rustok-forum/storefront/src/core.rs",
+  ui: "crates/modules/rustok-forum/storefront/src/ui/leptos.rs",
+  transport: "crates/modules/rustok-forum/storefront/src/transport/mod.rs",
+  graphqlAdapter: "crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs",
+  cargo: "crates/modules/rustok-forum/storefront/Cargo.toml",
+  removedApi: "crates/modules/rustok-forum/storefront/src/api.rs",
+  plan: "crates/modules/rustok-forum/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
   packageJson: "package.json",
   verifierTest: "scripts/verify/verify-forum-storefront-boundary.test.mjs",

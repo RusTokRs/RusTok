@@ -16,9 +16,9 @@ The canonical registry currently records this node as `pending`. The parent `art
 
 The repository already contains the source-only rollback-activated physical-loss recovery packet:
 
-- `crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs`;
-- `crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs`;
-- `crates/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json`;
+- `crates/modules/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json`;
 - `docs/modules/pages-page-builder-rollback-activated-recovery-actualization-2026-08-07.md`.
 
 That source contract deliberately retains `database_scenario_run=false`, `tests_run=false`, `static_verifier_run=false`, `cargo_run=false` and `workflows_or_ci_run=false`. This slice does not rewrite that historical source claim. Instead it adds a separate exact-main execution contract and durable CI receipt.

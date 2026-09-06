@@ -5,8 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const generatedRel = 'crates/rustok-cli-registry/src/generated.rs';
-const registryCargoRel = 'crates/rustok-cli-registry/Cargo.toml';
+const generatedRel = 'crates/utils/rustok-cli-registry/src/generated.rs';
+const registryCargoRel = 'crates/utils/rustok-cli-registry/Cargo.toml';
 const check = process.argv.includes('--check');
 
 function read(rel) {

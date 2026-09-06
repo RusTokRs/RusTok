@@ -27,15 +27,15 @@ function reject(source, pattern, message) {
   if (pattern.test(source)) failures.push(message);
 }
 
-const contractPath = "crates/rustok-forum/src/category_presentation.rs";
-const errorPath = "crates/rustok-forum/src/error.rs";
-const entityPath = "crates/rustok-forum/src/entities/forum_category.rs";
-const dtoPath = "crates/rustok-forum/src/dto/category.rs";
-const treeDtoPath = "crates/rustok-forum/src/dto/category_tree.rs";
-const categoryServicePath = "crates/rustok-forum/src/services/category.rs";
-const categoryOwnerPath = "crates/rustok-forum/src/services/category_owner.rs";
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
-const crateApiPath = "crates/rustok-forum/CRATE_API.md";
+const contractPath = "crates/modules/rustok-forum/src/category_presentation.rs";
+const errorPath = "crates/modules/rustok-forum/src/error.rs";
+const entityPath = "crates/modules/rustok-forum/src/entities/forum_category.rs";
+const dtoPath = "crates/modules/rustok-forum/src/dto/category.rs";
+const treeDtoPath = "crates/modules/rustok-forum/src/dto/category_tree.rs";
+const categoryServicePath = "crates/modules/rustok-forum/src/services/category.rs";
+const categoryOwnerPath = "crates/modules/rustok-forum/src/services/category_owner.rs";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
+const crateApiPath = "crates/modules/rustok-forum/CRATE_API.md";
 
 const contract = read(contractPath);
 const errors = read(errorPath);

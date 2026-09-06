@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 92 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-91.md`.
+`crates/modules/rustok-blog/docs/implementation-plan-slice-91.md`.
 
 Slices 89–91 retain the exact canonical `rustok-outbox` writer, the atomic
 PostgreSQL source-to-canonical handoff owner, and one opt-in bounded host runner

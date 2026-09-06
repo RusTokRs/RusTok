@@ -1,11 +1,11 @@
 {
   "status": "commerce_admin_product_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/controllers/products.rs",
-    "crates/rustok-commerce/src/controllers/admin/products.rs",
-    "crates/rustok-commerce/docs/admin-product-diagnostic-safety.md",
+    "crates/modules/rustok-commerce/src/controllers/products.rs",
+    "crates/modules/rustok-commerce/src/controllers/admin/products.rs",
+    "crates/modules/rustok-commerce/docs/admin-product-diagnostic-safety.md",
     "scripts/verify/verify-commerce-admin-product-diagnostic-safety.mjs",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_contract": {
     "raw_commerce_error_logged": false,

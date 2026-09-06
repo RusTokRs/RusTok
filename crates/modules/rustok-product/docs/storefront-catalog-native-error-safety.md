@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This slice hardens the Product-owned native catalog-list server-function adapter in:
 
-- `crates/rustok-product/storefront/src/transport/catalog_list_native.rs`.
+- `crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs`.
 
 It covers missing host-composed `TransactionalEventBus`, optional request-context diagnostics, and tenant-context extraction. Product catalog query validation and service failures continue to use the existing Product public-error mapper.
 

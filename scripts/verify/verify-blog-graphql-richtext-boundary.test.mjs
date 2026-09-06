@@ -6,8 +6,8 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const verifier = resolve('scripts/verify/verify-blog-graphql-richtext-boundary.mjs');
-const createTestPath = 'crates/rustok-blog/tests/graphql_create_post_input_conversion_test.rs';
-const typesPath = 'crates/rustok-blog/src/graphql/types.rs';
+const createTestPath = 'crates/modules/rustok-blog/tests/graphql_create_post_input_conversion_test.rs';
+const typesPath = 'crates/modules/rustok-blog/src/graphql/types.rs';
 
 const createMarkers = [
   'create_post_input_conversion_preserves_canonical_content',
@@ -34,7 +34,7 @@ function canonicalEvidence() {
       plain_text: 'server-derived',
       resolver_conversion: 'typed input.into() delegation with direct content mapping',
     },
-    scan_scope: 'crates/rustok-blog/src/graphql/**/*.rs',
+    scan_scope: 'crates/modules/rustok-blog/src/graphql/**/*.rs',
     legacy_adapter_fields: [],
     legacy_adapter_files: [],
     conversion_owner: {
@@ -97,15 +97,15 @@ async function run({
   const root = await mkdtemp(join(tmpdir(), 'blog-gql-target-'));
   try {
     await mkdir(join(root, 'scripts/verify'), { recursive: true });
-    await mkdir(join(root, 'crates/rustok-blog/src/graphql'), { recursive: true });
-    await mkdir(join(root, 'crates/rustok-blog/tests'), { recursive: true });
-    await mkdir(join(root, 'crates/rustok-blog/contracts/evidence'), { recursive: true });
+    await mkdir(join(root, 'crates/modules/rustok-blog/src/graphql'), { recursive: true });
+    await mkdir(join(root, 'crates/modules/rustok-blog/tests'), { recursive: true });
+    await mkdir(join(root, 'crates/modules/rustok-blog/contracts/evidence'), { recursive: true });
     await copyFile(verifier, join(root, 'scripts/verify/verify-blog-graphql-richtext-boundary.mjs'));
     await writeFile(join(root, typesPath), types);
-    await writeFile(join(root, 'crates/rustok-blog/src/graphql/mutation.rs'), mutation);
+    await writeFile(join(root, 'crates/modules/rustok-blog/src/graphql/mutation.rs'), mutation);
     await writeFile(join(root, createTestPath), createTest);
     await writeFile(
-      join(root, 'crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json'),
+      join(root, 'crates/modules/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json'),
       JSON.stringify(evidence, null, 2),
     );
     return spawnSync(process.execPath, ['scripts/verify/verify-blog-graphql-richtext-boundary.mjs'], {

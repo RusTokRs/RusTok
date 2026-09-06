@@ -43,6 +43,6 @@ This slice does not add a Leptos server function, HTTP route, GraphQL resolver, 
 
 ## Evidence
 
-SQLite source evidence is `tests/inbox_storefront_port_sqlite.rs`. The machine-readable Forum contract is `crates/rustok-forum/contracts/forum-notification-inbox-storefront-port.json`, and the static source contract is `scripts/verify/verify-forum-notification-inbox-storefront-port.mjs`.
+SQLite source evidence is `tests/inbox_storefront_port_sqlite.rs`. The machine-readable Forum contract is `crates/modules/rustok-forum/contracts/forum-notification-inbox-storefront-port.json`, and the static source contract is `scripts/verify/verify-forum-notification-inbox-storefront-port.mjs`.
 
 Tests, Cargo commands, formatting commands, verifier execution, workflows, and CI were not run by the implementation agent.

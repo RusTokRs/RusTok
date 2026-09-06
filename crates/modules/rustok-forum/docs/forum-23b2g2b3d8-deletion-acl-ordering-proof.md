@@ -13,7 +13,7 @@ source, PostgreSQL Search execution and current Forum storefront eligibility.
 The machine-readable proof contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-deletion-acl-ordering-proof.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-deletion-acl-ordering-proof.json
 ```
 
 The executable test is:

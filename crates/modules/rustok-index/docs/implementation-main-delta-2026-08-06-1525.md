@@ -22,7 +22,7 @@ delta contains ten commits. Changed paths are confined to:
 - Page Builder inline-session DOM hardening;
 - Storefront Forum category/topic route validation.
 
-No `crates/rustok-index` source, migration, documentation, contract, integration-test, evidence
+No `crates/modules/rustok-index` source, migration, documentation, contract, integration-test, evidence
 runner, or Index verifier path changed. There is no path overlap with the prepared-repair recovery,
 orphan-link repair, repair execution harness, or retained-evidence admission slices.
 

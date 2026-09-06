@@ -27,15 +27,15 @@ const between = (source, start, end, label) => {
   return source.slice(startIndex, endIndex);
 };
 
-const sourcePath = 'crates/rustok-order/src/checkout_order_recovery.rs';
+const sourcePath = 'crates/modules/rustok-order/src/checkout_order_recovery.rs';
 const evidencePath =
-  'crates/rustok-order/contracts/evidence/checkout-order-recovery-admission-diagnostic-safety-source-review.json';
+  'crates/modules/rustok-order/contracts/evidence/checkout-order-recovery-admission-diagnostic-safety-source-review.json';
 const documentationPath =
-  'crates/rustok-order/docs/checkout-order-recovery-admission-diagnostic-safety.md';
+  'crates/modules/rustok-order/docs/checkout-order-recovery-admission-diagnostic-safety.md';
 const source = read(sourcePath);
 const evidence = JSON.parse(read(evidencePath));
 const documentation = read(documentationPath);
-const plan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 
 const operationAdmission = between(
   source,
@@ -242,7 +242,7 @@ for (const reviewedPath of [
   sourcePath,
   documentationPath,
   evidencePath,
-  'crates/rustok-commerce/docs/implementation-plan.md',
+  'crates/modules/rustok-commerce/docs/implementation-plan.md',
   'scripts/verify/verify-order-checkout-recovery-admission-diagnostic-safety.mjs',
 ]) {
   if (!evidence.reviewed_scope?.includes(reviewedPath)) {

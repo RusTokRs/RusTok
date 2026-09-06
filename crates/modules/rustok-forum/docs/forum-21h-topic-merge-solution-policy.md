@@ -12,14 +12,14 @@ case. Neither slice introduces a second merge transaction or receipt ledger.
 Machine contracts:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-solution-policy.json
-crates/rustok-forum/contracts/forum-topic-merge-solution-resolution.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-solution-policy.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-solution-resolution.json
 ```
 
 Cumulative merge contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-owner.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json
 ```
 
 ## Why this policy is explicit

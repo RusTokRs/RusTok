@@ -10,9 +10,9 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const changes = read('crates/rustok-commerce/src/controllers/admin/changes.rs');
-const orderErrors = read('crates/rustok-order/src/error.rs');
-const ownerCommands = read('crates/rustok-order/src/post_order_command.rs');
+const changes = read('crates/modules/rustok-commerce/src/controllers/admin/changes.rs');
+const orderErrors = read('crates/modules/rustok-order/src/error.rs');
+const ownerCommands = read('crates/modules/rustok-order/src/post_order_command.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {

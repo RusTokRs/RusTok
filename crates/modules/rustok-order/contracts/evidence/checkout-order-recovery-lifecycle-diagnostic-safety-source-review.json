@@ -1,11 +1,11 @@
 {
   "status": "order_checkout_recovery_lifecycle_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-order/src/checkout_order_recovery.rs",
-    "crates/rustok-order/docs/checkout-order-recovery-lifecycle-diagnostic-safety.md",
-    "crates/rustok-order/contracts/evidence/checkout-order-recovery-lifecycle-diagnostic-safety-source-review.json",
+    "crates/modules/rustok-order/src/checkout_order_recovery.rs",
+    "crates/modules/rustok-order/docs/checkout-order-recovery-lifecycle-diagnostic-safety.md",
+    "crates/modules/rustok-order/contracts/evidence/checkout-order-recovery-lifecycle-diagnostic-safety-source-review.json",
     "scripts/verify/verify-order-checkout-recovery-lifecycle-diagnostic-safety.mjs",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "review_findings": {
     "cancelled_lifecycle_event_count": 1,

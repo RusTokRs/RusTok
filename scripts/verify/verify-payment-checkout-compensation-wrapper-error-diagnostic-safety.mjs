@@ -49,18 +49,18 @@ function functionBody(source, functionName) {
 }
 
 const paths = {
-  source: "crates/rustok-payment/src/checkout_compensation_context.rs",
-  owner: "crates/rustok-payment/src/checkout_compensation.rs",
+  source: "crates/modules/rustok-payment/src/checkout_compensation_context.rs",
+  owner: "crates/modules/rustok-payment/src/checkout_compensation.rs",
   evidence:
-    "crates/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source.json",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source.json",
   review:
-    "crates/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source-review.json",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source-review.json",
   ownerEvidence:
-    "crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source.json",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source.json",
   ownerReview:
-    "crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source-review.json",
-  doc: "crates/rustok-payment/docs/checkout-compensation-local-context.md",
-  plan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source-review.json",
+  doc: "crates/modules/rustok-payment/docs/checkout-compensation-local-context.md",
+  plan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
 
 const source = read(paths.source);

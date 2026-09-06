@@ -5,7 +5,7 @@ Status: **source-ready / unvalidated**
 ## Scope
 
 This slice hardens only `cart_context_boundary` in
-`crates/rustok-commerce/src/graphql/mutations/safe_cart.rs`.
+`crates/modules/rustok-commerce/src/graphql/mutations/safe_cart.rs`.
 
 The boundary converts `StoreContextError` into a cloneable GraphQL-safe public envelope for the two
 store-context resolution call sites used by storefront Cart mutations. Public policy was already
@@ -85,7 +85,7 @@ The broad ecommerce correlation-safe mapper cleanup remains open.
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/graphql-cart-context-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/graphql-cart-context-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-graphql-cart-context-diagnostic-safety.mjs`
 
 ## Validation disclosure

@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const continuationPath = 'crates/rustok-index/src/application/source_continuation.rs';
+const continuationPath = 'crates/modules/rustok-index/src/application/source_continuation.rs';
 const continuationSource = requireMarkers(continuationPath, [
   'locale: Option<LocaleKey>',
   'pub fn for_locale(',
@@ -38,7 +38,7 @@ for (const forbidden of [
   }
 }
 
-const dryRunPath = 'crates/rustok-index/src/replay_dry_run.rs';
+const dryRunPath = 'crates/modules/rustok-index/src/replay_dry_run.rs';
 const dryRun = requireMarkers(dryRunPath, [
   'locale: Option<LocaleKey>',
   'pub fn for_locale(',
@@ -180,19 +180,19 @@ requireMarkers('apps/server/docs/index-replay-graphql-transport.md', [
   'IndexSourceContinuationScope::for_locale',
   'one current unversioned envelope',
 ]);
-requireMarkers('crates/rustok-index/docs/m6-bounded-replay-dry-run.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-bounded-replay-dry-run.md', [
   'Status: `source_complete_locale_transport_execution_pending`',
   '`IndexReplayDryRunRequest::for_locale`',
   '`LocaleScopeUnsupported`',
   '`runIndexReplayShadow`',
 ]);
-requireMarkers('crates/rustok-index/docs/m6-replay-mode-contract.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-replay-mode-contract.md', [
   'Status: `source_complete_targeted_graphql_execution_pending`.',
   '`runIndexReplayShadow` remains a dedicated transport',
   'one current unversioned envelope',
   '## Targeted GraphQL transport',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.',
   'Define a bounded Targeted mutation-application contract over `IndexSource::load` without aliasing durable scan ownership.',
   'Materialize the bounded Targeted replay executor with `PostgresMutationStore` and guard host dispatch behind request-bound `modules:manage`.',

@@ -7,7 +7,7 @@ const contract = JSON.parse(
   readFileSync(
     path.join(
       repoRoot,
-      "crates/rustok-reactions/contracts/reactions-host-composition.json",
+      "crates/modules/rustok-reactions/contracts/reactions-host-composition.json",
     ),
     "utf8",
   ),
@@ -51,13 +51,13 @@ if (contract.status !== "source_ready_maintainer_execution_pending") {
 for (const relativePath of contract.required_files) read(relativePath);
 
 const modules = read("modules.toml");
-const forumCargo = read("crates/rustok-forum/Cargo.toml");
-const distributionCargo = read("crates/rustok-distribution/Cargo.toml");
-const distributionLib = read("crates/rustok-distribution/src/lib.rs");
+const forumCargo = read("crates/modules/rustok-forum/Cargo.toml");
+const distributionCargo = read("crates/modules/rustok-distribution/Cargo.toml");
+const distributionLib = read("crates/modules/rustok-distribution/src/lib.rs");
 const serverCargo = read("apps/server/Cargo.toml");
 const dispatcher = read("apps/server/src/services/module_event_dispatcher.rs");
-const forumPlan = compact(read("crates/rustok-forum/docs/implementation-plan.md"));
-const reactionsPlan = compact(read("crates/rustok-reactions/docs/implementation-plan.md"));
+const forumPlan = compact(read("crates/modules/rustok-forum/docs/implementation-plan.md"));
+const reactionsPlan = compact(read("crates/modules/rustok-reactions/docs/implementation-plan.md"));
 
 if (!modules.includes('reactions = { crate = "rustok-reactions"')) {
   fail("modules.toml must retain the optional Reactions module descriptor");
@@ -93,7 +93,7 @@ if (
 ) {
   fail("server mod-reactions feature must select the owner and distribution feature");
 }
-if (!serverCargo.includes('rustok-reactions = { path = "../../crates/rustok-reactions", optional = true }')) {
+if (!serverCargo.includes('rustok-reactions = { path = "../../crates/modules/rustok-reactions", optional = true }')) {
   fail("server must declare rustok-reactions as optional");
 }
 if (/"mod-reactions"/u.test(defaultFeatureBlock(serverCargo))) {

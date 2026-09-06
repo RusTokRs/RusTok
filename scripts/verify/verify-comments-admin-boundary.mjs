@@ -43,13 +43,13 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-comments/admin/src/lib.rs";
-const corePath = "crates/rustok-comments/admin/src/core.rs";
-const uiPath = "crates/rustok-comments/admin/src/ui/leptos.rs";
-const transportModPath = "crates/rustok-comments/admin/src/transport/mod.rs";
-const nativeAdapterPath = "crates/rustok-comments/admin/src/transport/native_server_adapter.rs";
-const cargoPath = "crates/rustok-comments/admin/Cargo.toml";
-const localPlanPath = "crates/rustok-comments/docs/implementation-plan.md";
+const libPath = "crates/modules/rustok-comments/admin/src/lib.rs";
+const corePath = "crates/modules/rustok-comments/admin/src/core.rs";
+const uiPath = "crates/modules/rustok-comments/admin/src/ui/leptos.rs";
+const transportModPath = "crates/modules/rustok-comments/admin/src/transport/mod.rs";
+const nativeAdapterPath = "crates/modules/rustok-comments/admin/src/transport/native_server_adapter.rs";
+const cargoPath = "crates/modules/rustok-comments/admin/Cargo.toml";
+const localPlanPath = "crates/modules/rustok-comments/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 
 for (const filePath of [
@@ -65,8 +65,8 @@ for (const filePath of [
   assertExists(filePath, `${filePath}: expected comments admin FFA boundary file`);
 }
 assertMissing(
-  "crates/rustok-comments/admin/src/api.rs",
-  "crates/rustok-comments/admin/src/api.rs: pre-FFA api facade must stay removed",
+  "crates/modules/rustok-comments/admin/src/api.rs",
+  "crates/modules/rustok-comments/admin/src/api.rs: pre-FFA api facade must stay removed",
 );
 
 const lib = readRepo(libPath);

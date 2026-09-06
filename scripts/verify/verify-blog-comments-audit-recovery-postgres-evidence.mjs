@@ -15,9 +15,9 @@ const recoveryPath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_recovery_postgres.rs';
 const workerPath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_worker_source_retry.rs';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-95.md';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-95.md';
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-audit-recovery-postgres-evidence.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-audit-recovery-postgres-evidence.json';
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');

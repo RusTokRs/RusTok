@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const portPath = 'crates/rustok-product/src/storefront_tag_read_port.rs';
+const portPath = 'crates/modules/rustok-product/src/storefront_tag_read_port.rs';
 const port = requireMarkers(portPath, [
   'const MAX_STOREFRONT_TAG_HYDRATION_PRODUCTS: usize = 48;',
   'pub struct ProductStorefrontTagHydrationRequest',
@@ -49,7 +49,7 @@ for (const forbidden of [
   if (port.includes(forbidden)) fail(`${portPath} Product owner capability contains retired coupling: ${forbidden}`);
 }
 
-const ownerTagsPath = 'crates/rustok-product/src/services/catalog/tags.rs';
+const ownerTagsPath = 'crates/modules/rustok-product/src/services/catalog/tags.rs';
 const ownerTags = requireMarkers(ownerTagsPath, [
   'pub async fn load_product_tag_map(',
   'product_tag::Column::TenantId.eq(tenant_id)',
@@ -67,7 +67,7 @@ for (const forbidden of [
   if (ownerTags.includes(forbidden)) fail(`${ownerTagsPath} must not read Product tags from metadata: ${forbidden}`);
 }
 
-const helpersPath = 'crates/rustok-product/src/services/catalog/helpers.rs';
+const helpersPath = 'crates/modules/rustok-product/src/services/catalog/helpers.rs';
 const helpers = requireMarkers(helpersPath, [
   'pub fn normalize_tag_names(',
   'fn reject_reserved_tag_metadata(metadata: &Value) -> CommerceResult<()>',
@@ -85,7 +85,7 @@ for (const forbidden of [
   if (helpers.includes(forbidden)) fail(`${helpersPath} contains retired metadata-tag compatibility: ${forbidden}`);
 }
 
-const migrationPath = 'crates/rustok-product/src/migrations/m20260813_000014_canonicalize_product_metadata_tags.rs';
+const migrationPath = 'crates/modules/rustok-product/src/migrations/m20260813_000014_canonicalize_product_metadata_tags.rs';
 requireMarkers(migrationPath, [
   'backfill_legacy_metadata_tags(&txn).await?',
   'normalize_term_route_key',
@@ -101,7 +101,7 @@ requireMarkers(migrationPath, [
   'VALIDATE CONSTRAINT',
 ]);
 
-const migrationsPath = 'crates/rustok-product/src/migrations/mod.rs';
+const migrationsPath = 'crates/modules/rustok-product/src/migrations/mod.rs';
 requireMarkers(migrationsPath, [
   'mod m20260813_000014_canonicalize_product_metadata_tags;',
   'Box::new(m20260813_000014_canonicalize_product_metadata_tags::Migration)',
@@ -109,19 +109,19 @@ requireMarkers(migrationsPath, [
   'vec!["m20260812_000008_add_route_key_registry"]',
 ]);
 
-const taxonomyPath = 'crates/rustok-taxonomy/src/services.rs';
+const taxonomyPath = 'crates/modules/rustok-taxonomy/src/services.rs';
 requireMarkers(taxonomyPath, [
   'pub async fn resolve_term_names(',
   'resolve_by_locale_with_fallback(',
   '.unwrap_or_else(|| term.canonical_key.clone())',
 ]);
-const taxonomyNormalizationPath = 'crates/rustok-taxonomy/src/normalization.rs';
+const taxonomyNormalizationPath = 'crates/modules/rustok-taxonomy/src/normalization.rs';
 requireMarkers(taxonomyNormalizationPath, [
   'pub fn normalize_term_route_key(value: &str) -> Option<String>',
   'slug::slugify(value)',
 ]);
 
-const productTagEvidencePath = 'crates/rustok-commerce/tests/product_taxonomy_tags.rs';
+const productTagEvidencePath = 'crates/modules/rustok-commerce/tests/product_taxonomy_tags.rs';
 const productTagEvidence = requireMarkers(productTagEvidencePath, [
   'metadata_tags_are_rejected_on_product_create',
   'metadata_tags_are_rejected_on_update_without_mutating_canonical_tags',
@@ -132,7 +132,7 @@ if (productTagEvidence.includes('legacy_metadata_tags_are_used_as_read_fallback'
   fail(`${productTagEvidencePath} still asserts retired metadata-tag read compatibility`);
 }
 
-const sourcePath = 'crates/rustok-distribution/src/product_index/product.rs';
+const sourcePath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 const productSource = requireMarkers(sourcePath, [
   'product_tag_ids AS (',
   'jsonb_agg(product_tag.term_id ORDER BY product_tag.term_id) AS tag_ids',
@@ -144,7 +144,7 @@ if (productSource.includes('metadata.tags') || productSource.includes("metadata-
   fail(`${sourcePath} must not invent tag identities from metadata strings`);
 }
 
-const runtimePath = 'crates/rustok-product/src/runtime.rs';
+const runtimePath = 'crates/modules/rustok-product/src/runtime.rs';
 const runtime = requireMarkers(runtimePath, [
   'storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>',
   'storefront_tag_read_port: None',
@@ -161,7 +161,7 @@ if (externalBody.includes('with_storefront_tag_read_port')) {
   fail(`${runtimePath} external Product runtime must not silently install an embedded tag provider`);
 }
 
-const executorPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const executorPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
 const executor = requireMarkers(executorPath, [
   'pub(crate) tag_hydration:',
   'Option<Result<ProductStorefrontTagHydration, ProductStorefrontIndexTagHydrationError>>',
@@ -195,7 +195,7 @@ if (projectedPosition < 0 || hydrationPosition <= projectedPosition) {
   fail('tag hydration must begin only after the raw Index page exists');
 }
 
-const publicProjectionPath = 'crates/rustok-distribution/src/product_index/storefront_projection.rs';
+const publicProjectionPath = 'crates/modules/rustok-distribution/src/product_index/storefront_projection.rs';
 requireMarkers(publicProjectionPath, [
   'value(&projected.items[0], "tag_ids")',
   'IndexValue::List(vec![IndexValue::Uuid(tag_id)])',

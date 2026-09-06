@@ -67,8 +67,8 @@ The original internal error remains private to structured tracing.
 
 ## Static evidence
 
-- `crates/rustok-payment/contracts/evidence/checkout-execution-diagnostic-safety-source.json`
-- `crates/rustok-payment/contracts/evidence/checkout-execution-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-payment/contracts/evidence/checkout-execution-diagnostic-safety-source.json`
+- `crates/modules/rustok-payment/contracts/evidence/checkout-execution-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-payment-checkout-execution-local-context.mjs`
 
 The verifier guards code-only classification, safe context/request shape, forbidden raw

@@ -4,15 +4,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const files = {
-  builder: "crates/rustok-pages/admin/src/builder.rs",
-  adapter: "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
-  composition: "crates/rustok-pages/admin/src/composition.rs",
+  builder: "crates/modules/rustok-pages/admin/src/builder.rs",
+  adapter: "crates/modules/rustok-pages/admin/src/builder_rollout_settings.rs",
+  composition: "crates/modules/rustok-pages/admin/src/composition.rs",
   adminMain: "apps/admin/src/main.rs",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-binding-source.json",
-  healthBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
-  gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-binding-source.json",
+  healthBinding: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
+  gate: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
   actualization: "docs/modules/pages-page-builder-rollout-binding-actualization-2026-08-08.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };

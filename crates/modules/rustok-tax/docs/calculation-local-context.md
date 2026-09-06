@@ -80,8 +80,8 @@ raw channel UUIDs, raw detail text, and message-based local routing.
 
 Machine-readable source evidence is retained in:
 
-- `crates/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source.json`;
-- `crates/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source-review.json`.
+- `crates/modules/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source.json`;
+- `crates/modules/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source-review.json`.
 
 ## Remaining gaps
 

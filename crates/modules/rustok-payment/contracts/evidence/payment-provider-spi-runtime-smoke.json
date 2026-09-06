@@ -3,9 +3,9 @@
   "module": "payment",
   "packet": "provider-spi-runtime-mode-smoke",
   "status": "runtime_mode_smoke_locked",
-  "generated_from": "crates/rustok-payment/contracts/payment-fba-registry.json",
+  "generated_from": "crates/modules/rustok-payment/contracts/payment-fba-registry.json",
   "runner": "scripts/verify/verify-ecommerce-provider-spi-evidence.mjs",
-  "source_contract": "crates/rustok-payment/src/providers.rs",
+  "source_contract": "crates/modules/rustok-payment/src/providers.rs",
   "execution_scope": "no_compile_static_runtime_contract_evidence",
   "promotion_gate": "does_not_raise_boundary_ready_without_live_adapter_execution",
   "runtime_mode_cases": [

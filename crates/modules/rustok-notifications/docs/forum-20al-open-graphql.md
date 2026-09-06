@@ -83,12 +83,12 @@ or shadow inbox is introduced.
 
 ## Evidence
 
-- owner resolver and typed decision: `crates/rustok-notifications/src/graphql.rs`;
-- GraphQL storefront adapter: `crates/rustok-notifications/storefront/src/transport/graphql_adapter.rs`;
-- selected transport facade: `crates/rustok-notifications/storefront/src/transport.rs`;
-- unchanged guarded navigation call site: `crates/rustok-notifications/storefront/src/ui/leptos.rs`;
-- source contract test: `crates/rustok-notifications/storefront/tests/open_graphql_contract.rs`;
-- machine contract: `crates/rustok-forum/contracts/forum-notification-inbox-open-graphql.json`;
+- owner resolver and typed decision: `crates/modules/rustok-notifications/src/graphql.rs`;
+- GraphQL storefront adapter: `crates/modules/rustok-notifications/storefront/src/transport/graphql_adapter.rs`;
+- selected transport facade: `crates/modules/rustok-notifications/storefront/src/transport.rs`;
+- unchanged guarded navigation call site: `crates/modules/rustok-notifications/storefront/src/ui/leptos.rs`;
+- source contract test: `crates/modules/rustok-notifications/storefront/tests/open_graphql_contract.rs`;
+- machine contract: `crates/modules/rustok-forum/contracts/forum-notification-inbox-open-graphql.json`;
 - static verifier: `scripts/verify/verify-forum-notification-inbox-open-graphql.mjs`.
 
 ## Pending follow-up

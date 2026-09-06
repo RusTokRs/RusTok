@@ -46,18 +46,18 @@
     "Pages facade save"
   ],
   "required_source_files": [
-    "crates/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json",
+    "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json",
     "apps/next-admin/playwright.forum-page-builder.config.ts",
     "apps/next-admin/tests/forum-page-builder/global-setup.ts",
     "apps/next-admin/tests/forum-page-builder/browser-evidence.spec.ts",
-    "crates/rustok-forum/rustok-module.toml",
-    "crates/rustok-forum/admin/src/page_builder.rs",
-    "crates/rustok-forum/admin/src/widget_preview_transport.rs",
-    "crates/rustok-forum/admin/src/widget_property_transport.rs",
-    "crates/rustok-page-builder/admin/src/contribution_host.rs",
-    "crates/rustok-page-builder/admin/src/editor/palette_layers.rs",
-    "crates/rustok-page-builder/admin/src/editor/contribution_properties.rs",
-    "crates/rustok-page-builder/admin/src/editor/contribution_preview.rs",
+    "crates/modules/rustok-forum/rustok-module.toml",
+    "crates/modules/rustok-forum/admin/src/page_builder.rs",
+    "crates/modules/rustok-forum/admin/src/widget_preview_transport.rs",
+    "crates/modules/rustok-forum/admin/src/widget_property_transport.rs",
+    "crates/modules/rustok-page-builder/admin/src/contribution_host.rs",
+    "crates/modules/rustok-page-builder/admin/src/editor/palette_layers.rs",
+    "crates/modules/rustok-page-builder/admin/src/editor/contribution_properties.rs",
+    "crates/modules/rustok-page-builder/admin/src/editor/contribution_preview.rs",
     "apps/admin/src/app/page_builder_contributions.rs"
   ],
   "retained_data": [

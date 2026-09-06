@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_from": "crates/rustok-ai/contracts/ai-fba-registry.json",
+  "generated_from": "crates/modules/rustok-ai/contracts/ai-fba-registry.json",
   "runner": "scripts/verify/verify-orchestrator-fba-runtime-order.mjs",
   "status": "executable_no_compile",
   "degraded_modes": [
@@ -11,39 +11,39 @@
   "support_adapters": [
     {
       "module": "ai-content",
-      "registry": "crates/rustok-ai-content/contracts/ai-content-fba-registry.json",
+      "registry": "crates/modules/rustok-ai-content/contracts/ai-content-fba-registry.json",
       "registration_api": "register_content_ai_vertical_handlers",
-      "binding": "crates/rustok-ai/src/direct_domain_content.rs"
+      "binding": "crates/modules/rustok-ai/src/direct_domain_content.rs"
     },
     {
       "module": "ai-order",
-      "registry": "crates/rustok-ai-order/contracts/ai-order-fba-registry.json",
+      "registry": "crates/modules/rustok-ai-order/contracts/ai-order-fba-registry.json",
       "registration_api": "register_order_ai_vertical_handlers",
-      "binding": "crates/rustok-ai/src/direct_domain_orders.rs"
+      "binding": "crates/modules/rustok-ai/src/direct_domain_orders.rs"
     },
     {
       "module": "ai-product",
-      "registry": "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
+      "registry": "crates/modules/rustok-ai-product/contracts/ai-product-fba-registry.json",
       "registration_api": "register_product_ai_vertical_handlers",
-      "binding": "crates/rustok-ai/src/direct_domain_commerce.rs"
+      "binding": "crates/modules/rustok-ai/src/direct_domain_commerce.rs"
     },
     {
       "module": "ai-media",
-      "registry": "crates/rustok-ai-media/contracts/ai-media-fba-registry.json",
+      "registry": "crates/modules/rustok-ai-media/contracts/ai-media-fba-registry.json",
       "registration_api": "register_media_ai_vertical_handlers",
-      "binding": "crates/rustok-ai/src/direct_domain_media.rs"
+      "binding": "crates/modules/rustok-ai/src/direct_domain_media.rs"
     },
     {
       "module": "ai-alloy",
-      "registry": "crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json",
+      "registry": "crates/modules/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json",
       "registration_api": "register_alloy_ai_vertical_handlers",
-      "binding": "crates/rustok-ai/src/direct_domain_alloy.rs"
+      "binding": "crates/modules/rustok-ai/src/direct_domain_alloy.rs"
     }
   ],
   "source_assertions": [
     {
       "name": "router policy",
-      "path": "crates/rustok-ai/src/router.rs",
+      "path": "crates/modules/rustok-ai/src/router.rs",
       "markers": [
         "ResolvedExecutionPlan",
         "explain_provider_candidates",
@@ -54,7 +54,7 @@
     },
     {
       "name": "direct registry",
-      "path": "crates/rustok-ai/src/direct.rs",
+      "path": "crates/modules/rustok-ai/src/direct.rs",
       "markers": [
         "DirectExecutionRegistry",
         "DirectTaskHandler"
@@ -62,7 +62,7 @@
     },
     {
       "name": "admin transport facade",
-      "path": "crates/rustok-ai/admin/src/transport/mod.rs",
+      "path": "crates/modules/rustok-ai/admin/src/transport/mod.rs",
       "markers": [
         "native_server_adapter",
         "graphql_adapter",
@@ -72,7 +72,7 @@
     },
     {
       "name": "leptos adapter",
-      "path": "crates/rustok-ai/admin/src/ui/leptos.rs",
+      "path": "crates/modules/rustok-ai/admin/src/ui/leptos.rs",
       "markers": [
         "crate::transport",
         "transport::fetch_bootstrap().await",

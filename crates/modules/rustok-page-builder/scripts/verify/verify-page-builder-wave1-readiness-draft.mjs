@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 const verifier = path.join(__dirname, "verify-page-builder-wave-evidence-packet.mjs");
 const packetRelativePath =
-  "crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json";
+  "crates/modules/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json";
 const packetPath = path.join(repoRoot, packetRelativePath);
 
 function fail(message) {

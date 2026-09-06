@@ -4,11 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - "crates/rustok-events/src/contract.rs"
-      - "crates/rustok-events/src/marketplace_listing.rs"
-      - "crates/rustok-marketplace-listing/**"
-      - "crates/rustok-outbox/src/transactional.rs"
-      - "crates/rustok-outbox/src/transport.rs"
+      - "crates/libs/rustok-events/src/contract.rs"
+      - "crates/libs/rustok-events/src/marketplace_listing.rs"
+      - "crates/modules/rustok-marketplace-listing/**"
+      - "crates/modules/rustok-outbox/src/transactional.rs"
+      - "crates/modules/rustok-outbox/src/transport.rs"
       - "apps/server/tests/marketplace_listing_boundary_guard.rs"
       - "apps/server/tests/marketplace_listing_event_contract_guard.rs"
       - "scripts/verify/verify-marketplace-listing-boundary.mjs"
@@ -16,11 +16,11 @@ on:
       - ".github/workflows/marketplace-listing-owner-outbox.yml"
   pull_request:
     paths:
-      - "crates/rustok-events/src/contract.rs"
-      - "crates/rustok-events/src/marketplace_listing.rs"
-      - "crates/rustok-marketplace-listing/**"
-      - "crates/rustok-outbox/src/transactional.rs"
-      - "crates/rustok-outbox/src/transport.rs"
+      - "crates/libs/rustok-events/src/contract.rs"
+      - "crates/libs/rustok-events/src/marketplace_listing.rs"
+      - "crates/modules/rustok-marketplace-listing/**"
+      - "crates/modules/rustok-outbox/src/transactional.rs"
+      - "crates/modules/rustok-outbox/src/transport.rs"
       - "apps/server/tests/marketplace_listing_boundary_guard.rs"
       - "apps/server/tests/marketplace_listing_event_contract_guard.rs"
       - "scripts/verify/verify-marketplace-listing-boundary.mjs"
@@ -54,44 +54,44 @@ jobs:
           rustfmt --edition 2024 \
             apps/server/tests/marketplace_listing_boundary_guard.rs \
             apps/server/tests/marketplace_listing_event_contract_guard.rs \
-            crates/rustok-marketplace-listing/src/command_receipts.rs \
-            crates/rustok-marketplace-listing/src/command_receipts_tests.rs \
-            crates/rustok-marketplace-listing/src/error.rs \
-            crates/rustok-marketplace-listing/src/evented_commands.rs \
-            crates/rustok-marketplace-listing/src/external_events.rs \
-            crates/rustok-marketplace-listing/src/lib.rs \
-            crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs \
-            crates/rustok-marketplace-listing/src/ports.rs \
-            crates/rustok-marketplace-listing/src/replay_safe_commands.rs \
-            crates/rustok-marketplace-listing/src/service.rs
+            crates/modules/rustok-marketplace-listing/src/command_receipts.rs \
+            crates/modules/rustok-marketplace-listing/src/command_receipts_tests.rs \
+            crates/modules/rustok-marketplace-listing/src/error.rs \
+            crates/modules/rustok-marketplace-listing/src/evented_commands.rs \
+            crates/modules/rustok-marketplace-listing/src/external_events.rs \
+            crates/modules/rustok-marketplace-listing/src/lib.rs \
+            crates/modules/rustok-marketplace-listing/src/lifecycle_event_commands.rs \
+            crates/modules/rustok-marketplace-listing/src/ports.rs \
+            crates/modules/rustok-marketplace-listing/src/replay_safe_commands.rs \
+            crates/modules/rustok-marketplace-listing/src/service.rs
           git diff -- \
             apps/server/tests/marketplace_listing_boundary_guard.rs \
             apps/server/tests/marketplace_listing_event_contract_guard.rs \
-            crates/rustok-marketplace-listing/src/command_receipts.rs \
-            crates/rustok-marketplace-listing/src/command_receipts_tests.rs \
-            crates/rustok-marketplace-listing/src/error.rs \
-            crates/rustok-marketplace-listing/src/evented_commands.rs \
-            crates/rustok-marketplace-listing/src/external_events.rs \
-            crates/rustok-marketplace-listing/src/lib.rs \
-            crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs \
-            crates/rustok-marketplace-listing/src/ports.rs \
-            crates/rustok-marketplace-listing/src/replay_safe_commands.rs \
-            crates/rustok-marketplace-listing/src/service.rs \
+            crates/modules/rustok-marketplace-listing/src/command_receipts.rs \
+            crates/modules/rustok-marketplace-listing/src/command_receipts_tests.rs \
+            crates/modules/rustok-marketplace-listing/src/error.rs \
+            crates/modules/rustok-marketplace-listing/src/evented_commands.rs \
+            crates/modules/rustok-marketplace-listing/src/external_events.rs \
+            crates/modules/rustok-marketplace-listing/src/lib.rs \
+            crates/modules/rustok-marketplace-listing/src/lifecycle_event_commands.rs \
+            crates/modules/rustok-marketplace-listing/src/ports.rs \
+            crates/modules/rustok-marketplace-listing/src/replay_safe_commands.rs \
+            crates/modules/rustok-marketplace-listing/src/service.rs \
             > rustfmt.patch
           mkdir -p formatted
           cp --parents \
             apps/server/tests/marketplace_listing_boundary_guard.rs \
             apps/server/tests/marketplace_listing_event_contract_guard.rs \
-            crates/rustok-marketplace-listing/src/command_receipts.rs \
-            crates/rustok-marketplace-listing/src/command_receipts_tests.rs \
-            crates/rustok-marketplace-listing/src/error.rs \
-            crates/rustok-marketplace-listing/src/evented_commands.rs \
-            crates/rustok-marketplace-listing/src/external_events.rs \
-            crates/rustok-marketplace-listing/src/lib.rs \
-            crates/rustok-marketplace-listing/src/lifecycle_event_commands.rs \
-            crates/rustok-marketplace-listing/src/ports.rs \
-            crates/rustok-marketplace-listing/src/replay_safe_commands.rs \
-            crates/rustok-marketplace-listing/src/service.rs \
+            crates/modules/rustok-marketplace-listing/src/command_receipts.rs \
+            crates/modules/rustok-marketplace-listing/src/command_receipts_tests.rs \
+            crates/modules/rustok-marketplace-listing/src/error.rs \
+            crates/modules/rustok-marketplace-listing/src/evented_commands.rs \
+            crates/modules/rustok-marketplace-listing/src/external_events.rs \
+            crates/modules/rustok-marketplace-listing/src/lib.rs \
+            crates/modules/rustok-marketplace-listing/src/lifecycle_event_commands.rs \
+            crates/modules/rustok-marketplace-listing/src/ports.rs \
+            crates/modules/rustok-marketplace-listing/src/replay_safe_commands.rs \
+            crates/modules/rustok-marketplace-listing/src/service.rs \
             formatted/
       - name: Compile listing crate
         id: compile

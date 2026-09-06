@@ -38,7 +38,7 @@ The boundary ADR is accepted. The first server foundation is implemented:
   `comment` manifests, strict tree/attribute/link policy, deterministic
   normalization, one safe HTML renderer, and one plain-text extractor;
 - shared fixtures live in
-  `crates/rustok-content/fixtures/richtext/`, with a committed profile
+  `crates/modules/rustok-content/fixtures/richtext/`, with a committed profile
   manifest and article HTML/plain-text projections.
 
 The foundation is active. Comments, Blog articles, and Forum topics/replies
@@ -351,7 +351,7 @@ machine-readable profile manifest before the cutover; Tiptap defaults do not
 implicitly expand the server schema.
 
 The initial manifest is now committed at
-`crates/rustok-content/fixtures/richtext/profiles.json`. Its limits are
+`crates/modules/rustok-content/fixtures/richtext/profiles.json`. Its limits are
 enforced by `rustok-content::richtext`; changing a node, mark, attribute, URL
 rule, or limit requires updating that fixture, the Rust policy tests, the
 browser extension manifest, and the owner migration evidence together.

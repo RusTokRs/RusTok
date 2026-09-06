@@ -29,7 +29,7 @@
     "metadata_save_is_document_free_and_preserves_dirty_fly_state"
   ],
   "suggested_execution": [
-    "node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs",
+    "node crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs",
     "cargo test -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport",
     "cargo test -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state",
     "cargo check -p rustok-pages-admin --all-targets"

@@ -90,15 +90,15 @@
     "stream_deletion_claim": false
   },
   "source_files": [
-    "crates/rustok-social-graph/tests/index_raw_poison_publish_mark_ambiguity.rs",
-    "crates/rustok-social-graph/Cargo.toml",
-    "crates/rustok-iggy-connector/src/consumer_poison_receipt.rs",
-    "crates/rustok-iggy/src/transport.rs",
+    "crates/modules/rustok-social-graph/tests/index_raw_poison_publish_mark_ambiguity.rs",
+    "crates/modules/rustok-social-graph/Cargo.toml",
+    "crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs",
+    "crates/modules/rustok-iggy/src/transport.rs",
     "apps/server/src/services/social_graph_index_worker.rs"
   ],
   "verifier": "scripts/verify/verify-social-graph-index-raw-poison-publish-mark-ambiguity.mjs",
-  "documentation": "crates/rustok-social-graph/docs/index-raw-poison-publish-mark-ambiguity-evidence.md",
-  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-publish-mark-ambiguity-checkpoint.md",
+  "documentation": "crates/modules/rustok-social-graph/docs/index-raw-poison-publish-mark-ambiguity-evidence.md",
+  "profiles_checkpoint": "crates/modules/rustok-profiles/docs/poison-publish-mark-ambiguity-checkpoint.md",
   "non_claims": [
     "postgresql_iggy_transaction",
     "physical_exactly_once_without_deduplication",

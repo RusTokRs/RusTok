@@ -468,7 +468,7 @@ mod tests {
                     },
                     preview: ScaffoldModulePreview {
                         crate_name: "rustok-newsletter".to_string(),
-                        crate_path: "crates/rustok-newsletter".to_string(),
+                        crate_path: "crates/modules/rustok-newsletter".to_string(),
                         files: Vec::new(),
                         next_steps: vec!["persisted".to_string()],
                     },
@@ -486,7 +486,7 @@ mod tests {
             Ok(ApplyModuleScaffoldResponse {
                 draft_id: request.draft_id,
                 crate_name: "rustok-newsletter".to_string(),
-                crate_path: "crates/rustok-newsletter".to_string(),
+                crate_path: "crates/modules/rustok-newsletter".to_string(),
                 wrote_files: true,
                 status: ModuleScaffoldDraftStatus::Applied,
                 next_steps: vec!["persisted".to_string()],

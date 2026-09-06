@@ -13,8 +13,8 @@
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![Architecture: FBA/FFA](https://img.shields.io/badge/architecture-FBA%20%7C%20FFA-purple.svg)](docs/architecture/overview.md)
 [![Database: PostgreSQL / Turso](https://img.shields.io/badge/database-PostgreSQL%20%7C%20Turso-4169E1.svg)](docs/index.md)
-[![AI-Native: MCP](https://img.shields.io/badge/AI--Native-MCP%20Server-00A86B.svg)](crates/rustok-mcp/README.md)
-[![Scripting: Alloy](https://img.shields.io/badge/scripting-Alloy%20Sandbox-E02424.svg)](crates/alloy/README.md)
+[![AI-Native: MCP](https://img.shields.io/badge/AI--Native-MCP%20Server-00A86B.svg)](crates/modules/rustok-mcp/README.md)
+[![Scripting: Alloy](https://img.shields.io/badge/scripting-Alloy%20Sandbox-E02424.svg)](crates/modules/alloy/README.md)
 
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/RustokCMS/RusToK)](https://github.com/RustokCMS/RusToK/commits/main)
 [![Last Commit](https://img.shields.io/github/last-commit/RustokCMS/RusToK)](https://github.com/RustokCMS/RusToK/commits/main)
@@ -66,7 +66,7 @@ In traditional Node.js, Python, or PHP platforms, security and data isolation de
 In RusTok, tenant context (`tenant_id`), RBAC policies (`rustok-rbac`), and locale matching (`ICU4X`) are enforced at **compile-time and embedded in composite database keys**. Every cross-module call passes a transport-agnostic `PortContext` carrying strict `deadline_ms` timeouts, OpenTelemetry trace identifiers (`correlation_id`, `causation_id`), and idempotency keys. Caller-supplied identity headers (`X-User-ID`) are rejected at transport boundaries and reconstructed strictly post-token validation.
 
 ### 3. Alloy — Self-Evolving Dynamic Runtime & Instant Integrations
-Compiled applications traditionally require code modifications, Pull Requests, CI/CD pipelines, and server restarts to change business rules. **Alloy** ([crates/alloy](crates/alloy/README.md)) bridges the gap between compiled performance and dynamic flexibility:
+Compiled applications traditionally require code modifications, Pull Requests, CI/CD pipelines, and server restarts to change business rules. **Alloy** ([crates/modules/alloy](crates/modules/alloy/README.md)) bridges the gap between compiled performance and dynamic flexibility:
 
 - ⚡ **New Features On-the-Fly**: Add new business capabilities, domain rules, and dynamic hooks instantly without redeploying platform binaries or restarting the server.
 - 🧹 **Dirty Data Cleansing & Legacy Migrations**: Works as an in-memory ETL sanitization engine. Alloy scripts handle dirty data, unescaped encodings, corrupt dates, and broken tables from legacy platforms on the fly without crashing the core server.
@@ -150,7 +150,7 @@ FFA provides a framework-agnostic UI architecture that eliminates frontend fragm
 - **Headless & Companion Path**: Exposes identical domain capabilities via parallel **GraphQL**, **REST**, and **gRPC** interfaces for Next.js, Flutter Mobile apps, or custom clients.
 
 ### 3. High-Performance Relational Index Engine (`rustok-index`)
-RusTok solves this with **`rustok-index`** ([crates/rustok-index](crates/rustok-index/README.md)) — eliminating the need for heavy JVM search clusters (Elasticsearch/Algolia) or fragile EAV table schemas (Magento):
+RusTok solves this with **`rustok-index`** ([crates/modules/rustok-index](crates/modules/rustok-index/README.md)) — eliminating the need for heavy JVM search clusters (Elasticsearch/Algolia) or fragile EAV table schemas (Magento):
 - **Schema-Agnostic PostgreSQL Persistence**: Envelopes entity state into benchmarked `JSONB` structures (`index_entities`) paired with an independent relational link graph (`index_links`).
 - **Derived Expression Indexes**: Automatically derives typed PostgreSQL partial B-Tree expression indexes for scalar properties and GIN indexes for array containment.
 - **Zero N+1 Queries**: Executes cross-module filtering, aggregate ordering, and checksummed keyset pagination (`CursorCodec`) in a single `REPEATABLE READ` snapshot query.
@@ -362,7 +362,7 @@ cargo machete
 | **Module Registry** | [docs/modules/registry.md](docs/modules/registry.md) |
 | **Fluid Backend Architecture** | [docs/backend/module-backend-architecture.md](docs/backend/module-backend-architecture.md) |
 | **Fluid Frontend Architecture** | [docs/UI/module-package-architecture.md](docs/UI/module-package-architecture.md) |
-| **Index Engine** | [crates/rustok-index/docs/README.md](crates/rustok-index/docs/README.md) |
+| **Index Engine** | [crates/modules/rustok-index/docs/README.md](crates/modules/rustok-index/docs/README.md) |
 | **Verification Plan** | [docs/verification/PLATFORM_VERIFICATION_PLAN.md](docs/verification/PLATFORM_VERIFICATION_PLAN.md) |
 | **Quick Start Guide** | [docs/guides/quickstart.md](docs/guides/quickstart.md) |
 | **Contributing Guide** | [CONTRIBUTING.md](CONTRIBUTING.md) |

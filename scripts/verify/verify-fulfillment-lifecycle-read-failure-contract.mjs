@@ -13,23 +13,23 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const safeQuery = readCommerceSafeQuerySource(read);
-const cargo = read('crates/rustok-commerce/Cargo.toml');
+const cargo = read('crates/modules/rustok-commerce/Cargo.toml');
 const harness = read(
-  'crates/rustok-commerce/tests/fulfillment_read_port_failure_contract.rs',
+  'crates/modules/rustok-commerce/tests/fulfillment_read_port_failure_contract.rs',
 );
 const contract = JSON.parse(
   read(
-    'crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-failure-execution-contract.json',
+    'crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-failure-execution-contract.json',
   ),
 );
 const evidence = JSON.parse(
   read(
-    'crates/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json',
+    'crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json',
   ),
 );
-const plan = read('crates/rustok-fulfillment/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-fulfillment/docs/implementation-plan.md');
 const ownerNote = read(
-  'crates/rustok-fulfillment/docs/fulfillment-lifecycle-read-failure-contract.md',
+  'crates/modules/rustok-fulfillment/docs/fulfillment-lifecycle-read-failure-contract.md',
 );
 const failures = [];
 

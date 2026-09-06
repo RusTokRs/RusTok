@@ -18,7 +18,7 @@ Marker:
 explicit-artifact-repair-postgres-harness-source-ready
 ```
 
-`crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs` is environment-gated by:
+`crates/modules/rustok-pages/tests/explicit_artifact_repair_postgres.rs` is environment-gated by:
 
 ```text
 RUSTOK_PAGES_TEST_DATABASE_URL
@@ -114,7 +114,7 @@ Marker:
 explicit-artifact-repair-failure-harness-source-ready
 ```
 
-`crates/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs` now retains the previously open negative source matrix:
+`crates/modules/rustok-pages/tests/explicit_artifact_repair_failures_sqlite.rs` now retains the previously open negative source matrix:
 
 - rebuild provenance corruption rejection;
 - rebuild reviewed-runtime mismatch rejection;
@@ -129,7 +129,7 @@ Each rejected command is surrounded by a durable state snapshot covering receipt
 Machine source evidence:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json
 ```
 
 Status remains:
@@ -141,7 +141,7 @@ pages_explicit_artifact_repair_postgres_source_unvalidated
 Negative source evidence:
 
 ```text
-crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-failures-source.json
+crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-failures-source.json
 ```
 
 Status remains:
@@ -155,8 +155,8 @@ Execution is empty. Every validation flag remains false until maintainer executi
 Fail-closed source guards:
 
 ```text
-crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
-crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-failures.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-failures.mjs
 ```
 
 The guards themselves are intentionally not run in this slice.
@@ -194,15 +194,15 @@ The guards themselves are intentionally not run in this slice.
 Suggested commands, intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-failures.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-failures.mjs
 cargo test -p rustok-pages --test explicit_artifact_repair_failures_sqlite -- --nocapture
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs
 RUSTOK_PAGES_TEST_DATABASE_URL=postgres://... \
   cargo test -p rustok-pages --test explicit_artifact_repair_postgres -- --nocapture
 cargo test -p rustok-pages --test explicit_artifact_repair_transport_contract -- --nocapture
 cargo test -p rustok-pages --test explicit_artifact_repair_request_contract -- --nocapture
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport-contract.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-request-contract.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-transport-contract.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-request-contract.mjs
 cargo check -p rustok-pages --all-targets
 ```
 

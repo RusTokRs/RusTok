@@ -10,9 +10,9 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const facade = read('crates/rustok-commerce/src/graphql/mutations/safe_cart.rs');
-const ownerSource = read('crates/rustok-commerce/src/services/context.rs');
-const resolverSource = read('crates/rustok-commerce/src/graphql/mutations/cart.rs');
+const facade = read('crates/modules/rustok-commerce/src/graphql/mutations/safe_cart.rs');
+const ownerSource = read('crates/modules/rustok-commerce/src/services/context.rs');
+const resolverSource = read('crates/modules/rustok-commerce/src/graphql/mutations/cart.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {

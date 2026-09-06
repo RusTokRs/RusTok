@@ -5,7 +5,7 @@
   "status": "source_complete_runtime_pending",
   "scope": "external_real_iggy_message_id_deduplication_behavior",
   "test_target": "contract_poison_external_iggy_dedup",
-  "source_path": "crates/rustok-iggy/tests/contract_poison_external_iggy_dedup.rs",
+  "source_path": "crates/modules/rustok-iggy/tests/contract_poison_external_iggy_dedup.rs",
   "verifier": "scripts/verify/verify-iggy-contract-poison-external-dedup-evidence.mjs",
   "shared_optional_environment": [
     "RUSTOK_IGGY_DEDUP_TEST_USERNAME",

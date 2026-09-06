@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const mountedPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
+const mountedPath = 'crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs';
 const mounted = requireMarkers(mountedPath, [
   'CatalogService::new(runtime_ctx.db_clone(), event_bus)',
   '.list_published_products_with_query(',
@@ -34,10 +34,10 @@ for (const forbidden of [
   if (mounted.includes(forbidden)) fail(`${mountedPath} must remain owner-native; found ${forbidden}`);
 }
 
-requireMarkers('crates/rustok-product/src/services/catalog/types.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/catalog/types.rs', [
   'pub const MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022;',
 ]);
-requireMarkers('crates/rustok-product/src/services/catalog/queries.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/catalog/queries.rs', [
   'product_channel_visibility_condition(',
   'attribute_filters::load_catalog_attribute_filter_conditions(',
   'types::validate_storefront_product_search(list_query.search.as_deref())?;',
@@ -47,13 +47,13 @@ requireMarkers('crates/rustok-product/src/services/catalog/queries.rs', [
   'pt.title LIKE $1',
   'let offset = (page.saturating_sub(1)) * per_page;',
 ]);
-requireMarkers('crates/rustok-product/src/storefront_tag_read_port.rs', [
+requireMarkers('crates/modules/rustok-product/src/storefront_tag_read_port.rs', [
   'MAX_STOREFRONT_TAG_HYDRATION_PRODUCTS: usize = 48',
   'pub trait ProductStorefrontTagReadPort',
   '.load_product_tag_map(',
 ]);
 
-const shadowPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const shadowPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
 const shadow = requireMarkers(shadowPath, [
   'OwnerNativeChannelLess',
   'OwnerNativeDeepPage { offset: u64 }',
@@ -67,7 +67,7 @@ for (const forbidden of ['tokio::time::timeout', 'ProductStorefrontIndexServingB
   if (shadow.includes(forbidden)) fail(`${shadowPath} evidence executor must stay unbudgeted: ${forbidden}`);
 }
 
-const policyPath = 'crates/rustok-distribution/src/product_index/storefront_serving_budget.rs';
+const policyPath = 'crates/modules/rustok-distribution/src/product_index/storefront_serving_budget.rs';
 const policy = requireMarkers(policyPath, [
   'ProductStorefrontIndexServingBudget',
   'ProductStorefrontIndexServingBudgetObservation',
@@ -84,7 +84,7 @@ if (policy.split('#[cfg(test)]')[0].includes('tokio::time::timeout')) {
   fail(`${policyPath} classification policy must remain separate from timeout enforcement`);
 }
 
-const budgetedPath = 'crates/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
+const budgetedPath = 'crates/modules/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
 const budgeted = requireMarkers(budgetedPath, [
   'use tokio::time::timeout;',
   'pub(crate) trait ProductStorefrontIndexProjectionPhases',
@@ -111,7 +111,7 @@ if (budgeted.includes('list_filtered_published_products(')) {
   fail(`${budgetedPath} must be post-owner and must not repeat the authoritative Product read`);
 }
 
-const productIndexPath = 'crates/rustok-distribution/src/product_index/product.rs';
+const productIndexPath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
 const productIndex = requireMarkers(productIndexPath, [
   'derive_index_schema_source_event_id',
   'assert_eq!(schema.fields.len(), 15);',
@@ -130,7 +130,7 @@ requireMarkers('scripts/verify/verify-index-product-current-schema-promotion.mjs
 requireMarkers('scripts/verify/verify-index-product-current-schema-promotion-postgres-packet.mjs', [
   'retained Product key4 stage/replay/register_current/inactive-old-key/restart PostgreSQL packet source verified',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-current-schema-promotion.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-current-schema-promotion.md', [
   'Status: `postgres_packet_source_complete_execution_pending`',
   'Tenant promotion sequence',
   'Retained PostgreSQL promotion packet — source complete',
@@ -139,17 +139,17 @@ requireMarkers('crates/rustok-index/docs/m7-product-current-schema-promotion.md'
   'Mounted Storefront remains owner-native',
 ]);
 
-requireMarkers('crates/rustok-distribution/src/product_index/storefront_projection.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/storefront_projection.rs', [
   'const UNTITLED_PRODUCT: &str = "Untitled product";',
   'pub(crate) fn project_product_storefront_index_page(',
   'value(&projected.items[0], "tag_ids")',
 ]);
-requireMarkers('crates/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/storefront_shadow_postgres_tests.rs', [
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
   'assert_eq!(owner_c.title, "Untitled product");',
   'assert_eq!(projected_string(index_c, "title")?, None);',
 ]);
-requireMarkers('crates/rustok-distribution/tests/product_storefront_search_collation_postgres.rs', [
+requireMarkers('crates/modules/rustok-distribution/tests/product_storefront_search_collation_postgres.rs', [
   'translation.title LIKE $2',
   '(translation.title COLLATE "C") LIKE $2',
 ]);
@@ -173,7 +173,7 @@ requireMarkers('scripts/verify/verify-index-product-postgres-key4-fixtures.mjs',
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-storefront-parity-gate.md', [
   'Status: `budgeted_timeout_evidence_source_complete_execution_pending`',
   'Mounted Storefront remains owner-native',
   'Serving-budget policy and timeout enforcement — source complete',
@@ -182,11 +182,11 @@ requireMarkers('crates/rustok-index/docs/m7-product-storefront-parity-gate.md', 
   '`ProductStorefrontIndexBudgetedProjectionExecutor`',
   'The packet has not been executed by the implementation agent',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-storefront-serving-budget-policy.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-storefront-serving-budget-policy.md', [
   'Status: `policy_and_timeout_enforcement_source_complete_runtime_evidence_pending`',
   '`tokio::time::timeout`',
 ]);
-requireMarkers('crates/rustok-index/docs/m7-product-storefront-budgeted-execution.md', [
+requireMarkers('crates/modules/rustok-index/docs/m7-product-storefront-budgeted-execution.md', [
   'Status: `source_complete_timeout_evidence_execution_pending`',
   'Retained deterministic timeout evidence — source complete',
   'The retained packet is **source-only** until a maintainer executes it.',

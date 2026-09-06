@@ -4,19 +4,19 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - "crates/rustok-events/Cargo.toml"
-      - "crates/rustok-events/src/**"
-      - "crates/rustok-events/examples/event_contract_digests.rs"
-      - "crates/rustok-events/contracts/event-contract-digests.json"
+      - "crates/libs/rustok-events/Cargo.toml"
+      - "crates/libs/rustok-events/src/**"
+      - "crates/libs/rustok-events/examples/event_contract_digests.rs"
+      - "crates/libs/rustok-events/contracts/event-contract-digests.json"
       - ".github/workflows/rbac-artifact-event-digest.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-events/Cargo.toml"
-      - "crates/rustok-events/src/**"
-      - "crates/rustok-events/examples/event_contract_digests.rs"
-      - "crates/rustok-events/contracts/event-contract-digests.json"
+      - "crates/libs/rustok-events/Cargo.toml"
+      - "crates/libs/rustok-events/src/**"
+      - "crates/libs/rustok-events/examples/event_contract_digests.rs"
+      - "crates/libs/rustok-events/contracts/event-contract-digests.json"
       - ".github/workflows/rbac-artifact-event-digest.yml"
 
 permissions:
@@ -70,17 +70,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cp crates/rustok-events/contracts/event-contract-digests.json \
+          cp crates/libs/rustok-events/contracts/event-contract-digests.json \
             evidence/rbac-artifact-event-digest/committed-event-contract-digests.json
           cargo run --locked -p rustok-events --example event_contract_digests -- --write \
             2>&1 | tee evidence/rbac-artifact-event-digest/generator.log
-          cp crates/rustok-events/contracts/event-contract-digests.json \
+          cp crates/libs/rustok-events/contracts/event-contract-digests.json \
             evidence/rbac-artifact-event-digest/generated-event-contract-digests.json
-          sha256sum crates/rustok-events/contracts/event-contract-digests.json \
+          sha256sum crates/libs/rustok-events/contracts/event-contract-digests.json \
             | tee evidence/rbac-artifact-event-digest/generated-file-sha256.txt
-          git diff -- crates/rustok-events/contracts/event-contract-digests.json \
+          git diff -- crates/libs/rustok-events/contracts/event-contract-digests.json \
             | tee evidence/rbac-artifact-event-digest/generated.diff
-          if ! git diff --quiet -- crates/rustok-events/contracts/event-contract-digests.json; then
+          if ! git diff --quiet -- crates/libs/rustok-events/contracts/event-contract-digests.json; then
             echo "::error::Committed event contract digest is stale; commit the generator-produced delta."
             exit 1
           fi

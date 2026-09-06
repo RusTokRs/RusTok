@@ -89,8 +89,8 @@ No FBA or FFA status is promoted from source inspection.
 
 ## Evidence
 
-- `crates/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source.json`
-- `crates/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source.json`
+- `crates/modules/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-inventory-reservation-owner-context.mjs`
 - `scripts/verify/verify-inventory-reservation-local-context.mjs`
 

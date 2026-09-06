@@ -59,13 +59,13 @@ function functionBody(text, functionName) {
 }
 
 const adapterPath =
-  "crates/rustok-commerce/admin/src/transport/native_server_adapter_ssr.rs";
+  "crates/modules/rustok-commerce/admin/src/transport/native_server_adapter_ssr.rs";
 const evidencePath =
-  "crates/rustok-commerce/contracts/evidence/admin-order-change-native-error-safety-source.json";
+  "crates/modules/rustok-commerce/contracts/evidence/admin-order-change-native-error-safety-source.json";
 const reviewPath =
-  "crates/rustok-commerce/contracts/evidence/admin-order-change-native-error-safety-source-review.json";
+  "crates/modules/rustok-commerce/contracts/evidence/admin-order-change-native-error-safety-source-review.json";
 const docPath =
-  "crates/rustok-commerce/docs/admin-order-change-native-error-safety.md";
+  "crates/modules/rustok-commerce/docs/admin-order-change-native-error-safety.md";
 
 const adapter = readRepo(adapterPath);
 const evidence = JSON.parse(readRepo(evidencePath));

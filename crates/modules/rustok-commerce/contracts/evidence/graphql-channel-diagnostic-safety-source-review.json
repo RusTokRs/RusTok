@@ -1,10 +1,10 @@
 {
   "status": "commerce_graphql_channel_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/graphql/mod.rs",
+    "crates/modules/rustok-commerce/src/graphql/mod.rs",
     "scripts/verify/verify-commerce-graphql-root-error-safety.mjs",
-    "crates/rustok-commerce/docs/graphql-channel-diagnostic-safety.md",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/graphql-channel-diagnostic-safety.md",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_contract": {
     "storage_error_payload_logged": false,

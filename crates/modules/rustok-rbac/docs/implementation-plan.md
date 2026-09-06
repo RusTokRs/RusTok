@@ -6,8 +6,8 @@
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - Transport profile: temporary native-only; native/GraphQL admin parity is in progress.
-- FBA provider contract: `RbacPermissionDecisionPort` / `rbac.permission_decision.v1` in `crates/rustok-rbac/contracts/rbac-fba-registry.json`.
-- Static and runtime evidence: `crates/rustok-rbac/contracts/evidence/rbac-contract-test-static-matrix.json` and `crates/rustok-rbac/contracts/evidence/rbac-provider-runtime-order-smoke.json`.
+- FBA provider contract: `RbacPermissionDecisionPort` / `rbac.permission_decision.v1` in `crates/modules/rustok-rbac/contracts/rbac-fba-registry.json`.
+- Static and runtime evidence: `crates/modules/rustok-rbac/contracts/evidence/rbac-contract-test-static-matrix.json` and `crates/modules/rustok-rbac/contracts/evidence/rbac-provider-runtime-order-smoke.json`.
 - Evidence: `scripts/verify/verify-rbac-admin-boundary.mjs` locks the admin boundary guardrail.
 
 ## Release and Data Rollback Readiness

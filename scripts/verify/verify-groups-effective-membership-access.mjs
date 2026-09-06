@@ -6,16 +6,16 @@ const failures = [];
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 
 const files = {
-  facade: "crates/rustok-groups/src/effective_service.rs",
-  legacy: "crates/rustok-groups/src/service.rs",
-  module: "crates/rustok-groups/src/lib.rs",
-  enforcement: "crates/rustok-groups/src/membership_enforcement.rs",
-  graphql: "crates/rustok-groups/src/graphql.rs",
-  adminNative: "crates/rustok-groups/admin/src/transport/native_server_adapter.rs",
-  storefrontNative: "crates/rustok-groups/storefront/src/transport/native_server_adapter.rs",
-  contract: "crates/rustok-groups/contracts/groups-effective-membership-access.json",
-  plan: "crates/rustok-groups/docs/implementation-plan.md",
-  readme: "crates/rustok-groups/README.md",
+  facade: "crates/modules/rustok-groups/src/effective_service.rs",
+  legacy: "crates/modules/rustok-groups/src/service.rs",
+  module: "crates/modules/rustok-groups/src/lib.rs",
+  enforcement: "crates/modules/rustok-groups/src/membership_enforcement.rs",
+  graphql: "crates/modules/rustok-groups/src/graphql.rs",
+  adminNative: "crates/modules/rustok-groups/admin/src/transport/native_server_adapter.rs",
+  storefrontNative: "crates/modules/rustok-groups/storefront/src/transport/native_server_adapter.rs",
+  contract: "crates/modules/rustok-groups/contracts/groups-effective-membership-access.json",
+  plan: "crates/modules/rustok-groups/docs/implementation-plan.md",
+  readme: "crates/modules/rustok-groups/README.md",
 };
 
 for (const relative of Object.values(files)) {

@@ -46,22 +46,22 @@ function sameSet(actual, expected) {
   return [...actual].sort().join('|') === [...expected].sort().join('|');
 }
 
-const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
-const fallbackEvidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
-const servicePath = 'crates/rustok-blog/src/services/comment.rs';
-const snapshotPolicyPath = 'crates/rustok-blog/src/public_comments_snapshot.rs';
-const graphqlRuntimePath = 'crates/rustok-blog/src/graphql/runtime_data.rs';
-const graphqlOwnerPath = 'crates/rustok-blog/src/graphql/types.rs';
-const storefrontModelPath = 'crates/rustok-blog/storefront/src/model.rs';
-const storefrontGraphqlPath = 'crates/rustok-blog/storefront/src/transport/graphql_adapter.rs';
-const storefrontNativePath = 'crates/rustok-blog/storefront/src/transport/native_server_adapter.rs';
-const storefrontUiPath = 'crates/rustok-blog/storefront/src/ui/leptos.rs';
+const evidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
+const fallbackEvidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
+const servicePath = 'crates/modules/rustok-blog/src/services/comment.rs';
+const snapshotPolicyPath = 'crates/modules/rustok-blog/src/public_comments_snapshot.rs';
+const graphqlRuntimePath = 'crates/modules/rustok-blog/src/graphql/runtime_data.rs';
+const graphqlOwnerPath = 'crates/modules/rustok-blog/src/graphql/types.rs';
+const storefrontModelPath = 'crates/modules/rustok-blog/storefront/src/model.rs';
+const storefrontGraphqlPath = 'crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs';
+const storefrontNativePath = 'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs';
+const storefrontUiPath = 'crates/modules/rustok-blog/storefront/src/ui/leptos.rs';
 const hostSnapshotAdapterPath = 'apps/server/src/services/blog_public_comments_snapshot.rs';
 const hostRuntimeCompositionPath = 'apps/server/src/services/module_event_dispatcher.rs';
-const providerRegistryPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
-const consumerRegistryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
-const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
-const slice99Path = 'crates/rustok-blog/docs/implementation-plan-slice-99.md';
+const providerRegistryPath = 'crates/modules/rustok-comments/contracts/comments-fba-registry.json';
+const consumerRegistryPath = 'crates/modules/rustok-blog/contracts/blog-fba-registry.json';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
+const slice99Path = 'crates/modules/rustok-blog/docs/implementation-plan-slice-99.md';
 const injectionConstructor = 'CommentService::with_comments_thread_port';
 const injectionSignature = 'fn(DatabaseConnection, Arc<dyn CommentsThreadPort>) -> CommentService';
 const injectionTest =

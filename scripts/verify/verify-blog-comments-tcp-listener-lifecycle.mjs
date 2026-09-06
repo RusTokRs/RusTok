@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-tcp-listener-lifecycle.json';
-const planPath = 'crates/rustok-blog/docs/implementation-plan-slice-71.md';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-listener-lifecycle.json';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-71.md';
 const runtimePath = 'apps/server/src/services/comments_provider_runtime.rs';
 const bootstrapPath = 'apps/server/src/services/server_bootstrap.rs';
-const digestPath = 'crates/rustok-api/src/digest.rs';
-const authPath = 'crates/rustok-comments/src/tcp_auth.rs';
-const adapterPath = 'crates/rustok-comments/src/tcp_server.rs';
+const digestPath = 'crates/libs/rustok-api/src/digest.rs';
+const authPath = 'crates/modules/rustok-comments/src/tcp_auth.rs';
+const adapterPath = 'crates/modules/rustok-comments/src/tcp_server.rs';
 
 function read(path) {
   return fs.readFileSync(path, 'utf8');

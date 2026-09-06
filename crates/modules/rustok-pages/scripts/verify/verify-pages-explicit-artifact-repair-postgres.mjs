@@ -4,18 +4,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  harness: "crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json",
+  harness: "crates/modules/rustok-pages/tests/explicit_artifact_repair_postgres.rs",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json",
   continuation: "docs/modules/pages-page-builder-repair-postgres-continuation-2026-08-07.md",
-  reviewedPublish: "crates/rustok-pages/src/services/page/reviewed_publish.rs",
-  rebuildOwner: "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
-  activationOwner: "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
-  rebuildMigration: "crates/rustok-pages/src/migrations/m20260806_000014_add_explicit_artifact_rebuild.rs",
-  activationMigration: "crates/rustok-pages/src/migrations/m20260807_000015_create_page_artifact_binding_replacements.rs",
-  transactionalBus: "crates/rustok-outbox/src/transactional.rs",
+  reviewedPublish: "crates/modules/rustok-pages/src/services/page/reviewed_publish.rs",
+  rebuildOwner: "crates/modules/rustok-pages/src/services/page/artifact_rebuild.rs",
+  activationOwner: "crates/modules/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+  rebuildMigration: "crates/modules/rustok-pages/src/migrations/m20260806_000014_add_explicit_artifact_rebuild.rs",
+  activationMigration: "crates/modules/rustok-pages/src/migrations/m20260807_000015_create_page_artifact_binding_replacements.rs",
+  transactionalBus: "crates/modules/rustok-outbox/src/transactional.rs",
 };
 const absolute = (relative) => path.join(repoRoot, relative);
 const read = (relative) => fs.readFileSync(absolute(relative), "utf8");

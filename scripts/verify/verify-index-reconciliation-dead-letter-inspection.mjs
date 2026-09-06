@@ -19,13 +19,13 @@ const requireMarkers = (relative, markers) => {
 };
 
 const inspectorPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_dead_letter_inspector.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_dead_letter_inspector.rs';
 const operatorPath = 'apps/server/src/services/index_reconciliation_operator.rs';
 const schedulerPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_reconciliation_scheduler.rs';
 const docsPath =
-  'crates/rustok-index/docs/m6-reconciliation-dead-letter-inspection.md';
-const planPath = 'crates/rustok-index/docs/implementation-plan.md';
+  'crates/modules/rustok-index/docs/m6-reconciliation-dead-letter-inspection.md';
+const planPath = 'crates/modules/rustok-index/docs/implementation-plan.md';
 
 const inspector = requireMarkers(inspectorPath, [
   'pub struct IndexReconciliationDeadLetterInspection',

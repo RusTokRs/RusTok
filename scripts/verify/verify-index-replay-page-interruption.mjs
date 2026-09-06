@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const replayPath = 'crates/rustok-index/src/application/source_replay.rs';
+const replayPath = 'crates/modules/rustok-index/src/application/source_replay.rs';
 const replay = requireMarkers(replayPath, [
   'future::Future',
   'pub async fn run_next_page_interruptible<Check, CheckFuture>',
@@ -84,7 +84,7 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-index/src/application/source_replay_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/source_replay_tests.rs', [
   'interruption_before_source_scan_skips_source_and_checkpoint',
   'interruption_before_checkpoint_replays_applied_mutation_without_advancing_cursor',
   'interruption_probe_failure_stays_bounded_and_skips_source',
@@ -94,24 +94,24 @@ requireMarkers('crates/rustok-index/src/application/source_replay_tests.rs', [
   'assert_eq!(outcome.duplicate_count(), 1);',
 ]);
 
-requireMarkers('crates/rustok-index/src/application/source_timeout.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/source_timeout.rs', [
   'const DEFAULT_INDEX_SOURCE_CALL_TIMEOUT: Duration = Duration::from_secs(30);',
   'const INDEX_SOURCE_SCAN_TIMEOUT_CODE: &str = "index_source_scan_timeout";',
   'TimedIndexSource::new(source, DEFAULT_INDEX_SOURCE_CALL_TIMEOUT)',
 ]);
-requireMarkers('crates/rustok-index/src/replay_dry_run.rs', [
+requireMarkers('crates/modules/rustok-index/src/replay_dry_run.rs', [
   'pub struct SharedIndexReplayDryRunRuntime',
   '.scan(scan_request)',
 ]);
 
-const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
+const runnerPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = read(runnerPath);
 if (runner.includes('run_next_page_interruptible')) {
   fail(`${runnerPath} ordinary replay runner file must stay separate from the interruption extension`);
 }
 
 const runnerExtensionPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
 const runnerExtension = requireMarkers(runnerExtensionPath, [
   'pub async fn run_interruptible<Check>(',
   '.run_next_page_interruptible(',
@@ -126,7 +126,7 @@ for (const forbidden of ['request_cancel(', 'cancel_requested = TRUE', 'finish_f
   }
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/replay_runtime.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/replay_runtime.rs', [
   'pub async fn run_interruptible<Check>(',
   '.run_interruptible(request, should_interrupt)',
 ]);
@@ -140,13 +140,13 @@ requireMarkers('apps/server/src/graphql/index_replay.rs', [
   '.run_interruptible(operator_context, request, || stop_handle.is_stopping())',
 ]);
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod source_replay_runner {',
   'include!("source_replay_runner.rs");',
   'mod graceful_shutdown;',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m6-cooperative-page-interruption.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-cooperative-page-interruption.md', [
   'Status: `worker_runner_host_binding_source_complete_execution_pending`',
   '`run_next_page_interruptible`',
   '`PostgresIndexReplayRunner::run_interruptible`',
@@ -162,10 +162,10 @@ requireMarkers('crates/rustok-index/docs/m6-cooperative-page-interruption.md', [
   'accepts no stop handle, shutdown flag, or probe from GraphQL input',
   'runner interruption after durable mutation / before checkpoint commit',
 ]);
-requireMarkers('crates/rustok-index/docs/README.md', [
+requireMarkers('crates/modules/rustok-index/docs/README.md', [
   '[M6 Cooperative Replay-page Interruption](./m6-cooperative-page-interruption.md)',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- [ ] Add in-page interruption/timeouts, dry-run, and targeted/full/shadow rebuild modes.',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [

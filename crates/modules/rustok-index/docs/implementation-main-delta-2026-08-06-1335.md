@@ -15,7 +15,7 @@ to release workflows and Pages build composition, Commerce error-envelope and di
 Forum category storefront routing and canonical SEO policy, server evidence/test support, storefront
 feature gating, `rustok-api` port error traits, and Forum admin recursion configuration.
 
-No `crates/rustok-index` source, migration, documentation, contract, or Index verifier path changed.
+No `crates/modules/rustok-index` source, migration, documentation, contract, or Index verifier path changed.
 There is no source overlap with either the prepared-repair recovery parent or this orphan-link repair
 slice.
 

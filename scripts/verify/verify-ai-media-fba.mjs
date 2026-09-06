@@ -10,10 +10,10 @@ function sameSet(actual, expected, label) {
   if (a !== e) fail(`${label} drift: expected ${e}, got ${a}`);
 }
 
-const registryPath = 'crates/rustok-ai-media/contracts/ai-media-fba-registry.json';
-const evidencePath = 'crates/rustok-ai-media/contracts/evidence/ai-media-consumer-static-matrix.json';
-const fallbackSmokePath = 'crates/rustok-ai-media/contracts/evidence/ai-media-runtime-fallback-smoke.json';
-const providerPath = 'crates/rustok-media/contracts/media-fba-registry.json';
+const registryPath = 'crates/modules/rustok-ai-media/contracts/ai-media-fba-registry.json';
+const evidencePath = 'crates/modules/rustok-ai-media/contracts/evidence/ai-media-consumer-static-matrix.json';
+const fallbackSmokePath = 'crates/modules/rustok-ai-media/contracts/evidence/ai-media-runtime-fallback-smoke.json';
+const providerPath = 'crates/modules/rustok-media/contracts/media-fba-registry.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const fallbackSmoke = json(fallbackSmokePath);
@@ -50,10 +50,10 @@ if (fallbackSmoke.profile !== registry.contract_tests.fallback_smoke.profiles[0]
 if (fallbackSmoke.degraded_mode !== registry.contract_tests.fallback_smoke.degraded_modes[0]) fail('fallback smoke degraded mode drift');
 sameSet(fallbackSmoke.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'fallback smoke cases');
 
-const plan = read('crates/rustok-ai-media/docs/implementation-plan.md');
+const plan = read('crates/modules/rustok-ai-media/docs/implementation-plan.md');
 hasAll(plan, [`- FBA status: \`${registry.status}\``, 'ai-media-fba-registry.json', 'MediaAssetReadPort', 'ai-media-consumer-static-matrix.json', 'ai-media-runtime-fallback-smoke.json'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `rustok-ai-media` |', 'crates/rustok-ai-media/contracts/ai-media-fba-registry.json', 'crates/rustok-ai-media/contracts/evidence/ai-media-runtime-fallback-smoke.json'], 'central registry');
+hasAll(central, ['| `rustok-ai-media` |', 'crates/modules/rustok-ai-media/contracts/ai-media-fba-registry.json', 'crates/modules/rustok-ai-media/contracts/evidence/ai-media-runtime-fallback-smoke.json'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`ai-media`', 'MediaAssetReadPort', 'ai-media-fba-registry.json', 'ai-media-runtime-fallback-smoke.json'], 'unified plan');
 

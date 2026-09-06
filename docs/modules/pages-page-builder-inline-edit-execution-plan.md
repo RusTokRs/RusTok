@@ -159,7 +159,7 @@ apps/next-admin/tests/pages-inline-edit/browser-evidence.spec.ts
 Source guard:
 
 ```text
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-browser-evidence-harness.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-browser-evidence-harness.mjs
 ```
 
 Execution requires reviewed external storage-state files and fixture routes. Trace, screenshots and video remain disabled. The retained packet stores only hashes, sizes, statuses, counters and bounded facts.
@@ -206,7 +206,7 @@ scripts/evidence/assemble-pages-inline-edit-rollout-evidence.mjs
 Source guard:
 
 ```text
-node crates/rustok-pages/scripts/verify/verify-pages-inline-edit-rollout-evidence-harness.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-rollout-evidence-harness.mjs
 ```
 
 The assembler consumes bounded maintainer observations. It does not query deployment/configuration/monitoring systems and does not mutate configuration, deploy, promote or roll back.

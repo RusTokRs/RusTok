@@ -16,10 +16,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
-const contractPath = path.join(repoRoot, "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json");
-const candidateContractPath = path.join(repoRoot, "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json");
-const observedAcceptanceSourcePath = path.join(repoRoot, "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json");
-const sourceGatePath = path.join(repoRoot, "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json");
+const contractPath = path.join(repoRoot, "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json");
+const candidateContractPath = path.join(repoRoot, "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-execution-contract.json");
+const observedAcceptanceSourcePath = path.join(repoRoot, "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json");
+const sourceGatePath = path.join(repoRoot, "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json");
 const MAX_INPUT_BYTES = 32 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 const OWNER_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/u;

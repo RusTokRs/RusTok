@@ -4,23 +4,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  contract: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-capability-preflight-source.json",
-  coreRollout: "crates/rustok-page-builder/src/rollout.rs",
-  providerStatus: "crates/rustok-page-builder/admin/src/provider_status.rs",
-  owner: "crates/rustok-pages/src/graphql/builder_rollout.rs",
-  runtimeData: "crates/rustok-pages/src/graphql/runtime_data.rs",
-  pagesSnapshot: "crates/rustok-pages/admin/src/builder_rollout_settings.rs",
-  pagesFacade: "crates/rustok-pages/admin/src/builder.rs",
-  rolloutHarnessContract: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json",
-  rolloutHarnessEvidence: "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-harness-source.json",
+  contract: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-capability-preflight-source.json",
+  coreRollout: "crates/modules/rustok-page-builder/src/rollout.rs",
+  providerStatus: "crates/modules/rustok-page-builder/admin/src/provider_status.rs",
+  owner: "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
+  runtimeData: "crates/modules/rustok-pages/src/graphql/runtime_data.rs",
+  pagesSnapshot: "crates/modules/rustok-pages/admin/src/builder_rollout_settings.rs",
+  pagesFacade: "crates/modules/rustok-pages/admin/src/builder.rs",
+  rolloutHarnessContract: "crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json",
+  rolloutHarnessEvidence: "crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-harness-source.json",
   rolloutHarnessSpec: "apps/next-admin/tests/pages-builder-rollout-feature-preflight/feature-preflight.spec.ts",
-  runtimeHarness: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json",
-  consumerBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
-  serverBinding: "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
-  gate: "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
+  runtimeHarness: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json",
+  consumerBinding: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
+  serverBinding: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
+  gate: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
   overlay: "docs/modules/pages-page-builder-provider-health-capability-preflight-actualization-2026-08-09.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };

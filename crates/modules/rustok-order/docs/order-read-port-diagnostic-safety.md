@@ -3,7 +3,7 @@
 Status: `source_reviewed_unvalidated`
 
 This continuation closes the correlation-safe diagnostic gap in
-`crates/rustok-order/src/order_read.rs`.
+`crates/modules/rustok-order/src/order_read.rs`.
 
 The reviewed boundary contains six owner read operations:
 

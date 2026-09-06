@@ -28,7 +28,7 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-posting-policy-facts.json";
+  "crates/modules/rustok-forum/contracts/forum-posting-policy-facts.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const source = read(contract.composition_file);
 const postingContract = read(contract.contract_file);

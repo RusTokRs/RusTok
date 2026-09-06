@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 function fail(message) {
   console.error("[verify-page-builder-runtime-fallback-gate] FAIL");
@@ -17,7 +17,7 @@ function fail(message) {
 const sourceChecks = [
   {
     label: "runtime rollout fallback matrix",
-    file: "crates/rustok-page-builder/src/rollout.rs",
+    file: "crates/modules/rustok-page-builder/src/rollout.rs",
     tokens: [
       "fallback_matrix",
       "all_on",
@@ -30,7 +30,7 @@ const sourceChecks = [
   },
   {
     label: "runtime feature-disabled error catalog",
-    file: "crates/rustok-page-builder/src/service.rs",
+    file: "crates/modules/rustok-page-builder/src/service.rs",
     tokens: [
       "PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE",
       "PageBuilderErrorKind::FeatureDisabled",
@@ -39,7 +39,7 @@ const sourceChecks = [
   },
   {
     label: "provider registry fallback profiles",
-    file: "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    file: "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
     tokens: [
       "all_on",
       "publish_off",

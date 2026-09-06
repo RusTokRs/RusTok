@@ -12,14 +12,14 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  query: 'crates/rustok-commerce/src/graphql/query.rs',
-  safeSource: 'crates/rustok-commerce/src/graphql/safe_query/source.rs',
-  cartShim: 'crates/rustok-commerce/src/graphql/safe_query/source/rustok_cart_shim.rs',
-  ownerPorts: 'crates/rustok-cart/src/ports.rs',
-  apiPorts: 'crates/rustok-api/src/ports.rs',
+  query: 'crates/modules/rustok-commerce/src/graphql/query.rs',
+  safeSource: 'crates/modules/rustok-commerce/src/graphql/safe_query/source.rs',
+  cartShim: 'crates/modules/rustok-commerce/src/graphql/safe_query/source/rustok_cart_shim.rs',
+  ownerPorts: 'crates/modules/rustok-cart/src/ports.rs',
+  apiPorts: 'crates/libs/rustok-api/src/ports.rs',
   evidence:
-    'crates/rustok-commerce/contracts/evidence/graphql-query-cart-read-error-safety-source-review.json',
-  document: 'crates/rustok-commerce/docs/graphql-query-cart-read-error-safety.md',
+    'crates/modules/rustok-commerce/contracts/evidence/graphql-query-cart-read-error-safety-source-review.json',
+  document: 'crates/modules/rustok-commerce/docs/graphql-query-cart-read-error-safety.md',
 };
 
 const query = read(paths.query);
@@ -243,7 +243,7 @@ if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
 for (const marker of [
   '# Commerce GraphQL cart read error safety',
   'Status: `source_closed_unvalidated`',
-  'The compatibility resolver source in `crates/rustok-commerce/src/graphql/query.rs` remains unchanged.',
+  'The compatibility resolver source in `crates/modules/rustok-commerce/src/graphql/query.rs` remains unchanged.',
   'Its three existing calls to `read_storefront_cart`',
   'Two existing resolver branches still compare the owner code `cart.cart_not_found` and return `None`.',
   '`message` is a typed `CartGraphqlMessage`, not the owner message string',

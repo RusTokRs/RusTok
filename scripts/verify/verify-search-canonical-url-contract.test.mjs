@@ -26,19 +26,19 @@ function fixture({
   staleEvidenceFallback = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-search-url-contract-"));
-  const enginePath = "crates/rustok-search/src/engine.rs";
-  const forumProjectionPath = "crates/rustok-forum/src/search_projection.rs";
-  const graphqlPath = "crates/rustok-search/src/graphql/types.rs";
+  const enginePath = "crates/modules/rustok-search/src/engine.rs";
+  const forumProjectionPath = "crates/modules/rustok-forum/src/search_projection.rs";
+  const graphqlPath = "crates/modules/rustok-search/src/graphql/types.rs";
   const storefrontNativePath =
-    "crates/rustok-search/storefront/src/transport/native_server_adapter.rs";
-  const storefrontFacadePath = "crates/rustok-search/storefront/src/transport/mod.rs";
+    "crates/modules/rustok-search/storefront/src/transport/native_server_adapter.rs";
+  const storefrontFacadePath = "crates/modules/rustok-search/storefront/src/transport/mod.rs";
   const adminNativeRootPath =
-    "crates/rustok-search/admin/src/transport/native_server_adapter.rs";
+    "crates/modules/rustok-search/admin/src/transport/native_server_adapter.rs";
   const adminNativeMappingPath =
-    "crates/rustok-search/admin/src/transport/native_server_adapter/mapping.rs";
+    "crates/modules/rustok-search/admin/src/transport/native_server_adapter/mapping.rs";
   const adminShellPath = "apps/admin/src/widgets/app_shell/native_server_adapter.rs";
   const compatibilityPath =
-    "crates/rustok-search/storefront/src/transport/navigation.rs";
+    "crates/modules/rustok-search/storefront/src/transport/navigation.rs";
 
   write(
     root,
@@ -99,7 +99,7 @@ function fixture({
         format!("{topic_route}?reply={reply_id}")
       `,
   );
-  write(root, "crates/rustok-search/src/lib.rs", "pub use engine::canonical_search_result_url;");
+  write(root, "crates/modules/rustok-search/src/lib.rs", "pub use engine::canonical_search_result_url;");
   write(
     root,
     graphqlPath,
@@ -154,7 +154,7 @@ function fixture({
   const productionContract = {
     normalized_result: enginePath,
     forum_projection_owner: forumProjectionPath,
-    public_export: "crates/rustok-search/src/lib.rs",
+    public_export: "crates/modules/rustok-search/src/lib.rs",
     graphql_projection: graphqlPath,
     storefront_native_projection: storefrontNativePath,
     storefront_transport_facade: storefrontFacadePath,
@@ -165,7 +165,7 @@ function fixture({
   if (staleEvidenceFallback) productionContract.compatibility_fallback = compatibilityPath;
   write(
     root,
-    "crates/rustok-search/contracts/evidence/search-canonical-url-contract.json",
+    "crates/modules/rustok-search/contracts/evidence/search-canonical-url-contract.json",
     JSON.stringify({
       schema_version: 1,
       module: "search",
@@ -194,7 +194,7 @@ function fixture({
   );
   write(
     root,
-    "crates/rustok-search/docs/implementation-plan.md",
+    "crates/modules/rustok-search/docs/implementation-plan.md",
     "search-canonical-url-contract.json canonical_search_result_url single owner policy no transport fallback",
   );
   return root;

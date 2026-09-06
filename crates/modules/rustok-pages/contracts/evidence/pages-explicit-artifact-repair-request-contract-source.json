@@ -4,7 +4,7 @@
   "generated_at": "2026-08-07T09:33:00+03:00",
   "scope": "Runnable request-level GraphQL and HTTP contract harness for explicit Pages artifact rebuild and activation transports",
   "source_contract": {
-    "test": "crates/rustok-pages/tests/explicit_artifact_repair_request_contract.rs",
+    "test": "crates/modules/rustok-pages/tests/explicit_artifact_repair_request_contract.rs",
     "graphql_rebuild_mutation": "rebuildPageArtifact",
     "graphql_activation_mutation": "activateRebuiltPageArtifact",
     "http_rebuild_path": "/api/admin/pages/{id}/artifacts/rebuild",

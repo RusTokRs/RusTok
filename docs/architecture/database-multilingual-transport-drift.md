@@ -14,11 +14,11 @@ The authoritative schema removes `oauth_apps.name` and
 
 The three formerly incompatible adapters are now cut over:
 
-- `crates/rustok-auth/admin/src/transport/native_server_adapter.rs` calls the
+- `crates/modules/rustok-auth/admin/src/transport/native_server_adapter.rs` calls the
   owner `OAuthAdminPort` with the host-resolved `RequestContext.locale`;
 - `apps/admin/src/features/oauth_apps/transport/native_server_adapter.rs`
   delegates to the owner Auth admin transport instead of querying OAuth tables;
-- `crates/rustok-channel/admin/src/transport/native_server_adapter.rs` keeps
+- `crates/modules/rustok-channel/admin/src/transport/native_server_adapter.rs` keeps
   the Channel permission boundary and performs an exact
   `(tenant_id, app_id, locale)` translation join for PostgreSQL, MySQL, and
   SQLite.

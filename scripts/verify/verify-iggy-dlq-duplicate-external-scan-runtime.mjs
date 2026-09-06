@@ -6,18 +6,18 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json";
-const testPath = "crates/rustok-iggy/tests/dlq_duplicate_external_scan.rs";
-const scannerPath = "crates/rustok-iggy/src/dlq_duplicate_external_scan.rs";
-const classifierPath = "crates/rustok-iggy/src/dlq_duplicate_inspection.rs";
-const dlqPath = "crates/rustok-iggy/src/dlq.rs";
-const transportPath = "crates/rustok-iggy/src/transport.rs";
+  "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json";
+const testPath = "crates/modules/rustok-iggy/tests/dlq_duplicate_external_scan.rs";
+const scannerPath = "crates/modules/rustok-iggy/src/dlq_duplicate_external_scan.rs";
+const classifierPath = "crates/modules/rustok-iggy/src/dlq_duplicate_inspection.rs";
+const dlqPath = "crates/modules/rustok-iggy/src/dlq.rs";
+const transportPath = "crates/modules/rustok-iggy/src/transport.rs";
 const expectedVerifier =
   "scripts/verify/verify-iggy-dlq-duplicate-external-scan-runtime.mjs";
 const expectedDocumentation =
-  "crates/rustok-iggy/docs/dlq-duplicate-external-scan-runtime-evidence.md";
+  "crates/modules/rustok-iggy/docs/dlq-duplicate-external-scan-runtime-evidence.md";
 const expectedProfilesCheckpoint =
-  "crates/rustok-profiles/docs/poison-duplicate-external-runtime-checkpoint.md";
+  "crates/modules/rustok-profiles/docs/poison-duplicate-external-runtime-checkpoint.md";
 const expectedCase =
   "bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset";
 const expectedCommand = {

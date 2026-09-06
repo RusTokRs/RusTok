@@ -84,14 +84,14 @@ requireMarkers('ops/benches/Cargo.toml', [
   'name = "index-query-equivalence-capture"',
   'path = "src/bin/index_query_equivalence_capture.rs"',
 ]);
-requireMarkers('crates/rustok-index/docs/m4-postgres-reference-equivalence.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-postgres-reference-equivalence.md', [
   'Status: `fixture_capture_and_admission_source_complete_owner_execution_pending`',
   '`index-query-equivalence-capture`',
   'descriptor-last no-clobber bundle',
   'does not retain the PostgreSQL URL',
   'Not run by the implementation agent',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- [x] Add retained v4 plan/SQL snapshots and synchronized source guards.',
   '- [ ] Execute PostgreSQL/reference-engine equivalence capture and admit retained live evidence.',
 ]);

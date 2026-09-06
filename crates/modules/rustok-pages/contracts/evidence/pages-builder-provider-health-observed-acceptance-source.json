@@ -39,19 +39,19 @@
     "deployment_identity": {
       "format": "page_builder_provider_health_deployment_identity_v1",
       "status": "deployment_identity_verified_health_evaluation_pending",
-      "source_contract": "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json"
+      "source_contract": "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json"
     },
     "deployment_evaluation": {
       "format": "page_builder_provider_health_deployment_evaluation_v1",
       "status": "deployment_health_evaluated_pages_binding_pending",
-      "source_contract": "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json"
+      "source_contract": "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json"
     },
     "binding_owner_acceptance": {
       "format": "pages_builder_provider_health_owner_acceptance_v1",
       "status": "owner_accepted_server_binding_pending",
       "decision": "accept_for_pages_binding",
       "rollback_action": "restore_unobserved_provider_health",
-      "source_contract": "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json"
+      "source_contract": "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json"
     }
   },
   "owner_decision": {
@@ -116,16 +116,16 @@
     "workflow_or_ci_run": false
   },
   "required_source_files": [
-    "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
-    "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
-    "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json",
-    "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json",
     "apps/next-admin/tests/pages-builder-provider-health-runtime/runtime.spec.ts",
-    "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json",
     "scripts/evidence/accept-pages-builder-provider-health-deployment.mjs",
-    "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
+    "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json",
     "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs",
-    "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs",
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs",
     "docs/modules/pages-page-builder-provider-health-observed-acceptance-actualization-2026-08-10.md",
     "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md"
   ],

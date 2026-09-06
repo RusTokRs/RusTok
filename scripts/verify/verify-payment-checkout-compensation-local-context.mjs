@@ -23,22 +23,22 @@ const requireCount = (source, value, expected, label) => {
 };
 
 const paths = {
-  lib: "crates/rustok-payment/src/lib.rs",
-  api: "crates/rustok-payment/src/checkout_compensation_api.rs",
-  wrapper: "crates/rustok-payment/src/checkout_compensation_context.rs",
-  owner: "crates/rustok-payment/src/checkout_compensation.rs",
-  commerce: "crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs",
-  doc: "crates/rustok-payment/docs/checkout-compensation-local-context.md",
-  paymentPlan: "crates/rustok-payment/docs/implementation-plan.md",
-  commercePlan: "crates/rustok-commerce/docs/implementation-plan.md",
+  lib: "crates/modules/rustok-payment/src/lib.rs",
+  api: "crates/modules/rustok-payment/src/checkout_compensation_api.rs",
+  wrapper: "crates/modules/rustok-payment/src/checkout_compensation_context.rs",
+  owner: "crates/modules/rustok-payment/src/checkout_compensation.rs",
+  commerce: "crates/modules/rustok-commerce/src/services/checkout_compensation_owner_ports.rs",
+  doc: "crates/modules/rustok-payment/docs/checkout-compensation-local-context.md",
+  paymentPlan: "crates/modules/rustok-payment/docs/implementation-plan.md",
+  commercePlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
   wrapperEvidence:
-    "crates/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source.json",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source.json",
   wrapperReview:
-    "crates/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source-review.json",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-compensation-wrapper-diagnostic-safety-source-review.json",
   ownerEvidence:
-    "crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source.json",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source.json",
   ownerReview:
-    "crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source-review.json",
+    "crates/modules/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source-review.json",
   wrapperGuard:
     "scripts/verify/verify-payment-checkout-compensation-wrapper-error-diagnostic-safety.mjs",
   ownerGuard:

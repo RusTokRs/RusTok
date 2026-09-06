@@ -1,15 +1,15 @@
 {
   "status": "order_checkout_payment_settlement_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-order/src/checkout_owner_context.rs",
-    "crates/rustok-order/src/checkout_payment_settlement.rs",
-    "crates/rustok-order/docs/checkout-payment-settlement-local-context.md",
-    "crates/rustok-order/docs/checkout-owner-context.md",
-    "crates/rustok-order/docs/implementation-plan.md",
+    "crates/modules/rustok-order/src/checkout_owner_context.rs",
+    "crates/modules/rustok-order/src/checkout_payment_settlement.rs",
+    "crates/modules/rustok-order/docs/checkout-payment-settlement-local-context.md",
+    "crates/modules/rustok-order/docs/checkout-owner-context.md",
+    "crates/modules/rustok-order/docs/implementation-plan.md",
     "scripts/verify/verify-order-payment-settlement-local-context.mjs",
     "scripts/verify/verify-order-payment-settlement-error-context.mjs",
     "scripts/verify/verify-order-checkout-owner-context.mjs",
-    "crates/rustok-order/contracts/evidence/checkout-payment-settlement-diagnostic-safety-source.json"
+    "crates/modules/rustok-order/contracts/evidence/checkout-payment-settlement-diagnostic-safety-source.json"
   ],
   "review_findings": {
     "public_api_preserved": true,

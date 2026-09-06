@@ -76,9 +76,9 @@
     "topic vote inserts and updates targeting archived topics are rejected for PostgreSQL and SQLite",
     "reconciliation receipt updates and deletes are rejected for PostgreSQL and SQLite"
   ],
-  "test": "crates/rustok-forum/tests/topic_merge_vote_reconciliation_sqlite.rs",
+  "test": "crates/modules/rustok-forum/tests/topic_merge_vote_reconciliation_sqlite.rs",
   "verifier": "scripts/verify/verify-forum-topic-merge-vote-reconciliation.mjs",
-  "documentation": "crates/rustok-forum/docs/forum-21f-topic-merge-vote-reconciliation.md",
+  "documentation": "crates/modules/rustok-forum/docs/forum-21f-topic-merge-vote-reconciliation.md",
   "maintainer_commands": [
     "node scripts/verify/verify-forum-topic-merge-vote-reconciliation.mjs",
     "cargo test -p rustok-forum --test topic_merge_vote_reconciliation_sqlite -- --nocapture"

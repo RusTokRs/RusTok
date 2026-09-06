@@ -14,8 +14,8 @@ function requireAbsent(text, marker, message) {
   if (text.includes(marker)) throw new Error(message);
 }
 
-const ownerPath = "crates/rustok-notifications/src/inbox_reconcile.rs";
-const surfacePath = "crates/rustok-notifications/src/lib.rs";
+const ownerPath = "crates/modules/rustok-notifications/src/inbox_reconcile.rs";
+const surfacePath = "crates/modules/rustok-notifications/src/lib.rs";
 const queryPath = "apps/server/src/graphql/forum_notification_reconciliation.rs";
 const graphqlModPath = "apps/server/src/graphql/mod.rs";
 const schemaPath = "apps/server/src/graphql/schema.rs";

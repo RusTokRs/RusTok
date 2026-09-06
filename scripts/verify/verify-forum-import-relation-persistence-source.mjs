@@ -15,13 +15,13 @@ function forbid(text, marker, label) {
 }
 
 const files = {
-  lib: "crates/rustok-forum/src/lib.rs",
-  mentions: "crates/rustok-forum/src/mentions.rs",
-  mentionsImport: "crates/rustok-forum/src/mentions_import.rs",
-  relationPreparation: "crates/rustok-forum/src/import_relation_preparation.rs",
-  relationOwner: "crates/rustok-forum/src/services/mention_relation.rs",
-  relationImport: "crates/rustok-forum/src/services/mention_relation_import.rs",
-  services: "crates/rustok-forum/src/services/mod.rs",
+  lib: "crates/modules/rustok-forum/src/lib.rs",
+  mentions: "crates/modules/rustok-forum/src/mentions.rs",
+  mentionsImport: "crates/modules/rustok-forum/src/mentions_import.rs",
+  relationPreparation: "crates/modules/rustok-forum/src/import_relation_preparation.rs",
+  relationOwner: "crates/modules/rustok-forum/src/services/mention_relation.rs",
+  relationImport: "crates/modules/rustok-forum/src/services/mention_relation_import.rs",
+  services: "crates/modules/rustok-forum/src/services/mod.rs",
   packet: "docs/modules/forum-34-import-relation-persistence-actualization-2026-08-09.md",
 };
 

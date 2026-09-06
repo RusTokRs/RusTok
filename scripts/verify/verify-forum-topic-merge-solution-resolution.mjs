@@ -4,34 +4,34 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-topic-merge-solution-resolution.json",
-  policyContract: "crates/rustok-forum/contracts/forum-topic-merge-solution-policy.json",
-  cumulativeContract: "crates/rustok-forum/contracts/forum-topic-merge-owner.json",
-  docs: "crates/rustok-forum/docs/forum-21l-topic-merge-solution-resolution.md",
-  policyDocs: "crates/rustok-forum/docs/forum-21h-topic-merge-solution-policy.md",
-  cumulativeDocs: "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
-  entity: "crates/rustok-forum/src/entities/forum_topic_merge_solution_resolution.rs",
-  entitiesMod: "crates/rustok-forum/src/entities/mod.rs",
+  contract: "crates/modules/rustok-forum/contracts/forum-topic-merge-solution-resolution.json",
+  policyContract: "crates/modules/rustok-forum/contracts/forum-topic-merge-solution-policy.json",
+  cumulativeContract: "crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21l-topic-merge-solution-resolution.md",
+  policyDocs: "crates/modules/rustok-forum/docs/forum-21h-topic-merge-solution-policy.md",
+  cumulativeDocs: "crates/modules/rustok-forum/docs/forum-21b-topic-merge-owner.md",
+  entity: "crates/modules/rustok-forum/src/entities/forum_topic_merge_solution_resolution.rs",
+  entitiesMod: "crates/modules/rustok-forum/src/entities/mod.rs",
   migration:
-    "crates/rustok-forum/src/migrations/m20260803_000018_add_forum_topic_merge_solution_resolution.rs",
-  migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
-  owner: "crates/rustok-forum/src/services/topic_merge.rs",
-  stats: "crates/rustok-forum/src/services/user_stats.rs",
-  graphql: "crates/rustok-forum/src/graphql/topic_merge_mutation.rs",
-  graphqlMod: "crates/rustok-forum/src/graphql/mod.rs",
-  sqliteTest: "crates/rustok-forum/tests/topic_merge_solution_resolution_sqlite.rs",
-  graphqlTest: "crates/rustok-forum/tests/topic_merge_solution_resolution_graphql_contract.rs",
+    "crates/modules/rustok-forum/src/migrations/m20260803_000018_add_forum_topic_merge_solution_resolution.rs",
+  migrationsMod: "crates/modules/rustok-forum/src/migrations/mod.rs",
+  owner: "crates/modules/rustok-forum/src/services/topic_merge.rs",
+  stats: "crates/modules/rustok-forum/src/services/user_stats.rs",
+  graphql: "crates/modules/rustok-forum/src/graphql/topic_merge_mutation.rs",
+  graphqlMod: "crates/modules/rustok-forum/src/graphql/mod.rs",
+  sqliteTest: "crates/modules/rustok-forum/tests/topic_merge_solution_resolution_sqlite.rs",
+  graphqlTest: "crates/modules/rustok-forum/tests/topic_merge_solution_resolution_graphql_contract.rs",
   subscriptionReconciliation:
-    "crates/rustok-forum/src/services/topic_merge_subscription_reconciliation.rs",
+    "crates/modules/rustok-forum/src/services/topic_merge_subscription_reconciliation.rs",
   readStateReconciliation:
-    "crates/rustok-forum/src/services/topic_merge_read_state_reconciliation.rs",
-  tagReconciliation: "crates/rustok-forum/src/services/topic_merge_tag_reconciliation.rs",
-  voteReconciliation: "crates/rustok-forum/src/services/topic_merge_vote_reconciliation.rs",
+    "crates/modules/rustok-forum/src/services/topic_merge_read_state_reconciliation.rs",
+  tagReconciliation: "crates/modules/rustok-forum/src/services/topic_merge_tag_reconciliation.rs",
+  voteReconciliation: "crates/modules/rustok-forum/src/services/topic_merge_vote_reconciliation.rs",
   audienceReconciliation:
-    "crates/rustok-forum/src/services/topic_merge_audience_reconciliation.rs",
-  readme: "crates/rustok-forum/README.md",
-  docsIndex: "crates/rustok-forum/docs/README.md",
-  plan: "crates/rustok-forum/docs/implementation-plan.md",
+    "crates/modules/rustok-forum/src/services/topic_merge_audience_reconciliation.rs",
+  readme: "crates/modules/rustok-forum/README.md",
+  docsIndex: "crates/modules/rustok-forum/docs/README.md",
+  plan: "crates/modules/rustok-forum/docs/implementation-plan.md",
 };
 
 const read = (path) => readFileSync(path, "utf8");

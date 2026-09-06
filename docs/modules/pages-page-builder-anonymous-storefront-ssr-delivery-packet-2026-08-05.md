@@ -38,7 +38,7 @@ It extracts the private `render_document` source through `include_str!`, retains
 
 ## Source verifier
 
-`crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-ssr-delivery.mjs` retains:
+`crates/modules/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-ssr-delivery.mjs` retains:
 
 - the host feature boundary;
 - `rlib` host shape;
@@ -51,12 +51,12 @@ It extracts the private `render_document` source through `include_str!`, retains
 
 ## Explicit built artifact inspection
 
-`crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs` requires at least one explicit built artifact path. It never treats a missing artifact or a nonexistent client bundle as a passing bundle proof.
+`crates/modules/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs` requires at least one explicit built artifact path. It never treats a missing artifact or a nonexistent client bundle as a passing bundle proof.
 
 Before scanning bytes it runs:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-graph.mjs
 ```
 
 For every supplied artifact it records:
@@ -71,12 +71,12 @@ It writes a `pages_anonymous_storefront_ssr_artifact_execution_v1` JSON packet a
 Example maintainer sequence, intentionally not run here:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-ssr-delivery.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-anonymous-storefront-ssr-delivery.mjs
 
 CARGO_TARGET_DIR=target/pages-anonymous-storefront-ssr \
   cargo build -p rustok-storefront --no-default-features --features ssr --lib
 
-node crates/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs \
+node crates/modules/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs \
   --profile host-storefront-ssr \
   --artifact target/pages-anonymous-storefront-ssr/debug/deps/librustok_storefront-<hash>.rlib \
   --output /tmp/pages-anonymous-storefront-ssr-artifact.json

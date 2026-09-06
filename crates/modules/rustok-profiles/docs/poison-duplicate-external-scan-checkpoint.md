@@ -88,8 +88,8 @@ absent on partitions 1 and 2 before publication and after every scan.
 Sources:
 
 ```text
-crates/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs
-crates/rustok-iggy/contracts/evidence/
+crates/modules/rustok-iggy/tests/dlq_duplicate_fair_window_external_scan.rs
+crates/modules/rustok-iggy/contracts/evidence/
   dlq-duplicate-fair-window-external-scan-runtime-source.json
 scripts/verify/
   verify-iggy-dlq-duplicate-fair-window-external-scan-runtime.mjs

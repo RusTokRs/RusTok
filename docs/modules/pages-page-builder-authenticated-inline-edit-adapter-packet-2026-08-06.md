@@ -75,7 +75,7 @@ This adapter slice does not:
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs
 cargo test -p fly-leptos --all-targets -- --nocapture
 cargo test -p rustok-page-builder-storefront \
   --features inline-edit,ssr --all-targets -- --nocapture

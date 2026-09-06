@@ -12,7 +12,7 @@ promote D0 to runtime-complete.
 The machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-aggregate-evidence-assembler.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-aggregate-evidence-assembler.json
 ```
 
 The assembler is:

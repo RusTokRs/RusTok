@@ -37,7 +37,7 @@ function reject(source, pattern, message) {
 }
 
 const contract = JSON.parse(read(
-  "crates/rustok-notifications/contracts/notifications-outbox-intake.json",
+  "crates/modules/rustok-notifications/contracts/notifications-outbox-intake.json",
 ) || "{}");
 const receiptMigration = read(contract.receipt_migration ?? "");
 const rejectionMigration = read(contract.rejection_migration ?? "");
@@ -45,8 +45,8 @@ const owner = read(contract.owner_driver ?? "");
 const server = read(contract.server_worker ?? "");
 const bootstrap = read(contract.bootstrap ?? "");
 const forumProvider = read(contract.forum_provider ?? "");
-const library = read("crates/rustok-notifications/src/lib.rs");
-const manifest = read("crates/rustok-notifications/Cargo.toml");
+const library = read("crates/modules/rustok-notifications/src/lib.rs");
+const manifest = read("crates/modules/rustok-notifications/Cargo.toml");
 const test = read(contract.tests?.[0] ?? "");
 
 if (contract.slice !== "NOTIFY-03D" || contract.schema_version !== 3) {

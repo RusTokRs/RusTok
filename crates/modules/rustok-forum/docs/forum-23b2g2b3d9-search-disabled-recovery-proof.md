@@ -12,7 +12,7 @@ owner ledger can recover projection state after Search is enabled later.
 The machine-readable contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-search-disabled-recovery-proof.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-search-disabled-recovery-proof.json
 ```
 
 The executable PostgreSQL integration test is:
@@ -150,7 +150,7 @@ advances while retaining the same three documents and three audit rows.
 
 ## Static dependency boundary
 
-`crates/rustok-forum/Cargo.toml` has no `rustok-search` dependency.
+`crates/modules/rustok-forum/Cargo.toml` has no `rustok-search` dependency.
 `projection_invalidation.rs` writes only owner revision tables and Outbox-owned
 events. It does not reference `search_documents`, `search_projection_inbox` or
 Search-owned checkpoint tables.

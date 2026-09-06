@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
 const testPath = "apps/server/tests/groups_governance_suspension_expiry_postgres.rs";
-const docsPath = "crates/rustok-groups/docs/governance-suspension-expiry-postgres-contract.md";
+const docsPath = "crates/modules/rustok-groups/docs/governance-suspension-expiry-postgres-contract.md";
 const test = fs.readFileSync(testPath, "utf8");
 const docs = fs.readFileSync(docsPath, "utf8");
 

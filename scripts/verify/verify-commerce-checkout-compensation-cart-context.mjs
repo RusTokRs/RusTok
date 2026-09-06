@@ -17,14 +17,14 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-const services = read('crates/rustok-commerce/src/services/mod.rs');
-const facade = read('crates/rustok-commerce/src/services/checkout_compensation_error_safe.rs');
-const retained = read('crates/rustok-commerce/src/services/checkout_compensation_owner_ports.rs');
-const cartContract = read('crates/rustok-cart/src/ports.rs');
-const cartOwner = read('crates/rustok-cart/src/owner_ports.rs');
-const doc = read('crates/rustok-commerce/docs/checkout-compensation-cart-context.md');
+const services = read('crates/modules/rustok-commerce/src/services/mod.rs');
+const facade = read('crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs');
+const retained = read('crates/modules/rustok-commerce/src/services/checkout_compensation_owner_ports.rs');
+const cartContract = read('crates/modules/rustok-cart/src/ports.rs');
+const cartOwner = read('crates/modules/rustok-cart/src/owner_ports.rs');
+const doc = read('crates/modules/rustok-commerce/docs/checkout-compensation-cart-context.md');
 const evidenceText = read(
-  'crates/rustok-commerce/contracts/evidence/checkout-cart-compensation-error-safety-source-review.json',
+  'crates/modules/rustok-commerce/contracts/evidence/checkout-cart-compensation-error-safety-source-review.json',
 );
 const evidence = JSON.parse(evidenceText);
 

@@ -8,7 +8,7 @@
     {
       "module": "pricing",
       "contract_version": "pricing.read_projection.v1",
-      "registry": "crates/rustok-pricing/contracts/pricing-fba-registry.json",
+      "registry": "crates/modules/rustok-pricing/contracts/pricing-fba-registry.json",
       "ports": [
         "PricingReadPort",
         "PricingWritePort"
@@ -28,7 +28,7 @@
     {
       "module": "inventory",
       "contract_version": "inventory.reservation.v1",
-      "registry": "crates/rustok-inventory/contracts/inventory-fba-registry.json",
+      "registry": "crates/modules/rustok-inventory/contracts/inventory-fba-registry.json",
       "ports": [
         "InventoryReservationPort"
       ],
@@ -47,7 +47,7 @@
     {
       "module": "order",
       "contract_version": "order.checkout_completion.v1",
-      "registry": "crates/rustok-order/contracts/order-fba-registry.json",
+      "registry": "crates/modules/rustok-order/contracts/order-fba-registry.json",
       "ports": [
         "CheckoutCompletionPort",
         "CheckoutOrderIdentityPort",
@@ -73,7 +73,7 @@
     {
       "module": "payment",
       "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1+refund_creation.v1+provider_outcome.v1+stripe_runtime.v1",
-      "registry": "crates/rustok-payment/contracts/payment-fba-registry.json",
+      "registry": "crates/modules/rustok-payment/contracts/payment-fba-registry.json",
       "ports": [
         "PaymentCollectionPort",
         "CheckoutPaymentCompensationPort",
@@ -103,7 +103,7 @@
     {
       "module": "fulfillment",
       "contract_version": "fulfillment.shipping_selection.v1+provider_spi.v1",
-      "registry": "crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json",
+      "registry": "crates/modules/rustok-fulfillment/contracts/fulfillment-fba-registry.json",
       "ports": [
         "ShippingSelectionPort",
         "CheckoutFulfillmentExecutionPort"
@@ -130,7 +130,7 @@
     {
       "module": "product",
       "contract_version": "product.catalog_read.v1",
-      "registry": "crates/rustok-product/contracts/product-fba-registry.json",
+      "registry": "crates/modules/rustok-product/contracts/product-fba-registry.json",
       "ports": [
         "ProductCatalogReadPort"
       ],
@@ -145,7 +145,7 @@
     {
       "module": "customer",
       "contract_version": "customer.read_projection.v1",
-      "registry": "crates/rustok-customer/contracts/customer-fba-registry.json",
+      "registry": "crates/modules/rustok-customer/contracts/customer-fba-registry.json",
       "ports": [
         "CustomerReadPort"
       ],
@@ -164,7 +164,7 @@
     {
       "module": "cart",
       "contract_version": "cart.checkout.v2",
-      "registry": "crates/rustok-cart/contracts/cart-fba-registry.json",
+      "registry": "crates/modules/rustok-cart/contracts/cart-fba-registry.json",
       "ports": [
         "CartCheckoutPort",
         "CartStorefrontPort",
@@ -190,7 +190,7 @@
     {
       "owner": "order",
       "contract_version": "order.checkout_compensation.v1",
-      "contract": "crates/rustok-order/contracts/order-checkout-compensation-v1.json",
+      "contract": "crates/modules/rustok-order/contracts/order-checkout-compensation-v1.json",
       "port": "CheckoutOrderCompensationPort",
       "operation": "compensate_checkout_order",
       "profile": "checkout_compensation_orchestration",
@@ -199,7 +199,7 @@
     {
       "owner": "payment",
       "contract_version": "payment.checkout_compensation.v1",
-      "contract": "crates/rustok-payment/contracts/payment-checkout-compensation-v1.json",
+      "contract": "crates/modules/rustok-payment/contracts/payment-checkout-compensation-v1.json",
       "port": "CheckoutPaymentCompensationPort",
       "operation": "compensate_checkout_payment",
       "profile": "checkout_compensation_orchestration",
@@ -208,7 +208,7 @@
     {
       "owner": "payment",
       "contract_version": "payment.checkout_execution.v1",
-      "contract": "crates/rustok-payment/contracts/payment-checkout-execution-v1.json",
+      "contract": "crates/modules/rustok-payment/contracts/payment-checkout-execution-v1.json",
       "port": "CheckoutPaymentExecutionPort",
       "operations": [
         "prepare_checkout_collection",
@@ -222,7 +222,7 @@
     {
       "owner": "fulfillment",
       "contract_version": "fulfillment.checkout_execution.v1",
-      "contract": "crates/rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json",
+      "contract": "crates/modules/rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json",
       "port": "CheckoutFulfillmentExecutionPort",
       "operations": [
         "ensure_checkout_fulfillments",
@@ -234,7 +234,7 @@
     {
       "owner": "order",
       "contract_version": "order.checkout_payment_settlement.v1",
-      "contract": "crates/rustok-order/contracts/order-checkout-payment-settlement-v1.json",
+      "contract": "crates/modules/rustok-order/contracts/order-checkout-payment-settlement-v1.json",
       "port": "CheckoutOrderPaymentSettlementPort",
       "operation": "settle_checkout_payment",
       "profile": "checkout_payment_settlement",
@@ -242,13 +242,13 @@
     }
   ],
   "evidence": {
-    "local_plan": "crates/rustok-commerce/docs/implementation-plan.md",
-    "checkout_compensation_cutover": "crates/rustok-commerce/docs/checkout-compensation-owner-cutover.md",
+    "local_plan": "crates/modules/rustok-commerce/docs/implementation-plan.md",
+    "checkout_compensation_cutover": "crates/modules/rustok-commerce/docs/checkout-compensation-owner-cutover.md",
     "checkout_compensation_guard": "scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs",
     "checkout_owner_stage_guard": "scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
-    "runtime_invocation_trace": "crates/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json"
+    "runtime_invocation_trace": "crates/modules/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json"
   },
   "rollout": {
     "profiles": [

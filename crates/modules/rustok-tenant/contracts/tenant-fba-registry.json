@@ -11,8 +11,8 @@
       "operations": [
         "read_tenant"
       ],
-      "context": "crates/rustok-tenant/src/ports.rs::PortContext",
-      "error": "crates/rustok-tenant/src/ports.rs::PortError",
+      "context": "crates/modules/rustok-tenant/src/ports.rs::PortContext",
+      "error": "crates/modules/rustok-tenant/src/ports.rs::PortError",
       "idempotency_required": false,
       "deadline_required": true
     }
@@ -42,19 +42,19 @@
     }
   ],
   "evidence": {
-    "local_plan": "crates/rustok-tenant/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-tenant/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-tenant-fba.mjs",
-    "runtime_fallback_smoke": "crates/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json"
+    "runtime_fallback_smoke": "crates/modules/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json"
   },
   "in_process_provider_impl": {
     "service": "TenantService",
-    "source": "crates/rustok-tenant/src/ports.rs",
+    "source": "crates/modules/rustok-tenant/src/ports.rs",
     "status": "implemented"
   },
   "contract_tests": {
     "status": "runtime_verified",
-    "source": "crates/rustok-tenant/contracts/tenant-fba-registry.json",
+    "source": "crates/modules/rustok-tenant/contracts/tenant-fba-registry.json",
     "runner": "scripts/verify/verify-tenant-fba.mjs",
     "profiles": [
       "in_process",

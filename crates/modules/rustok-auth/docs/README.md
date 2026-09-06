@@ -72,7 +72,7 @@ and composition, but must not duplicate auth policy or token semantics.
 - `apps/server/src/controllers/auth.rs` remains an HTTP adapter over auth-owned DTOs and lifecycle ports;
 - `apps/server` checks registry wiring and GraphQL security hints against `AUTH_USER_PERMISSIONS`, so the host layer does not diverge from the auth-owned permission surface;
 - `apps/server` implements ports on top of existing auth lifecycle/OAuth services and registers providers in shared runtime extensions; GraphQL and native `#[server]` adapters must consume one provider per boundary;
-- publishes its own UI via the sub-package `crates/rustok-auth/admin` with `ui_classification = "admin_only"`;
+- publishes its own UI via the sub-package `crates/modules/rustok-auth/admin` with `ui_classification = "admin_only"`;
 - email delivery and transport wiring remain the responsibility of the host layer and adjacent modules.
 
 ## Config Lifecycle Surface
@@ -123,7 +123,7 @@ When adding, removing or renaming permissions, update `AUTH_USER_PERMISSIONS`, `
 
 ## Incident Response
 
-Primary owner for auth/JWT/RBAC incidents — Platform security/auth on-call. Escalation path: owner of `crates/rustok-auth`, then owner of the server API surface.
+Primary owner for auth/JWT/RBAC incidents — Platform security/auth on-call. Escalation path: owner of `crates/modules/rustok-auth`, then owner of the server API surface.
 
 On auth degradation:
 

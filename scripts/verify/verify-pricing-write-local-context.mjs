@@ -12,16 +12,16 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const failures = [];
 
 const paths = {
-  lib: 'crates/rustok-pricing/src/lib.rs',
-  owner: 'crates/rustok-pricing/src/ports.rs',
-  wrapper: 'crates/rustok-pricing/src/write_context.rs',
-  readWrapper: 'crates/rustok-pricing/src/read_context.rs',
-  consumer: 'crates/rustok-commerce/src/graphql/mutations/pricing.rs',
+  lib: 'crates/modules/rustok-pricing/src/lib.rs',
+  owner: 'crates/modules/rustok-pricing/src/ports.rs',
+  wrapper: 'crates/modules/rustok-pricing/src/write_context.rs',
+  readWrapper: 'crates/modules/rustok-pricing/src/read_context.rs',
+  consumer: 'crates/modules/rustok-commerce/src/graphql/mutations/pricing.rs',
   evidence:
-    'crates/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source.json',
+    'crates/modules/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source.json',
   review:
-    'crates/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source-review.json',
-  document: 'crates/rustok-pricing/docs/write-local-context.md',
+    'crates/modules/rustok-pricing/contracts/evidence/pricing-write-local-diagnostic-safety-source-review.json',
+  document: 'crates/modules/rustok-pricing/docs/write-local-context.md',
 };
 
 const lib = read(paths.lib);

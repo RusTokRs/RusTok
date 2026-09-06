@@ -47,12 +47,12 @@
   },
   "execution": [],
   "reviewed_sources": [
-    "crates/rustok-commerce/admin/src/transport/mod.rs",
-    "crates/rustok-commerce/admin/src/transport/native_server_adapter.rs",
-    "crates/rustok-commerce/admin/src/transport/native_server_adapter_ssr.rs",
-    "crates/rustok-api/src/request.rs",
-    "crates/rustok-api/src/ports.rs",
-    "crates/rustok-cart/src/promotion_guard.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/mod.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-commerce/admin/src/transport/native_server_adapter_ssr.rs",
+    "crates/libs/rustok-api/src/request.rs",
+    "crates/libs/rustok-api/src/ports.rs",
+    "crates/modules/rustok-cart/src/promotion_guard.rs",
     "scripts/verify/verify-commerce-admin-boundary.mjs",
     "scripts/verify/verify-commerce-admin-promotion-native-error-safety.mjs",
     "scripts/verify/verify-commerce-admin-order-change-native-error-safety.mjs"

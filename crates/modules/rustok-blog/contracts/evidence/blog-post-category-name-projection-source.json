@@ -33,11 +33,11 @@
     "ffa_promoted": false,
     "fba_promoted": false
   },
-  "production_source": "crates/rustok-blog/src/services/post.rs",
-  "category_projection_source": "crates/rustok-blog/src/services/category_name_projection.rs",
-  "dto_source": "crates/rustok-blog/src/dto/post.rs",
+  "production_source": "crates/modules/rustok-blog/src/services/post.rs",
+  "category_projection_source": "crates/modules/rustok-blog/src/services/category_name_projection.rs",
+  "dto_source": "crates/modules/rustok-blog/src/dto/post.rs",
   "source_harness": {
-    "path": "crates/rustok-blog/tests/post_category_name_projection.rs",
+    "path": "crates/modules/rustok-blog/tests/post_category_name_projection.rs",
     "status": "executable_no_run",
     "suggested_command": "cargo test -p rustok-blog --test post_category_name_projection -- --exact",
     "runtime_status": "not_run"

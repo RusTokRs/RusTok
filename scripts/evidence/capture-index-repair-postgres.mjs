@@ -16,15 +16,15 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json";
+  "crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json";
 const expectedRunnerPath = "scripts/evidence/capture-index-repair-postgres.mjs";
 const expectedVerifierPath = "scripts/verify/verify-index-repair-retained-evidence.mjs";
 const expectedEvidencePath =
-  "crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.json";
+  "crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution.json";
 const expectedStdoutPath =
-  "crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stdout.log";
+  "crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stdout.log";
 const expectedStderrPath =
-  "crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stderr.log";
+  "crates/modules/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stderr.log";
 const expectedCommands = [
   {
     program: "cargo",
@@ -67,20 +67,20 @@ const expectedCommands = [
   },
 ];
 const expectedSourceFiles = [
-  "crates/rustok-index/tests/drift_repair_postgres_environment_test.rs",
-  "crates/rustok-index/tests/drift_repair_recovery_postgres_test.rs",
-  "crates/rustok-index/tests/drift_repair_concrete_execution_postgres_test.rs",
-  "crates/rustok-index/tests/support/drift_repair.rs",
-  "crates/rustok-index/src/infrastructure/postgres/drift_repair.rs",
-  "crates/rustok-index/src/infrastructure/postgres/drift_repair_recovery.rs",
-  "crates/rustok-index/src/infrastructure/postgres/drift_missing_entity_repair.rs",
-  "crates/rustok-index/src/infrastructure/postgres/drift_orphan_link_repair.rs",
-  "crates/rustok-index/src/infrastructure/postgres/mutation_store.rs",
-  "crates/rustok-index/src/infrastructure/postgres/drift_confirmed_candidate_writer.rs",
-  "crates/rustok-index/src/infrastructure/postgres/schema_registration.rs",
-  "crates/rustok-index/src/migrations/mod.rs",
-  "crates/rustok-index/src/migrations/m20260806_000007_add_index_finding_repair_commands.rs",
-  "crates/rustok-index/src/migrations/m20260806_000008_add_index_finding_repair_recovery.rs",
+  "crates/modules/rustok-index/tests/drift_repair_postgres_environment_test.rs",
+  "crates/modules/rustok-index/tests/drift_repair_recovery_postgres_test.rs",
+  "crates/modules/rustok-index/tests/drift_repair_concrete_execution_postgres_test.rs",
+  "crates/modules/rustok-index/tests/support/drift_repair.rs",
+  "crates/modules/rustok-index/src/infrastructure/postgres/drift_repair.rs",
+  "crates/modules/rustok-index/src/infrastructure/postgres/drift_repair_recovery.rs",
+  "crates/modules/rustok-index/src/infrastructure/postgres/drift_missing_entity_repair.rs",
+  "crates/modules/rustok-index/src/infrastructure/postgres/drift_orphan_link_repair.rs",
+  "crates/modules/rustok-index/src/infrastructure/postgres/mutation_store.rs",
+  "crates/modules/rustok-index/src/infrastructure/postgres/drift_confirmed_candidate_writer.rs",
+  "crates/modules/rustok-index/src/infrastructure/postgres/schema_registration.rs",
+  "crates/modules/rustok-index/src/migrations/mod.rs",
+  "crates/modules/rustok-index/src/migrations/m20260806_000007_add_index_finding_repair_commands.rs",
+  "crates/modules/rustok-index/src/migrations/m20260806_000008_add_index_finding_repair_recovery.rs",
 ];
 const expectedCases = [
   {

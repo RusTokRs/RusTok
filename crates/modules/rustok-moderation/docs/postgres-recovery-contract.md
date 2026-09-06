@@ -4,7 +4,7 @@ Status: **source-ready / maintainer execution pending**
 
 ## Scope
 
-`crates/rustok-moderation/tests/postgres_recovery_contract.rs` is an opt-in PostgreSQL integration target for the operator-recovery and legacy-terminal reconciliation invariants in the Moderation plan.
+`crates/modules/rustok-moderation/tests/postgres_recovery_contract.rs` is an opt-in PostgreSQL integration target for the operator-recovery and legacy-terminal reconciliation invariants in the Moderation plan.
 
 It uses the same isolated-schema pattern as the owner-contract PostgreSQL target and covers four database-backed scenarios:
 

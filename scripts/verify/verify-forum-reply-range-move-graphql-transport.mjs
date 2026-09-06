@@ -4,16 +4,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const paths = {
-  contract: "crates/rustok-forum/contracts/forum-reply-range-move-graphql-transport.json",
-  ownerContract: "crates/rustok-forum/contracts/forum-reply-range-move-owner.json",
-  docs: "crates/rustok-forum/docs/forum-21t-reply-range-move-graphql-transport.md",
-  ownerDocs: "crates/rustok-forum/docs/forum-21s-reply-range-move-owner.md",
-  graphql: "crates/rustok-forum/src/graphql/topic_reply_range_move_mutation.rs",
-  graphqlMod: "crates/rustok-forum/src/graphql/mod.rs",
-  owner: "crates/rustok-forum/src/services/topic_reply_range_move.rs",
-  schemaTest: "crates/rustok-forum/tests/reply_range_move_graphql_contract.rs",
-  ownerRuntimeTest: "crates/rustok-forum/tests/reply_range_move_sqlite.rs",
-  docsIndex: "crates/rustok-forum/docs/README.md",
+  contract: "crates/modules/rustok-forum/contracts/forum-reply-range-move-graphql-transport.json",
+  ownerContract: "crates/modules/rustok-forum/contracts/forum-reply-range-move-owner.json",
+  docs: "crates/modules/rustok-forum/docs/forum-21t-reply-range-move-graphql-transport.md",
+  ownerDocs: "crates/modules/rustok-forum/docs/forum-21s-reply-range-move-owner.md",
+  graphql: "crates/modules/rustok-forum/src/graphql/topic_reply_range_move_mutation.rs",
+  graphqlMod: "crates/modules/rustok-forum/src/graphql/mod.rs",
+  owner: "crates/modules/rustok-forum/src/services/topic_reply_range_move.rs",
+  schemaTest: "crates/modules/rustok-forum/tests/reply_range_move_graphql_contract.rs",
+  ownerRuntimeTest: "crates/modules/rustok-forum/tests/reply_range_move_sqlite.rs",
+  docsIndex: "crates/modules/rustok-forum/docs/README.md",
 };
 
 const read = (path) => readFileSync(path, "utf8");

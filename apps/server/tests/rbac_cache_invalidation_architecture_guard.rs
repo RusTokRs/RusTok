@@ -74,13 +74,13 @@ fn rbac_invalidation_startup_is_serialized_supervised_and_publishable_after_reco
 fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
     let rbac = source("apps/server/src/services/rbac_cache_invalidation.rs");
     let generation = source("apps/server/src/services/rbac_invalidation_generation.rs");
-    let generation_store = source("crates/rustok-rbac/src/invalidation_generation.rs");
-    let exports = source("crates/rustok-rbac/src/lib.rs");
+    let generation_store = source("crates/modules/rustok-rbac/src/invalidation_generation.rs");
+    let exports = source("crates/modules/rustok-rbac/src/lib.rs");
     let committed = source("apps/server/src/services/rbac_committed_mutations.rs");
     let admin = source("apps/server/src/services/auth_admin_mutation_provider/user_admin.rs");
     let repair = source("apps/server/src/services/rbac_repair.rs");
     let runtime = source("apps/server/src/services/rbac_runtime.rs");
-    let tracker = source("crates/rustok-cache/src/bounded_invalidation.rs");
+    let tracker = source("crates/modules/rustok-cache/src/bounded_invalidation.rs");
 
     for required in [
         "read_rbac_invalidation_generation",
@@ -181,8 +181,8 @@ fn rbac_invalidation_uses_one_transactionally_reserved_generation_sequence() {
 
 #[test]
 fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
-    let core = source("crates/rustok-rbac/src/services/relation_permission_resolver.rs");
-    let exports = source("crates/rustok-rbac/src/lib.rs");
+    let core = source("crates/modules/rustok-rbac/src/services/relation_permission_resolver.rs");
+    let exports = source("crates/modules/rustok-rbac/src/lib.rs");
     let runtime = source("apps/server/src/services/rbac_runtime.rs");
     let request_scope = source("apps/server/src/services/rbac_request_scope.rs");
 

@@ -72,12 +72,12 @@ No route, snapshot or receipt from a failed batch commits.
 
 ## Source evidence
 
-- `crates/rustok-pages/src/migrations/m20260806_000012_create_page_route_history_imports.rs`;
-- `crates/rustok-pages/src/entities/page_route_history_import.rs`;
-- `crates/rustok-pages/src/services/page/route_history_import.rs`;
-- `crates/rustok-pages/tests/page_route_history_import_sqlite.rs`;
-- `crates/rustok-pages/contracts/evidence/pages-route-history-import-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs`.
+- `crates/modules/rustok-pages/src/migrations/m20260806_000012_create_page_route_history_imports.rs`;
+- `crates/modules/rustok-pages/src/entities/page_route_history_import.rs`;
+- `crates/modules/rustok-pages/src/services/page/route_history_import.rs`;
+- `crates/modules/rustok-pages/tests/page_route_history_import_sqlite.rs`;
+- `crates/modules/rustok-pages/contracts/evidence/pages-route-history-import-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs`.
 
 ## Deliberate limits
 
@@ -92,7 +92,7 @@ No FFA/FBA promotion or runtime execution is claimed.
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs
 cargo test -p rustok-pages \
   --test page_route_history_import_sqlite -- --nocapture
 cargo test -p rustok-pages \

@@ -16,7 +16,7 @@ or `LINK-FORUM-03` evidence has been executed.
 The machine-readable protocol is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json
 ```
 
 ## Rechecked merged baseline

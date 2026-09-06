@@ -23,6 +23,6 @@ This slice does not assign `group_key`. Current production candidate finalizatio
 
 ## Evidence
 
-Source-ready SQLite coverage is in `tests/inbox_group_listing_sqlite.rs`. The static source contract is `scripts/verify/verify-forum-notification-inbox-group-listing.mjs`, and the machine-readable Forum contract is `crates/rustok-forum/contracts/forum-notification-inbox-group-listing.json`.
+Source-ready SQLite coverage is in `tests/inbox_group_listing_sqlite.rs`. The static source contract is `scripts/verify/verify-forum-notification-inbox-group-listing.mjs`, and the machine-readable Forum contract is `crates/modules/rustok-forum/contracts/forum-notification-inbox-group-listing.json`.
 
 Tests, formatting, Cargo commands, verifiers, workflows, and CI were not run by the implementation agent.

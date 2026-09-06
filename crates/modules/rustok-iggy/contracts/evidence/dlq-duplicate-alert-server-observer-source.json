@@ -7,9 +7,9 @@
     "rustok-server",
     "rustok-iggy"
   ],
-  "iggy_source": "crates/rustok-iggy/src/dlq_duplicate_alert_observer.rs",
-  "moving_scan_source": "crates/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs",
-  "moving_scan_contract": "crates/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json",
+  "iggy_source": "crates/modules/rustok-iggy/src/dlq_duplicate_alert_observer.rs",
+  "moving_scan_source": "crates/modules/rustok-iggy/src/dlq_duplicate_moving_window_scan.rs",
+  "moving_scan_contract": "crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-moving-window-scan-source.json",
   "server_source": "apps/server/src/services/event_dlq_duplicate_alert_observer.rs",
   "bootstrap_source": "apps/server/src/services/server_bootstrap.rs",
   "service_registry_source": "apps/server/src/services/mod.rs",
@@ -188,8 +188,8 @@
     "boolean_parser_is_bounded"
   ],
   "verifier": "scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs",
-  "documentation": "crates/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md",
-  "profiles_checkpoint": "crates/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md",
+  "documentation": "crates/modules/rustok-iggy/docs/dlq-duplicate-alert-server-observer.md",
+  "profiles_checkpoint": "crates/modules/rustok-profiles/docs/poison-duplicate-alert-server-observer-checkpoint.md",
   "execution_status": "source_not_run",
   "remaining_work": [
     "fair_window_external_iggy_execution_evidence",

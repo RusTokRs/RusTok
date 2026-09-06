@@ -89,8 +89,8 @@ before any Alloy admin operation. The former generic in-memory Axum router is
 not a production surface and has been removed.
 
 The machine-readable static contract lives in
-`crates/alloy/contracts/alloy-runtime-contract.json`; its evidence matrix lives in
-`crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json` and is checked
+`crates/modules/alloy/contracts/alloy-runtime-contract.json`; its evidence matrix lives in
+`crates/modules/alloy/contracts/evidence/alloy-runtime-static-matrix.json` and is checked
 without compilation by `npm run verify:alloy:runtime-contract`.
 
 ## Marketplace lineage

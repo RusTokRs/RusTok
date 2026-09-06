@@ -2,12 +2,12 @@
   "schema_version": 1,
   "status": "translation_public_error_safety_source_unvalidated",
   "scope": {
-    "owner_source": "crates/rustok-translation/src/public_error.rs",
-    "owner_error": "crates/rustok-translation/src/error.rs",
-    "graphql_consumer": "crates/rustok-translation/src/graphql/context.rs",
-    "native_consumer": "crates/rustok-translation/admin/src/transport/native_server_adapter.rs",
+    "owner_source": "crates/modules/rustok-translation/src/public_error.rs",
+    "owner_error": "crates/modules/rustok-translation/src/error.rs",
+    "graphql_consumer": "crates/modules/rustok-translation/src/graphql/context.rs",
+    "native_consumer": "crates/modules/rustok-translation/admin/src/transport/native_server_adapter.rs",
     "focused_verifier": "scripts/verify/verify-translation-public-error-safety.mjs",
-    "documentation": "crates/rustok-translation/docs/translation-public-error-safety.md"
+    "documentation": "crates/modules/rustok-translation/docs/translation-public-error-safety.md"
   },
   "source_contract": {
     "public_kind_changed": false,

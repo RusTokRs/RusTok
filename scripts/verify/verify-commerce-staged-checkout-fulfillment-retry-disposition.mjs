@@ -26,17 +26,17 @@ const between = (source, start, end, label) => {
   return source.slice(startIndex, endIndex);
 };
 
-const staged = read('crates/rustok-commerce/src/services/staged_checkout.rs');
-const fulfillmentFacade = read('crates/rustok-commerce/src/services/checkout_fulfillment_stages.rs');
+const staged = read('crates/modules/rustok-commerce/src/services/staged_checkout.rs');
+const fulfillmentFacade = read('crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages.rs');
 const fulfillmentLegacy = read(
-  'crates/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs',
+  'crates/modules/rustok-commerce/src/services/checkout_fulfillment_stages_legacy.rs',
 );
 const fulfillment = `${fulfillmentFacade}\n${fulfillmentLegacy}`;
-const operation = read('crates/rustok-commerce/src/services/checkout_operation.rs');
-const recovery = read('crates/rustok-commerce/src/services/recovering_staged_checkout.rs');
-const doc = read('crates/rustok-commerce/docs/checkout-fulfillment-stage-context.md');
+const operation = read('crates/modules/rustok-commerce/src/services/checkout_operation.rs');
+const recovery = read('crates/modules/rustok-commerce/src/services/recovering_staged_checkout.rs');
+const doc = read('crates/modules/rustok-commerce/docs/checkout-fulfillment-stage-context.md');
 const evidence = JSON.parse(read(
-  'crates/rustok-commerce/contracts/evidence/checkout-fulfillment-retry-disposition-source-review.json',
+  'crates/modules/rustok-commerce/contracts/evidence/checkout-fulfillment-retry-disposition-source-review.json',
 ));
 
 const disposition = between(

@@ -34,7 +34,7 @@ function resolverSlice(source, name, nextName) {
   return source.slice(start, end < 0 ? source.length : end);
 }
 
-const catalogSource = read("crates/rustok-commerce/src/graphql/product_catalog.rs");
+const catalogSource = read("crates/modules/rustok-commerce/src/graphql/product_catalog.rs");
 const admin = resolverSlice(catalogSource, "admin_product_catalog", null);
 const storefront = resolverSlice(
   catalogSource,
@@ -106,7 +106,7 @@ for (const forbidden of [
   forbidText(catalogSource, forbidden, `Product GraphQL owner errors must not expose ${forbidden}`);
 }
 
-const legacySource = read("crates/rustok-commerce/src/graphql/query.rs");
+const legacySource = read("crates/modules/rustok-commerce/src/graphql/query.rs");
 const legacyProduct = resolverSlice(legacySource, "product", "products");
 for (const required of [
   "let auth = require_commerce_permission(",
@@ -155,7 +155,7 @@ for (const forbidden of [
   forbidText(legacyProducts, forbidden, `legacy products resolver must not contain ${forbidden}`);
 }
 
-const ports = read("crates/rustok-product/src/ports.rs");
+const ports = read("crates/modules/rustok-product/src/ports.rs");
 for (const required of [
   "async fn list_legacy_admin_products(",
   "pub struct LegacyAdminProductsRequest",
@@ -170,7 +170,7 @@ for (const required of [
   requireText(ports, required, `Product legacy admin read contract must contain ${required}`);
 }
 
-const runtime = read("crates/rustok-commerce/src/graphql_runtime.rs");
+const runtime = read("crates/modules/rustok-commerce/src/graphql_runtime.rs");
 for (const required of [
   "CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME",
   "product_catalog_read_runtime_for_current_graphql_scope(",

@@ -18,14 +18,14 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-requireMarkers('crates/rustok-api/src/ports.rs', [
+requireMarkers('crates/libs/rustok-api/src/ports.rs', [
   'pub deadline_ms: Option<u64>',
   'pub fn with_deadline(mut self, deadline: Duration)',
   'self.deadline_ms = Some(deadline.as_millis()',
   'pub fn require_deadline_semantics(&self)',
 ]);
 
-const policyPath = 'crates/rustok-distribution/src/product_index/storefront_serving_budget.rs';
+const policyPath = 'crates/modules/rustok-distribution/src/product_index/storefront_serving_budget.rs';
 const policy = requireMarkers(policyPath, [
   'pub(crate) struct ProductStorefrontIndexServingBudget',
   'index_execution_ms: u64',
@@ -69,7 +69,7 @@ for (const forbidden of [
   }
 }
 
-const budgetedPath = 'crates/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
+const budgetedPath = 'crates/modules/rustok-distribution/src/product_index/storefront_budgeted_execution.rs';
 const budgeted = requireMarkers(budgetedPath, [
   'use tokio::time::timeout;',
   'pub(crate) trait ProductStorefrontIndexProjectionPhases',
@@ -92,7 +92,7 @@ if (budgeted.includes('list_filtered_published_products(')) {
   fail(`${budgetedPath} is post-owner only and must not repeat the authoritative owner read`);
 }
 
-const executorPath = 'crates/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
+const executorPath = 'crates/modules/rustok-distribution/src/product_index/storefront_shadow_executor.rs';
 const executor = requireMarkers(executorPath, [
   'pub(crate) async fn execute_projected(',
   'pub(crate) async fn hydrate_projected_tags(',
@@ -104,11 +104,11 @@ for (const forbidden of ['tokio::time::timeout', 'ProductStorefrontIndexServingB
   }
 }
 
-requireMarkers('crates/rustok-product/src/runtime.rs', [
+requireMarkers('crates/modules/rustok-product/src/runtime.rs', [
   'storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>',
   'pub fn storefront_tag_read_port(&self)',
 ]);
-requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'mod storefront_serving_budget;',
   'mod storefront_budgeted_execution;',
   'ProductStorefrontIndexServingBudget',
@@ -118,7 +118,7 @@ requireMarkers('crates/rustok-distribution/src/product_index/mod.rs', [
   'ProductStorefrontIndexBudgetedProjectionExecutor',
 ]);
 
-const mountedPath = 'crates/rustok-product/storefront/src/transport/catalog_list_native.rs';
+const mountedPath = 'crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs';
 const mounted = read(mountedPath);
 for (const forbidden of [
   'ProductStorefrontIndexServingBudget',

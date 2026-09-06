@@ -10,12 +10,12 @@ import { spawnSync } from "node:child_process";
 const repositoryRoot = path.resolve(".");
 const verifier = path.resolve("scripts/verify/verify-search-blog-projection.mjs");
 const files = [
-  "crates/rustok-search/src/blog_projector.rs",
-  "crates/rustok-search/src/ingestion.rs",
-  "crates/rustok-search/tests/blog_ingestion_contract_test.rs",
-  "crates/rustok-search/tests/blog_projection_postgres_test.rs",
-  "crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json",
-  "crates/rustok-search/docs/implementation-plan.md",
+  "crates/modules/rustok-search/src/blog_projector.rs",
+  "crates/modules/rustok-search/src/ingestion.rs",
+  "crates/modules/rustok-search/tests/blog_ingestion_contract_test.rs",
+  "crates/modules/rustok-search/tests/blog_projection_postgres_test.rs",
+  "crates/modules/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json",
+  "crates/modules/rustok-search/docs/implementation-plan.md",
 ];
 
 function absolute(root, relativePath) {
@@ -69,7 +69,7 @@ test("search Blog projection verifier accepts canonical owner-tag source", () =>
 
 test("rejects metadata tags as Search projection source", () => {
   const result = rejects((root) => {
-    const relativePath = "crates/rustok-search/src/blog_projector.rs";
+    const relativePath = "crates/modules/rustok-search/src/blog_projector.rs";
     const source = readFileSync(absolute(root, relativePath), "utf8");
     write(root, relativePath, source.replace("FROM blog_post_tags relation", "FROM jsonb_array_elements_text(p.metadata -> 'tags') relation"));
   });
@@ -79,7 +79,7 @@ test("rejects metadata tags as Search projection source", () => {
 
 test("rejects missing Taxonomy table availability gate", () => {
   const result = rejects((root) => {
-    const relativePath = "crates/rustok-search/src/blog_projector.rs";
+    const relativePath = "crates/modules/rustok-search/src/blog_projector.rs";
     const source = readFileSync(absolute(root, relativePath), "utf8");
     write(root, relativePath, source.replace("AND to_regclass('taxonomy_term_translations') IS NOT NULL", ""));
   });
@@ -89,7 +89,7 @@ test("rejects missing Taxonomy table availability gate", () => {
 
 test("rejects stale evidence claiming metadata is canonical", () => {
   const result = rejects((root) => {
-    const relativePath = "crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json";
+    const relativePath = "crates/modules/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json";
     const value = JSON.parse(readFileSync(absolute(root, relativePath), "utf8"));
     value.production_contract.legacy_metadata_tags_are_projection_source = true;
     write(root, relativePath, `${JSON.stringify(value, null, 2)}\n`);

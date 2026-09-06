@@ -6,46 +6,40 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 const registryPath = path.join(
   repoRoot,
-  "crates",
-  "rustok-page-builder",
+  "crates", "modules", "rustok-page-builder",
   "contracts",
   "page-builder-fba-registry.json",
 );
 const providerManifestPath = path.join(
   repoRoot,
-  "crates",
-  "rustok-page-builder",
+  "crates", "modules", "rustok-page-builder",
   "rustok-module.toml",
 );
 const servicePath = path.join(
   repoRoot,
-  "crates",
-  "rustok-page-builder",
+  "crates", "modules", "rustok-page-builder",
   "src",
   "service.rs",
 );
 const dtoPath = path.join(
   repoRoot,
-  "crates",
-  "rustok-page-builder",
+  "crates", "modules", "rustok-page-builder",
   "src",
   "dto.rs",
 );
 const healthPath = path.join(
   repoRoot,
-  "crates",
-  "rustok-page-builder",
+  "crates", "modules", "rustok-page-builder",
   "src",
   "health.rs",
 );
 const rolloutPath = path.join(
   repoRoot,
-  "crates",
-  "rustok-page-builder",
+  "crates", "modules", "rustok-page-builder",
   "src",
   "rollout.rs",
 );
@@ -355,7 +349,7 @@ if (consumers.length === 0) {
 }
 
 for (const consumer of consumers) {
-  const manifestPath = path.join(repoRoot, "crates", consumer.crate, "rustok-module.toml");
+  const manifestPath = path.join(repoRoot, "crates", "modules", consumer.crate, "rustok-module.toml");
   const manifest = readFile(manifestPath);
 
   assertSame(

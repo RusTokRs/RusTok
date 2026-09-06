@@ -1570,7 +1570,7 @@ mod tests {
             description: Some("Blog module".to_string()),
             git: Some("https://example.test/blog.git".to_string()),
             rev: Some("abc123".to_string()),
-            path: Some("../../crates/rustok-blog".to_string()),
+            path: Some("../../crates/modules/rustok-blog".to_string()),
             required: false,
             depends_on: vec!["content".to_string()],
             ownership: "first_party".to_string(),

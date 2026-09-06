@@ -80,7 +80,7 @@ pub struct TransitionBuilder<From, To> { /* ... */ }
 
 ### Content Node State Machine
 
-**File:** `crates/rustok-content/src/state_machine.rs` (380 lines)
+**File:** `crates/modules/rustok-content/src/state_machine.rs` (380 lines)
 
 **States:**
 - `Draft` - draft
@@ -158,7 +158,7 @@ impl ContentNode<Archived> {
 
 ### Order State Machine
 
-**File:** `crates/rustok-commerce/src/state_machine.rs` (550 lines)
+**File:** `crates/modules/rustok-commerce/src/state_machine.rs` (550 lines)
 
 **States:**
 - `Pending` - created

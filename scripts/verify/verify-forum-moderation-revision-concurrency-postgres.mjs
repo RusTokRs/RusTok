@@ -1,15 +1,15 @@
 import fs from "node:fs";
 
 const test = fs.readFileSync(
-  "crates/rustok-forum/tests/moderation_revision_concurrency_postgres.rs",
+  "crates/modules/rustok-forum/tests/moderation_revision_concurrency_postgres.rs",
   "utf8",
 );
 const docs = fs.readFileSync(
-  "crates/rustok-forum/docs/forum-moderation-revision-concurrency-contract.md",
+  "crates/modules/rustok-forum/docs/forum-moderation-revision-concurrency-contract.md",
   "utf8",
 );
 const adapter = fs.readFileSync(
-  "crates/rustok-forum/src/moderation_subject.rs",
+  "crates/modules/rustok-forum/src/moderation_subject.rs",
   "utf8",
 );
 

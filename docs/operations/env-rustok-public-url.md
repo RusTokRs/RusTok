@@ -60,4 +60,4 @@ Invalid or missing configuration is reported as `SeoError::Configuration`. The r
 
 ## Implementation
 
-The contract is enforced in `crates/rustok-seo/src/services/sitemaps.rs` by the `PublicOrigin` parser and resolver.
+The contract is enforced in `crates/modules/rustok-seo/src/services/sitemaps.rs` by the `PublicOrigin` parser and resolver.

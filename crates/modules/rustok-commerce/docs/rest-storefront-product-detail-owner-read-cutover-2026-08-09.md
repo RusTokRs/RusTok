@@ -15,10 +15,10 @@ proof before owner-port cutover.
 
 ## Mounted path
 
-`crates/rustok-commerce/src/controllers/store/mod.rs` mounts
+`crates/modules/rustok-commerce/src/controllers/store/mod.rs` mounts
 `products::show_product` at `/store/products/{id}`.
 
-`crates/rustok-commerce/src/controllers/store/products.rs` now obtains the
+`crates/modules/rustok-commerce/src/controllers/store/products.rs` now obtains the
 host-selected Product capability through `CommerceHttpRuntime::product_catalog_read_port()`
 and calls:
 

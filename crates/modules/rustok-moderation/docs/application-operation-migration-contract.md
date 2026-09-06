@@ -4,7 +4,7 @@ Status: **source-ready / maintainer execution pending**
 
 ## Scope
 
-`crates/rustok-moderation/tests/application_operation_migration_contract.rs` retains clean-install and upgrade/backfill evidence for migration `m20260807_000004_create_moderation_application_operations` on both SQLite and PostgreSQL.
+`crates/modules/rustok-moderation/tests/application_operation_migration_contract.rs` retains clean-install and upgrade/backfill evidence for migration `m20260807_000004_create_moderation_application_operations` on both SQLite and PostgreSQL.
 
 This slice is intentionally migration-focused. Runtime enqueue, due ordering, claim/reclaim, stale-token fencing, dispatcher classification, scheduler convergence and real Forum receipt replay are covered by the separate owner/runtime PostgreSQL contracts.
 

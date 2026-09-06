@@ -78,7 +78,7 @@ It does not yet provide:
 - `rustok-auth` remains the source of truth for OAuth applications and tokens.
 - `rustok-distribution` consumes the neutral selection marker and Channel-owned live/tombstone/identity-generation table contracts to publish generic SalesChannel Index capabilities and Product-to-SalesChannel freshness composition; Index core and server remain Channel-agnostic.
 - Domain modules may gradually become channel-aware by reading channel context or channel bindings.
-- The Leptos admin UI lives in `crates/rustok-channel/admin` and is mounted by `apps/admin` through manifest-driven wiring.
+- The Leptos admin UI lives in `crates/modules/rustok-channel/admin` and is mounted by `apps/admin` through manifest-driven wiring.
 
 ## Entry points
 

@@ -18,7 +18,7 @@ function writeFixtureFile(root, relativePath, content) {
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-cart-storefront-boundary-"));
-  writeFixtureFile(root, "crates/rustok-cart/storefront/src/lib.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/lib.rs", `
 ${options.legacyModApi ? "mod api;" : ""}
 pub mod core;
 pub mod model;
@@ -26,7 +26,7 @@ pub mod transport;
 mod ui;
 pub use ui::leptos::{CartCheckoutHandoffCard, CartView};
 `);
-  writeFixtureFile(root, "crates/rustok-cart/storefront/src/core/mod.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/core/mod.rs", `
 ${options.includeLeptosCore ? "use leptos::prelude::*;" : ""}
 pub struct CartFetchRequest;
 pub struct CartLineItemDecrementRequest;
@@ -34,7 +34,7 @@ pub struct CartLineItemMutationRequest;
 pub fn parse_cart_id() {}
 pub fn parse_line_item_id() {}
 `);
-  writeFixtureFile(root, "crates/rustok-cart/storefront/src/model.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/model.rs", `
 pub struct StorefrontCartLineItem {
   pub seller_id: Option<String>,
 }
@@ -51,7 +51,7 @@ pub struct StorefrontCartDeliveryGroup {
   pub available_shipping_options: Vec<StorefrontCartShippingOption>,
 }
 `);
-  writeFixtureFile(root, "crates/rustok-cart/storefront/src/ui/leptos.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/ui/leptos.rs", `
 use crate::core;
 use crate::transport;
 pub fn CartView() {
@@ -60,20 +60,20 @@ pub fn CartView() {
 }
 pub fn CartCheckoutHandoffCard() {}
 `);
-  writeFixtureFile(root, "crates/rustok-cart/storefront/src/transport/mod.rs", options.rawApiTransport ? "mod graphql_adapter;\nmod native_server_adapter;\npub async fn fetch_cart() {}\npub async fn decrement_line_item() {}\npub async fn remove_line_item() {}\nuse crate::api;\n" : readFileSync(path.join(repoRoot, "crates/rustok-cart/storefront/src/transport/mod.rs"), "utf8"));
-  writeFixtureFile(root, "crates/rustok-cart/storefront/src/transport/graphql_adapter.rs", readFileSync(path.join(repoRoot, "crates/rustok-cart/storefront/src/transport/graphql_adapter.rs"), "utf8"));
-  writeFixtureFile(root, "crates/rustok-cart/storefront/src/transport/graphql_error_safety.rs", readFileSync(path.join(repoRoot, "crates/rustok-cart/storefront/src/transport/graphql_error_safety.rs"), "utf8"));
-  writeFixtureFile(root, "crates/rustok-cart/storefront/src/transport/native_server_adapter.rs", readFileSync(path.join(repoRoot, "crates/rustok-cart/storefront/src/transport/native_server_adapter.rs"), "utf8"));
-  writeFixtureFile(root, "crates/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs", readFileSync(path.join(repoRoot, "crates/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs"), "utf8"));
-  writeFixtureFile(root, "crates/rustok-cart/storefront/src/transport/native_server_mapping.rs", readFileSync(path.join(repoRoot, "crates/rustok-cart/storefront/src/transport/native_server_mapping.rs"), "utf8"));
-  writeFixtureFile(root, "crates/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json"), "utf8"));
-  writeFixtureFile(root, "crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json"), "utf8"));
-  writeFixtureFile(root, "crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json", readFileSync(path.join(repoRoot, "crates/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json"), "utf8"));
-  writeFixtureFile(root, "crates/rustok-cart/docs/storefront-native-error-safety.md", readFileSync(path.join(repoRoot, "crates/rustok-cart/docs/storefront-native-error-safety.md"), "utf8"));
-  writeFixtureFile(root, "crates/rustok-cart/docs/storefront-graphql-error-safety.md", readFileSync(path.join(repoRoot, "crates/rustok-cart/docs/storefront-graphql-error-safety.md"), "utf8"));
-  writeFixtureFile(root, "crates/rustok-commerce/docs/implementation-plan.md", readFileSync(path.join(repoRoot, "crates/rustok-commerce/docs/implementation-plan.md"), "utf8"));
-  if (options.legacyApi) writeFixtureFile(root, "crates/rustok-cart/storefront/src/api.rs", "pub async fn fetch_storefront_cart_graphql() {}\n");
-  writeFixtureFile(root, "crates/rustok-cart/docs/implementation-plan.md", "verify-cart-storefront-boundary.mjs");
+  writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/transport/mod.rs", options.rawApiTransport ? "mod graphql_adapter;\nmod native_server_adapter;\npub async fn fetch_cart() {}\npub async fn decrement_line_item() {}\npub async fn remove_line_item() {}\nuse crate::api;\n" : readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/storefront/src/transport/mod.rs"), "utf8"));
+  writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/transport/graphql_adapter.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/storefront/src/transport/graphql_adapter.rs"), "utf8"));
+  writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/transport/graphql_error_safety.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/storefront/src/transport/graphql_error_safety.rs"), "utf8"));
+  writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter.rs"), "utf8"));
+  writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs"), "utf8"));
+  writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/transport/native_server_mapping.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/storefront/src/transport/native_server_mapping.rs"), "utf8"));
+  writeFixtureFile(root, "crates/modules/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json"), "utf8"));
+  writeFixtureFile(root, "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json"), "utf8"));
+  writeFixtureFile(root, "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json"), "utf8"));
+  writeFixtureFile(root, "crates/modules/rustok-cart/docs/storefront-native-error-safety.md", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/docs/storefront-native-error-safety.md"), "utf8"));
+  writeFixtureFile(root, "crates/modules/rustok-cart/docs/storefront-graphql-error-safety.md", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/docs/storefront-graphql-error-safety.md"), "utf8"));
+  writeFixtureFile(root, "crates/modules/rustok-commerce/docs/implementation-plan.md", readFileSync(path.join(repoRoot, "crates/modules/rustok-commerce/docs/implementation-plan.md"), "utf8"));
+  if (options.legacyApi) writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/api.rs", "pub async fn fetch_storefront_cart_graphql() {}\n");
+  writeFixtureFile(root, "crates/modules/rustok-cart/docs/implementation-plan.md", "verify-cart-storefront-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-cart-storefront-boundary.mjs");
   writeFixtureFile(root, "package.json", JSON.stringify({
     scripts: {

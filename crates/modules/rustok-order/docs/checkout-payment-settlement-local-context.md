@@ -105,8 +105,8 @@ not claimed.
 - `scripts/verify/verify-order-payment-settlement-local-context.mjs`
 - `scripts/verify/verify-order-payment-settlement-error-context.mjs`
 - `scripts/verify/verify-order-checkout-owner-context.mjs`
-- `crates/rustok-order/contracts/evidence/checkout-payment-settlement-diagnostic-safety-source.json`
-- `crates/rustok-order/contracts/evidence/checkout-payment-settlement-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-order/contracts/evidence/checkout-payment-settlement-diagnostic-safety-source.json`
+- `crates/modules/rustok-order/contracts/evidence/checkout-payment-settlement-diagnostic-safety-source-review.json`
 
 ## Suggested maintainer checks
 

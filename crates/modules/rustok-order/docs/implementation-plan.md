@@ -93,21 +93,21 @@ compile and mounted-parity validation permits their removal.
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `order.checkout_completion.v1` in
-  `crates/rustok-order/contracts/order-fba-registry.json`.
+  `crates/modules/rustok-order/contracts/order-fba-registry.json`.
 - Additional workflow contracts:
   - `order.checkout_compensation.v1` in
-    `crates/rustok-order/contracts/order-checkout-compensation-v1.json`.
+    `crates/modules/rustok-order/contracts/order-checkout-compensation-v1.json`.
   - `order.checkout_payment_settlement.v1` in
-    `crates/rustok-order/contracts/order-checkout-payment-settlement-v1.json`.
+    `crates/modules/rustok-order/contracts/order-checkout-payment-settlement-v1.json`.
 - Published provider ports: `CheckoutCompletionPort`,
   `CheckoutOrderIdentityPort`, `CheckoutOrderCompensationPort`, and
   `CheckoutOrderPaymentSettlementPort`.
 - Source-ready internal projection boundary: `OrderReadPort`; it is not a new FBA
   provider contract.
 - Order read source evidence:
-  `crates/rustok-order/contracts/evidence/order-read-port-source.json`.
+  `crates/modules/rustok-order/contracts/evidence/order-read-port-source.json`.
 - Static contract evidence:
-  `crates/rustok-order/contracts/evidence/order-contract-test-static-matrix.json`.
+  `crates/modules/rustok-order/contracts/evidence/order-contract-test-static-matrix.json`.
 - `scripts/verify/verify-order-admin-boundary.mjs`,
   `scripts/verify/verify-order-storefront-boundary.mjs`,
   `scripts/verify/verify-order-read-port.mjs`,

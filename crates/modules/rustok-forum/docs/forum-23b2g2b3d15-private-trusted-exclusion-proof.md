@@ -12,7 +12,7 @@ change the canonical link status from `planned`.
 The machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-link-forum-03-private-trusted-exclusion-proof.json
+crates/modules/rustok-forum/contracts/forum-search-link-forum-03-private-trusted-exclusion-proof.json
 ```
 
 The executable test is:

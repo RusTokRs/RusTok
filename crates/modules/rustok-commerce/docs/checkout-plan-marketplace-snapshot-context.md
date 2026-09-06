@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This source slice closes the consumer-side structured-context gap for typed
 marketplace cart-line snapshot loading in
-`crates/rustok-commerce/src/services/checkout_plan_builder.rs`.
+`crates/modules/rustok-commerce/src/services/checkout_plan_builder.rs`.
 
 The checkout plan builder already called the cart-owned
 `MarketplaceCartSnapshotReadPort::list_marketplace_line_snapshots` operation.

@@ -5,14 +5,14 @@ const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const json = (path) => JSON.parse(read(path));
 const fail = (message) => { console.error(`[verify-channel-runtime-fallback-smoke] ${message}`); process.exit(1); };
 
-const smokePath = 'crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json';
-const registryPath = 'crates/rustok-channel/contracts/channel-fba-registry.json';
+const smokePath = 'crates/modules/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json';
+const registryPath = 'crates/modules/rustok-channel/contracts/channel-fba-registry.json';
 const smoke = json(smokePath);
 const registry = json(registryPath);
-const ports = read('crates/rustok-channel/src/ports.rs');
-const transportFacade = read('crates/rustok-channel/admin/src/transport/mod.rs');
-const nativeAdapter = read('crates/rustok-channel/admin/src/transport/native_server_adapter.rs');
-const restAdapter = read('crates/rustok-channel/admin/src/transport/rest_adapter.rs');
+const ports = read('crates/modules/rustok-channel/src/ports.rs');
+const transportFacade = read('crates/modules/rustok-channel/admin/src/transport/mod.rs');
+const nativeAdapter = read('crates/modules/rustok-channel/admin/src/transport/native_server_adapter.rs');
+const restAdapter = read('crates/modules/rustok-channel/admin/src/transport/rest_adapter.rs');
 const adminBoundaryVerifier = read('scripts/verify/verify-channel-admin-boundary.mjs');
 
 const requireCase = (profile, operation) => {

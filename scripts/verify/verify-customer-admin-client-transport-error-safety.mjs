@@ -32,16 +32,16 @@ const between = (source, start, end, label) => {
 };
 
 const paths = {
-  facade: "crates/rustok-customer/admin/src/transport/mod.rs",
-  safety: "crates/rustok-customer/admin/src/transport/error_safety.rs",
-  native: "crates/rustok-customer/admin/src/transport/native_server_adapter.rs",
+  facade: "crates/modules/rustok-customer/admin/src/transport/mod.rs",
+  safety: "crates/modules/rustok-customer/admin/src/transport/error_safety.rs",
+  native: "crates/modules/rustok-customer/admin/src/transport/native_server_adapter.rs",
   evidence:
-    "crates/rustok-customer/contracts/evidence/admin-client-transport-error-safety-source.json",
+    "crates/modules/rustok-customer/contracts/evidence/admin-client-transport-error-safety-source.json",
   review:
-    "crates/rustok-customer/contracts/evidence/admin-client-transport-error-safety-source-review.json",
-  doc: "crates/rustok-customer/docs/admin-client-transport-error-safety.md",
-  customerPlan: "crates/rustok-customer/docs/implementation-plan.md",
-  commercePlan: "crates/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-customer/contracts/evidence/admin-client-transport-error-safety-source-review.json",
+  doc: "crates/modules/rustok-customer/docs/admin-client-transport-error-safety.md",
+  customerPlan: "crates/modules/rustok-customer/docs/implementation-plan.md",
+  commercePlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
   nativeGuard: "scripts/verify/verify-customer-admin-native-error-safety.mjs",
 };
 

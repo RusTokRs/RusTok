@@ -13,8 +13,8 @@ parallel commits landed on `main`. The compared default-branch files are limited
 
 No compared default-branch commit modifies:
 
-- `crates/rustok-index`;
-- Product Index source/absence composition under `crates/rustok-distribution`;
+- `crates/modules/rustok-index`;
+- Product Index source/absence composition under `crates/modules/rustok-distribution`;
 - `apps/server/src/graphql/index_drift_diagnosis.rs` or the server GraphQL root files changed here;
 - `apps/server/src/services/index_drift_diagnosis_operator.rs`;
 - `apps/server/src/services/index_drift_source_page_diagnosis.rs`;

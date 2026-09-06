@@ -15,11 +15,11 @@ constructor requires both a `DatabaseConnection` and a `TransactionalEventBus`. 
 mutation is explicitly event-named and delegates to the existing Profiles-owned atomic helper.
 
 The machine-readable contract is
-`crates/rustok-forum/contracts/forum-search-profile-event-aware-mutation-api.json`.
+`crates/modules/rustok-forum/contracts/forum-search-profile-event-aware-mutation-api.json`.
 
 ## Public mutation facade
 
-`crates/rustok-profiles/src/mutations.rs` exports:
+`crates/modules/rustok-profiles/src/mutations.rs` exports:
 
 - `upsert_profile_with_event`;
 - `update_profile_handle_with_event`;

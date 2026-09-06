@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'mod mutation_event;',
   'IndexMutationEventCatalog',
   'IndexMutationEventWorker',
@@ -26,7 +26,7 @@ requireMarkers('crates/rustok-index/src/application/mod.rs', [
   'register_index_mutation_event',
 ]);
 
-const contractPath = 'crates/rustok-index/src/application/mutation_event.rs';
+const contractPath = 'crates/modules/rustok-index/src/application/mutation_event.rs';
 const contract = requireMarkers(contractPath, [
   'pub struct IndexMutationEventDescriptor',
   'pub struct IndexMutationEventCatalog',
@@ -73,7 +73,7 @@ for (const forbidden of [
 }
 
 const sourceFactoryPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_factory.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_factory.rs';
 const sourceFactory = requireMarkers(sourceFactoryPath, [
   'materialize_index_mutation_event_registry(&staged)',
   'SharedIndexMutationEventRegistry',
@@ -87,7 +87,7 @@ if (
   fail(`${sourceFactoryPath} must validate event routes before committing staged extensions`);
 }
 
-const docPath = 'crates/rustok-index/docs/m5-mutation-event-ack-contract.md';
+const docPath = 'crates/modules/rustok-index/docs/m5-mutation-event-ack-contract.md';
 requireMarkers(docPath, [
   'Status: `generic_contract_complete_social_graph_route_source_complete_runtime_execution_pending`',
   '`IndexMutationEventCatalog`',
@@ -100,7 +100,7 @@ requireMarkers(docPath, [
   'Execution is maintainer-owned',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m5-social-graph-mutation-route.md', [
+requireMarkers('crates/modules/rustok-index/docs/m5-social-graph-mutation-route.md', [
   'source_complete_runtime_execution_pending',
   'social_graph.relation.state_changed.v1',
   'Atomic source and route materialization',

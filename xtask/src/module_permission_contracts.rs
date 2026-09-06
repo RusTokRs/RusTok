@@ -17,7 +17,7 @@ pub(crate) fn validate_module_permission_contract(slug: &str, module_root: &Path
     };
 
     let permission_contract =
-        load_core_permission_contract(&workspace_root().join("crates").join("rustok-core"))?;
+        load_core_permission_contract(&workspace_root().join("crates").join("libs").join("rustok-core"))?;
     let mut seen = HashSet::new();
 
     for permission in extract_permission_constants(permission_body) {

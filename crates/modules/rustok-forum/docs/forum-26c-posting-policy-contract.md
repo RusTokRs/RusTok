@@ -40,7 +40,7 @@ The next bounded FORUM-26 slice should define the deterministic Forum-owned eval
 
 ## Canonical plan debt
 
-The canonical `crates/rustok-forum/docs/implementation-plan.md` is not replaced through the GitHub contents API. It exceeds two thousand lines and complete replacement risks unrelated roadmap loss. A safe repository-local edit still needs to mark FORUM-26 `in_progress`, record FORUM-26A-C, update the FORUM-20 trust dependency and retain fact owners, deterministic evaluation, posting-owner enforcement, duplicate hashing, shared rate limiting and optional external scoring as remaining work.
+The canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is not replaced through the GitHub contents API. It exceeds two thousand lines and complete replacement risks unrelated roadmap loss. A safe repository-local edit still needs to mark FORUM-26 `in_progress`, record FORUM-26A-C, update the FORUM-20 trust dependency and retain fact owners, deterministic evaluation, posting-owner enforcement, duplicate hashing, shared rate limiting and optional external scoring as remaining work.
 
 `CRATE_API.md` is likewise not completely replaced in this slice. The public contract is source-exported from the crate root and recorded by the machine contract and verifier.
 

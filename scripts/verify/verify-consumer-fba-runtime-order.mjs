@@ -57,9 +57,9 @@ function verifyManifestDegradedModes(read, manifestPath, modes, label) {
 }
 
 function verifyBlog({ read, json }) {
-  const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
-  const providerPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
-  const smokePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json';
+  const registryPath = 'crates/modules/rustok-blog/contracts/blog-fba-registry.json';
+  const providerPath = 'crates/modules/rustok-comments/contracts/comments-fba-registry.json';
+  const smokePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json';
   const registry = json(registryPath);
   const provider = json(providerPath);
   const smoke = json(smokePath);
@@ -75,7 +75,7 @@ function verifyBlog({ read, json }) {
   if (!sameSet(smoke.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('blog fallback profile drift');
   if (!sameSet(smoke.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes)) fail('blog degraded mode drift');
   if (!sameSet(dependency.operations, provider.ports?.[0]?.operations ?? [])) fail('blog provider operation set drift');
-  verifyManifestDegradedModes(read, 'crates/rustok-blog/rustok-module.toml', smoke.fallback_smoke.degraded_modes, 'blog');
+  verifyManifestDegradedModes(read, 'crates/modules/rustok-blog/rustok-module.toml', smoke.fallback_smoke.degraded_modes, 'blog');
 
   const service = read(smoke.source_contract.consumer_service);
   for (const entry of smoke.runtime_order) {
@@ -90,10 +90,10 @@ function verifyBlog({ read, json }) {
 }
 
 function verifySeo({ read, json }) {
-  const registryPath = 'crates/rustok-seo/contracts/seo-fba-registry.json';
-  const providerPath = 'crates/rustok-media/contracts/media-fba-registry.json';
-  const providerFallbackPath = 'crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json';
-  const smokePath = 'crates/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json';
+  const registryPath = 'crates/modules/rustok-seo/contracts/seo-fba-registry.json';
+  const providerPath = 'crates/modules/rustok-media/contracts/media-fba-registry.json';
+  const providerFallbackPath = 'crates/modules/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json';
+  const smokePath = 'crates/modules/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json';
   const registry = json(registryPath);
   const provider = json(providerPath);
   const providerFallback = json(providerFallbackPath);
@@ -111,7 +111,7 @@ function verifySeo({ read, json }) {
   if (provider.module !== 'media' || provider.role !== 'provider') fail('media provider identity drift');
   if (!sameSet(smoke.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('seo fallback profile drift');
   if (!sameSet(smoke.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes)) fail('seo degraded mode drift');
-  verifyManifestDegradedModes(read, 'crates/rustok-seo/rustok-module.toml', smoke.fallback_smoke.degraded_modes, 'seo');
+  verifyManifestDegradedModes(read, 'crates/modules/rustok-seo/rustok-module.toml', smoke.fallback_smoke.degraded_modes, 'seo');
   if (smoke.fallback_smoke.provider_source !== providerFallbackPath || registry.contract_tests.fallback_smoke.provider_source !== providerFallbackPath) {
     fail('seo provider fallback source drift');
   }
@@ -125,7 +125,7 @@ function verifySeo({ read, json }) {
   }
 
   for (const entry of smoke.runtime_order ?? []) {
-    const source = read('crates/rustok-seo/src/services/targets.rs');
+    const source = read('crates/modules/rustok-seo/src/services/targets.rs');
     const body = functionBody(source, entry.function);
     if (!body) fail(`seo runtime-order function missing: ${entry.function}`);
     assertOrdered(body, entry.markers, `seo ${entry.operation}`);

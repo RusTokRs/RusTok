@@ -18,19 +18,19 @@ const forbidAll = (text, markers, label) => {
 };
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-link-forum-03-evidence-assembler.json";
+  "crates/modules/rustok-forum/contracts/forum-search-link-forum-03-evidence-assembler.json";
 const docPath =
-  "crates/rustok-forum/docs/forum-23b2g2b3d13-link-forum-03-evidence-assembler.md";
+  "crates/modules/rustok-forum/docs/forum-23b2g2b3d13-link-forum-03-evidence-assembler.md";
 const assemblerPath =
   "scripts/evidence/assemble-link-forum-03-forum-search-evidence.mjs";
 const verifierPath =
   "scripts/verify/verify-link-forum-03-forum-search-evidence.mjs";
-const forumPlanPath = "crates/rustok-forum/docs/implementation-plan.md";
-const searchPlanPath = "crates/rustok-search/docs/implementation-plan.md";
+const forumPlanPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
+const searchPlanPath = "crates/modules/rustok-search/docs/implementation-plan.md";
 const d0Path =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-runtime-evidence.json";
 const d12Path =
-  "crates/rustok-forum/contracts/forum-search-versioned-invalidation-retained-evidence-promotion.json";
+  "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-retained-evidence-promotion.json";
 const d12ReviewerPath =
   "scripts/evidence/review-forum-search-versioned-invalidation-runtime-evidence.mjs";
 const d8TestPath =

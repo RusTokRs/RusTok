@@ -6,14 +6,14 @@
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "runtime_status": "not_run",
-  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-85.md",
+  "generated_from": "crates/modules/rustok-blog/docs/implementation-plan-slice-85.md",
   "source_contract": {
     "integration_test": "apps/server/tests/blog_comments_schedule_audit_postgres_faults.rs",
     "slice_84_harness_preserved": "apps/server/tests/blog_comments_schedule_audit_postgres.rs",
     "audited_store_preserved": "apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_postgres_audit.rs",
     "audited_trigger_preserved": "apps/server/src/services/comments_provider_runtime_keyring_schedule_postgres_audited_trigger.rs",
-    "state_migration_preserved": "crates/rustok-blog/src/migrations/m20260801_000007_create_blog_comments_delegation_schedule_state.rs",
-    "outbox_migration_preserved": "crates/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs"
+    "state_migration_preserved": "crates/modules/rustok-blog/src/migrations/m20260801_000007_create_blog_comments_delegation_schedule_state.rs",
+    "outbox_migration_preserved": "crates/modules/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs"
   },
   "harness": {
     "ignored_parent_tests": 3,

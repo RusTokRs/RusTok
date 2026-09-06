@@ -5,15 +5,15 @@
   "status": "product_admin_primary_graphql_mutation_error_safety_source_reviewed_unvalidated",
   "scope": "Product Admin primary GraphQL mutation public and private diagnostic boundary",
   "reviewed_sources": [
-    "crates/rustok-commerce/docs/implementation-plan.md",
-    "crates/rustok-product/docs/implementation-plan.md",
-    "crates/rustok-product/admin/src/catalog_transport.rs",
-    "crates/rustok-product/admin/src/transport.rs",
-    "crates/rustok-product/admin/src/transport/graphql_error_safety.rs",
-    "crates/rustok-product/admin/src/transport/graphql_fallback_mutation_error_safety.rs",
-    "crates/rustok-product/admin/src/transport/graphql_adapter.rs",
-    "crates/rustok-product/admin/src/ui/leptos.rs",
-    "crates/rustok-graphql/src/lib.rs",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md",
+    "crates/modules/rustok-product/docs/implementation-plan.md",
+    "crates/modules/rustok-product/admin/src/catalog_transport.rs",
+    "crates/modules/rustok-product/admin/src/transport.rs",
+    "crates/modules/rustok-product/admin/src/transport/graphql_error_safety.rs",
+    "crates/modules/rustok-product/admin/src/transport/graphql_fallback_mutation_error_safety.rs",
+    "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs",
+    "crates/modules/rustok-product/admin/src/ui/leptos.rs",
+    "crates/ui/rustok-graphql/src/lib.rs",
     "scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs",
     "scripts/verify/verify-product-admin-fallback-mutation-error-safety.mjs",
     "scripts/verify/verify-product-admin-graphql-read-diagnostic-safety.mjs"
@@ -51,10 +51,10 @@
     }
   ],
   "changed_files_expected": [
-    "crates/rustok-product/admin/src/transport/graphql_error_safety.rs",
-    "crates/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source.json",
-    "crates/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source-review.json",
-    "crates/rustok-product/docs/admin-primary-graphql-mutation-error-safety.md",
+    "crates/modules/rustok-product/admin/src/transport/graphql_error_safety.rs",
+    "crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source.json",
+    "crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-mutation-error-safety-source-review.json",
+    "crates/modules/rustok-product/docs/admin-primary-graphql-mutation-error-safety.md",
     "scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs"
   ],
   "preserved": [

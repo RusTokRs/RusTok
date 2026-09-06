@@ -8,19 +8,19 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   : path.resolve(".");
 const failures = [];
 
-const planPath = "crates/rustok-forum/docs/implementation-plan.md";
-const servicePath = "crates/rustok-forum/src/services/category_search_audience_scope.rs";
-const audienceReadPath = "crates/rustok-forum/src/services/category_audience_read.rs";
+const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
+const servicePath = "crates/modules/rustok-forum/src/services/category_search_audience_scope.rs";
+const audienceReadPath = "crates/modules/rustok-forum/src/services/category_audience_read.rs";
 const audienceReadSearchPath =
-  "crates/rustok-forum/src/services/category_audience_read_search.rs";
-const visibilityPath = "crates/rustok-forum/src/services/category_audience_visibility.rs";
-const baseScopePath = "crates/rustok-forum/src/services/category_search_scope.rs";
+  "crates/modules/rustok-forum/src/services/category_audience_read_search.rs";
+const visibilityPath = "crates/modules/rustok-forum/src/services/category_audience_visibility.rs";
+const baseScopePath = "crates/modules/rustok-forum/src/services/category_search_scope.rs";
 const visibleExpanderPath =
-  "crates/rustok-forum/src/services/category_search_scope_visible.rs";
-const exportPath = "crates/rustok-forum/src/services/mod.rs";
+  "crates/modules/rustok-forum/src/services/category_search_scope_visible.rs";
+const exportPath = "crates/modules/rustok-forum/src/services/mod.rs";
 const contractPath =
-  "crates/rustok-forum/contracts/forum-search-category-audience-scope.json";
-const notePath = "crates/rustok-forum/docs/forum-23b2b-category-audience-scope.md";
+  "crates/modules/rustok-forum/contracts/forum-search-category-audience-scope.json";
+const notePath = "crates/modules/rustok-forum/docs/forum-23b2b-category-audience-scope.md";
 const verifierPath = "scripts/verify/verify-forum-search-category-audience-scope.mjs";
 
 function read(relativePath) {

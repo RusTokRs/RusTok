@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const plannerPath = 'crates/rustok-index/src/application/planner.rs';
+const plannerPath = 'crates/modules/rustok-index/src/application/planner.rs';
 const planner = requireMarkers(plannerPath, [
   'pub struct ExecutableQueryPlan',
   'pub struct PlannedJoin',
@@ -36,7 +36,7 @@ const planner = requireMarkers(plannerPath, [
   'rustok-index-query-plan-v4',
 ]);
 
-const aggregateOrderingPath = 'crates/rustok-index/src/application/aggregate_ordering.rs';
+const aggregateOrderingPath = 'crates/modules/rustok-index/src/application/aggregate_ordering.rs';
 requireMarkers(aggregateOrderingPath, [
   'pub fn validate_query_with_aggregate_ordering(',
   'query.validate_shape().map_err(QueryValidationError::from)?;',
@@ -67,29 +67,29 @@ for (const forbidden of [
   if (planner.includes(forbidden)) fail(`${plannerPath} contains forbidden marker ${forbidden}`);
 }
 
-requireMarkers('crates/rustok-index/src/application/planner_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/planner_tests.rs', [
   'aliases_do_not_depend_on_reference_encounter_order',
   'many_traversal_propagates_through_descendant_joins_and_fields',
   'validation_precedes_plan_construction',
   'fingerprint_changes_with_order_semantics',
 ]);
-requireMarkers('crates/rustok-index/src/application/query_snapshot_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/query_snapshot_tests.rs', [
   'retained_v4_plan_and_sql_snapshots_are_stable',
   'render_plan(&plan)',
   'PLAN_SNAPSHOT',
   'many:{}|identities={}|fields={}',
 ]);
-requireMarkers('crates/rustok-index/src/application/snapshots/m4_many_projection.plan.snap', [
+requireMarkers('crates/modules/rustok-index/src/application/snapshots/m4_many_projection.plan.snap', [
   'root=rustok-product::product@1',
   'join:variants|t0->t1|rustok-product::variant@1|many|traverses_many=true',
   'many:variants|identities=variants|fields=variants.id',
 ]);
-requireMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-query-snapshots.md', [
   'Status: `source_complete_owner_execution_pending`',
   'executable-plan v4',
   'does not claim PostgreSQL/reference-engine',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '### M4 - Query engine v1',
   '- [x] Add nested many-link projection aggregation.',
   '- [x] Add retained v4 plan/SQL snapshots and synchronized source guards.',

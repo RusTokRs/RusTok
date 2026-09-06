@@ -145,33 +145,33 @@ pub async fn fetch_pages() {}
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-pages-boundary-"));
-  writeFixtureFile(root, "crates/rustok-pages/admin/Cargo.toml", `
+  writeFixtureFile(root, "crates/modules/rustok-pages/admin/Cargo.toml", `
 [dependencies]
 rustok-page-builder = { path = "../../rustok-page-builder" }
 rustok-page-builder-admin = { path = "../../rustok-page-builder/admin" }
 `);
-  writeFixtureFile(root, "crates/rustok-pages/admin/src/lib.rs", adminLibSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/admin/src/builder.rs", adminBuilderSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/admin/src/composition.rs", adminCompositionSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/admin/src/core.rs", adminCoreSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/admin/src/model.rs", adminModelSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/admin/src/transport/mod.rs", adminTransportSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/admin/src/transport/graphql_adapter.rs", adminGraphqlSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-pages/admin/src/lib.rs", adminLibSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-pages/admin/src/builder.rs", adminBuilderSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-pages/admin/src/composition.rs", adminCompositionSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-pages/admin/src/core.rs", adminCoreSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-pages/admin/src/model.rs", adminModelSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-pages/admin/src/transport/mod.rs", adminTransportSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-pages/admin/src/transport/graphql_adapter.rs", adminGraphqlSource(options));
 
   if (options.legacyAdminUi) {
-    writeFixtureFile(root, "crates/rustok-pages/admin/src/ui/leptos.rs", "pub fn PagesAdmin() {}");
+    writeFixtureFile(root, "crates/modules/rustok-pages/admin/src/ui/leptos.rs", "pub fn PagesAdmin() {}");
   }
 
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/lib.rs", storefrontLibSource());
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/core.rs", storefrontCoreSource());
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/ui/leptos.rs", storefrontUiSource());
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/mod.rs", storefrontTransportSource());
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;");
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs", `
+  writeFixtureFile(root, "crates/modules/rustok-pages/storefront/src/lib.rs", storefrontLibSource());
+  writeFixtureFile(root, "crates/modules/rustok-pages/storefront/src/core.rs", storefrontCoreSource());
+  writeFixtureFile(root, "crates/modules/rustok-pages/storefront/src/ui/leptos.rs", storefrontUiSource());
+  writeFixtureFile(root, "crates/modules/rustok-pages/storefront/src/transport/mod.rs", storefrontTransportSource());
+  writeFixtureFile(root, "crates/modules/rustok-pages/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;");
+  writeFixtureFile(root, "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs", `
 #[server(prefix = "/api/fn", endpoint = "pages")]
 async fn pages() { expect_context::<HostRuntimeContext>(); }
 `);
-  writeFixtureFile(root, "crates/rustok-pages/docs/implementation-plan.md", "verify-pages-ui-boundary.mjs\nno legacy\n");
+  writeFixtureFile(root, "crates/modules/rustok-pages/docs/implementation-plan.md", "verify-pages-ui-boundary.mjs\nno legacy\n");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-pages-ui-boundary.mjs\n");
   return root;
 }

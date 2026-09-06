@@ -10,22 +10,22 @@ const requireText = (source, needle, label) => {
 };
 
 const graphqlQuery = read(
-  'crates/rustok-forum/src/graphql/storefront_audience_topics.rs',
+  'crates/modules/rustok-forum/src/graphql/storefront_audience_topics.rs',
 );
 const graphqlAdapter = read(
-  'crates/rustok-forum/storefront/src/transport/graphql_adapter.rs',
+  'crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs',
 );
 const nativeAdapter = read(
-  'crates/rustok-forum/storefront/src/transport/native_server_adapter.rs',
+  'crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs',
 );
-const selector = read('crates/rustok-forum/storefront/src/transport/mod.rs');
+const selector = read('crates/modules/rustok-forum/storefront/src/transport/mod.rs');
 const contract = JSON.parse(
   read(
-    'crates/rustok-forum/contracts/forum-topic-audience-storefront-list-composition.json',
+    'crates/modules/rustok-forum/contracts/forum-topic-audience-storefront-list-composition.json',
   ),
 );
 const replyContract = JSON.parse(
-  read('crates/rustok-forum/contracts/forum-reply-audience-read.json'),
+  read('crates/modules/rustok-forum/contracts/forum-reply-audience-read.json'),
 );
 
 requireText(
@@ -111,7 +111,7 @@ if (contract.compatibility.parallel_transport_adapters_added) {
 if (!contract.composition_boundary.reply_owner_read_changed) {
   throw new Error('FORUM-20BE handoff must record delivered reply-owner migration');
 }
-if (contract.downstream_completion !== 'crates/rustok-forum/contracts/forum-reply-audience-read.json') {
+if (contract.downstream_completion !== 'crates/modules/rustok-forum/contracts/forum-reply-audience-read.json') {
   throw new Error('FORUM-20BE handoff must point to the reply-read contract');
 }
 if (replyContract.task !== 'FORUM-20BF') {

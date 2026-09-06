@@ -114,8 +114,8 @@ This source wave does not change:
 
 ## Source evidence
 
-- `crates/rustok-commerce/contracts/evidence/checkout-fulfillment-stage-error-safety-source-review.json`
-- `crates/rustok-commerce/contracts/evidence/checkout-fulfillment-retry-disposition-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/checkout-fulfillment-stage-error-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/checkout-fulfillment-retry-disposition-source-review.json`
 - `scripts/verify/verify-commerce-checkout-fulfillment-stage-context.mjs`
 - `scripts/verify/verify-commerce-staged-checkout-fulfillment-retry-disposition.mjs`
 - `scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`

@@ -29,12 +29,12 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-const projectorPath = "crates/rustok-search/src/blog_projector.rs";
-const ingestionPath = "crates/rustok-search/src/ingestion.rs";
-const routingTestPath = "crates/rustok-search/tests/blog_ingestion_contract_test.rs";
-const postgresTestPath = "crates/rustok-search/tests/blog_projection_postgres_test.rs";
-const evidencePath = "crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json";
-const planPath = "crates/rustok-search/docs/implementation-plan.md";
+const projectorPath = "crates/modules/rustok-search/src/blog_projector.rs";
+const ingestionPath = "crates/modules/rustok-search/src/ingestion.rs";
+const routingTestPath = "crates/modules/rustok-search/tests/blog_ingestion_contract_test.rs";
+const postgresTestPath = "crates/modules/rustok-search/tests/blog_projection_postgres_test.rs";
+const evidencePath = "crates/modules/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json";
+const planPath = "crates/modules/rustok-search/docs/implementation-plan.md";
 
 const projector = read(projectorPath);
 const ingestion = read(ingestionPath);

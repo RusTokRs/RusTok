@@ -9,7 +9,7 @@ FORUM-24A establishes the Forum-owned identity contract for localized public top
 Machine contract:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-route-identity-owner.json
+crates/modules/rustok-forum/contracts/forum-topic-route-identity-owner.json
 ```
 
 ## Canonical route shape

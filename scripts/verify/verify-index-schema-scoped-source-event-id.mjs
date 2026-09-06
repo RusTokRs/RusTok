@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const helperPath = 'crates/rustok-index/src/application/source_event_id.rs';
+const helperPath = 'crates/modules/rustok-index/src/application/source_event_id.rs';
 requireMarkers(helperPath, [
   'pub fn derive_index_source_event_id(',
   'pub fn derive_index_schema_source_event_id(',
@@ -34,12 +34,12 @@ requireMarkers(helperPath, [
   'let replacement = schema(4);',
 ]);
 
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'derive_index_schema_source_event_id',
   'derive_index_source_event_id',
 ]);
 
-const inboxPath = 'crates/rustok-index/src/migrations/m20260727_000002_create_index_delivery_state.rs';
+const inboxPath = 'crates/modules/rustok-index/src/migrations/m20260727_000002_create_index_delivery_state.rs';
 const inbox = requireMarkers(inboxPath, [
   '.name("pk_index_inbox")',
   '.col(IndexInbox::TenantId)',
@@ -55,7 +55,7 @@ if (inboxPrimaryKey.includes('.col(IndexInbox::SchemaVersion)')) {
   fail(`${inboxPath} inbox primary key unexpectedly includes schema version; update schema-scoped delivery identity rationale`);
 }
 
-requireMarkers('crates/rustok-index/docs/m4-single-current-schema-supersession.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-single-current-schema-supersession.md', [
   'Inbox delivery identity is a separate boundary',
   '`(tenant_id, source_name, delivery_id)`',
   'The legacy `derive_index_source_event_id` remains stable for existing sources',

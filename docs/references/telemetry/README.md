@@ -56,7 +56,7 @@ if let Some(handle) = rustok_telemetry::metrics_handle() {
 
 ## 5) Synchronization with code (procedure)
 
-- When changes are made to `crates/rustok-telemetry/**` and `apps/server/src/controllers/metrics.rs`:
+- When changes are made to `crates/libs/rustok-telemetry/**` and `apps/server/src/controllers/metrics.rs`:
   1) update examples and signatures;
   2) update the date in the header;
   3) verify that the anti-patterns remain relevant.

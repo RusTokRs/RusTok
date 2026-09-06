@@ -41,7 +41,7 @@
     "commerce receives normalized PaymentCollectionResponse only",
     "raw storage and provider errors never cross the port"
   ],
-  "source": "crates/rustok-payment/src/checkout_execution.rs",
+  "source": "crates/modules/rustok-payment/src/checkout_execution.rs",
   "verification": {
     "guard": "scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs",
     "runtime_evidence": "not_executed"

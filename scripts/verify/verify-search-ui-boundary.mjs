@@ -47,12 +47,12 @@ function assertNotContains(text, pattern, description) {
 }
 
 function assertSearchAdminBoundary() {
-  const libPath = "crates/rustok-search/admin/src/lib.rs";
-  const corePath = "crates/rustok-search/admin/src/core.rs";
-  const uiPath = "crates/rustok-search/admin/src/ui/leptos.rs";
-  const transportPath = "crates/rustok-search/admin/src/transport/mod.rs";
-  const nativePath = "crates/rustok-search/admin/src/transport/native_server_adapter.rs";
-  const legacyApiPath = "crates/rustok-search/admin/src/api.rs";
+  const libPath = "crates/modules/rustok-search/admin/src/lib.rs";
+  const corePath = "crates/modules/rustok-search/admin/src/core.rs";
+  const uiPath = "crates/modules/rustok-search/admin/src/ui/leptos.rs";
+  const transportPath = "crates/modules/rustok-search/admin/src/transport/mod.rs";
+  const nativePath = "crates/modules/rustok-search/admin/src/transport/native_server_adapter.rs";
+  const legacyApiPath = "crates/modules/rustok-search/admin/src/api.rs";
 
   for (const checkedPath of [libPath, corePath, uiPath, transportPath, nativePath]) {
     assertExists(checkedPath, `${checkedPath}: expected search admin boundary file`);
@@ -112,13 +112,13 @@ function assertSearchAdminBoundary() {
 }
 
 function assertSearchStorefrontBoundary() {
-  const libPath = "crates/rustok-search/storefront/src/lib.rs";
-  const corePath = "crates/rustok-search/storefront/src/core.rs";
-  const uiPath = "crates/rustok-search/storefront/src/ui/leptos.rs";
-  const transportPath = "crates/rustok-search/storefront/src/transport/mod.rs";
-  const nativePath = "crates/rustok-search/storefront/src/transport/native_server_adapter.rs";
-  const graphqlPath = "crates/rustok-search/storefront/src/transport/graphql_adapter.rs";
-  const legacyApiPath = "crates/rustok-search/storefront/src/api.rs";
+  const libPath = "crates/modules/rustok-search/storefront/src/lib.rs";
+  const corePath = "crates/modules/rustok-search/storefront/src/core.rs";
+  const uiPath = "crates/modules/rustok-search/storefront/src/ui/leptos.rs";
+  const transportPath = "crates/modules/rustok-search/storefront/src/transport/mod.rs";
+  const nativePath = "crates/modules/rustok-search/storefront/src/transport/native_server_adapter.rs";
+  const graphqlPath = "crates/modules/rustok-search/storefront/src/transport/graphql_adapter.rs";
+  const legacyApiPath = "crates/modules/rustok-search/storefront/src/api.rs";
 
   for (const checkedPath of [libPath, corePath, uiPath, transportPath, nativePath, graphqlPath]) {
     assertExists(checkedPath, `${checkedPath}: expected search storefront boundary file`);
@@ -186,11 +186,11 @@ function assertSearchStorefrontBoundary() {
 }
 
 function assertSearchCatalogProjectionContract() {
-  const enginePath = "crates/rustok-search/src/engine.rs";
-  const pgEnginePath = "crates/rustok-search/src/pg_engine.rs";
-  const dictionariesPath = "crates/rustok-search/src/dictionaries.rs";
-  const graphqlTypesPath = "crates/rustok-search/src/graphql/types.rs";
-  const graphqlQueryPath = "crates/rustok-search/src/graphql/query.rs";
+  const enginePath = "crates/modules/rustok-search/src/engine.rs";
+  const pgEnginePath = "crates/modules/rustok-search/src/pg_engine.rs";
+  const dictionariesPath = "crates/modules/rustok-search/src/dictionaries.rs";
+  const graphqlTypesPath = "crates/modules/rustok-search/src/graphql/types.rs";
+  const graphqlQueryPath = "crates/modules/rustok-search/src/graphql/query.rs";
 
   for (const checkedPath of [enginePath, pgEnginePath, dictionariesPath, graphqlTypesPath, graphqlQueryPath]) {
     assertExists(checkedPath, `${checkedPath}: expected search catalog projection contract file`);
@@ -260,14 +260,14 @@ function assertSearchCatalogProjectionContract() {
 }
 
 function assertSearchUiCatalogTransportContract() {
-  const adminCorePath = "crates/rustok-search/admin/src/core.rs";
-  const adminModelPath = "crates/rustok-search/admin/src/model.rs";
-  const adminUiPath = "crates/rustok-search/admin/src/ui/leptos.rs";
-  const adminNativePath = "crates/rustok-search/admin/src/transport/native_server_adapter.rs";
-  const storefrontModelPath = "crates/rustok-search/storefront/src/model.rs";
-  const storefrontCorePath = "crates/rustok-search/storefront/src/core.rs";
-  const storefrontUiPath = "crates/rustok-search/storefront/src/ui/leptos.rs";
-  const storefrontGraphqlPath = "crates/rustok-search/storefront/src/transport/graphql_adapter.rs";
+  const adminCorePath = "crates/modules/rustok-search/admin/src/core.rs";
+  const adminModelPath = "crates/modules/rustok-search/admin/src/model.rs";
+  const adminUiPath = "crates/modules/rustok-search/admin/src/ui/leptos.rs";
+  const adminNativePath = "crates/modules/rustok-search/admin/src/transport/native_server_adapter.rs";
+  const storefrontModelPath = "crates/modules/rustok-search/storefront/src/model.rs";
+  const storefrontCorePath = "crates/modules/rustok-search/storefront/src/core.rs";
+  const storefrontUiPath = "crates/modules/rustok-search/storefront/src/ui/leptos.rs";
+  const storefrontGraphqlPath = "crates/modules/rustok-search/storefront/src/transport/graphql_adapter.rs";
   const nextAdminPath = "apps/next-admin/packages/search/src/index.tsx";
   const nextStorefrontPath = "apps/next-frontend/packages/search/src/index.tsx";
   const nextProductPath = "apps/next-admin/packages/rustok-product/src/index.ts";
@@ -276,22 +276,22 @@ function assertSearchUiCatalogTransportContract() {
   const nextStorefrontSearchFeaturePath = "apps/next-frontend/src/features/search/components/search-section.tsx";
   const nextStorefrontModulesPath = "apps/next-frontend/src/modules/index.ts";
   const nextStorefrontHomePath = "apps/next-frontend/src/app/[locale]/page.tsx";
-  const productAdminLibPath = "crates/rustok-product/admin/src/lib.rs";
-  const productAdminModelPath = "crates/rustok-product/admin/src/model.rs";
-  const productAdminTransportPath = "crates/rustok-product/admin/src/transport.rs";
-  const productAdminNativePath = "crates/rustok-product/admin/src/transport/native_server_adapter.rs";
+  const productAdminLibPath = "crates/modules/rustok-product/admin/src/lib.rs";
+  const productAdminModelPath = "crates/modules/rustok-product/admin/src/model.rs";
+  const productAdminTransportPath = "crates/modules/rustok-product/admin/src/transport.rs";
+  const productAdminNativePath = "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs";
   const adminBuildPath = "apps/admin/build.rs";
   const adminCompositionPath = "apps/admin/src/app/modules/search_composition.rs";
-  const productStorefrontLibPath = "crates/rustok-product/storefront/src/lib.rs";
-  const productStorefrontModelPath = "crates/rustok-product/storefront/src/model.rs";
-  const productStorefrontTransportPath = "crates/rustok-product/storefront/src/transport/mod.rs";
-  const productStorefrontNativePath = "crates/rustok-product/storefront/src/transport/native_server_adapter.rs";
-  const productStorefrontGraphqlPath = "crates/rustok-product/storefront/src/transport/graphql_adapter.rs";
-  const searchStorefrontLibPath = "crates/rustok-search/storefront/src/lib.rs";
+  const productStorefrontLibPath = "crates/modules/rustok-product/storefront/src/lib.rs";
+  const productStorefrontModelPath = "crates/modules/rustok-product/storefront/src/model.rs";
+  const productStorefrontTransportPath = "crates/modules/rustok-product/storefront/src/transport/mod.rs";
+  const productStorefrontNativePath = "crates/modules/rustok-product/storefront/src/transport/native_server_adapter.rs";
+  const productStorefrontGraphqlPath = "crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs";
+  const searchStorefrontLibPath = "crates/modules/rustok-search/storefront/src/lib.rs";
   const storefrontBuildPath = "apps/storefront/build.rs";
   const storefrontCompositionPath = "apps/storefront/src/modules/search_composition.rs";
-  const commerceQueryPath = "crates/rustok-commerce/src/graphql/query.rs";
-  const commerceTypesPath = "crates/rustok-commerce/src/graphql/types.rs";
+  const commerceQueryPath = "crates/modules/rustok-commerce/src/graphql/query.rs";
+  const commerceTypesPath = "crates/modules/rustok-commerce/src/graphql/types.rs";
 
   for (const checkedPath of [
     adminCorePath,
@@ -652,9 +652,9 @@ function assertSearchUiCatalogTransportContract() {
   }
 
   assertContains(
-    readRepo("crates/rustok-search/admin/src/lib.rs"),
+    readRepo("crates/modules/rustok-search/admin/src/lib.rs"),
     "SearchCatalogFilterOption",
-    "crates/rustok-search/admin/src/lib.rs: host-facing search option DTO must be public",
+    "crates/modules/rustok-search/admin/src/lib.rs: host-facing search option DTO must be public",
   );
 
   for (const marker of [

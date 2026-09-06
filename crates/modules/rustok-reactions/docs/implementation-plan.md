@@ -19,7 +19,7 @@ Reactions module implementation.
 Standard rules.
 
 ---
-id: doc://crates/rustok-reactions/docs/implementation-plan.md
+id: doc://crates/modules/rustok-reactions/docs/implementation-plan.md
 kind: module_implementation_plan
 language: en
 status: active
@@ -258,7 +258,7 @@ composition remains pending. The source guards are
 
 The Forum host composition now also has browser-evidence source in
 `tests/e2e-rust/tests/leptos_storefront_forum_reactions.rs`, backed by
-`crates/rustok-forum/contracts/forum-reactions-storefront-browser-evidence.json`
+`crates/modules/rustok-forum/contracts/forum-reactions-storefront-browser-evidence.json`
 and `scripts/verify/verify-forum-reactions-storefront-browser-evidence.mjs`.
 Maintainer-supplied canonical topic and selected-reply URLs are observed through
 the existing Rust `playwright-rs` E2E crate. The topic document must mount only
@@ -276,7 +276,7 @@ materialization and the selected-feature/missing-owner failure. It does not quer
 Forum or Blog domain rows or execute reaction commands.
 
 The Blog producer also adds source-level provider and contract evidence in
-`crates/rustok-blog/contracts/blog-reaction-subject-provider.json` and
+`crates/modules/rustok-blog/contracts/blog-reaction-subject-provider.json` and
 `scripts/verify/verify-blog-reaction-subject-provider.mjs`. Retained execution of
 the Blog+Reactions host profile and Blog authorization behavior remains part of
 `REACTIONS-04` completion.

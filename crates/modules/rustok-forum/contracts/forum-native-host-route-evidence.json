@@ -14,7 +14,7 @@
   ],
   "status": "executable_no_run",
   "compile_policy": "not_run_by_request",
-  "test_target": "crates/rustok-forum/storefront/tests/native_host_route_decision_sqlite.rs",
+  "test_target": "crates/modules/rustok-forum/storefront/tests/native_host_route_decision_sqlite.rs",
   "registered_host": {
     "router": "Axum /api/fn/{*fn_name}",
     "dispatcher": "leptos_axum::handle_server_fns_with_context",
@@ -22,8 +22,8 @@
     "tenant_authority": "rustok_api::TenantContextExtension",
     "category_endpoint": "/api/fn/forum/storefront-category-route",
     "topic_endpoint": "/api/fn/forum/storefront-topic-route",
-    "category_adapter": "crates/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
-    "topic_adapter": "crates/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
+    "category_adapter": "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
+    "topic_adapter": "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_topic_route.rs",
     "anonymous_auth_context": true,
     "channel_context_present": false
   },

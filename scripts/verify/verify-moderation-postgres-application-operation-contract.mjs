@@ -1,11 +1,11 @@
 import fs from "node:fs";
 
 const test = fs.readFileSync(
-  "crates/rustok-moderation/tests/postgres_application_operation_contract.rs",
+  "crates/modules/rustok-moderation/tests/postgres_application_operation_contract.rs",
   "utf8",
 );
 const docs = fs.readFileSync(
-  "crates/rustok-moderation/docs/postgres-application-operation-contract.md",
+  "crates/modules/rustok-moderation/docs/postgres-application-operation-contract.md",
   "utf8",
 );
 

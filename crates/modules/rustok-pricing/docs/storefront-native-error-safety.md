@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This slice hardens the Pricing-owned native storefront server function in:
 
-- `crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs`.
+- `crates/modules/rustok-pricing/storefront/src/transport/native_server_adapter.rs`.
 
 The endpoint composes channel options, active price lists, published product pricing, selected-product detail, and effective variant prices.
 

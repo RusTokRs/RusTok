@@ -5,14 +5,14 @@
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "sources": {
-    "core": "crates/rustok-blog/admin/src/core.rs",
-    "ui": "crates/rustok-blog/admin/src/ui/leptos.rs",
+    "core": "crates/modules/rustok-blog/admin/src/core.rs",
+    "ui": "crates/modules/rustok-blog/admin/src/ui/leptos.rs",
     "locales": {
-      "en": "crates/rustok-blog/admin/locales/en.json",
-      "ru": "crates/rustok-blog/admin/locales/ru.json"
+      "en": "crates/modules/rustok-blog/admin/locales/en.json",
+      "ru": "crates/modules/rustok-blog/admin/locales/ru.json"
     },
-    "adapter": "crates/rustok-blog/admin/src/ui/richtext.rs",
-    "shared_adapter": "crates/leptos-ui/src/richtext.rs"
+    "adapter": "crates/modules/rustok-blog/admin/src/ui/richtext.rs",
+    "shared_adapter": "crates/ui/leptos-ui/src/richtext.rs"
   },
   "required_markers": {
     "core": [

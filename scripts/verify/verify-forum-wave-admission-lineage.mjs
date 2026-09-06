@@ -9,11 +9,11 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const lineageContractPath = path.join(
   repoRoot,
-  "crates/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json",
+  "crates/modules/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json",
 );
 const defaultWavePath = path.join(
   repoRoot,
-  "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
+  "crates/modules/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
 );
 const MAX_PACKET_BYTES = 32 * 1024 * 1024;
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/u;

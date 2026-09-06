@@ -14,7 +14,7 @@ Forty-nine commits are present on `main` after that merge base.
 
 These commits do not modify:
 
-- `crates/rustok-index`;
+- `crates/modules/rustok-index`;
 - Product Index source or absence composition;
 - `apps/server/src/graphql/index_drift_diagnosis.rs`;
 - `apps/server/src/graphql/index_drift_source_page_diagnosis.rs`;

@@ -3,21 +3,21 @@ name: Forum Taxonomy Category Dual-Write Contract
 on:
   pull_request:
     paths:
-      - "crates/rustok-forum/src/services/category_projection_owner.rs"
-      - "crates/rustok-forum/src/services/category_command_owner.rs"
-      - "crates/rustok-forum/src/services/category_taxonomy_sync.rs"
-      - "crates/rustok-forum/tests/category_taxonomy_dual_write.rs"
-      - "crates/rustok-forum/tests/category_atomicity_sqlite.rs"
+      - "crates/modules/rustok-forum/src/services/category_projection_owner.rs"
+      - "crates/modules/rustok-forum/src/services/category_command_owner.rs"
+      - "crates/modules/rustok-forum/src/services/category_taxonomy_sync.rs"
+      - "crates/modules/rustok-forum/tests/category_taxonomy_dual_write.rs"
+      - "crates/modules/rustok-forum/tests/category_atomicity_sqlite.rs"
       - ".github/workflows/forum-taxonomy-category-dual-write.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/rustok-forum/src/services/category_projection_owner.rs"
-      - "crates/rustok-forum/src/services/category_command_owner.rs"
-      - "crates/rustok-forum/src/services/category_taxonomy_sync.rs"
-      - "crates/rustok-forum/tests/category_taxonomy_dual_write.rs"
-      - "crates/rustok-forum/tests/category_atomicity_sqlite.rs"
+      - "crates/modules/rustok-forum/src/services/category_projection_owner.rs"
+      - "crates/modules/rustok-forum/src/services/category_command_owner.rs"
+      - "crates/modules/rustok-forum/src/services/category_taxonomy_sync.rs"
+      - "crates/modules/rustok-forum/tests/category_taxonomy_dual_write.rs"
+      - "crates/modules/rustok-forum/tests/category_atomicity_sqlite.rs"
       - ".github/workflows/forum-taxonomy-category-dual-write.yml"
   workflow_dispatch:
 

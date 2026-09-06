@@ -39,7 +39,7 @@ The broader ecommerce correlation-safe mapper and non-`PortError` envelope clean
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/admin-product-shipping-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/admin-product-shipping-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-admin-product-shipping-profile-error-context.mjs`
 
 ## Validation disclosure

@@ -10,7 +10,7 @@ status: verified
 
 This document captures the current baseline set of Prometheus metrics for RusToK
 modules. The source of truth for names and labels remains
-`crates/rustok-telemetry/src/metrics.rs`; this guide describes how to use
+`crates/libs/rustok-telemetry/src/metrics.rs`; this guide describes how to use
 them and what constitutes the minimal operational baseline.
 
 ## Baseline Set

@@ -54,13 +54,13 @@
     "fba_promoted": false
   },
   "regression": {
-    "path": "crates/rustok-pages/tests/page_published_slug_route_alias_sqlite.rs",
+    "path": "crates/modules/rustok-pages/tests/page_published_slug_route_alias_sqlite.rs",
     "tests": [
       "published_slug_renames_create_immutable_redirects_and_reserve_old_claims",
       "draft_only_slug_renames_do_not_create_public_route_history"
     ],
     "backend": "sqlite_in_memory"
   },
-  "source_verifier": "crates/rustok-pages/scripts/verify/verify-pages-published-slug-route-alias.mjs",
+  "source_verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-published-slug-route-alias.mjs",
   "packet": "docs/modules/pages-page-builder-published-slug-route-alias-packet-2026-08-05.md"
 }

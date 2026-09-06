@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const entityAdmissionPath = 'crates/rustok-index/src/application/postgres_query_admission.rs';
+const entityAdmissionPath = 'crates/modules/rustok-index/src/application/postgres_query_admission.rs';
 const entityAdmission = requireMarkers(entityAdmissionPath, [
   'index_entities AS \\"',
   'BTreeSet<String>',
@@ -42,7 +42,7 @@ forbidMarkers(entityAdmissionPath, entityAdmission, [
   'channel_index_identity_generations',
 ]);
 
-const compilerPath = 'crates/rustok-index/src/application/postgres_query_sql.rs';
+const compilerPath = 'crates/modules/rustok-index/src/application/postgres_query_sql.rs';
 const compiler = requireMarkers(compilerPath, [
   'FROM index_entities AS {root_alias}',
   'LEFT JOIN index_entities AS {target_alias}',
@@ -63,7 +63,7 @@ forbidMarkers(compilerPath, compiler, [
   'SALES_CHANNEL_QUERY_MATERIALIZED_FRESHNESS',
 ]);
 
-const catalogPath = 'crates/rustok-index/src/infrastructure/postgres/query_admission.rs';
+const catalogPath = 'crates/modules/rustok-index/src/infrastructure/postgres/query_admission.rs';
 requireMarkers(catalogPath, [
   'rule: Option<PostgresQueryEntityAdmission>',
   'required_link_targets: BTreeMap<SchemaRef, String>',
@@ -81,7 +81,7 @@ requireMarkers(catalogPath, [
   'availability_predicate_uses_current_source_link_and_owner_admitted_target',
   'root_availability_predicate_applies_to_page_and_count_anchor_shape',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_runtime.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/query_runtime.rs', [
   'LinkAvailabilitySchemaMissing',
   'for (schema, owner_module) in admissions.link_availability_iter()',
   'if !admissions.is_empty()',
@@ -89,7 +89,7 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_runtime.rs
   'PostgresIndexQueryPort::with_admissions(',
 ]);
 
-const ownerPath = 'crates/rustok-distribution/src/product_index/query_admission.rs';
+const ownerPath = 'crates/modules/rustok-distribution/src/product_index/query_admission.rs';
 const owner = requireMarkers(ownerPath, [
   'PRODUCT_VARIANT_QUERY_MATERIALIZED_FRESHNESS',
   'FROM product_variants owner_variant',
@@ -105,19 +105,19 @@ const owner = requireMarkers(ownerPath, [
 ]);
 forbidMarkers(ownerPath, owner, ['index_entities', 'index_links', '$1']);
 
-requireMarkers('crates/rustok-distribution/src/product_variant_index.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/product_variant_index.rs', [
   'v.index_revision',
   'tombstone.source_version AS index_revision',
   'PRODUCT_VARIANT_SCHEMA_VERSION: u32 = 2',
 ]);
-requireMarkers('crates/rustok-distribution/src/channel_index.rs', [
+requireMarkers('crates/modules/rustok-distribution/src/channel_index.rs', [
   'c.index_revision',
   'tombstone.source_version AS index_revision',
   'SchemaVersion::INITIAL',
 ]);
 
 requireMarkers(
-  'crates/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs',
+  'crates/modules/rustok-product/src/migrations/m20260731_000004_add_product_index_tombstones.rs',
   [
     'CREATE TABLE product_variant_index_tombstones',
     'OLD.index_revision + 1',
@@ -127,7 +127,7 @@ requireMarkers(
   ],
 );
 requireMarkers(
-  'crates/rustok-channel/src/migrations/m20260731_000011_add_channel_index_tombstones.rs',
+  'crates/modules/rustok-channel/src/migrations/m20260731_000011_add_channel_index_tombstones.rs',
   [
     'CREATE TABLE channel_index_tombstones',
     'OLD.index_revision + 1',
@@ -138,7 +138,7 @@ requireMarkers(
 );
 
 const freshnessDoc = requireMarkers(
-  'crates/rustok-index/docs/m7-product-materialized-query-freshness.md',
+  'crates/modules/rustok-index/docs/m7-product-materialized-query-freshness.md',
   [
     'Status: `source_complete_link_target_availability_equivalence_execution_pending`',
     'Query-path-scoped linked-target availability',
@@ -151,7 +151,7 @@ const freshnessDoc = requireMarkers(
     'Remaining M7 evidence',
   ],
 );
-forbidMarkers('crates/rustok-index/docs/m7-product-materialized-query-freshness.md', freshnessDoc, [
+forbidMarkers('crates/modules/rustok-index/docs/m7-product-materialized-query-freshness.md', freshnessDoc, [
   'Remaining linked-target availability boundary',
   'next unblocked M7 source-design gap',
   'define and retain fail-closed linked-target availability semantics',

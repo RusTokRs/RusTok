@@ -5,8 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const policyPath = path.join(root, 'crates/rustok-modules/src/oci.rs');
-const transportPath = path.join(root, 'crates/rustok-modules/src/oci_transport.rs');
+const policyPath = path.join(root, 'crates/modules/rustok-modules/src/oci.rs');
+const transportPath = path.join(root, 'crates/modules/rustok-modules/src/oci_transport.rs');
 
 function fail(message) {
   throw new Error(`[verify-oci-registry-transport-policy] ${message}`);

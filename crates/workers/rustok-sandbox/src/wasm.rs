@@ -43,7 +43,7 @@ const MAX_COMPONENT_CACHE_ENTRIES: usize = 64;
 const MAX_COMPONENT_CACHE_BYTES: usize = 128 * 1024 * 1024;
 
 wasmtime::component::bindgen!({
-    path: "../rustok-module-sdk/wit",
+    path: "../../utils/rustok-module-sdk/wit",
     world: "module-runtime",
 });
 

@@ -5,7 +5,7 @@ Status: **source-ready / unvalidated**
 ## Boundary
 
 This source slice hardens the two public HTTP error mappers in
-`crates/rustok-commerce/src/controllers/store/checkout.rs`:
+`crates/modules/rustok-commerce/src/controllers/store/checkout.rs`:
 
 - `storefront_checkout_http_error`, which maps the staged storefront checkout runtime envelope;
 - `payment_collection_http_error`, which maps direct storefront payment-collection owner errors.
@@ -74,7 +74,7 @@ and adapter diagnostics remain across other commerce routes and owner modules.
 
 ## Evidence
 
-- `crates/rustok-commerce/contracts/evidence/storefront-checkout-http-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-commerce/contracts/evidence/storefront-checkout-http-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-commerce-storefront-checkout-http-error-context.mjs`
 
 Evidence is source-only. The execution list is empty and every validation flag remains false.

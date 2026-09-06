@@ -1,8 +1,8 @@
 import fs from "node:fs";
 
-const sourcePath = "crates/rustok-groups/src/effective_service.rs";
-const contractPath = "crates/rustok-groups/contracts/groups-effective-membership-access.json";
-const planPath = "crates/rustok-groups/docs/implementation-plan.md";
+const sourcePath = "crates/modules/rustok-groups/src/effective_service.rs";
+const contractPath = "crates/modules/rustok-groups/contracts/groups-effective-membership-access.json";
+const planPath = "crates/modules/rustok-groups/docs/implementation-plan.md";
 
 const source = fs.readFileSync(sourcePath, "utf8");
 const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));

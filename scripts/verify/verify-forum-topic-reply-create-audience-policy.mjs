@@ -28,12 +28,12 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-topic-reply-create-audience-policy.json";
+  "crates/modules/rustok-forum/contracts/forum-topic-reply-create-audience-policy.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const migration = read(contract.migration_file ?? "");
 const service = read(contract.service_file ?? "");
 const authorization = read(contract.authorization_service ?? "");
-const facade = read("crates/rustok-forum/src/services/reply_facade.rs");
+const facade = read("crates/modules/rustok-forum/src/services/reply_facade.rs");
 const entities = read(contract.entities_module ?? "");
 const services = read(contract.services_module ?? "");
 const crateRoot = read(contract.crate_root ?? "");
@@ -203,7 +203,7 @@ for (const marker of [
   "source-ready / unvalidated",
   "topic can narrow but never broaden",
   "does not read or mutate `forum_topic_audience_*` visibility rows",
-  "canonical `crates/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten",
+  "canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten",
   "were not run by the implementation agent",
 ]) {
   requireText(note, marker, `FORUM-20AX owner note is missing ${marker}`);

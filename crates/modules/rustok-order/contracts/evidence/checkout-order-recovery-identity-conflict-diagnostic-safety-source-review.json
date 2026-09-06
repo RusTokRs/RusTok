@@ -1,11 +1,11 @@
 {
   "status": "order_checkout_recovery_identity_conflict_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-order/src/checkout_order_recovery.rs",
-    "crates/rustok-order/docs/checkout-order-recovery-identity-conflict-diagnostic-safety.md",
-    "crates/rustok-order/contracts/evidence/checkout-order-recovery-identity-conflict-diagnostic-safety-source-review.json",
+    "crates/modules/rustok-order/src/checkout_order_recovery.rs",
+    "crates/modules/rustok-order/docs/checkout-order-recovery-identity-conflict-diagnostic-safety.md",
+    "crates/modules/rustok-order/contracts/evidence/checkout-order-recovery-identity-conflict-diagnostic-safety-source-review.json",
     "scripts/verify/verify-order-checkout-recovery-identity-conflict-diagnostic-safety.mjs",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "review_findings": {
     "identity_conflict_event_count": 1,

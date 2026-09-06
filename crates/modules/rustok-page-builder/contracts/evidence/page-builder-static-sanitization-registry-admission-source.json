@@ -4,7 +4,7 @@
   "scope": "page_builder_fba_static_sanitization",
   "purpose": "Fail closed over a retained static-sanitization execution receipt plus saved GitHub workflow-run metadata before any later PR may change the canonical FBA executed-evidence node.",
   "predecessor": {
-    "source_contract": "crates/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-execution-source.json",
+    "source_contract": "crates/modules/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-execution-source.json",
     "source_format": "page_builder_static_sanitization_execution_source_v1",
     "source_status": "source_ready_maintainer_execution_pending",
     "receipt_format": "page_builder_static_sanitization_execution_v1",
@@ -37,7 +37,7 @@
     "source_drift_requires_new_execution": true
   },
   "target": {
-    "fba_registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "fba_registry": "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
     "registry_required_status": "boundary_ready",
     "executed_evidence_json_pointer": "/provider/static_sanitization_contract/executed_evidence",
     "required_before_value": "pending",
@@ -91,7 +91,7 @@
     "cryptographic_ci_attestation_claimed": false
   },
   "required_source_files": [
-    "crates/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-registry-admission-source.json",
+    "crates/modules/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-registry-admission-source.json",
     "scripts/evidence/admit-page-builder-static-sanitization-registry-update.mjs",
     "scripts/evidence/admit-page-builder-static-sanitization-registry-update.test.mjs",
     "scripts/verify/verify-page-builder-static-sanitization-registry-admission.mjs"

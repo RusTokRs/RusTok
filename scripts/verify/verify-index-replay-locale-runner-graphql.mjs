@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
+const runnerPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = requireMarkers(runnerPath, [
   'pub fn for_locale(',
   'pub fn locale(&self) -> Option<&LocaleKey>',
@@ -38,7 +38,7 @@ for (const forbidden of ['partition_key()', 'partition: Option', 'targeted_rebui
 }
 
 const gracefulPath =
-  'crates/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
+  'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner/graceful_shutdown.rs';
 const graceful = requireMarkers(gracefulPath, [
   'let lease_request = lease_request_for_run(&request, source_name)?;',
   'let page_future = worker.run_next_page_interruptible(',
@@ -79,14 +79,14 @@ requireMarkers('apps/server/docs/index-replay-graphql-transport.md', [
   'The terminal success fence checks the checkpoint using the leased locale',
   '`partition_key`',
 ]);
-requireMarkers('crates/rustok-index/docs/m6-locale-replay-runner-graphql.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-locale-replay-runner-graphql.md', [
   'runner_graphql_evidence_source_complete_execution_pending',
   'checkpoint.locale_key',
   'Partition replay must remain blocked',
   'end-to-end GraphQL locale yield/isolation/fresh-runtime resume',
   'Execution/admission remains maintainer-owned',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
   'optional locale is carried through the multi-page replay runner and GraphQL command transport',
   'Add partition replay scope only after a real partition-capable source contract exists',
   'Add explicit targeted/full/shadow rebuild modes under a separate contract',

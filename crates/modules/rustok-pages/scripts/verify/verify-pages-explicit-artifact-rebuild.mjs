@@ -4,26 +4,26 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  migration: "crates/rustok-pages/src/migrations/m20260806_000014_add_explicit_artifact_rebuild.rs",
-  migrations: "crates/rustok-pages/src/migrations/mod.rs",
-  artifactEntity: "crates/rustok-pages/src/entities/page_static_landing_artifact.rs",
-  operationEntity: "crates/rustok-pages/src/entities/page_artifact_rebuild_operation.rs",
-  entities: "crates/rustok-pages/src/entities/mod.rs",
-  artifactService: "crates/rustok-pages/src/services/page_builder_artifact.rs",
-  rebuildService: "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
-  pageServices: "crates/rustok-pages/src/services/page/mod.rs",
-  services: "crates/rustok-pages/src/services/mod.rs",
-  crateRoot: "crates/rustok-pages/src/lib.rs",
-  publishManifest: "crates/rustok-pages/src/services/page/publish_manifest.rs",
-  dto: "crates/rustok-pages/src/dto/page.rs",
-  dtoMod: "crates/rustok-pages/src/dto/mod.rs",
-  audit: "crates/rustok-pages/src/services/page/artifact_integrity_audit.rs",
-  regression: "crates/rustok-pages/tests/explicit_artifact_rebuild_sqlite.rs",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-rebuild-source.json",
-  packet: "crates/rustok-pages/docs/explicit-immutable-artifact-rebuild.md",
+  migration: "crates/modules/rustok-pages/src/migrations/m20260806_000014_add_explicit_artifact_rebuild.rs",
+  migrations: "crates/modules/rustok-pages/src/migrations/mod.rs",
+  artifactEntity: "crates/modules/rustok-pages/src/entities/page_static_landing_artifact.rs",
+  operationEntity: "crates/modules/rustok-pages/src/entities/page_artifact_rebuild_operation.rs",
+  entities: "crates/modules/rustok-pages/src/entities/mod.rs",
+  artifactService: "crates/modules/rustok-pages/src/services/page_builder_artifact.rs",
+  rebuildService: "crates/modules/rustok-pages/src/services/page/artifact_rebuild.rs",
+  pageServices: "crates/modules/rustok-pages/src/services/page/mod.rs",
+  services: "crates/modules/rustok-pages/src/services/mod.rs",
+  crateRoot: "crates/modules/rustok-pages/src/lib.rs",
+  publishManifest: "crates/modules/rustok-pages/src/services/page/publish_manifest.rs",
+  dto: "crates/modules/rustok-pages/src/dto/page.rs",
+  dtoMod: "crates/modules/rustok-pages/src/dto/mod.rs",
+  audit: "crates/modules/rustok-pages/src/services/page/artifact_integrity_audit.rs",
+  regression: "crates/modules/rustok-pages/tests/explicit_artifact_rebuild_sqlite.rs",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-rebuild-source.json",
+  packet: "crates/modules/rustok-pages/docs/explicit-immutable-artifact-rebuild.md",
   actualization: "docs/modules/page-builder-parity-actualization-2026-08-05.md",
   continuation: "docs/modules/pages-page-builder-rebuild-provenance-continuation-2026-08-06.md",
 };

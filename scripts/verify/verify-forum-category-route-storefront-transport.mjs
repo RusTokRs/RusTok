@@ -11,23 +11,23 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 
 const paths = {
-  graphql: "crates/rustok-forum/src/graphql/category_route_query.rs",
-  graphqlMod: "crates/rustok-forum/src/graphql/mod.rs",
-  routeOwner: "crates/rustok-forum/src/services/category_route.rs",
-  audienceOwner: "crates/rustok-forum/src/services/category_audience_read.rs",
-  audienceInline: "crates/rustok-forum/src/services/category_audience_read_inline.rs",
-  model: "crates/rustok-forum/storefront/src/model.rs",
+  graphql: "crates/modules/rustok-forum/src/graphql/category_route_query.rs",
+  graphqlMod: "crates/modules/rustok-forum/src/graphql/mod.rs",
+  routeOwner: "crates/modules/rustok-forum/src/services/category_route.rs",
+  audienceOwner: "crates/modules/rustok-forum/src/services/category_audience_read.rs",
+  audienceInline: "crates/modules/rustok-forum/src/services/category_audience_read_inline.rs",
+  model: "crates/modules/rustok-forum/storefront/src/model.rs",
   graphqlAdapter:
-    "crates/rustok-forum/storefront/src/transport/category_route_graphql_adapter.rs",
+    "crates/modules/rustok-forum/storefront/src/transport/category_route_graphql_adapter.rs",
   nativeAdapter:
-    "crates/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
-  transportMod: "crates/rustok-forum/storefront/src/transport/mod.rs",
-  storefrontLib: "crates/rustok-forum/storefront/src/lib.rs",
+    "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
+  transportMod: "crates/modules/rustok-forum/storefront/src/transport/mod.rs",
+  storefrontLib: "crates/modules/rustok-forum/storefront/src/lib.rs",
   contract:
-    "crates/rustok-forum/contracts/forum-category-route-storefront-transport.json",
+    "crates/modules/rustok-forum/contracts/forum-category-route-storefront-transport.json",
   contractTest:
-    "crates/rustok-forum/tests/category_route_storefront_transport_contract.rs",
-  docs: "crates/rustok-forum/docs/forum-24n-category-route-storefront-transport.md",
+    "crates/modules/rustok-forum/tests/category_route_storefront_transport_contract.rs",
+  docs: "crates/modules/rustok-forum/docs/forum-24n-category-route-storefront-transport.md",
 };
 
 function read(relativePath) {

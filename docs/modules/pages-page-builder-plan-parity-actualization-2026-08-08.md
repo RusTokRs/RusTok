@@ -116,26 +116,26 @@ Source inspection alone must not mark execution, current health, observed-health
 
 ## Anti-drift guards
 
-`crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs` now locks the synchronized provider-health/gate/admission cursor across the reconciled shared/local/central plans, this dated parity packet, rollout actualization, Pages reference-consumer gate/acceptance source and Forum Wave admission source. It rejects stale current-state claims that the repository has no provider-health observation architecture, an accepted Pages gate without execution evidence, fabricated current provider health, Forum Wave promotion while admission/execution is pending, and any claim that `FLY_CAPABILITY_DENIED` substitutes for provider `FEATURE_DISABLED`.
+`crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs` now locks the synchronized provider-health/gate/admission cursor across the reconciled shared/local/central plans, this dated parity packet, rollout actualization, Pages reference-consumer gate/acceptance source and Forum Wave admission source. It rejects stale current-state claims that the repository has no provider-health observation architecture, an accepted Pages gate without execution evidence, fabricated current provider health, Forum Wave promotion while admission/execution is pending, and any claim that `FLY_CAPABILITY_DENIED` substitutes for provider `FEATURE_DISABLED`.
 
 Provider-health / gate / Forum admission source is independently guarded by:
 
 ```text
-crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
-crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
-crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
-crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
-crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
-crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs
-crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
-crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs
-crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
-crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs
-crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
-crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
-crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs
-crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
-crates/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs
+crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs
+crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-metrics.mjs
+crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
+crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
+crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-transport.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-server-binding.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-consumer-binding.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-capability-preflight.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-evidence-harness.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
+crates/modules/rustok-pages/scripts/verify/verify-pages-builder-rollout-binding.mjs
 scripts/verify/verify-forum-page-builder-wave-admission.mjs
 scripts/verify/verify-forum-wave-plan-sync.mjs
 scripts/verify/verify-forum-wave-evidence-freshness.mjs
@@ -150,8 +150,8 @@ No tests, Node verifiers, Cargo commands, formatting, builds, Prometheus scrapes
 Suggested maintainer source commands, intentionally not run:
 
 ```bash
-node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
-node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
+node crates/modules/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate-acceptance.mjs
 node scripts/verify/verify-forum-page-builder-wave-admission.mjs
 node scripts/verify/verify-forum-wave-plan-sync.mjs
 node scripts/verify/verify-forum-wave-evidence-freshness.mjs

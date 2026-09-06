@@ -80,7 +80,7 @@
     "cross_topic_redirect_target_disappearance": "hidden_without_source_route_snapshot_proof"
   },
   "verification": {
-    "contract_test": "crates/rustok-forum/tests/topic_route_authorized_gone_transport_contract.rs",
+    "contract_test": "crates/modules/rustok-forum/tests/topic_route_authorized_gone_transport_contract.rs",
     "verifier": "scripts/verify/verify-forum-topic-route-authorized-gone.mjs",
     "maintainer_commands": [
       "node scripts/verify/verify-forum-topic-route-authorized-gone.mjs",

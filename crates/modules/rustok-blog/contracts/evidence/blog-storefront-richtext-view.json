@@ -4,11 +4,11 @@
   "boundary": "storefront-post-richtext-view",
   "status": "locally_verified",
   "scope": [
-    "crates/rustok-blog/storefront/src/core.rs",
-    "crates/rustok-blog/storefront/src/model.rs",
-    "crates/rustok-blog/storefront/src/transport/graphql_adapter.rs",
-    "crates/rustok-blog/storefront/src/transport/native_server_adapter.rs",
-    "crates/rustok-blog/storefront/src/ui/leptos.rs"
+    "crates/modules/rustok-blog/storefront/src/core.rs",
+    "crates/modules/rustok-blog/storefront/src/model.rs",
+    "crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs",
+    "crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs",
+    "crates/modules/rustok-blog/storefront/src/ui/leptos.rs"
   ],
   "contract": {
     "graphql_owner_view": true,

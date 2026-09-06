@@ -2,12 +2,12 @@
   "schema_version": 1,
   "status": "region_owner_port_error_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-region/src/ports.rs",
-    "crates/rustok-region/src/error.rs",
+    "crates/modules/rustok-region/src/ports.rs",
+    "crates/modules/rustok-region/src/error.rs",
     "scripts/verify/verify-region-owner-port-error-safety.mjs",
-    "crates/rustok-region/contracts/evidence/region-owner-port-error-safety-source.json",
-    "crates/rustok-region/docs/region-owner-port-error-safety.md",
-    "crates/rustok-region/docs/implementation-plan.md"
+    "crates/modules/rustok-region/contracts/evidence/region-owner-port-error-safety-source.json",
+    "crates/modules/rustok-region/docs/region-owner-port-error-safety.md",
+    "crates/modules/rustok-region/docs/implementation-plan.md"
   ],
   "review_findings": {
     "both_read_operations_preserved": true,

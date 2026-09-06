@@ -11,7 +11,7 @@ Search documents. Profiles remains the presentation authority; Forum never seria
 identifier merely because Forum owns a topic or reply row.
 
 The machine-readable contract is
-`crates/rustok-forum/contracts/forum-search-public-author-summary.json`.
+`crates/modules/rustok-forum/contracts/forum-search-public-author-summary.json`.
 
 ## Owner boundary
 

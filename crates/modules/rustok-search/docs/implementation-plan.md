@@ -16,7 +16,7 @@ rather than index runtime types. The FFA split is `phase_b_ready` with focused
 core, transport, and UI packages.
 
 Canonical result navigation has a single owner policy:
-`canonical_search_result_url` in `crates/rustok-search/src/engine.rs`. It derives
+`canonical_search_result_url` in `crates/modules/rustok-search/src/engine.rs`. It derives
 product, content, Blog, and Forum URLs from normalized `SearchResultItem` values
 before transport serialization. Blog navigation requires the canonical
 `source_module=blog` / `entity_type=blog_post` pair and a bounded ASCII slug from
@@ -52,7 +52,7 @@ availability resolves through the active PostgreSQL `search_path` instead of
 hard-coding `public`.
 
 The retained Blog projection evidence is
-`crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`,
+`crates/modules/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`,
 guarded by `scripts/verify/verify-search-blog-projection.mjs` and focused fixture
 `scripts/verify/verify-search-blog-projection.test.mjs`. Exact commands
 `verify:search:blog-projection` and `test:verify:search:blog-projection` run after
@@ -175,18 +175,18 @@ projection can remain stale after recovery.
 - FFA status: `phase_b_ready`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
 - Provider contracts: `SearchQueryPort` and `SearchSuggestionPort` in
-  `crates/rustok-search/contracts/search-fba-registry.json`.
+  `crates/modules/rustok-search/contracts/search-fba-registry.json`.
 - Static provider evidence:
-  `crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`.
+  `crates/modules/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`.
 - Executable provider fallback evidence:
-  `crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json`.
+  `crates/modules/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json`.
 - Executable provider contract evidence:
-  `crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json`.
+  `crates/modules/rustok-search/contracts/evidence/search-runtime-contract-smoke.json`.
 - Provider invocation evidence:
-  `crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json`.
+  `crates/modules/rustok-search/contracts/evidence/search-runtime-invocation-trace.json`.
 - Canonical URL status: `source_verified_no_compile`.
 - Canonical URL evidence:
-  `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`.
+  `crates/modules/rustok-search/contracts/evidence/search-canonical-url-contract.json`.
 - Canonical URL guardrail:
   `scripts/verify/verify-search-canonical-url-contract.mjs`.
 - Canonical URL focused fixture:
@@ -195,7 +195,7 @@ projection can remain stale after recovery.
   `test:verify:search:canonical-url`; both are locked into the Search FBA package
   chains by `scripts/verify/verify-search-fba.mjs`.
 - Blog projection evidence:
-  `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`.
+  `crates/modules/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`.
 - Blog projection guardrail and fixture:
   `scripts/verify/verify-search-blog-projection.mjs` and
   `scripts/verify/verify-search-blog-projection.test.mjs`.
@@ -206,56 +206,56 @@ projection can remain stale after recovery.
   and requires `RUSTOK_SEARCH_TEST_DATABASE_URL` or PostgreSQL `DATABASE_URL`.
 - Exact Forum category filter status: `source_complete_execution_pending`.
 - Exact Forum category filter contract:
-  `crates/rustok-forum/contracts/forum-search-exact-category-filter.json`.
+  `crates/modules/rustok-forum/contracts/forum-search-exact-category-filter.json`.
 - Exact Forum category filter guardrail:
   `scripts/verify/verify-forum-search-exact-category-filter.mjs`.
 - Forum category-subtree owner status: `source_complete_execution_pending`.
 - Forum richer-audience subtree contract:
-  `crates/rustok-forum/contracts/forum-search-category-audience-scope.json`.
+  `crates/modules/rustok-forum/contracts/forum-search-category-audience-scope.json`.
 - Forum-only storefront Search composition status:
   `source_complete_execution_pending`.
 - Forum-only storefront Search contract and guardrail:
-  `crates/rustok-forum/contracts/forum-search-storefront-scope.json` and
+  `crates/modules/rustok-forum/contracts/forum-search-storefront-scope.json` and
   `scripts/verify/verify-forum-search-storefront-scope.mjs`.
 - Forum topic/reply result eligibility status:
   `source_complete_execution_pending` under `FORUM-23B2D`.
 - Forum result eligibility contract and guardrail:
-  `crates/rustok-forum/contracts/forum-search-result-eligibility.json` and
+  `crates/modules/rustok-forum/contracts/forum-search-result-eligibility.json` and
   `scripts/verify/verify-forum-search-result-eligibility.mjs`.
 - Trusted storefront channel authority status:
   `source_complete_execution_pending` under `FORUM-23B2E1`.
 - Trusted channel contract and guardrail:
-  `crates/rustok-forum/contracts/forum-search-trusted-channel-authority.json` and
+  `crates/modules/rustok-forum/contracts/forum-search-trusted-channel-authority.json` and
   `scripts/verify/verify-forum-search-trusted-channel-authority.mjs`.
 - Product channel visibility status:
   `source_complete_execution_pending` under `FORUM-23B2E2`.
 - Product channel visibility contract and guardrail:
-  `crates/rustok-forum/contracts/forum-search-product-channel-visibility.json` and
+  `crates/modules/rustok-forum/contracts/forum-search-product-channel-visibility.json` and
   `scripts/verify/verify-forum-search-product-channel-visibility.mjs`.
 - Exact Forum author filter status:
   `source_complete_execution_pending` under `FORUM-23B2F1`.
 - Exact Forum author filter contract and guardrail:
-  `crates/rustok-forum/contracts/forum-search-author-filter.json` and
+  `crates/modules/rustok-forum/contracts/forum-search-author-filter.json` and
   `scripts/verify/verify-forum-search-author-filter.mjs`.
 - Exact Forum tag and solved filter status:
   `source_complete_execution_pending` under `FORUM-23B2F2`.
 - Exact Forum tag and solved contract and guardrail:
-  `crates/rustok-forum/contracts/forum-search-tag-solved-filter.json` and
+  `crates/modules/rustok-forum/contracts/forum-search-tag-solved-filter.json` and
   `scripts/verify/verify-forum-search-tag-solved-filter.mjs`.
 - Exact Forum locale and date filter status:
   `source_complete_execution_pending` under `FORUM-23B2F3`.
 - Exact Forum locale/date contract and guardrail:
-  `crates/rustok-forum/contracts/forum-search-locale-date-filter.json` and
+  `crates/modules/rustok-forum/contracts/forum-search-locale-date-filter.json` and
   `scripts/verify/verify-forum-search-locale-date-filter.mjs`.
 - Trusted current-channel Forum filter status:
   `source_complete_execution_pending` under `FORUM-23B2F4`.
 - Trusted current-channel contract and guardrail:
-  `crates/rustok-forum/contracts/forum-search-current-channel-filter.json` and
+  `crates/modules/rustok-forum/contracts/forum-search-current-channel-filter.json` and
   `scripts/verify/verify-forum-search-current-channel-filter.mjs`.
 - Durable Forum inbox ingest-sequence status:
   `source_complete_execution_pending` under `FORUM-23B2G1`.
 - Durable ingest-sequence contract and guardrail:
-  `crates/rustok-forum/contracts/forum-search-durable-ingest-sequence.json` and
+  `crates/modules/rustok-forum/contracts/forum-search-durable-ingest-sequence.json` and
   `scripts/verify/verify-forum-search-durable-ingest-sequence.mjs`.
 - GraphQL and all native/admin mappings use the same Search-owned URL function.
 - The removed storefront `transport/navigation.rs` path is forbidden by the

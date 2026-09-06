@@ -7,12 +7,12 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-iggy-connector/contracts/evidence/consumer-poison-postgres-execution-contract.json";
+  "crates/modules/rustok-iggy-connector/contracts/evidence/consumer-poison-postgres-execution-contract.json";
 const runnerPath = "scripts/evidence/capture-iggy-consumer-poison-postgres.mjs";
 const environmentTestPath =
-  "crates/rustok-iggy-connector/tests/consumer_poison_receipt_postgres_environment.rs";
+  "crates/modules/rustok-iggy-connector/tests/consumer_poison_receipt_postgres_environment.rs";
 const scenarioTestPath =
-  "crates/rustok-iggy-connector/tests/consumer_poison_receipt_postgres.rs";
+  "crates/modules/rustok-iggy-connector/tests/consumer_poison_receipt_postgres.rs";
 
 const contract = readJson(contractPath);
 const runner = readText(runnerPath);
@@ -54,9 +54,9 @@ const expectedCommands = [
 const expectedSourceFiles = [
   environmentTestPath,
   scenarioTestPath,
-  "crates/rustok-iggy-connector/src/consumer_poison_receipt.rs",
-  "crates/rustok-iggy-connector/src/consumer_poison_inspection.rs",
-  "crates/rustok-iggy-connector/src/migrations.rs",
+  "crates/modules/rustok-iggy-connector/src/consumer_poison_receipt.rs",
+  "crates/modules/rustok-iggy-connector/src/consumer_poison_inspection.rs",
+  "crates/modules/rustok-iggy-connector/src/migrations.rs",
 ];
 const expectedCases = [
   {
@@ -173,7 +173,7 @@ function verifyContract() {
   }
   if (
     contract.evidence_path !==
-    "crates/rustok-iggy-connector/contracts/evidence/consumer-poison-postgres-execution.json"
+    "crates/modules/rustok-iggy-connector/contracts/evidence/consumer-poison-postgres-execution.json"
   ) {
     fail("retained evidence output path drift");
   }

@@ -338,9 +338,9 @@ Incident response ownership is established at team responsibility level, without
 
 | Area | Primary owner | Mandatory escalation path |
 |---|---|---|
-| Outbox/event delivery | Platform foundation on-call | `crates/rustok-outbox` owner + server runtime owner |
-| Auth/JWT/RBAC | Platform security/auth on-call | `crates/rustok-auth` owner + server API owner |
-| Search/index projection | Search module on-call | `crates/rustok-search` owner + platform database/runtime owner |
+| Outbox/event delivery | Platform foundation on-call | `crates/modules/rustok-outbox` owner + server runtime owner |
+| Auth/JWT/RBAC | Platform security/auth on-call | `crates/modules/rustok-auth` owner + server API owner |
+| Search/index projection | Search module on-call | `crates/modules/rustok-search` owner + platform database/runtime owner |
 
 If incident affects multiple areas, Platform foundation on-call becomes coordinator, because it owns composition root and runtime readiness gates.
 

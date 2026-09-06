@@ -11,7 +11,7 @@ the source topic becomes the archived, locked merge tombstone.
 The machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-topic-merge-vote-reconciliation.json
+crates/modules/rustok-forum/contracts/forum-topic-merge-vote-reconciliation.json
 ```
 
 The owner API is:

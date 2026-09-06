@@ -1,7 +1,7 @@
 {
   "status": "fulfillment_shipping_option_read_diagnostic_safety_source_unvalidated",
   "scope": {
-    "owner_source": "crates/rustok-fulfillment/src/shipping_option_read.rs",
+    "owner_source": "crates/modules/rustok-fulfillment/src/shipping_option_read.rs",
     "traits": [
       "ShippingOptionReadPort",
       "ShippingOptionAdminReadPort"
@@ -12,7 +12,7 @@
       "list_all_shipping_option_projections"
     ],
     "focused_verifier": "scripts/verify/verify-fulfillment-shipping-option-read-port.mjs",
-    "documentation": "crates/rustok-fulfillment/docs/shipping-option-read-diagnostic-safety.md"
+    "documentation": "crates/modules/rustok-fulfillment/docs/shipping-option-read-diagnostic-safety.md"
   },
   "source_contract": {
     "owner_error_variant_count": 5,

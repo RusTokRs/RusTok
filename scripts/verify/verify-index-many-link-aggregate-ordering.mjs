@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const queryPath = 'crates/rustok-index/src/domain/query.rs';
+const queryPath = 'crates/modules/rustok-index/src/domain/query.rs';
 requireMarkers(queryPath, [
   'pub enum ManyOrderAggregate',
   'Min,',
@@ -36,9 +36,9 @@ requireMarkers(queryPath, [
   'pub const fn base_direction(self)',
   'explicit_many_order_modes_expose_aggregate_and_base_direction',
 ]);
-requireMarkers('crates/rustok-index/src/domain/mod.rs', ['ManyOrderAggregate']);
+requireMarkers('crates/modules/rustok-index/src/domain/mod.rs', ['ManyOrderAggregate']);
 
-const validationPath = 'crates/rustok-index/src/application/aggregate_ordering.rs';
+const validationPath = 'crates/modules/rustok-index/src/application/aggregate_ordering.rs';
 const validation = requireMarkers(validationPath, [
   'pub enum AggregateOrderValidationError',
   'AggregateRequiresManyLink',
@@ -62,7 +62,7 @@ forbidMarkers(validationPath, validation, [
   'ordinal',
 ]);
 
-const plannerPath = 'crates/rustok-index/src/application/planner.rs';
+const plannerPath = 'crates/modules/rustok-index/src/application/planner.rs';
 requireMarkers(plannerPath, [
   'self.validate_query_with_aggregate_ordering(query)',
   'QueryPlanError::Validation(error)',
@@ -73,7 +73,7 @@ requireMarkers(plannerPath, [
   'rustok-index-query-plan-v4',
 ]);
 
-const compilerPath = 'crates/rustok-index/src/application/postgres_compiler.rs';
+const compilerPath = 'crates/modules/rustok-index/src/application/postgres_compiler.rs';
 requireMarkers(compilerPath, [
   'AggregateOrderingWithoutManyLink',
   'AggregateOrderingUnsupportedType',
@@ -88,7 +88,7 @@ requireMarkers(compilerPath, [
   '| IndexValueType::Timestamp',
 ]);
 
-const sqlPath = 'crates/rustok-index/src/application/postgres_query_sql.rs';
+const sqlPath = 'crates/modules/rustok-index/src/application/postgres_query_sql.rs';
 const sql = requireMarkers(sqlPath, [
   'fn compile_many_order_aggregate(',
   'ManyOrderAggregate::Min => "MIN"',
@@ -110,7 +110,7 @@ forbidMarkers(sqlPath, sql, [
   '::real',
 ]);
 
-requireMarkers('crates/rustok-index/src/application/aggregate_ordering_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/aggregate_ordering_tests.rs', [
   'min_asc_compiles_correlated_tagged_order_value',
   'max_desc_compiles_explicit_null_policy',
   'decimal_aggregate_uses_numeric_order_and_exact_string_wire',
@@ -123,8 +123,8 @@ requireMarkers('crates/rustok-index/src/application/aggregate_ordering_tests.rs'
   '.contains(" LEFT JOIN index_links AS \\"l1\\""));',
 ]);
 for (const referencePath of [
-  'crates/rustok-index/src/application/reference.rs',
-  'crates/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests/reference_fixture.rs',
+  'crates/modules/rustok-index/src/application/reference.rs',
+  'crates/modules/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests/reference_fixture.rs',
 ]) {
   requireMarkers(referencePath, [
     'match direction.base_direction()',
@@ -132,7 +132,7 @@ for (const referencePath of [
   ]);
 }
 
-const contractPath = 'crates/rustok-index/contracts/m4-many-link-aggregate-ordering.json';
+const contractPath = 'crates/modules/rustok-index/contracts/m4-many-link-aggregate-ordering.json';
 const contract = JSON.parse(read(contractPath));
 if (contract.schema_version !== 1 || contract.owner !== 'rustok-index') {
   fail(`${contractPath} identity drifted`);
@@ -171,7 +171,7 @@ for (const key of ['cargo_run', 'tests_run', 'postgresql_run', 'node_verifiers_r
   if (contract.validation?.[key] !== false) fail(`${contractPath} must not claim ${key}`);
 }
 
-requireMarkers('crates/rustok-index/contracts/m4-decimal-aggregate-order-wire.json', [
+requireMarkers('crates/modules/rustok-index/contracts/m4-decimal-aggregate-order-wire.json', [
   '"json_value_kind": "string"',
   '"typed_scalar": "numeric"',
   '"json_number_allowed": false',
@@ -181,9 +181,9 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-many-link-aggregate-ordering.mjs'",
   "'verify-index-decimal-aggregate-wire.mjs'",
 ]);
-requireMarkers('crates/rustok-index/docs/m4-many-link-aggregate-ordering.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-many-link-aggregate-ordering.md', [
   'Status: `source_complete_execution_pending`',
-  '`crates/rustok-index/contracts/m4-many-link-aggregate-ordering.json`',
+  '`crates/modules/rustok-index/contracts/m4-many-link-aggregate-ordering.json`',
   '`min_asc`',
   '`max_desc`',
   'bounded offset',

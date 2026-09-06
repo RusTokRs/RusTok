@@ -12,10 +12,10 @@ import {
 const writeFixture = ({ creation, compensation }) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "rustok-order-identity-guard-"));
   const files = {
-    creation: "crates/rustok-commerce/src/services/checkout_order_creation.rs",
-    compensation: "crates/rustok-commerce/src/services/checkout_compensation.rs",
-    ports: "crates/rustok-order/src/ports.rs",
-    registry: "crates/rustok-order/contracts/order-fba-registry.json",
+    creation: "crates/modules/rustok-commerce/src/services/checkout_order_creation.rs",
+    compensation: "crates/modules/rustok-commerce/src/services/checkout_compensation.rs",
+    ports: "crates/modules/rustok-order/src/ports.rs",
+    registry: "crates/modules/rustok-order/contracts/order-fba-registry.json",
   };
   for (const file of Object.values(files)) {
     fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });

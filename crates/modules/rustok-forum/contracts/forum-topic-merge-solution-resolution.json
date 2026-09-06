@@ -118,10 +118,10 @@
     "rest_changed": false,
     "ui_added": false
   },
-  "runtime_test": "crates/rustok-forum/tests/topic_merge_solution_resolution_sqlite.rs",
-  "graphql_contract_test": "crates/rustok-forum/tests/topic_merge_solution_resolution_graphql_contract.rs",
-  "documentation": "crates/rustok-forum/docs/forum-21l-topic-merge-solution-resolution.md",
-  "cumulative_contract": "crates/rustok-forum/contracts/forum-topic-merge-owner.json",
+  "runtime_test": "crates/modules/rustok-forum/tests/topic_merge_solution_resolution_sqlite.rs",
+  "graphql_contract_test": "crates/modules/rustok-forum/tests/topic_merge_solution_resolution_graphql_contract.rs",
+  "documentation": "crates/modules/rustok-forum/docs/forum-21l-topic-merge-solution-resolution.md",
+  "cumulative_contract": "crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json",
   "verifier": "scripts/verify/verify-forum-topic-merge-solution-resolution.mjs",
   "maintainer_commands": [
     "node scripts/verify/verify-forum-topic-merge-solution-resolution.mjs",

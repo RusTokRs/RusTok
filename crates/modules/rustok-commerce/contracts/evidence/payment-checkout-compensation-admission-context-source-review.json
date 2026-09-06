@@ -4,12 +4,12 @@
   "reviewed_at": "2026-07-30",
   "base_main_sha": "43b77b303569ea1e4c38db78c18f2a30ebe0c217",
   "reviewed_sources": [
-    "crates/rustok-commerce/docs/implementation-plan.md",
-    "crates/rustok-api/src/ports.rs",
-    "crates/rustok-payment/src/lib.rs",
-    "crates/rustok-payment/src/checkout_compensation.rs",
-    "crates/rustok-payment/src/checkout_compensation_context.rs",
-    "crates/rustok-payment/src/checkout_compensation_api.rs",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md",
+    "crates/libs/rustok-api/src/ports.rs",
+    "crates/modules/rustok-payment/src/lib.rs",
+    "crates/modules/rustok-payment/src/checkout_compensation.rs",
+    "crates/modules/rustok-payment/src/checkout_compensation_context.rs",
+    "crates/modules/rustok-payment/src/checkout_compensation_api.rs",
     "scripts/verify/verify-payment-checkout-compensation-local-context.mjs"
   ],
   "findings": [

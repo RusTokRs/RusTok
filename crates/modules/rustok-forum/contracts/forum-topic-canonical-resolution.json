@@ -73,11 +73,11 @@
     "merge_input_result_receipt_or_event_changed": false,
     "shared_rustok_events_contract_changed": false
   },
-  "canonical_resolution_test": "crates/rustok-forum/tests/topic_canonical_resolution_sqlite.rs",
-  "http_redirect_test": "crates/rustok-forum/src/controllers/topic_redirect.rs",
-  "documentation": "crates/rustok-forum/docs/forum-21i-topic-canonical-resolution.md",
-  "cumulative_contract": "crates/rustok-forum/contracts/forum-topic-merge-owner.json",
-  "cumulative_documentation": "crates/rustok-forum/docs/forum-21b-topic-merge-owner.md",
+  "canonical_resolution_test": "crates/modules/rustok-forum/tests/topic_canonical_resolution_sqlite.rs",
+  "http_redirect_test": "crates/modules/rustok-forum/src/controllers/topic_redirect.rs",
+  "documentation": "crates/modules/rustok-forum/docs/forum-21i-topic-canonical-resolution.md",
+  "cumulative_contract": "crates/modules/rustok-forum/contracts/forum-topic-merge-owner.json",
+  "cumulative_documentation": "crates/modules/rustok-forum/docs/forum-21b-topic-merge-owner.md",
   "verifier": "scripts/verify/verify-forum-topic-canonical-resolution.mjs",
   "http_redirect_verifier": "scripts/verify/verify-forum-topic-http-redirect.mjs",
   "maintainer_commands": [

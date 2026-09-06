@@ -58,15 +58,15 @@ function functionBody(text, functionName) {
   return "";
 }
 
-const routingPath = "crates/rustok-commerce/admin/src/transport/mod.rs";
+const routingPath = "crates/modules/rustok-commerce/admin/src/transport/mod.rs";
 const safeAdapterPath =
-  "crates/rustok-commerce/admin/src/transport/native_server_adapter_ssr.rs";
+  "crates/modules/rustok-commerce/admin/src/transport/native_server_adapter_ssr.rs";
 const evidencePath =
-  "crates/rustok-commerce/contracts/evidence/admin-promotion-native-error-safety-source.json";
+  "crates/modules/rustok-commerce/contracts/evidence/admin-promotion-native-error-safety-source.json";
 const reviewPath =
-  "crates/rustok-commerce/contracts/evidence/admin-promotion-native-error-safety-source-review.json";
+  "crates/modules/rustok-commerce/contracts/evidence/admin-promotion-native-error-safety-source-review.json";
 const docPath =
-  "crates/rustok-commerce/docs/admin-promotion-native-error-safety.md";
+  "crates/modules/rustok-commerce/docs/admin-promotion-native-error-safety.md";
 
 const routing = readRepo(routingPath);
 const safeAdapter = readRepo(safeAdapterPath);

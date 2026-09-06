@@ -45,21 +45,21 @@
     }
   ],
   "evidence": {
-    "local_plan": "crates/rustok-customer/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-customer/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
-    "runtime_fallback_smoke": "crates/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json",
-    "runtime_contract_smoke": "crates/rustok-customer/contracts/evidence/customer-runtime-contract-smoke.json",
+    "runtime_fallback_smoke": "crates/modules/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json",
+    "runtime_contract_smoke": "crates/modules/rustok-customer/contracts/evidence/customer-runtime-contract-smoke.json",
     "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs"
   },
   "in_process_provider_impl": {
     "service": "CustomerService",
-    "source": "crates/rustok-customer/src/ports.rs",
+    "source": "crates/modules/rustok-customer/src/ports.rs",
     "status": "implemented"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
-    "source": "crates/rustok-customer/contracts/customer-fba-registry.json",
+    "source": "crates/modules/rustok-customer/contracts/customer-fba-registry.json",
     "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "profiles": [
       "in_process",
@@ -119,8 +119,8 @@
     },
     "runtime_smoke": {
       "status": "source_locked_live_runtime_pending",
-      "source": "crates/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json",
-      "source_tests": "crates/rustok-customer/tests/customer_service_test.rs",
+      "source": "crates/modules/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json",
+      "source_tests": "crates/modules/rustok-customer/tests/customer_service_test.rs",
       "promotion_allowed": false,
       "covered_operations": [
         "read_customer_projection",

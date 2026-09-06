@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const runnerPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
+const runnerPath = 'crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner.rs';
 const runner = requireMarkers(runnerPath, [
   'const MAX_PAGES_PER_RUN: usize = 1_024;',
   'const MIN_REPLAY_RUN_LEASE_DURATION: Duration = Duration::from_secs(60);',
@@ -93,7 +93,7 @@ for (const terminalSql of ['finish_success_sql', 'finish_failure_sql', 'yield_jo
   }
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_replay_runner_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/source_replay_runner_tests.rs', [
   'bounded_run_yields_pending_and_resumes_with_a_new_attempt',
   'pending_cancel_request_terminalizes_without_a_worker',
   'running_cancel_request_is_observed_after_the_current_page',
@@ -108,7 +108,7 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/source_replay_ru
   'last_error_code IS NULL',
 ]);
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod source_replay_runner {',
   'include!("source_replay_runner.rs");',
   'mod graceful_shutdown;',
@@ -121,7 +121,7 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
   'IndexReplayTerminalState',
 ]);
 
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'heartbeat/yield/cancellation semantics',
   'PostgresIndexReplayRunner',
   'IndexReplayRunRequest',
@@ -129,7 +129,7 @@ requireMarkers('crates/rustok-index/src/lib.rs', [
   'IndexReplayCancelOutcome',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m6-bounded-multipage-runner.md', [
+requireMarkers('crates/modules/rustok-index/docs/m6-bounded-multipage-runner.md', [
   'Status: `source_complete_owner_execution_pending`',
   '1 through 1024 pages per invocation',
   'The source name is never caller supplied.',
@@ -144,7 +144,7 @@ requireMarkers('crates/rustok-index/docs/m6-bounded-multipage-runner.md', [
   'execution evidence remains maintainer-owned',
 ]);
 
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- M6 bounded multi-page replay and cancellation: `source_complete_owner_execution_pending`',
   '- [x] Add bounded multi-page execution with heartbeat cadence and immediate pending resume.',
   '- [x] Add durable cancellation requests and fenced between-page terminal cancellation.',

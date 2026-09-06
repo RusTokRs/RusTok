@@ -3,10 +3,10 @@
 import { readFile } from "node:fs/promises";
 
 const files = {
-  test: "crates/rustok-index/tests/drift_finding_writer_postgres_test.rs",
-  doc: "crates/rustok-index/docs/m6-drift-finding-postgres-harness.md",
-  recheck: "crates/rustok-index/docs/implementation-recheck-2026-08-03.md",
-  plan: "crates/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  test: "crates/modules/rustok-index/tests/drift_finding_writer_postgres_test.rs",
+  doc: "crates/modules/rustok-index/docs/m6-drift-finding-postgres-harness.md",
+  recheck: "crates/modules/rustok-index/docs/implementation-recheck-2026-08-03.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
 };
 
 const [test, doc, recheck, plan] = await Promise.all(

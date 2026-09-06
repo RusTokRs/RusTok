@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "media",
   "role": "provider",
-  "generated_from": "crates/rustok-media/contracts/media-fba-registry.json",
+  "generated_from": "crates/modules/rustok-media/contracts/media-fba-registry.json",
   "status": "runtime_verified",
   "cases": [
     {
@@ -15,7 +15,7 @@
         "typed_port_error_mapping",
         "context_deadline_preserved"
       ],
-      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+      "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
     },
     {
       "operation": "list_assets",
@@ -27,7 +27,7 @@
         "typed_port_error_mapping",
         "context_deadline_preserved"
       ],
-      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+      "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
     },
     {
       "operation": "get_image_descriptor",
@@ -41,7 +41,7 @@
         "seo_descriptor_normalization_preserved",
         "public_url_policy_preserved"
       ],
-      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+      "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
     },
     {
       "operation": "get_translations",
@@ -54,7 +54,7 @@
         "context_deadline_preserved",
         "locale_fallback_input_preserved"
       ],
-      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+      "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
     },
     {
       "operation": "prepare_upload",
@@ -66,7 +66,7 @@
         "owner_binary_transport_preserved",
         "write_policy_preserved"
       ],
-      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+      "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
     },
     {
       "operation": "complete_upload",
@@ -78,7 +78,7 @@
         "typed_port_error_mapping",
         "write_policy_preserved"
       ],
-      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+      "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
     },
     {
       "operation": "delete_asset",
@@ -90,7 +90,7 @@
         "typed_port_error_mapping",
         "write_policy_preserved"
       ],
-      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+      "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
     },
     {
       "operation": "upsert_translation",
@@ -102,7 +102,7 @@
         "owner_normalization_preserved",
         "write_policy_preserved"
       ],
-      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+      "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
     },
     {
       "operation": "reconcile_storage",
@@ -114,7 +114,7 @@
         "report_contract_preserved",
         "write_policy_preserved"
       ],
-      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+      "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
     }
   ],
   "fallback_smoke": {
@@ -129,6 +129,6 @@
       "proxy_storage_relative_url",
       "summarize_internal_binary"
     ],
-    "source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
+    "source": "crates/modules/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
   }
 }

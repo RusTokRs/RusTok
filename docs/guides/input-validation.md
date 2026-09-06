@@ -100,7 +100,7 @@ Every public write surface should cover:
 - transport parity for GraphQL and native/REST surfaces where both exist.
 
 Shared richtext fixtures live under
-`crates/rustok-content/fixtures/richtext/`. Pages tests use canonical Page
+`crates/modules/rustok-content/fixtures/richtext/`. Pages tests use canonical Page
 Builder documents and must not restore format aliases or alternate body modes.
 
 ## Related documents

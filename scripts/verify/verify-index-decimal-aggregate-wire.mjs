@@ -23,7 +23,7 @@ const forbidMarkers = (relative, source, markers) => {
   }
 };
 
-const domainPath = 'crates/rustok-index/src/domain/value.rs';
+const domainPath = 'crates/modules/rustok-index/src/domain/value.rs';
 requireMarkers(domainPath, [
   'Decimal(Decimal)',
   'decimal_tagged_json_uses_exact_string_wire',
@@ -33,7 +33,7 @@ requireMarkers(domainPath, [
   'serde_json::to_value(decoded)',
 ]);
 
-const validationPath = 'crates/rustok-index/src/application/aggregate_ordering.rs';
+const validationPath = 'crates/modules/rustok-index/src/application/aggregate_ordering.rs';
 requireMarkers(validationPath, [
   'IndexValueType::Integer',
   '| IndexValueType::Decimal',
@@ -42,7 +42,7 @@ requireMarkers(validationPath, [
   'accepts_explicit_min_and_max_over_many_link',
 ]);
 
-const compilerPath = 'crates/rustok-index/src/application/postgres_compiler.rs';
+const compilerPath = 'crates/modules/rustok-index/src/application/postgres_compiler.rs';
 requireMarkers(compilerPath, [
   'fn aggregate_type_supported',
   'IndexValueType::Integer',
@@ -51,7 +51,7 @@ requireMarkers(compilerPath, [
   '| IndexValueType::Timestamp',
 ]);
 
-const sqlPath = 'crates/rustok-index/src/application/postgres_query_sql.rs';
+const sqlPath = 'crates/modules/rustok-index/src/application/postgres_query_sql.rs';
 const sql = requireMarkers(sqlPath, [
   'IndexValueType::Decimal => format!("({scalar_text})::numeric")',
   'fn aggregate_order_wire_value(',
@@ -67,7 +67,7 @@ forbidMarkers(sqlPath, sql, [
   'to_jsonb(({scalar})::float',
 ]);
 
-requireMarkers('crates/rustok-index/src/application/aggregate_ordering_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/aggregate_ordering_tests.rs', [
   'decimal_aggregate_uses_numeric_order_and_exact_string_wire',
   'registry(IndexValueType::Decimal)',
   'jsonb_build_object(\'type\', \'decimal\', \'value\', to_jsonb(((SELECT MAX(',
@@ -75,7 +75,7 @@ requireMarkers('crates/rustok-index/src/application/aggregate_ordering_tests.rs'
   'aggregate_cursor_and_uuid_modes_fail_closed',
 ]);
 
-const contractPath = 'crates/rustok-index/contracts/m4-decimal-aggregate-order-wire.json';
+const contractPath = 'crates/modules/rustok-index/contracts/m4-decimal-aggregate-order-wire.json';
 const contract = JSON.parse(read(contractPath));
 if (contract.schema_version !== 1 || contract.owner !== 'rustok-index') {
   fail(`${contractPath} identity drifted`);
@@ -103,7 +103,7 @@ for (const key of ['cargo_run', 'tests_run', 'postgresql_run', 'node_verifiers_r
   if (contract.validation?.[key] !== false) fail(`${contractPath} must not claim ${key}`);
 }
 
-const aggregateContractPath = 'crates/rustok-index/contracts/m4-many-link-aggregate-ordering.json';
+const aggregateContractPath = 'crates/modules/rustok-index/contracts/m4-many-link-aggregate-ordering.json';
 const aggregateContract = JSON.parse(read(aggregateContractPath));
 if (!aggregateContract.supported_terminal_types?.includes('decimal')
   || aggregateContract.rejected_terminal_types?.includes('decimal')
@@ -118,7 +118,7 @@ if (aggregateContract.postgresql?.decimal_order_scalar !== 'numeric'
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-decimal-aggregate-wire.mjs'",
 ]);
-requireMarkers('crates/rustok-index/docs/m4-decimal-aggregate-order-wire.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-decimal-aggregate-order-wire.md', [
   'Status: `source_complete_execution_pending`',
   '`MIN(numeric)` or `MAX(numeric)`',
   '`to_jsonb((aggregate_scalar)::text)`',

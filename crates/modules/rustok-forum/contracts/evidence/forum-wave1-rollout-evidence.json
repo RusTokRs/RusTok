@@ -33,16 +33,16 @@
   },
   "static_readiness": {
     "source_contracts": [
-      "crates/rustok-forum/rustok-module.toml",
-      "crates/rustok-forum/contracts/evidence/fw2-fallback-static-matrix.json",
-      "crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs",
-      "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
-      "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
-      "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
+      "crates/modules/rustok-forum/rustok-module.toml",
+      "crates/modules/rustok-forum/contracts/evidence/fw2-fallback-static-matrix.json",
+      "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs",
+      "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
+      "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
+      "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
       "scripts/verify/verify-forum-page-builder-wave-admission.mjs",
       "scripts/verify/verify-forum-wave-plan-sync.mjs",
-      "crates/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json",
-      "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json",
+      "crates/modules/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json",
+      "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json",
       "scripts/verify/verify-forum-wave-admission-lineage.mjs",
       "scripts/evidence/accept-forum-page-builder-wave.mjs",
       "scripts/verify/verify-forum-page-builder-wave-observed-acceptance.mjs"
@@ -187,7 +187,7 @@
   "verification": {
     "no_compile_gates": [
       "npm run verify:page-builder:consumer:forum",
-      "node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs",
+      "node crates/modules/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs",
       "node scripts/verify/verify-forum-page-builder-wave-admission.mjs",
       "npm run verify:forum:wave-evidence-freshness",
       "npm run test:verify:forum:wave-evidence-freshness",

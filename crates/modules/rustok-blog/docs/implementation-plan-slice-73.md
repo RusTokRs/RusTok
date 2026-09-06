@@ -1,7 +1,7 @@
 # rustok-blog implementation plan — slice 73 continuation
 
 This document continues
-`crates/rustok-blog/docs/implementation-plan-slice-72.md`. Slices 1–66 remain in
+`crates/modules/rustok-blog/docs/implementation-plan-slice-72.md`. Slices 1–66 remain in
 the original plan; slices 67–72 retain the typed remote core, bounded TCP client
 and server adapters, host-selected publication, listener lifecycle, versioned
 credential envelope, and loopback bearer-authenticated read profile.
@@ -29,11 +29,11 @@ remains maintainer-owned.
 
 ### Implemented source scope
 
-- `crates/rustok-api/src/digest.rs` adds a narrow HMAC-SHA256 helper backed by
+- `crates/libs/rustok-api/src/digest.rs` adds a narrow HMAC-SHA256 helper backed by
   the crate's existing SHA-256 dependency.
 - The helper follows RFC 2104 key normalization, accepts ordered message chunks,
   and adds no dependency or `Cargo.lock` package-entry change.
-- `crates/rustok-comments/src/tcp_delegation.rs` owns the signed delegation
+- `crates/modules/rustok-comments/src/tcp_delegation.rs` owns the signed delegation
   contract.
 - `CommentsTcpDelegationSecret` accepts 32..=4096 visible non-whitespace ASCII
   bytes and redacts its value from `Debug`.
@@ -107,7 +107,7 @@ remains maintainer-owned.
   server authorization ordering, host configuration, Blog context construction,
   Comments owner policy, and process-local replay bounds.
 - Source evidence is retained at
-  `crates/rustok-blog/contracts/evidence/blog-comments-tcp-user-delegation.json`.
+  `crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-user-delegation.json`.
 - The standalone source verifier is
   `scripts/verify/verify-blog-comments-tcp-user-delegation.mjs`.
 

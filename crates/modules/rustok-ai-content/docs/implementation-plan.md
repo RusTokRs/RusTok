@@ -22,9 +22,9 @@ maintained in the crate and module README.
   `keep_draft_for_review`; the latter is consumed by the direct Blog adapter
   when it builds owner input. Missing or incompatible draft policy fails closed
   before owner persistence, so generated content cannot auto-publish.
-- Evidence: `crates/rustok-ai-content/contracts/ai-content-fba-registry.json`,
-  `crates/rustok-ai-content/contracts/evidence/ai-content-consumer-static-matrix.json`,
-  `crates/rustok-ai-content/contracts/evidence/ai-content-runtime-fallback-smoke.json`,
+- Evidence: `crates/modules/rustok-ai-content/contracts/ai-content-fba-registry.json`,
+  `crates/modules/rustok-ai-content/contracts/evidence/ai-content-consumer-static-matrix.json`,
+  `crates/modules/rustok-ai-content/contracts/evidence/ai-content-runtime-fallback-smoke.json`,
   `scripts/verify/verify-ai-content-contract.mjs`, and
   `scripts/verify/verify-ai-fba-baseline.mjs`.
 

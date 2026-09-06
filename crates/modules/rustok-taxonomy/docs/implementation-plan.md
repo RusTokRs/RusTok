@@ -27,6 +27,12 @@ semantics rather than a hidden archived lifecycle.
 copy. Category reuses that provider; Forum, Blog and Product must not retain duplicate category
 Translation providers after their cutovers.
 
+## FFA/FBA boundary
+
+- FFA status: `not_started`
+- FBA status: `boundary_ready`
+- Structural shape: `no_ui_boundary`
+
 ## Category ownership contract
 
 Taxonomy-owned Category data includes:
@@ -470,7 +476,7 @@ The runtime job must continue to:
 ### Recorded route-registry contention evidence
 
 The route-registry contention test target is
-`crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs`. The test proves
+`crates/modules/rustok-taxonomy/tests/route_registry_contention_postgres.rs`. The test proves
 two-writer route-key contention under real PostgreSQL 16 lock semantics: two independent writer
 connections both complete the route preflight before one is released, contention is forced after
 the translation row pre-lock, and the route registry primary key is the storage authority that

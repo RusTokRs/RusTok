@@ -36,21 +36,21 @@ function forbidMarker(source, marker, message) {
   if (source.includes(marker)) failures.push(message);
 }
 
-const errorPath = "crates/rustok-payment/src/error.rs";
-const registrySourcePath = "crates/rustok-payment/src/providers.rs";
-const journalPath = "crates/rustok-payment/src/services/provider_operation.rs";
+const errorPath = "crates/modules/rustok-payment/src/error.rs";
+const registrySourcePath = "crates/modules/rustok-payment/src/providers.rs";
+const journalPath = "crates/modules/rustok-payment/src/services/provider_operation.rs";
 const orchestrationPath =
-  "crates/rustok-commerce/src/services/journaled_payment_provider.rs";
+  "crates/modules/rustok-commerce/src/services/journaled_payment_provider.rs";
 const refundReconciliationPath =
-  "crates/rustok-commerce/src/services/refund_reconciliation.rs";
-const stripePath = "crates/rustok-payment/src/stripe_provider.rs";
+  "crates/modules/rustok-commerce/src/services/refund_reconciliation.rs";
+const stripePath = "crates/modules/rustok-payment/src/stripe_provider.rs";
 const migrationPath =
-  "crates/rustok-payment/src/migrations/m20260714_000120_allow_uncertain_provider_outcomes.rs";
-const migrationRegistryPath = "crates/rustok-payment/src/migrations/mod.rs";
+  "crates/modules/rustok-payment/src/migrations/m20260714_000120_allow_uncertain_provider_outcomes.rs";
+const migrationRegistryPath = "crates/modules/rustok-payment/src/migrations/mod.rs";
 const integrationTestPath =
-  "crates/rustok-migrations/tests/payment_provider_operation_uncertain_outcome.rs";
-const registryPath = "crates/rustok-payment/contracts/payment-fba-registry.json";
-const planPath = "crates/rustok-commerce/docs/implementation-plan.md";
+  "crates/utils/rustok-migrations/tests/payment_provider_operation_uncertain_outcome.rs";
+const registryPath = "crates/modules/rustok-payment/contracts/payment-fba-registry.json";
+const planPath = "crates/modules/rustok-commerce/docs/implementation-plan.md";
 const packagePath = "package.json";
 
 const errorSource = read(errorPath);

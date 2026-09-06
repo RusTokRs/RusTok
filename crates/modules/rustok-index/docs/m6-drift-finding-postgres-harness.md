@@ -12,7 +12,7 @@ repair admission, or an operator transport exists.
 The target lives at:
 
 ```text
-crates/rustok-index/tests/drift_finding_writer_postgres_test.rs
+crates/modules/rustok-index/tests/drift_finding_writer_postgres_test.rs
 ```
 
 It reads `RUSTOK_INDEX_TEST_DATABASE_URL`, with PostgreSQL `DATABASE_URL` as a fallback.

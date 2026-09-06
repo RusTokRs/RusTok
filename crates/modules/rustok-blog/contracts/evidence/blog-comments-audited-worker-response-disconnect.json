@@ -6,12 +6,12 @@
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "runtime_status": "not_run",
-  "generated_from": "crates/rustok-blog/docs/implementation-plan-slice-86.md",
+  "generated_from": "crates/modules/rustok-blog/docs/implementation-plan-slice-86.md",
   "source_contract": {
     "audited_trigger": "apps/server/src/services/comments_provider_runtime_keyring_schedule_postgres_audited_trigger.rs",
     "production_audited_store": "apps/server/src/services/comments_provider_runtime_keyring_schedule_persistence_postgres_audit.rs",
     "slice_85_fault_harness": "apps/server/tests/blog_comments_schedule_audit_postgres_faults.rs",
-    "slice_85_plan": "crates/rustok-blog/docs/implementation-plan-slice-85.md"
+    "slice_85_plan": "crates/modules/rustok-blog/docs/implementation-plan-slice-85.md"
   },
   "production_boundary": {
     "public_api_changed": false,

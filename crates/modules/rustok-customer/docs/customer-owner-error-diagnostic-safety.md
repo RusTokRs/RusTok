@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This contract closes the currently identified payload-diagnostic gaps in `crates/rustok-customer/src/ports.rs` across:
+This contract closes the currently identified payload-diagnostic gaps in `crates/modules/rustok-customer/src/ports.rs` across:
 
 - read-policy admission;
 - list request validation;
@@ -59,8 +59,8 @@ Database/Profile errors, validation messages, email values, customer IDs, user I
 
 ## Evidence and remaining work
 
-- `crates/rustok-customer/contracts/evidence/customer-owner-error-diagnostic-safety-source.json`
-- `crates/rustok-customer/contracts/evidence/customer-owner-error-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-customer/contracts/evidence/customer-owner-error-diagnostic-safety-source.json`
+- `crates/modules/rustok-customer/contracts/evidence/customer-owner-error-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-customer-owner-error-diagnostic-safety.mjs`
 - `scripts/verify/verify-customer-read-policy-context.mjs`
 - `scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`

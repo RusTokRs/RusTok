@@ -5,44 +5,44 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
-const dto = read("crates/rustok-pages/src/dto/page.rs");
-const errors = read("crates/rustok-pages/src/error.rs");
-const rollback = read("crates/rustok-pages/src/services/page/rollback.rs");
-const artifactSet = read("crates/rustok-pages/src/services/page/artifact_set.rs");
-const manifestWriter = read("crates/rustok-pages/src/services/page/publish_manifest.rs");
-const publishEntity = read("crates/rustok-pages/src/entities/page_publish_operation.rs");
+const dto = read("crates/modules/rustok-pages/src/dto/page.rs");
+const errors = read("crates/modules/rustok-pages/src/error.rs");
+const rollback = read("crates/modules/rustok-pages/src/services/page/rollback.rs");
+const artifactSet = read("crates/modules/rustok-pages/src/services/page/artifact_set.rs");
+const manifestWriter = read("crates/modules/rustok-pages/src/services/page/publish_manifest.rs");
+const publishEntity = read("crates/modules/rustok-pages/src/entities/page_publish_operation.rs");
 const manifestEntity = read(
-  "crates/rustok-pages/src/entities/page_publish_operation_artifact.rs",
+  "crates/modules/rustok-pages/src/entities/page_publish_operation_artifact.rs",
 );
 const rollbackEntity = read(
-  "crates/rustok-pages/src/entities/page_rollback_operation.rs",
+  "crates/modules/rustok-pages/src/entities/page_rollback_operation.rs",
 );
 const migration = read(
-  "crates/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs",
+  "crates/modules/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs",
 );
-const migrations = read("crates/rustok-pages/src/migrations/mod.rs");
-const graphqlTypes = read("crates/rustok-pages/src/graphql/types.rs");
-const graphqlMutation = read("crates/rustok-pages/src/graphql/mutation.rs");
-const http = read("crates/rustok-pages/src/http.rs");
-const openapi = read("crates/rustok-pages/src/openapi.rs");
-const adminModel = read("crates/rustok-pages/admin/src/model.rs");
+const migrations = read("crates/modules/rustok-pages/src/migrations/mod.rs");
+const graphqlTypes = read("crates/modules/rustok-pages/src/graphql/types.rs");
+const graphqlMutation = read("crates/modules/rustok-pages/src/graphql/mutation.rs");
+const http = read("crates/modules/rustok-pages/src/http.rs");
+const openapi = read("crates/modules/rustok-pages/src/openapi.rs");
+const adminModel = read("crates/modules/rustok-pages/admin/src/model.rs");
 const adminTransport = read(
-  "crates/rustok-pages/admin/src/transport/graphql_adapter.rs",
+  "crates/modules/rustok-pages/admin/src/transport/graphql_adapter.rs",
 );
 const adminRollbackRetry = read(
-  "crates/rustok-pages/admin/src/transport/rollback_retry_adapter.rs",
+  "crates/modules/rustok-pages/admin/src/transport/rollback_retry_adapter.rs",
 );
 const adminTransportModule = read(
-  "crates/rustok-pages/admin/src/transport/mod.rs",
+  "crates/modules/rustok-pages/admin/src/transport/mod.rs",
 );
 const adminRollbackControl = read(
-  "crates/rustok-pages/admin/src/rollback_control.rs",
+  "crates/modules/rustok-pages/admin/src/rollback_control.rs",
 );
-const adminLib = read("crates/rustok-pages/admin/src/lib.rs");
+const adminLib = read("crates/modules/rustok-pages/admin/src/lib.rs");
 
 function fail(message) {
   console.error(`[verify-pages-artifact-rollback] ${message}`);

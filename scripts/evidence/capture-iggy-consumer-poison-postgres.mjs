@@ -15,12 +15,12 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-iggy-connector/contracts/evidence/consumer-poison-postgres-execution-contract.json";
+  "crates/modules/rustok-iggy-connector/contracts/evidence/consumer-poison-postgres-execution-contract.json";
 const expectedRunnerPath = "scripts/evidence/capture-iggy-consumer-poison-postgres.mjs";
 const expectedVerifierPath =
   "scripts/verify/verify-iggy-consumer-poison-retained-evidence.mjs";
 const expectedEvidencePath =
-  "crates/rustok-iggy-connector/contracts/evidence/consumer-poison-postgres-execution.json";
+  "crates/modules/rustok-iggy-connector/contracts/evidence/consumer-poison-postgres-execution.json";
 const expectedCommands = [
   {
     program: "cargo",

@@ -15,7 +15,7 @@ tests/e2e-rust/tests/leptos_storefront_forum_reactions.rs
 The machine-readable evidence contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-reactions-storefront-browser-evidence.json
+crates/modules/rustok-forum/contracts/forum-reactions-storefront-browser-evidence.json
 ```
 
 The source guard is:
@@ -88,4 +88,4 @@ No tests, Node verifiers, Cargo commands, formatting, browser launch, HTTP navig
 
 After this source is merged, FORUM-18 remains `in_progress`. Maintainer execution still needs to retain the browser run plus the pending event-digest, release lockfile, owner/event/reconciliation, Forum+Blog provider, GraphQL schema/runtime, native/GraphQL revision transport and broader runtime evidence recorded in the canonical plan.
 
-`crates/rustok-forum/docs/implementation-plan.md` remains the only authoritative Forum roadmap.
+`crates/modules/rustok-forum/docs/implementation-plan.md` remains the only authoritative Forum roadmap.

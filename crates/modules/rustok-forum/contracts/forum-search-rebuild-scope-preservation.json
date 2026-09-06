@@ -3,21 +3,21 @@
   "task": "FORUM-20BM",
   "upstream_task": "FORUM-20BL",
   "scope": "Preserve the previous committed value of each external Search projection scope during sequential tenant rebuilds by preventing the direct Search projector from deleting Blog Forum or future provider-owned documents",
-  "active_search_projector": "crates/rustok-search/src/projector.rs",
-  "private_legacy_projector": "crates/rustok-search/src/projector_legacy.rs",
-  "search_module_wiring": "crates/rustok-search/src/lib.rs",
-  "search_ingestion": "crates/rustok-search/src/ingestion.rs",
-  "blog_projector": "crates/rustok-search/src/blog_projector.rs",
-  "forum_projector": "crates/rustok-search/src/forum_projector.rs",
-  "source_contract_test": "crates/rustok-search/tests/search_scope_preservation_contract.rs",
-  "owner_note": "crates/rustok-forum/docs/forum-20bm-search-rebuild-scope-preservation.md",
+  "active_search_projector": "crates/modules/rustok-search/src/projector.rs",
+  "private_legacy_projector": "crates/modules/rustok-search/src/projector_legacy.rs",
+  "search_module_wiring": "crates/modules/rustok-search/src/lib.rs",
+  "search_ingestion": "crates/modules/rustok-search/src/ingestion.rs",
+  "blog_projector": "crates/modules/rustok-search/src/blog_projector.rs",
+  "forum_projector": "crates/modules/rustok-search/src/forum_projector.rs",
+  "source_contract_test": "crates/modules/rustok-search/tests/search_scope_preservation_contract.rs",
+  "owner_note": "crates/modules/rustok-forum/docs/forum-20bm-search-rebuild-scope-preservation.md",
   "source_verifier": "scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
-  "graphql_snapshot_cleanup_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
-  "approved_reply_search_contract": "crates/rustok-forum/contracts/forum-approved-reply-search.json",
+  "graphql_snapshot_cleanup_contract": "crates/modules/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
+  "approved_reply_search_contract": "crates/modules/rustok-forum/contracts/forum-approved-reply-search.json",
   "upstream_contracts": [
-    "crates/rustok-forum/contracts/forum-search-projection.json",
-    "crates/rustok-forum/contracts/forum-projection-invalidation.json",
-    "crates/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json"
+    "crates/modules/rustok-forum/contracts/forum-search-projection.json",
+    "crates/modules/rustok-forum/contracts/forum-projection-invalidation.json",
+    "crates/modules/rustok-forum/contracts/forum-visibility-scoped-bulk-read.json"
   ],
   "ownership_boundary": {
     "public_search_projector_is_scope_preserving_facade": true,
@@ -68,10 +68,10 @@
   "downstream_handoff": {
     "legacy_graphql_snapshot_cleanup_completed": true,
     "snapshot_completion_task": "FORUM-20BN",
-    "snapshot_completion_contract": "crates/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
+    "snapshot_completion_contract": "crates/modules/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
     "approved_public_reply_documents_completed": true,
     "completion_task": "FORUM-20BO",
-    "completion_contract": "crates/rustok-forum/contracts/forum-approved-reply-search.json"
+    "completion_contract": "crates/modules/rustok-forum/contracts/forum-approved-reply-search.json"
   },
   "compatibility": {
     "search_projector_public_type_changed": false,

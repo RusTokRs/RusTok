@@ -14,12 +14,12 @@ const requireMarker = (source, marker, label) => {
   if (!source.includes(marker)) fail(`${label} is missing ${marker}`);
 };
 
-const canonicalFamily = read('crates/rustok-events/src/product_index_refresh.rs');
-const delivery = read('crates/rustok-distribution/src/product_index/refresh_event.rs');
-const productIndexModule = read('crates/rustok-distribution/src/product_index/mod.rs');
-const variantSource = read('crates/rustok-distribution/src/product_variant_index.rs');
-const genericWorker = read('crates/rustok-index/src/application/source_refresh_event.rs');
-const genericWorkerTests = read('crates/rustok-index/src/application/source_refresh_event_tests.rs');
+const canonicalFamily = read('crates/libs/rustok-events/src/product_index_refresh.rs');
+const delivery = read('crates/modules/rustok-distribution/src/product_index/refresh_event.rs');
+const productIndexModule = read('crates/modules/rustok-distribution/src/product_index/mod.rs');
+const variantSource = read('crates/modules/rustok-distribution/src/product_variant_index.rs');
+const genericWorker = read('crates/modules/rustok-index/src/application/source_refresh_event.rs');
+const genericWorkerTests = read('crates/modules/rustok-index/src/application/source_refresh_event_tests.rs');
 
 for (const eventDomain of [
   'product.index.locale_refresh_requested',

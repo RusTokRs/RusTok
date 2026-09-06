@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 const contractPath =
-  'crates/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-execution-contract.json';
+  'crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-runtime-matrix-execution-contract.json';
 const contract = JSON.parse(
   readFileSync(path.join(repoRoot, contractPath), 'utf8')
 ) as MatrixContract;

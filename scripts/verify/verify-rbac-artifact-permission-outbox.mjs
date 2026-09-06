@@ -40,15 +40,15 @@ function between(text, start, end) {
 const paths = {
   modules: "modules.toml",
   modulesExample: "modules.toml.example",
-  moduleManifest: "crates/rustok-rbac/rustok-module.toml",
-  cargo: "crates/rustok-rbac/Cargo.toml",
-  event: "crates/rustok-events/src/rbac_artifact_permission.rs",
-  eventLib: "crates/rustok-events/src/lib.rs",
-  contract: "crates/rustok-events/src/contract.rs",
-  rbacLib: "crates/rustok-rbac/src/lib.rs",
-  owner: "crates/rustok-rbac/src/artifact_permission_assignment.rs",
+  moduleManifest: "crates/modules/rustok-rbac/rustok-module.toml",
+  cargo: "crates/modules/rustok-rbac/Cargo.toml",
+  event: "crates/libs/rustok-events/src/rbac_artifact_permission.rs",
+  eventLib: "crates/libs/rustok-events/src/lib.rs",
+  contract: "crates/libs/rustok-events/src/contract.rs",
+  rbacLib: "crates/modules/rustok-rbac/src/lib.rs",
+  owner: "crates/modules/rustok-rbac/src/artifact_permission_assignment.rs",
   host: "apps/server/src/controllers/artifact_permissions.rs",
-  integrationTest: "crates/rustok-rbac/tests/artifact_permission_outbox_sqlite.rs",
+  integrationTest: "crates/modules/rustok-rbac/tests/artifact_permission_outbox_sqlite.rs",
 };
 
 const content = Object.fromEntries(
@@ -56,7 +56,7 @@ const content = Object.fromEntries(
 );
 
 const manifestMarker =
-  'rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", required = true, depends_on = ["outbox"] }';
+  'rbac = { crate = "rustok-rbac", source = "path", path = "crates/modules/rustok-rbac", required = true, depends_on = ["outbox"] }';
 requireMarker(content.modules, manifestMarker, `${paths.modules}: RBAC Core module must declare Outbox dependency`);
 requireMarker(content.modulesExample, manifestMarker, `${paths.modulesExample}: example topology must mirror the RBAC Outbox dependency`);
 requireMarker(content.moduleManifest, 'outbox = { version_req = ">=0.1.0" }', `${paths.moduleManifest}: Outbox module dependency missing`);

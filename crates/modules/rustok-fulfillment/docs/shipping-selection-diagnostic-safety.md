@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This source slice closes the currently identified payload-diagnostic gap in the
 native/FBA `ShippingSelectionPort` owner boundary implemented by
-`crates/rustok-fulfillment/src/ports.rs`.
+`crates/modules/rustok-fulfillment/src/ports.rs`.
 
 It covers:
 
@@ -75,8 +75,8 @@ This diagnostic-only change does not alter:
 
 ## Static evidence
 
-- `crates/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source.json`
-- `crates/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source.json`
+- `crates/modules/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-fulfillment-shipping-selection-diagnostic-safety.mjs`
 - `scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 

@@ -1,11 +1,11 @@
 {
   "status": "commerce_storefront_shipping_enrichment_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-commerce/src/storefront_shipping.rs",
-    "crates/rustok-fulfillment/src/error.rs",
+    "crates/modules/rustok-commerce/src/storefront_shipping.rs",
+    "crates/modules/rustok-fulfillment/src/error.rs",
     "scripts/verify/verify-commerce-storefront-shipping-enrichment-diagnostic-safety.mjs",
-    "crates/rustok-commerce/docs/storefront-shipping-enrichment-diagnostic-safety.md",
-    "crates/rustok-commerce/docs/implementation-plan.md"
+    "crates/modules/rustok-commerce/docs/storefront-shipping-enrichment-diagnostic-safety.md",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
   "source_contract": {
     "fulfillment_error_payload_logged": false,

@@ -51,29 +51,29 @@ function assertNotContains(text, pattern, description) {
 }
 
 function assertChannelAdminBoundary() {
-  const libPath = "crates/rustok-channel/admin/src/lib.rs";
-  const corePath = "crates/rustok-channel/admin/src/core.rs";
-  const uiModPath = "crates/rustok-channel/admin/src/ui/leptos/mod.rs";
+  const libPath = "crates/modules/rustok-channel/admin/src/lib.rs";
+  const corePath = "crates/modules/rustok-channel/admin/src/core.rs";
+  const uiModPath = "crates/modules/rustok-channel/admin/src/ui/leptos/mod.rs";
   const uiComponentPaths = [
-    "crates/rustok-channel/admin/src/ui/leptos/runtime_context.rs",
-    "crates/rustok-channel/admin/src/ui/leptos/policy_workbench.rs",
-    "crates/rustok-channel/admin/src/ui/leptos/policy_set_card.rs",
-    "crates/rustok-channel/admin/src/ui/leptos/channel_card.rs",
+    "crates/modules/rustok-channel/admin/src/ui/leptos/runtime_context.rs",
+    "crates/modules/rustok-channel/admin/src/ui/leptos/policy_workbench.rs",
+    "crates/modules/rustok-channel/admin/src/ui/leptos/policy_set_card.rs",
+    "crates/modules/rustok-channel/admin/src/ui/leptos/channel_card.rs",
   ];
-  const transportModPath = "crates/rustok-channel/admin/src/transport/mod.rs";
-  const nativeAdapterPath = "crates/rustok-channel/admin/src/transport/native_server_adapter.rs";
-  const restAdapterPath = "crates/rustok-channel/admin/src/transport/rest_adapter.rs";
+  const transportModPath = "crates/modules/rustok-channel/admin/src/transport/mod.rs";
+  const nativeAdapterPath = "crates/modules/rustok-channel/admin/src/transport/native_server_adapter.rs";
+  const restAdapterPath = "crates/modules/rustok-channel/admin/src/transport/rest_adapter.rs";
 
   for (const path of [libPath, corePath, uiModPath, ...uiComponentPaths, transportModPath, nativeAdapterPath, restAdapterPath]) {
     assertExists(path, `${path}: expected channel admin FFA boundary file`);
   }
   assertMissing(
-    "crates/rustok-channel/admin/src/api.rs",
-    "crates/rustok-channel/admin/src/api.rs: pre-FFA api facade must stay removed",
+    "crates/modules/rustok-channel/admin/src/api.rs",
+    "crates/modules/rustok-channel/admin/src/api.rs: pre-FFA api facade must stay removed",
   );
   assertMissing(
-    "crates/rustok-channel/admin/src/transport.rs",
-    "crates/rustok-channel/admin/src/transport.rs: transport must remain split into transport/ adapters",
+    "crates/modules/rustok-channel/admin/src/transport.rs",
+    "crates/modules/rustok-channel/admin/src/transport.rs: transport must remain split into transport/ adapters",
   );
 
   const lib = readRepo(libPath);
@@ -152,7 +152,7 @@ function assertChannelAdminBoundary() {
 }
 
 function assertChannelServerBoundary() {
-  const dtoPath = "crates/rustok-channel/src/dto/mod.rs";
+  const dtoPath = "crates/modules/rustok-channel/src/dto/mod.rs";
   const controllerPath = "apps/server/src/controllers/channel.rs";
   assertExists(dtoPath, `${dtoPath}: expected channel owner DTO contract`);
   assertExists(controllerPath, `${controllerPath}: expected server channel controller adapter`);

@@ -13,7 +13,7 @@ publisher.
 The machine-readable proof contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-semantic-poison-proof.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-semantic-poison-proof.json
 ```
 
 The executable cross-module host test is:

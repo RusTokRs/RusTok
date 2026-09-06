@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const planner = requireMarkers('crates/rustok-index/src/application/planner.rs', [
+const planner = requireMarkers('crates/modules/rustok-index/src/application/planner.rs', [
   'pub traverses_many: bool',
   'let mut many_paths = BTreeMap::from([(Vec::new(), false)]);',
   'link.cardinality == LinkCardinality::Many',
@@ -26,13 +26,13 @@ const planner = requireMarkers('crates/rustok-index/src/application/planner.rs',
   'pub struct PlannedManyProjection',
   'rustok-index-query-plan-v4',
 ]);
-const compiler = requireMarkers('crates/rustok-index/src/application/postgres_compiler.rs', [
+const compiler = requireMarkers('crates/modules/rustok-index/src/application/postgres_compiler.rs', [
   'ManyLinkOrderingPending(FieldPath)',
   'ManyProjectionPlanMismatch',
   'ManyTraversalMismatch(Vec<LinkName>)',
   'expected_traverses_many',
 ]);
-const sql = requireMarkers('crates/rustok-index/src/application/postgres_query_sql.rs', [
+const sql = requireMarkers('crates/modules/rustok-index/src/application/postgres_query_sql.rs', [
   'for join in plan.outer_joins()',
   'fn compile_many_exists(',
   'let mut wrappers = Vec::with_capacity(field.path.links().len());',
@@ -44,9 +44,9 @@ const sql = requireMarkers('crates/rustok-index/src/application/postgres_query_s
 ]);
 
 for (const [relative, source] of [
-  ['crates/rustok-index/src/application/planner.rs', planner],
-  ['crates/rustok-index/src/application/postgres_compiler.rs', compiler],
-  ['crates/rustok-index/src/application/postgres_query_sql.rs', sql],
+  ['crates/modules/rustok-index/src/application/planner.rs', planner],
+  ['crates/modules/rustok-index/src/application/postgres_compiler.rs', compiler],
+  ['crates/modules/rustok-index/src/application/postgres_query_sql.rs', sql],
 ]) {
   for (const forbidden of [
     'rustok_product',
@@ -63,25 +63,25 @@ for (const [relative, source] of [
   }
 }
 
-requireMarkers('crates/rustok-index/src/application/postgres_compiler_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/postgres_compiler_tests.rs', [
   'compiles_many_link_filter_as_correlated_exists_without_outer_join',
   'compiles_grouped_many_projection_as_row_preserving_json_aggregate',
   'assert!(!compiled.sql.contains("LEFT JOIN index_links AS \\"l1\\""))',
   'assert!(!count.sql.contains("ORDER BY"))',
 ]);
-requireMarkers('crates/rustok-index/docs/m4-many-link-filtering.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-many-link-filtering.md', [
   'correlated `EXISTS` chain',
   'Independent atomic subqueries are intentional.',
   '`Ne` is deliberately not compiled as `NOT EXISTS(Eq)`',
   'does not execute SQL',
 ]);
-requireMarkers('crates/rustok-index/docs/m4-many-link-projection.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-many-link-projection.md', [
   'correlated JSONB aggregate subquery',
   'never become joins in the outer page rowset',
   'Ordering through a many link remains rejected',
   'CompiledManyRelationColumn',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   'M4 many-link `EXISTS` filtering: `complete`',
   'M4 nested many-link projection aggregation: `complete`',
   '- [x] Add explicit many-link `EXISTS` filtering.',

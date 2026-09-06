@@ -5,7 +5,7 @@ Latest default branch checked through
 `main@66f36254ce5607f38fa480968e69b355a0128fe6`.
 
 The only main delta after the baseline is Pages storefront Navigation/SEO ETag composition. It does
-not touch `crates/rustok-index`, Product Index composition, Index GraphQL transports, Index diagnosis
+not touch `crates/modules/rustok-index`, Product Index composition, Index GraphQL transports, Index diagnosis
 services, or Index verifier files changed by PR #3033.
 
 ## Rechecked scope

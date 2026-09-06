@@ -5,7 +5,7 @@ Status: **source-ready / unvalidated**
 ## Scope
 
 This source slice closes the tenant UUID rejection diagnostic gap for the four operations
-published by `CartCheckoutPort` in `crates/rustok-cart/src/checkout_snapshot.rs`:
+published by `CartCheckoutPort` in `crates/modules/rustok-cart/src/checkout_snapshot.rs`:
 
 - `prepare_checkout`;
 - `read_checkout_snapshot`;

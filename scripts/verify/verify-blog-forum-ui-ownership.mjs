@@ -33,7 +33,7 @@ function hasNone(text, markers, label) {
 }
 
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json';
 const evidence = JSON.parse(requireFile(evidencePath));
 if (
   evidence.schema_version !== 1 ||

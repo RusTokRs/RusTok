@@ -79,7 +79,7 @@ fn payment_planning_redirects_to_the_main_ecommerce_plan() {
     );
     assert!(
         payment_redirect
-            .contains("crates/rustok-commerce/docs/implementation-plan.md#payment-workstream"),
+            .contains("crates/modules/rustok-commerce/docs/implementation-plan.md#payment-workstream"),
         "payment planning file must redirect to the main ecommerce plan"
     );
     assert!(

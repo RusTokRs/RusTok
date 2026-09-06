@@ -4,20 +4,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 const failures = [];
 
 const evidence = JSON.parse(read(
-  "crates/rustok-pages/contracts/evidence/pages-publish-rebuild-provenance-postgres-source.json",
+  "crates/modules/rustok-pages/contracts/evidence/pages-publish-rebuild-provenance-postgres-source.json",
 ));
-const harness = read("crates/rustok-pages/tests/publish_rebuild_provenance_postgres.rs");
-const documentOwner = read("crates/rustok-pages/src/services/page/document.rs");
-const reviewedPublish = read("crates/rustok-pages/src/services/page/reviewed_publish.rs");
-const publishManifest = read("crates/rustok-pages/src/services/page/publish_manifest.rs");
-const publishOperation = read("crates/rustok-pages/src/entities/page_publish_operation.rs");
+const harness = read("crates/modules/rustok-pages/tests/publish_rebuild_provenance_postgres.rs");
+const documentOwner = read("crates/modules/rustok-pages/src/services/page/document.rs");
+const reviewedPublish = read("crates/modules/rustok-pages/src/services/page/reviewed_publish.rs");
+const publishManifest = read("crates/modules/rustok-pages/src/services/page/publish_manifest.rs");
+const publishOperation = read("crates/modules/rustok-pages/src/entities/page_publish_operation.rs");
 const migration = read(
-  "crates/rustok-pages/src/migrations/m20260806_000013_create_page_publish_rebuild_sources.rs",
+  "crates/modules/rustok-pages/src/migrations/m20260806_000013_create_page_publish_rebuild_sources.rs",
 );
 const continuation = read(
   "docs/modules/pages-page-builder-publish-provenance-postgres-continuation-2026-08-07.md",

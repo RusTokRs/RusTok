@@ -44,25 +44,25 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
-const libPath = "crates/rustok-payment/storefront/src/lib.rs";
-const corePath = "crates/rustok-payment/storefront/src/core.rs";
-const transportPath = "crates/rustok-payment/storefront/src/transport.rs";
-const graphqlPath = "crates/rustok-payment/storefront/src/transport/graphql_adapter.rs";
-const graphqlSafetyPath = "crates/rustok-payment/storefront/src/transport/graphql_error_safety.rs";
-const nativeServerFunctionsPath = "crates/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs";
-const cargoPath = "crates/rustok-payment/storefront/Cargo.toml";
-const uiPath = "crates/rustok-payment/storefront/src/ui/leptos.rs";
-const i18nPath = "crates/rustok-payment/storefront/src/i18n.rs";
-const manifestPath = "crates/rustok-payment/rustok-module.toml";
-const commerceUiPath = "crates/rustok-commerce/storefront/src/ui/leptos/mod.rs";
-const commerceRequestsPath = "crates/rustok-commerce/storefront/src/core/requests.rs";
-const planPath = "crates/rustok-commerce/docs/implementation-plan.md";
-const paymentPlanRedirectPath = "crates/rustok-payment/docs/implementation-plan.md";
-const providerSourcePath = "crates/rustok-payment/src/providers.rs";
-const webhookControllerPath = "crates/rustok-payment/src/controllers.rs";
-const webhookIngressPath = "crates/rustok-payment/src/services/provider_event_ingress.rs";
-const webhookContractPath = "crates/rustok-payment/contracts/payment-provider-webhook-v1.json";
-const paymentFbaRegistryPath = "crates/rustok-payment/contracts/payment-fba-registry.json";
+const libPath = "crates/modules/rustok-payment/storefront/src/lib.rs";
+const corePath = "crates/modules/rustok-payment/storefront/src/core.rs";
+const transportPath = "crates/modules/rustok-payment/storefront/src/transport.rs";
+const graphqlPath = "crates/modules/rustok-payment/storefront/src/transport/graphql_adapter.rs";
+const graphqlSafetyPath = "crates/modules/rustok-payment/storefront/src/transport/graphql_error_safety.rs";
+const nativeServerFunctionsPath = "crates/modules/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs";
+const cargoPath = "crates/modules/rustok-payment/storefront/Cargo.toml";
+const uiPath = "crates/modules/rustok-payment/storefront/src/ui/leptos.rs";
+const i18nPath = "crates/modules/rustok-payment/storefront/src/i18n.rs";
+const manifestPath = "crates/modules/rustok-payment/rustok-module.toml";
+const commerceUiPath = "crates/modules/rustok-commerce/storefront/src/ui/leptos/mod.rs";
+const commerceRequestsPath = "crates/modules/rustok-commerce/storefront/src/core/requests.rs";
+const planPath = "crates/modules/rustok-commerce/docs/implementation-plan.md";
+const paymentPlanRedirectPath = "crates/modules/rustok-payment/docs/implementation-plan.md";
+const providerSourcePath = "crates/modules/rustok-payment/src/providers.rs";
+const webhookControllerPath = "crates/modules/rustok-payment/src/controllers.rs";
+const webhookIngressPath = "crates/modules/rustok-payment/src/services/provider_event_ingress.rs";
+const webhookContractPath = "crates/modules/rustok-payment/contracts/payment-provider-webhook-v1.json";
+const paymentFbaRegistryPath = "crates/modules/rustok-payment/contracts/payment-fba-registry.json";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
@@ -245,7 +245,7 @@ if (
 assertContains(plan, "## Payment workstream", `${planPath}: main ecommerce plan must own the payment workstream`);
 assertContains(plan, "verify-payment-storefront-boundary.mjs", `${planPath}: main ecommerce plan must mention payment storefront boundary guardrail`);
 assertContains(plan, "signature-verified provider result", `${planPath}: main ecommerce plan must record authoritative webhook identity`);
-assertContains(paymentPlanRedirect, "crates/rustok-commerce/docs/implementation-plan.md#payment-workstream", `${paymentPlanRedirectPath}: payment planning must redirect to the main ecommerce workstream`);
+assertContains(paymentPlanRedirect, "crates/modules/rustok-commerce/docs/implementation-plan.md#payment-workstream", `${paymentPlanRedirectPath}: payment planning must redirect to the main ecommerce workstream`);
 for (const forbiddenMarker of ["- [x]", "- [ ]", "## Immediate execution order", "## Verification and promotion checklist"]) {
   assertNotContains(paymentPlanRedirect, forbiddenMarker, `${paymentPlanRedirectPath}: payment redirect must not maintain a second roadmap (${forbiddenMarker})`);
 }

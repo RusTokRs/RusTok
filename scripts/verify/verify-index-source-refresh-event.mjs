@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-requireMarkers('crates/rustok-index/src/application/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
   'mod source_refresh_event;',
   'mod source_refresh_event_tests;',
   'IndexSourceRefreshEventDelivery',
@@ -26,7 +26,7 @@ requireMarkers('crates/rustok-index/src/application/mod.rs', [
   'IndexSourceRefreshEventProcessError',
 ]);
 
-const contractPath = 'crates/rustok-index/src/application/source_refresh_event.rs';
+const contractPath = 'crates/modules/rustok-index/src/application/source_refresh_event.rs';
 const contract = requireMarkers(contractPath, [
   'pub struct IndexSourceRefreshEventDelivery<T>',
   'minimum_source_version: u64',
@@ -80,7 +80,7 @@ for (const forbidden of [
   }
 }
 
-requireMarkers('crates/rustok-index/src/application/source_refresh_event_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/application/source_refresh_event_tests.rs', [
   'canonical_source_mutation_is_rebound_committed_and_then_acknowledged',
   'missing_or_behind_source_state_suppresses_apply_and_ack',
   'schema_mismatch_fails_before_source_load_apply_or_ack',
@@ -89,7 +89,7 @@ requireMarkers('crates/rustok-index/src/application/source_refresh_event_tests.r
   'Some(Uuid::from_u128(7))',
 ]);
 
-requireMarkers('crates/rustok-index/docs/m5-source-refresh-event.md', [
+requireMarkers('crates/modules/rustok-index/docs/m5-source-refresh-event.md', [
   'Status: `source_complete_owner_event_publication_and_runtime_wiring_pending`',
   '`IndexSourceRefreshEventWorker`',
   'one bounded `IndexSourceLoadRequest` for exactly one key',

@@ -4,17 +4,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const failures = [];
 const files = {
-  test: "crates/rustok-pages/tests/explicit_artifact_repair_request_contract.rs",
-  evidence: "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-request-contract-source.json",
+  test: "crates/modules/rustok-pages/tests/explicit_artifact_repair_request_contract.rs",
+  evidence: "crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-request-contract-source.json",
   continuation: "docs/modules/pages-page-builder-repair-request-contract-continuation-2026-08-07.md",
-  transportDoc: "crates/rustok-pages/docs/explicit-artifact-repair-transports.md",
-  auditDoc: "crates/rustok-pages/docs/immutable-artifact-integrity-audit.md",
-  auditTransportDoc: "crates/rustok-pages/docs/immutable-artifact-integrity-audit-transport.md",
-  rebuildDoc: "crates/rustok-pages/docs/explicit-immutable-artifact-rebuild.md",
-  activationDoc: "crates/rustok-pages/docs/explicit-immutable-artifact-binding-replacement.md",
+  transportDoc: "crates/modules/rustok-pages/docs/explicit-artifact-repair-transports.md",
+  auditDoc: "crates/modules/rustok-pages/docs/immutable-artifact-integrity-audit.md",
+  auditTransportDoc: "crates/modules/rustok-pages/docs/immutable-artifact-integrity-audit-transport.md",
+  rebuildDoc: "crates/modules/rustok-pages/docs/explicit-immutable-artifact-rebuild.md",
+  activationDoc: "crates/modules/rustok-pages/docs/explicit-immutable-artifact-binding-replacement.md",
   priorContinuation: "docs/modules/pages-page-builder-repair-transport-contract-continuation-2026-08-07.md",
   rebuildContinuation: "docs/modules/pages-page-builder-rebuild-provenance-continuation-2026-08-06.md",
   actualization: "docs/modules/page-builder-parity-actualization-2026-08-05.md",

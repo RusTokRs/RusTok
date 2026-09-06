@@ -4,15 +4,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
-const evidence = JSON.parse(read("crates/rustok-pages/contracts/evidence/pages-production-relay-native-route-source.json"));
+const evidence = JSON.parse(read("crates/modules/rustok-pages/contracts/evidence/pages-production-relay-native-route-source.json"));
 const cargo = read("apps/server/Cargo.toml");
 const harness = read("apps/server/tests/pages_production_relay_native_route_sqlite.rs");
 const gate = read("apps/server/src/services/tenant_generation_delivery_gate.rs");
 const port = read("apps/server/src/services/pages_cache_invalidation.rs");
-const relay = read("crates/rustok-outbox/src/relay.rs");
-const adapter = read("crates/rustok-pages/storefront/src/transport/native_server_adapter.rs");
+const relay = read("crates/modules/rustok-outbox/src/relay.rs");
+const adapter = read("crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs");
 const packet = read("docs/modules/pages-page-builder-production-relay-native-route-packet-2026-08-05.md");
 const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
 const failures = [];
@@ -87,7 +87,7 @@ for (const key of [
   if (evidence.source_contract?.[key] !== false) failures.push(`source_contract.${key} must be false`);
 }
 
-need(cargo, 'rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront", default-features = false, features = ["ssr"] }', "server test dependency");
+need(cargo, 'rustok-pages-storefront = { path = "../../crates/modules/rustok-pages/storefront", default-features = false, features = ["ssr"] }', "server test dependency");
 for (const marker of [
   "PageService::new",
   ".publish_reviewed(",

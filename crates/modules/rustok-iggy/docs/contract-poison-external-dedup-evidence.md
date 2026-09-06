@@ -195,7 +195,7 @@ The test reads counts immediately after each successful production publish. It d
 Only after all checks pass does it atomically write:
 
 ```text
-crates/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-execution.json
+crates/modules/rustok-iggy/contracts/evidence/contract-poison-external-iggy-dedup-execution.json
 ```
 
 The packet contains bounded toolchain/timestamp metadata, source hashes, canonical reviewed configuration digests, server artifact labels, exact command arrays, expected count sequences, and per-case/combined output hashes and byte counts.

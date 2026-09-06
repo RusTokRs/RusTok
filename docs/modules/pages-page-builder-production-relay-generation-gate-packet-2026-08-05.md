@@ -85,8 +85,8 @@ This slice does not:
 
 Machine-readable source evidence:
 
-- `crates/rustok-pages/contracts/evidence/pages-production-relay-generation-gate-source.json`;
-- `crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs`.
+- `crates/modules/rustok-pages/contracts/evidence/pages-production-relay-generation-gate-source.json`;
+- `crates/modules/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs`.
 
 The execution list remains empty and every observed validation field remains false.
 
@@ -95,7 +95,7 @@ The execution list remains empty and every observed validation field remains fal
 Intentionally not run in this slice:
 
 ```bash
-node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs
+node crates/modules/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs
 cargo test -p rustok-server --features mod-pages services::pages_cache_invalidation -- --nocapture
 cargo test -p rustok-server --features mod-pages services::tenant_generation_delivery_gate -- --nocapture
 cargo check -p rustok-server --features mod-pages --all-targets

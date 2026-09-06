@@ -288,7 +288,7 @@ pub fn BlogAdmin() -> impl IntoView {
 
 ## Internal Libraries — Use These, Never Reinvent
 
-### Leptos UI crates in `crates/leptos-*`
+### Leptos UI crates in `crates/modules/leptos-*`
 
 | Crate | What it provides | When to use |
 |---|---|---|
@@ -317,7 +317,7 @@ pub fn BlogAdmin() -> impl IntoView {
 
 ### Shared UI primitives (`UI/leptos/`)
 
-Source primitives live in `UI/leptos/src/`. The compiled crate boundary is `crates/leptos-ui`.
+Source primitives live in `UI/leptos/src/`. The compiled crate boundary is `crates/ui/leptos-ui`.
 Check [`docs/UI/rust-ui-component-catalog.md`](./rust-ui-component-catalog.md) before
 writing any new component — it may already exist.
 
@@ -334,19 +334,19 @@ Cross-framework component API (props, variants, CSS variables):
 
 | Reuse pattern | Where to extract | Example |
 |---|---|---|
-| UI primitives (buttons, inputs, cards) | `crates/leptos-ui/` | `Button`, `Input`, `Card` |
-| Framework-agnostic UI route/query/input/busy contracts | `crates/rustok-ui-core/` | `UiRouteContext`, `UiRouteQueryUpdate`, `UiRouteQueryIntent`, `AdminQueryKey`, `normalize_ui_text`, `ui_busy_key_with_id` |
-| Leptos routing/query adapter helpers | `crates/leptos-ui-routing/` | `use_route_query_value`, `use_route_query_writer` |
-| Framework-agnostic FFA transport result evidence and build-profile transport selection | `crates/rustok-ui-transport/` | `UiTransportError`, `UiTransportPath`, `UiTransportResult`, `execute_selected_transport` |
-| Framework-agnostic GraphQL transport client | `crates/rustok-graphql/` | GraphQL request/response/error types and HTTP execution |
-| Leptos GraphQL hooks adapter | `crates/rustok-graphql-leptos/` | Reactive Leptos query/mutation hooks |
-| Auth/session hooks | `crates/leptos-auth/` | Auth state, session context |
-| Form state management | `crates/leptos-forms/` | Multi-field form state |
-| Table/pagination UI | `crates/leptos-table/` | Reusable table component |
-| Framework-agnostic UI i18n | `crates/rustok-ui-i18n/` | Message catalog and key resolution |
-| Leptos UI i18n adapter | `crates/rustok-ui-i18n-leptos/` | Static bundle storage and `UiRouteContext.locale` adapter |
-| Host/API/backend contracts | `crates/rustok-api/` | Locale, permissions, ports, server/runtime contracts |
-| Domain-specific cross-module UI | `crates/rustok-<capability>-<surface>-support/` | `rustok-seo-admin-support` |
+| UI primitives (buttons, inputs, cards) | `crates/ui/leptos-ui/` | `Button`, `Input`, `Card` |
+| Framework-agnostic UI route/query/input/busy contracts | `crates/ui/rustok-ui-core/` | `UiRouteContext`, `UiRouteQueryUpdate`, `UiRouteQueryIntent`, `AdminQueryKey`, `normalize_ui_text`, `ui_busy_key_with_id` |
+| Leptos routing/query adapter helpers | `crates/ui/leptos-ui-routing/` | `use_route_query_value`, `use_route_query_writer` |
+| Framework-agnostic FFA transport result evidence and build-profile transport selection | `crates/ui/rustok-ui-transport/` | `UiTransportError`, `UiTransportPath`, `UiTransportResult`, `execute_selected_transport` |
+| Framework-agnostic GraphQL transport client | `crates/ui/rustok-graphql/` | GraphQL request/response/error types and HTTP execution |
+| Leptos GraphQL hooks adapter | `crates/ui/rustok-graphql-leptos/` | Reactive Leptos query/mutation hooks |
+| Auth/session hooks | `crates/ui/leptos-auth/` | Auth state, session context |
+| Form state management | `crates/ui/leptos-forms/` | Multi-field form state |
+| Table/pagination UI | `crates/ui/leptos-table/` | Reusable table component |
+| Framework-agnostic UI i18n | `crates/ui/rustok-ui-i18n/` | Message catalog and key resolution |
+| Leptos UI i18n adapter | `crates/ui/rustok-ui-i18n-leptos/` | Static bundle storage and `UiRouteContext.locale` adapter |
+| Host/API/backend contracts | `crates/libs/rustok-api/` | Locale, permissions, ports, server/runtime contracts |
+| Domain-specific cross-module UI | `crates/modules/rustok-<capability>-<surface>-support/` | `rustok-seo-admin-support` |
 
 ### Extraction checklist
 
@@ -354,9 +354,9 @@ Before duplicating code, check:
 
 1. ✅ **Does this pattern exist in another module?** → Search codebase first
 2. ✅ **Will this be needed by 2+ modules?** → Extract to shared library
-3. ✅ **Is it framework-specific (Leptos)?** → Extract to `crates/leptos-*/`
-4. ✅ **Is it framework-agnostic (FFA-ready)?** → Extract to `crates/rustok-*/`
-5. ✅ **Is it domain-specific but cross-module?** → Extract to `crates/rustok-<capability>-<surface>-support/`
+3. ✅ **Is it framework-specific (Leptos)?** → Extract to `crates/modules/leptos-*/`
+4. ✅ **Is it framework-agnostic (FFA-ready)?** → Extract to `crates/modules/rustok-*/`
+5. ✅ **Is it domain-specific but cross-module?** → Extract to `crates/modules/rustok-<capability>-<surface>-support/`
 
 ### Anti-patterns (do NOT extract)
 
@@ -370,13 +370,13 @@ Before duplicating code, check:
 When creating a new shared library, decide upfront:
 
 **Framework-specific (Leptos-only):**
-- Name: `crates/leptos-<name>/`
+- Name: `crates/modules/leptos-<name>/`
 - Can use `leptos::*` imports
 - Example: `leptos-ui`, `leptos-auth`
 - **Future:** Will need Dioxus equivalent or migration to framework-agnostic
 
 **Framework-agnostic (FFA-compatible, permanent):**
-- Name: `crates/rustok-<name>/` or `crates/<name>/` (if truly generic)
+- Name: `crates/modules/rustok-<name>/` or `crates/modules/<name>/` (if truly generic)
 - **NO** `leptos::*` or `dioxus::*` imports
 - Example: `rustok-api`, `rustok-ui-i18n`, `rustok-graphql`
 - Works with both Leptos and Dioxus UI adapters

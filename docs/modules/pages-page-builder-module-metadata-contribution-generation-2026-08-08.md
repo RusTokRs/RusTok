@@ -10,7 +10,7 @@ That duplicate declaration is removed in this slice.
 
 ## Canonical authority
 
-`crates/rustok-pages/rustok-module.toml` now owns the Pages Page Builder contribution declaration under:
+`crates/modules/rustok-pages/rustok-module.toml` now owns the Pages Page Builder contribution declaration under:
 
 ```text
 [fba.builder_consumer.contribution_manifest]
@@ -32,7 +32,7 @@ Owner version is derived from `[module].version`; it is not repeated in contribu
 
 ## Build-time generation boundary
 
-`crates/rustok-pages/admin/build.rs` parses the canonical module manifest at build time and fails closed when:
+`crates/modules/rustok-pages/admin/build.rs` parses the canonical module manifest at build time and fails closed when:
 
 - module slug/version do not match the Pages admin package;
 - builder capability metadata is empty or duplicated;
@@ -49,7 +49,7 @@ The generator injects `ownerProvider` and exact `providerVersion`, serializes th
 
 ## Runtime boundary
 
-`crates/rustok-pages/admin/src/contributions.rs` now:
+`crates/modules/rustok-pages/admin/src/contributions.rs` now:
 
 - includes the generated Rust source from `OUT_DIR`;
 - lazily deserializes the generated normalized manifest;

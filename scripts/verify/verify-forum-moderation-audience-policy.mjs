@@ -28,7 +28,7 @@ function rejectText(source, marker, message) {
 }
 
 const contractPath =
-  "crates/rustok-forum/contracts/forum-moderation-audience-policy.json";
+  "crates/modules/rustok-forum/contracts/forum-moderation-audience-policy.json";
 const contract = JSON.parse(read(contractPath) || "{}");
 const migration = read(contract.migration_file ?? "");
 const policy = read(contract.policy_service ?? "");
@@ -269,7 +269,7 @@ for (const marker of [
   "source-ready / unvalidated",
   "The exact tenant-scoped topic author remains independently authorized",
   "transport context composition remains `FORUM-20AZ`",
-  "canonical `crates/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten",
+  "canonical `crates/modules/rustok-forum/docs/implementation-plan.md` is intentionally not rewritten",
   "were not run by the implementation agent",
 ]) {
   requireText(note, marker, `FORUM-20AY owner note is missing ${marker}`);

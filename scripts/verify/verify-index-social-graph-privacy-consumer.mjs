@@ -26,7 +26,7 @@ const requireOrder = (relative, source, markers) => {
   }
 };
 
-const adapterPath = 'crates/rustok-social-graph/src/index_privacy.rs';
+const adapterPath = 'crates/modules/rustok-social-graph/src/index_privacy.rs';
 const adapter = requireMarkers(adapterPath, [
   'pub struct IndexSocialGraphPrivacyReadPort',
   'port: Arc<dyn IndexQueryPort>',
@@ -61,7 +61,7 @@ for (const forbidden of [
   if (adapter.includes(forbidden)) fail(`${adapterPath} contains forbidden marker ${forbidden}`);
 }
 
-const metricsPath = 'crates/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs';
+const metricsPath = 'crates/libs/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs';
 const metrics = requireMarkers(metricsPath, [
   'pub enum SocialGraphIndexPrivacyShadowOperation',
   'pub enum SocialGraphIndexPrivacyShadowOutcome',
@@ -102,11 +102,11 @@ for (const forbidden of [
 ]) {
   if (metrics.includes(forbidden)) fail(`${metricsPath} contains forbidden identity/cardinality marker ${forbidden}`);
 }
-requireMarkers('crates/rustok-telemetry/src/lib.rs', [
+requireMarkers('crates/libs/rustok-telemetry/src/lib.rs', [
   'pub mod social_graph_index_privacy_shadow_metrics;',
 ]);
 
-const shadowPath = 'crates/rustok-social-graph/src/index_privacy_shadow.rs';
+const shadowPath = 'crates/modules/rustok-social-graph/src/index_privacy_shadow.rs';
 const shadow = requireMarkers(shadowPath, [
   'pub const SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_TARGET',
   'rustok_social_graph::index_privacy_shadow',
@@ -169,7 +169,7 @@ for (const forbidden of [
   if (shadow.includes(forbidden)) fail(`${shadowPath} contains forbidden telemetry/runtime marker ${forbidden}`);
 }
 
-requireMarkers('crates/rustok-social-graph/src/lib.rs', [
+requireMarkers('crates/modules/rustok-social-graph/src/lib.rs', [
   'pub mod index_privacy;',
   'pub mod index_privacy_shadow;',
   'pub use index_privacy::IndexSocialGraphPrivacyReadPort;',
@@ -180,13 +180,13 @@ requireMarkers('crates/rustok-social-graph/src/lib.rs', [
   'IndexPrivacyShadowOutcome',
   'IndexShadowSocialGraphPrivacyReadPort',
 ]);
-requireMarkers('crates/rustok-social-graph/Cargo.toml', [
+requireMarkers('crates/modules/rustok-social-graph/Cargo.toml', [
   'index = ["dep:rustok-index"]',
   'tokio.workspace = true',
 ]);
-const socialCargo = read('crates/rustok-social-graph/Cargo.toml');
+const socialCargo = read('crates/modules/rustok-social-graph/Cargo.toml');
 if (socialCargo.includes('rustok-telemetry')) {
-  fail('crates/rustok-social-graph/Cargo.toml must keep the Prometheus adapter host-owned');
+  fail('crates/modules/rustok-social-graph/Cargo.toml must keep the Prometheus adapter host-owned');
 }
 
 const policyPath = 'apps/server/src/services/notification_recipient_policy.rs';
@@ -258,7 +258,7 @@ for (const forbidden of ['SocialGraphService::new', 'PostgresIndexQueryPort::new
   if (finalHost.includes(forbidden)) fail(`${finalHostPath} contains forbidden final-host marker ${forbidden}`);
 }
 
-const contractPath = 'crates/rustok-social-graph/contracts/social-graph-notification-policy.json';
+const contractPath = 'crates/modules/rustok-social-graph/contracts/social-graph-notification-policy.json';
 const contract = JSON.parse(read(contractPath));
 if (contract.schema_version !== 4) fail(`${contractPath} must use schema_version 4`);
 if (contract.index_privacy !== adapterPath) fail(`${contractPath} must point to the Index adapter`);
@@ -317,7 +317,7 @@ for (const label of ['tenant_id', 'source_user_id', 'target_user_id', 'relation_
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-social-graph-privacy-consumer.mjs'",
 ]);
-requireMarkers('crates/rustok-index/docs/m4-social-graph-privacy-consumer.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-social-graph-privacy-consumer.md', [
   'Status: `source_complete_metrics_execution_pending`',
   '`IndexSocialGraphPrivacyReadPort`',
   '`IndexShadowSocialGraphPrivacyReadPort`',
@@ -332,7 +332,7 @@ requireMarkers('crates/rustok-index/docs/m4-social-graph-privacy-consumer.md', [
   'single Prometheus registry',
   'Not run by the implementation agent',
 ]);
-requireMarkers('crates/rustok-index/docs/m4-query-planner.md', [
+requireMarkers('crates/modules/rustok-index/docs/m4-query-planner.md', [
   'M4 first consumer parity shadow: `source_complete_metrics_execution_pending`',
   '`IndexShadowSocialGraphPrivacyReadPort`',
   '`IndexPrivacyShadowObservation`',
@@ -341,7 +341,7 @@ requireMarkers('crates/rustok-index/docs/m4-query-planner.md', [
   'default-off shadow gate',
   'bounded Prometheus outcomes',
 ]);
-requireMarkers('crates/rustok-social-graph/CRATE_API.md', [
+requireMarkers('crates/modules/rustok-social-graph/CRATE_API.md', [
   '`IndexSocialGraphPrivacyReadPort`',
   '`IndexShadowSocialGraphPrivacyReadPort`',
   '`IndexPrivacyShadowObservation`',
@@ -353,7 +353,7 @@ requireMarkers('crates/rustok-social-graph/CRATE_API.md', [
   '`false_negative`',
   '`batch_mixed`',
 ]);
-requireMarkers('crates/rustok-telemetry/CRATE_API.md', [
+requireMarkers('crates/libs/rustok-telemetry/CRATE_API.md', [
   '`social_graph_index_privacy_shadow_metrics`',
   'rustok_social_graph_index_privacy_shadow_observations_total',
   '`false_negative`',

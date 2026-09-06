@@ -12,7 +12,7 @@ implementation, promote the canonical D0 contract or close `FORUM-23` or
 The machine contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-search-versioned-invalidation-retained-evidence-promotion.json
+crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-retained-evidence-promotion.json
 ```
 
 The reviewer is:

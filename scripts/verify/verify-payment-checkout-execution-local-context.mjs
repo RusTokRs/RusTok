@@ -10,44 +10,44 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
-const checkoutExecution = read('crates/rustok-payment/src/checkout_execution.rs');
+const checkoutExecution = read('crates/modules/rustok-payment/src/checkout_execution.rs');
 const diagnosticSafety = read(
-  'crates/rustok-payment/src/checkout_execution/diagnostic_safety.rs',
+  'crates/modules/rustok-payment/src/checkout_execution/diagnostic_safety.rs',
 );
-const portImpl = read('crates/rustok-payment/src/checkout_execution/port_impl.rs');
+const portImpl = read('crates/modules/rustok-payment/src/checkout_execution/port_impl.rs');
 const validationErrors = read(
-  'crates/rustok-payment/src/checkout_execution/validation_errors.rs',
+  'crates/modules/rustok-payment/src/checkout_execution/validation_errors.rs',
 );
-const types = read('crates/rustok-payment/src/checkout_execution/types.rs');
+const types = read('crates/modules/rustok-payment/src/checkout_execution/types.rs');
 const prepareAuthorize = read(
-  'crates/rustok-payment/src/checkout_execution/prepare_authorize.rs',
+  'crates/modules/rustok-payment/src/checkout_execution/prepare_authorize.rs',
 );
 const captureProvider = read(
-  'crates/rustok-payment/src/checkout_execution/capture_provider.rs',
+  'crates/modules/rustok-payment/src/checkout_execution/capture_provider.rs',
 );
 const providerHelpers = read(
-  'crates/rustok-payment/src/checkout_execution/provider_helpers.rs',
+  'crates/modules/rustok-payment/src/checkout_execution/provider_helpers.rs',
 );
 const compensationWrapper = read(
-  'crates/rustok-payment/src/checkout_compensation_context.rs',
+  'crates/modules/rustok-payment/src/checkout_compensation_context.rs',
 );
-const compensationOwner = read('crates/rustok-payment/src/checkout_compensation.rs');
-const doc = read('crates/rustok-payment/docs/checkout-execution-local-context.md');
-const paymentPlan = read('crates/rustok-payment/docs/implementation-plan.md');
-const commercePlan = read('crates/rustok-commerce/docs/implementation-plan.md');
+const compensationOwner = read('crates/modules/rustok-payment/src/checkout_compensation.rs');
+const doc = read('crates/modules/rustok-payment/docs/checkout-execution-local-context.md');
+const paymentPlan = read('crates/modules/rustok-payment/docs/implementation-plan.md');
+const commercePlan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
 const evidence = JSON.parse(
   read(
-    'crates/rustok-payment/contracts/evidence/checkout-execution-diagnostic-safety-source.json',
+    'crates/modules/rustok-payment/contracts/evidence/checkout-execution-diagnostic-safety-source.json',
   ),
 );
 const review = JSON.parse(
   read(
-    'crates/rustok-payment/contracts/evidence/checkout-execution-diagnostic-safety-source-review.json',
+    'crates/modules/rustok-payment/contracts/evidence/checkout-execution-diagnostic-safety-source-review.json',
   ),
 );
 const compensationOwnerEvidence = JSON.parse(
   read(
-    'crates/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source.json',
+    'crates/modules/rustok-payment/contracts/evidence/checkout-compensation-owner-diagnostic-safety-source.json',
   ),
 );
 

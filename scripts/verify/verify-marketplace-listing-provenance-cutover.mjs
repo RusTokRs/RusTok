@@ -4,13 +4,13 @@ import process from "node:process";
 
 const root = process.cwd();
 const files = {
-  listing: "crates/rustok-marketplace-listing/src/entities/listing.rs",
-  event: "crates/rustok-marketplace-listing/src/entities/listing_event.rs",
-  dto: "crates/rustok-marketplace-listing/src/dto.rs",
-  storage: "crates/rustok-marketplace-listing/src/listing_events.rs",
-  migration: "crates/rustok-marketplace-listing/src/migrations/m20260717_000003_backfill_listing_event_provenance.rs",
-  migrations: "crates/rustok-marketplace-listing/src/migrations/mod.rs",
-  registry: "crates/rustok-marketplace-listing/contracts/marketplace-listing-fba-registry.json",
+  listing: "crates/modules/rustok-marketplace-listing/src/entities/listing.rs",
+  event: "crates/modules/rustok-marketplace-listing/src/entities/listing_event.rs",
+  dto: "crates/modules/rustok-marketplace-listing/src/dto.rs",
+  storage: "crates/modules/rustok-marketplace-listing/src/listing_events.rs",
+  migration: "crates/modules/rustok-marketplace-listing/src/migrations/m20260717_000003_backfill_listing_event_provenance.rs",
+  migrations: "crates/modules/rustok-marketplace-listing/src/migrations/mod.rs",
+  registry: "crates/modules/rustok-marketplace-listing/contracts/marketplace-listing-fba-registry.json",
 };
 
 const failures = [];

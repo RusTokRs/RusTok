@@ -1,7 +1,7 @@
 {
   "status": "fulfillment_lifecycle_read_diagnostic_safety_source_unvalidated",
   "scope": {
-    "owner_source": "crates/rustok-fulfillment/src/fulfillment_read.rs",
+    "owner_source": "crates/modules/rustok-fulfillment/src/fulfillment_read.rs",
     "trait": "FulfillmentReadPort",
     "operations": [
       "read_fulfillment_projection",
@@ -9,7 +9,7 @@
       "find_latest_fulfillment_by_order_projection"
     ],
     "focused_verifier": "scripts/verify/verify-fulfillment-lifecycle-read-diagnostic-safety.mjs",
-    "documentation": "crates/rustok-fulfillment/docs/fulfillment-lifecycle-read-diagnostic-safety.md"
+    "documentation": "crates/modules/rustok-fulfillment/docs/fulfillment-lifecycle-read-diagnostic-safety.md"
   },
   "source_contract": {
     "owner_error_variant_count": 5,

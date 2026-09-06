@@ -15,13 +15,13 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const contractPath =
-  "crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution-contract.json";
+  "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution-contract.json";
 const expectedRunner =
   "scripts/evidence/capture-social-graph-index-raw-poison-postgres-iggy.mjs";
 const expectedVerifier =
   "scripts/verify/verify-social-graph-index-raw-poison-postgres-iggy-retained.mjs";
 const expectedEvidence =
-  "crates/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution.json";
+  "crates/modules/rustok-social-graph/contracts/evidence/index-raw-poison-postgres-iggy-execution.json";
 const expectedCases = [
   "raw_poison_persists_published_before_source_acknowledgement",
   "published_redelivery_is_acknowledgement_only_without_republication",

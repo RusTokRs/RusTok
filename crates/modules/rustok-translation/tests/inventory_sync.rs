@@ -365,7 +365,7 @@ fn sqlite_test_files(database_path: &Path) -> [PathBuf; 4] {
 
 fn inventory_test_database() -> (PathBuf, SqliteTestFileGuard) {
     let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .canonicalize()
         .expect("workspace path");
     let evidence_dir = workspace.join("target/translation-inventory-process-tests");

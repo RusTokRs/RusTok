@@ -12,7 +12,7 @@ RusToK is moving towards a platform model where optional modules can be installe
 - request-level locale/tenant resolution;
 - host-facing transport helpers that are not related to domain logic.
 
-Such a layer has already appeared as `crates/rustok-api` and is actually used by both the server and a number of module crates. At the same time, the risk of architectural drift remains:
+Such a layer has already appeared as `crates/libs/rustok-api` and is actually used by both the server and a number of module crates. At the same time, the risk of architectural drift remains:
 
 1. moving shared transport/helper types back into `apps/server`;
 2. starting to create parallel helper-layer crates next to individual modules;

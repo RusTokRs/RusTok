@@ -18,7 +18,7 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const admissionPath = 'crates/rustok-index/src/infrastructure/postgres/partition_admission.rs';
+const admissionPath = 'crates/modules/rustok-index/src/infrastructure/postgres/partition_admission.rs';
 const admission = requireMarkers(admissionPath, [
   'pub enum PartitionStrategy',
   'TenantHash { modulus: u16 }',
@@ -90,7 +90,7 @@ if (admissionPosition < 0 || planPosition < 0 || admissionPosition > planPositio
   fail('partition admission must run before a shadow plan is constructed');
 }
 
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/partition_admission_tests.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/partition_admission_tests.rs', [
   'admitted_plan_is_stable_and_shadow_only',
   'incomplete_or_regressed_evidence_keeps_storage_unpartitioned',
   'policy_strategy_and_evidence_validation_fail_closed',
@@ -110,20 +110,20 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/partition_admiss
   '!sql.contains("DROP TABLE")',
   '!sql.contains("RENAME TO")',
 ]);
-requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
+requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod partition_admission;',
   'mod partition_admission_tests;',
   'evaluate_partition_admission',
   'PartitionMeasurementCoverage',
   'PartitionShadowPlan',
 ]);
-requireMarkers('crates/rustok-index/src/lib.rs', [
+requireMarkers('crates/modules/rustok-index/src/lib.rs', [
   'evaluate_partition_admission',
   'PartitionAdmissionOutcome',
   'PartitionMeasurementCoverage',
   'PartitionShadowPlan',
 ]);
-requireMarkers('crates/rustok-index/docs/implementation-plan.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '- M3 partition admission and shadow planning: `complete`',
   '- [x] Add fail-closed partition admission and deterministic tenant-hash shadow',
   '- [ ] Execute retained PostgreSQL partition baseline/shadow evidence.',

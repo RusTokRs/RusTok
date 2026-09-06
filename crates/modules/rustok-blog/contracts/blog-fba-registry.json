@@ -7,7 +7,7 @@
   "provider_dependencies": [
     {
       "module": "comments",
-      "registry": "crates/rustok-comments/contracts/comments-fba-registry.json",
+      "registry": "crates/modules/rustok-comments/contracts/comments-fba-registry.json",
       "contract_version": "comments.thread.v1",
       "port": "CommentsThreadPort",
       "operations": [
@@ -35,18 +35,18 @@
     }
   ],
   "evidence": {
-    "local_plan": "crates/rustok-blog/docs/implementation-plan.md",
-    "comments_event_projection": "crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json",
-    "comments_duplicate_delivery_race": "crates/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json",
-    "comments_dispatcher_duplicate_delivery": "crates/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json",
-    "category_search_reindex": "crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json",
-    "graphql_rate_limit": "crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json",
-    "ai_richtext_boundary": "crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json",
+    "local_plan": "crates/modules/rustok-blog/docs/implementation-plan.md",
+    "comments_event_projection": "crates/modules/rustok-blog/contracts/evidence/blog-comments-event-projection.json",
+    "comments_duplicate_delivery_race": "crates/modules/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json",
+    "comments_dispatcher_duplicate_delivery": "crates/modules/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json",
+    "category_search_reindex": "crates/modules/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json",
+    "graphql_rate_limit": "crates/modules/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json",
+    "ai_richtext_boundary": "crates/modules/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-blog-fba.mjs",
-    "static_matrix": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json",
-    "runtime_fallback_smoke": "crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json",
-    "consumer_runtime_order_smoke": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json",
+    "static_matrix": "crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json",
+    "runtime_fallback_smoke": "crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json",
+    "consumer_runtime_order_smoke": "crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json",
     "consumer_runtime_order_smoke_runner": "scripts/verify/verify-consumer-fba-runtime-order.mjs"
   },
   "verification_chain": {
@@ -92,82 +92,82 @@
         "test_package_script": "test:verify:blog:admin-boundary",
         "verifier": "scripts/verify/verify-blog-admin-boundary.mjs",
         "self_test": "scripts/verify/verify-blog-admin-boundary.test.mjs",
-        "evidence": "crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json"
+        "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json"
       },
       "storefront_boundary": {
         "package_script": "verify:blog:storefront-boundary",
         "test_package_script": "test:verify:blog:storefront-boundary",
         "verifier": "scripts/verify/verify-blog-storefront-boundary.mjs",
         "self_test": "scripts/verify/verify-blog-storefront-boundary.test.mjs",
-        "evidence": "crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json"
+        "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json"
       },
       "comments_port_boundary": {
         "package_script": "verify:blog:comments-port-boundary",
         "test_package_script": "test:verify:blog:comments-port-boundary",
         "verifier": "scripts/verify/verify-blog-comments-port-boundary.mjs",
         "self_test": "scripts/verify/verify-blog-comments-port-boundary.test.mjs",
-        "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json"
+        "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json"
       },
       "comments_event_projection": {
         "package_script": "verify:blog:comments-event-projection",
         "test_package_script": "test:verify:blog:comments-event-projection",
         "verifier": "scripts/verify/verify-blog-comments-event-projection.mjs",
         "self_test": "scripts/verify/verify-blog-comments-event-projection.test.mjs",
-        "unit_test": "crates/rustok-blog/src/services/comment_projection.rs",
-        "postgres_test": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
-        "restart_test": "crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
-        "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-event-projection.json"
+        "unit_test": "crates/modules/rustok-blog/src/services/comment_projection.rs",
+        "postgres_test": "crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs",
+        "restart_test": "crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
+        "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-comments-event-projection.json"
       },
       "comments_duplicate_delivery_race": {
         "package_script": "verify:blog:comments-duplicate-delivery-race",
         "test_package_script": "test:verify:blog:comments-duplicate-delivery-race",
         "verifier": "scripts/verify/verify-blog-comments-duplicate-delivery-race.mjs",
         "self_test": "scripts/verify/verify-blog-comments-duplicate-delivery-race.test.mjs",
-        "postgres_test": "crates/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs",
-        "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json"
+        "postgres_test": "crates/modules/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs",
+        "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json"
       },
       "comments_dispatcher_duplicate_delivery": {
         "package_script": "verify:blog:comments-dispatcher-duplicate-delivery",
         "test_package_script": "test:verify:blog:comments-dispatcher-duplicate-delivery",
         "verifier": "scripts/verify/verify-blog-comments-dispatcher-duplicate-delivery.mjs",
         "self_test": "scripts/verify/verify-blog-comments-dispatcher-duplicate-delivery.test.mjs",
-        "postgres_test": "crates/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs",
-        "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json"
+        "postgres_test": "crates/modules/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs",
+        "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json"
       },
       "category_search_reindex": {
         "package_script": "verify:blog:category-search-reindex",
         "test_package_script": "test:verify:blog:category-search-reindex",
         "verifier": "scripts/verify/verify-blog-category-search-reindex.mjs",
         "self_test": "scripts/verify/verify-blog-category-search-reindex.test.mjs",
-        "evidence": "crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json"
+        "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json"
       },
       "graphql_rate_limit": {
         "package_script": "verify:blog:graphql-rate-limit",
         "test_package_script": "test:verify:blog:graphql-rate-limit",
         "verifier": "scripts/verify/verify-blog-graphql-rate-limit.mjs",
         "self_test": "scripts/verify/verify-blog-graphql-rate-limit.test.mjs",
-        "evidence": "crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json"
+        "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json"
       },
       "graphql_richtext_boundary": {
         "package_script": "verify:blog:graphql-richtext-boundary",
         "test_package_script": "test:verify:blog:graphql-richtext-boundary",
         "verifier": "scripts/verify/verify-blog-graphql-richtext-boundary.mjs",
         "self_test": "scripts/verify/verify-blog-graphql-richtext-boundary.test.mjs",
-        "evidence": "crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json"
+        "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json"
       },
       "ai_richtext_boundary": {
         "package_script": "verify:blog:ai-richtext-boundary",
         "test_package_script": "test:verify:blog:ai-richtext-boundary",
         "verifier": "scripts/verify/verify-blog-ai-richtext-boundary.mjs",
         "self_test": "scripts/verify/verify-blog-ai-richtext-boundary.test.mjs",
-        "evidence": "crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json"
+        "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json"
       },
       "forum_ui_ownership": {
         "package_script": "verify:blog:forum-ui-ownership",
         "test_package_script": "test:verify:blog:forum-ui-ownership",
         "verifier": "scripts/verify/verify-blog-forum-ui-ownership.mjs",
         "self_test": "scripts/verify/verify-blog-forum-ui-ownership.test.mjs",
-        "evidence": "crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json"
+        "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json"
       }
     }
   },
@@ -183,35 +183,35 @@
     "status": "implemented_static_only",
     "runtime_status": "pending",
     "source_harness": {
-      "path": "crates/rustok-blog/src/services/comment_projection.rs",
+      "path": "crates/modules/rustok-blog/src/services/comment_projection.rs",
       "status": "executable_no_run",
       "command": "cargo test -p rustok-blog --lib services::comment_projection::tests"
     },
     "postgres_harness": {
-      "path": "crates/rustok-blog/tests/comment_projection_postgres_test.rs",
+      "path": "crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs",
       "status": "executable_no_run",
       "runtime_status": "not_run",
       "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
       "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test"
     },
     "duplicate_delivery_race_harness": {
-      "path": "crates/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs",
+      "path": "crates/modules/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs",
       "status": "executable_no_run",
       "runtime_status": "not_run",
       "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
       "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --exact",
-      "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json"
+      "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json"
     },
     "dispatcher_duplicate_delivery_harness": {
-      "path": "crates/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs",
+      "path": "crates/modules/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs",
       "status": "executable_no_run",
       "runtime_status": "not_run",
       "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
       "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --exact",
-      "evidence": "crates/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json"
+      "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json"
     },
     "restart_harness": {
-      "path": "crates/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
+      "path": "crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
       "status": "executable_no_run",
       "runtime_status": "not_run",
       "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
@@ -221,7 +221,7 @@
   "contract_tests": {
     "status": "source_verified_no_compile",
     "runtime_status": "pending",
-    "source": "crates/rustok-blog/contracts/blog-fba-registry.json",
+    "source": "crates/modules/rustok-blog/contracts/blog-fba-registry.json",
     "runner": "scripts/verify/verify-blog-comments-port-boundary.mjs",
     "profiles": [
       "in_process",
@@ -236,7 +236,7 @@
     "adapter_injection": {
       "status": "executable_no_run",
       "runtime_status": "not_run",
-      "source": "crates/rustok-blog/src/services/comment.rs",
+      "source": "crates/modules/rustok-blog/src/services/comment.rs",
       "constructor": "CommentService::with_comments_thread_port",
       "signature": "fn(DatabaseConnection, Arc<dyn CommentsThreadPort>) -> CommentService",
       "test": "services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port",

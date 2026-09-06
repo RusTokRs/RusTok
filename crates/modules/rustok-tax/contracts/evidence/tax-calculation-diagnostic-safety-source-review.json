@@ -1,15 +1,15 @@
 {
   "status": "tax_calculation_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/rustok-tax/src/calculation_context.rs",
-    "crates/rustok-tax/src/ports.rs",
-    "crates/rustok-tax/docs/calculation-local-context.md",
-    "crates/rustok-tax/docs/calculation-port-policy-context.md",
-    "crates/rustok-tax/docs/implementation-plan.md",
+    "crates/modules/rustok-tax/src/calculation_context.rs",
+    "crates/modules/rustok-tax/src/ports.rs",
+    "crates/modules/rustok-tax/docs/calculation-local-context.md",
+    "crates/modules/rustok-tax/docs/calculation-port-policy-context.md",
+    "crates/modules/rustok-tax/docs/implementation-plan.md",
     "scripts/verify/verify-tax-calculation-local-context.mjs",
     "scripts/verify/verify-tax-calculation-policy-context.mjs",
     "scripts/verify/verify-tax-calculation-error-context.mjs",
-    "crates/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source.json"
+    "crates/modules/rustok-tax/contracts/evidence/tax-calculation-diagnostic-safety-source.json"
   ],
   "review_findings": {
     "public_api_preserved": true,

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_from": "crates/rustok-ai-content/contracts/ai-content-fba-registry.json",
+  "generated_from": "crates/modules/rustok-ai-content/contracts/ai-content-fba-registry.json",
   "status": "planned_cases_locked",
   "consumer_profile": "ai_content_generation_context",
   "cases": [

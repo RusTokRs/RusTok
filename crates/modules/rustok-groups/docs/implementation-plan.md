@@ -3,7 +3,7 @@
 Groups domain ownership.
 
 ---
-id: doc://crates/rustok-groups/docs/implementation-plan.md
+id: doc://crates/modules/rustok-groups/docs/implementation-plan.md
 kind: module_implementation_plan
 language: en
 status: active

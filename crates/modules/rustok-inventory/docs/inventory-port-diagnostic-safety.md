@@ -4,7 +4,7 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This contract closes the currently identified payload-diagnostic gaps in `crates/rustok-inventory/src/ports.rs` across:
+This contract closes the currently identified payload-diagnostic gaps in `crates/modules/rustok-inventory/src/ports.rs` across:
 
 - tenant UUID parsing;
 - tenant-scoped variant lookup;
@@ -54,14 +54,14 @@ SeaORM failures still return `inventory.database_unavailable` with the existing 
 
 ## Deliberate boundary
 
-`crates/rustok-inventory/src/reservation_owner_context.rs` is a separate local diagnostic surface and is not changed or claimed closed by this contract. The broader ecommerce mapper cleanup also remains open.
+`crates/modules/rustok-inventory/src/reservation_owner_context.rs` is a separate local diagnostic surface and is not changed or claimed closed by this contract. The broader ecommerce mapper cleanup also remains open.
 
 Compile validation, focused and aggregate verifier execution, verifier-test execution and mounted runtime evidence remain open.
 
 ## Evidence
 
-- `crates/rustok-inventory/contracts/evidence/inventory-port-diagnostic-safety-source.json`
-- `crates/rustok-inventory/contracts/evidence/inventory-port-diagnostic-safety-source-review.json`
+- `crates/modules/rustok-inventory/contracts/evidence/inventory-port-diagnostic-safety-source.json`
+- `crates/modules/rustok-inventory/contracts/evidence/inventory-port-diagnostic-safety-source-review.json`
 - `scripts/verify/verify-inventory-port-diagnostic-safety.mjs`
 - `scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - `scripts/verify/verify-ecommerce-public-port-error-safety-v2.test.mjs`

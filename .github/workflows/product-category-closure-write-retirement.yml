@@ -3,8 +3,8 @@ name: Product Category Closure Write Retirement
 on:
   pull_request:
     paths:
-      - "crates/rustok-product/src/services/catalog_schema_service/categories.rs"
-      - "crates/rustok-product/docs/category-taxonomy-binding.md"
+      - "crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs"
+      - "crates/modules/rustok-product/docs/category-taxonomy-binding.md"
       - "scripts/verify/verify-product-category-closure-write-retirement.mjs"
       - ".github/workflows/product-category-closure-write-retirement.yml"
       - ".github/workflows/product-taxonomy-category-directory-order.yml"
@@ -52,16 +52,16 @@ jobs:
           head="${{ github.event.pull_request.head.sha }}"
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
-          anchors='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|scripts/verify/verify-product-category-closure-write-retirement\.mjs)$'
+          anchors='^(crates/modules/rustok-product/src/services/catalog_schema_service/categories\.rs|scripts/verify/verify-product-category-closure-write-retirement\.mjs)$'
           if ! printf '%s\n' "$changed" | grep -Eq "$anchors"; then
             echo "CAT-32 runtime/verifier unchanged; PR-wide CAT-32 slice restriction is not applicable."
             exit 0
           fi
-          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|scripts/verify/verify-product-category-closure-write-retirement\.mjs|\.github/workflows/product-category-closure-write-retirement\.yml|\.github/workflows/product-taxonomy-category-directory-order\.yml)$'
+          allowed='^(crates/modules/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/modules/rustok-product/docs/category-taxonomy-binding\.md|scripts/verify/verify-product-category-closure-write-retirement\.mjs|\.github/workflows/product-category-closure-write-retirement\.yml|\.github/workflows/product-taxonomy-category-directory-order\.yml)$'
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           test -z "$unexpected"
       - name: Check Product formatting
-        run: cargo fmt --check --manifest-path crates/rustok-product/Cargo.toml
+        run: cargo fmt --check --manifest-path crates/modules/rustok-product/Cargo.toml
       - name: Run Product Category closure backend regression
         run: cargo test -p rustok-product --lib category_closure_write_is_non_postgres_only -- --nocapture
       - name: Preserve Taxonomy hierarchy consumer regressions

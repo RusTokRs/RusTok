@@ -4,13 +4,13 @@
   "surface": "comments_port_boundary",
   "role": "consumer",
   "provider": "comments",
-  "generated_from": "crates/rustok-blog/contracts/blog-fba-registry.json",
+  "generated_from": "crates/modules/rustok-blog/contracts/blog-fba-registry.json",
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "source_contract": {
-    "consumer_service": "crates/rustok-blog/src/services/comment.rs",
-    "provider_registry": "crates/rustok-comments/contracts/comments-fba-registry.json",
-    "consumer_registry": "crates/rustok-blog/contracts/blog-fba-registry.json",
+    "consumer_service": "crates/modules/rustok-blog/src/services/comment.rs",
+    "provider_registry": "crates/modules/rustok-comments/contracts/comments-fba-registry.json",
+    "consumer_registry": "crates/modules/rustok-blog/contracts/blog-fba-registry.json",
     "injection_constructor": "CommentService::with_comments_thread_port"
   },
   "profiles": {
@@ -20,7 +20,7 @@
   "adapter_injection": {
     "status": "executable_no_run",
     "runtime_status": "not_run",
-    "source": "crates/rustok-blog/src/services/comment.rs",
+    "source": "crates/modules/rustok-blog/src/services/comment.rs",
     "constructor": "CommentService::with_comments_thread_port",
     "signature": "fn(DatabaseConnection, Arc<dyn CommentsThreadPort>) -> CommentService",
     "test": "services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port",

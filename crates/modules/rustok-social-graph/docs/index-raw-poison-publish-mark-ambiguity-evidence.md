@@ -23,7 +23,7 @@ This harness isolates that ambiguity window. It does not describe it as a Postgr
 Test target:
 
 ```text
-crates/rustok-social-graph/tests/index_raw_poison_publish_mark_ambiguity.rs
+crates/modules/rustok-social-graph/tests/index_raw_poison_publish_mark_ambiguity.rs
 ```
 
 Feature:

@@ -10,7 +10,7 @@
     "authoritative_cutover_authorized": false
   },
   "source": {
-    "telemetry_collector": "crates/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs",
+    "telemetry_collector": "crates/libs/rustok-telemetry/src/social_graph_index_privacy_shadow_metrics.rs",
     "capture": "scripts/evidence/capture-social-graph-privacy-shadow.mjs",
     "admission": "scripts/evidence/admit-social-graph-privacy-shadow.mjs",
     "shared_library": "scripts/evidence/lib/social-graph-privacy-shadow-evidence.mjs",

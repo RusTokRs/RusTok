@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "tenant",
   "status": "no_compile_source_locked_runtime_fallback_smoke",
-  "generated_from": "crates/rustok-tenant/contracts/tenant-fba-registry.json",
+  "generated_from": "crates/modules/rustok-tenant/contracts/tenant-fba-registry.json",
   "runner": "scripts/verify/verify-foundation-fba-runtime-smoke.mjs",
   "contract_version": "tenant.read_projection.v1",
   "profiles": [
@@ -18,7 +18,7 @@
       "profile": "embedded_native",
       "operation": "read_tenant",
       "execution_status": "no_compile_source_locked",
-      "source": "crates/rustok-tenant/src/ports.rs",
+      "source": "crates/modules/rustok-tenant/src/ports.rs",
       "assertions": [
         "read_policy_required_before_lookup",
         "selector_validation_before_lookup",

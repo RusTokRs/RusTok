@@ -7,13 +7,13 @@ Status: **executable SQLite source / maintainer execution pending**
 FORUM-24S adds an executable registered-host harness for the native Forum category and topic route-decision server functions:
 
 ```text
-crates/rustok-forum/storefront/tests/native_host_route_decision_sqlite.rs
+crates/modules/rustok-forum/storefront/tests/native_host_route_decision_sqlite.rs
 ```
 
 The machine-readable contract is:
 
 ```text
-crates/rustok-forum/contracts/forum-native-host-route-evidence.json
+crates/modules/rustok-forum/contracts/forum-native-host-route-evidence.json
 ```
 
 This slice does not add or change route behavior. It proves that the existing native adapters are discoverable through the same Axum and Leptos server-function dispatch used by a host application.
@@ -101,4 +101,4 @@ No tests, Node verifiers, Cargo commands, formatting, SQLite execution, mounted 
 - retain browser navigation evidence for category, topic and reply Search destinations;
 - reconcile the canonical FORUM-24 ledger after maintainer execution.
 
-`crates/rustok-forum/docs/implementation-plan.md` remains the only authoritative Forum roadmap. Its FORUM-24 ledger is stale relative to the merged source slices. This bounded evidence document does not create a second roadmap or claim canonical ledger synchronization.
+`crates/modules/rustok-forum/docs/implementation-plan.md` remains the only authoritative Forum roadmap. Its FORUM-24 ledger is stale relative to the merged source slices. This bounded evidence document does not create a second roadmap or claim canonical ledger synchronization.

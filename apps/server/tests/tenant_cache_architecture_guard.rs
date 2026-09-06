@@ -62,7 +62,7 @@ fn tenant_invalidation_payload_parser_rejects_extra_parts() {
 
 #[test]
 fn weighted_factories_apply_generation_before_instrumentation() {
-    let weighted = source("crates/rustok-cache/src/weighted.rs");
+    let weighted = source("crates/modules/rustok-cache/src/weighted.rs");
     let wrap = weighted
         .find("self.wrap_generation_aware_backend(prefix, backend).await")
         .expect("weighted backend must be generation-aware");
@@ -79,7 +79,7 @@ fn weighted_factories_apply_generation_before_instrumentation() {
 fn tenant_generation_matches_and_aliases_both_physical_backend_prefixes() {
     let tenant = source("apps/server/src/middleware/tenant.rs");
     let generation = source("apps/server/src/services/tenant_cache_generation.rs");
-    let backend_generation = source("crates/rustok-cache/src/backend_generation.rs");
+    let backend_generation = source("crates/modules/rustok-cache/src/backend_generation.rs");
 
     assert!(tenant.contains("tenant-cache:{}:data"));
     assert!(tenant.contains("tenant-cache:{}:negative"));
@@ -125,7 +125,7 @@ fn tenant_generation_closes_subscribe_gap_and_rotates_before_delivery() {
 #[test]
 fn tenant_generation_dedupe_is_bounded_serialized_two_phase_and_retry_safe() {
     let generation = source("apps/server/src/services/tenant_cache_generation.rs");
-    let dedupe = source("crates/rustok-cache/src/event_dedupe.rs");
+    let dedupe = source("crates/modules/rustok-cache/src/event_dedupe.rs");
 
     for required in [
         "DEFAULT_MAX_CACHE_EVENT_DEDUPE_ENTRIES",
@@ -216,7 +216,7 @@ fn tenant_generation_health_is_context_scoped_and_component_aware() {
 
 #[test]
 fn tenant_generation_metrics_are_label_free_and_registered_once() {
-    let observability = source("crates/rustok-cache/src/tenant_generation_observability.rs");
+    let observability = source("crates/modules/rustok-cache/src/tenant_generation_observability.rs");
 
     for required in [
         "rustok_cache_tenant_generation_listener_status",

@@ -11,13 +11,13 @@ const verifier = path.resolve(
   'scripts/verify/verify-blog-comments-admin-native-port-injection.mjs',
 );
 const evidencePath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-admin-native-port-injection.json';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-admin-native-port-injection.json';
 const adminAdapterPath =
-  'crates/rustok-blog/admin/src/transport/native_server_adapter.rs';
-const servicePath = 'crates/rustok-blog/src/services/comment.rs';
+  'crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs';
+const servicePath = 'crates/modules/rustok-blog/src/services/comment.rs';
 const consumerMatrixPath =
-  'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
-const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
+  'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
 const harnessTest =
   'transport::native_server_adapter::tests::admin_native_runtime_exposes_comments_port_selection';
 const harnessCommand =

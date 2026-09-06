@@ -6,7 +6,7 @@
 
 ## Current state
 
-Part of the Marketplace Family under `crates/rustok-commerce/docs/implementation-plan.md`.
+Part of the Marketplace Family under `crates/modules/rustok-commerce/docs/implementation-plan.md`.
 Status: `in_progress`.
 
 ## Milestones
@@ -22,4 +22,4 @@ Status: `in_progress`.
 
 ## Change rules
 
-Changes must align with the unified Marketplace Family architecture in `crates/rustok-commerce/docs/implementation-plan.md`.
+Changes must align with the unified Marketplace Family architecture in `crates/modules/rustok-commerce/docs/implementation-plan.md`.

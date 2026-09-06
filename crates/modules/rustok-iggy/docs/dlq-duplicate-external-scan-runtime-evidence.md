@@ -147,7 +147,7 @@ When the required address is absent, the source harness reports a skip and retur
 Runtime source contract:
 
 ```text
-crates/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json
+crates/modules/rustok-iggy/contracts/evidence/dlq-duplicate-external-scan-runtime-source.json
 ```
 
 Runtime source verifier:

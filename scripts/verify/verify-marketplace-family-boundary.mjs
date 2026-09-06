@@ -6,27 +6,27 @@ const root = process.cwd();
 const files = {
   workspace: "Cargo.toml",
   modules: "modules.toml",
-  ecommercePlan: "crates/rustok-commerce/docs/implementation-plan.md",
-  rootManifest: "crates/rustok-marketplace/rustok-module.toml",
-  rootRegistry: "crates/rustok-marketplace/contracts/marketplace-fba-registry.json",
-  rootSource: "crates/rustok-marketplace/src/lib.rs",
-  rootConsumer: "crates/rustok-marketplace/src/seller_directory.rs",
-  sellerManifest: "crates/rustok-marketplace-seller/rustok-module.toml",
-  sellerRegistry: "crates/rustok-marketplace-seller/contracts/marketplace-seller-fba-registry.json",
-  sellerEntity: "crates/rustok-marketplace-seller/src/entities/seller.rs",
-  sellerTranslationEntity: "crates/rustok-marketplace-seller/src/entities/seller_translation.rs",
-  sellerLocalizedStorage: "crates/rustok-marketplace-seller/src/localized_sellers.rs",
-  sellerDto: "crates/rustok-marketplace-seller/src/dto.rs",
-  sellerService: "crates/rustok-marketplace-seller/src/service.rs",
-  sellerPorts: "crates/rustok-marketplace-seller/src/ports.rs",
-  sellerMigration: "crates/rustok-marketplace-seller/src/migrations/m20260716_000001_create_marketplace_sellers.rs",
-  sellerReceiptMigration: "crates/rustok-marketplace-seller/src/migrations/m20260716_000002_create_seller_command_receipts.rs",
-  sellerReceiptEntity: "crates/rustok-marketplace-seller/src/entities/seller_command_receipt.rs",
-  sellerReceiptExecutor: "crates/rustok-marketplace-seller/src/command_receipts.rs",
-  sellerReceiptedCommands: "crates/rustok-marketplace-seller/src/receipted_commands.rs",
-  sellerAdminCore: "crates/rustok-marketplace-seller/admin/src/core.rs",
-  sellerAdminTransport: "crates/rustok-marketplace-seller/admin/src/transport.rs",
-  sellerAdminUi: "crates/rustok-marketplace-seller/admin/src/ui/leptos.rs",
+  ecommercePlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
+  rootManifest: "crates/modules/rustok-marketplace/rustok-module.toml",
+  rootRegistry: "crates/modules/rustok-marketplace/contracts/marketplace-fba-registry.json",
+  rootSource: "crates/modules/rustok-marketplace/src/lib.rs",
+  rootConsumer: "crates/modules/rustok-marketplace/src/seller_directory.rs",
+  sellerManifest: "crates/modules/rustok-marketplace-seller/rustok-module.toml",
+  sellerRegistry: "crates/modules/rustok-marketplace-seller/contracts/marketplace-seller-fba-registry.json",
+  sellerEntity: "crates/modules/rustok-marketplace-seller/src/entities/seller.rs",
+  sellerTranslationEntity: "crates/modules/rustok-marketplace-seller/src/entities/seller_translation.rs",
+  sellerLocalizedStorage: "crates/modules/rustok-marketplace-seller/src/localized_sellers.rs",
+  sellerDto: "crates/modules/rustok-marketplace-seller/src/dto.rs",
+  sellerService: "crates/modules/rustok-marketplace-seller/src/service.rs",
+  sellerPorts: "crates/modules/rustok-marketplace-seller/src/ports.rs",
+  sellerMigration: "crates/modules/rustok-marketplace-seller/src/migrations/m20260716_000001_create_marketplace_sellers.rs",
+  sellerReceiptMigration: "crates/modules/rustok-marketplace-seller/src/migrations/m20260716_000002_create_seller_command_receipts.rs",
+  sellerReceiptEntity: "crates/modules/rustok-marketplace-seller/src/entities/seller_command_receipt.rs",
+  sellerReceiptExecutor: "crates/modules/rustok-marketplace-seller/src/command_receipts.rs",
+  sellerReceiptedCommands: "crates/modules/rustok-marketplace-seller/src/receipted_commands.rs",
+  sellerAdminCore: "crates/modules/rustok-marketplace-seller/admin/src/core.rs",
+  sellerAdminTransport: "crates/modules/rustok-marketplace-seller/admin/src/transport.rs",
+  sellerAdminUi: "crates/modules/rustok-marketplace-seller/admin/src/ui/leptos.rs",
 };
 
 const failures = [];
@@ -87,6 +87,12 @@ for (const forbidden of [
   "crates/rustok-commission",
   "crates/rustok-ledger",
   "crates/rustok-payout",
+  "crates/modules/rustok-seller",
+  "crates/modules/rustok-offer",
+  "crates/modules/rustok-listing",
+  "crates/modules/rustok-commission",
+  "crates/modules/rustok-ledger",
+  "crates/modules/rustok-payout",
 ]) {
   assertNotContains(workspace, forbidden, `${files.workspace}: generic marketplace crate forbidden: ${forbidden}`);
   assertNotContains(modules, forbidden, `${files.modules}: generic marketplace module forbidden: ${forbidden}`);
@@ -102,8 +108,8 @@ assertContains(rootSource, "MARKETPLACE_FAMILY_MODULES", `${files.rootSource}: f
 assertContains(rootConsumer, "Arc<dyn MarketplaceSellerReadPort>", `${files.rootConsumer}: typed seller consumer missing`);
 assertNotContains(rootConsumer, "sea_orm", `${files.rootConsumer}: root consumer must not query seller storage`);
 assertNotContains(rootConsumer, "entities::", `${files.rootConsumer}: root consumer must not import seller entities`);
-if (fs.existsSync(path.join(root, "crates/rustok-marketplace/src/entities"))) failures.push("crates/rustok-marketplace/src/entities: family root must not own entities");
-if (fs.existsSync(path.join(root, "crates/rustok-marketplace/src/migrations"))) failures.push("crates/rustok-marketplace/src/migrations: family root must not own migrations");
+if (fs.existsSync(path.join(root, "crates/modules/rustok-marketplace/src/entities"))) failures.push("crates/modules/rustok-marketplace/src/entities: family root must not own entities");
+if (fs.existsSync(path.join(root, "crates/modules/rustok-marketplace/src/migrations"))) failures.push("crates/modules/rustok-marketplace/src/migrations: family root must not own migrations");
 
 assertContains(sellerManifest, 'slug = "marketplace_seller"', `${files.sellerManifest}: seller slug missing`);
 assertContains(sellerManifest, 'leptos_crate = "rustok-marketplace-seller-admin"', `${files.sellerManifest}: admin FFA package missing`);

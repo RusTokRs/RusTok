@@ -27,8 +27,8 @@ def test_storefront_mobile_cart_operations_match_commerce_graphql_surface() -> N
         "rustok_mobile/apps/rustok_frontend_mobile/lib/data/"
         "storefront_catalog_repository.dart"
     )
-    mutation = read("crates/rustok-commerce/src/graphql/mutations/cart.rs")
-    types = read("crates/rustok-commerce/src/graphql/types.rs")
+    mutation = read("crates/modules/rustok-commerce/src/graphql/mutations/cart.rs")
+    types = read("crates/modules/rustok-commerce/src/graphql/types.rs")
 
     expected_operations = {
         "createStorefrontCart": "async fn create_storefront_cart",
@@ -85,10 +85,10 @@ def test_storefront_mobile_graphql_contract_script_outputs_contract_evidence() -
         "StorefrontMobileRemoveCartLine",
     ]
     assert contracts[0]["server_evidence"] == [
-        "crates/rustok-search/storefront/src/api.rs"
+        "crates/modules/rustok-search/storefront/src/api.rs"
     ]
     assert (
-        "crates/rustok-commerce/tests/graphql_runtime_parity_test/cart.rs"
+        "crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/cart.rs"
         in contracts[-1]["server_evidence"]
     )
     assert [item["status"] for item in live_execution] == ["skipped"] * 6

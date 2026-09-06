@@ -6,7 +6,7 @@ Status: **source-ready / unvalidated**
 
 This source slice closes the remaining structured-context gap in the canonical
 `CartPromotionPort` owner-service failure mapper in
-`crates/rustok-cart/src/promotion_guard.rs`.
+`crates/modules/rustok-cart/src/promotion_guard.rs`.
 
 The earlier promotion hardening already established stable public envelopes and
 owner/correlation/channel diagnostics. The immediately preceding admission slice
@@ -51,7 +51,7 @@ This slice does not change:
 - tax-boundary propagation;
 - validation, not-found, conflict, storage, or tax public codes/messages;
 - retryability inherited from tax-boundary errors;
-- the legacy compatibility provider in `crates/rustok-cart/src/ports.rs`;
+- the legacy compatibility provider in `crates/modules/rustok-cart/src/ports.rs`;
 - FBA or FFA status.
 
 The public mapping remains:

@@ -57,14 +57,14 @@ and reservation contracts remain inventory-owned.
 - Durable reservation owner diagnostic safety: `source_ready_unvalidated`
 - FBA provider contract: `InventoryReservationPort` /
   `inventory.reservation.v1` in
-  `crates/rustok-inventory/contracts/inventory-fba-registry.json`.
+  `crates/modules/rustok-inventory/contracts/inventory-fba-registry.json`.
 - Static and no-compile runtime evidence:
-  `crates/rustok-inventory/contracts/evidence/inventory-contract-test-static-matrix.json`
-  and `crates/rustok-inventory/contracts/evidence/inventory-runtime-contract-smoke.json`.
+  `crates/modules/rustok-inventory/contracts/evidence/inventory-contract-test-static-matrix.json`
+  and `crates/modules/rustok-inventory/contracts/evidence/inventory-runtime-contract-smoke.json`.
 - Durable reservation diagnostic evidence:
-  `crates/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source.json`
+  `crates/modules/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source.json`
   and
-  `crates/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source-review.json`.
+  `crates/modules/rustok-inventory/contracts/evidence/inventory-reservation-owner-diagnostic-safety-source-review.json`.
 - `scripts/verify/verify-inventory-admin-boundary.mjs` locks the native
   core/transport/UI split and absence of pre-FFA/GraphQL admin paths.
 - `scripts/verify/verify-inventory-admin-native-error-safety.mjs` locks mounted

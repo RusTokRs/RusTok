@@ -223,7 +223,7 @@
   "rollback": {
     "decision": "keep",
     "reason": "Dry-run fixture validates control-plane evidence shape and expected fallback semantics only.",
-    "rollback_reference": "crates/rustok-page-builder/contracts/page-builder-wave-evidence-template.json",
+    "rollback_reference": "crates/modules/rustok-page-builder/contracts/page-builder-wave-evidence-template.json",
     "timestamp": "2026-06-15T17:15:00Z"
   },
   "approvals": {

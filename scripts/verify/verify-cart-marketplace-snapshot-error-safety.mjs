@@ -9,7 +9,7 @@ const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
 const source = readFileSync(
-  new URL('crates/rustok-cart/src/marketplace_snapshot.rs', root),
+  new URL('crates/modules/rustok-cart/src/marketplace_snapshot.rs', root),
   'utf8',
 );
 const failures = [];

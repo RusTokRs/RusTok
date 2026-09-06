@@ -9,7 +9,7 @@
   "owned_contracts": [
     {
       "name": "AuthModule",
-      "source": "crates/rustok-auth/src/lib.rs",
+      "source": "crates/modules/rustok-auth/src/lib.rs",
       "operations": [
         "permissions",
         "migrations",
@@ -28,21 +28,21 @@
     }
   ],
   "admin_boundary": {
-    "source": "crates/rustok-auth/admin/src",
-    "transport_facade": "crates/rustok-auth/admin/src/transport/mod.rs",
-    "core_policy": "crates/rustok-auth/admin/src/core.rs",
+    "source": "crates/modules/rustok-auth/admin/src",
+    "transport_facade": "crates/modules/rustok-auth/admin/src/transport/mod.rs",
+    "core_policy": "crates/modules/rustok-auth/admin/src/core.rs",
     "verifier": "scripts/verify/verify-auth-admin-boundary.mjs"
   },
   "evidence": {
-    "local_plan": "crates/rustok-auth/docs/implementation-plan.md",
+    "local_plan": "crates/modules/rustok-auth/docs/implementation-plan.md",
     "central_registry": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ai-fba-baseline.mjs",
-    "static_matrix": "crates/rustok-auth/contracts/evidence/auth-capability-static-matrix.json",
-    "runtime_fallback_smoke": "crates/rustok-auth/contracts/evidence/auth-runtime-fallback-smoke.json"
+    "static_matrix": "crates/modules/rustok-auth/contracts/evidence/auth-capability-static-matrix.json",
+    "runtime_fallback_smoke": "crates/modules/rustok-auth/contracts/evidence/auth-runtime-fallback-smoke.json"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
-    "source": "crates/rustok-auth/contracts/auth-fba-registry.json",
+    "source": "crates/modules/rustok-auth/contracts/auth-fba-registry.json",
     "runner": "scripts/verify/verify-ai-fba-baseline.mjs",
     "profiles": [
       "in_process"

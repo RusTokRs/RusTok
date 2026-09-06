@@ -264,7 +264,7 @@ const verifyProviderSpiEvidence = ({
   if (runtimeSmoke.runner !== 'scripts/verify/verify-ecommerce-provider-spi-evidence.mjs') {
     fail(`${module} runtime smoke runner drift`);
   }
-  if (runtimeSmoke.source_contract !== `crates/rustok-${module}/src/providers.rs`) {
+  if (runtimeSmoke.source_contract !== `crates/modules/rustok-${module}/src/providers.rs`) {
     fail(`${module} runtime smoke source contract drift`);
   }
   if (runtimeSmoke.execution_scope !== 'no_compile_static_runtime_contract_evidence') {
@@ -531,9 +531,9 @@ const verifyProviderSpiEvidence = ({
       fail('commerce checkout must not execute fulfillment labels before payment');
     }
     const durableFulfillmentSource = [
-      readText(root, 'crates/rustok-commerce/src/services/paid_order_create_label.rs'),
-      readText(root, 'crates/rustok-commerce/src/services/fulfillment_create_label_recovery.rs'),
-      readText(root, 'crates/rustok-commerce/src/services/paid_order_create_label_sweep.rs'),
+      readText(root, 'crates/modules/rustok-commerce/src/services/paid_order_create_label.rs'),
+      readText(root, 'crates/modules/rustok-commerce/src/services/fulfillment_create_label_recovery.rs'),
+      readText(root, 'crates/modules/rustok-commerce/src/services/paid_order_create_label_sweep.rs'),
     ].join('\n');
     requireMarkers(
       durableFulfillmentSource,
@@ -570,18 +570,18 @@ const verifyProviderSpiEvidence = ({
 };
 
 export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules = defaultModules } = {}) {
-  const commerceCheckoutSource = readText(root, 'crates/rustok-commerce/src/services/checkout.rs');
+  const commerceCheckoutSource = readText(root, 'crates/modules/rustok-commerce/src/services/checkout.rs');
   const commercePaymentOrchestrationSource = [
-    readText(root, 'crates/rustok-commerce/src/services/payment_orchestration.rs'),
-    readText(root, 'crates/rustok-commerce/src/services/journaled_payment_provider.rs'),
+    readText(root, 'crates/modules/rustok-commerce/src/services/payment_orchestration.rs'),
+    readText(root, 'crates/modules/rustok-commerce/src/services/journaled_payment_provider.rs'),
   ].join('\n');
 
   for (const module of modules) {
-    const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
-    const evidencePath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-static-matrix.json`;
-    const runtimeSmokePath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-runtime-smoke.json`;
-    const liveAdapterContractPath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-live-adapter-contract.json`;
-    const liveAdapterEvidencePath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-live-adapter-evidence.json`;
+    const registryPath = `crates/modules/rustok-${module}/contracts/${module}-fba-registry.json`;
+    const evidencePath = `crates/modules/rustok-${module}/contracts/evidence/${module}-provider-spi-static-matrix.json`;
+    const runtimeSmokePath = `crates/modules/rustok-${module}/contracts/evidence/${module}-provider-spi-runtime-smoke.json`;
+    const liveAdapterContractPath = `crates/modules/rustok-${module}/contracts/evidence/${module}-provider-spi-live-adapter-contract.json`;
+    const liveAdapterEvidencePath = `crates/modules/rustok-${module}/contracts/evidence/${module}-provider-spi-live-adapter-evidence.json`;
 
     verifyProviderSpiEvidence({
       module,
@@ -594,7 +594,7 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
       runtimeSmoke: readJson(root, runtimeSmokePath),
       liveAdapterContract: readJson(root, liveAdapterContractPath),
       liveAdapterEvidence: readJson(root, liveAdapterEvidencePath),
-      providerSource: readText(root, `crates/rustok-${module}/src/providers.rs`),
+      providerSource: readText(root, `crates/modules/rustok-${module}/src/providers.rs`),
       commerceCheckoutSource,
       commercePaymentOrchestrationSource,
       root,

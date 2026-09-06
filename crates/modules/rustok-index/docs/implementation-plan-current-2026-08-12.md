@@ -88,13 +88,13 @@ Missing-source behavior remains pinned by the existing generic source-refresh te
 The machine-readable source contract is:
 
 ```text
-crates/rustok-index/contracts/evidence/product-refresh-postgres-iggy-source.json
+crates/modules/rustok-index/contracts/evidence/product-refresh-postgres-iggy-source.json
 ```
 
 The operator guide is:
 
 ```text
-crates/rustok-index/docs/m5-product-refresh-postgres-iggy-redelivery-evidence.md
+crates/modules/rustok-index/docs/m5-product-refresh-postgres-iggy-redelivery-evidence.md
 ```
 
 The source verifier is:
@@ -177,7 +177,7 @@ node scripts/verify/verify-index-product-refresh-delivery.mjs
 node scripts/verify/verify-index-product-refresh-host-consumer.mjs
 node scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs
 cargo run --locked -p rustok-events --example event_contract_digests -- --write
-git diff --exit-code -- crates/rustok-events/contracts/event-contract-digests.json
+git diff --exit-code -- crates/libs/rustok-events/contracts/event-contract-digests.json
 cargo check --locked -p rustok-runtime --all-targets
 cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
 cargo check --locked -p rustok-distribution --features mod-product --lib
