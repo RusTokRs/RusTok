@@ -3157,7 +3157,7 @@ dependencies = [
  "convert_case 0.6.0",
  "pathdiff",
  "serde_core",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "winnow 1.0.4",
 ]
 
@@ -9279,7 +9279,7 @@ dependencies = [
  "serde_json",
  "syn 2.0.119",
  "tinystr",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
 ]
 
 [[package]]
@@ -9300,7 +9300,7 @@ dependencies = [
  "serde_yaml",
  "syn 2.0.119",
  "tinystr",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
 ]
 
 [[package]]
@@ -11129,9 +11129,9 @@ dependencies = [
 
 [[package]]
 name = "oxipng"
-version = "10.2.0"
+version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f80e5d92fd65b00e3953760e6a7616264a509b6bbee22502e0226774204da1a3"
+checksum = "52a88e3e5c2ad82e691b219e2b45a90eb5a51d26a434c7e191563e957a48e07a"
 dependencies = [
  "indexmap 2.14.0",
  "libdeflater",
@@ -13904,7 +13904,7 @@ dependencies = [
  "serde_json",
  "serde_urlencoded",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tower",
  "tracing",
  "uuid",
@@ -14016,7 +14016,7 @@ dependencies = [
  "rustok-ai",
  "serde_json",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "uuid",
 ]
 
@@ -14350,7 +14350,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tracing",
  "uuid",
 ]
@@ -14826,7 +14826,7 @@ dependencies = [
  "serde_yaml",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tracing",
  "ulid 3.0.0",
  "url",
@@ -15061,7 +15061,7 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tower",
  "tracing",
  "url",
@@ -15092,7 +15092,7 @@ dependencies = [
  "rustok-ui-transport",
  "serde",
  "serde_json",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "uuid",
 ]
 
@@ -15446,6 +15446,7 @@ dependencies = [
  "rustok-api",
  "rustok-inventory",
  "rustok-outbox",
+ "rustok-product",
  "rustok-ui-core",
  "rustok-ui-i18n-leptos",
  "serde",
@@ -15940,7 +15941,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tonic",
  "uuid",
  "wasmparser 0.257.1",
@@ -16000,7 +16001,7 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "url",
  "uuid",
 ]
@@ -16023,7 +16024,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "uuid",
 ]
 
@@ -16260,7 +16261,7 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
 ]
 
 [[package]]
@@ -16325,7 +16326,7 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tower",
  "tracing",
  "url",
@@ -16354,7 +16355,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "url",
  "uuid",
 ]
@@ -17285,7 +17286,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-stream",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tonic",
  "tower",
  "tower-http 0.7.1",
@@ -17354,7 +17355,7 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tonic",
  "uuid",
 ]
@@ -17432,7 +17433,7 @@ dependencies = [
  "serde_urlencoded",
  "sha2 0.11.0",
  "tokio",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "tracing",
  "uuid",
  "wasm-bindgen",
@@ -19727,7 +19728,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
@@ -20180,9 +20181,9 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "1.1.4+spec-1.1.0"
+version = "1.1.5+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3aace63f4bbcdfc2c965b059de67119c89c4017a70d633be6c104910f67056f5"
+checksum = "12c0ba9680044b4ce98d391a62094047eada0d64860b80166c39f4a6b5640785"
 dependencies = [
  "indexmap 2.14.0",
  "serde_core",
@@ -22586,7 +22587,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "url",
 ]
 
