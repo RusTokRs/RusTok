@@ -1,5 +1,25 @@
 use super::*;
 
+fn resolve_image_alt_text(
+    translations: &[entities::product_image_translation::Model],
+    locale: &str,
+    fallback_locale: Option<&str>,
+) -> Option<String> {
+    let selected = translations
+        .iter()
+        .find(|translation| rustok_api::locale_tags_match(&translation.locale, locale))
+        .or_else(|| {
+            fallback_locale.and_then(|fallback_locale| {
+                translations.iter().find(|translation| {
+                    rustok_api::locale_tags_match(&translation.locale, fallback_locale)
+                })
+            })
+        })
+        .or_else(|| translations.first());
+
+    selected.and_then(|translation| translation.alt_text.clone())
+}
+
 impl CatalogService {
     pub async fn get_product(
         &self,
@@ -347,21 +367,25 @@ impl CatalogService {
             variants: variant_responses,
             images: images
                 .into_iter()
-                .map(|image| ProductImageResponse {
-                    id: image.id,
-                    media_id: image.media_id,
-                    url: format!("/api/v1/media/{}", image.media_id),
-                    alt_text: image.alt_text,
-                    position: image.position,
-                    translations: image_translations_by_image
+                .map(|image| {
+                    let translations = image_translations_by_image
                         .remove(&image.id)
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|translation| ProductImageTranslationResponse {
-                            locale: translation.locale,
-                            alt_text: translation.alt_text,
-                        })
-                        .collect(),
+                        .unwrap_or_default();
+                    let alt_text = resolve_image_alt_text(&translations, locale, fallback_locale);
+                    ProductImageResponse {
+                        id: image.id,
+                        media_id: image.media_id,
+                        url: format!("/api/v1/media/{}", image.media_id),
+                        alt_text,
+                        position: image.position,
+                        translations: translations
+                            .into_iter()
+                            .map(|translation| ProductImageTranslationResponse {
+                                locale: translation.locale,
+                                alt_text: translation.alt_text,
+                            })
+                            .collect(),
+                    }
                 })
                 .collect(),
         };
@@ -373,5 +397,55 @@ impl CatalogService {
         );
 
         Ok(response)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn image_translation(
+        image_id: Uuid,
+        locale: &str,
+        alt_text: Option<&str>,
+    ) -> entities::product_image_translation::Model {
+        entities::product_image_translation::Model {
+            id: Uuid::new_v4(),
+            image_id,
+            locale: locale.to_owned(),
+            alt_text: alt_text.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn image_alt_text_prefers_requested_locale_then_fallback() {
+        let image_id = Uuid::new_v4();
+        let translations = vec![
+            image_translation(image_id, "en", Some("English alt")),
+            image_translation(image_id, "fr", Some("Texte alternatif")),
+        ];
+
+        assert_eq!(
+            resolve_image_alt_text(&translations, "fr", Some("en")).as_deref(),
+            Some("Texte alternatif")
+        );
+        assert_eq!(
+            resolve_image_alt_text(&translations, "de", Some("en")).as_deref(),
+            Some("English alt")
+        );
+    }
+
+    #[test]
+    fn image_alt_text_preserves_explicit_null_for_requested_locale() {
+        let image_id = Uuid::new_v4();
+        let translations = vec![
+            image_translation(image_id, "en", Some("English alt")),
+            image_translation(image_id, "fr", None),
+        ];
+
+        assert_eq!(
+            resolve_image_alt_text(&translations, "fr", Some("en")),
+            None
+        );
     }
 }
