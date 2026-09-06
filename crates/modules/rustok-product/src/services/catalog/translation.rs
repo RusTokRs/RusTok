@@ -13,6 +13,9 @@ pub enum ProductTranslationExactLocaleError {
     #[error("Product translation source locale not found: {locale} for product {product_id}")]
     SourceLocaleNotFound { product_id: Uuid, locale: String },
 
+    #[error("Product translation target locale missing after apply: {locale} for product {product_id}")]
+    TargetLocaleMissingAfterApply { product_id: Uuid, locale: String },
+
     #[error("Product translation {revision} revision conflict")]
     RevisionConflict { revision: &'static str },
 }
@@ -235,7 +238,7 @@ impl CatalogService {
     pub async fn apply_product_translation_exact_locale(
         &self,
         tenant_id: Uuid,
-        actor_id: Uuid,
+        actor_user_id: Option<Uuid>,
         product_id: Uuid,
         request: ProductTranslationExactLocaleApply,
     ) -> ProductTranslationExactLocaleResult<ProductTranslationExactLocaleApplyReceipt> {
@@ -322,8 +325,12 @@ impl CatalogService {
         }
 
         let translations_after = load_product_translations(&txn, tenant_id, product_id).await?;
-        let target_after = exact_locale_row(&translations_after, &target_locale)
-            .expect("exact Product target locale must exist after owner apply");
+        let target_after = exact_locale_row(&translations_after, &target_locale).ok_or_else(|| {
+            ProductTranslationExactLocaleError::TargetLocaleMissingAfterApply {
+                product_id,
+                locale: target_locale.clone(),
+            }
+        })?;
         let resource_revision =
             product_translation_resource_revision(&product, &translations_after);
         let target_revision = product_translation_locale_revision(target_after);
@@ -331,7 +338,7 @@ impl CatalogService {
 
         txn.publish(
             tenant_id,
-            Some(actor_id),
+            actor_user_id,
             DomainEvent::ProductUpdated { product_id },
         )
         .await?;
