@@ -461,7 +461,7 @@ mod tests {
         let schema = SchemaRef {
             module: ModuleName::new("rustok-product").unwrap(),
             entity: EntityName::new("product").unwrap(),
-            version: SchemaVersion::INITIAL,
+            version: SchemaVersion::new(super::product_index::PRODUCT_SCHEMA_ROUTING_KEY),
         };
         let shared = extensions
             .get::<SharedIndexSchemaRegistry>()

@@ -1,10 +1,16 @@
+#[cfg(test)]
 use chrono::{DateTime, NaiveDate, Utc};
+#[cfg(test)]
 use rust_decimal::Decimal;
+#[cfg(test)]
 use rustok_index::{FieldName, FieldPath, FilterExpr, IndexValue, LocaleKey};
+#[cfg(test)]
 use uuid::Uuid;
 
+#[cfg(test)]
 pub(crate) use rustok_product::ProductAttributeTermError;
 
+#[cfg(test)]
 pub(crate) const PRODUCT_ATTRIBUTE_TERMS_FIELD: &str = "attribute_terms";
 
 /// PostgreSQL CTE fragment used by the replacement Product source to materialize every active,
@@ -157,10 +163,12 @@ product_attribute_terms AS (
 )
 "#;
 
+#[cfg(test)]
 pub(crate) fn text_term(attribute_id: Uuid, value: &str) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_text_term(attribute_id, value)
 }
 
+#[cfg(test)]
 pub(crate) fn localized_text_term(
     attribute_id: Uuid,
     locale: &LocaleKey,
@@ -169,6 +177,7 @@ pub(crate) fn localized_text_term(
     rustok_product::product_attribute_localized_text_term(attribute_id, locale.as_str(), value)
 }
 
+#[cfg(test)]
 pub(crate) fn localized_presence_term(
     attribute_id: Uuid,
     locale: &LocaleKey,
@@ -176,10 +185,12 @@ pub(crate) fn localized_presence_term(
     rustok_product::product_attribute_localized_presence_term(attribute_id, locale.as_str())
 }
 
+#[cfg(test)]
 pub(crate) fn integer_term(attribute_id: Uuid, value: i64) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_integer_term(attribute_id, value)
 }
 
+#[cfg(test)]
 pub(crate) fn decimal_term(
     attribute_id: Uuid,
     value: Decimal,
@@ -187,10 +198,12 @@ pub(crate) fn decimal_term(
     rustok_product::product_attribute_decimal_term(attribute_id, value)
 }
 
+#[cfg(test)]
 pub(crate) fn boolean_term(attribute_id: Uuid, value: bool) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_boolean_term(attribute_id, value)
 }
 
+#[cfg(test)]
 pub(crate) fn date_term(
     attribute_id: Uuid,
     value: NaiveDate,
@@ -198,6 +211,7 @@ pub(crate) fn date_term(
     rustok_product::product_attribute_date_term(attribute_id, value)
 }
 
+#[cfg(test)]
 pub(crate) fn datetime_term(
     attribute_id: Uuid,
     value: DateTime<Utc>,
@@ -205,6 +219,7 @@ pub(crate) fn datetime_term(
     rustok_product::product_attribute_datetime_term(attribute_id, value)
 }
 
+#[cfg(test)]
 pub(crate) fn option_term(
     attribute_id: Uuid,
     option_id: Uuid,
@@ -212,12 +227,14 @@ pub(crate) fn option_term(
     rustok_product::product_attribute_option_term(attribute_id, option_id)
 }
 
+#[cfg(test)]
 pub(crate) fn contains_term_filter(term: String) -> FilterExpr {
     FilterExpr::Contains(attribute_terms_path(), IndexValue::String(term))
 }
 
 /// Reproduces the owner localized-text predicate exactly:
 /// requested-value OR (requested-locale-absent AND fallback-value).
+#[cfg(test)]
 pub(crate) fn localized_text_filter(
     attribute_id: Uuid,
     requested_locale: &LocaleKey,
@@ -239,6 +256,7 @@ pub(crate) fn localized_text_filter(
     ]))
 }
 
+#[cfg(test)]
 pub(crate) fn attribute_terms_path() -> FieldPath {
     FieldPath::new(
         FieldName::new(PRODUCT_ATTRIBUTE_TERMS_FIELD)

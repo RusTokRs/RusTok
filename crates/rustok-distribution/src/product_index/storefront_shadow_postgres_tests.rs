@@ -18,7 +18,9 @@ use sea_orm_migration::{MigrationTrait, MigratorTrait, SchemaManager};
 use uuid::Uuid;
 
 use super::{
-    PRODUCT_SCHEMA_ROUTING_KEY, ProductStorefrontIndexShadowExecutor,
+    PRODUCT_SCHEMA_ROUTING_KEY, ProductStorefrontIndexBudgetedProjectionExecutor,
+    ProductStorefrontIndexServingBudget, ProductStorefrontIndexServingBudgetObservation,
+    ProductStorefrontIndexShadowExecutor, classify_product_storefront_index_serving_budget,
     channel_relation_resolver::ProductSalesChannelRelationResolver,
 };
 
@@ -629,3 +631,26 @@ async fn scoped_connection(
         .await?;
     Ok(db)
 }
+
+#[tokio::test]
+async fn product_storefront_budgeted_projection_executor_initializes_from_shadow_executor() -> TestResult<()> {
+    let Some(database) = TestDatabase::setup().await? else {
+        return Ok(());
+    };
+    let runtime = index_runtime(&database).await?;
+    let executor = shadow_executor(&database, runtime.query.clone());
+    let _budgeted = ProductStorefrontIndexBudgetedProjectionExecutor::new(executor);
+    let budget = ProductStorefrontIndexServingBudget::new(80, 40, 20)?;
+    let observation = ProductStorefrontIndexServingBudgetObservation {
+        remaining_ms: Some(200),
+        tag_hydration_available: true,
+    };
+    let context = port_context();
+    let _decision = classify_product_storefront_index_serving_budget(
+        &context,
+        Some(budget),
+        observation,
+    );
+    database.cleanup().await
+}
+
