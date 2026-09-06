@@ -60,7 +60,7 @@ jobs:
       - name: Assert exact checked-out SHA
         shell: bash
         run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: 24
       - name: Verify staged Forum Category binding boundary
