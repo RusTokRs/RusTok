@@ -548,6 +548,12 @@ fn product_translation_error_to_port_error(error: ProductTranslationExactLocaleE
             "product.translation_source_not_found",
             "Exact source Product locale was not found",
         ),
+        ProductTranslationExactLocaleError::TargetLocaleMissingAfterApply { .. } => {
+            PortError::invariant_violation(
+                "product.translation_owner_invariant",
+                "Product exact target locale is missing after owner apply",
+            )
+        }
         ProductTranslationExactLocaleError::RevisionConflict { .. } => PortError::conflict(
             "product.translation_revision_conflict",
             "Product translation state conflicts with the requested mutation",
