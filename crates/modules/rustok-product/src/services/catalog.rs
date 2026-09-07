@@ -6,6 +6,7 @@ mod projection;
 mod queries;
 mod tags;
 mod translation;
+mod translation_progress;
 pub mod types;
 
 pub use translation::{

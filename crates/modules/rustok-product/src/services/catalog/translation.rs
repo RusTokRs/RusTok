@@ -452,7 +452,7 @@ fn exact_locale_row<'a>(
         .find(|translation| translation.locale == locale)
 }
 
-fn canonical_translation_locale(
+pub(super) fn canonical_translation_locale(
     locale: &str,
 ) -> ProductTranslationExactLocaleResult<String> {
     TenantLocale::new(locale)
@@ -460,7 +460,7 @@ fn canonical_translation_locale(
         .map_err(|error| CommerceError::Validation(error.to_string()).into())
 }
 
-fn validate_locale_pair(
+pub(super) fn validate_locale_pair(
     source_locale: &str,
     target_locale: &str,
 ) -> ProductTranslationExactLocaleResult<()> {
