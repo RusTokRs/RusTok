@@ -6,9 +6,12 @@ use std::{
 
 use crate::{
     error::{CommerceError, CommerceResult},
-    services::index_refresh::{
-        product_locale_refresh_target, record_product_locale_refreshes_in_tx,
-        record_product_variant_refreshes_in_tx,
+    services::{
+        catalog::record_product_translation_change_in_tx,
+        index_refresh::{
+            product_locale_refresh_target, record_product_locale_refreshes_in_tx,
+            record_product_variant_refreshes_in_tx,
+        },
     },
 };
 use rustok_events::DomainEvent;
@@ -136,6 +139,19 @@ impl ProductWriteTransaction {
             .event_bus
             .publish_in_tx_with_envelope_id(&self.transaction, tenant_id, actor_id, event)
             .await?;
+
+        if let Some(product_id) = lifecycle_product_id {
+            // Translation change evidence is captured from the exact post-command owner state and
+            // committed with the same Product event. Unrelated ProductUpdated events are suppressed
+            // by the journal when the Translation resource revision and lifecycle are unchanged.
+            record_product_translation_change_in_tx(
+                &self.transaction,
+                tenant_id,
+                product_id,
+                root_event_id,
+            )
+            .await?;
+        }
 
         if let Some(product_id) = product_locale_id {
             // Capture the exact post-command Product source state. Any source/ledger failure rolls
