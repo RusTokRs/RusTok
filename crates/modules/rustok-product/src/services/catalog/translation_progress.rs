@@ -1,5 +1,5 @@
-use super::*;
 use super::translation::{canonical_translation_locale, validate_locale_pair};
+use super::*;
 
 use sea_orm::{DatabaseBackend, FromQueryResult};
 
