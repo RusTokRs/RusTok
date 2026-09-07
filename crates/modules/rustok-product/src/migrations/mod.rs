@@ -123,7 +123,7 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260828_000015_add_product_taxonomy_category_binding",
             vec![
-                "m20260701_000002_create_product_catalog_tenant_consistency_constraints",
+                "m20260701_000002_add_product_catalog_tenant_consistency_constraints",
                 "m20260711_000001_add_tenant_identity_key",
             ],
         ),
