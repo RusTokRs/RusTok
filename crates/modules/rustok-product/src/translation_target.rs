@@ -24,12 +24,14 @@ use rustok_translation_targets::{
 use uuid::Uuid;
 
 use crate::{
-    CatalogService, CommerceError, ProductTranslationChangeLifecycle,
-    ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,
-    ProductTranslationExactLocaleError, ProductTranslationExactLocaleRecord,
-    ProductTranslationExactLocaleSnapshot, ProductTranslationExactResourceSummary,
-    dto::ProductTranslationInput, entities::product::ProductStatus,
-    services::with_product_operation_receipt,
+    CatalogService, CommerceError, ProductTranslationExactLocaleApply,
+    ProductTranslationExactLocaleApplyReceipt, ProductTranslationExactLocaleError,
+    ProductTranslationExactLocaleRecord, ProductTranslationExactLocaleSnapshot,
+    ProductTranslationExactResourceSummary, dto::ProductTranslationInput,
+    entities::product::ProductStatus,
+    services::{
+        catalog::ProductTranslationChangeLifecycle, with_product_operation_receipt,
+    },
 };
 
 const TRANSLATION_OWNER_SLUG: &str = "product";
