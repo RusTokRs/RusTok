@@ -56,19 +56,25 @@ where
     C: ConnectionTrait,
 {
     let backend = db.get_database_backend();
-    let sql = match backend {
-        DatabaseBackend::Postgres => PRODUCT_TRANSLATION_PROGRESS_POSTGRES_SQL,
-        _ => PRODUCT_TRANSLATION_PROGRESS_QUESTION_MARK_SQL,
+    let (sql, values) = match backend {
+        DatabaseBackend::Postgres => (
+            PRODUCT_TRANSLATION_PROGRESS_POSTGRES_SQL,
+            vec![
+                tenant_id.into(),
+                source_locale.to_owned().into(),
+                target_locale.to_owned().into(),
+            ],
+        ),
+        _ => (
+            PRODUCT_TRANSLATION_PROGRESS_QUESTION_MARK_SQL,
+            vec![
+                target_locale.to_owned().into(),
+                tenant_id.into(),
+                source_locale.to_owned().into(),
+            ],
+        ),
     };
-    let statement = Statement::from_sql_and_values(
-        backend,
-        sql,
-        vec![
-            tenant_id.into(),
-            source_locale.to_owned().into(),
-            target_locale.to_owned().into(),
-        ],
-    );
+    let statement = Statement::from_sql_and_values(backend, sql, values);
     let row = ProductTranslationExactProgressRow::find_by_statement(statement)
         .one(db)
         .await?
