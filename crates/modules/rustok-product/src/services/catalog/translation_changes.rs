@@ -3,11 +3,11 @@ use super::*;
 
 use sea_orm::{DatabaseTransaction, DbBackend, QueryResult};
 
-pub(crate) const MAX_PRODUCT_TRANSLATION_CHANGE_PAGE: u16 = 200;
+pub const MAX_PRODUCT_TRANSLATION_CHANGE_PAGE: u16 = 200;
 const DELETED_REVISION_PREFIX: &str = "product-deleted-v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProductTranslationChangeLifecycle {
+pub enum ProductTranslationChangeLifecycle {
     Active,
     Archived,
     Deleted,
@@ -35,7 +35,7 @@ impl ProductTranslationChangeLifecycle {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ProductTranslationChangeRecord {
+pub struct ProductTranslationChangeRecord {
     pub change_seq: u64,
     pub product_id: Uuid,
     pub resource_revision: String,
@@ -43,7 +43,7 @@ pub(crate) struct ProductTranslationChangeRecord {
 }
 
 impl CatalogService {
-    pub(crate) async fn product_translation_change_highwater(
+    pub async fn product_translation_change_highwater(
         &self,
         tenant_id: Uuid,
     ) -> CommerceResult<Option<u64>> {
@@ -65,7 +65,7 @@ impl CatalogService {
         optional_positive_sequence(row.try_get("", "highwater")?, "high-water")
     }
 
-    pub(crate) async fn read_product_translation_changes(
+    pub async fn read_product_translation_changes(
         &self,
         tenant_id: Uuid,
         after_seq: u64,
