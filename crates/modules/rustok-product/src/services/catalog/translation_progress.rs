@@ -87,22 +87,13 @@ where
 
     Ok(ProductTranslationExactProgressFacts {
         resources: progress_count(row.resources, "resources")?,
-        exact_required_units: progress_count(
-            row.exact_required_units,
-            "exact required units",
-        )?,
-        exact_optional_units: progress_count(
-            row.exact_optional_units,
-            "exact optional units",
-        )?,
+        exact_required_units: progress_count(row.exact_required_units, "exact required units")?,
+        exact_optional_units: progress_count(row.exact_optional_units, "exact optional units")?,
         complete_resources: progress_count(row.complete_resources, "complete resources")?,
     })
 }
 
-fn progress_count(
-    value: i64,
-    field: &'static str,
-) -> ProductTranslationExactLocaleResult<u64> {
+fn progress_count(value: i64, field: &'static str) -> ProductTranslationExactLocaleResult<u64> {
     u64::try_from(value).map_err(|_| {
         CommerceError::Validation(format!(
             "Product translation progress {field} must not be negative"
