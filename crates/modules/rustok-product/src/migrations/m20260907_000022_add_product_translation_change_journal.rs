@@ -34,6 +34,9 @@ CREATE TABLE product_translation_change_journal (
 
 CREATE INDEX idx_product_translation_change_journal_tenant_seq
     ON product_translation_change_journal (tenant_id, change_seq);
+
+CREATE INDEX idx_product_translation_change_journal_tenant_product_seq
+    ON product_translation_change_journal (tenant_id, product_id, change_seq DESC);
 "#,
             )
             .await?;
