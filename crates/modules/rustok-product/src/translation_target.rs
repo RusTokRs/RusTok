@@ -11,7 +11,8 @@ use rustok_translation_targets::{
     TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
     TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
     TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationValueProfile,
+    TranslationTargetProgressFacts, TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
         contract_validation_error, field_hash, merged_patch_values,
         normalize_optional_target_value, read_request_from_patch, required_target_value,
@@ -32,6 +33,8 @@ use crate::{
 const TRANSLATION_OWNER_SLUG: &str = "product";
 const TRANSLATION_RESOURCE_KIND: &str = "product";
 const OPERATION_APPLY_PATCH: &str = "translation_target_apply_patch";
+const REQUIRED_TRANSLATION_FIELD_COUNT: u64 = 2;
+const OPTIONAL_TRANSLATION_FIELD_COUNT: u64 = 3;
 
 #[derive(Clone)]
 /// Product-owned adapter for exact catalog localization.
@@ -58,6 +61,7 @@ impl ProductTranslationTargetProvider {
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
                 TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
                 TranslationTargetCapability::ValidatePatch,
                 TranslationTargetCapability::ApplyPatch,
             ]),
@@ -172,6 +176,62 @@ impl TranslationTargetProvider for ProductTranslationTargetProvider {
         }
         let tenant_id = parse_tenant_id(&context)?;
         self.load_snapshot(tenant_id, &request).await
+    }
+
+    async fn read_progress(
+        &self,
+        context: PortContext,
+        request: TranslationTargetProgressRequest,
+    ) -> Result<TranslationTargetProgressFacts, PortError> {
+        validate_translation_read_context(&context)?;
+        authorize(&context, Action::Read)?;
+        request
+            .validate()
+            .map_err(|error| contract_validation_error(error.to_string()))?;
+        let tenant_id = parse_tenant_id(&context)?;
+        let owner = self
+            .service
+            .read_product_translation_exact_progress(
+                tenant_id,
+                request.source_locale.as_str(),
+                request.target_locale.as_str(),
+            )
+            .await
+            .map_err(product_translation_error_to_port_error)?;
+        let required_units = owner
+            .resources
+            .checked_mul(REQUIRED_TRANSLATION_FIELD_COUNT)
+            .ok_or_else(|| {
+                PortError::invariant_violation(
+                    "product.translation_progress_overflow",
+                    "Product required translation progress count overflow",
+                )
+            })?;
+        let optional_units = owner
+            .resources
+            .checked_mul(OPTIONAL_TRANSLATION_FIELD_COUNT)
+            .ok_or_else(|| {
+                PortError::invariant_violation(
+                    "product.translation_progress_overflow",
+                    "Product optional translation progress count overflow",
+                )
+            })?;
+        let facts = TranslationTargetProgressFacts {
+            required_units,
+            exact_required_units: owner.exact_required_units,
+            optional_units,
+            exact_optional_units: owner.exact_optional_units,
+            resources: owner.resources,
+            complete_resources: owner.complete_resources,
+            owner_change_cursor: None,
+        };
+        facts.validate().map_err(|error| {
+            PortError::invariant_violation(
+                "product.translation_progress_invalid",
+                error.to_string(),
+            )
+        })?;
+        Ok(facts)
     }
 
     async fn validate_patch(
@@ -618,6 +678,7 @@ mod tests {
             BTreeSet::from([
                 TranslationTargetCapability::ListResources,
                 TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
                 TranslationTargetCapability::ValidatePatch,
                 TranslationTargetCapability::ApplyPatch,
             ])
@@ -637,6 +698,20 @@ mod tests {
         let source = record("en", "Product");
         let fields = translation_fields(&source, None);
         assert_eq!(fields.len(), 5);
+        assert_eq!(
+            fields
+                .iter()
+                .filter(|field| field.descriptor.required)
+                .count() as u64,
+            REQUIRED_TRANSLATION_FIELD_COUNT
+        );
+        assert_eq!(
+            fields
+                .iter()
+                .filter(|field| !field.descriptor.required)
+                .count() as u64,
+            OPTIONAL_TRANSLATION_FIELD_COUNT
+        );
         let handle = fields
             .iter()
             .find(|field| field.descriptor.key.as_str() == "handle")
