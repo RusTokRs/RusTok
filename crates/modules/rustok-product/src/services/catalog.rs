@@ -10,9 +10,10 @@ mod translation_changes;
 mod translation_progress;
 pub mod types;
 
-pub(crate) use translation_changes::{
+pub(crate) use translation_changes::record_product_translation_change_in_tx;
+pub use translation_changes::{
     MAX_PRODUCT_TRANSLATION_CHANGE_PAGE, ProductTranslationChangeLifecycle,
-    ProductTranslationChangeRecord, record_product_translation_change_in_tx,
+    ProductTranslationChangeRecord,
 };
 pub use translation::{
     ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,
