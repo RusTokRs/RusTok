@@ -11,6 +11,7 @@ use rustok_translation_targets::{
     TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
     TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
     TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
+    TranslationTargetChange, TranslationTargetChangePage, TranslationTargetChangesRequest,
     TranslationTargetProgressFacts, TranslationTargetProgressRequest, TranslationTargetProvider,
     TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
@@ -27,7 +28,10 @@ use crate::{
     ProductTranslationExactLocaleApplyReceipt, ProductTranslationExactLocaleError,
     ProductTranslationExactLocaleRecord, ProductTranslationExactLocaleSnapshot,
     ProductTranslationExactResourceSummary, dto::ProductTranslationInput,
-    entities::product::ProductStatus, services::with_product_operation_receipt,
+    entities::product::ProductStatus,
+    services::{
+        catalog::ProductTranslationChangeLifecycle, with_product_operation_receipt,
+    },
 };
 
 const TRANSLATION_OWNER_SLUG: &str = "product";
@@ -35,6 +39,8 @@ const TRANSLATION_RESOURCE_KIND: &str = "product";
 const OPERATION_APPLY_PATCH: &str = "translation_target_apply_patch";
 const REQUIRED_TRANSLATION_FIELD_COUNT: u64 = 2;
 const OPTIONAL_TRANSLATION_FIELD_COUNT: u64 = 3;
+const CHANGE_CURSOR_VERSION: &str = "v1";
+const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
 #[derive(Clone)]
 /// Product-owned adapter for exact catalog localization.
@@ -64,6 +70,7 @@ impl ProductTranslationTargetProvider {
                 TranslationTargetCapability::AggregateProgress,
                 TranslationTargetCapability::ValidatePatch,
                 TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
             ]),
             read_permission_floor: BTreeSet::from(["products:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["products:update".to_string()]),
@@ -189,49 +196,147 @@ impl TranslationTargetProvider for ProductTranslationTargetProvider {
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
-        let owner = self
-            .service
-            .read_product_translation_exact_progress(
-                tenant_id,
-                request.source_locale.as_str(),
-                request.target_locale.as_str(),
-            )
-            .await
-            .map_err(product_translation_error_to_port_error)?;
-        let required_units = owner
-            .resources
-            .checked_mul(REQUIRED_TRANSLATION_FIELD_COUNT)
-            .ok_or_else(|| {
+
+        for _ in 0..PROGRESS_STABILITY_ATTEMPTS {
+            let before = self
+                .service
+                .product_translation_change_highwater(tenant_id)
+                .await
+                .map_err(product_error_to_port_error)?;
+            let owner = self
+                .service
+                .read_product_translation_exact_progress(
+                    tenant_id,
+                    request.source_locale.as_str(),
+                    request.target_locale.as_str(),
+                )
+                .await
+                .map_err(product_translation_error_to_port_error)?;
+            let after = self
+                .service
+                .product_translation_change_highwater(tenant_id)
+                .await
+                .map_err(product_error_to_port_error)?;
+            if before != after {
+                continue;
+            }
+
+            let required_units = owner
+                .resources
+                .checked_mul(REQUIRED_TRANSLATION_FIELD_COUNT)
+                .ok_or_else(|| {
+                    PortError::invariant_violation(
+                        "product.translation_progress_overflow",
+                        "Product required translation progress count overflow",
+                    )
+                })?;
+            let optional_units = owner
+                .resources
+                .checked_mul(OPTIONAL_TRANSLATION_FIELD_COUNT)
+                .ok_or_else(|| {
+                    PortError::invariant_violation(
+                        "product.translation_progress_overflow",
+                        "Product optional translation progress count overflow",
+                    )
+                })?;
+            let facts = TranslationTargetProgressFacts {
+                required_units,
+                exact_required_units: owner.exact_required_units,
+                optional_units,
+                exact_optional_units: owner.exact_optional_units,
+                resources: owner.resources,
+                complete_resources: owner.complete_resources,
+                owner_change_cursor: after
+                    .map(|change_seq| change_cursor(change_seq, change_seq))
+                    .transpose()?,
+            };
+            facts.validate().map_err(|error| {
                 PortError::invariant_violation(
-                    "product.translation_progress_overflow",
-                    "Product required translation progress count overflow",
+                    "product.translation_progress_invalid",
+                    error.to_string(),
                 )
             })?;
-        let optional_units = owner
-            .resources
-            .checked_mul(OPTIONAL_TRANSLATION_FIELD_COUNT)
-            .ok_or_else(|| {
-                PortError::invariant_violation(
-                    "product.translation_progress_overflow",
-                    "Product optional translation progress count overflow",
-                )
-            })?;
-        let facts = TranslationTargetProgressFacts {
-            required_units,
-            exact_required_units: owner.exact_required_units,
-            optional_units,
-            exact_optional_units: owner.exact_optional_units,
-            resources: owner.resources,
-            complete_resources: owner.complete_resources,
-            owner_change_cursor: None,
+            return Ok(facts);
+        }
+
+        Err(PortError::unavailable(
+            "product.translation_progress_unstable",
+            "Product translation progress changed while it was being aggregated",
+        ))
+    }
+
+    async fn read_changes(
+        &self,
+        context: PortContext,
+        request: TranslationTargetChangesRequest,
+    ) -> Result<TranslationTargetChangePage, PortError> {
+        validate_translation_read_context(&context)?;
+        authorize(&context, Action::Read)?;
+        request
+            .validate()
+            .map_err(|error| contract_validation_error(error.to_string()))?;
+        let tenant_id = parse_tenant_id(&context)?;
+        let parsed = request
+            .after
+            .as_ref()
+            .map(parse_change_cursor)
+            .transpose()?;
+        let (through, after) = match parsed {
+            Some((through, after)) if through == after => {
+                let current = self
+                    .service
+                    .product_translation_change_highwater(tenant_id)
+                    .await
+                    .map_err(product_error_to_port_error)?
+                    .unwrap_or(after)
+                    .max(after);
+                (current, after)
+            }
+            Some(cursor) => cursor,
+            None => (
+                self.service
+                    .product_translation_change_highwater(tenant_id)
+                    .await
+                    .map_err(product_error_to_port_error)?
+                    .unwrap_or(0),
+                0,
+            ),
         };
-        facts.validate().map_err(|error| {
-            PortError::invariant_violation(
-                "product.translation_progress_invalid",
-                error.to_string(),
-            )
-        })?;
-        Ok(facts)
+        if through == 0 {
+            return Ok(TranslationTargetChangePage {
+                changes: Vec::new(),
+                next_cursor: None,
+            });
+        }
+
+        let owner_changes = self
+            .service
+            .read_product_translation_changes(tenant_id, after, through, request.limit)
+            .await
+            .map_err(product_error_to_port_error)?;
+        let last_seq = owner_changes.last().map(|change| change.change_seq);
+        let next_cursor = Some(match last_seq {
+            Some(last_seq) if last_seq < through => change_cursor(through, last_seq)?,
+            _ => change_cursor(through, through)?,
+        });
+        let changes = owner_changes
+            .into_iter()
+            .map(|change| {
+                Ok(TranslationTargetChange {
+                    identity: product_identity(change.product_id),
+                    resource_revision: opaque_revision(
+                        change.resource_revision,
+                        "resource_revision",
+                    )?,
+                    lifecycle: translation_change_lifecycle(change.lifecycle),
+                })
+            })
+            .collect::<Result<Vec<_>, PortError>>()?;
+
+        Ok(TranslationTargetChangePage {
+            changes,
+            next_cursor,
+        })
     }
 
     async fn validate_patch(
@@ -445,6 +550,51 @@ fn product_lifecycle(status: &ProductStatus) -> TranslationResourceLifecycle {
         ProductStatus::Draft | ProductStatus::Active => TranslationResourceLifecycle::Active,
         ProductStatus::Archived => TranslationResourceLifecycle::Archived,
     }
+}
+
+fn translation_change_lifecycle(
+    lifecycle: ProductTranslationChangeLifecycle,
+) -> TranslationResourceLifecycle {
+    match lifecycle {
+        ProductTranslationChangeLifecycle::Active => TranslationResourceLifecycle::Active,
+        ProductTranslationChangeLifecycle::Archived => TranslationResourceLifecycle::Archived,
+        ProductTranslationChangeLifecycle::Deleted => TranslationResourceLifecycle::Deleted,
+    }
+}
+
+fn change_cursor(through: u64, after: u64) -> Result<OpaqueCursor, PortError> {
+    OpaqueCursor::new(format!("{CHANGE_CURSOR_VERSION}:{through}:{after}")).map_err(|error| {
+        PortError::invariant_violation(
+            "product.translation_change_cursor_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn parse_change_cursor(cursor: &OpaqueCursor) -> Result<(u64, u64), PortError> {
+    let mut parts = cursor.as_str().split(':');
+    let version = parts.next();
+    let through = parts.next().and_then(|value| value.parse::<u64>().ok());
+    let after = parts.next().and_then(|value| value.parse::<u64>().ok());
+    if version != Some(CHANGE_CURSOR_VERSION)
+        || parts.next().is_some()
+        || through.is_none()
+        || after.is_none()
+    {
+        return Err(PortError::validation(
+            "product.translation_change_cursor_invalid",
+            "Product translation change cursor is invalid",
+        ));
+    }
+    let through = through.unwrap_or_default();
+    let after = after.unwrap_or_default();
+    if through == 0 || after == 0 || after > through {
+        return Err(PortError::validation(
+            "product.translation_change_cursor_invalid",
+            "Product translation change cursor bounds are invalid",
+        ));
+    }
+    Ok((through, after))
 }
 
 fn translation_fields(
@@ -681,6 +831,7 @@ mod tests {
                 TranslationTargetCapability::AggregateProgress,
                 TranslationTargetCapability::ValidatePatch,
                 TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
             ])
         );
         assert_eq!(
@@ -728,5 +879,35 @@ mod tests {
             .find(|field| field.descriptor.key.as_str() == "meta_description")
             .expect("meta description field");
         assert_eq!(meta_description.descriptor.max_characters, Some(500));
+    }
+
+    #[test]
+    fn change_cursor_round_trips_bounded_and_tail_positions() {
+        let bounded = change_cursor(9, 4).expect("bounded cursor");
+        assert_eq!(parse_change_cursor(&bounded).expect("bounded parse"), (9, 4));
+        let tail = change_cursor(9, 9).expect("tail cursor");
+        assert_eq!(parse_change_cursor(&tail).expect("tail parse"), (9, 9));
+    }
+
+    #[test]
+    fn change_cursor_rejects_invalid_bounds() {
+        let zero = OpaqueCursor::new("v1:0:0").expect("opaque cursor");
+        assert!(parse_change_cursor(&zero).is_err());
+        let reversed = OpaqueCursor::new("v1:3:4").expect("opaque cursor");
+        assert!(parse_change_cursor(&reversed).is_err());
+        let wrong_version = OpaqueCursor::new("v2:4:4").expect("opaque cursor");
+        assert!(parse_change_cursor(&wrong_version).is_err());
+    }
+
+    #[test]
+    fn change_lifecycle_maps_owner_delete_evidence() {
+        assert_eq!(
+            translation_change_lifecycle(ProductTranslationChangeLifecycle::Deleted),
+            TranslationResourceLifecycle::Deleted
+        );
+        assert_eq!(
+            translation_change_lifecycle(ProductTranslationChangeLifecycle::Archived),
+            TranslationResourceLifecycle::Archived
+        );
     }
 }
