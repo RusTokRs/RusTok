@@ -9,6 +9,7 @@ mod translation;
 mod translation_changes;
 mod translation_progress;
 pub mod types;
+mod variant_translation;
 
 pub(crate) use translation_changes::record_product_translation_change_in_tx;
 pub use translation_changes::{
@@ -26,6 +27,11 @@ pub use types::{
     MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter, ProductTagState,
     StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection,
+};
+pub use variant_translation::{
+    ProductVariantTranslationExactLocaleApply, ProductVariantTranslationExactLocaleApplyReceipt,
+    ProductVariantTranslationExactLocaleError, ProductVariantTranslationExactLocaleRecord,
+    ProductVariantTranslationExactLocaleResult, ProductVariantTranslationExactLocaleSnapshot,
 };
 
 use chrono::Utc;
