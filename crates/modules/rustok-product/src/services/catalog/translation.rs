@@ -484,7 +484,7 @@ fn ensure_revision(
     Ok(())
 }
 
-fn product_translation_resource_revision(
+pub(super) fn product_translation_resource_revision(
     product: &entities::product::Model,
     translations: &[entities::product_translation::Model],
 ) -> String {
