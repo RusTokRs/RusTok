@@ -738,7 +738,10 @@ impl CatalogService {
             .collect();
         if !image_ids.is_empty() {
             entities::product_image_translation::Entity::delete_many()
-                .filter(entities::product_image_translation::Column::ImageId.is_in(image_ids))
+                .filter(
+                    entities::product_image_translation::Column::ImageId
+                        .is_in(image_ids.clone()),
+                )
                 .exec(&txn)
                 .await?;
         }
@@ -756,8 +759,14 @@ impl CatalogService {
             .await
             .map_err(map_flex_cleanup_error)?;
 
-        txn.publish_product_deleted(tenant_id, Some(actor_id), product_id, &option_ids)
-            .await?;
+        txn.publish_product_deleted(
+            tenant_id,
+            Some(actor_id),
+            product_id,
+            &option_ids,
+            &image_ids,
+        )
+        .await?;
 
         txn.commit().await?;
         info!(product_id = %product_id, "Product deleted successfully");
