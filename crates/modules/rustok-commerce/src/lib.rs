@@ -200,7 +200,7 @@ impl MigrationSource for CommerceModule {
         migrations::migrations()
     }
 
-    fn migration_dependencies() -> Vec<rustok_core::MigrationDependencyDescriptor> {
+    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
         migrations::migration_dependencies()
     }
 }
