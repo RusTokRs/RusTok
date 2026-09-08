@@ -8,6 +8,7 @@ use crate::{
     error::{CommerceError, CommerceResult},
     services::{
         catalog::{
+            record_product_image_translation_changes_in_tx,
             record_product_option_translation_changes_in_tx,
             record_product_translation_change_in_tx,
             record_product_variant_translation_changes_in_tx,
@@ -127,7 +128,8 @@ impl ProductWriteTransaction {
         actor_id: Option<Uuid>,
         event: DomainEvent,
     ) -> CommerceResult<()> {
-        self.publish_internal(tenant_id, actor_id, event, None).await
+        self.publish_internal(tenant_id, actor_id, event, None, None)
+            .await
     }
 
     pub(crate) async fn publish_product_deleted(
@@ -136,12 +138,14 @@ impl ProductWriteTransaction {
         actor_id: Option<Uuid>,
         product_id: Uuid,
         deleted_option_ids: &[Uuid],
+        deleted_image_ids: &[Uuid],
     ) -> CommerceResult<()> {
         self.publish_internal(
             tenant_id,
             actor_id,
             DomainEvent::ProductDeleted { product_id },
             Some(deleted_option_ids),
+            Some(deleted_image_ids),
         )
         .await
     }
@@ -152,6 +156,7 @@ impl ProductWriteTransaction {
         actor_id: Option<Uuid>,
         event: DomainEvent,
         deleted_option_ids: Option<&[Uuid]>,
+        deleted_image_ids: Option<&[Uuid]>,
     ) -> CommerceResult<()> {
         let product_attribute_id = product_index_revision_touch_target(&event);
         if let Some(product_id) = product_attribute_id {
@@ -193,6 +198,19 @@ impl ProductWriteTransaction {
                 product_id,
                 root_event_id,
                 deleted_option_ids,
+            )
+            .await?;
+
+            // Image Translation revisions also include parent Product lifecycle and Image owner
+            // semantics. Live Product events fan out through exact post-command Image state with
+            // semantic dedupe. Product deletion supplies pre-delete Image identities so even an
+            // Image that predates the journal receives durable first-delete evidence.
+            record_product_image_translation_changes_in_tx(
+                &self.transaction,
+                tenant_id,
+                product_id,
+                root_event_id,
+                deleted_image_ids,
             )
             .await?;
         }
