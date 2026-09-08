@@ -29,6 +29,7 @@ pub mod services;
 mod storefront_http_read_port;
 mod storefront_tag_read_port;
 mod translation_target;
+mod variant_translation_target;
 
 pub use catalog_command_port::ProductCatalogCommandPort;
 pub use catalog_schema_read_port::{
@@ -90,6 +91,7 @@ pub use storefront_tag_read_port::{
     ProductStorefrontTagHydrationRequest, ProductStorefrontTagReadPort,
 };
 pub use translation_target::ProductTranslationTargetProvider;
+pub use variant_translation_target::ProductVariantTranslationTargetProvider;
 
 /// Typed marker proving that `ProductModule` participated in runtime extension registration.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
