@@ -10,6 +10,7 @@ mod translation_changes;
 mod translation_progress;
 pub mod types;
 mod variant_translation;
+mod variant_translation_changes;
 mod variant_translation_progress;
 
 pub(crate) use translation_changes::record_product_translation_change_in_tx;
@@ -33,6 +34,11 @@ pub use variant_translation::{
     ProductVariantTranslationExactLocaleApply, ProductVariantTranslationExactLocaleApplyReceipt,
     ProductVariantTranslationExactLocaleError, ProductVariantTranslationExactLocaleRecord,
     ProductVariantTranslationExactLocaleResult, ProductVariantTranslationExactLocaleSnapshot,
+};
+pub(crate) use variant_translation_changes::record_product_variant_translation_changes_in_tx;
+pub use variant_translation_changes::{
+    MAX_PRODUCT_VARIANT_TRANSLATION_CHANGE_PAGE, ProductVariantTranslationChangeLifecycle,
+    ProductVariantTranslationChangeRecord,
 };
 
 use chrono::Utc;
