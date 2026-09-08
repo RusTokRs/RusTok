@@ -756,12 +756,8 @@ impl CatalogService {
             .await
             .map_err(map_flex_cleanup_error)?;
 
-        txn.publish(
-            tenant_id,
-            Some(actor_id),
-            DomainEvent::ProductDeleted { product_id },
-        )
-        .await?;
+        txn.publish_product_deleted(tenant_id, Some(actor_id), product_id, &option_ids)
+            .await?;
 
         txn.commit().await?;
         info!(product_id = %product_id, "Product deleted successfully");
