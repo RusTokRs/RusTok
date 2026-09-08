@@ -532,6 +532,7 @@ fn collection_error_to_port_error(error: CollectionTranslationExactLocaleError) 
             "commerce.collection_translation_revision_conflict",
             "Commerce Collection translation state conflicts with the request",
         ),
+        CollectionTranslationExactLocaleError::OperationReceipt(error) => error,
         CollectionTranslationExactLocaleError::Commerce(error) => commerce_error_to_port_error(error),
     }
 }
