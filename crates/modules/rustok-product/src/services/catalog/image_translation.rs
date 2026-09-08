@@ -111,14 +111,23 @@ impl CatalogService {
             .into());
         }
 
+        let source_image_ids = sea_orm::sea_query::Query::select()
+            .column(entities::product_image_translation::Column::ImageId)
+            .from(entities::product_image_translation::Entity)
+            .and_where(
+                sea_orm::sea_query::Expr::col(
+                    entities::product_image_translation::Column::Locale,
+                )
+                .eq(source_locale.clone()),
+            )
+            .to_owned();
         let mut query = entities::product_image::Entity::find()
             .inner_join(entities::product::Entity)
-            .inner_join(entities::product_image_translation::Entity)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
             .filter(
                 entities::product::Column::Status.ne(entities::product::ProductStatus::Archived),
             )
-            .filter(entities::product_image_translation::Column::Locale.eq(source_locale.clone()))
+            .filter(entities::product_image::Column::Id.in_subquery(source_image_ids))
             .order_by_asc(entities::product_image::Column::Id);
         if let Some(after) = after {
             query = query.filter(entities::product_image::Column::Id.gt(after));
