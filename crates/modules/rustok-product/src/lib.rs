@@ -20,6 +20,7 @@ mod catalog_schema_write_port;
 pub mod dto;
 pub mod entities;
 pub mod error;
+mod image_translation_target;
 pub mod migrations;
 mod option_translation_progress_target;
 mod option_translation_target;
@@ -43,6 +44,7 @@ pub use catalog_schema_read_port::{
 };
 pub use catalog_schema_write_port::ProductCatalogSchemaWritePort;
 pub use error::{CommerceError, CommerceResult};
+pub use image_translation_target::ProductImageTranslationTargetProvider;
 pub use option_translation_progress_target::ProductOptionTranslationTargetProvider;
 pub use ports::*;
 pub use public_error::{ProductPublicError, map_product_public_error};
@@ -60,7 +62,7 @@ pub use services::{
     ProductImageTranslationExactLocaleApply, ProductImageTranslationExactLocaleApplyReceipt,
     ProductImageTranslationExactLocaleError, ProductImageTranslationExactLocaleRecord,
     ProductImageTranslationExactLocaleResult, ProductImageTranslationExactLocaleSnapshot,
-    ProductIndexLocaleRefreshRecord, ProductIndexLocaleRefreshSource,
+    ProductIndexLocaleRefreshRecord, ProductIndexRefreshSource,
     ProductIndexRefreshCanonicalWriter, ProductIndexRefreshContract,
     ProductIndexRefreshContractTarget, ProductIndexRefreshEventFactory,
     ProductIndexRefreshPublicationError, ProductIndexRefreshRelayError,
