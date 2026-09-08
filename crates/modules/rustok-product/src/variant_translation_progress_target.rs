@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource};
@@ -166,7 +166,9 @@ fn variant_translation_error_to_port_error(
             "product.variant_translation_revision_conflict",
             "Product Variant translation state conflicts with the requested mutation",
         ),
-        ProductVariantTranslationExactLocaleError::Commerce(error) => product_error_to_port_error(error),
+        ProductVariantTranslationExactLocaleError::Commerce(error) => {
+            product_error_to_port_error(error)
+        }
     }
 }
 
