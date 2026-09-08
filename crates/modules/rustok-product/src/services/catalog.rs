@@ -3,6 +3,7 @@ mod attribute_filters;
 mod commands;
 pub mod helpers;
 mod image_translation;
+mod image_translation_changes;
 mod image_translation_progress;
 mod option_translation;
 mod option_translation_changes;
@@ -22,6 +23,11 @@ pub use image_translation::{
     ProductImageTranslationExactLocaleApply, ProductImageTranslationExactLocaleApplyReceipt,
     ProductImageTranslationExactLocaleError, ProductImageTranslationExactLocaleRecord,
     ProductImageTranslationExactLocaleResult, ProductImageTranslationExactLocaleSnapshot,
+};
+pub(crate) use image_translation_changes::record_product_image_translation_changes_in_tx;
+pub use image_translation_changes::{
+    MAX_PRODUCT_IMAGE_TRANSLATION_CHANGE_PAGE, ProductImageTranslationChangeLifecycle,
+    ProductImageTranslationChangeRecord,
 };
 pub use option_translation::{
     ProductOptionTranslationExactLocaleApply, ProductOptionTranslationExactLocaleApplyReceipt,
