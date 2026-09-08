@@ -441,7 +441,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         }
         let host =
             extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()));
-        rustok_reactions::api::materialize_reaction_subject_adapter_registry(&mut extensions, &host)
+        rustok_reactions::api::materialize_reaction_subject_registry(&mut extensions, &host)
             .map_err(|error| {
                 Error::Message(format!(
                     "reaction subject provider materialization failed: {error}"
