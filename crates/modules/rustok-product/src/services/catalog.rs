@@ -10,6 +10,7 @@ mod translation_changes;
 mod translation_progress;
 pub mod types;
 mod variant_translation;
+mod variant_translation_progress;
 
 pub(crate) use translation_changes::record_product_translation_change_in_tx;
 pub use translation_changes::{
