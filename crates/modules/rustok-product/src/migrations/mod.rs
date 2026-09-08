@@ -48,6 +48,7 @@ mod m20260906_000021_retire_product_image_alt_storage;
 mod m20260907_000022_add_product_translation_change_journal;
 mod m20260908_000023_add_product_variant_translation_change_journal;
 mod m20260908_000024_add_product_option_translation_change_journal;
+mod m20260909_000025_add_product_image_translation_change_journal;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -100,6 +101,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260907_000022_add_product_translation_change_journal::Migration),
         Box::new(m20260908_000023_add_product_variant_translation_change_journal::Migration),
         Box::new(m20260908_000024_add_product_option_translation_change_journal::Migration),
+        Box::new(m20260909_000025_add_product_image_translation_change_journal::Migration),
     ]
 }
 
