@@ -83,6 +83,112 @@ pub struct ProductVariantTranslationExactLocaleApplyReceipt {
 }
 
 impl CatalogService {
+    /// Lists non-archived Product Variants that own the requested exact source locale.
+    ///
+    /// Ordering and pagination use Variant UUIDs. The page is assembled with
+    /// bounded bulk owner reads so every summary uses the same semantic revision
+    /// algorithm as exact read/apply without provider-owned SQL or N+1 queries.
+    pub async fn list_product_variant_translation_exact_resources(
+        &self,
+        tenant_id: Uuid,
+        source_locale: &str,
+        target_locale: &str,
+        after: Option<Uuid>,
+        limit: u16,
+    ) -> ProductVariantTranslationExactLocaleResult<(
+        Vec<ProductVariantTranslationExactLocaleSnapshot>,
+        Option<Uuid>,
+    )> {
+        let source_locale = canonical_variant_translation_locale(source_locale)?;
+        let target_locale = canonical_variant_translation_locale(target_locale)?;
+        validate_variant_locale_pair(&source_locale, &target_locale)?;
+        if limit == 0 {
+            return Err(CommerceError::Validation(
+                "Product variant translation resource page limit must be positive".to_string(),
+            )
+            .into());
+        }
+
+        let mut query = entities::product_variant::Entity::find()
+            .inner_join(entities::product::Entity)
+            .inner_join(entities::variant_translation::Entity)
+            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .filter(
+                entities::product::Column::Status.ne(entities::product::ProductStatus::Archived),
+            )
+            .filter(entities::variant_translation::Column::Locale.eq(source_locale.clone()))
+            .order_by_asc(entities::product_variant::Column::Id);
+        if let Some(after) = after {
+            query = query.filter(entities::product_variant::Column::Id.gt(after));
+        }
+
+        let mut variants = query.limit(u64::from(limit) + 1).all(&self.db).await?;
+        let has_more = variants.len() > usize::from(limit);
+        if has_more {
+            variants.truncate(usize::from(limit));
+        }
+        let next_after = has_more
+            .then(|| variants.last().map(|variant| variant.id))
+            .flatten();
+        if variants.is_empty() {
+            return Ok((Vec::new(), None));
+        }
+
+        let variant_ids = variants
+            .iter()
+            .map(|variant| variant.id)
+            .collect::<Vec<_>>();
+        let product_ids = variants
+            .iter()
+            .map(|variant| variant.product_id)
+            .collect::<HashSet<_>>();
+        let products = entities::product::Entity::find()
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .filter(entities::product::Column::Id.is_in(product_ids))
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|product| (product.id, product))
+            .collect::<HashMap<_, _>>();
+        let mut translations = load_variant_translations_for_variants(&self.db, &variant_ids)
+            .await?
+            .into_iter()
+            .fold(
+                HashMap::<Uuid, Vec<entities::variant_translation::Model>>::new(),
+                |mut grouped, translation| {
+                    grouped
+                        .entry(translation.variant_id)
+                        .or_default()
+                        .push(translation);
+                    grouped
+                },
+            );
+
+        let mut resources = Vec::with_capacity(variants.len());
+        for variant in variants {
+            let product = products
+                .get(&variant.product_id)
+                .cloned()
+                .ok_or(CommerceError::ProductNotFound(variant.product_id))?;
+            let exact = translations.remove(&variant.id).ok_or_else(|| {
+                ProductVariantTranslationExactLocaleError::SourceLocaleNotFound {
+                    variant_id: variant.id,
+                    locale: source_locale.clone(),
+                }
+            })?;
+            resources.push(build_variant_exact_locale_snapshot(
+                product,
+                variant,
+                exact,
+                source_locale.clone(),
+                target_locale.clone(),
+            )?);
+        }
+
+        Ok((resources, next_after))
+    }
+
     /// Reads one exact Product Variant source locale and one exact target locale
     /// without consulting storefront fallback.
     ///
@@ -280,6 +386,24 @@ where
 {
     Ok(entities::variant_translation::Entity::find()
         .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
+        .order_by_asc(entities::variant_translation::Column::Locale)
+        .all(db)
+        .await?)
+}
+
+async fn load_variant_translations_for_variants<C>(
+    db: &C,
+    variant_ids: &[Uuid],
+) -> ProductVariantTranslationExactLocaleResult<Vec<entities::variant_translation::Model>>
+where
+    C: ConnectionTrait,
+{
+    if variant_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(entities::variant_translation::Entity::find()
+        .filter(entities::variant_translation::Column::VariantId.is_in(variant_ids.to_vec()))
+        .order_by_asc(entities::variant_translation::Column::VariantId)
         .order_by_asc(entities::variant_translation::Column::Locale)
         .all(db)
         .await?)
