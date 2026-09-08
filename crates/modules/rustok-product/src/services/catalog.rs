@@ -2,6 +2,7 @@ mod admin_queries;
 mod attribute_filters;
 mod commands;
 pub mod helpers;
+mod image_translation;
 mod option_translation;
 mod option_translation_changes;
 mod option_translation_progress;
@@ -16,6 +17,11 @@ mod variant_translation;
 mod variant_translation_changes;
 mod variant_translation_progress;
 
+pub use image_translation::{
+    ProductImageTranslationExactLocaleApply, ProductImageTranslationExactLocaleApplyReceipt,
+    ProductImageTranslationExactLocaleError, ProductImageTranslationExactLocaleRecord,
+    ProductImageTranslationExactLocaleResult, ProductImageTranslationExactLocaleSnapshot,
+};
 pub use option_translation::{
     ProductOptionTranslationExactLocaleApply, ProductOptionTranslationExactLocaleApplyReceipt,
     ProductOptionTranslationExactLocaleError, ProductOptionTranslationExactLocaleRecord,
