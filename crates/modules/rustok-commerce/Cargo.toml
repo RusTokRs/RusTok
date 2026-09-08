@@ -21,6 +21,7 @@ async-graphql = { workspace = true, features = ["decimal"] }
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
+rustok-translation-targets.workspace = true
 rustok-commerce-foundation.workspace = true
 rustok-cart.workspace = true
 rustok-customer.workspace = true
