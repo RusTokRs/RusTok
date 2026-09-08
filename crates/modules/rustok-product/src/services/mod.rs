@@ -14,10 +14,17 @@ mod write_transaction;
 pub use catalog::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
     MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter,
+    ProductOptionTranslationExactLocaleApply, ProductOptionTranslationExactLocaleApplyReceipt,
+    ProductOptionTranslationExactLocaleError, ProductOptionTranslationExactLocaleRecord,
+    ProductOptionTranslationExactLocaleResult, ProductOptionTranslationExactLocaleSnapshot,
+    ProductOptionTranslationExactLocaleValueApply, ProductOptionTranslationExactLocaleValueRecord,
     ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,
     ProductTranslationExactLocaleError, ProductTranslationExactLocaleRecord,
     ProductTranslationExactLocaleResult, ProductTranslationExactLocaleSnapshot,
     ProductTranslationExactResourcePage, ProductTranslationExactResourceSummary,
+    ProductVariantTranslationExactLocaleApply, ProductVariantTranslationExactLocaleApplyReceipt,
+    ProductVariantTranslationExactLocaleError, ProductVariantTranslationExactLocaleRecord,
+    ProductVariantTranslationExactLocaleResult, ProductVariantTranslationExactLocaleSnapshot,
     StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection,
 };

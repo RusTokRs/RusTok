@@ -2,6 +2,8 @@ mod admin_queries;
 mod attribute_filters;
 mod commands;
 pub mod helpers;
+mod option_translation;
+mod option_translation_progress;
 mod projection;
 mod queries;
 mod tags;
@@ -9,7 +11,16 @@ mod translation;
 mod translation_changes;
 mod translation_progress;
 pub mod types;
+mod variant_translation;
+mod variant_translation_changes;
+mod variant_translation_progress;
 
+pub use option_translation::{
+    ProductOptionTranslationExactLocaleApply, ProductOptionTranslationExactLocaleApplyReceipt,
+    ProductOptionTranslationExactLocaleError, ProductOptionTranslationExactLocaleRecord,
+    ProductOptionTranslationExactLocaleResult, ProductOptionTranslationExactLocaleSnapshot,
+    ProductOptionTranslationExactLocaleValueApply, ProductOptionTranslationExactLocaleValueRecord,
+};
 pub(crate) use translation_changes::record_product_translation_change_in_tx;
 pub use translation_changes::{
     MAX_PRODUCT_TRANSLATION_CHANGE_PAGE, ProductTranslationChangeLifecycle,
@@ -26,6 +37,16 @@ pub use types::{
     MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter, ProductTagState,
     StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection,
+};
+pub use variant_translation::{
+    ProductVariantTranslationExactLocaleApply, ProductVariantTranslationExactLocaleApplyReceipt,
+    ProductVariantTranslationExactLocaleError, ProductVariantTranslationExactLocaleRecord,
+    ProductVariantTranslationExactLocaleResult, ProductVariantTranslationExactLocaleSnapshot,
+};
+pub(crate) use variant_translation_changes::record_product_variant_translation_changes_in_tx;
+pub use variant_translation_changes::{
+    MAX_PRODUCT_VARIANT_TRANSLATION_CHANGE_PAGE, ProductVariantTranslationChangeLifecycle,
+    ProductVariantTranslationChangeRecord,
 };
 
 use chrono::Utc;
