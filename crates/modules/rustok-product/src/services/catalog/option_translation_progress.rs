@@ -18,7 +18,7 @@ struct ProductOptionTranslationExactProgressRow {
     target_title_exact_units: i64,
     target_value_exact_units: i64,
     complete_resources: i64,
-    invalid_partial_resources: i64,
+    invalid_partial_option_id: Option<Uuid>,
 }
 
 impl CatalogService {
@@ -58,7 +58,7 @@ impl CatalogService {
                 vec![
                     tenant_id.into(),
                     source_locale.into(),
-                    target_locale.into(),
+                    target_locale.clone().into(),
                 ],
             ),
         )
@@ -70,16 +70,11 @@ impl CatalogService {
             )
         })?;
 
-        let invalid_partial_resources = progress_count(
-            row.invalid_partial_resources,
-            "invalid partial resources",
-        )?;
-        if invalid_partial_resources != 0 {
-            return Err(CommerceError::Validation(
-                "Product Option target locale contains a structurally partial aggregate"
-                    .to_string(),
-            )
-            .into());
+        if let Some(option_id) = row.invalid_partial_option_id {
+            return Err(ProductOptionTranslationExactLocaleError::IncompleteLocale {
+                option_id,
+                locale: target_locale,
+            });
         }
 
         let resources = progress_count(row.resources, "resources")?;
@@ -205,7 +200,7 @@ SELECT
           )
     ) AS complete_resources,
     (
-        SELECT COUNT(*)
+        SELECT inventory.id
         FROM inventory
         WHERE (
             EXISTS (
@@ -242,5 +237,7 @@ SELECT
                   )
             )
         )
-    ) AS invalid_partial_resources
+        ORDER BY inventory.id
+        LIMIT 1
+    ) AS invalid_partial_option_id
 "#;
