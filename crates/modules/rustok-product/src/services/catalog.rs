@@ -3,6 +3,7 @@ mod attribute_filters;
 mod commands;
 pub mod helpers;
 mod option_translation;
+mod option_translation_progress;
 mod projection;
 mod queries;
 mod tags;
