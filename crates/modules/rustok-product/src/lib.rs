@@ -62,7 +62,7 @@ pub use services::{
     ProductImageTranslationExactLocaleApply, ProductImageTranslationExactLocaleApplyReceipt,
     ProductImageTranslationExactLocaleError, ProductImageTranslationExactLocaleRecord,
     ProductImageTranslationExactLocaleResult, ProductImageTranslationExactLocaleSnapshot,
-    ProductIndexLocaleRefreshRecord, ProductIndexRefreshSource,
+    ProductIndexLocaleRefreshRecord, ProductIndexLocaleRefreshSource,
     ProductIndexRefreshCanonicalWriter, ProductIndexRefreshContract,
     ProductIndexRefreshContractTarget, ProductIndexRefreshEventFactory,
     ProductIndexRefreshPublicationError, ProductIndexRefreshRelayError,
