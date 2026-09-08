@@ -3,6 +3,7 @@ mod attribute_filters;
 mod commands;
 pub mod helpers;
 mod option_translation;
+mod option_translation_changes;
 mod option_translation_progress;
 mod projection;
 mod queries;
@@ -20,6 +21,11 @@ pub use option_translation::{
     ProductOptionTranslationExactLocaleError, ProductOptionTranslationExactLocaleRecord,
     ProductOptionTranslationExactLocaleResult, ProductOptionTranslationExactLocaleSnapshot,
     ProductOptionTranslationExactLocaleValueApply, ProductOptionTranslationExactLocaleValueRecord,
+};
+pub(crate) use option_translation_changes::record_product_option_translation_changes_in_tx;
+pub use option_translation_changes::{
+    MAX_PRODUCT_OPTION_TRANSLATION_CHANGE_PAGE, ProductOptionTranslationChangeLifecycle,
+    ProductOptionTranslationChangeRecord,
 };
 pub(crate) use translation_changes::record_product_translation_change_in_tx;
 pub use translation_changes::{
