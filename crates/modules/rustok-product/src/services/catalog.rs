@@ -3,6 +3,7 @@ mod attribute_filters;
 mod commands;
 pub mod helpers;
 mod image_translation;
+mod image_translation_progress;
 mod option_translation;
 mod option_translation_changes;
 mod option_translation_progress;
