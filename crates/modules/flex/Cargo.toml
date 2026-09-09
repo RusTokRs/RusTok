@@ -10,6 +10,7 @@ async-graphql.workspace = true
 rustok-api = { workspace = true, features = ["server"] }
 rustok-core.workspace = true
 rustok-events.workspace = true
+rustok-translation-targets.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
@@ -18,7 +19,9 @@ utoipa = { workspace = true, features = ["uuid"] }
 uuid.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
+hex.workspace = true
 regex = "1"
+sha2.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
