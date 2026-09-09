@@ -308,7 +308,7 @@ async fn tenant_default_locale_on<C>(db: &C, tenant_id: Uuid) -> Result<String, 
 where
     C: ConnectionTrait,
 {
-    let tenant = tenants::Entity::find_by_id(tenant_id)
+    let tenant = <tenants::Entity as EntityTrait>::find_by_id(tenant_id)
         .one(db)
         .await
         .map_err(|error| FlexError::Database(error.to_string()))?
