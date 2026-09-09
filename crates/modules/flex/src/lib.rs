@@ -60,7 +60,8 @@ pub use attached_translation::{
     validate_flex_attached_translation_resource_page,
 };
 pub use attached_translation_guard::{
-    FlexAttachedTranslationSchemaLease, lock_attached_translation_schema_in_tx,
+    FlexAttachedTranslationSchemaLease, load_attached_translation_schema_in,
+    lock_attached_translation_schema_in_tx,
 };
 pub use attached_translation_storage::{
     FlexAttachedLocalizedValuesByEntity, MAX_ATTACHED_TRANSLATION_STORAGE_BATCH,
