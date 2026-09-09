@@ -292,6 +292,11 @@ pub mod module_event_dispatcher {
                 host.shared_get::<rustok_search::SharedForumProjectionOwnerRevisionSourcePort>()
                     .is_some()
             );
+            #[cfg(feature = "mod-forum")]
+            assert!(
+                host.shared_get::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
+                    .is_some()
+            );
         }
 
         #[test]
