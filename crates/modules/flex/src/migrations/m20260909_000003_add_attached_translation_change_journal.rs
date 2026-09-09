@@ -24,6 +24,7 @@ CREATE TABLE flex_attached_translation_resource_state (
     entity_type VARCHAR(64) NOT NULL,
     entity_id UUID NOT NULL,
     revision BIGINT NOT NULL,
+    last_tx_id BIGINT NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, entity_type, entity_id),
     CONSTRAINT chk_flex_attached_translation_state_tenant_non_nil
@@ -33,19 +34,26 @@ CREATE TABLE flex_attached_translation_resource_state (
     CONSTRAINT chk_flex_attached_translation_state_entity_non_nil
         CHECK (entity_id <> '00000000-0000-0000-0000-000000000000'::uuid),
     CONSTRAINT chk_flex_attached_translation_state_revision_positive
-        CHECK (revision > 0)
+        CHECK (revision > 0),
+    CONSTRAINT chk_flex_attached_translation_state_tx_nonnegative
+        CHECK (last_tx_id >= 0)
 );
 
 CREATE TABLE flex_attached_translation_change_journal (
     change_seq BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    tx_id BIGINT NOT NULL,
     tenant_id UUID NOT NULL,
     entity_type VARCHAR(64) NOT NULL,
     entity_id UUID NOT NULL,
     resource_revision VARCHAR(64) NOT NULL,
     lifecycle VARCHAR(16) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_flex_attached_translation_change_tx_resource
+        UNIQUE (tx_id, tenant_id, entity_type, entity_id),
     CONSTRAINT chk_flex_attached_translation_change_seq_positive
         CHECK (change_seq > 0),
+    CONSTRAINT chk_flex_attached_translation_change_tx_positive
+        CHECK (tx_id > 0),
     CONSTRAINT chk_flex_attached_translation_change_tenant_non_nil
         CHECK (tenant_id <> '00000000-0000-0000-0000-000000000000'::uuid),
     CONSTRAINT chk_flex_attached_translation_change_entity_type_nonblank
@@ -78,13 +86,15 @@ INSERT INTO flex_attached_translation_resource_state (
     tenant_id,
     entity_type,
     entity_id,
-    revision
+    revision,
+    last_tx_id
 )
 SELECT DISTINCT
     value.tenant_id,
     value.entity_type,
     value.entity_id,
-    1
+    1,
+    0
 FROM flex_attached_localized_values value
 JOIN flex_attached_field_definitions definition
   ON definition.tenant_id = value.tenant_id
@@ -95,6 +105,9 @@ WHERE definition.is_active = TRUE
   AND definition.field_type IN ('text', 'textarea')
 ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING;
 
+-- One resource gets at most one externally visible revision per database transaction. Flex
+-- writes can touch several field rows, and schema mutations can fan out through several trigger
+-- paths, but readers can observe only the committed aggregate state.
 CREATE OR REPLACE FUNCTION rustok_flex_bump_attached_translation_resource(
     p_tenant_id UUID,
     p_entity_type TEXT,
@@ -103,6 +116,7 @@ CREATE OR REPLACE FUNCTION rustok_flex_bump_attached_translation_resource(
 LANGUAGE plpgsql
 AS $$
 DECLARE
+    current_tx BIGINT := txid_current();
     next_revision BIGINT;
     revision_token TEXT;
 BEGIN
@@ -111,34 +125,47 @@ BEGIN
         entity_type,
         entity_id,
         revision,
+        last_tx_id,
         updated_at
     ) VALUES (
         p_tenant_id,
         p_entity_type,
         p_entity_id,
         1,
+        current_tx,
         CURRENT_TIMESTAMP
     )
     ON CONFLICT (tenant_id, entity_type, entity_id)
     DO UPDATE SET
-        revision = flex_attached_translation_resource_state.revision + 1,
+        revision = CASE
+            WHEN flex_attached_translation_resource_state.last_tx_id = EXCLUDED.last_tx_id
+                THEN flex_attached_translation_resource_state.revision
+            ELSE flex_attached_translation_resource_state.revision + 1
+        END,
+        last_tx_id = EXCLUDED.last_tx_id,
         updated_at = CURRENT_TIMESTAMP
     RETURNING revision INTO next_revision;
 
     revision_token := format('attached:%s', next_revision);
     INSERT INTO flex_attached_translation_change_journal (
+        tx_id,
         tenant_id,
         entity_type,
         entity_id,
         resource_revision,
         lifecycle
     ) VALUES (
+        current_tx,
         p_tenant_id,
         p_entity_type,
         p_entity_id,
         revision_token,
         'active'
-    );
+    )
+    ON CONFLICT (tx_id, tenant_id, entity_type, entity_id)
+    DO UPDATE SET
+        resource_revision = EXCLUDED.resource_revision,
+        lifecycle = 'active';
 
     RETURN revision_token;
 END;
