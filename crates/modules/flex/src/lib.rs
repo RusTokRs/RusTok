@@ -69,11 +69,13 @@ pub use rest::{
 pub use schema_translation::{
     FlexSchemaTranslationError, FlexSchemaTranslationExactLocaleApply,
     FlexSchemaTranslationExactLocaleApplyReceipt, FlexSchemaTranslationExactLocaleSnapshot,
-    FlexSchemaTranslationLeaf, FlexSchemaTranslationLeafSnapshot,
-    FlexSchemaTranslationOperationContext, FlexSchemaTranslationOwnerPort,
+    FlexSchemaTranslationExactProgress, FlexSchemaTranslationLeaf,
+    FlexSchemaTranslationLeafSnapshot, FlexSchemaTranslationOperationContext,
+    FlexSchemaTranslationOwnerPort, FlexSchemaTranslationProgressOwnerPort,
     FlexSchemaTranslationResourcePage, FlexSchemaTranslationResult,
     FlexSchemaTranslationTargetValue, MAX_FLEX_SCHEMA_TRANSLATION_RESOURCE_PAGE,
-    validate_flex_schema_translation_locale_pair, validate_flex_schema_translation_resource_page,
+    flex_schema_translation_leaf_required, validate_flex_schema_translation_locale_pair,
+    validate_flex_schema_translation_resource_page,
 };
 pub use schema_translation_fields::{
     apply_schema_definition_translation_targets, schema_definition_translation_exact_values,
