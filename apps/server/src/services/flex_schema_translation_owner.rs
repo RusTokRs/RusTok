@@ -33,10 +33,21 @@ const RESOURCE_REVISION_NAMESPACE: &str = "rustok-flex/schema-copy-resource/v1";
 const LOCALE_REVISION_NAMESPACE: &str = "rustok-flex/schema-copy-locale/v1";
 const LEGACY_UNDETERMINED_LOCALE: &str = "und";
 
+/// Durable admission identity for a neutral patch. Derived merged target values are
+/// intentionally excluded: the canonical neutral request fingerprint binds those user
+/// semantics while allowing a retry to replay after unrelated live target copy changed.
 #[derive(Serialize)]
 struct OwnerApplyRequestHash<'a> {
     schema_id: Uuid,
-    request: &'a FlexSchemaTranslationExactLocaleApply,
+    idempotency_key: &'a str,
+    proposal_id: &'a str,
+    approval_receipt_id: &'a str,
+    request_fingerprint: &'a str,
+    source_locale: &'a str,
+    target_locale: &'a str,
+    expected_resource_revision: &'a str,
+    expected_source_revision: &'a str,
+    expected_target_revision: Option<&'a str>,
 }
 
 #[derive(Clone)]
@@ -94,6 +105,11 @@ impl ServerFlexSchemaTranslationOwner {
                 revision: "target",
             });
         }
+
+        // Derived full target state is deliberately validated only after the locked
+        // authoritative CAS checks. A genuinely stale new operation therefore reports a
+        // revision conflict, while durable replay was already resolved before this txn.
+        request.validate()?;
 
         let requested_targets = request
             .target_values
@@ -385,11 +401,19 @@ impl FlexSchemaTranslationOwnerPort for ServerFlexSchemaTranslationOwner {
         if let Some(actor_user_id) = actor_user_id {
             validate_uuid(actor_user_id, "actor_user_id")?;
         }
-        request.validate()?;
+        request.validate_admission()?;
 
         let admission_request = OwnerApplyRequestHash {
             schema_id,
-            request: &request,
+            idempotency_key: &request.operation.idempotency_key,
+            proposal_id: &request.operation.proposal_id,
+            approval_receipt_id: &request.operation.approval_receipt_id,
+            request_fingerprint: &request.operation.request_fingerprint,
+            source_locale: &request.source_locale,
+            target_locale: &request.target_locale,
+            expected_resource_revision: &request.expected_resource_revision,
+            expected_source_revision: &request.expected_source_revision,
+            expected_target_revision: request.expected_target_revision.as_deref(),
         };
         let lease = match idempotency::admit(
             &self.db,

@@ -87,22 +87,25 @@ pub struct FlexSchemaTranslationTargetValue {
     pub value: Option<String>,
 }
 
-/// Translation workflow evidence that must participate in the owner's durable
-/// idempotency request hash. This prevents one idempotency key from replaying a result
-/// produced for a different proposal or approval receipt even when translated values
-/// happen to be identical.
+/// Translation workflow evidence that participates in durable owner admission.
+///
+/// `request_fingerprint` is the canonical fingerprint of the original neutral patch,
+/// not a hash of the live/derived merged target state. That distinction keeps retries
+/// bound to the user's original proposal even if unrelated target copy changes later.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlexSchemaTranslationOperationContext {
     pub idempotency_key: String,
     pub proposal_id: String,
     pub approval_receipt_id: String,
+    pub request_fingerprint: String,
 }
 
 impl FlexSchemaTranslationOperationContext {
     pub fn validate(&self) -> FlexSchemaTranslationResult<()> {
         validate_nonblank(&self.idempotency_key, "idempotency_key")?;
         validate_nonblank(&self.proposal_id, "proposal_id")?;
-        validate_nonblank(&self.approval_receipt_id, "approval_receipt_id")
+        validate_nonblank(&self.approval_receipt_id, "approval_receipt_id")?;
+        validate_nonblank(&self.request_fingerprint, "request_fingerprint")
     }
 }
 
@@ -120,7 +123,9 @@ pub struct FlexSchemaTranslationExactLocaleApply {
 }
 
 impl FlexSchemaTranslationExactLocaleApply {
-    pub fn validate(&self) -> FlexSchemaTranslationResult<()> {
+    /// Validate the immutable request identity used before durable owner admission.
+    /// Derived target values are deliberately excluded from this phase.
+    pub fn validate_admission(&self) -> FlexSchemaTranslationResult<()> {
         self.operation.validate()?;
         validate_flex_schema_translation_locale_pair(&self.source_locale, &self.target_locale)?;
         validate_nonblank(&self.expected_resource_revision, "expected_resource_revision")?;
@@ -128,6 +133,11 @@ impl FlexSchemaTranslationExactLocaleApply {
         if let Some(revision) = &self.expected_target_revision {
             validate_nonblank(revision, "expected_target_revision")?;
         }
+        Ok(())
+    }
+
+    pub fn validate(&self) -> FlexSchemaTranslationResult<()> {
+        self.validate_admission()?;
         if self.target_values.is_empty() {
             return Err(FlexSchemaTranslationError::Invalid(
                 "Flex schema translation apply must contain at least one target value".to_string(),
@@ -190,7 +200,9 @@ impl fmt::Display for FlexSchemaTranslationError {
             Self::RevisionConflict { revision } => {
                 write!(formatter, "Flex schema translation {revision} revision conflict")
             }
-            Self::Operation(error) => write!(formatter, "Flex schema translation operation failed: {error}"),
+            Self::Operation(error) => {
+                write!(formatter, "Flex schema translation operation failed: {error}")
+            }
             Self::Database(message) => {
                 write!(formatter, "Flex schema translation database error: {message}")
             }
@@ -205,7 +217,9 @@ impl std::error::Error for FlexSchemaTranslationError {}
 
 pub type FlexSchemaTranslationResult<T> = Result<T, FlexSchemaTranslationError>;
 
-pub fn validate_flex_schema_translation_resource_page(limit: u16) -> FlexSchemaTranslationResult<()> {
+pub fn validate_flex_schema_translation_resource_page(
+    limit: u16,
+) -> FlexSchemaTranslationResult<()> {
     if limit == 0 || limit > MAX_FLEX_SCHEMA_TRANSLATION_RESOURCE_PAGE {
         return Err(FlexSchemaTranslationError::Invalid(format!(
             "Flex schema translation resource page size must be between 1 and {MAX_FLEX_SCHEMA_TRANSLATION_RESOURCE_PAGE}"
@@ -229,7 +243,8 @@ pub fn validate_flex_schema_translation_locale_pair(
 }
 
 fn validate_authoring_locale(locale: &str, field: &str) -> FlexSchemaTranslationResult<()> {
-    if locale == LEGACY_UNDETERMINED_LOCALE || normalize_locale_tag(locale).as_deref() != Some(locale) {
+    if locale == LEGACY_UNDETERMINED_LOCALE || normalize_locale_tag(locale).as_deref() != Some(locale)
+    {
         return Err(FlexSchemaTranslationError::Invalid(format!(
             "Flex schema translation {field} must be a normalized authoring locale other than `und`"
         )));
