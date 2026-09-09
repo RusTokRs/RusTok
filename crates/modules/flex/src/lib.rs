@@ -64,12 +64,10 @@ pub use attached_translation::{
     validate_flex_attached_translation_resource_page,
 };
 pub use attached_translation_changes::{
-    FLEX_ATTACHED_TRANSLATION_CHANGE_JOURNAL_TABLE,
-    FLEX_ATTACHED_TRANSLATION_RESOURCE_STATE_TABLE, FlexAttachedTranslationChangeLifecycle,
+    FLEX_ATTACHED_TRANSLATION_CHANGE_JOURNAL_TABLE, FlexAttachedTranslationChangeKind,
     FlexAttachedTranslationChangeOwnerPort, FlexAttachedTranslationChangeRecord,
-    MAX_FLEX_ATTACHED_TRANSLATION_CHANGE_PAGE, MAX_FLEX_ATTACHED_TRANSLATION_REVISION_BATCH,
-    flex_attached_translation_resource_revision, load_attached_translation_resource_revisions,
-    record_attached_translation_deleted_in_tx,
+    MAX_FLEX_ATTACHED_TRANSLATION_CHANGE_PAGE, flex_attached_translation_deleted_revision,
+    record_flex_attached_translation_deleted_in_tx, validate_flex_attached_translation_change_page,
 };
 pub use attached_translation_guard::{
     FlexAttachedTranslationSchemaLease, load_attached_translation_schema_in,
@@ -144,7 +142,7 @@ pub use standalone::{
 
 pub use events::{
     flex_entry_created_event, flex_entry_deleted_event, flex_entry_updated_event,
-    flex_schema_created_event, flex_schema_deleted_event, flex_schema_updated_event,
+    flex_schema_created_event, flex_schema_updated_event, flex_schema_deleted_event,
 };
 
 impl MigrationSource for FlexModule {
@@ -154,7 +152,7 @@ impl MigrationSource for FlexModule {
 
     fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
         vec![MigrationDependencyDescriptor::new(
-            "m20260909_000003_add_attached_translation_resource_state",
+            "m20260909_000003_add_attached_translation_change_journal",
             vec![
                 "m20260405_000004_create_flex_attached_localized_values",
                 "m20260822_000001_create_generic_attached_donor_storage",
@@ -164,8 +162,8 @@ impl MigrationSource for FlexModule {
 
     fn migration_safety_metadata(&self) -> Vec<MigrationSafetyMetadata> {
         vec![MigrationSafetyMetadata::new(
-            "m20260909_000003_add_attached_translation_resource_state",
-            MigrationSafetyClass::ExpandContract,
+            "m20260909_000003_add_attached_translation_change_journal",
+            MigrationSafetyClass::AdditiveOnly,
             MigrationPhaseConstraint::PreActivation,
         )]
     }
