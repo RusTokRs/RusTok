@@ -22,6 +22,7 @@ pub mod registry;
 pub mod rest;
 pub mod schema_translation;
 pub mod schema_translation_fields;
+pub mod schema_translation_progress_target;
 pub mod schema_translation_target;
 pub mod standalone;
 
@@ -81,6 +82,7 @@ pub use schema_translation_fields::{
     apply_schema_definition_translation_targets, schema_definition_translation_exact_values,
     schema_definition_translation_leaves, schema_definition_translation_locales,
 };
+pub use schema_translation_progress_target::FlexSchemaTranslationProgressTargetProvider;
 pub use schema_translation_target::FlexSchemaTranslationTargetProvider;
 pub use standalone::{
     CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView,
