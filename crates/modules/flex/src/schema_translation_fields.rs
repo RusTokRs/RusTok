@@ -15,44 +15,61 @@ pub fn schema_definition_translation_leaves(
     target_locale: &str,
 ) -> FlexSchemaTranslationResult<Vec<FlexSchemaTranslationLeafSnapshot>> {
     validate_flex_schema_translation_locale_pair(source_locale, target_locale)?;
+    let source = schema_definition_translation_exact_values(definitions, source_locale)?;
+    let target = schema_definition_translation_exact_values(definitions, target_locale)?;
+
+    Ok(source
+        .into_iter()
+        .map(|(leaf, source_value)| FlexSchemaTranslationLeafSnapshot {
+            target_value: target.get(&leaf).cloned(),
+            leaf,
+            source_value,
+        })
+        .collect())
+}
+
+/// Extract all exact copy for one runtime locale from the structurally declared maps in
+/// `fields_config`. The returned BTreeMap gives revision code one deterministic ordering
+/// independent of HashMap insertion order and JSON serialization details.
+pub fn schema_definition_translation_exact_values(
+    definitions: &[FieldDefinition],
+    locale: &str,
+) -> FlexSchemaTranslationResult<BTreeMap<FlexSchemaTranslationLeaf, String>> {
+    validate_runtime_locale(locale)?;
+    let mut values = BTreeMap::new();
 
     let mut ordered = definitions.iter().collect::<Vec<_>>();
     ordered.sort_by(|left, right| left.field_key.cmp(&right.field_key));
-
-    let mut leaves = Vec::new();
     for definition in ordered {
-        push_exact_map_leaf(
-            &mut leaves,
+        insert_exact_map_value(
+            &mut values,
             FlexSchemaTranslationLeaf::FieldLabel {
                 field_key: definition.field_key.clone(),
             },
             &definition.label,
-            source_locale,
-            target_locale,
+            locale,
         )?;
 
         if let Some(description) = &definition.description {
-            push_exact_map_leaf(
-                &mut leaves,
+            insert_exact_map_value(
+                &mut values,
                 FlexSchemaTranslationLeaf::FieldDescription {
                     field_key: definition.field_key.clone(),
                 },
                 description,
-                source_locale,
-                target_locale,
+                locale,
             )?;
         }
 
         if let Some(validation) = &definition.validation {
             if let Some(error_message) = &validation.error_message {
-                push_exact_map_leaf(
-                    &mut leaves,
+                insert_exact_map_value(
+                    &mut values,
                     FlexSchemaTranslationLeaf::FieldValidationErrorMessage {
                         field_key: definition.field_key.clone(),
                     },
                     error_message,
-                    source_locale,
-                    target_locale,
+                    locale,
                 )?;
             }
 
@@ -60,23 +77,21 @@ pub fn schema_definition_translation_leaves(
                 let mut options = options.iter().collect::<Vec<_>>();
                 options.sort_by(|left, right| left.value.cmp(&right.value));
                 for option in options {
-                    push_exact_map_leaf(
-                        &mut leaves,
+                    insert_exact_map_value(
+                        &mut values,
                         FlexSchemaTranslationLeaf::FieldOptionLabel {
                             field_key: definition.field_key.clone(),
                             option_value: option.value.clone(),
                         },
                         &option.label,
-                        source_locale,
-                        target_locale,
+                        locale,
                     )?;
                 }
             }
         }
     }
 
-    leaves.sort_by(|left, right| left.leaf.cmp(&right.leaf));
-    Ok(leaves)
+    Ok(values)
 }
 
 /// Return every normalized runtime locale explicitly present in declared field-definition
@@ -187,29 +202,21 @@ fn definition_mut<'a>(
         })
 }
 
-fn push_exact_map_leaf(
-    leaves: &mut Vec<FlexSchemaTranslationLeafSnapshot>,
+fn insert_exact_map_value(
+    exact: &mut BTreeMap<FlexSchemaTranslationLeaf, String>,
     leaf: FlexSchemaTranslationLeaf,
     values: &std::collections::HashMap<String, String>,
-    source_locale: &str,
-    target_locale: &str,
+    locale: &str,
 ) -> FlexSchemaTranslationResult<()> {
-    let Some(source_value) = values.get(source_locale) else {
+    let Some(value) = values.get(locale) else {
         return Ok(());
     };
-    validate_stored_value(source_value, &leaf, source_locale)?;
-    let target_value = values
-        .get(target_locale)
-        .map(|value| {
-            validate_stored_value(value, &leaf, target_locale)?;
-            Ok(value.clone())
-        })
-        .transpose()?;
-    leaves.push(FlexSchemaTranslationLeafSnapshot {
-        leaf,
-        source_value: source_value.clone(),
-        target_value,
-    });
+    validate_stored_value(value, &leaf, locale)?;
+    if exact.insert(leaf.clone(), value.clone()).is_some() {
+        return Err(FlexSchemaTranslationError::OwnerInvariant(format!(
+            "Flex schema translation leaf is declared more than once: {leaf:?}"
+        )));
+    }
     Ok(())
 }
 
@@ -221,17 +228,22 @@ fn collect_map_locales(
         if locale == "und" {
             continue;
         }
-        if rustok_api::normalize_locale_tag(locale).as_deref() != Some(locale) {
-            return Err(FlexSchemaTranslationError::OwnerInvariant(format!(
-                "declared Flex schema copy contains invalid locale `{locale}`"
-            )));
-        }
+        validate_runtime_locale(locale)?;
         if value.trim().is_empty() {
             return Err(FlexSchemaTranslationError::OwnerInvariant(format!(
                 "declared Flex schema copy contains blank value for locale `{locale}`"
             )));
         }
         locales.insert(locale.clone());
+    }
+    Ok(())
+}
+
+fn validate_runtime_locale(locale: &str) -> FlexSchemaTranslationResult<()> {
+    if locale == "und" || rustok_api::normalize_locale_tag(locale).as_deref() != Some(locale) {
+        return Err(FlexSchemaTranslationError::OwnerInvariant(format!(
+            "declared Flex schema copy contains invalid authoring locale `{locale}`"
+        )));
     }
     Ok(())
 }
