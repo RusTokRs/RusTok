@@ -169,6 +169,38 @@ pub mod module_event_dispatcher {
             extensions.insert(result_eligibility);
         }
 
+        #[cfg(feature = "mod-flex")]
+        {
+            let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
+                rustok_outbox::OutboxTransport::new(db.clone()),
+            ));
+            let owner = Arc::new(
+                super::flex_schema_translation_owner::ServerFlexSchemaTranslationOwner::new(
+                    db.clone(),
+                    event_bus,
+                ),
+            );
+            let progress = Arc::new(
+                super::flex_schema_translation_progress_owner::ServerFlexSchemaTranslationProgressOwner::new(
+                    db.clone(),
+                ),
+            );
+            let provider = flex::FlexSchemaTranslationProgressTargetProvider::new(
+                owner,
+                progress.clone(),
+                progress,
+            );
+            rustok_translation_targets::register_translation_target_provider(
+                &mut extensions,
+                provider,
+            )
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Flex schema-copy translation target provider registration failed: {error}"
+                ))
+            })?;
+        }
+
         rustok_index::materialize_postgres_index_query_runtime(&mut extensions, db.clone())
             .map_err(|error| {
                 Error::Message(format!("Index query runtime composition failed: {error}"))
