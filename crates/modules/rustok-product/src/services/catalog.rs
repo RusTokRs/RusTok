@@ -2,16 +2,70 @@ mod admin_queries;
 mod attribute_filters;
 mod commands;
 pub mod helpers;
+mod image_translation;
+mod image_translation_changes;
+mod image_translation_progress;
+mod option_translation;
+mod option_translation_changes;
+mod option_translation_progress;
 mod projection;
 mod queries;
 mod tags;
+mod translation;
+mod translation_changes;
+mod translation_progress;
 pub mod types;
+mod variant_translation;
+mod variant_translation_changes;
+mod variant_translation_progress;
 
+pub use image_translation::{
+    ProductImageTranslationExactLocaleApply, ProductImageTranslationExactLocaleApplyReceipt,
+    ProductImageTranslationExactLocaleError, ProductImageTranslationExactLocaleRecord,
+    ProductImageTranslationExactLocaleResult, ProductImageTranslationExactLocaleSnapshot,
+};
+pub(crate) use image_translation_changes::record_product_image_translation_changes_in_tx;
+pub use image_translation_changes::{
+    MAX_PRODUCT_IMAGE_TRANSLATION_CHANGE_PAGE, ProductImageTranslationChangeLifecycle,
+    ProductImageTranslationChangeRecord,
+};
+pub use option_translation::{
+    ProductOptionTranslationExactLocaleApply, ProductOptionTranslationExactLocaleApplyReceipt,
+    ProductOptionTranslationExactLocaleError, ProductOptionTranslationExactLocaleRecord,
+    ProductOptionTranslationExactLocaleResult, ProductOptionTranslationExactLocaleSnapshot,
+    ProductOptionTranslationExactLocaleValueApply, ProductOptionTranslationExactLocaleValueRecord,
+};
+pub(crate) use option_translation_changes::record_product_option_translation_changes_in_tx;
+pub use option_translation_changes::{
+    MAX_PRODUCT_OPTION_TRANSLATION_CHANGE_PAGE, ProductOptionTranslationChangeLifecycle,
+    ProductOptionTranslationChangeRecord,
+};
+pub(crate) use translation_changes::record_product_translation_change_in_tx;
+pub use translation_changes::{
+    MAX_PRODUCT_TRANSLATION_CHANGE_PAGE, ProductTranslationChangeLifecycle,
+    ProductTranslationChangeRecord,
+};
+pub use translation::{
+    ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,
+    ProductTranslationExactLocaleError, ProductTranslationExactLocaleRecord,
+    ProductTranslationExactLocaleResult, ProductTranslationExactLocaleSnapshot,
+    ProductTranslationExactResourcePage, ProductTranslationExactResourceSummary,
+};
 pub use types::{
     AdminProductList, AdminProductListItem, AdminProductListQuery,
     MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter, ProductTagState,
     StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection,
+};
+pub use variant_translation::{
+    ProductVariantTranslationExactLocaleApply, ProductVariantTranslationExactLocaleApplyReceipt,
+    ProductVariantTranslationExactLocaleError, ProductVariantTranslationExactLocaleRecord,
+    ProductVariantTranslationExactLocaleResult, ProductVariantTranslationExactLocaleSnapshot,
+};
+pub(crate) use variant_translation_changes::record_product_variant_translation_changes_in_tx;
+pub use variant_translation_changes::{
+    MAX_PRODUCT_VARIANT_TRANSLATION_CHANGE_PAGE, ProductVariantTranslationChangeLifecycle,
+    ProductVariantTranslationChangeRecord,
 };
 
 use chrono::Utc;
@@ -37,7 +91,9 @@ use rustok_pricing_persistence::{BootstrapService as PricingBootstrapService, In
 
 use crate::ProductCatalogSchemaService;
 
-use super::write_transaction::ProductWriteTransaction;
+use super::write_transaction::{
+    ProductWriteTransaction, current_product_operation_id, record_product_operation_result,
+};
 use helpers::*;
 
 const PRODUCT_SCOPE_VALUE: &str = "product";

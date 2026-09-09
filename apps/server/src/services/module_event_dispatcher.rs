@@ -274,6 +274,62 @@ pub fn build_shared_runtime_extensions_with_host_providers(
             })?;
     }
 
+    #[cfg(feature = "mod-product")]
+    {
+        let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
+            rustok_outbox::OutboxTransport::new(db.clone()),
+        ));
+        let service = Arc::new(rustok_product::CatalogService::new(db.clone(), event_bus));
+        let provider = rustok_product::ProductTranslationTargetProvider::new(service.clone());
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product translation target provider registration failed: {error}"
+                ))
+            })?;
+        let provider = rustok_product::ProductVariantTranslationTargetProvider::new(service.clone());
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Variant translation target provider registration failed: {error}"
+                ))
+            })?;
+        let provider = rustok_product::ProductOptionTranslationTargetProvider::new(service.clone());
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Option translation target provider registration failed: {error}"
+                ))
+            })?;
+        let provider = rustok_product::ProductImageTranslationTargetProvider::new(service);
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Image translation target provider registration failed: {error}"
+                ))
+            })?;
+    }
+
+    #[cfg(feature = "mod-commerce")]
+    {
+        let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
+            rustok_outbox::OutboxTransport::new(db.clone()),
+        ));
+        let service = Arc::new(
+            rustok_commerce::services::collection_translation::CollectionTranslationService::new(
+                db.clone(),
+                event_bus,
+            ),
+        );
+        let provider = rustok_commerce::CommerceCollectionTranslationTargetProvider::new(service);
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Commerce Collection translation target provider registration failed: {error}"
+                ))
+            })?;
+    }
+
     #[cfg(feature = "mod-translation")]
     {
         let provider =
@@ -599,6 +655,38 @@ mod tests {
                 .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
                     descriptor.owner_slug.as_str() == "pages"
                         && descriptor.resource_kind.as_str() == "page_metadata"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "product"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "variant"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "image"
+                }))
+        );
+        #[cfg(feature = "mod-commerce")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "commerce"
+                        && descriptor.resource_kind.as_str() == "collection_copy"
                 }))
         );
         #[cfg(feature = "mod-translation")]

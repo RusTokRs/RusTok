@@ -6,9 +6,17 @@ use std::{
 
 use crate::{
     error::{CommerceError, CommerceResult},
-    services::index_refresh::{
-        product_locale_refresh_target, record_product_locale_refreshes_in_tx,
-        record_product_variant_refreshes_in_tx,
+    services::{
+        catalog::{
+            record_product_image_translation_changes_in_tx,
+            record_product_option_translation_changes_in_tx,
+            record_product_translation_change_in_tx,
+            record_product_variant_translation_changes_in_tx,
+        },
+        index_refresh::{
+            product_locale_refresh_target, record_product_locale_refreshes_in_tx,
+            record_product_variant_refreshes_in_tx,
+        },
     },
 };
 use rustok_events::DomainEvent;
@@ -120,6 +128,36 @@ impl ProductWriteTransaction {
         actor_id: Option<Uuid>,
         event: DomainEvent,
     ) -> CommerceResult<()> {
+        self.publish_internal(tenant_id, actor_id, event, None, None)
+            .await
+    }
+
+    pub(crate) async fn publish_product_deleted(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        product_id: Uuid,
+        deleted_option_ids: &[Uuid],
+        deleted_image_ids: &[Uuid],
+    ) -> CommerceResult<()> {
+        self.publish_internal(
+            tenant_id,
+            actor_id,
+            DomainEvent::ProductDeleted { product_id },
+            Some(deleted_option_ids),
+            Some(deleted_image_ids),
+        )
+        .await
+    }
+
+    async fn publish_internal(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        event: DomainEvent,
+        deleted_option_ids: Option<&[Uuid]>,
+        deleted_image_ids: Option<&[Uuid]>,
+    ) -> CommerceResult<()> {
         let product_attribute_id = product_index_revision_touch_target(&event);
         if let Some(product_id) = product_attribute_id {
             self.bump_product_index_revision(tenant_id, product_id)
@@ -132,10 +170,64 @@ impl ProductWriteTransaction {
         let lifecycle_product_id = product_locale_refresh_target(&event);
         let product_locale_id = lifecycle_product_id.or(product_attribute_id);
         let product_variant_id = lifecycle_product_id;
+        let variant_translation_change_target = product_variant_translation_change_target(&event);
         let root_event_id = self
             .event_bus
             .publish_in_tx_with_envelope_id(&self.transaction, tenant_id, actor_id, event)
             .await?;
+
+        if let Some(product_id) = lifecycle_product_id {
+            // Translation change evidence is captured from the exact post-command owner state and
+            // committed with the same Product event. Unrelated ProductUpdated events are suppressed
+            // by the journal when the Translation resource revision and lifecycle are unchanged.
+            record_product_translation_change_in_tx(
+                &self.transaction,
+                tenant_id,
+                product_id,
+                root_event_id,
+            )
+            .await?;
+
+            // Option Translation revisions include parent Product lifecycle. Live lifecycle events
+            // therefore fan out through the exact post-command Option aggregates with semantic
+            // revision dedupe. Product deletion supplies the Option identities captured immediately
+            // before physical deletion, preserving first-delete evidence without a shadow tombstone.
+            record_product_option_translation_changes_in_tx(
+                &self.transaction,
+                tenant_id,
+                product_id,
+                root_event_id,
+                deleted_option_ids,
+            )
+            .await?;
+
+            // Image Translation revisions also include parent Product lifecycle and Image owner
+            // semantics. Live Product events fan out through exact post-command Image state with
+            // semantic dedupe. Product deletion supplies pre-delete Image identities so even an
+            // Image that predates the journal receives durable first-delete evidence.
+            record_product_image_translation_changes_in_tx(
+                &self.transaction,
+                tenant_id,
+                product_id,
+                root_event_id,
+                deleted_image_ids,
+            )
+            .await?;
+        }
+
+        if let Some((product_id, variant_id)) = variant_translation_change_target {
+            // Variant Translation revisions include the parent Product lifecycle. Product lifecycle
+            // events therefore fan out across that Product's Variants, while explicit Variant events
+            // can narrow capture to one child. The journal suppresses unchanged semantic revisions.
+            record_product_variant_translation_changes_in_tx(
+                &self.transaction,
+                tenant_id,
+                product_id,
+                root_event_id,
+                variant_id,
+            )
+            .await?;
+        }
 
         if let Some(product_id) = product_locale_id {
             // Capture the exact post-command Product source state. Any source/ledger failure rolls
@@ -232,6 +324,30 @@ impl ProductWriteTransaction {
 fn product_index_revision_touch_target(event: &DomainEvent) -> Option<Uuid> {
     match event {
         DomainEvent::ProductAttributeValuesChanged { product_id } => Some(*product_id),
+        _ => None,
+    }
+}
+
+fn product_variant_translation_change_target(
+    event: &DomainEvent,
+) -> Option<(Uuid, Option<Uuid>)> {
+    match event {
+        DomainEvent::ProductCreated { product_id }
+        | DomainEvent::ProductUpdated { product_id }
+        | DomainEvent::ProductPublished { product_id }
+        | DomainEvent::ProductDeleted { product_id } => Some((*product_id, None)),
+        DomainEvent::VariantCreated {
+            variant_id,
+            product_id,
+        }
+        | DomainEvent::VariantUpdated {
+            variant_id,
+            product_id,
+        }
+        | DomainEvent::VariantDeleted {
+            variant_id,
+            product_id,
+        } => Some((*product_id, Some(*variant_id))),
         _ => None,
     }
 }

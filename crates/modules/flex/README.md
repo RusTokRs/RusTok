@@ -25,9 +25,9 @@ Flex is explicit product opt-in. A domain entity does not become a Flex donor me
 
 The runtime donor registry is a product contract, not an inventory of tables that happen to support JSON.
 
-- `user`, `product`, `order`, and `topic` are the currently registered attached donors.
+- `user`, `product`, `order`, and `topic` remain registered attached donors through the existing registry path.
 - `forum.topic` is intentionally extensible through Flex. Optional tenant-defined fields may augment a topic, while status/lifecycle, category binding, content, routes, moderation, counters, accepted-solution semantics and access policy remain normalized Forum-owned state.
-- `taxonomy.category` is the next planned donor after Taxonomy becomes the canonical Category owner. Taxonomy owns built-in category identity/hierarchy/localized copy/presentation; Flex supplies only administrator-defined extension fields.
+- `taxonomy.category` is an active generic attached donor. Taxonomy owns built-in category identity/hierarchy/localized copy/presentation and aggregate lifecycle; Flex owns only administrator-defined extension fields and their attached Translation projection.
 - Future donors such as groups/profiles must opt in only with a demonstrated product surface and must reuse Flex rather than introduce a module-local custom-fields engine.
 
 Critical normalized business invariants remain in their owner modules even for Flex-enabled entities.
@@ -37,7 +37,7 @@ Critical normalized business invariants remain in their owner modules even for F
 The current Flex multilingual contract is already partially live and must be treated as canonical by contributors and agents:
 
 - `FieldDefinition` carries explicit `is_localized` semantics in `rustok-core`, registry DTOs, GraphQL inputs, and attached-mode persistence.
-- Attached-mode registered consumers are `user`, `product`, `order`, and `topic`.
+- Attached-mode registered consumers are `user`, `product`, `order`, and `topic`; `taxonomy.category` uses the generic attached donor adapter rather than a category-specific field engine.
 - Standalone schema UI copy (`name`, `description`) no longer belongs in `flex_schemas`; it is stored in `flex_schema_translations`.
 - Standalone entry payloads no longer treat inline locale-aware JSON as the canonical path: shared values stay in `flex_entries.data`, while locale-aware values live in `flex_entry_localized_values`.
 - Generic attached localized value storage lives in the shared `flex` crate and persists into `flex_attached_localized_values`; Topic uses `forum_topics.metadata` for shared donor payload plus the same parallel localized-value contract.
@@ -47,6 +47,27 @@ The current Flex multilingual contract is already partially live and must be tre
 - Full end-to-end integration coverage remains an explicit verification debt; do not treat it as a contract gap or as permission to reintroduce inline localized storage.
 
 Do not implement new Flex multilingual behavior from older plans that assume inline localized copy in base rows or treat JSON blobs as the canonical multilingual storage path.
+
+## Attached Translation change evidence
+
+Flex owns mutation tracking and revision semantics for Translation resources projected from generic
+attached custom fields. Host wiring may register or expose the capability, but must not rebuild these
+semantics in the application layer.
+
+- PostgreSQL stores durable per-resource state plus an ordered attached Translation change journal.
+- Exact localized-value mutations and translation-relevant field-definition mutations feed the same resource evidence.
+- A resource revision is a stable event-time token `attached:N`, scoped to that resource rather than to an unrelated donor/global revision.
+- Multiple affected rows, trigger paths, or OLD/NEW schema fan-out within one database transaction collapse to one external revision per resource.
+- Field-definition UPDATE/DELETE captures affected OLD resource ids before FK cascades and NEW resource ids after cascades.
+- Owner hard delete records the final `deleted` tombstone in the same transaction as donor cleanup/deletion.
+- The Flex-owned ChangeCursor reader captures a high-water mark and returns only journal rows bounded by that mark, so a page cannot drift as concurrent writes arrive.
+- State backfill establishes revision `1` for pre-existing attached Translation resources without fabricating historical journal events.
+- Attached Translation snapshots now use the same durable `attached:N` state for `resource_revision`; the previous Taxonomy-owner/schema hash is no longer a revision source.
+- Snapshot list/read composition uses one PostgreSQL repeatable-read snapshot for donor existence, Flex schema, exact localized values and durable resource revision. Apply rereads the durable revision after mutation inside the same serialized write transaction.
+
+The journal/state migration is the ExpandContract / PreActivation foundation and snapshot revision
+cutover is complete. Host provider activation remains a separate rollout step; until that lands, do
+not add polling reconstruction, a compatibility revision branch, or a dual provider path.
 
 ## Interactions
 
@@ -69,6 +90,8 @@ Do not implement new Flex multilingual behavior from older plans that assume inl
 - `flex::{parse_standalone_fields_config, build_standalone_custom_fields_schema, serialize_standalone_fields_config, standalone_localized_field_keys}`
 - `flex::{StandaloneSchemaViewSource, StandaloneSchemaTranslationSource, StandaloneEntryViewSource, standalone_schema_view_from_source, standalone_entry_view_from_source}`
 - `flex::normalize_and_validate_standalone_entry`
+- `flex::FlexAttachedTranslationChangeReader`
+- `flex::load_attached_translation_resource_revisions`
 
 ## Docs
 
