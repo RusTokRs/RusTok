@@ -9,9 +9,11 @@
 use chrono::Utc;
 use sea_orm::entity::prelude::*;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
+    DbBackend, EntityTrait, QueryFilter, Statement,
 };
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
@@ -23,6 +25,7 @@ use crate::{
 };
 
 pub const GENERIC_ATTACHED_VALUES_TABLE: &str = "flex_attached_values";
+const ATTACHED_WRITE_LOCK_NAMESPACE: &str = "rustok-flex/attached-values-write-lock/v1";
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "flex_attached_values")]
@@ -41,6 +44,38 @@ pub struct Model {
 pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
+
+/// Serialize writes for one registered generic donor even when its target locale has no
+/// existing row to lock. PostgreSQL uses a transaction-scoped advisory lock derived only
+/// from stable owner identity. SQLite already serializes writers at the database level.
+pub async fn lock_generic_attached_entity_write(
+    txn: &DatabaseTransaction,
+    entity: AttachedEntityRef<'_>,
+) -> Result<(), FlexError> {
+    validate_entity_ref(&entity)?;
+    if txn.get_database_backend() != DbBackend::Postgres {
+        return Ok(());
+    }
+
+    let mut hasher = Sha256::new();
+    digest_lock_component(&mut hasher, ATTACHED_WRITE_LOCK_NAMESPACE);
+    digest_lock_component(&mut hasher, &entity.tenant_id.to_string());
+    digest_lock_component(&mut hasher, entity.entity_type);
+    digest_lock_component(&mut hasher, &entity.entity_id.to_string());
+    let digest = hasher.finalize();
+    let mut bytes = [0u8; 8];
+    bytes.copy_from_slice(&digest[..8]);
+    let lock_key = i64::from_be_bytes(bytes);
+
+    txn.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT pg_advisory_xact_lock($1)",
+        vec![lock_key.into()],
+    ))
+    .await
+    .map_err(database_error)?;
+    Ok(())
+}
 
 pub async fn load_generic_attached_shared_values<C>(
     db: &C,
@@ -211,6 +246,11 @@ fn normalized_object(value: &Value) -> Value {
 
 fn empty_object() -> Value {
     Value::Object(Map::new())
+}
+
+fn digest_lock_component(hasher: &mut Sha256, value: &str) {
+    hasher.update((value.len() as u64).to_be_bytes());
+    hasher.update(value.as_bytes());
 }
 
 fn database_error(error: sea_orm::DbErr) -> FlexError {
