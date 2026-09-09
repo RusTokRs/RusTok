@@ -10,6 +10,7 @@ use sea_orm_migration::MigrationTrait;
 pub mod attached;
 pub mod attached_definitions;
 pub mod attached_storage;
+pub mod attached_translation;
 pub mod cache_generation;
 pub mod entity_type;
 pub mod errors;
@@ -40,9 +41,17 @@ pub use attached_definitions::{
 };
 pub use attached_storage::{
     GENERIC_ATTACHED_VALUES_TABLE, delete_generic_attached_values,
-    load_generic_attached_shared_values, persist_generic_attached_shared_values,
-    persist_prepared_generic_attached_values, prepare_generic_attached_values_update,
-    resolve_generic_attached_values,
+    load_generic_attached_shared_values, lock_generic_attached_entity_write,
+    persist_generic_attached_shared_values, persist_prepared_generic_attached_values,
+    prepare_generic_attached_values_update, resolve_generic_attached_values,
+};
+pub use attached_translation::{
+    FlexAttachedTranslationError, FlexAttachedTranslationExactLocaleApply,
+    FlexAttachedTranslationExactLocaleApplyReceipt, FlexAttachedTranslationExactLocaleSnapshot,
+    FlexAttachedTranslationFieldSnapshot, FlexAttachedTranslationOwnerPort,
+    FlexAttachedTranslationResult, FlexAttachedTranslationScalarKind,
+    FlexAttachedTranslationTargetValue, apply_flex_attached_translation_exact,
+    read_flex_attached_translation_exact, validate_flex_attached_translation_locale_pair,
 };
 pub use entity_type::{
     MAX_FLEX_ENTITY_TYPE_BYTES, TAXONOMY_CATEGORY_ENTITY_TYPE, is_valid_flex_entity_type,
