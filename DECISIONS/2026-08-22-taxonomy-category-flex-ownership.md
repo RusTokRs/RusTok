@@ -76,6 +76,33 @@ The existing `topic_field_definitions`, `forum_topics.metadata`, attached locali
 same minimal reusable Flex donor adapter used by other consumers, not remove Topic support or build a
 Forum-specific custom-field engine.
 
+### 5. Flex owns Translation change evidence for attached extension fields
+
+Translation-facing attached custom-field snapshots are a Flex capability even when the aggregate
+identity and lifecycle belong to another module. Flex therefore owns the durable revision and change
+semantics for those projected resources; the host may register/re-export the capability but must not
+reconstruct mutation tracking or revision rules outside Flex.
+
+For attached Translation resources:
+
+- durable per-resource state and the ordered change journal live in Flex-owned PostgreSQL storage;
+- the externally visible resource revision is the stable event-time token `attached:N`;
+- one committed database transaction advances a given resource by at most one external revision,
+  even when several localized rows or both sides of a schema move are touched;
+- exact localized-value mutations and translation-relevant field-definition changes feed the same
+  resource journal;
+- field-definition UPDATE/DELETE fan-out captures the OLD resource set before FK cascades and the NEW
+  resource set after cascades, so schema moves/removals cannot hide affected resource ids;
+- an owner hard delete records the final `deleted` tombstone in the same owner transaction, replacing
+  any earlier active event for that resource in that transaction;
+- ChangeCursor reads are bounded by a captured high-water mark and remain Flex-owned;
+- migration backfill may establish current resource state but must not fabricate historical change
+  events for mutations that predate the journal.
+
+The journal/state migration is an ExpandContract / PreActivation step. Snapshot revision cutover and
+provider activation are separate rollout decisions and must not make the host a second owner of the
+same semantics.
+
 ## Consequences
 
 Positive:
@@ -94,8 +121,8 @@ Tradeoffs:
   Category implementation;
 - Product and Forum have category-specific policy/projection state that must become bindings rather
   than being blindly moved into Taxonomy;
-- Flex donor onboarding still has too much per-donor plumbing and should be reduced using
-  `taxonomy.category` as the next reference integration.
+- Flex donor onboarding still has too much per-donor plumbing and should continue to converge on the
+  reusable adapter established by `taxonomy.category`.
 
 ## Migration constraints
 
@@ -108,6 +135,8 @@ Tradeoffs:
 - Media remains the binary lifecycle owner; Taxonomy/Flex reference Media identities.
 - Topic Flex fields must remain optional extension data and must not replace normalized Forum
   invariants.
+- Keep attached Translation resource state/journal owner-owned by Flex; do not add host-side revision
+  counters, polling reconstruction, or dual mutation paths.
 - Update focused source/runtime guards atomically with each ownership cutover.
 
 ## Verification
@@ -119,6 +148,12 @@ The completed migration must prove:
 - Taxonomy Translation CAS/progress/change-cursor behavior for Category;
 - cross-tenant consumer category bindings are rejected;
 - `taxonomy.category` Flex definitions/values are tenant-scoped and localized when configured;
+- attached Flex ChangeCursor revisions are durable, resource-scoped, transaction-stable and bounded
+  by a reader high-water mark;
+- schema eligibility/key moves and deletes fan out to the real affected resource ids despite FK
+  cascades, while backfill emits no historical journal entries;
+- Category hard delete ends with a same-transaction `deleted` tombstone for any existing attached
+  Translation resource;
 - `forum.topic` remains a registered Flex donor and unsupported entity types still fail closed;
 - Topic custom fields cannot overwrite or substitute normalized Forum business fields;
 - Forum mounted multilingual/RTL category surfaces consume Taxonomy-owned localized category data.
