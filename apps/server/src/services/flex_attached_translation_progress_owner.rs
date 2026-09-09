@@ -7,7 +7,8 @@ use flex::{
     validate_flex_attached_translation_locale_pair,
 };
 use sea_orm::{
-    AccessMode, DatabaseBackend, DatabaseConnection, IsolationLevel, TransactionTrait,
+    AccessMode, ConnectionTrait, DatabaseBackend, DatabaseConnection, IsolationLevel,
+    TransactionTrait,
 };
 use uuid::Uuid;
 
