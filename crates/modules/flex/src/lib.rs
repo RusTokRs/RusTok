@@ -144,7 +144,7 @@ pub use standalone::{
 
 pub use events::{
     flex_entry_created_event, flex_entry_deleted_event, flex_entry_updated_event,
-    flex_schema_created_event, flex_schema_updated_event, flex_schema_deleted_event,
+    flex_schema_created_event, flex_schema_deleted_event, flex_schema_updated_event,
 };
 
 impl MigrationSource for FlexModule {
