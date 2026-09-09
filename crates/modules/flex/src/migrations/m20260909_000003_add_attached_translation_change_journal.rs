@@ -3,16 +3,14 @@ use sea_orm_migration::{
     sea_orm::{ConnectionTrait, DatabaseBackend},
 };
 
-const JOURNAL_TABLE: &str = "flex_attached_translation_change_journal";
-
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // ChangeCursor is a PostgreSQL production capability. SQLite remains useful for
-        // portable owner tests, but must not pretend to provide durable ordered changes.
+        // Durable ordered ChangeCursor is a PostgreSQL production capability. SQLite remains
+        // available for portable owner tests, but must not pretend to provide event ordering.
         if manager.get_database_backend() != DatabaseBackend::Postgres {
             return Ok(());
         }
@@ -21,12 +19,30 @@ impl MigrationTrait for Migration {
             .get_connection()
             .execute_unprepared(
                 r#"
+CREATE TABLE flex_attached_translation_resource_state (
+    tenant_id UUID NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    entity_id UUID NOT NULL,
+    revision BIGINT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, entity_type, entity_id),
+    CONSTRAINT chk_flex_attached_translation_state_tenant_non_nil
+        CHECK (tenant_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CONSTRAINT chk_flex_attached_translation_state_entity_type_nonblank
+        CHECK (length(trim(entity_type)) > 0),
+    CONSTRAINT chk_flex_attached_translation_state_entity_non_nil
+        CHECK (entity_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CONSTRAINT chk_flex_attached_translation_state_revision_positive
+        CHECK (revision > 0)
+);
+
 CREATE TABLE flex_attached_translation_change_journal (
     change_seq BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     tenant_id UUID NOT NULL,
     entity_type VARCHAR(64) NOT NULL,
-    entity_id UUID NULL,
-    change_kind VARCHAR(24) NOT NULL,
+    entity_id UUID NOT NULL,
+    resource_revision VARCHAR(64) NOT NULL,
+    lifecycle VARCHAR(16) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_flex_attached_translation_change_seq_positive
         CHECK (change_seq > 0),
@@ -35,15 +51,11 @@ CREATE TABLE flex_attached_translation_change_journal (
     CONSTRAINT chk_flex_attached_translation_change_entity_type_nonblank
         CHECK (length(trim(entity_type)) > 0),
     CONSTRAINT chk_flex_attached_translation_change_entity_non_nil
-        CHECK (entity_id IS NULL OR entity_id <> '00000000-0000-0000-0000-000000000000'::uuid),
-    CONSTRAINT chk_flex_attached_translation_change_kind
-        CHECK (change_kind IN ('resource_changed', 'resource_deleted', 'schema_changed')),
-    CONSTRAINT chk_flex_attached_translation_change_shape
-        CHECK (
-            (change_kind = 'schema_changed' AND entity_id IS NULL)
-            OR
-            (change_kind IN ('resource_changed', 'resource_deleted') AND entity_id IS NOT NULL)
-        )
+        CHECK (entity_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CONSTRAINT chk_flex_attached_translation_change_revision_nonblank
+        CHECK (length(trim(resource_revision)) > 0),
+    CONSTRAINT chk_flex_attached_translation_change_lifecycle
+        CHECK (lifecycle IN ('active', 'deleted'))
 );
 
 CREATE INDEX idx_flex_attached_translation_change_tenant_seq
@@ -51,6 +63,86 @@ CREATE INDEX idx_flex_attached_translation_change_tenant_seq
 
 CREATE INDEX idx_flex_attached_translation_change_scope_seq
     ON flex_attached_translation_change_journal (tenant_id, entity_type, change_seq);
+
+CREATE INDEX idx_flex_attached_translation_change_resource_seq
+    ON flex_attached_translation_change_journal (
+        tenant_id,
+        entity_type,
+        entity_id,
+        change_seq DESC
+    );
+
+-- Existing exact attached Translation resources start at revision 1. This establishes state
+-- without manufacturing historical ChangeCursor rows for mutations that predate the journal.
+INSERT INTO flex_attached_translation_resource_state (
+    tenant_id,
+    entity_type,
+    entity_id,
+    revision
+)
+SELECT DISTINCT
+    value.tenant_id,
+    value.entity_type,
+    value.entity_id,
+    1
+FROM flex_attached_localized_values value
+JOIN flex_attached_field_definitions definition
+  ON definition.tenant_id = value.tenant_id
+ AND definition.entity_type = value.entity_type
+ AND definition.field_key = value.field_key
+WHERE definition.is_active = TRUE
+  AND definition.is_localized = TRUE
+  AND definition.field_type IN ('text', 'textarea')
+ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING;
+
+CREATE OR REPLACE FUNCTION rustok_flex_bump_attached_translation_resource(
+    p_tenant_id UUID,
+    p_entity_type TEXT,
+    p_entity_id UUID
+) RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    next_revision BIGINT;
+    revision_token TEXT;
+BEGIN
+    INSERT INTO flex_attached_translation_resource_state (
+        tenant_id,
+        entity_type,
+        entity_id,
+        revision,
+        updated_at
+    ) VALUES (
+        p_tenant_id,
+        p_entity_type,
+        p_entity_id,
+        1,
+        CURRENT_TIMESTAMP
+    )
+    ON CONFLICT (tenant_id, entity_type, entity_id)
+    DO UPDATE SET
+        revision = flex_attached_translation_resource_state.revision + 1,
+        updated_at = CURRENT_TIMESTAMP
+    RETURNING revision INTO next_revision;
+
+    revision_token := format('attached:%s', next_revision);
+    INSERT INTO flex_attached_translation_change_journal (
+        tenant_id,
+        entity_type,
+        entity_id,
+        resource_revision,
+        lifecycle
+    ) VALUES (
+        p_tenant_id,
+        p_entity_type,
+        p_entity_id,
+        revision_token,
+        'active'
+    );
+
+    RETURN revision_token;
+END;
+$$;
 
 CREATE OR REPLACE FUNCTION rustok_flex_attached_translation_field_eligible(
     p_tenant_id UUID,
@@ -98,10 +190,10 @@ BEGIN
 
     IF TG_OP = 'INSERT' THEN
         IF new_relevant THEN
-            INSERT INTO flex_attached_translation_change_journal (
-                tenant_id, entity_type, entity_id, change_kind
-            ) VALUES (
-                NEW.tenant_id, NEW.entity_type, NEW.entity_id, 'resource_changed'
+            PERFORM rustok_flex_bump_attached_translation_resource(
+                NEW.tenant_id,
+                NEW.entity_type,
+                NEW.entity_id
             );
         END IF;
         RETURN NEW;
@@ -109,10 +201,10 @@ BEGIN
 
     IF TG_OP = 'DELETE' THEN
         IF old_relevant THEN
-            INSERT INTO flex_attached_translation_change_journal (
-                tenant_id, entity_type, entity_id, change_kind
-            ) VALUES (
-                OLD.tenant_id, OLD.entity_type, OLD.entity_id, 'resource_changed'
+            PERFORM rustok_flex_bump_attached_translation_resource(
+                OLD.tenant_id,
+                OLD.entity_type,
+                OLD.entity_id
             );
         END IF;
         RETURN OLD;
@@ -127,7 +219,7 @@ BEGIN
        AND OLD.entity_id IS NOT DISTINCT FROM NEW.entity_id
        AND OLD.field_key IS NOT DISTINCT FROM NEW.field_key
        AND OLD.locale IS NOT DISTINCT FROM NEW.locale
-       AND OLD.value IS NOT DISTINCT FROM NEW.value THEN
+       AND OLD.value::text IS NOT DISTINCT FROM NEW.value::text THEN
         RETURN NEW;
     END IF;
 
@@ -136,18 +228,18 @@ BEGIN
         AND OLD.entity_id IS NOT DISTINCT FROM NEW.entity_id;
 
     IF old_relevant THEN
-        INSERT INTO flex_attached_translation_change_journal (
-            tenant_id, entity_type, entity_id, change_kind
-        ) VALUES (
-            OLD.tenant_id, OLD.entity_type, OLD.entity_id, 'resource_changed'
+        PERFORM rustok_flex_bump_attached_translation_resource(
+            OLD.tenant_id,
+            OLD.entity_type,
+            OLD.entity_id
         );
     END IF;
 
     IF new_relevant AND (NOT same_resource OR NOT old_relevant) THEN
-        INSERT INTO flex_attached_translation_change_journal (
-            tenant_id, entity_type, entity_id, change_kind
-        ) VALUES (
-            NEW.tenant_id, NEW.entity_type, NEW.entity_id, 'resource_changed'
+        PERFORM rustok_flex_bump_attached_translation_resource(
+            NEW.tenant_id,
+            NEW.entity_type,
+            NEW.entity_id
         );
     END IF;
 
@@ -166,75 +258,75 @@ AS $$
 DECLARE
     old_eligible BOOLEAN := FALSE;
     new_eligible BOOLEAN := FALSE;
-    old_scope_changed BOOLEAN := FALSE;
+    old_tenant_id UUID;
+    old_entity_type TEXT;
+    old_field_key TEXT;
+    new_tenant_id UUID;
+    new_entity_type TEXT;
+    new_field_key TEXT;
+    resource RECORD;
 BEGIN
     IF TG_OP <> 'INSERT' THEN
         old_eligible := OLD.is_active
             AND OLD.is_localized
             AND OLD.field_type IN ('text', 'textarea');
+        old_tenant_id := OLD.tenant_id;
+        old_entity_type := OLD.entity_type;
+        old_field_key := OLD.field_key;
     END IF;
     IF TG_OP <> 'DELETE' THEN
         new_eligible := NEW.is_active
             AND NEW.is_localized
             AND NEW.field_type IN ('text', 'textarea');
+        new_tenant_id := NEW.tenant_id;
+        new_entity_type := NEW.entity_type;
+        new_field_key := NEW.field_key;
     END IF;
 
-    IF TG_OP = 'INSERT' THEN
-        IF new_eligible THEN
-            INSERT INTO flex_attached_translation_change_journal (
-                tenant_id, entity_type, entity_id, change_kind
-            ) VALUES (
-                NEW.tenant_id, NEW.entity_type, NULL, 'schema_changed'
-            );
-        END IF;
-        RETURN NEW;
-    END IF;
-
-    IF TG_OP = 'DELETE' THEN
-        IF old_eligible THEN
-            INSERT INTO flex_attached_translation_change_journal (
-                tenant_id, entity_type, entity_id, change_kind
-            ) VALUES (
-                OLD.tenant_id, OLD.entity_type, NULL, 'schema_changed'
-            );
-        END IF;
-        RETURN OLD;
-    END IF;
-
-    IF NOT old_eligible AND NOT new_eligible THEN
-        RETURN NEW;
-    END IF;
-
-    IF OLD.tenant_id IS NOT DISTINCT FROM NEW.tenant_id
+    IF TG_OP = 'UPDATE'
+       AND OLD.tenant_id IS NOT DISTINCT FROM NEW.tenant_id
        AND OLD.entity_type IS NOT DISTINCT FROM NEW.entity_type
        AND OLD.field_key IS NOT DISTINCT FROM NEW.field_key
        AND OLD.field_type IS NOT DISTINCT FROM NEW.field_type
        AND OLD.is_localized IS NOT DISTINCT FROM NEW.is_localized
        AND OLD.is_required IS NOT DISTINCT FROM NEW.is_required
-       AND OLD.validation IS NOT DISTINCT FROM NEW.validation
+       AND OLD.validation::text IS NOT DISTINCT FROM NEW.validation::text
        AND OLD.is_active IS NOT DISTINCT FROM NEW.is_active THEN
         RETURN NEW;
     END IF;
 
-    old_scope_changed := OLD.tenant_id IS DISTINCT FROM NEW.tenant_id
-        OR OLD.entity_type IS DISTINCT FROM NEW.entity_type;
-
-    IF old_eligible THEN
-        INSERT INTO flex_attached_translation_change_journal (
-            tenant_id, entity_type, entity_id, change_kind
-        ) VALUES (
-            OLD.tenant_id, OLD.entity_type, NULL, 'schema_changed'
-        );
+    IF NOT old_eligible AND NOT new_eligible THEN
+        IF TG_OP = 'DELETE' THEN
+            RETURN OLD;
+        END IF;
+        RETURN NEW;
     END IF;
 
-    IF new_eligible AND (old_scope_changed OR NOT old_eligible) THEN
-        INSERT INTO flex_attached_translation_change_journal (
-            tenant_id, entity_type, entity_id, change_kind
-        ) VALUES (
-            NEW.tenant_id, NEW.entity_type, NULL, 'schema_changed'
+    FOR resource IN
+        SELECT DISTINCT value.tenant_id, value.entity_type, value.entity_id
+        FROM flex_attached_localized_values value
+        WHERE (
+            old_eligible
+            AND value.tenant_id = old_tenant_id
+            AND value.entity_type = old_entity_type
+            AND value.field_key = old_field_key
+        ) OR (
+            new_eligible
+            AND value.tenant_id = new_tenant_id
+            AND value.entity_type = new_entity_type
+            AND value.field_key = new_field_key
+        )
+    LOOP
+        PERFORM rustok_flex_bump_attached_translation_resource(
+            resource.tenant_id,
+            resource.entity_type,
+            resource.entity_id
         );
-    END IF;
+    END LOOP;
 
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
     RETURN NEW;
 END;
 $$;
@@ -265,7 +357,9 @@ DROP TRIGGER IF EXISTS trg_flex_attached_translation_value_change
     ON flex_attached_localized_values;
 DROP FUNCTION IF EXISTS rustok_record_flex_attached_translation_resource_change();
 DROP FUNCTION IF EXISTS rustok_flex_attached_translation_field_eligible(UUID, TEXT, TEXT);
+DROP FUNCTION IF EXISTS rustok_flex_bump_attached_translation_resource(UUID, TEXT, UUID);
 DROP TABLE IF EXISTS flex_attached_translation_change_journal;
+DROP TABLE IF EXISTS flex_attached_translation_resource_state;
 "#,
             )
             .await?;
