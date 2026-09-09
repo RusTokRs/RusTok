@@ -19,6 +19,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
     EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
+use serde::Serialize;
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -31,6 +32,12 @@ const OPERATION_APPLY_PATCH: &str = "translation_target_apply_schema_copy_patch"
 const RESOURCE_REVISION_NAMESPACE: &str = "rustok-flex/schema-copy-resource/v1";
 const LOCALE_REVISION_NAMESPACE: &str = "rustok-flex/schema-copy-locale/v1";
 const LEGACY_UNDETERMINED_LOCALE: &str = "und";
+
+#[derive(Serialize)]
+struct OwnerApplyRequestHash<'a> {
+    schema_id: Uuid,
+    request: &'a FlexSchemaTranslationExactLocaleApply,
+}
 
 #[derive(Clone)]
 pub struct ServerFlexSchemaTranslationOwner {
@@ -55,8 +62,8 @@ impl ServerFlexSchemaTranslationOwner {
 
         // The language-agnostic schema parent is the serialization point for a schema-copy
         // apply. Existing exact locale rows are locked as well; an absent target row is
-        // protected by the parent lock for provider writes and by the composite PK against
-        // a concurrent legacy/direct insert.
+        // still protected against lost updates by the composite PK if a legacy/direct
+        // writer races without taking the owner parent lock.
         let schema = flex_schemas::Entity::find_by_id(schema_id)
             .filter(flex_schemas::Column::TenantId.eq(tenant_id))
             .lock_exclusive()
@@ -121,6 +128,14 @@ impl ServerFlexSchemaTranslationOwner {
                     .flatten()
             })
             .flatten();
+        let existing_target = translations
+            .iter()
+            .find(|translation| translation.locale == request.target_locale);
+        let target_description = if source_has_description {
+            requested_description
+        } else {
+            existing_target.and_then(|translation| translation.description.clone())
+        };
 
         let mut definitions = parse_standalone_fields_config(schema.fields_config.clone())
             .map_err(|error| persisted_contract_error("fields_config", error))?;
@@ -141,13 +156,19 @@ impl ServerFlexSchemaTranslationOwner {
             &request.target_locale,
             &definition_targets,
         )?;
+
+        // Reuse the canonical standalone validation law for all request-controlled
+        // schema copy before touching persistence. Persisted target-only description was
+        // already validated while building `before` and is safe to preserve here.
         validate_update_schema_command(&UpdateFlexSchemaCommand {
+            name: Some(target_name.clone()),
+            description: target_description.clone(),
             fields_config: Some(definitions.clone()),
             ..Default::default()
         })
         .map_err(|error| {
             FlexSchemaTranslationError::Invalid(format!(
-                "Flex rejected translated schema field definitions: {error}"
+                "Flex rejected translated schema copy: {error}"
             ))
         })?;
 
@@ -161,19 +182,6 @@ impl ServerFlexSchemaTranslationOwner {
         } else {
             schema.clone()
         };
-
-        let existing_target = translations
-            .iter()
-            .find(|translation| translation.locale == request.target_locale);
-        let target_description = if source_has_description {
-            requested_description
-        } else {
-            existing_target.and_then(|translation| translation.description.clone())
-        };
-        validate_schema_name(&target_name)?;
-        if let Some(description) = &target_description {
-            validate_schema_description(description)?;
-        }
 
         let row_changed = match existing_target {
             Some(existing) => {
@@ -379,19 +387,23 @@ impl FlexSchemaTranslationOwnerPort for ServerFlexSchemaTranslationOwner {
         }
         request.validate()?;
 
+        let admission_request = OwnerApplyRequestHash {
+            schema_id,
+            request: &request,
+        };
         let lease = match idempotency::admit(
             &self.db,
             idempotency::OwnerOperationScope::Tenant(tenant_id),
             OWNER_SLUG,
             &request.operation.idempotency_key,
             OPERATION_APPLY_PATCH,
-            &request,
+            &admission_request,
         )
         .await
         .map_err(FlexSchemaTranslationError::Operation)?
         {
             idempotency::Admission::Run(lease) => lease,
-            idempotency::Admission::Replay(value) => return decode_receipt(value),
+            idempotency::Admission::Replay(value) => return decode_receipt(value, schema_id),
             idempotency::Admission::ReplayError(error) => {
                 return Err(FlexSchemaTranslationError::Operation(error));
             }
@@ -456,9 +468,20 @@ fn build_snapshot(
         source_locale: source_locale.to_string(),
         target_locale: target_locale.to_string(),
         resource_revision: resource_revision(schema, translations),
-        source_revision: locale_revision(schema.id, source_locale, &source_values),
-        target_revision: (!target_values.is_empty())
-            .then(|| locale_revision(schema.id, target_locale, &target_values)),
+        source_revision: locale_revision(
+            schema.tenant_id,
+            schema.id,
+            source_locale,
+            &source_values,
+        ),
+        target_revision: (!target_values.is_empty()).then(|| {
+            locale_revision(
+                schema.tenant_id,
+                schema.id,
+                target_locale,
+                &target_values,
+            )
+        }),
         exact_locales: exact_locales.into_iter().collect(),
         leaves,
     })
@@ -547,7 +570,7 @@ where
     Ok(grouped)
 }
 
-fn resource_revision(
+pub(crate) fn resource_revision(
     schema: &flex_schemas::Model,
     translations: &[flex_schema_translations::Model],
 ) -> String {
@@ -571,12 +594,14 @@ fn resource_revision(
 }
 
 fn locale_revision(
+    tenant_id: Uuid,
     schema_id: Uuid,
     locale: &str,
     values: &BTreeMap<FlexSchemaTranslationLeaf, String>,
 ) -> String {
     let mut hasher = Sha256::new();
     hash_str(&mut hasher, LOCALE_REVISION_NAMESPACE);
+    hash_uuid(&mut hasher, tenant_id);
     hash_uuid(&mut hasher, schema_id);
     hash_str(&mut hasher, locale);
     hash_len(&mut hasher, values.len());
@@ -643,7 +668,12 @@ fn hash_json(hasher: &mut Sha256, value: &JsonValue) {
             hash_len(hasher, keys.len());
             for key in keys {
                 hash_str(hasher, key);
-                hash_json(hasher, &values[key]);
+                hash_json(
+                    hasher,
+                    values
+                        .get(key)
+                        .expect("canonical JSON object key must resolve"),
+                );
             }
         }
     }
@@ -773,13 +803,44 @@ fn validate_uuid(value: Uuid, label: &str) -> FlexSchemaTranslationResult<()> {
 
 fn decode_receipt(
     value: JsonValue,
+    expected_schema_id: Uuid,
 ) -> FlexSchemaTranslationResult<FlexSchemaTranslationExactLocaleApplyReceipt> {
-    serde_json::from_value(value).map_err(|error| {
-        FlexSchemaTranslationError::Operation(PortError::invariant_violation(
-            "outbox.operation_receipt_corrupt",
-            error.to_string(),
-        ))
-    })
+    let receipt: FlexSchemaTranslationExactLocaleApplyReceipt =
+        serde_json::from_value(value).map_err(|error| {
+            FlexSchemaTranslationError::Operation(PortError::invariant_violation(
+                "outbox.operation_receipt_corrupt",
+                error.to_string(),
+            ))
+        })?;
+    let mut leaves = BTreeSet::new();
+    let invalid = receipt.schema_id != expected_schema_id
+        || receipt.operation_id.is_nil()
+        || receipt.resource_revision.trim().is_empty()
+        || receipt.target_revision.trim().is_empty()
+        || receipt.target_values.is_empty()
+        || receipt.target_values.iter().any(|target| {
+            !leaves.insert(target.leaf.clone())
+                || target
+                    .value
+                    .as_ref()
+                    .is_some_and(|value| value.trim().is_empty())
+        });
+    let schema_name_present = receipt.target_values.iter().any(|target| {
+        target.leaf == FlexSchemaTranslationLeaf::SchemaName
+            && target
+                .value
+                .as_ref()
+                .is_some_and(|value| !value.trim().is_empty())
+    });
+    if invalid || !schema_name_present {
+        return Err(FlexSchemaTranslationError::Operation(
+            PortError::invariant_violation(
+                "outbox.operation_receipt_corrupt",
+                "Flex schema translation owner receipt violates its identity contract",
+            ),
+        ));
+    }
+    Ok(receipt)
 }
 
 fn persisted_contract_error(
