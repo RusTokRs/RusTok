@@ -3,7 +3,8 @@ use flex::{
     FlexAttachedTranslationError, FlexAttachedTranslationExactProgress,
     FlexAttachedTranslationProgressOwnerPort, FlexAttachedTranslationResult,
     TAXONOMY_CATEGORY_ENTITY_TYPE, load_attached_translation_localized_values,
-    load_attached_translation_schema_in, validate_flex_attached_translation_locale_pair,
+    load_attached_translation_resource_revisions, load_attached_translation_schema_in,
+    validate_flex_attached_translation_locale_pair,
 };
 use sea_orm::{
     AccessMode, ConnectionTrait, DatabaseBackend, DatabaseConnection, IsolationLevel,
@@ -27,9 +28,7 @@ impl ServerFlexTaxonomyCategoryTranslationProgressOwner {
 }
 
 #[async_trait]
-impl FlexAttachedTranslationProgressOwnerPort
-    for ServerFlexTaxonomyCategoryTranslationProgressOwner
-{
+impl FlexAttachedTranslationProgressOwnerPort for ServerFlexTaxonomyCategoryTranslationProgressOwner {
     fn entity_type(&self) -> &str {
         TAXONOMY_CATEGORY_ENTITY_TYPE
     }
@@ -42,27 +41,32 @@ impl FlexAttachedTranslationProgressOwnerPort
     ) -> FlexAttachedTranslationResult<FlexAttachedTranslationExactProgress> {
         validate_uuid(tenant_id, "tenant_id")?;
         validate_flex_attached_translation_locale_pair(source_locale, target_locale)?;
-
-        // Progress spans Taxonomy inventory pages and Flex value rows. PostgreSQL uses one
-        // repeatable-read/read-only transaction so every page observes the same donor/schema/
-        // values snapshot. SQLite pins its read transaction on first access.
-        let txn = match self.db.get_database_backend() {
-            DatabaseBackend::Postgres => {
-                self.db
-                    .begin_with_config(
-                        Some(IsolationLevel::RepeatableRead),
-                        Some(AccessMode::ReadOnly),
-                    )
-                    .await
-            }
-            _ => self.db.begin().await,
+        if self.db.get_database_backend() != DatabaseBackend::Postgres {
+            return Err(FlexAttachedTranslationError::Invalid(
+                "attached Translation aggregate progress requires PostgreSQL durable revision state"
+                    .to_string(),
+            ));
         }
-        .map_err(database_error)?;
 
-        let schema =
-            load_attached_translation_schema_in(&txn, tenant_id, TAXONOMY_CATEGORY_ENTITY_TYPE)
-                .await
-                .map_err(flex_storage_error)?;
+        // Progress spans Taxonomy inventory pages plus Flex schema/value/revision state. Keep the
+        // complete aggregation in one PostgreSQL repeatable-read snapshot so every observed leaf
+        // and its `attached:N` resource revision describe the same owner state.
+        let txn = self
+            .db
+            .begin_with_config(
+                Some(IsolationLevel::RepeatableRead),
+                Some(AccessMode::ReadOnly),
+            )
+            .await
+            .map_err(database_error)?;
+
+        let schema = load_attached_translation_schema_in(
+            &txn,
+            tenant_id,
+            TAXONOMY_CATEGORY_ENTITY_TYPE,
+        )
+        .await
+        .map_err(flex_storage_error)?;
         let mut progress = FlexAttachedTranslationExactProgress::default();
         let mut after = None;
 
@@ -91,14 +95,22 @@ impl FlexAttachedTranslationProgressOwnerPort
             )
             .await
             .map_err(flex_storage_error)?;
+            let revisions = load_attached_translation_resource_revisions(
+                &txn,
+                tenant_id,
+                TAXONOMY_CATEGORY_ENTITY_TYPE,
+                &ids,
+            )
+            .await
+            .map_err(flex_storage_error)?;
 
             for category in &page.categories {
                 let snapshot = match build_snapshot_from_batch(
                     tenant_id,
                     category.category_id,
-                    category.revision,
                     &schema,
                     &values,
+                    &revisions,
                     source_locale,
                     target_locale,
                 ) {
@@ -132,14 +144,20 @@ fn observe_snapshot(
         if leaf.required {
             checked_increment(&mut progress.required_units, "required_units")?;
             if exact {
-                checked_increment(&mut progress.exact_required_units, "exact_required_units")?;
+                checked_increment(
+                    &mut progress.exact_required_units,
+                    "exact_required_units",
+                )?;
             } else {
                 complete = false;
             }
         } else {
             checked_increment(&mut progress.optional_units, "optional_units")?;
             if exact {
-                checked_increment(&mut progress.exact_optional_units, "exact_optional_units")?;
+                checked_increment(
+                    &mut progress.exact_optional_units,
+                    "exact_optional_units",
+                )?;
             }
         }
     }
@@ -149,7 +167,10 @@ fn observe_snapshot(
     Ok(())
 }
 
-fn checked_increment(value: &mut u64, label: &str) -> FlexAttachedTranslationResult<()> {
+fn checked_increment(
+    value: &mut u64,
+    label: &str,
+) -> FlexAttachedTranslationResult<()> {
     *value = value.checked_add(1).ok_or_else(|| {
         FlexAttachedTranslationError::OwnerInvariant(format!(
             "attached Translation progress `{label}` overflowed u64"
