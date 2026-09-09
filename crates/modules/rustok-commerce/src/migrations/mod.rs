@@ -36,6 +36,7 @@ mod m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity;
 #[cfg(feature = "marketplace-financial")]
 mod m20260721_000006_create_marketplace_reversal_adaptation_failures;
 mod m20260721_000007_align_language_agnostic_locale_contract;
+mod m20260909_000008_add_collection_translation_change_journal;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -80,6 +81,9 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
 
     migrations.push(Box::new(
         m20260721_000007_align_language_agnostic_locale_contract::Migration,
+    ));
+    migrations.push(Box::new(
+        m20260909_000008_add_collection_translation_change_journal::Migration,
     ));
     migrations
 }
@@ -250,6 +254,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
             "m20250130_000017_create_commerce_collections",
             "m20250130_000018_create_commerce_categories",
         ],
+    ));
+    dependencies.push(MigrationDependencyDescriptor::new(
+        "m20260909_000008_add_collection_translation_change_journal",
+        vec!["m20260721_000007_align_language_agnostic_locale_contract"],
     ));
     dependencies
 }

@@ -1,7 +1,7 @@
 # Taxonomy category ownership and Flex extension plan
 
 **Status:** accepted architecture, staged implementation
-**Reviewed:** 2026-09-01
+**Reviewed:** 2026-09-09
 
 ## Decision
 
@@ -40,6 +40,14 @@ merchandising. PostgreSQL `catalog_category_translations` and `catalog_category_
 as canonical donor/hierarchy storage; non-PostgreSQL backends intentionally retain their donor and
 closure compatibility paths until an equivalent tenant-safe cutover is separately designed and
 verified.
+
+`taxonomy.category` is now an active generic Flex donor. The attached Translation owner foundation
+has exact source/target snapshots, idempotent revision-safe apply, aggregate progress, durable
+PostgreSQL per-resource state, bounded ordered ChangeCursor evidence, schema-change fan-out and
+same-transaction deletion tombstones. The snapshot resource revision has been cut over to the
+Flex-owned durable `attached:N` token; Taxonomy aggregate revision remains only the owner
+serialization/CAS mechanism. The attached provider itself remains intentionally unregistered until a
+separate activation slice, preserving a clean activation/rollback boundary.
 
 No TAXONOMY-CAT-35 Product slice or next Category consumer is currently accepted by this plan. A
 future consumer migration must be named explicitly and start from fresh `main` with its own typed
@@ -122,6 +130,10 @@ The exact Rust adapter API may evolve, but the architectural result is fixed:
 - one permission/governance model;
 - no `*_custom_field_engine` or module-local replacement implementation.
 
+For Translation-projected attached extension fields, Flex also owns the durable per-resource revision
+and change evidence. Donor identity/lifecycle stays with the donor owner, but the host or Taxonomy
+must not derive a competing Translation revision from donor aggregate state or schema hashes.
+
 Built-in domain fields remain normalized owner fields. Flex is for administrator-defined extension,
 not for converting business invariants such as price, SKU, moderation state or route identity into
 untyped metadata.
@@ -171,8 +183,15 @@ Forum-specific custom-field implementation.
 
 ### Phase C — Flex Category extension
 
-- Register `taxonomy.category` as an explicit Flex donor.
-- Reuse Flex definitions, values, localized values, validation, cache and transport.
+- `taxonomy.category` is registered as an explicit generic Flex donor.
+- Flex definitions, shared/localized values, validation, cache and transport are reused directly.
+- Attached Translation exact owner/progress/change evidence is Flex-owned; active resource revisions
+  use durable `attached:N`, and Category hard delete ends with a same-transaction tombstone.
+- Snapshot list/read composition observes schema, donor existence, localized rows and revision state
+  in one PostgreSQL repeatable-read snapshot; apply keeps schema and Taxonomy owner serialization in
+  its write transaction while the Translation revision itself comes only from Flex state.
+- Provider activation is a separate rollout slice after revision cutover; do not combine activation
+  with another revision source or compatibility path.
 - Add category custom-field rendering to the generic admin schema-builder path; Taxonomy must not
   implement a second custom-fields editor.
 - Extend field types only through Flex when demonstrated (`Media`, references, rich text, etc.).
@@ -237,10 +256,16 @@ its boundary. At minimum the completed program must prove:
 
 - Taxonomy Category tenant/scope/route uniqueness and hierarchy cycle/depth/order behavior;
 - exact locale + fallback projections with `effective_locale` preserved;
-- Taxonomy Translation apply/CAS/progress for Category;
+- Taxonomy Translation apply/CAS/progress for canonical Category fields;
 - Flex opt-in registry: unsupported entity types fail closed;
 - `forum.topic` remains registered and its custom fields cannot replace normalized Forum invariants;
 - Category Flex definitions/values are tenant-scoped and multilingual where configured;
+- attached Category Flex Translation snapshots/change rows share durable `attached:N` revisions and
+  never derive resource revision from Taxonomy aggregate revision or schema hash;
+- attached list/read state is snapshot-consistent under concurrent writes and ChangeCursor pages are
+  bounded by owner high-water evidence;
+- schema eligibility/key moves and deletes reach the real affected resource ids despite FK cascades;
+- Category hard delete records the final tombstone in the owner transaction;
 - consumer bindings reject cross-tenant Taxonomy category references;
 - legacy category UUID/data backfill is deterministic and rollback/recovery is documented;
 - the retained Forum mounted multilingual/RTL packet remains source-guarded against Taxonomy-owned category data and is executed only in final production validation;
@@ -268,5 +293,7 @@ head SHA. That evidence closes final production validation, not TAXONOMY-CAT-5 i
 4. Taxonomy owns shared Category hierarchy; consumers own only their relationships and domain policy.
 5. Flex fields may extend a donor but must not replace normalized domain invariants.
 6. Media owns binary lifecycle; Taxonomy/Flex store typed Media references, not copied delivery URLs.
-7. Translation for canonical category copy is Taxonomy-owned.
+7. Translation for canonical category copy is Taxonomy-owned; Translation for Category extension
+   fields uses the Flex-owned attached provider contract.
 8. Keep migrations staged and data-preserving; never drop legacy category data before a verified cutover.
+9. Keep one attached Translation resource revision source: Flex durable per-resource state.
