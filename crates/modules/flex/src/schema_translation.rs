@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::normalize_locale_tag;
+use rustok_api::{PortError, normalize_locale_tag};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, fmt};
 use uuid::Uuid;
@@ -169,7 +169,9 @@ pub enum FlexSchemaTranslationError {
     SchemaNotFound(Uuid),
     SourceLocaleNotFound { schema_id: Uuid, locale: String },
     RevisionConflict { revision: &'static str },
-    Operation(String),
+    /// Preserve the platform port error shape so the neutral provider can retain
+    /// conflict/retryability semantics from durable owner idempotency admission.
+    Operation(PortError),
     Database(String),
     OwnerInvariant(String),
 }
@@ -188,9 +190,7 @@ impl fmt::Display for FlexSchemaTranslationError {
             Self::RevisionConflict { revision } => {
                 write!(formatter, "Flex schema translation {revision} revision conflict")
             }
-            Self::Operation(message) => {
-                write!(formatter, "Flex schema translation operation failed: {message}")
-            }
+            Self::Operation(error) => write!(formatter, "Flex schema translation operation failed: {error}"),
             Self::Database(message) => {
                 write!(formatter, "Flex schema translation database error: {message}")
             }
