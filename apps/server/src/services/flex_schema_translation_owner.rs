@@ -106,6 +106,11 @@ impl ServerFlexSchemaTranslationOwner {
             });
         }
 
+        // Derived full target state is deliberately validated only after the locked
+        // authoritative CAS checks. A genuinely stale new operation therefore reports a
+        // revision conflict, while durable replay was already resolved before this txn.
+        request.validate()?;
+
         let requested_targets = request
             .target_values
             .iter()
@@ -428,12 +433,9 @@ impl FlexSchemaTranslationOwnerPort for ServerFlexSchemaTranslationOwner {
             }
         };
 
-        let result = async {
-            request.validate()?;
-            self.apply_under_lease(tenant_id, actor_user_id, schema_id, request, lease)
-                .await
-        }
-        .await;
+        let result = self
+            .apply_under_lease(tenant_id, actor_user_id, schema_id, request, lease)
+            .await;
         if let Err(error) = &result {
             self.fail_receipt(lease, error).await;
         }
