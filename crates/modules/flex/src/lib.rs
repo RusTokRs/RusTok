@@ -165,7 +165,7 @@ impl MigrationSource for FlexModule {
     fn migration_safety_metadata(&self) -> Vec<MigrationSafetyMetadata> {
         vec![MigrationSafetyMetadata::new(
             "m20260909_000003_add_attached_translation_change_journal",
-            MigrationSafetyClass::AdditiveOnly,
+            MigrationSafetyClass::ExpandContract,
             MigrationPhaseConstraint::PreActivation,
         )]
     }
