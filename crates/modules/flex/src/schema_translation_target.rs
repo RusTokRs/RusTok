@@ -181,20 +181,31 @@ impl TranslationTargetProvider for FlexSchemaTranslationTargetProvider {
         let read_request = read_request_from_patch(&request);
         let owner_snapshot = self.load_owner_snapshot(tenant_id, &read_request).await?;
         let neutral = neutralize_snapshot(owner_snapshot.clone(), &read_request)?;
+        let source_revision_matches =
+            request.expected_source_revision == neutral.snapshot.source_revision;
 
-        // The owner owns durable admission and authoritative resource/source/target CAS.
-        // During apply, keep neutral field-key and source-hash validation here but allow
-        // revision conflicts to reach owner admission. That preserves ordinary idempotent
-        // replay after the first successful apply changed resource/target revisions.
-        let validation = only_field_issues(validate_patch_against_snapshot(
-            &request,
-            &neutral.snapshot,
-        ));
+        // With the exact proposal source still live, enforce the neutral field mapping and
+        // per-field source hashes. If the source revision already moved, only the owner can
+        // distinguish an idempotent retry from a genuinely stale new operation: durable
+        // admission replays the former, authoritative source CAS rejects the latter.
+        let validation = if source_revision_matches {
+            only_field_issues(validate_patch_against_snapshot(
+                &request,
+                &neutral.snapshot,
+            ))
+        } else {
+            accepted_validation()
+        };
         if !validation.accepted {
             return Err(validation_to_port_error(&validation));
         }
 
-        let target_values = merge_target_values(&request, &owner_snapshot, &neutral.leaf_by_key)?;
+        let target_values = merge_target_values(
+            &request,
+            &owner_snapshot,
+            &neutral.leaf_by_key,
+            source_revision_matches,
+        )?;
         let applied = self
             .owner
             .apply_exact_locale(
@@ -349,6 +360,7 @@ fn merge_target_values(
     request: &TranslationPatchRequest,
     owner: &FlexSchemaTranslationExactLocaleSnapshot,
     leaf_by_key: &BTreeMap<String, FlexSchemaTranslationLeaf>,
+    enforce_complete_target: bool,
 ) -> Result<Vec<FlexSchemaTranslationTargetValue>, PortError> {
     let patch_values = request
         .fields
@@ -374,7 +386,11 @@ fn merge_target_values(
             .get(key.as_str())
             .map(|value| (*value).to_string())
             .or_else(|| leaf.target_value.clone());
-        let value = normalize_target_value(&leaf.leaf, value)?;
+        let value = if enforce_complete_target {
+            normalize_target_value(&leaf.leaf, value)?
+        } else {
+            value
+        };
         target_values.push(FlexSchemaTranslationTargetValue {
             leaf: leaf.leaf.clone(),
             value,
@@ -694,5 +710,12 @@ fn only_field_issues(validation: TranslationPatchValidation) -> TranslationPatch
     TranslationPatchValidation {
         accepted: issues.is_empty(),
         issues,
+    }
+}
+
+fn accepted_validation() -> TranslationPatchValidation {
+    TranslationPatchValidation {
+        accepted: true,
+        issues: Vec::new(),
     }
 }
