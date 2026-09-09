@@ -20,8 +20,9 @@ use uuid::Uuid;
 use super::{
     PRODUCT_SCHEMA_ROUTING_KEY, ProductStorefrontIndexBudgetedProjectionExecutor,
     ProductStorefrontIndexServingBudget, ProductStorefrontIndexServingBudgetObservation,
-    ProductStorefrontIndexShadowExecutor, classify_product_storefront_index_serving_budget,
+    ProductStorefrontIndexShadowExecutor,
     channel_relation_resolver::ProductSalesChannelRelationResolver,
+    classify_product_storefront_index_serving_budget,
 };
 
 const DATABASE_ENV: &str = "RUSTOK_PRODUCT_STOREFRONT_EQUIVALENCE_DATABASE_URL";
@@ -633,7 +634,8 @@ async fn scoped_connection(
 }
 
 #[tokio::test]
-async fn product_storefront_budgeted_projection_executor_initializes_from_shadow_executor() -> TestResult<()> {
+async fn product_storefront_budgeted_projection_executor_initializes_from_shadow_executor()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -646,11 +648,7 @@ async fn product_storefront_budgeted_projection_executor_initializes_from_shadow
         tag_hydration_available: true,
     };
     let context = port_context();
-    let _decision = classify_product_storefront_index_serving_budget(
-        &context,
-        Some(budget),
-        observation,
-    );
+    let _decision =
+        classify_product_storefront_index_serving_budget(&context, Some(budget), observation);
     database.cleanup().await
 }
-

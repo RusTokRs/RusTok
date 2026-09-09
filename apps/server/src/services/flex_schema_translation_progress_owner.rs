@@ -181,22 +181,14 @@ impl FlexSchemaTranslationProgressOwnerPort for ServerFlexSchemaTranslationProgr
             }
 
             let schema_ids = schemas.iter().map(|schema| schema.id).collect::<Vec<_>>();
-            let translations = load_progress_translations(
-                &txn,
-                &schema_ids,
-                source_locale,
-                target_locale,
-            )
-            .await?;
+            let translations =
+                load_progress_translations(&txn, &schema_ids, source_locale, target_locale).await?;
             for schema in &schemas {
-                let rows = translations.get(&schema.id).map(Vec::as_slice).unwrap_or(&[]);
-                observe_schema(
-                    &mut progress,
-                    schema,
-                    rows,
-                    source_locale,
-                    target_locale,
-                )?;
+                let rows = translations
+                    .get(&schema.id)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                observe_schema(&mut progress, schema, rows, source_locale, target_locale)?;
             }
 
             if !has_more {
@@ -265,14 +257,17 @@ fn observe_schema(
         validate_translation_row(target_row)?;
     }
 
-    let definitions = parse_standalone_fields_config(schema.fields_config.clone()).map_err(|error| {
-        FlexSchemaTranslationError::OwnerInvariant(format!(
-            "persisted Flex schema fields_config violates the owner contract: {error}"
-        ))
-    })?;
-    let mut source_values = schema_definition_translation_exact_values(&definitions, source_locale)?;
+    let definitions =
+        parse_standalone_fields_config(schema.fields_config.clone()).map_err(|error| {
+            FlexSchemaTranslationError::OwnerInvariant(format!(
+                "persisted Flex schema fields_config violates the owner contract: {error}"
+            ))
+        })?;
+    let mut source_values =
+        schema_definition_translation_exact_values(&definitions, source_locale)?;
     insert_schema_row_values(&mut source_values, source_row);
-    let mut target_values = schema_definition_translation_exact_values(&definitions, target_locale)?;
+    let mut target_values =
+        schema_definition_translation_exact_values(&definitions, target_locale)?;
     if let Some(target_row) = target_row {
         insert_schema_row_values(&mut target_values, target_row);
     }
@@ -284,20 +279,14 @@ fn observe_schema(
         if flex_schema_translation_leaf_required(leaf) {
             checked_increment(&mut progress.required_units, "required_units")?;
             if exact {
-                checked_increment(
-                    &mut progress.exact_required_units,
-                    "exact_required_units",
-                )?;
+                checked_increment(&mut progress.exact_required_units, "exact_required_units")?;
             } else {
                 complete = false;
             }
         } else {
             checked_increment(&mut progress.optional_units, "optional_units")?;
             if exact {
-                checked_increment(
-                    &mut progress.exact_optional_units,
-                    "exact_optional_units",
-                )?;
+                checked_increment(&mut progress.exact_optional_units, "exact_optional_units")?;
             }
         }
     }
@@ -365,7 +354,9 @@ fn optional_positive_sequence(
     value: Option<i64>,
     field: &str,
 ) -> FlexSchemaTranslationResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
 fn positive_sequence(value: i64, field: &str) -> FlexSchemaTranslationResult<u64> {

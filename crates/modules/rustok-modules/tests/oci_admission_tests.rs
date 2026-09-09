@@ -12,22 +12,19 @@ use rustok_api::ArtifactPermissionLocalization;
 use rustok_core::MigrationSource;
 use rustok_modules::{
     ArtifactAdmissionLimits, ArtifactBindingDispatchEnvelope, ArtifactBlobStore,
-    ArtifactModuleKind, ArtifactPayloadKind, ArtifactPayloadSource,
-    ArtifactPermissionDescriptor, ArtifactRegistry, ArtifactReleaseRef,
-    ArtifactRuntime, ArtifactRuntimeError, ArtifactSchemaDocument,
-    InMemoryArtifactBlobStore, InstalledModuleArtifact,
-    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor,
-    ModuleBindingIdempotency, ModuleCommandContext, ModuleControlPlane,
-    ModuleDependencyLockGraph, ModuleInstallationError, ModuleInstallationScope,
-    ModuleRuntimeBinding, ModuleRuntimeBindingKind, ModulesModule,
-    OciArtifactReference, OciReleaseAdmissionCommand,
-    OciReleaseAdmissionError, OciReleaseAdmissionService,
+    ArtifactModuleKind, ArtifactPayloadKind, ArtifactPayloadSource, ArtifactPermissionDescriptor,
+    ArtifactRegistry, ArtifactReleaseRef, ArtifactRuntime, ArtifactRuntimeError,
+    ArtifactSchemaDocument, InMemoryArtifactBlobStore, InstalledModuleArtifact,
+    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor, ModuleBindingIdempotency,
+    ModuleCommandContext, ModuleControlPlane, ModuleDependencyLockGraph, ModuleInstallationError,
+    ModuleInstallationScope, ModuleRuntimeBinding, ModuleRuntimeBindingKind, ModulesModule,
+    OciArtifactReference, OciReleaseAdmissionCommand, OciReleaseAdmissionError,
+    OciReleaseAdmissionService,
 };
 use rustok_sandbox::{
-    CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse,
-    ExecutionMetrics, ExecutionPhase, ExecutorRegistry, RHAI_SANDBOX_RUNTIME_ABI,
-    RhaiBindingOutput, SandboxContext, SandboxError, SandboxExecutor,
-    SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxPolicy,
+    CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutionMetrics,
+    ExecutionPhase, ExecutorRegistry, RHAI_SANDBOX_RUNTIME_ABI, RhaiBindingOutput, SandboxContext,
+    SandboxError, SandboxExecutor, SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxPolicy,
     SandboxRequest, SandboxResult, SandboxRuntime,
 };
 use sea_orm::Database;
@@ -55,8 +52,7 @@ impl SpyRegistry {
     }
 
     fn add_package(&mut self, package: rustok_modules::ModuleArtifactPackage) {
-        self.packages
-            .insert(package.reference.canonical(), package);
+        self.packages.insert(package.reference.canonical(), package);
     }
 
     fn call_count(&self) -> usize {
@@ -126,7 +122,15 @@ impl SandboxExecutor for RecordingExecutor {
     }
 }
 
-fn build_test_descriptor(slug: &str, version: &str, payload_bytes: &[u8]) -> (ModuleArtifactDescriptor, ArtifactSchemaDocument, ArtifactSchemaDocument) {
+fn build_test_descriptor(
+    slug: &str,
+    version: &str,
+    payload_bytes: &[u8],
+) -> (
+    ModuleArtifactDescriptor,
+    ArtifactSchemaDocument,
+    ArtifactSchemaDocument,
+) {
     let digest = sha256_digest(payload_bytes);
     let input_schema_doc = serde_json::json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -290,7 +294,13 @@ async fn test_digest_pinned_oci_validation_and_streamed_cas_publication() {
 
     // 4. Verify CAS presence query
     assert!(admission.has_cas_payload(&descriptor.artifact_digest).await);
-    assert!(!admission.has_cas_payload("sha256:0000000000000000000000000000000000000000000000000000000000000000").await);
+    assert!(
+        !admission
+            .has_cas_payload(
+                "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            )
+            .await
+    );
 }
 
 #[tokio::test]
@@ -327,7 +337,11 @@ async fn test_rejection_of_unpinned_reference() {
         .await;
 
     assert!(
-        matches!(result, Err(OciReleaseAdmissionError::InvalidReference(_)) | Err(OciReleaseAdmissionError::UnpinnedReference(_))),
+        matches!(
+            result,
+            Err(OciReleaseAdmissionError::InvalidReference(_))
+                | Err(OciReleaseAdmissionError::UnpinnedReference(_))
+        ),
         "Unpinned reference must be rejected"
     );
 
@@ -349,7 +363,11 @@ async fn test_rejection_of_unpinned_reference() {
         .await;
 
     assert!(
-        matches!(result, Err(OciReleaseAdmissionError::InvalidReference(_)) | Err(OciReleaseAdmissionError::UnpinnedReference(_))),
+        matches!(
+            result,
+            Err(OciReleaseAdmissionError::InvalidReference(_))
+                | Err(OciReleaseAdmissionError::UnpinnedReference(_))
+        ),
         "Invalid sha256 digest length must be rejected"
     );
 }
@@ -362,7 +380,8 @@ async fn test_rejection_of_descriptor_layer_digest_mismatch() {
     let payload_bytes = b"fn main() { return 42; }";
     let (mut descriptor, _, _) = build_test_descriptor("orders_notifier", "1.0.0", payload_bytes);
     // Tamper artifact digest in descriptor so it doesn't match payload
-    descriptor.artifact_digest = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".to_string();
+    descriptor.artifact_digest =
+        "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".to_string();
 
     let reference = OciArtifactReference {
         registry: "registry.example.com".to_string(),
@@ -486,7 +505,10 @@ async fn test_idempotent_readmission_and_conflict_handling() {
 
     let conflict_result = admission.admit_release(conflict_command).await;
     assert!(
-        matches!(conflict_result, Err(OciReleaseAdmissionError::IdempotencyConflict(_, _))),
+        matches!(
+            conflict_result,
+            Err(OciReleaseAdmissionError::IdempotencyConflict(_, _))
+        ),
         "Reusing idempotency key for a different release must return IdempotencyConflict"
     );
 }
@@ -531,9 +553,16 @@ async fn test_runtime_reads_cas_only_and_never_falls_back_to_oci() {
     };
 
     // 1. Admit release into CAS
-    let receipt = admission.admit_release(command).await.expect("admit release");
+    let receipt = admission
+        .admit_release(command)
+        .await
+        .expect("admit release");
     assert!(receipt.cas_published);
-    assert_eq!(registry.call_count(), 1, "Registry called once during admission");
+    assert_eq!(
+        registry.call_count(),
+        1,
+        "Registry called once during admission"
+    );
 
     // 2. Set up runtime backed by the CAS blob store (using Arc<InMemoryArtifactBlobStore>)
     let observed = Arc::new(Mutex::new(None));
@@ -576,7 +605,13 @@ async fn test_runtime_reads_cas_only_and_never_falls_back_to_oci() {
 
     // 3. Runtime executes binding using CAS payload
     let outcome = runtime
-        .execute_binding(&installed_artifact, &binding, context.clone(), input.clone(), SandboxPolicy::default())
+        .execute_binding(
+            &installed_artifact,
+            &binding,
+            context.clone(),
+            input.clone(),
+            SandboxPolicy::default(),
+        )
         .await
         .expect("runtime execution should succeed from CAS");
 
@@ -594,7 +629,13 @@ async fn test_runtime_reads_cas_only_and_never_falls_back_to_oci() {
     missing_payload_artifact.release.digest = missing_digest.to_string();
 
     let failure = runtime
-        .execute_binding(&missing_payload_artifact, &binding, context, input, SandboxPolicy::default())
+        .execute_binding(
+            &missing_payload_artifact,
+            &binding,
+            context,
+            input,
+            SandboxPolicy::default(),
+        )
         .await;
 
     // 5. Assert: Runtime fails closed with BlobNotFound and NEVER falls back to OCI

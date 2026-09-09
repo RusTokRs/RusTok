@@ -136,7 +136,8 @@ pub fn apply_schema_definition_translation_targets(
 
     for (leaf, value) in targets {
         match leaf {
-            FlexSchemaTranslationLeaf::SchemaName | FlexSchemaTranslationLeaf::SchemaDescription => {
+            FlexSchemaTranslationLeaf::SchemaName
+            | FlexSchemaTranslationLeaf::SchemaDescription => {
                 return Err(FlexSchemaTranslationError::Invalid(
                     "schema row copy must not be applied through fields_config".to_string(),
                 ));
@@ -149,7 +150,10 @@ pub fn apply_schema_definition_translation_targets(
             }
             FlexSchemaTranslationLeaf::FieldDescription { field_key } => {
                 let definition = definition_mut(definitions, field_key)?;
-                let map = definition.description.as_mut().ok_or_else(|| unknown_leaf(leaf))?;
+                let map = definition
+                    .description
+                    .as_mut()
+                    .ok_or_else(|| unknown_leaf(leaf))?;
                 require_exact_source(map, source_locale, leaf)?;
                 changed |= set_exact_map_value(map, target_locale, value.as_deref());
             }
@@ -281,7 +285,10 @@ fn set_exact_map_value(
 ) -> bool {
     match value {
         Some(value) => {
-            if values.get(target_locale).is_some_and(|current| current == value) {
+            if values
+                .get(target_locale)
+                .is_some_and(|current| current == value)
+            {
                 false
             } else {
                 values.insert(target_locale.to_string(), value.to_string());

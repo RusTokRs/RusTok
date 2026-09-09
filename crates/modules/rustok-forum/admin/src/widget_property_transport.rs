@@ -39,9 +39,7 @@ pub struct ForumWidgetPropertyValidationTransportResponse {
 
 #[cfg(feature = "ssr")]
 async fn authorize_forum_property_transport() -> Result<(), ServerFnError> {
-    use crate::widget_preview_transport::{
-        require_forum_module_enabled, require_tenant_scope,
-    };
+    use crate::widget_preview_transport::{require_forum_module_enabled, require_tenant_scope};
     use leptos::prelude::expect_context;
 
     let auth = leptos_axum::extract::<rustok_api::AuthContext>()

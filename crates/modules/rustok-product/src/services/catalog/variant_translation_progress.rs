@@ -94,9 +94,7 @@ where
     })
 }
 
-fn canonical_progress_locale(
-    locale: &str,
-) -> ProductVariantTranslationExactLocaleResult<String> {
+fn canonical_progress_locale(locale: &str) -> ProductVariantTranslationExactLocaleResult<String> {
     TenantLocale::new(locale)
         .map(TenantLocale::into_inner)
         .map_err(|error| CommerceError::Validation(error.to_string()).into())

@@ -9,9 +9,10 @@ use rustok_translation_targets::{
     TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
     TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
     TranslationTargetCapability, TranslationTargetChange, TranslationTargetChangePage,
-    TranslationTargetChangesRequest, TranslationTargetProgressFacts, TranslationTargetProgressRequest,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor,
-    provider_support::contract_validation_error, validate_translation_read_context,
+    TranslationTargetChangesRequest, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, provider_support::contract_validation_error,
+    validate_translation_read_context,
 };
 use uuid::Uuid;
 

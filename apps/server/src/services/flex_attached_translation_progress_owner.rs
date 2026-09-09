@@ -27,7 +27,9 @@ impl ServerFlexTaxonomyCategoryTranslationProgressOwner {
 }
 
 #[async_trait]
-impl FlexAttachedTranslationProgressOwnerPort for ServerFlexTaxonomyCategoryTranslationProgressOwner {
+impl FlexAttachedTranslationProgressOwnerPort
+    for ServerFlexTaxonomyCategoryTranslationProgressOwner
+{
     fn entity_type(&self) -> &str {
         TAXONOMY_CATEGORY_ENTITY_TYPE
     }
@@ -57,13 +59,10 @@ impl FlexAttachedTranslationProgressOwnerPort for ServerFlexTaxonomyCategoryTran
         }
         .map_err(database_error)?;
 
-        let schema = load_attached_translation_schema_in(
-            &txn,
-            tenant_id,
-            TAXONOMY_CATEGORY_ENTITY_TYPE,
-        )
-        .await
-        .map_err(flex_storage_error)?;
+        let schema =
+            load_attached_translation_schema_in(&txn, tenant_id, TAXONOMY_CATEGORY_ENTITY_TYPE)
+                .await
+                .map_err(flex_storage_error)?;
         let mut progress = FlexAttachedTranslationExactProgress::default();
         let mut after = None;
 
@@ -133,20 +132,14 @@ fn observe_snapshot(
         if leaf.required {
             checked_increment(&mut progress.required_units, "required_units")?;
             if exact {
-                checked_increment(
-                    &mut progress.exact_required_units,
-                    "exact_required_units",
-                )?;
+                checked_increment(&mut progress.exact_required_units, "exact_required_units")?;
             } else {
                 complete = false;
             }
         } else {
             checked_increment(&mut progress.optional_units, "optional_units")?;
             if exact {
-                checked_increment(
-                    &mut progress.exact_optional_units,
-                    "exact_optional_units",
-                )?;
+                checked_increment(&mut progress.exact_optional_units, "exact_optional_units")?;
             }
         }
     }
@@ -156,10 +149,7 @@ fn observe_snapshot(
     Ok(())
 }
 
-fn checked_increment(
-    value: &mut u64,
-    label: &str,
-) -> FlexAttachedTranslationResult<()> {
+fn checked_increment(value: &mut u64, label: &str) -> FlexAttachedTranslationResult<()> {
     *value = value.checked_add(1).ok_or_else(|| {
         FlexAttachedTranslationError::OwnerInvariant(format!(
             "attached Translation progress `{label}` overflowed u64"

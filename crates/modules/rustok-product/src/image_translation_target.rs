@@ -13,8 +13,9 @@ use rustok_translation_targets::{
     TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
     TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
-        contract_validation_error, field_hash, merged_patch_values, normalize_optional_target_value,
-        read_request_from_patch, validate_patch_against_snapshot, validation_to_port_error,
+        contract_validation_error, field_hash, merged_patch_values,
+        normalize_optional_target_value, read_request_from_patch, validate_patch_against_snapshot,
+        validation_to_port_error,
     },
     validate_translation_apply_context, validate_translation_read_context,
 };
@@ -457,10 +458,7 @@ fn application_receipt(
             owner_receipt.resource_revision.clone(),
             "resource_revision",
         )?,
-        target_revision: opaque_revision(
-            owner_receipt.target_revision.clone(),
-            "target_revision",
-        )?,
+        target_revision: opaque_revision(owner_receipt.target_revision.clone(), "target_revision")?,
         applied_field_keys: request
             .fields
             .iter()

@@ -34,8 +34,7 @@ impl CatalogService {
         tenant_id: Uuid,
         source_locale: &str,
         target_locale: &str,
-    ) -> ProductOptionTranslationExactLocaleResult<ProductOptionTranslationExactProgressFacts>
-    {
+    ) -> ProductOptionTranslationExactLocaleResult<ProductOptionTranslationExactProgressFacts> {
         let source_locale = canonical_progress_locale(source_locale)?;
         let target_locale = canonical_progress_locale(target_locale)?;
         if source_locale == target_locale {
@@ -112,9 +111,7 @@ impl CatalogService {
     }
 }
 
-fn canonical_progress_locale(
-    locale: &str,
-) -> ProductOptionTranslationExactLocaleResult<String> {
+fn canonical_progress_locale(locale: &str) -> ProductOptionTranslationExactLocaleResult<String> {
     TenantLocale::new(locale)
         .map(TenantLocale::into_inner)
         .map_err(|error| CommerceError::Validation(error.to_string()).into())

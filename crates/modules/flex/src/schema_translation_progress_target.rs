@@ -9,8 +9,9 @@ use rustok_translation_targets::{
     TranslationResourceIdentity, TranslationResourceLifecycle, TranslationResourcePage,
     TranslationResourceSnapshot, TranslationTargetCapability, TranslationTargetChange,
     TranslationTargetChangePage, TranslationTargetChangesRequest, TranslationTargetProgressFacts,
-    TranslationTargetProgressRequest, TranslationTargetProvider, TranslationTargetProviderDescriptor,
-    provider_support::contract_validation_error, validate_translation_read_context,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, provider_support::contract_validation_error,
+    validate_translation_read_context,
 };
 use uuid::Uuid;
 
@@ -325,10 +326,12 @@ fn progress_owner_error_to_port_error(error: FlexSchemaTranslationError) -> Port
             "Flex rejected the schema translation progress request",
         ),
         FlexSchemaTranslationError::SchemaNotFound(_)
-        | FlexSchemaTranslationError::SourceLocaleNotFound { .. } => PortError::invariant_violation(
-            "flex.schema_translation_progress_owner_invariant",
-            "Flex schema translation progress inventory became inconsistent",
-        ),
+        | FlexSchemaTranslationError::SourceLocaleNotFound { .. } => {
+            PortError::invariant_violation(
+                "flex.schema_translation_progress_owner_invariant",
+                "Flex schema translation progress inventory became inconsistent",
+            )
+        }
         FlexSchemaTranslationError::RevisionConflict { .. } => PortError::invariant_violation(
             "flex.schema_translation_progress_owner_invariant",
             "Flex schema translation progress unexpectedly encountered a revision conflict",

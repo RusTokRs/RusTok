@@ -246,8 +246,7 @@ async fn record_live_product_variants(
 
     for variant in variants {
         let exact = translations.remove(&variant.id).unwrap_or_default();
-        let resource_revision =
-            variant_translation_resource_revision(product, &variant, &exact);
+        let resource_revision = variant_translation_resource_revision(product, &variant, &exact);
         if previous.get(&variant.id).is_some_and(|previous| {
             previous.resource_revision == resource_revision && previous.lifecycle == lifecycle
         }) {
@@ -369,8 +368,9 @@ async fn record_deleted_variant(
     root_event_id: Uuid,
     previous: Option<&PreviousVariantTranslationChange>,
 ) -> CommerceResult<()> {
-    if previous.is_some_and(|previous| previous.lifecycle == ProductVariantTranslationChangeLifecycle::Deleted)
-    {
+    if previous.is_some_and(|previous| {
+        previous.lifecycle == ProductVariantTranslationChangeLifecycle::Deleted
+    }) {
         return Ok(());
     }
     let resource_revision = deleted_revision(root_event_id, variant_id);
@@ -483,7 +483,9 @@ ON CONFLICT (root_event_id, variant_id) DO NOTHING
     Ok(())
 }
 
-fn change_record_from_row(row: QueryResult) -> CommerceResult<ProductVariantTranslationChangeRecord> {
+fn change_record_from_row(
+    row: QueryResult,
+) -> CommerceResult<ProductVariantTranslationChangeRecord> {
     let change_seq = positive_sequence(row.try_get("", "change_seq")?, "change")?;
     let product_id: Uuid = row.try_get("", "product_id")?;
     let variant_id: Uuid = row.try_get("", "variant_id")?;
@@ -585,7 +587,9 @@ fn ensure_postgres(db: &DatabaseConnection) -> CommerceResult<()> {
 }
 
 fn optional_positive_sequence(value: Option<i64>, field: &str) -> CommerceResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
 fn positive_sequence(value: i64, field: &str) -> CommerceResult<u64> {
@@ -608,7 +612,10 @@ mod tests {
 
     #[test]
     fn lifecycle_storage_contract_is_exact() {
-        assert_eq!(ProductVariantTranslationChangeLifecycle::Active.as_str(), "active");
+        assert_eq!(
+            ProductVariantTranslationChangeLifecycle::Active.as_str(),
+            "active"
+        );
         assert_eq!(
             ProductVariantTranslationChangeLifecycle::Archived.as_str(),
             "archived"
@@ -618,8 +625,7 @@ mod tests {
             "deleted"
         );
         assert_eq!(
-            ProductVariantTranslationChangeLifecycle::parse("archived")
-                .expect("lifecycle"),
+            ProductVariantTranslationChangeLifecycle::parse("archived").expect("lifecycle"),
             ProductVariantTranslationChangeLifecycle::Archived
         );
         assert!(ProductVariantTranslationChangeLifecycle::parse("draft").is_err());

@@ -5,10 +5,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::{
-    TaxonomyError, TaxonomyResult, TaxonomyTermKind,
-    entities::taxonomy_term,
-};
+use crate::{TaxonomyError, TaxonomyResult, TaxonomyTermKind, entities::taxonomy_term};
 
 pub const MAX_TAXONOMY_CATEGORY_OWNER_PAGE: u16 = 200;
 
@@ -54,10 +51,7 @@ where
         query = query.filter(taxonomy_term::Column::Id.gt(after));
     }
 
-    let mut rows = query
-        .limit(u64::from(limit) + 1)
-        .all(connection)
-        .await?;
+    let mut rows = query.limit(u64::from(limit) + 1).all(connection).await?;
     let has_more = rows.len() > usize::from(limit);
     if has_more {
         rows.truncate(usize::from(limit));
@@ -153,10 +147,7 @@ pub async fn advance_category_owner_revision_in_tx(
         ))
     })?;
     let updated = taxonomy_term::Entity::update_many()
-        .col_expr(
-            taxonomy_term::Column::Revision,
-            Expr::value(next_revision),
-        )
+        .col_expr(taxonomy_term::Column::Revision, Expr::value(next_revision))
         .col_expr(
             taxonomy_term::Column::UpdatedAt,
             Expr::value(Utc::now().fixed_offset()),

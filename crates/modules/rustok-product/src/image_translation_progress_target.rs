@@ -9,16 +9,16 @@ use rustok_translation_targets::{
     TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
     TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
     TranslationTargetCapability, TranslationTargetChange, TranslationTargetChangePage,
-    TranslationTargetChangesRequest, TranslationTargetProgressFacts, TranslationTargetProgressRequest,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor,
-    provider_support::contract_validation_error, validate_translation_read_context,
+    TranslationTargetChangesRequest, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, provider_support::contract_validation_error,
+    validate_translation_read_context,
 };
 use uuid::Uuid;
 
 use crate::{
     CatalogService, CommerceError, ProductImageTranslationExactLocaleError,
-    image_translation_target,
-    services::catalog::ProductImageTranslationChangeLifecycle,
+    image_translation_target, services::catalog::ProductImageTranslationChangeLifecycle,
 };
 
 const TRANSLATION_OWNER_SLUG: &str = "product";

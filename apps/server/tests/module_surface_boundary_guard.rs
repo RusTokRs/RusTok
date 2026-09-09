@@ -557,8 +557,9 @@ fn flex_standalone_validation_contract_is_owned_by_flex_crate() {
         "standalone Flex entry normalization/validation must live in crates/modules/flex, not apps/server"
     );
 
-    let owner_standalone = std::fs::read_to_string(repo.join("crates/modules/flex/src/standalone.rs"))
-        .expect("owner Flex standalone source should read");
+    let owner_standalone =
+        std::fs::read_to_string(repo.join("crates/modules/flex/src/standalone.rs"))
+            .expect("owner Flex standalone source should read");
     for owner_owned_symbol in [
         "pub fn normalize_and_validate_standalone_entry",
         "pub fn split_standalone_entry_data",
@@ -1182,8 +1183,9 @@ fn mcp_graphql_surface_is_owned_by_mcp_crate() {
 #[test]
 fn mcp_rest_control_plane_dto_is_owned_by_mcp_crate() {
     let repo = repo_root();
-    let management = std::fs::read_to_string(repo.join("crates/modules/rustok-mcp/src/management.rs"))
-        .expect("rustok-mcp management contract should read");
+    let management =
+        std::fs::read_to_string(repo.join("crates/modules/rustok-mcp/src/management.rs"))
+            .expect("rustok-mcp management contract should read");
     let access = std::fs::read_to_string(repo.join("crates/modules/rustok-mcp/src/access.rs"))
         .expect("rustok-mcp access contract should read");
     let controller = std::fs::read_to_string(repo.join("apps/server/src/controllers/mcp.rs"))
@@ -1306,9 +1308,10 @@ fn product_translation_search_helper_is_not_server_owned() {
         "apps/server must not re-export a product_search service"
     );
 
-    let foundation_search =
-        std::fs::read_to_string(repo.join("crates/modules/rustok-commerce-foundation/src/search.rs"))
-            .expect("commerce foundation search helper should read");
+    let foundation_search = std::fs::read_to_string(
+        repo.join("crates/modules/rustok-commerce-foundation/src/search.rs"),
+    )
+    .expect("commerce foundation search helper should read");
     assert!(
         foundation_search.contains("pub fn product_translation_title_search_condition"),
         "product translation title search condition must remain owner/foundation-owned"

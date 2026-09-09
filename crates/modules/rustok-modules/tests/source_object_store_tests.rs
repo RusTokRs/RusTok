@@ -1,12 +1,6 @@
-use std::{
-    fs,
-    path::PathBuf,
-};
+use std::{fs, path::PathBuf};
 
-use rustok_modules::{
-    ModuleInstallationScope, SourceObjectError, SourceObjectStore,
-    migrations,
-};
+use rustok_modules::{ModuleInstallationScope, SourceObjectError, SourceObjectStore, migrations};
 use sea_orm::{Database, DatabaseConnection};
 use sea_orm_migration::MigratorTrait;
 use sha2::{Digest, Sha256};
@@ -42,7 +36,7 @@ async fn setup_test_db() -> DatabaseConnection {
     let db = Database::connect("sqlite::memory:")
         .await
         .expect("Failed to connect to in-memory SQLite");
-    
+
     struct Migrator;
     #[async_trait::async_trait]
     impl MigratorTrait for Migrator {
@@ -50,7 +44,7 @@ async fn setup_test_db() -> DatabaseConnection {
             migrations::migrations()
         }
     }
-    
+
     Migrator::up(&db, None)
         .await
         .expect("Failed to run migrations");
@@ -105,7 +99,10 @@ async fn test_source_blob_create_only_and_deduplication() {
         )
         .await
         .expect("replay");
-    assert_eq!(receipt1.source_receipt_id, receipt1_replay.source_receipt_id);
+    assert_eq!(
+        receipt1.source_receipt_id,
+        receipt1_replay.source_receipt_id
+    );
 
     // 3. Different preparation sharing same blob converges without overwrite
     let preparation_2 = Uuid::new_v4();
@@ -179,7 +176,9 @@ async fn test_tenant_isolation_and_rls() {
     let receipt_a = store
         .publish_source_blob(
             prep_a,
-            &ModuleInstallationScope::Tenant { tenant_id: tenant_a },
+            &ModuleInstallationScope::Tenant {
+                tenant_id: tenant_a,
+            },
             "application/vnd.rustok.source.workspace.v1+json",
             &digest,
             payload,
@@ -192,7 +191,9 @@ async fn test_tenant_isolation_and_rls() {
     let read_a = store
         .get_receipt(
             receipt_a.source_receipt_id,
-            Some(&ModuleInstallationScope::Tenant { tenant_id: tenant_a }),
+            Some(&ModuleInstallationScope::Tenant {
+                tenant_id: tenant_a,
+            }),
         )
         .await
         .expect("read a");
@@ -202,12 +203,17 @@ async fn test_tenant_isolation_and_rls() {
     let read_b = store
         .get_receipt(
             receipt_a.source_receipt_id,
-            Some(&ModuleInstallationScope::Tenant { tenant_id: tenant_b }),
+            Some(&ModuleInstallationScope::Tenant {
+                tenant_id: tenant_b,
+            }),
         )
         .await;
 
     match read_b {
-        Err(SourceObjectError::UnauthorizedTenant { receipt_id, target_tenant }) => {
+        Err(SourceObjectError::UnauthorizedTenant {
+            receipt_id,
+            target_tenant,
+        }) => {
             assert_eq!(receipt_id, receipt_a.source_receipt_id);
             assert_eq!(target_tenant, tenant_b);
         }
@@ -226,13 +232,21 @@ async fn test_retention_holds_lifecycle() {
     assert!(!store.is_held(&digest).await.expect("is_held"));
 
     let hold_id = store
-        .add_retention_hold(&digest, "transition_coordinator", "active predecessor hold", None)
+        .add_retention_hold(
+            &digest,
+            "transition_coordinator",
+            "active predecessor hold",
+            None,
+        )
         .await
         .expect("add hold");
 
     assert!(store.is_held(&digest).await.expect("is_held"));
 
-    store.release_retention_hold(hold_id).await.expect("release hold");
+    store
+        .release_retention_hold(hold_id)
+        .await
+        .expect("release hold");
 
     assert!(!store.is_held(&digest).await.expect("is_held"));
 }

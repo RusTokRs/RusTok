@@ -67,8 +67,7 @@ impl From<sea_orm::DbErr> for ForumUgcTranslationApplyError {
     }
 }
 
-pub type ForumUgcTranslationApplyResultT<T> =
-    Result<T, ForumUgcTranslationApplyError>;
+pub type ForumUgcTranslationApplyResultT<T> = Result<T, ForumUgcTranslationApplyError>;
 
 impl TopicService {
     pub async fn apply_exact_translation_in_tx(
@@ -91,9 +90,7 @@ impl TopicService {
         let source = forum_topic_translation::Entity::find()
             .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
-            .filter(
-                forum_topic_translation::Column::Locale.eq(input.source_locale.as_str()),
-            )
+            .filter(forum_topic_translation::Column::Locale.eq(input.source_locale.as_str()))
             .one(txn)
             .await?
             .ok_or_else(|| {
@@ -103,9 +100,7 @@ impl TopicService {
         let target = forum_topic_translation::Entity::find()
             .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
-            .filter(
-                forum_topic_translation::Column::Locale.eq(input.target_locale.as_str()),
-            )
+            .filter(forum_topic_translation::Column::Locale.eq(input.target_locale.as_str()))
             .one(txn)
             .await?;
 
@@ -614,15 +609,14 @@ mod tests {
         ensure_forum_schema(&db).await;
         let (tenant_id, topic_service, _, topic_id, _) = seed_topic_and_reply(&db).await;
 
-        let txn = db.begin().await.expect("translation transaction should begin");
-        let revision = current_subject_revision_in_tx(
-            &txn,
-            tenant_id,
-            ForumUgcSubjectKind::Topic,
-            topic_id,
-        )
-        .await
-        .expect("topic revision should exist");
+        let txn = db
+            .begin()
+            .await
+            .expect("translation transaction should begin");
+        let revision =
+            current_subject_revision_in_tx(&txn, tenant_id, ForumUgcSubjectKind::Topic, topic_id)
+                .await
+                .expect("topic revision should exist");
         let applied = topic_service
             .apply_exact_translation_in_tx(
                 &txn,
@@ -642,7 +636,9 @@ mod tests {
             .expect("exact topic translation should apply");
         assert!(applied.resource_revision > revision);
         assert_eq!(applied.target_revision, applied.resource_revision);
-        txn.commit().await.expect("translation transaction should commit");
+        txn.commit()
+            .await
+            .expect("translation transaction should commit");
 
         let stored = forum_topic_translation::Entity::find()
             .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
@@ -673,8 +669,14 @@ mod tests {
             )
             .await
             .expect_err("stale topic proposal must be rejected");
-        assert!(matches!(error, ForumUgcTranslationApplyError::RevisionConflict));
-        stale.rollback().await.expect("stale transaction should roll back");
+        assert!(matches!(
+            error,
+            ForumUgcTranslationApplyError::RevisionConflict
+        ));
+        stale
+            .rollback()
+            .await
+            .expect("stale transaction should roll back");
     }
 
     #[tokio::test]
@@ -683,15 +685,14 @@ mod tests {
         ensure_forum_schema(&db).await;
         let (tenant_id, _, reply_service, _, reply_id) = seed_topic_and_reply(&db).await;
 
-        let txn = db.begin().await.expect("translation transaction should begin");
-        let revision = current_subject_revision_in_tx(
-            &txn,
-            tenant_id,
-            ForumUgcSubjectKind::Reply,
-            reply_id,
-        )
-        .await
-        .expect("reply revision should exist");
+        let txn = db
+            .begin()
+            .await
+            .expect("translation transaction should begin");
+        let revision =
+            current_subject_revision_in_tx(&txn, tenant_id, ForumUgcSubjectKind::Reply, reply_id)
+                .await
+                .expect("reply revision should exist");
         let applied = reply_service
             .apply_exact_translation_in_tx(
                 &txn,
@@ -708,7 +709,9 @@ mod tests {
             )
             .await
             .expect("exact reply translation should apply");
-        txn.commit().await.expect("translation transaction should commit");
+        txn.commit()
+            .await
+            .expect("translation transaction should commit");
 
         let conflict_txn = db.begin().await.expect("conflict transaction should begin");
         let error = reply_service
@@ -728,7 +731,10 @@ mod tests {
             )
             .await
             .expect_err("target presence mismatch must be rejected");
-        assert!(matches!(error, ForumUgcTranslationApplyError::RevisionConflict));
+        assert!(matches!(
+            error,
+            ForumUgcTranslationApplyError::RevisionConflict
+        ));
         conflict_txn
             .rollback()
             .await

@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 
 use crate::model::{
-    CancelActionResult, CancelJobInput, IndexAdminBootstrap, ReplayActionResult,
-    RetryActionResult, RetryJobInput, TriggerReplayInput,
+    CancelActionResult, CancelJobInput, IndexAdminBootstrap, ReplayActionResult, RetryActionResult,
+    RetryJobInput, TriggerReplayInput,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{
@@ -520,13 +520,9 @@ pub async fn retry_job_native(input: RetryJobInput) -> Result<RetryActionResult,
             .filter(|r| !r.trim().is_empty())
             .unwrap_or_else(|| "Operator manual retry via admin console".to_string());
 
-        let request = IndexReconciliationRequeueRequest::new(
-            tenant.id,
-            job_uuid,
-            auth.user_id,
-            reason,
-        )
-        .map_err(|e| ServerFnError::new(format!("invalid retry request: {e}")))?;
+        let request =
+            IndexReconciliationRequeueRequest::new(tenant.id, job_uuid, auth.user_id, reason)
+                .map_err(|e| ServerFnError::new(format!("invalid retry request: {e}")))?;
 
         let store = PostgresIndexReconciliationRecoveryStore::new(db);
         match store.requeue_failed(request).await {
@@ -566,4 +562,3 @@ pub async fn retry_job_native(input: RetryJobInput) -> Result<RetryActionResult,
         ))
     }
 }
-

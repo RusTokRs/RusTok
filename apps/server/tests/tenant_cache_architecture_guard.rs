@@ -216,7 +216,8 @@ fn tenant_generation_health_is_context_scoped_and_component_aware() {
 
 #[test]
 fn tenant_generation_metrics_are_label_free_and_registered_once() {
-    let observability = source("crates/modules/rustok-cache/src/tenant_generation_observability.rs");
+    let observability =
+        source("crates/modules/rustok-cache/src/tenant_generation_observability.rs");
 
     for required in [
         "rustok_cache_tenant_generation_listener_status",

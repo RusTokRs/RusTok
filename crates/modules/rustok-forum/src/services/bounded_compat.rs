@@ -4,9 +4,7 @@ use uuid::Uuid;
 
 use rustok_core::SecurityContext;
 
-use crate::dto::{
-    ListRepliesFilter, ReplyListItem, ReplyResponse, bounded_forum_read_limit,
-};
+use crate::dto::{ListRepliesFilter, ReplyListItem, ReplyResponse, bounded_forum_read_limit};
 use crate::error::ForumResult;
 use crate::state_machine::ReplyStatus;
 

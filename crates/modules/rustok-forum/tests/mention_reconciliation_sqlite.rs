@@ -1,12 +1,8 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
-use rustok_forum::{
-    ForumMentionDriftKind, ForumMentionReconciliationService, ForumModule,
-};
+use rustok_forum::{ForumMentionDriftKind, ForumMentionReconciliationService, ForumModule};
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
-};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -204,13 +200,36 @@ async fn mention_reconciliation_detects_clean_state_and_all_drifts_sqlite() {
     assert_eq!(clean.inspected_mention_revisions, 1);
 
     // Drop validation triggers to simulate drifted states
-    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_relation_revision_source_guard;").await.unwrap();
-    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_user_mentions_source_guard;").await.unwrap();
+    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_relation_revision_source_guard;")
+        .await
+        .unwrap();
+    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_user_mentions_source_guard;")
+        .await
+        .unwrap();
 
     // 2. SourceUnavailable drift: revision pointing to non-existent topic translation
     let missing_top_id = Uuid::new_v4();
-    seed_relation_revision(&db, tenant_id, 2, "topic", missing_top_id, "en", &clean_fingerprint).await;
-    seed_user_mention(&db, tenant_id, "topic", missing_top_id, "en", 2, user1, "bob").await;
+    seed_relation_revision(
+        &db,
+        tenant_id,
+        2,
+        "topic",
+        missing_top_id,
+        "en",
+        &clean_fingerprint,
+    )
+    .await;
+    seed_user_mention(
+        &db,
+        tenant_id,
+        "topic",
+        missing_top_id,
+        "en",
+        2,
+        user1,
+        "bob",
+    )
+    .await;
 
     let drift1 = service
         .report_page(tenant_id, &admin, None, None)
@@ -225,8 +244,12 @@ async fn mention_reconciliation_detects_clean_state_and_all_drifts_sqlite() {
     assert_eq!(d1.source_id, missing_top_id);
 
     // Clean up revision 2
-    db.execute_unprepared("DELETE FROM forum_user_mentions WHERE source_revision_id = 2").await.unwrap();
-    db.execute_unprepared("DELETE FROM forum_relation_revisions WHERE revision_id = 2").await.unwrap();
+    db.execute_unprepared("DELETE FROM forum_user_mentions WHERE source_revision_id = 2")
+        .await
+        .unwrap();
+    db.execute_unprepared("DELETE FROM forum_relation_revisions WHERE revision_id = 2")
+        .await
+        .unwrap();
 
     // 3. ChildSourceMismatch drift: user mention has different source_locale than parent revision
     seed_relation_revision(&db, tenant_id, 3, "topic", top1, "en", &clean_fingerprint).await;
@@ -245,11 +268,24 @@ async fn mention_reconciliation_detects_clean_state_and_all_drifts_sqlite() {
     assert_eq!(d2.revision_id, 3);
 
     // Clean up revision 3
-    db.execute_unprepared("DELETE FROM forum_user_mentions WHERE source_revision_id = 3").await.unwrap();
-    db.execute_unprepared("DELETE FROM forum_relation_revisions WHERE revision_id = 3").await.unwrap();
+    db.execute_unprepared("DELETE FROM forum_user_mentions WHERE source_revision_id = 3")
+        .await
+        .unwrap();
+    db.execute_unprepared("DELETE FROM forum_relation_revisions WHERE revision_id = 3")
+        .await
+        .unwrap();
 
     // 4. ProjectionFingerprintInvalid drift: fingerprint is not 64 hex characters and not "legacy"
-    seed_relation_revision(&db, tenant_id, 4, "topic", top1, "en", "invalid-short-fingerprint").await;
+    seed_relation_revision(
+        &db,
+        tenant_id,
+        4,
+        "topic",
+        top1,
+        "en",
+        "invalid-short-fingerprint",
+    )
+    .await;
     seed_user_mention(&db, tenant_id, "topic", top1, "en", 4, user1, "dave").await;
 
     let drift3 = service
@@ -264,8 +300,12 @@ async fn mention_reconciliation_detects_clean_state_and_all_drifts_sqlite() {
     assert_eq!(d3.revision_id, 4);
 
     // Clean up revision 4
-    db.execute_unprepared("DELETE FROM forum_user_mentions WHERE source_revision_id = 4").await.unwrap();
-    db.execute_unprepared("DELETE FROM forum_relation_revisions WHERE revision_id = 4").await.unwrap();
+    db.execute_unprepared("DELETE FROM forum_user_mentions WHERE source_revision_id = 4")
+        .await
+        .unwrap();
+    db.execute_unprepared("DELETE FROM forum_relation_revisions WHERE revision_id = 4")
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -283,9 +323,25 @@ async fn mention_reconciliation_pagination_sqlite() {
     let clean_fingerprint = "0".repeat(64);
     // Seed 3 revisions with mentions
     for rev_id in 1..=3 {
-        seed_relation_revision(&db, tenant_id, rev_id, "topic", top_id, "en", &clean_fingerprint).await;
+        seed_relation_revision(
+            &db,
+            tenant_id,
+            rev_id,
+            "topic",
+            top_id,
+            "en",
+            &clean_fingerprint,
+        )
+        .await;
         seed_user_mention(
-            &db, tenant_id, "topic", top_id, "en", rev_id, user_id, &format!("user{rev_id}"),
+            &db,
+            tenant_id,
+            "topic",
+            top_id,
+            "en",
+            rev_id,
+            user_id,
+            &format!("user{rev_id}"),
         )
         .await;
     }

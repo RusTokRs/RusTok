@@ -4,9 +4,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use rustok_core::MigrationSource;
-use rustok_modules::{
-    ArtifactDataRecoveryReadinessService, ModulesModule,
-};
+use rustok_modules::{ArtifactDataRecoveryReadinessService, ModulesModule};
 use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
@@ -84,7 +82,10 @@ async fn test_snapshot_readiness_and_attestation_lifecycle() {
         )
         .await
         .expect("evaluate staging readiness");
-    assert!(!staging_readiness.ready, "staging snapshot cannot be considered ready");
+    assert!(
+        !staging_readiness.ready,
+        "staging snapshot cannot be considered ready"
+    );
 
     // 3. Snapshot is 'ready', valid manifest, created just now -> fully ready and within SLA
     let snapshot_id_ready = Uuid::new_v4();
@@ -179,7 +180,10 @@ async fn test_snapshot_readiness_and_attestation_lifecycle() {
         .await
         .expect("evaluate stale snapshot");
     assert!(!stale_readiness.is_within_sla);
-    assert!(!stale_readiness.ready, "snapshot outside SLA cannot be ready");
+    assert!(
+        !stale_readiness.ready,
+        "snapshot outside SLA cannot be ready"
+    );
 }
 
 #[tokio::test]
@@ -245,7 +249,11 @@ async fn test_platform_recovery_evidence_and_no_automatic_restore_invariant() {
         .expect("platform evidence");
     assert!(platform_evidence.recovery_capable);
     assert!(platform_evidence.evidence_digest.starts_with("sha256:"));
-    assert!(platform_evidence.checkpoint_lsn_or_tag.contains("page_count="));
+    assert!(
+        platform_evidence
+            .checkpoint_lsn_or_tag
+            .contains("page_count=")
+    );
 
     // 2. Attest complete recovery readiness
     let attestation = service

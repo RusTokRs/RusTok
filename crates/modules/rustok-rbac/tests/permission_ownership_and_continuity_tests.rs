@@ -33,10 +33,7 @@ async fn setup_database() -> DatabaseConnection {
 
     let manager = SchemaManager::new(&db);
     for migration in RbacModule.migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("apply migration");
+        migration.up(&manager).await.expect("apply migration");
     }
 
     db
@@ -68,7 +65,8 @@ async fn test_inert_admission_persists_definitions_without_installation() {
     let db = setup_database().await;
     let catalog = RbacArtifactPermissionCatalog::new(db.clone());
 
-    let release_digest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string();
+    let release_digest =
+        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string();
     let permissions = sample_permissions("sample");
 
     catalog
@@ -127,7 +125,8 @@ async fn test_multi_tenant_independent_scoped_projections() {
     let db = setup_database().await;
     let catalog = RbacArtifactPermissionCatalog::new(db.clone());
 
-    let release_digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111".to_string();
+    let release_digest =
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111".to_string();
     let permissions = sample_permissions("isolated");
 
     catalog
@@ -144,7 +143,9 @@ async fn test_multi_tenant_independent_scoped_projections() {
     let install1_id = Uuid::new_v4();
     catalog
         .project_scoped_permissions(ScopedPermissionProjectionRequest {
-            scope: ArtifactPermissionScope::Tenant { tenant_id: tenant1_id },
+            scope: ArtifactPermissionScope::Tenant {
+                tenant_id: tenant1_id,
+            },
             installation_id: install1_id,
             module_slug: "isolated".to_string(),
             release_digest: release_digest.clone(),
@@ -157,7 +158,9 @@ async fn test_multi_tenant_independent_scoped_projections() {
     let install2_id = Uuid::new_v4();
     catalog
         .project_scoped_permissions(ScopedPermissionProjectionRequest {
-            scope: ArtifactPermissionScope::Tenant { tenant_id: tenant2_id },
+            scope: ArtifactPermissionScope::Tenant {
+                tenant_id: tenant2_id,
+            },
             installation_id: install2_id,
             module_slug: "isolated".to_string(),
             release_digest: release_digest.clone(),

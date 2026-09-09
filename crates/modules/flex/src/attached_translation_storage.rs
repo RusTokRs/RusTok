@@ -18,8 +18,7 @@ use crate::{
 
 pub const MAX_ATTACHED_TRANSLATION_STORAGE_BATCH: usize = 200;
 
-pub type FlexAttachedLocalizedValuesByEntity =
-    BTreeMap<Uuid, BTreeMap<String, Map<String, Value>>>;
+pub type FlexAttachedLocalizedValuesByEntity = BTreeMap<Uuid, BTreeMap<String, Map<String, Value>>>;
 pub type FlexAttachedTranslationResourceRevisionsByEntity = BTreeMap<Uuid, String>;
 
 #[derive(Debug, FromQueryResult)]
@@ -126,8 +125,7 @@ where
         ));
     }
 
-    let mut bind_values: Vec<SeaOrmValue> =
-        vec![tenant_id.into(), entity_type.to_string().into()];
+    let mut bind_values: Vec<SeaOrmValue> = vec![tenant_id.into(), entity_type.to_string().into()];
     let mut placeholders = Vec::with_capacity(entity_ids.len());
     for entity_id in entity_ids {
         bind_values.push((*entity_id).into());

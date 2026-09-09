@@ -2,13 +2,15 @@ use std::path::Path;
 
 #[test]
 fn marketplace_family_names_and_ownership_stay_explicit() {
-    let root_manifest = include_str!("../../../crates/modules/rustok-marketplace/rustok-module.toml");
+    let root_manifest =
+        include_str!("../../../crates/modules/rustok-marketplace/rustok-module.toml");
     let seller_manifest =
         include_str!("../../../crates/modules/rustok-marketplace-seller/rustok-module.toml");
     let modules_manifest = include_str!("../../../modules.toml");
     let workspace = include_str!("../../../Cargo.toml");
     let root_source = include_str!("../../../crates/modules/rustok-marketplace/src/lib.rs");
-    let root_consumer = include_str!("../../../crates/modules/rustok-marketplace/src/seller_directory.rs");
+    let root_consumer =
+        include_str!("../../../crates/modules/rustok-marketplace/src/seller_directory.rs");
 
     for marker in [
         "rustok-marketplace",
@@ -87,10 +89,12 @@ fn marketplace_seller_owner_and_ports_preserve_contracts() {
     let registry = include_str!(
         "../../../crates/modules/rustok-marketplace-seller/contracts/marketplace-seller-fba-registry.json"
     );
-    let admin_core = include_str!("../../../crates/modules/rustok-marketplace-seller/admin/src/core.rs");
+    let admin_core =
+        include_str!("../../../crates/modules/rustok-marketplace-seller/admin/src/core.rs");
     let admin_transport =
         include_str!("../../../crates/modules/rustok-marketplace-seller/admin/src/transport.rs");
-    let admin_ui = include_str!("../../../crates/modules/rustok-marketplace-seller/admin/src/ui/leptos.rs");
+    let admin_ui =
+        include_str!("../../../crates/modules/rustok-marketplace-seller/admin/src/ui/leptos.rs");
 
     for marker in [
         "marketplace_sellers",

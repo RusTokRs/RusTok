@@ -1,12 +1,8 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
-use rustok_forum::{
-    ForumModule, ForumSolutionDriftKind, ForumSolutionReconciliationService,
-};
+use rustok_forum::{ForumModule, ForumSolutionDriftKind, ForumSolutionReconciliationService};
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
-};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -118,12 +114,7 @@ async fn seed_reply(
     .expect("reply seed should succeed");
 }
 
-async fn seed_solution(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-    reply_id: Uuid,
-) {
+async fn seed_solution(db: &DatabaseConnection, tenant_id: Uuid, topic_id: Uuid, reply_id: Uuid) {
     db.execute_unprepared(&format!(
         "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id) \
          VALUES ({}, {}, {})",
@@ -275,7 +266,9 @@ async fn solution_reconciliation_detects_clean_state_and_all_drifts_sqlite() {
 
     // 4. Introduce SolutionAuthorStatCount drift: solution_count = 99
     // Drop self-healing trigger so SQLite trigger doesn't auto-correct it
-    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_user_stats_public_reply_count_update;").await.unwrap();
+    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_user_stats_public_reply_count_update;")
+        .await
+        .unwrap();
 
     db.execute_unprepared(&format!(
         "UPDATE forum_user_stats SET solution_count = 99 WHERE tenant_id = {} AND user_id = {}",

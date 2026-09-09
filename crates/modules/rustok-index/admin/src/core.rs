@@ -225,7 +225,11 @@ pub fn build_index_admin_overview_view_model(
             hint: None,
         },
         IndexStatCardViewModel {
-            label: t(locale, "index.query.partitionStrategy", "Partition Strategy"),
+            label: t(
+                locale,
+                "index.query.partitionStrategy",
+                "Partition Strategy",
+            ),
             value: qd.partition_strategy.clone(),
             hint: None,
         },
@@ -286,7 +290,7 @@ pub fn format_retry_action_result(locale: Option<&str>, result: &RetryActionResu
     if result.success {
         let epoch_hint = result
             .retry_epoch
-            .map(|e| format!(" (epoch {e})" ))
+            .map(|e| format!(" (epoch {e})"))
             .unwrap_or_default();
         format!(
             "{}: {}{} (job: {})",
@@ -452,9 +456,12 @@ mod tests {
         // Inbox metrics summary
         assert_eq!(view_model.inbox_summary.len(), 4);
         assert_eq!(view_model.inbox_summary[0].value, "14"); // total
-        assert_eq!(view_model.inbox_summary[1].value, "3");  // pending
-        assert_eq!(view_model.inbox_summary[1].hint, Some("42 s lag".to_string()));
-        assert_eq!(view_model.inbox_summary[2].value, "0");  // dead-letter
+        assert_eq!(view_model.inbox_summary[1].value, "3"); // pending
+        assert_eq!(
+            view_model.inbox_summary[1].hint,
+            Some("42 s lag".to_string())
+        );
+        assert_eq!(view_model.inbox_summary[2].value, "0"); // dead-letter
 
         // Job metrics summary
         assert_eq!(view_model.job_summary.len(), 4);

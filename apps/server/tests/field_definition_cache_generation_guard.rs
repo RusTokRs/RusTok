@@ -162,7 +162,8 @@ fn field_definition_generation_triggers_follow_table_creation_order() {
 
     let auth_mod = include_str!("../../../crates/modules/rustok-auth/src/migrations/mod.rs");
     let product_mod = include_str!("../../../crates/modules/rustok-product/src/migrations/mod.rs");
-    let commerce_mod = include_str!("../../../crates/modules/rustok-commerce/src/migrations/mod.rs");
+    let commerce_mod =
+        include_str!("../../../crates/modules/rustok-commerce/src/migrations/mod.rs");
     let forum_mod = include_str!("../../../crates/modules/rustok-forum/src/migrations/mod.rs");
     assert!(auth_mod.contains("m20260716_000001_create_flex_field_definition_cache_generation"));
     assert!(auth_mod.contains("m20260716_000000_create_field_definition_cache_generation"));

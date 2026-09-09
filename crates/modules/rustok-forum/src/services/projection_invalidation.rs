@@ -50,7 +50,6 @@ pub(crate) async fn publish_forum_topic_projection_direct_in_tx(
     .await
 }
 
-
 pub(crate) async fn publish_forum_category_projection_in_tx(
     event_bus: &TransactionalEventBus,
     txn: &DatabaseTransaction,

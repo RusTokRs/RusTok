@@ -189,10 +189,7 @@ impl TranslationTargetProvider for FlexSchemaTranslationTargetProvider {
         // distinguish an idempotent retry from a genuinely stale new operation: durable
         // admission replays the former, authoritative source CAS rejects the latter.
         let validation = if source_revision_matches {
-            only_field_issues(validate_patch_against_snapshot(
-                &request,
-                &neutral.snapshot,
-            ))
+            only_field_issues(validate_patch_against_snapshot(&request, &neutral.snapshot))
         } else {
             accepted_validation()
         };
@@ -462,7 +459,11 @@ fn neutral_request_fingerprint(request: &TranslationPatchRequest) -> String {
     hash_component(&mut hasher, request.identity.resource_id.as_str());
     hash_optional_component(
         &mut hasher,
-        request.identity.subresource_id.as_ref().map(|value| value.as_str()),
+        request
+            .identity
+            .subresource_id
+            .as_ref()
+            .map(|value| value.as_str()),
     );
     hash_component(&mut hasher, request.source_locale.as_str());
     hash_component(&mut hasher, request.target_locale.as_str());
@@ -504,7 +505,9 @@ fn hash_component(hasher: &mut Sha256, value: &str) {
     hasher.update(value.as_bytes());
 }
 
-fn source_schema_name(owner: &FlexSchemaTranslationExactLocaleSnapshot) -> Result<String, PortError> {
+fn source_schema_name(
+    owner: &FlexSchemaTranslationExactLocaleSnapshot,
+) -> Result<String, PortError> {
     owner
         .leaves
         .iter()
@@ -636,10 +639,7 @@ fn schema_lifecycle(is_active: bool) -> TranslationResourceLifecycle {
 
 fn schema_cursor(schema_id: Uuid) -> Result<OpaqueCursor, PortError> {
     OpaqueCursor::new(schema_id.to_string()).map_err(|error| {
-        PortError::invariant_violation(
-            "flex.schema_translation_cursor_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("flex.schema_translation_cursor_invalid", error.to_string())
     })
 }
 

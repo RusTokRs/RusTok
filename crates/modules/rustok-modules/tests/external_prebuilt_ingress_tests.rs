@@ -15,28 +15,23 @@ use rustok_api::ArtifactPermissionLocalization;
 use rustok_core::MigrationSource;
 use rustok_modules::{
     ArtifactAdmissionLimits, ArtifactBindingDispatchEnvelope, ArtifactBlobStore,
-    ArtifactModuleKind, ArtifactPayloadKind, ArtifactPayloadSource,
-    ArtifactPermissionDescriptor, ArtifactRegistry, ArtifactReleaseRef,
-    ArtifactRuntime, ArtifactRuntimeError, ArtifactSchemaDocument,
-    ControlPlaneInfrastructure,
-    ExternalAbiCapabilityEvidence, ExternalLineageEvidence, ExternalPolicyEvidence,
-    ExternalPrebuiltIngressCommand, ExternalPrebuiltIngressError,
-    ExternalPrebuiltIngressEvidence,
-    ExternalPrebuiltIngressService, ExternalProvenanceEvidence,
-    ExternalPublisherEvidence, ExternalSbomEvidence, ExternalSignatureEvidence,
-    InMemoryArtifactBlobStore, InstalledModuleArtifact,
-    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor,
-    ModuleBindingIdempotency, ModuleCommandContext, ModuleControlPlane,
-    ModuleDependencyLockGraph, ModuleInstallationError, ModuleInstallationScope,
-    ModuleRuntimeBinding, ModuleRuntimeBindingKind, ModuleStaticPromotionAuthorizer,
-    ModuleStaticPromotionError, ModuleStaticPromotionRequestCommand,
-    ModulesModule, OciArtifactReference,
+    ArtifactModuleKind, ArtifactPayloadKind, ArtifactPayloadSource, ArtifactPermissionDescriptor,
+    ArtifactRegistry, ArtifactReleaseRef, ArtifactRuntime, ArtifactRuntimeError,
+    ArtifactSchemaDocument, ControlPlaneInfrastructure, ExternalAbiCapabilityEvidence,
+    ExternalLineageEvidence, ExternalPolicyEvidence, ExternalPrebuiltIngressCommand,
+    ExternalPrebuiltIngressError, ExternalPrebuiltIngressEvidence, ExternalPrebuiltIngressService,
+    ExternalProvenanceEvidence, ExternalPublisherEvidence, ExternalSbomEvidence,
+    ExternalSignatureEvidence, InMemoryArtifactBlobStore, InstalledModuleArtifact,
+    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor, ModuleBindingIdempotency,
+    ModuleCommandContext, ModuleControlPlane, ModuleDependencyLockGraph, ModuleInstallationError,
+    ModuleInstallationScope, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+    ModuleStaticPromotionAuthorizer, ModuleStaticPromotionError,
+    ModuleStaticPromotionRequestCommand, ModulesModule, OciArtifactReference,
 };
 use rustok_sandbox::{
-    CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse,
-    ExecutionMetrics, ExecutionPhase, ExecutorRegistry, RHAI_SANDBOX_RUNTIME_ABI,
-    RhaiBindingOutput, SandboxContext, SandboxError, SandboxExecutor,
-    SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxPolicy,
+    CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutionMetrics,
+    ExecutionPhase, ExecutorRegistry, RHAI_SANDBOX_RUNTIME_ABI, RhaiBindingOutput, SandboxContext,
+    SandboxError, SandboxExecutor, SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxPolicy,
     SandboxRequest, SandboxResult, SandboxRuntime,
 };
 use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
@@ -62,8 +57,7 @@ impl SpyRegistry {
     }
 
     fn add_package(&mut self, package: rustok_modules::ModuleArtifactPackage) {
-        self.packages
-            .insert(package.reference.canonical(), package);
+        self.packages.insert(package.reference.canonical(), package);
     }
 
     fn call_count(&self) -> usize {
@@ -173,17 +167,21 @@ async fn setup_db() -> sea_orm::DatabaseConnection {
 fn valid_evidence() -> ExternalPrebuiltIngressEvidence {
     ExternalPrebuiltIngressEvidence {
         publisher: ExternalPublisherEvidence {
-            identity: "pubkey:ed25519:e0a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef12345678".to_string(),
+            identity:
+                "pubkey:ed25519:e0a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef12345678"
+                    .to_string(),
             verified: true,
         },
         lineage: ExternalLineageEvidence {
-            source_reference: "git+https://github.com/rustok/external-extension.git#commit=1234567".to_string(),
+            source_reference: "git+https://github.com/rustok/external-extension.git#commit=1234567"
+                .to_string(),
             source_digest: sha256_digest(b"canonical source snapshot bytes"),
             build_toolchain: "rust:1.80-wasm32-wasip1".to_string(),
             verified: true,
         },
         signature: ExternalSignatureEvidence {
-            signature_reference: "cosign://ghcr.io/rustok/external-extension:sha256-sig".to_string(),
+            signature_reference: "cosign://ghcr.io/rustok/external-extension:sha256-sig"
+                .to_string(),
             signature_digest: sha256_digest(b"cryptographic signature envelope bytes"),
             verified: true,
         },
@@ -194,7 +192,8 @@ fn valid_evidence() -> ExternalPrebuiltIngressEvidence {
             verified: true,
         },
         provenance: ExternalProvenanceEvidence {
-            provenance_reference: "provenance://ghcr.io/rustok/external-extension:sha256-provenance".to_string(),
+            provenance_reference:
+                "provenance://ghcr.io/rustok/external-extension:sha256-provenance".to_string(),
             provenance_digest: sha256_digest(b"in-toto provenance attestation bytes"),
             media_type: "application/vnd.in-toto+json".to_string(),
             verified: true,
@@ -220,7 +219,11 @@ fn build_test_descriptor(
     payload_bytes: &[u8],
     payload_kind: ArtifactPayloadKind,
     runtime_abi: &str,
-) -> (ModuleArtifactDescriptor, ArtifactSchemaDocument, ArtifactSchemaDocument) {
+) -> (
+    ModuleArtifactDescriptor,
+    ArtifactSchemaDocument,
+    ArtifactSchemaDocument,
+) {
     let digest = sha256_digest(payload_bytes);
     let input_schema_doc = serde_json::json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -319,7 +322,9 @@ fn create_sample_package(
     let package = rustok_modules::ModuleArtifactPackage {
         reference,
         descriptor,
-        media_type: ArtifactPayloadKind::WasmComponent.oci_layer_media_type().to_string(),
+        media_type: ArtifactPayloadKind::WasmComponent
+            .oci_layer_media_type()
+            .to_string(),
         payload: ArtifactPayloadSource::Bytes(payload_bytes.to_vec()),
     };
 
@@ -442,7 +447,10 @@ async fn test_external_prebuilt_rejection_does_not_mutate_quarantine_state() {
         capability_policy_revision: Some(1),
     };
     let err = service.admit_external_prebuilt(command).await.unwrap_err();
-    assert!(matches!(err, ExternalPrebuiltIngressError::InvalidPublisher(_)));
+    assert!(matches!(
+        err,
+        ExternalPrebuiltIngressError::InvalidPublisher(_)
+    ));
 
     // 2. Test unverified signature rejection
     let mut evidence = valid_evidence();
@@ -462,7 +470,10 @@ async fn test_external_prebuilt_rejection_does_not_mutate_quarantine_state() {
         capability_policy_revision: Some(1),
     };
     let err = service.admit_external_prebuilt(command).await.unwrap_err();
-    assert!(matches!(err, ExternalPrebuiltIngressError::InvalidSignature(_)));
+    assert!(matches!(
+        err,
+        ExternalPrebuiltIngressError::InvalidSignature(_)
+    ));
 
     // 3. Test failed vulnerability scan rejection
     let mut evidence = valid_evidence();
@@ -482,7 +493,10 @@ async fn test_external_prebuilt_rejection_does_not_mutate_quarantine_state() {
         capability_policy_revision: Some(1),
     };
     let err = service.admit_external_prebuilt(command).await.unwrap_err();
-    assert!(matches!(err, ExternalPrebuiltIngressError::PolicyViolation(_)));
+    assert!(matches!(
+        err,
+        ExternalPrebuiltIngressError::PolicyViolation(_)
+    ));
 
     // 4. CRITICAL INVARIANT: Rejection alone DOES NOT mutate quarantine state!
     // Verify that module_artifact_security_states contains ZERO rows!
@@ -508,7 +522,10 @@ async fn test_external_prebuilt_rejects_static_or_native_abi() {
     evidence.abi_capability.abi_kind = ArtifactPayloadKind::StaticPromoted;
 
     let err = evidence.validate().unwrap_err();
-    assert!(matches!(err, ExternalPrebuiltIngressError::ExternalPrebuiltCannotBePromoted));
+    assert!(matches!(
+        err,
+        ExternalPrebuiltIngressError::ExternalPrebuiltCannotBePromoted
+    ));
 }
 
 #[tokio::test]
@@ -569,7 +586,10 @@ async fn test_external_prebuilt_strict_native_promotion_denial() {
         .expect_err("static promotion of external prebuilt MUST BE REJECTED");
 
     assert!(
-        matches!(promo_err, ModuleStaticPromotionError::ExternalPrebuiltCannotBePromoted),
+        matches!(
+            promo_err,
+            ModuleStaticPromotionError::ExternalPrebuiltCannotBePromoted
+        ),
         "Expected ExternalPrebuiltCannotBePromoted error, received {:?}",
         promo_err
     );
@@ -633,7 +653,10 @@ async fn test_external_prebuilt_idempotent_replay_and_conflict() {
         .admit_external_prebuilt(command2)
         .await
         .expect("replay succeeds");
-    assert!(!receipt2.cas_published, "cas_published must be false on idempotent replay");
+    assert!(
+        !receipt2.cas_published,
+        "cas_published must be false on idempotent replay"
+    );
     assert_eq!(receipt1.payload_digest, receipt2.payload_digest);
 
     // Replay with same idempotency key but different release digest -> returns IdempotencyConflict

@@ -61,8 +61,12 @@ impl MigrationSafetyMetadata {
         phase_constraint: MigrationPhaseConstraint,
     ) -> Self {
         let (requires_exclusive_lock, allows_concurrent_writes) = match safety_class {
-            MigrationSafetyClass::AdditiveOnly | MigrationSafetyClass::ExpandContract => (false, true),
-            MigrationSafetyClass::MaintenanceOnly | MigrationSafetyClass::Irreversible => (true, false),
+            MigrationSafetyClass::AdditiveOnly | MigrationSafetyClass::ExpandContract => {
+                (false, true)
+            }
+            MigrationSafetyClass::MaintenanceOnly | MigrationSafetyClass::Irreversible => {
+                (true, false)
+            }
         };
         Self {
             migration,
@@ -74,4 +78,3 @@ impl MigrationSafetyMetadata {
         }
     }
 }
-

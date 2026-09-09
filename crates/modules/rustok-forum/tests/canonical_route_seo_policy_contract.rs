@@ -94,7 +94,8 @@ fn canonical_route_handlers_compose_head_without_replacing_route_authority() {
 
 #[test]
 fn contract_preserves_visibility_schema_and_compatibility_boundaries() {
-    let contract = read("crates/modules/rustok-forum/contracts/forum-canonical-route-seo-policy.json");
+    let contract =
+        read("crates/modules/rustok-forum/contracts/forum-canonical-route-seo-policy.json");
     let docs = read("crates/modules/rustok-forum/docs/forum-24p-canonical-route-seo-policy.md");
 
     for marker in [

@@ -739,8 +739,7 @@ impl CatalogService {
         if !image_ids.is_empty() {
             entities::product_image_translation::Entity::delete_many()
                 .filter(
-                    entities::product_image_translation::Column::ImageId
-                        .is_in(image_ids.clone()),
+                    entities::product_image_translation::Column::ImageId.is_in(image_ids.clone()),
                 )
                 .exec(&txn)
                 .await?;

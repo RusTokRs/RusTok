@@ -82,7 +82,8 @@ fn search_validates_owner_route_without_rebuilding_forum_identity() {
 
 #[test]
 fn contract_locks_reindex_fail_closed_and_transport_compatibility() {
-    let contract = read("crates/modules/rustok-forum/contracts/forum-search-canonical-route-cutover.json");
+    let contract =
+        read("crates/modules/rustok-forum/contracts/forum-search-canonical-route-cutover.json");
     let docs = read("crates/modules/rustok-forum/docs/forum-24q-search-canonical-route-cutover.md");
     let evidence =
         read("crates/modules/rustok-search/contracts/evidence/search-canonical-url-contract.json");

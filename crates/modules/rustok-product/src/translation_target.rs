@@ -27,11 +27,10 @@ use crate::{
     CatalogService, CommerceError, ProductTranslationExactLocaleApply,
     ProductTranslationExactLocaleApplyReceipt, ProductTranslationExactLocaleError,
     ProductTranslationExactLocaleRecord, ProductTranslationExactLocaleSnapshot,
-    ProductTranslationExactResourceSummary, dto::ProductTranslationInput,
+    ProductTranslationExactResourceSummary,
+    dto::ProductTranslationInput,
     entities::product::ProductStatus,
-    services::{
-        catalog::ProductTranslationChangeLifecycle, with_product_operation_receipt,
-    },
+    services::{catalog::ProductTranslationChangeLifecycle, with_product_operation_receipt},
 };
 
 const TRANSLATION_OWNER_SLUG: &str = "product";
@@ -731,10 +730,7 @@ fn application_receipt(
             owner_receipt.resource_revision.clone(),
             "resource_revision",
         )?,
-        target_revision: opaque_revision(
-            owner_receipt.target_revision.clone(),
-            "target_revision",
-        )?,
+        target_revision: opaque_revision(owner_receipt.target_revision.clone(), "target_revision")?,
         applied_field_keys: request
             .fields
             .iter()
@@ -884,7 +880,10 @@ mod tests {
     #[test]
     fn change_cursor_round_trips_bounded_and_tail_positions() {
         let bounded = change_cursor(9, 4).expect("bounded cursor");
-        assert_eq!(parse_change_cursor(&bounded).expect("bounded parse"), (9, 4));
+        assert_eq!(
+            parse_change_cursor(&bounded).expect("bounded parse"),
+            (9, 4)
+        );
         let tail = change_cursor(9, 9).expect("tail cursor");
         assert_eq!(parse_change_cursor(&tail).expect("tail parse"), (9, 9));
     }

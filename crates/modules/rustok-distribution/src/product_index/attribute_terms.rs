@@ -164,7 +164,10 @@ product_attribute_terms AS (
 "#;
 
 #[cfg(test)]
-pub(crate) fn text_term(attribute_id: Uuid, value: &str) -> Result<String, ProductAttributeTermError> {
+pub(crate) fn text_term(
+    attribute_id: Uuid,
+    value: &str,
+) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_text_term(attribute_id, value)
 }
 
@@ -186,7 +189,10 @@ pub(crate) fn localized_presence_term(
 }
 
 #[cfg(test)]
-pub(crate) fn integer_term(attribute_id: Uuid, value: i64) -> Result<String, ProductAttributeTermError> {
+pub(crate) fn integer_term(
+    attribute_id: Uuid,
+    value: i64,
+) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_integer_term(attribute_id, value)
 }
 
@@ -199,7 +205,10 @@ pub(crate) fn decimal_term(
 }
 
 #[cfg(test)]
-pub(crate) fn boolean_term(attribute_id: Uuid, value: bool) -> Result<String, ProductAttributeTermError> {
+pub(crate) fn boolean_term(
+    attribute_id: Uuid,
+    value: bool,
+) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_boolean_term(attribute_id, value)
 }
 

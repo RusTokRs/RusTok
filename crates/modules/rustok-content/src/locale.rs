@@ -1,8 +1,6 @@
 use std::collections::BTreeSet;
 
-use rustok_api::{
-    PLATFORM_FALLBACK_LOCALE, TenantLocale, locale_tags_match, normalize_locale_tag,
-};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, TenantLocale, locale_tags_match, normalize_locale_tag};
 
 pub struct ResolvedLocale<'a, T> {
     pub item: Option<&'a T>,
@@ -94,9 +92,7 @@ where
 }
 
 pub fn normalize_locale_code(locale: &str) -> Option<String> {
-    TenantLocale::new(locale)
-        .ok()
-        .map(TenantLocale::into_inner)
+    TenantLocale::new(locale).ok().map(TenantLocale::into_inner)
 }
 
 fn normalized_locale_or_raw(locale: &str) -> String {

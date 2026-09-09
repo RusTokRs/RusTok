@@ -9,8 +9,8 @@ pub use native_server_adapter::{
 };
 
 use crate::model::{
-    CancelActionResult, CancelJobInput, IndexAdminBootstrap, ReplayActionResult,
-    RetryActionResult, RetryJobInput, TriggerReplayInput,
+    CancelActionResult, CancelJobInput, IndexAdminBootstrap, ReplayActionResult, RetryActionResult,
+    RetryJobInput, TriggerReplayInput,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,4 +55,3 @@ pub async fn retry_job(
 ) -> Result<RetryActionResult, IndexAdminTransportError> {
     retry_job_native(input).await.map_err(Into::into)
 }
-

@@ -1,13 +1,11 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    ForumModule, ForumSubscriptionDriftKind,
-    ForumSubscriptionReconciliationService, ForumSubscriptionTargetKind,
+    ForumModule, ForumSubscriptionDriftKind, ForumSubscriptionReconciliationService,
+    ForumSubscriptionTargetKind,
 };
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
-};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -223,11 +221,24 @@ async fn subscription_reconciliation_detects_clean_state_and_all_drifts_sqlite()
     assert_eq!(clean.inspected_category_subscriptions, 1);
 
     // 2. TargetMissing drift: insert subscription pointing to non-existent topic
-    db.execute_unprepared("PRAGMA foreign_keys = OFF;").await.unwrap();
-    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_topic_subscriptions_tenant_insert;").await.unwrap();
+    db.execute_unprepared("PRAGMA foreign_keys = OFF;")
+        .await
+        .unwrap();
+    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_topic_subscriptions_tenant_insert;")
+        .await
+        .unwrap();
     let missing_top_id = Uuid::new_v4();
     seed_topic_subscription(
-        &db, tenant_id, missing_top_id, user2, "watching", 1, 1, 1, "immediate", 1,
+        &db,
+        tenant_id,
+        missing_top_id,
+        user2,
+        "watching",
+        1,
+        1,
+        1,
+        "immediate",
+        1,
     )
     .await;
 
@@ -254,7 +265,9 @@ async fn subscription_reconciliation_detects_clean_state_and_all_drifts_sqlite()
     .unwrap();
 
     // 3. MergedTopicSourceSubscription drift: topic has an entry in forum_topic_merge_operations as source
-    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_05_topic_merge_redirect_edge;").await.unwrap();
+    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_05_topic_merge_redirect_edge;")
+        .await
+        .unwrap();
     let op_id = Uuid::new_v4();
     db.execute_unprepared(&format!(
         "INSERT INTO forum_topic_merge_operations \
@@ -283,7 +296,9 @@ async fn subscription_reconciliation_detects_clean_state_and_all_drifts_sqlite()
     assert_eq!(d2.target_id, top_id);
 
     // Remove merge operation
-    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_topic_merge_operation_delete;").await.unwrap();
+    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_topic_merge_operation_delete;")
+        .await
+        .unwrap();
     db.execute_unprepared(&format!(
         "DELETE FROM forum_topic_merge_operations WHERE tenant_id = {} AND source_topic_id = {}",
         sql_uuid(tenant_id),
@@ -294,7 +309,9 @@ async fn subscription_reconciliation_detects_clean_state_and_all_drifts_sqlite()
 
     // 4. MutedPreferencesInvalid drift:
     // Drop validation triggers to simulate drifted state
-    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_validate_category_subscription_update;").await.unwrap();
+    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_validate_category_subscription_update;")
+        .await
+        .unwrap();
     db.execute_unprepared(&format!(
         "UPDATE forum_category_subscriptions SET level = 'muted', notify_replies = 1 \
          WHERE category_id = {} AND user_id = {}",
@@ -327,7 +344,9 @@ async fn subscription_reconciliation_detects_clean_state_and_all_drifts_sqlite()
     .unwrap();
 
     // 5. RevisionInvalid drift: revision <= 0
-    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_validate_topic_subscription_update;").await.unwrap();
+    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_validate_topic_subscription_update;")
+        .await
+        .unwrap();
     db.execute_unprepared(&format!(
         "UPDATE forum_topic_subscriptions SET revision = 0 \
          WHERE topic_id = {} AND user_id = {}",
@@ -365,7 +384,16 @@ async fn subscription_reconciliation_pagination_and_composite_cursors_sqlite() {
         seed_topic(&db, tenant_id, cat_id, top_id, user_id).await;
         // topic auto-subscribes user_id.
         seed_category_subscription(
-            &db, tenant_id, cat_id, user_id, "watching", 1, 1, 1, "immediate", 1,
+            &db,
+            tenant_id,
+            cat_id,
+            user_id,
+            "watching",
+            1,
+            1,
+            1,
+            "immediate",
+            1,
         )
         .await;
     }

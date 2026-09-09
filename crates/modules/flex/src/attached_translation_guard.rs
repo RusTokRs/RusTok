@@ -7,8 +7,7 @@ use uuid::Uuid;
 use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
 
 use crate::{
-    attached_definitions,
-    cache_generation::FIELD_DEFINITION_CACHE_GENERATION_TABLE,
+    attached_definitions, cache_generation::FIELD_DEFINITION_CACHE_GENERATION_TABLE,
     field_definition_from_source, is_valid_flex_entity_type,
 };
 

@@ -5,7 +5,8 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
     let cursor_migration = include_str!(
         "../../../crates/modules/rustok-seo/src/migrations/m20260716_000007_add_redirect_cache_cursor_index.rs"
     );
-    let migration_registry = include_str!("../../../crates/modules/rustok-seo/src/migrations/mod.rs");
+    let migration_registry =
+        include_str!("../../../crates/modules/rustok-seo/src/migrations/mod.rs");
     let worker = include_str!("../src/services/seo_redirect_cache_reconciliation.rs");
     let evidence = include_str!("../src/services/seo_redirect_cache_reconciliation_tests.rs");
     let workflow = include_str!("../../../.github/workflows/cache-hardening.yml");

@@ -2,8 +2,8 @@
 //! sequential wave mutation, predecessor capacity retention, and bounded wave rollback.
 
 use rustok_modules::{
-    WaveAssignmentPhase, WaveCohort, WaveNodeAssignment, WaveRolloutCoordinator,
-    WaveRolloutError, WaveRolloutState,
+    WaveAssignmentPhase, WaveCohort, WaveNodeAssignment, WaveRolloutCoordinator, WaveRolloutError,
+    WaveRolloutState,
 };
 use uuid::Uuid;
 
@@ -11,8 +11,11 @@ fn sample_assignment(node_id: &str, role: &str) -> WaveNodeAssignment {
     WaveNodeAssignment {
         node_id: node_id.to_string(),
         role: role.to_string(),
-        candidate_digest: "sha256:candidate_bundle_digest_11111111111111111111111111111111".to_string(),
-        predecessor_digest: Some("sha256:predecessor_bundle_digest_00000000000000000000000000000000".to_string()),
+        candidate_digest: "sha256:candidate_bundle_digest_11111111111111111111111111111111"
+            .to_string(),
+        predecessor_digest: Some(
+            "sha256:predecessor_bundle_digest_00000000000000000000000000000000".to_string(),
+        ),
         pre_staged_candidate: false,
         pre_staged_predecessor: false,
         phase: WaveAssignmentPhase::PreStaging,
@@ -92,7 +95,13 @@ fn test_sequential_wave_mutation_and_capacity_retention() {
     let (_id, mut coordinator) = sample_three_wave_plan();
 
     // Pre-stage all nodes across all waves
-    for node in ["node-canary-1", "node-prod-1", "node-prod-2", "node-prod-3", "node-prod-4"] {
+    for node in [
+        "node-canary-1",
+        "node-prod-1",
+        "node-prod-2",
+        "node-prod-3",
+        "node-prod-4",
+    ] {
         coordinator.report_node_pre_staged(node, true, true);
     }
     assert_eq!(coordinator.state, WaveRolloutState::PreStaged);
@@ -102,37 +111,70 @@ fn test_sequential_wave_mutation_and_capacity_retention() {
     assert_eq!(skip_err, WaveRolloutError::PreviousWaveNotVerified(0));
 
     // 2. Start Canary (Wave 0)
-    coordinator.start_wave_mutation(0).expect("starting wave 0 succeeds");
+    coordinator
+        .start_wave_mutation(0)
+        .expect("starting wave 0 succeeds");
     assert_eq!(coordinator.state, WaveRolloutState::MutatingWave(0));
 
     // Crucial check: Wave 1 & Wave 2 remain PreStaged (untouched, running predecessor capacity)
-    assert_eq!(coordinator.cohorts[0].assignments[0].phase, WaveAssignmentPhase::Mutating);
-    assert_eq!(coordinator.cohorts[1].assignments[0].phase, WaveAssignmentPhase::PreStaged);
-    assert_eq!(coordinator.cohorts[2].assignments[0].phase, WaveAssignmentPhase::PreStaged);
+    assert_eq!(
+        coordinator.cohorts[0].assignments[0].phase,
+        WaveAssignmentPhase::Mutating
+    );
+    assert_eq!(
+        coordinator.cohorts[1].assignments[0].phase,
+        WaveAssignmentPhase::PreStaged
+    );
+    assert_eq!(
+        coordinator.cohorts[2].assignments[0].phase,
+        WaveAssignmentPhase::PreStaged
+    );
 
     // 3. Verify Canary
-    coordinator.verify_wave(0).expect("verifying wave 0 succeeds");
+    coordinator
+        .verify_wave(0)
+        .expect("verifying wave 0 succeeds");
     assert_eq!(coordinator.state, WaveRolloutState::VerifiedWave(0));
-    assert_eq!(coordinator.cohorts[0].assignments[0].phase, WaveAssignmentPhase::Verified);
+    assert_eq!(
+        coordinator.cohorts[0].assignments[0].phase,
+        WaveAssignmentPhase::Verified
+    );
 
     // 4. Start Wave 1
-    coordinator.start_wave_mutation(1).expect("starting wave 1 succeeds");
+    coordinator
+        .start_wave_mutation(1)
+        .expect("starting wave 1 succeeds");
     assert_eq!(coordinator.state, WaveRolloutState::MutatingWave(1));
-    assert_eq!(coordinator.cohorts[1].assignments[0].phase, WaveAssignmentPhase::Mutating);
-    assert_eq!(coordinator.cohorts[2].assignments[0].phase, WaveAssignmentPhase::PreStaged); // Wave 2 still untouched!
+    assert_eq!(
+        coordinator.cohorts[1].assignments[0].phase,
+        WaveAssignmentPhase::Mutating
+    );
+    assert_eq!(
+        coordinator.cohorts[2].assignments[0].phase,
+        WaveAssignmentPhase::PreStaged
+    ); // Wave 2 still untouched!
 
     // 5. Verify Wave 1
-    coordinator.verify_wave(1).expect("verifying wave 1 succeeds");
+    coordinator
+        .verify_wave(1)
+        .expect("verifying wave 1 succeeds");
     assert_eq!(coordinator.state, WaveRolloutState::VerifiedWave(1));
 
     // 6. Start Wave 2 (Final Wave)
-    coordinator.start_wave_mutation(2).expect("starting wave 2 succeeds");
+    coordinator
+        .start_wave_mutation(2)
+        .expect("starting wave 2 succeeds");
     assert_eq!(coordinator.state, WaveRolloutState::MutatingWave(2));
 
     // 7. Verify Wave 2 -> Converged!
-    coordinator.verify_wave(2).expect("verifying final wave succeeds");
+    coordinator
+        .verify_wave(2)
+        .expect("verifying final wave succeeds");
     assert_eq!(coordinator.state, WaveRolloutState::Converged);
-    assert_eq!(coordinator.cohorts[2].assignments[0].phase, WaveAssignmentPhase::Verified);
+    assert_eq!(
+        coordinator.cohorts[2].assignments[0].phase,
+        WaveAssignmentPhase::Verified
+    );
 }
 
 #[test]
@@ -140,7 +182,13 @@ fn test_wave_failure_and_rollback_with_predecessor_retention() {
     let (rollout_id, mut coordinator) = sample_three_wave_plan();
 
     // Pre-stage all nodes
-    for node in ["node-canary-1", "node-prod-1", "node-prod-2", "node-prod-3", "node-prod-4"] {
+    for node in [
+        "node-canary-1",
+        "node-prod-1",
+        "node-prod-2",
+        "node-prod-3",
+        "node-prod-4",
+    ] {
         coordinator.report_node_pre_staged(node, true, true);
     }
 
@@ -164,10 +212,19 @@ fn test_wave_failure_and_rollback_with_predecessor_retention() {
     assert_eq!(coordinator.state, WaveRolloutState::RolledBack);
 
     // Mutated waves are RolledBack
-    assert_eq!(coordinator.cohorts[0].assignments[0].phase, WaveAssignmentPhase::RolledBack);
-    assert_eq!(coordinator.cohorts[1].assignments[0].phase, WaveAssignmentPhase::RolledBack);
+    assert_eq!(
+        coordinator.cohorts[0].assignments[0].phase,
+        WaveAssignmentPhase::RolledBack
+    );
+    assert_eq!(
+        coordinator.cohorts[1].assignments[0].phase,
+        WaveAssignmentPhase::RolledBack
+    );
     // Untouched wave remains PreStaged
-    assert_eq!(coordinator.cohorts[2].assignments[0].phase, WaveAssignmentPhase::PreStaged);
+    assert_eq!(
+        coordinator.cohorts[2].assignments[0].phase,
+        WaveAssignmentPhase::PreStaged
+    );
 
     // 4. Second rollback fails (recovery already exhausted, max 1 attempt)
     let second_err = coordinator.rollback_all_mutated_waves(1).unwrap_err();

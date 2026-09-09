@@ -65,7 +65,9 @@ impl InstallBootstrapPort<()> for TestPorts {
         InstallExecutionError,
     > {
         if *self.fail_at_bootstrap.lock().unwrap() {
-            return Err(InstallExecutionError::new("simulated bootstrap import failure"));
+            return Err(InstallExecutionError::new(
+                "simulated bootstrap import failure",
+            ));
         }
         Ok(None)
     }
@@ -210,7 +212,9 @@ impl InstallDeploymentPort<()> for TestPorts {
         request: InstallDistributionDeploymentRequest,
     ) -> Result<InstallDistributionDeployment, InstallExecutionError> {
         if *self.fail_at_deployment.lock().unwrap() {
-            return Err(InstallExecutionError::new("simulated deployment rollout failure"));
+            return Err(InstallExecutionError::new(
+                "simulated deployment rollout failure",
+            ));
         }
 
         let observations = request
@@ -284,8 +288,10 @@ fn sample_plan(root: &std::path::Path) -> InstallPlan {
         distribution_release_id: Uuid::from_u128(2),
         bundle_reference: format!("registry.example/rustok/base@sha256:{}", "a".repeat(64)),
         bundle_root_digest: format!("sha256:{}", "a".repeat(64)),
-        role_set_digest:
-            rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(&roles).unwrap(),
+        role_set_digest: rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(
+            &roles,
+        )
+        .unwrap(),
         roles,
         bootstrap_receipt: None,
     };
@@ -342,7 +348,10 @@ async fn test_base_bundle_install_happy_path_and_candidate_role_prestaging() {
     // Verify candidate role deployment and health observations
     assert_eq!(output.deployment_receipt.deployment.observations.len(), 4);
     for obs in &output.deployment_receipt.deployment.observations {
-        assert!(obs.health_evidence_reference.starts_with("probe://healthy/"));
+        assert!(
+            obs.health_evidence_reference
+                .starts_with("probe://healthy/")
+        );
     }
 
     // Verify step progression
@@ -384,7 +393,10 @@ async fn test_fresh_install_cleanup_on_pre_schema_failure() {
         .await
         .unwrap_err();
 
-    assert!(err.to_string().contains("simulated bootstrap import failure"));
+    assert!(
+        err.to_string()
+            .contains("simulated bootstrap import failure")
+    );
 
     // Verify state transitioned to FreshInstallCleaned
     let states = ports.states.lock().unwrap().clone();
@@ -441,7 +453,10 @@ async fn test_recovery_required_on_deployment_rollout_failure() {
         .await
         .unwrap_err();
 
-    assert!(err.to_string().contains("simulated deployment rollout failure"));
+    assert!(
+        err.to_string()
+            .contains("simulated deployment rollout failure")
+    );
 
     let states = ports.states.lock().unwrap().clone();
     assert_eq!(

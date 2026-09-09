@@ -52,7 +52,8 @@ fn shared_redis_backend_connects_lazily_and_recovers_generation_through_monitor(
     let cache_lib = include_str!("../../../modules/rustok-cache/src/lib.rs");
     let shared = include_str!("../../../modules/rustok-cache/src/shared_backend.rs");
     let weighted = include_str!("../../../modules/rustok-cache/src/weighted.rs");
-    let generation_recovery = include_str!("../../../modules/rustok-cache/src/backend_generation_recovery.rs");
+    let generation_recovery =
+        include_str!("../../../modules/rustok-cache/src/backend_generation_recovery.rs");
     let redis_status = include_str!("../../../modules/rustok-cache/src/redis_status.rs");
     let recovery_test = include_str!("../../../modules/rustok-cache/src/startup_recovery_tests.rs");
 

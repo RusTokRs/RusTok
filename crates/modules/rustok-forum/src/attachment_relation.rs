@@ -244,7 +244,10 @@ mod tests {
         assert_eq!(batch.source().source_revision(), 1);
         assert_eq!(batch.source().locale(), "en");
         assert_eq!(batch.attachments()[0].position, 0);
-        assert_eq!(batch.attachments()[0].caption.as_deref(), Some("First caption"));
+        assert_eq!(
+            batch.attachments()[0].caption.as_deref(),
+            Some("First caption")
+        );
         assert_eq!(batch.attachments()[1].position, 1);
         assert_eq!(batch.attachments()[1].caption, None);
         assert!(!batch.is_empty());

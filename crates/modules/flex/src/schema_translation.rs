@@ -18,9 +18,15 @@ const LEGACY_UNDETERMINED_LOCALE: &str = "und";
 pub enum FlexSchemaTranslationLeaf {
     SchemaName,
     SchemaDescription,
-    FieldLabel { field_key: String },
-    FieldDescription { field_key: String },
-    FieldValidationErrorMessage { field_key: String },
+    FieldLabel {
+        field_key: String,
+    },
+    FieldDescription {
+        field_key: String,
+    },
+    FieldValidationErrorMessage {
+        field_key: String,
+    },
     FieldOptionLabel {
         field_key: String,
         /// Select option values are validated as unique within one field and therefore
@@ -173,7 +179,10 @@ impl FlexSchemaTranslationExactLocaleApply {
     pub fn validate_admission(&self) -> FlexSchemaTranslationResult<()> {
         self.operation.validate()?;
         validate_flex_schema_translation_locale_pair(&self.source_locale, &self.target_locale)?;
-        validate_nonblank(&self.expected_resource_revision, "expected_resource_revision")?;
+        validate_nonblank(
+            &self.expected_resource_revision,
+            "expected_resource_revision",
+        )?;
         validate_nonblank(&self.expected_source_revision, "expected_source_revision")?;
         if let Some(revision) = &self.expected_target_revision {
             validate_nonblank(revision, "expected_target_revision")?;
@@ -197,7 +206,11 @@ impl FlexSchemaTranslationExactLocaleApply {
                     "Flex schema translation apply contains a duplicate leaf".to_string(),
                 ));
             }
-            if target.value.as_ref().is_some_and(|value| value.trim().is_empty()) {
+            if target
+                .value
+                .as_ref()
+                .is_some_and(|value| value.trim().is_empty())
+            {
                 return Err(FlexSchemaTranslationError::Invalid(
                     "Flex schema translation target values must be nonblank or null".to_string(),
                 ));
@@ -222,8 +235,13 @@ pub struct FlexSchemaTranslationExactLocaleApplyReceipt {
 pub enum FlexSchemaTranslationError {
     Invalid(String),
     SchemaNotFound(Uuid),
-    SourceLocaleNotFound { schema_id: Uuid, locale: String },
-    RevisionConflict { revision: &'static str },
+    SourceLocaleNotFound {
+        schema_id: Uuid,
+        locale: String,
+    },
+    RevisionConflict {
+        revision: &'static str,
+    },
     /// Preserve the platform port error shape so the neutral provider can retain
     /// conflict/retryability semantics from durable owner idempotency admission.
     Operation(PortError),
@@ -243,16 +261,28 @@ impl fmt::Display for FlexSchemaTranslationError {
                 "Flex schema source locale not found: {locale} for schema {schema_id}"
             ),
             Self::RevisionConflict { revision } => {
-                write!(formatter, "Flex schema translation {revision} revision conflict")
+                write!(
+                    formatter,
+                    "Flex schema translation {revision} revision conflict"
+                )
             }
             Self::Operation(error) => {
-                write!(formatter, "Flex schema translation operation failed: {error}")
+                write!(
+                    formatter,
+                    "Flex schema translation operation failed: {error}"
+                )
             }
             Self::Database(message) => {
-                write!(formatter, "Flex schema translation database error: {message}")
+                write!(
+                    formatter,
+                    "Flex schema translation database error: {message}"
+                )
             }
             Self::OwnerInvariant(message) => {
-                write!(formatter, "Flex schema translation owner invariant failed: {message}")
+                write!(
+                    formatter,
+                    "Flex schema translation owner invariant failed: {message}"
+                )
             }
         }
     }
@@ -288,7 +318,8 @@ pub fn validate_flex_schema_translation_locale_pair(
 }
 
 fn validate_authoring_locale(locale: &str, field: &str) -> FlexSchemaTranslationResult<()> {
-    if locale == LEGACY_UNDETERMINED_LOCALE || normalize_locale_tag(locale).as_deref() != Some(locale)
+    if locale == LEGACY_UNDETERMINED_LOCALE
+        || normalize_locale_tag(locale).as_deref() != Some(locale)
     {
         return Err(FlexSchemaTranslationError::Invalid(format!(
             "Flex schema translation {field} must be a normalized authoring locale other than `und`"

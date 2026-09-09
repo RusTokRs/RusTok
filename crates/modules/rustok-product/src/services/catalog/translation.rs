@@ -13,7 +13,9 @@ pub enum ProductTranslationExactLocaleError {
     #[error("Product translation source locale not found: {locale} for product {product_id}")]
     SourceLocaleNotFound { product_id: Uuid, locale: String },
 
-    #[error("Product translation target locale missing after apply: {locale} for product {product_id}")]
+    #[error(
+        "Product translation target locale missing after apply: {locale} for product {product_id}"
+    )]
     TargetLocaleMissingAfterApply { product_id: Uuid, locale: String },
 
     #[error("Product translation {revision} revision conflict")]
@@ -26,8 +28,7 @@ impl From<sea_orm::DbErr> for ProductTranslationExactLocaleError {
     }
 }
 
-pub type ProductTranslationExactLocaleResult<T> =
-    Result<T, ProductTranslationExactLocaleError>;
+pub type ProductTranslationExactLocaleResult<T> = Result<T, ProductTranslationExactLocaleError>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProductTranslationExactLocaleRecord {
@@ -133,10 +134,7 @@ impl CatalogService {
             query = query.filter(entities::product_translation::Column::ProductId.gt(after));
         }
 
-        let mut source_rows = query
-            .limit(u64::from(limit) + 1)
-            .all(&self.db)
-            .await?;
+        let mut source_rows = query.limit(u64::from(limit) + 1).all(&self.db).await?;
         let has_more = source_rows.len() > usize::from(limit);
         if has_more {
             source_rows.truncate(usize::from(limit));
@@ -163,26 +161,27 @@ impl CatalogService {
             .into_iter()
             .map(|product| (product.id, product))
             .collect::<HashMap<_, _>>();
-        let translations = load_product_translations_for_products(&self.db, tenant_id, &product_ids)
-            .await?
-            .into_iter()
-            .fold(
-                HashMap::<Uuid, Vec<entities::product_translation::Model>>::new(),
-                |mut grouped, translation| {
-                    grouped
-                        .entry(translation.product_id)
-                        .or_default()
-                        .push(translation);
-                    grouped
-                },
-            );
+        let translations =
+            load_product_translations_for_products(&self.db, tenant_id, &product_ids)
+                .await?
+                .into_iter()
+                .fold(
+                    HashMap::<Uuid, Vec<entities::product_translation::Model>>::new(),
+                    |mut grouped, translation| {
+                        grouped
+                            .entry(translation.product_id)
+                            .or_default()
+                            .push(translation);
+                        grouped
+                    },
+                );
 
         let resources = source_rows
             .into_iter()
             .map(|source| {
-                let product = products.get(&source.product_id).ok_or_else(|| {
-                    CommerceError::ProductNotFound(source.product_id)
-                })?;
+                let product = products
+                    .get(&source.product_id)
+                    .ok_or_else(|| CommerceError::ProductNotFound(source.product_id))?;
                 let exact = translations.get(&source.product_id).ok_or_else(|| {
                     ProductTranslationExactLocaleError::SourceLocaleNotFound {
                         product_id: source.product_id,
@@ -319,18 +318,17 @@ impl CatalogService {
             }
             .insert(&txn)
             .await
-            .map_err(|error| {
-                map_product_unique_violation(error, &handle, &target_locale, None)
-            })?;
+            .map_err(|error| map_product_unique_violation(error, &handle, &target_locale, None))?;
         }
 
         let translations_after = load_product_translations(&txn, tenant_id, product_id).await?;
-        let target_after = exact_locale_row(&translations_after, &target_locale).ok_or_else(|| {
-            ProductTranslationExactLocaleError::TargetLocaleMissingAfterApply {
-                product_id,
-                locale: target_locale.clone(),
-            }
-        })?;
+        let target_after =
+            exact_locale_row(&translations_after, &target_locale).ok_or_else(|| {
+                ProductTranslationExactLocaleError::TargetLocaleMissingAfterApply {
+                    product_id,
+                    locale: target_locale.clone(),
+                }
+            })?;
         let resource_revision =
             product_translation_resource_revision(&product, &translations_after);
         let target_revision = product_translation_locale_revision(target_after);
@@ -415,10 +413,12 @@ fn build_exact_locale_snapshot(
 ) -> ProductTranslationExactLocaleResult<ProductTranslationExactLocaleSnapshot> {
     let source = exact_locale_row(&translations, &source_locale)
         .cloned()
-        .ok_or_else(|| ProductTranslationExactLocaleError::SourceLocaleNotFound {
-            product_id: product.id,
-            locale: source_locale.clone(),
-        })?;
+        .ok_or_else(
+            || ProductTranslationExactLocaleError::SourceLocaleNotFound {
+                product_id: product.id,
+                locale: source_locale.clone(),
+            },
+        )?;
     let target = exact_locale_row(&translations, &target_locale).cloned();
 
     let resource_revision = product_translation_resource_revision(&product, &translations);

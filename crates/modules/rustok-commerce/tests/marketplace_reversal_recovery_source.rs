@@ -25,7 +25,8 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
         include_str!("../../rustok-payment/src/provider_event_recovery_controller.rs");
     let payment_worker =
         include_str!("../../../../apps/server/src/services/payment_provider_event_worker.rs");
-    let dispatcher = include_str!("../../../../apps/server/src/services/module_event_dispatcher.rs");
+    let dispatcher =
+        include_str!("../../../../apps/server/src/services/module_event_dispatcher.rs");
 
     assert!(adapter.contains("refund.completed"));
     assert!(adapter.contains("chargeback.completed"));

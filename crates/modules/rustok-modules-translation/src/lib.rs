@@ -17,11 +17,11 @@ use rustok_modules::{
     },
 };
 use rustok_translation_targets::{
-    FieldKey, OpaqueRevision, OwnerSlug, ResourceId, ResourceKind,
-    TranslationDataClassification, TranslationFieldDescriptor, TranslationPatchIssue,
-    TranslationPatchIssueSeverity, TranslationPatchRequest, TranslationPatchValidation,
-    TranslationResourceIdentity, TranslationStrategy, TranslationTargetContractError,
-    TranslationValueProfile, provider_support::field_hash,
+    FieldKey, OpaqueRevision, OwnerSlug, ResourceId, ResourceKind, TranslationDataClassification,
+    TranslationFieldDescriptor, TranslationPatchIssue, TranslationPatchIssueSeverity,
+    TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
+    TranslationStrategy, TranslationTargetContractError, TranslationValueProfile,
+    provider_support::field_hash,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -278,9 +278,11 @@ impl StaticSettingsTranslationIdentity {
             StaticSettingsTranslationIdentityError::InvalidCommandContext(error.to_string())
         })?;
         if context.tenant_id != Some(snapshot.tenant_id) {
-            return Err(StaticSettingsTranslationIdentityError::InvalidCommandContext(
-                "owner command tenant must match the stable Settings snapshot".to_string(),
-            ));
+            return Err(
+                StaticSettingsTranslationIdentityError::InvalidCommandContext(
+                    "owner command tenant must match the stable Settings snapshot".to_string(),
+                ),
+            );
         }
 
         let revisions = self.revisions_for_snapshot(snapshot)?;
@@ -316,9 +318,9 @@ impl StaticSettingsTranslationIdentity {
                 expected_target_revision: field.target_revision.unwrap_or(0),
                 context: step_context,
             });
-            expected_owner_revision = expected_owner_revision.checked_add(1).ok_or(
-                StaticSettingsTranslationIdentityError::OwnerRevisionOverflow,
-            )?;
+            expected_owner_revision = expected_owner_revision
+                .checked_add(1)
+                .ok_or(StaticSettingsTranslationIdentityError::OwnerRevisionOverflow)?;
         }
 
         Ok(StaticSettingsTranslationPrepareResult::Ready(
@@ -347,11 +349,7 @@ impl StaticSettingsTranslationIdentity {
 
     /// Rejects stale/wrong resource or field identities before any owner read or
     /// mutation adapter is allowed to resolve them.
-    pub fn contains_field(
-        &self,
-        identity: &TranslationResourceIdentity,
-        field: &FieldKey,
-    ) -> bool {
+    pub fn contains_field(&self, identity: &TranslationResourceIdentity, field: &FieldKey) -> bool {
         identity == &self.resource && self.field_keys.binary_search(field).is_ok()
     }
 
@@ -404,9 +402,11 @@ fn validate_snapshot_fields(
 
         let key = FieldKey::new(field.field_id.clone())?;
         if !identity.contains_field(identity.resource(), &key) {
-            return Err(StaticSettingsTranslationIdentityError::UnadmittedSnapshotField(
-                field.field_id.clone(),
-            ));
+            return Err(
+                StaticSettingsTranslationIdentityError::UnadmittedSnapshotField(
+                    field.field_id.clone(),
+                ),
+            );
         }
 
         match (
@@ -441,11 +441,7 @@ fn validate_snapshot_fields(
     Ok(())
 }
 
-fn validation_issue(
-    field: Option<FieldKey>,
-    code: &str,
-    message: &str,
-) -> TranslationPatchIssue {
+fn validation_issue(field: Option<FieldKey>, code: &str, message: &str) -> TranslationPatchIssue {
     TranslationPatchIssue {
         field,
         severity: TranslationPatchIssueSeverity::Error,
@@ -638,7 +634,10 @@ mod tests {
     fn registry_maps_to_one_stable_resource_and_sorted_field_keys() {
         let identity = StaticSettingsTranslationIdentity::from_registry(&registry()).unwrap();
         assert_eq!(identity.resource().owner_slug.as_str(), "modules");
-        assert_eq!(identity.resource().resource_kind.as_str(), "static_settings");
+        assert_eq!(
+            identity.resource().resource_kind.as_str(),
+            "static_settings"
+        );
         assert_eq!(identity.resource().resource_id.as_str(), "storefront");
         assert!(identity.resource().subresource_id.is_none());
         assert_eq!(
@@ -679,9 +678,18 @@ mod tests {
         target_only.fields[0].target_revision = Some(3);
         target_only.fields[0].target_owner_revision = Some(10);
         let target_only_revisions = identity.revisions_for_snapshot(&target_only).unwrap();
-        assert_ne!(revisions.resource_revision, target_only_revisions.resource_revision);
-        assert_eq!(revisions.source_revision, target_only_revisions.source_revision);
-        assert_ne!(revisions.target_revision, target_only_revisions.target_revision);
+        assert_ne!(
+            revisions.resource_revision,
+            target_only_revisions.resource_revision
+        );
+        assert_eq!(
+            revisions.source_revision,
+            target_only_revisions.source_revision
+        );
+        assert_ne!(
+            revisions.target_revision,
+            target_only_revisions.target_revision
+        );
     }
 
     #[test]
@@ -730,7 +738,10 @@ mod tests {
             plan.commands[1].context.idempotency_key
         );
         assert_eq!(plan.commands[0].context.actor_id, context.actor_id);
-        assert_eq!(plan.commands[1].context.correlation_id, context.correlation_id);
+        assert_eq!(
+            plan.commands[1].context.correlation_id,
+            context.correlation_id
+        );
     }
 
     #[test]
@@ -746,10 +757,12 @@ mod tests {
             panic!("stale patch must be rejected before owner command preparation");
         };
         assert!(!validation.accepted);
-        assert!(validation
-            .issues
-            .iter()
-            .any(|issue| issue.code == "resource_revision_conflict"));
+        assert!(
+            validation
+                .issues
+                .iter()
+                .any(|issue| issue.code == "resource_revision_conflict")
+        );
     }
 
     #[test]

@@ -31,7 +31,8 @@ use rustok_translation_targets::{
     TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
     TranslationResourceSummary, TranslationTargetCapability, TranslationTargetChange,
     TranslationTargetChangePage, TranslationTargetChangesRequest, TranslationTargetProgressFacts,
-    TranslationTargetProgressRequest, TranslationTargetProvider, TranslationTargetProviderDescriptor,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor,
     provider_support::{
         contract_validation_error, decode_application_receipt, field_hash, validation_to_port_error,
     },
@@ -183,7 +184,8 @@ impl StaticSettingsTranslationTargetProvider {
         let mut highwater = None;
         for registry in registries {
             if let Some(candidate) = self.module_highwater(tenant_id, registry).await? {
-                highwater = Some(highwater.map_or(candidate, |current: u64| current.max(candidate)));
+                highwater =
+                    Some(highwater.map_or(candidate, |current: u64| current.max(candidate)));
             }
         }
         Ok(highwater)
@@ -205,7 +207,9 @@ impl StaticSettingsTranslationTargetProvider {
                 .exact_locale_snapshot(tenant_id, registry, request.target_locale.as_str())
                 .await
             {
-                Ok(snapshot) if snapshot.source_locale == request.source_locale.as_str() => snapshot,
+                Ok(snapshot) if snapshot.source_locale == request.source_locale.as_str() => {
+                    snapshot
+                }
                 Ok(_) => continue,
                 Err(error) if source_not_translation_ready(&error) => continue,
                 Err(error) => return Err(translation_read_error_to_port_error(error)),
@@ -214,12 +218,14 @@ impl StaticSettingsTranslationTargetProvider {
                 continue;
             }
             let progress = owner.progress();
-            required_units = required_units.checked_add(progress.source_units).ok_or_else(|| {
-                PortError::invariant_violation(
-                    "settings.translation_progress_overflow",
-                    "Settings required progress count overflow",
-                )
-            })?;
+            required_units = required_units
+                .checked_add(progress.source_units)
+                .ok_or_else(|| {
+                    PortError::invariant_violation(
+                        "settings.translation_progress_overflow",
+                        "Settings required progress count overflow",
+                    )
+                })?;
             exact_required_units = exact_required_units
                 .checked_add(progress.exact_units)
                 .ok_or_else(|| {
@@ -294,7 +300,9 @@ impl TranslationTargetProvider for StaticSettingsTranslationTargetProvider {
                 .exact_locale_snapshot(tenant_id, &registry, request.target_locale.as_str())
                 .await
             {
-                Ok(snapshot) if snapshot.source_locale == request.source_locale.as_str() => snapshot,
+                Ok(snapshot) if snapshot.source_locale == request.source_locale.as_str() => {
+                    snapshot
+                }
                 Ok(_) => continue,
                 Err(error) if source_not_translation_ready(&error) => continue,
                 Err(error) => return Err(translation_read_error_to_port_error(error)),
@@ -312,14 +320,10 @@ impl TranslationTargetProvider for StaticSettingsTranslationTargetProvider {
         if has_more {
             resources.truncate(usize::from(request.limit));
         }
-        let next_cursor = has_more
-            .then(|| resources.last())
-            .flatten()
-            .map(|summary| {
-                OpaqueCursor::new(summary.identity.resource_id.as_str()).expect(
-                    "Settings module slug resource ID must satisfy the opaque cursor contract",
-                )
-            });
+        let next_cursor = has_more.then(|| resources.last()).flatten().map(|summary| {
+            OpaqueCursor::new(summary.identity.resource_id.as_str())
+                .expect("Settings module slug resource ID must satisfy the opaque cursor contract")
+        });
 
         Ok(TranslationResourcePage {
             resources,
@@ -505,9 +509,8 @@ impl TranslationTargetProvider for StaticSettingsTranslationTargetProvider {
             if before == after {
                 // Progress and change polling share one cursor contract. A
                 // stable high-water mark is therefore a tail checkpoint.
-                facts.owner_change_cursor = after
-                    .map(|value| change_cursor(value, value))
-                    .transpose()?;
+                facts.owner_change_cursor =
+                    after.map(|value| change_cursor(value, value)).transpose()?;
                 facts.validate().map_err(|error| {
                     PortError::invariant_violation(
                         "settings.translation_progress_invalid",
@@ -551,7 +554,12 @@ impl TranslationTargetProvider for StaticSettingsTranslationTargetProvider {
                 (current, after)
             }
             Some(cursor) => cursor,
-            None => (self.global_highwater(tenant_id, &registries).await?.unwrap_or(0), 0),
+            None => (
+                self.global_highwater(tenant_id, &registries)
+                    .await?
+                    .unwrap_or(0),
+                0,
+            ),
         };
         if through == 0 {
             return Ok(TranslationTargetChangePage {
@@ -706,10 +714,7 @@ fn snapshot_from_owner(
         fields,
     };
     snapshot.validate().map_err(|error| {
-        PortError::invariant_violation(
-            "settings.translation_snapshot_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("settings.translation_snapshot_invalid", error.to_string())
     })?;
     Ok(snapshot)
 }
@@ -805,10 +810,7 @@ fn owner_command_context(
         idempotency_key,
     };
     command.validate().map_err(|error| {
-        PortError::validation(
-            "settings.invalid_command_context",
-            error.to_string(),
-        )
+        PortError::validation("settings.invalid_command_context", error.to_string())
     })?;
     Ok(command)
 }
@@ -868,16 +870,14 @@ fn translation_read_error_to_port_error(error: StaticSettingsTranslationReadErro
         | StaticSettingsTranslationReadError::InvalidLocale
         | StaticSettingsTranslationReadError::EqualSourceAndTargetLocale
         | StaticSettingsTranslationReadError::InvalidPageLimit
-        | StaticSettingsTranslationReadError::InvalidCursorBounds => PortError::validation(
-            "settings.translation_read_invalid",
-            error.to_string(),
-        ),
+        | StaticSettingsTranslationReadError::InvalidCursorBounds => {
+            PortError::validation("settings.translation_read_invalid", error.to_string())
+        }
         StaticSettingsTranslationReadError::OwnerOperationInProgress(_)
         | StaticSettingsTranslationReadError::SnapshotUnstable
-        | StaticSettingsTranslationReadError::Database(_) => PortError::unavailable(
-            "settings.translation_read_unavailable",
-            error.to_string(),
-        ),
+        | StaticSettingsTranslationReadError::Database(_) => {
+            PortError::unavailable("settings.translation_read_unavailable", error.to_string())
+        }
         StaticSettingsTranslationReadError::InconsistentState(_) => PortError::invariant_violation(
             "settings.translation_read_inconsistent",
             error.to_string(),
@@ -896,20 +896,18 @@ fn source_locale_error_to_port_error(error: StaticSettingsSourceLocaleError) -> 
             "Static Settings authoritative source locale is not available",
         ),
         StaticSettingsSourceLocaleError::InvalidIdentity
-        | StaticSettingsSourceLocaleError::InvalidLocale => PortError::validation(
-            "settings.translation_source_invalid",
-            error.to_string(),
-        ),
+        | StaticSettingsSourceLocaleError::InvalidLocale => {
+            PortError::validation("settings.translation_source_invalid", error.to_string())
+        }
         StaticSettingsSourceLocaleError::OwnerRevisionConflict { .. } => PortError::conflict(
             "settings.translation_owner_revision_conflict",
             error.to_string(),
         ),
         StaticSettingsSourceLocaleError::OwnerOperationInProgress(_)
         | StaticSettingsSourceLocaleError::SourceSnapshotUnstable
-        | StaticSettingsSourceLocaleError::Database(_) => PortError::unavailable(
-            "settings.translation_source_unavailable",
-            error.to_string(),
-        ),
+        | StaticSettingsSourceLocaleError::Database(_) => {
+            PortError::unavailable("settings.translation_source_unavailable", error.to_string())
+        }
         StaticSettingsSourceLocaleError::InconsistentState(_) => PortError::invariant_violation(
             "settings.translation_source_inconsistent",
             error.to_string(),
@@ -927,21 +925,18 @@ fn localization_error_to_port_error(error: StaticSettingsLocalizationError) -> P
         | StaticSettingsLocalizationError::InvalidLocale
         | StaticSettingsLocalizationError::UnknownField(_)
         | StaticSettingsLocalizationError::InvalidValue { .. }
-        | StaticSettingsLocalizationError::Metadata(_) => PortError::validation(
-            "settings.translation_owner_validation",
-            error.to_string(),
-        ),
+        | StaticSettingsLocalizationError::Metadata(_) => {
+            PortError::validation("settings.translation_owner_validation", error.to_string())
+        }
         StaticSettingsLocalizationError::TargetRevisionConflict { .. }
-        | StaticSettingsLocalizationError::OwnerRevisionConflict { .. } => PortError::conflict(
-            "settings.translation_owner_conflict",
-            error.to_string(),
-        ),
+        | StaticSettingsLocalizationError::OwnerRevisionConflict { .. } => {
+            PortError::conflict("settings.translation_owner_conflict", error.to_string())
+        }
         StaticSettingsLocalizationError::OwnerOperationInProgress(_)
         | StaticSettingsLocalizationError::SourceSnapshotUnstable
-        | StaticSettingsLocalizationError::Database(_) => PortError::unavailable(
-            "settings.translation_owner_unavailable",
-            error.to_string(),
-        ),
+        | StaticSettingsLocalizationError::Database(_) => {
+            PortError::unavailable("settings.translation_owner_unavailable", error.to_string())
+        }
         StaticSettingsLocalizationError::InconsistentState(_) => PortError::invariant_violation(
             "settings.translation_owner_inconsistent",
             error.to_string(),
@@ -956,7 +951,9 @@ mod tests {
     use std::time::Duration;
 
     use rustok_api::PortActor;
-    use rustok_modules::{ModuleSettingSpec, static_settings_translation_read::StaticSettingsExactLocaleField};
+    use rustok_modules::{
+        ModuleSettingSpec, static_settings_translation_read::StaticSettingsExactLocaleField,
+    };
 
     use super::*;
 
@@ -1000,8 +997,16 @@ mod tests {
         descriptor.validate().expect("descriptor");
         assert_eq!(descriptor.owner_slug.as_str(), "modules");
         assert_eq!(descriptor.resource_kind.as_str(), "static_settings");
-        assert!(descriptor.capabilities.contains(&TranslationTargetCapability::ChangeCursor));
-        assert!(descriptor.capabilities.contains(&TranslationTargetCapability::ApplyPatch));
+        assert!(
+            descriptor
+                .capabilities
+                .contains(&TranslationTargetCapability::ChangeCursor)
+        );
+        assert!(
+            descriptor
+                .capabilities
+                .contains(&TranslationTargetCapability::ApplyPatch)
+        );
     }
 
     #[test]
@@ -1015,7 +1020,10 @@ mod tests {
         let adapter = StaticSettingsTranslationIdentity::from_registry(&registry).unwrap();
         assert_eq!(
             snapshot.summary.resource_revision,
-            adapter.revisions_for_snapshot(&owner).unwrap().resource_revision
+            adapter
+                .revisions_for_snapshot(&owner)
+                .unwrap()
+                .resource_revision
         );
         assert_eq!(
             snapshot.summary.resource_revision,

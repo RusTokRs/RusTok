@@ -10,13 +10,12 @@ use uuid::Uuid;
 use rustok_api::ArtifactPermissionLocalization;
 use rustok_core::MigrationSource;
 use rustok_modules::{
-    ArtifactAdmissionStatus, ArtifactModuleKind, ArtifactPayloadKind,
-    ArtifactPermissionDescriptor, ArtifactSchemaDocument,
-    DynamicLifecycleError, DynamicLifecycleService, ExecuteDataPurgeCommand,
-    ExecuteDisableCommand, ExecuteEnableCommand, ExecuteInstallCommand,
-    ExecuteSettingsPurgeCommand, ExecuteUninstallCommand, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
-    ModuleArtifactDescriptor, ModuleCommandContext, ModuleInstallationScope,
-    ModulesModule, ReinstallChoice,
+    ArtifactAdmissionStatus, ArtifactModuleKind, ArtifactPayloadKind, ArtifactPermissionDescriptor,
+    ArtifactSchemaDocument, DynamicLifecycleError, DynamicLifecycleService,
+    ExecuteDataPurgeCommand, ExecuteDisableCommand, ExecuteEnableCommand, ExecuteInstallCommand,
+    ExecuteSettingsPurgeCommand, ExecuteUninstallCommand,
+    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor, ModuleCommandContext,
+    ModuleInstallationScope, ModulesModule, ReinstallChoice,
 };
 use rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI;
 
@@ -255,7 +254,10 @@ async fn test_distinct_lifecycle_semantics_install_enable_disable() {
         .await
         .expect_err("stale work generation must be rejected");
 
-    assert!(matches!(stale_err, DynamicLifecycleError::StaleWorkGeneration(99, 1)));
+    assert!(matches!(
+        stale_err,
+        DynamicLifecycleError::StaleWorkGeneration(99, 1)
+    ));
 }
 
 #[tokio::test]
@@ -407,7 +409,10 @@ async fn test_atomic_uninstall_and_work_generation_invalidation() {
         .await
         .expect_err("delayed enable on retired installation must fail");
 
-    assert!(matches!(delayed_err, DynamicLifecycleError::InstallationAlreadyRetired(_)));
+    assert!(matches!(
+        delayed_err,
+        DynamicLifecycleError::InstallationAlreadyRetired(_)
+    ));
 }
 
 #[tokio::test]
@@ -500,7 +505,10 @@ async fn test_retained_data_on_uninstall_and_publisher_continuity() {
         .expect("reinstall by legitimate publisher succeeds");
 
     assert_eq!(reinstall_legit.data_owner_id, install_1.data_owner_id);
-    assert_eq!(reinstall_legit.settings_instance_id, install_1.settings_instance_id);
+    assert_eq!(
+        reinstall_legit.settings_instance_id,
+        install_1.settings_instance_id
+    );
 
     service
         .execute_uninstall(ExecuteUninstallCommand {

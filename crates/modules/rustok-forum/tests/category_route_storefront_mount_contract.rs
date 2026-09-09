@@ -76,8 +76,10 @@ fn rust_storefront_mount_executes_transport_decision_without_storage_access() {
 
 #[test]
 fn mount_contract_keeps_private_fail_closed_http_policy() {
-    let contract = read("crates/modules/rustok-forum/contracts/forum-category-route-storefront-mount.json");
-    let docs = read("crates/modules/rustok-forum/docs/forum-24o-category-route-storefront-mount.md");
+    let contract =
+        read("crates/modules/rustok-forum/contracts/forum-category-route-storefront-mount.json");
+    let docs =
+        read("crates/modules/rustok-forum/docs/forum-24o-category-route-storefront-mount.md");
 
     for marker in [
         "\"redirect_or_noncanonical_raw_path_status\": 308",
@@ -113,7 +115,8 @@ fn mount_contract_keeps_private_fail_closed_http_policy() {
 
 #[test]
 fn topic_mount_and_seo_boundaries_remain_outside_this_slice() {
-    let contract = read("crates/modules/rustok-forum/contracts/forum-category-route-storefront-mount.json");
+    let contract =
+        read("crates/modules/rustok-forum/contracts/forum-category-route-storefront-mount.json");
     let host = read("apps/storefront/src/forum_category_route.rs");
 
     for marker in [

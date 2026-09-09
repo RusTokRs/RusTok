@@ -107,7 +107,11 @@ pub fn IndexAdmin() -> impl IntoView {
             leptos::task::spawn_local(async move {
                 let input = RetryJobInput {
                     job_id,
-                    reason: if reason.trim().is_empty() { None } else { Some(reason) },
+                    reason: if reason.trim().is_empty() {
+                        None
+                    } else {
+                        Some(reason)
+                    },
                 };
                 match transport::retry_job(input).await {
                     Ok(res) => {

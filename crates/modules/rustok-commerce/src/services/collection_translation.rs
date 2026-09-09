@@ -13,9 +13,9 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::CommerceError;
 use crate::collection_translation_changes::record_collection_translation_change_in_tx;
 use crate::entities::{collection, collection_translation};
-use crate::CommerceError;
 
 pub const MAX_COLLECTION_TRANSLATION_RESOURCE_PAGE: u16 = 200;
 
@@ -23,8 +23,7 @@ const COLLECTION_COPY_OWNER: &str = "commerce";
 const COLLECTION_COPY_RESOURCE_KIND: &str = "collection_copy";
 const COLLECTION_COPY_RESOURCE_REVISION_NAMESPACE: &str =
     "rustok-commerce/collection-copy-resource/v1";
-const COLLECTION_COPY_LOCALE_REVISION_NAMESPACE: &str =
-    "rustok-commerce/collection-copy-locale/v1";
+const COLLECTION_COPY_LOCALE_REVISION_NAMESPACE: &str = "rustok-commerce/collection-copy-locale/v1";
 
 tokio::task_local! {
     static COLLECTION_TRANSLATION_OPERATION_LEASE: idempotency::Lease;
@@ -59,7 +58,9 @@ pub enum CollectionTranslationExactLocaleError {
     #[error("Collection source locale not found: {locale} for collection {collection_id}")]
     SourceLocaleNotFound { collection_id: Uuid, locale: String },
 
-    #[error("Collection target locale missing after apply: {locale} for collection {collection_id}")]
+    #[error(
+        "Collection target locale missing after apply: {locale} for collection {collection_id}"
+    )]
     TargetLocaleMissingAfterApply { collection_id: Uuid, locale: String },
 
     #[error("Collection translation {revision} revision conflict")]
@@ -348,12 +349,13 @@ impl CollectionTranslationService {
         }
 
         let translations_after = load_collection_translations(&txn, collection_id).await?;
-        let target_after = exact_locale_row(&translations_after, &target_locale).ok_or_else(|| {
-            CollectionTranslationExactLocaleError::TargetLocaleMissingAfterApply {
-                collection_id,
-                locale: target_locale.clone(),
-            }
-        })?;
+        let target_after =
+            exact_locale_row(&translations_after, &target_locale).ok_or_else(|| {
+                CollectionTranslationExactLocaleError::TargetLocaleMissingAfterApply {
+                    collection_id,
+                    locale: target_locale.clone(),
+                }
+            })?;
         let resource_revision = resource_revision(&collection, &translations_after);
         let target_revision = locale_revision(target_after);
         let target = CollectionTranslationExactLocaleRecord::from(target_after.clone());
@@ -505,10 +507,12 @@ fn build_snapshot(
 ) -> CollectionTranslationExactLocaleResult<CollectionTranslationExactLocaleSnapshot> {
     let source = exact_locale_row(&translations, &source_locale)
         .cloned()
-        .ok_or_else(|| CollectionTranslationExactLocaleError::SourceLocaleNotFound {
-            collection_id: collection.id,
-            locale: source_locale.clone(),
-        })?;
+        .ok_or_else(
+            || CollectionTranslationExactLocaleError::SourceLocaleNotFound {
+                collection_id: collection.id,
+                locale: source_locale.clone(),
+            },
+        )?;
     let target = exact_locale_row(&translations, &target_locale).cloned();
     let resource_revision = resource_revision(&collection, &translations);
     let source_revision = locale_revision(&source);

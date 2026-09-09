@@ -29,8 +29,7 @@ impl ProductImageTranslationChangeLifecycle {
             "archived" => Ok(Self::Archived),
             "deleted" => Ok(Self::Deleted),
             _ => Err(CommerceError::Validation(
-                "Product Image translation change journal returned an invalid lifecycle"
-                    .to_owned(),
+                "Product Image translation change journal returned an invalid lifecycle".to_owned(),
             )),
         }
     }
@@ -218,8 +217,7 @@ async fn record_live_product_images(
 
     for image in images {
         let translations = translations_by_image.remove(&image.id).unwrap_or_default();
-        let resource_revision =
-            image_translation_resource_revision(product, &image, &translations);
+        let resource_revision = image_translation_resource_revision(product, &image, &translations);
         if previous.get(&image.id).is_some_and(|previous| {
             previous.resource_revision == resource_revision && previous.lifecycle == lifecycle
         }) {
@@ -427,10 +425,7 @@ fn image_translation_resource_revision(
     translations: &[entities::product_image_translation::Model],
 ) -> String {
     let mut hasher = Sha256::new();
-    digest_text(
-        &mut hasher,
-        "rustok-product/image-translation-resource/v1",
-    );
+    digest_text(&mut hasher, "rustok-product/image-translation-resource/v1");
     digest_text(&mut hasher, &product.id.to_string());
     digest_text(&mut hasher, &product.tenant_id.to_string());
     digest_text(&mut hasher, &product.status.to_string());
@@ -487,7 +482,9 @@ fn ensure_postgres(db: &DatabaseConnection) -> CommerceResult<()> {
 }
 
 fn optional_positive_sequence(value: Option<i64>, field: &str) -> CommerceResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
 fn positive_sequence(value: i64, field: &str) -> CommerceResult<u64> {

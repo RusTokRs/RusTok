@@ -242,7 +242,9 @@ fn ensure_postgres(db: &DatabaseConnection) -> CommerceResult<()> {
 }
 
 fn optional_positive_sequence(value: Option<i64>, field: &str) -> CommerceResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
 fn positive_sequence(value: i64, field: &str) -> CommerceResult<u64> {
@@ -266,8 +268,14 @@ mod tests {
     #[test]
     fn lifecycle_storage_contract_is_exact() {
         assert_eq!(ProductTranslationChangeLifecycle::Active.as_str(), "active");
-        assert_eq!(ProductTranslationChangeLifecycle::Archived.as_str(), "archived");
-        assert_eq!(ProductTranslationChangeLifecycle::Deleted.as_str(), "deleted");
+        assert_eq!(
+            ProductTranslationChangeLifecycle::Archived.as_str(),
+            "archived"
+        );
+        assert_eq!(
+            ProductTranslationChangeLifecycle::Deleted.as_str(),
+            "deleted"
+        );
         assert_eq!(
             ProductTranslationChangeLifecycle::parse("archived").expect("lifecycle"),
             ProductTranslationChangeLifecycle::Archived

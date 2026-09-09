@@ -369,7 +369,10 @@ async fn test_post_purge_recovery_staging_and_cas_cutover() {
         .expect("row")
         .try_get("", "c")
         .expect("count");
-    assert_eq!(purge_op_count, 1, "purge tombstone history must remain intact");
+    assert_eq!(
+        purge_op_count, 1,
+        "purge tombstone history must remain intact"
+    );
 
     // 9. Negative test: Attempt to prepare recovery for non-purged namespace fails
     let bad_prep = PrepareRecoveryRequest {
@@ -386,5 +389,8 @@ async fn test_post_purge_recovery_staging_and_cas_cutover() {
         .prepare_recovery(bad_prep)
         .await
         .expect_err("must reject recovery for non-purged namespace");
-    assert!(matches!(err, PostPurgeRecoveryError::NamespaceNotPurged { .. }));
+    assert!(matches!(
+        err,
+        PostPurgeRecoveryError::NamespaceNotPurged { .. }
+    ));
 }

@@ -204,7 +204,10 @@ impl FlexAttachedTranslationExactLocaleApply {
     pub fn validate_admission(&self) -> FlexAttachedTranslationResult<()> {
         self.operation.validate()?;
         validate_flex_attached_translation_locale_pair(&self.source_locale, &self.target_locale)?;
-        validate_nonblank(&self.expected_resource_revision, "expected_resource_revision")?;
+        validate_nonblank(
+            &self.expected_resource_revision,
+            "expected_resource_revision",
+        )?;
         validate_nonblank(&self.expected_source_revision, "expected_source_revision")?;
         if let Some(revision) = &self.expected_target_revision {
             validate_nonblank(revision, "expected_target_revision")?;
@@ -281,7 +284,10 @@ impl fmt::Display for FlexAttachedTranslationError {
             Self::EntityNotFound {
                 entity_type,
                 entity_id,
-            } => write!(formatter, "Flex attached donor not found: {entity_type}/{entity_id}"),
+            } => write!(
+                formatter,
+                "Flex attached donor not found: {entity_type}/{entity_id}"
+            ),
             Self::SourceLocaleNotFound {
                 entity_type,
                 entity_id,
@@ -295,10 +301,16 @@ impl fmt::Display for FlexAttachedTranslationError {
                 "Flex attached translation {revision} revision conflict"
             ),
             Self::Operation(error) => {
-                write!(formatter, "Flex attached translation operation failed: {error}")
+                write!(
+                    formatter,
+                    "Flex attached translation operation failed: {error}"
+                )
             }
             Self::Storage(message) => {
-                write!(formatter, "Flex attached translation storage error: {message}")
+                write!(
+                    formatter,
+                    "Flex attached translation storage error: {message}"
+                )
             }
             Self::OwnerInvariant(message) => write!(
                 formatter,
@@ -349,7 +361,8 @@ pub fn validate_flex_attached_translation_locale_pair(
 }
 
 fn validate_authoring_locale(locale: &str, field: &str) -> FlexAttachedTranslationResult<()> {
-    if locale == LEGACY_UNDETERMINED_LOCALE || normalize_locale_tag(locale).as_deref() != Some(locale)
+    if locale == LEGACY_UNDETERMINED_LOCALE
+        || normalize_locale_tag(locale).as_deref() != Some(locale)
     {
         return Err(FlexAttachedTranslationError::Invalid(format!(
             "Flex attached translation {field} must be a normalized authoring locale other than `und`"
@@ -513,7 +526,9 @@ mod tests {
         assert!(valid.validate().is_ok());
 
         let mut duplicate = valid.clone();
-        duplicate.target_values.push(duplicate.target_values[0].clone());
+        duplicate
+            .target_values
+            .push(duplicate.target_values[0].clone());
         assert!(matches!(
             duplicate.validate(),
             Err(FlexAttachedTranslationError::Invalid(_))

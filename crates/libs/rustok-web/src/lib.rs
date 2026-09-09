@@ -189,16 +189,15 @@ where
 pub mod browser_assets;
 
 pub use browser_assets::{
-    BrowserAssetError, BrowserAssetRegistry, ReleaseAssetSet, ReleaseQualifiedAsset,
-    IMMUTABLE_ASSET_CACHE_CONTROL, MISSING_ASSET_CACHE_CONTROL,
+    BrowserAssetError, BrowserAssetRegistry, IMMUTABLE_ASSET_CACHE_CONTROL,
+    MISSING_ASSET_CACHE_CONTROL, ReleaseAssetSet, ReleaseQualifiedAsset,
 };
 
 #[cfg(test)]
 mod tests {
     use super::{
-        CspNonce, embedded_asset_response, port_error_to_http_error,
-        BrowserAssetRegistry, ReleaseQualifiedAsset, IMMUTABLE_ASSET_CACHE_CONTROL,
-        MISSING_ASSET_CACHE_CONTROL,
+        BrowserAssetRegistry, CspNonce, IMMUTABLE_ASSET_CACHE_CONTROL, MISSING_ASSET_CACHE_CONTROL,
+        ReleaseQualifiedAsset, embedded_asset_response, port_error_to_http_error,
     };
     use axum::http::{HeaderMap, HeaderValue, StatusCode, header::IF_NONE_MATCH};
     use chrono::{Duration, Utc};
@@ -311,7 +310,8 @@ mod tests {
             IF_NONE_MATCH,
             HeaderValue::from_str(&js_asset.etag).unwrap(),
         );
-        let res_304 = registry.resolve_asset(&if_match_headers, release_id, "pkg/rustok_admin.js", now);
+        let res_304 =
+            registry.resolve_asset(&if_match_headers, release_id, "pkg/rustok_admin.js", now);
         assert_eq!(res_304.status(), StatusCode::NOT_MODIFIED);
         assert_eq!(
             res_304.headers().get("cache-control").unwrap(),
@@ -348,11 +348,15 @@ mod tests {
 
         // 3. Both N and N+1 assets resolve successfully during preparation
         assert_eq!(
-            registry.resolve_asset(&headers, release_n, "pkg/app.js", now).status(),
+            registry
+                .resolve_asset(&headers, release_n, "pkg/app.js", now)
+                .status(),
             StatusCode::OK
         );
         assert_eq!(
-            registry.resolve_asset(&headers, release_n_plus_1, "pkg/app.js", now).status(),
+            registry
+                .resolve_asset(&headers, release_n_plus_1, "pkg/app.js", now)
+                .status(),
             StatusCode::OK
         );
 
@@ -363,12 +367,16 @@ mod tests {
 
         // Clients that still hold release N HTML can STILL resolve release N assets!
         assert_eq!(
-            registry.resolve_asset(&headers, release_n, "pkg/app.js", later).status(),
+            registry
+                .resolve_asset(&headers, release_n, "pkg/app.js", later)
+                .status(),
             StatusCode::OK
         );
         // Clients that received release N+1 HTML resolve release N+1 assets!
         assert_eq!(
-            registry.resolve_asset(&headers, release_n_plus_1, "pkg/app.js", later).status(),
+            registry
+                .resolve_asset(&headers, release_n_plus_1, "pkg/app.js", later)
+                .status(),
             StatusCode::OK
         );
 
@@ -379,7 +387,9 @@ mod tests {
 
         // After rollback, clients with N+1 HTML can STILL resolve N+1 assets during retention window!
         assert_eq!(
-            registry.resolve_asset(&headers, release_n_plus_1, "pkg/app.js", rollback_time).status(),
+            registry
+                .resolve_asset(&headers, release_n_plus_1, "pkg/app.js", rollback_time)
+                .status(),
             StatusCode::OK
         );
     }
@@ -424,14 +434,22 @@ mod tests {
 
         registry2.register_release(
             old_release,
-            vec![ReleaseQualifiedAsset::new("pkg/old.js", "application/javascript", b"old".to_vec())],
+            vec![ReleaseQualifiedAsset::new(
+                "pkg/old.js",
+                "application/javascript",
+                b"old".to_vec(),
+            )],
             now,
         );
         registry2.activate_release(old_release, now).unwrap();
 
         registry2.register_release(
             new_release,
-            vec![ReleaseQualifiedAsset::new("pkg/new.js", "application/javascript", b"new".to_vec())],
+            vec![ReleaseQualifiedAsset::new(
+                "pkg/new.js",
+                "application/javascript",
+                b"new".to_vec(),
+            )],
             now,
         );
         registry2.activate_release(new_release, now).unwrap();

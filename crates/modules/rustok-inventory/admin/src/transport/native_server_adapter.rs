@@ -693,10 +693,7 @@ async fn inventory_product_native(
             }
         };
 
-        Ok(Some(map_product_detail(
-            product,
-            requested_locale.as_str(),
-        )))
+        Ok(Some(map_product_detail(product, requested_locale.as_str())))
     }
     #[cfg(not(feature = "ssr"))]
     {

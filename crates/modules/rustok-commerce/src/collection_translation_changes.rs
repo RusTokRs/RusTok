@@ -1,11 +1,8 @@
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement};
 use uuid::Uuid;
 
 use crate::{
-    CommerceError, CommerceResult,
-    services::collection_translation::CollectionTranslationService,
+    CommerceError, CommerceResult, services::collection_translation::CollectionTranslationService,
 };
 
 pub const MAX_COLLECTION_TRANSLATION_CHANGE_PAGE: u16 = 200;
@@ -241,7 +238,9 @@ fn ensure_postgres(service_db: &sea_orm::DatabaseConnection) -> CommerceResult<(
 }
 
 fn optional_positive_sequence(value: Option<i64>, field: &str) -> CommerceResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
 fn positive_sequence(value: i64, field: &str) -> CommerceResult<u64> {

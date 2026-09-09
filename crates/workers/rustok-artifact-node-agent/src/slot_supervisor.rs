@@ -363,7 +363,10 @@ impl HttpSsrSwitchingCoordinator {
     ) -> Result<PreSwitchFailureReceipt, SlotSupervisorError> {
         let standby_slot = self.supervisor.standby_slot();
         match self.supervisor.get_slot_state(standby_slot) {
-            SlotState::PreStaged { artifact_digest } | SlotState::Standby { artifact_digest, .. } => {
+            SlotState::PreStaged { artifact_digest }
+            | SlotState::Standby {
+                artifact_digest, ..
+            } => {
                 if artifact_digest != candidate_digest {
                     return Err(SlotSupervisorError::InvalidTransition(format!(
                         "Digest mismatch on standby slot: expected {candidate_digest}, got {artifact_digest}"
@@ -418,7 +421,9 @@ impl HttpSsrSwitchingCoordinator {
 
     /// Reverts proxy/router traffic back to hot-standby predecessor upon post-switch failure.
     /// Consumes exactly 1 recovery attempt (`recovery_attempts_consumed <= 1`).
-    pub fn trigger_post_switch_recovery(&mut self) -> Result<PostSwitchRecoveryReceipt, SlotSupervisorError> {
+    pub fn trigger_post_switch_recovery(
+        &mut self,
+    ) -> Result<PostSwitchRecoveryReceipt, SlotSupervisorError> {
         if self.recovery_attempts_consumed >= 1 {
             return Err(SlotSupervisorError::InvalidTransition(
                 "Predecessor recovery already exhausted (max 1 attempt)".to_string(),
@@ -505,7 +510,10 @@ impl FencedWorkerGenerationCoordinator {
     }
 
     /// Prepares candidate generation. Candidate cannot claim work yet.
-    pub fn prepare_candidate(&mut self, candidate_generation: u64) -> Result<(), SlotSupervisorError> {
+    pub fn prepare_candidate(
+        &mut self,
+        candidate_generation: u64,
+    ) -> Result<(), SlotSupervisorError> {
         if candidate_generation <= self.active_generation {
             return Err(SlotSupervisorError::InvalidTransition(format!(
                 "Candidate generation {candidate_generation} must be greater than active generation {}",
@@ -520,7 +528,8 @@ impl FencedWorkerGenerationCoordinator {
     pub fn fence_active_generation(&mut self) -> Result<WorkerFenceReceipt, SlotSupervisorError> {
         if self.candidate_generation.is_none() {
             return Err(SlotSupervisorError::InvalidTransition(
-                "Cannot fence active generation without a prepared candidate generation".to_string(),
+                "Cannot fence active generation without a prepared candidate generation"
+                    .to_string(),
             ));
         }
         self.fenced_generation = Some(self.active_generation);
@@ -534,7 +543,9 @@ impl FencedWorkerGenerationCoordinator {
     }
 
     /// Authorizes candidate generation to claim work, completing the fenced handoff.
-    pub fn authorize_candidate_generation(&mut self) -> Result<WorkerHandoffReceipt, SlotSupervisorError> {
+    pub fn authorize_candidate_generation(
+        &mut self,
+    ) -> Result<WorkerHandoffReceipt, SlotSupervisorError> {
         let candidate = self.candidate_generation.ok_or_else(|| {
             SlotSupervisorError::InvalidTransition("No candidate generation prepared".to_string())
         })?;
@@ -560,7 +571,10 @@ impl FencedWorkerGenerationCoordinator {
     }
 
     /// Symmetric rollback: fences failed generation and restores predecessor generation.
-    pub fn rollback_generation(&mut self, predecessor_generation: u64) -> Result<WorkerRollbackReceipt, SlotSupervisorError> {
+    pub fn rollback_generation(
+        &mut self,
+        predecessor_generation: u64,
+    ) -> Result<WorkerRollbackReceipt, SlotSupervisorError> {
         if self.recovery_attempts_consumed >= 1 {
             return Err(SlotSupervisorError::InvalidTransition(
                 "Worker generation recovery already exhausted (max 1 attempt)".to_string(),

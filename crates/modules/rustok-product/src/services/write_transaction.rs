@@ -328,9 +328,7 @@ fn product_index_revision_touch_target(event: &DomainEvent) -> Option<Uuid> {
     }
 }
 
-fn product_variant_translation_change_target(
-    event: &DomainEvent,
-) -> Option<(Uuid, Option<Uuid>)> {
+fn product_variant_translation_change_target(event: &DomainEvent) -> Option<(Uuid, Option<Uuid>)> {
     match event {
         DomainEvent::ProductCreated { product_id }
         | DomainEvent::ProductUpdated { product_id }

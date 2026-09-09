@@ -60,9 +60,11 @@ fn native_route_resolution_uses_trusted_context_and_same_owners() {
 
 #[test]
 fn storefront_deep_link_uses_existing_category_list_permission_boundary() {
-    let inline_owner = read("crates/modules/rustok-forum/src/services/category_audience_read_inline.rs");
-    let contract =
-        read("crates/modules/rustok-forum/contracts/forum-category-route-storefront-transport.json");
+    let inline_owner =
+        read("crates/modules/rustok-forum/src/services/category_audience_read_inline.rs");
+    let contract = read(
+        "crates/modules/rustok-forum/contracts/forum-category-route-storefront-transport.json",
+    );
     assert!(
         inline_owner.contains("enforce_scope(&security, Resource::ForumCategories, Action::List)")
     );
@@ -75,8 +77,9 @@ fn storefront_deep_link_uses_existing_category_list_permission_boundary() {
 #[test]
 fn public_dto_and_adapters_have_graphql_native_parity() {
     let model = read("crates/modules/rustok-forum/storefront/src/model.rs");
-    let graphql =
-        read("crates/modules/rustok-forum/storefront/src/transport/category_route_graphql_adapter.rs");
+    let graphql = read(
+        "crates/modules/rustok-forum/storefront/src/transport/category_route_graphql_adapter.rs",
+    );
     let native = read(
         "crates/modules/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
     );
@@ -102,9 +105,11 @@ fn public_dto_and_adapters_have_graphql_native_parity() {
 
 #[test]
 fn transport_slice_does_not_mount_or_add_seo_policy() {
-    let contract =
-        read("crates/modules/rustok-forum/contracts/forum-category-route-storefront-transport.json");
-    let docs = read("crates/modules/rustok-forum/docs/forum-24n-category-route-storefront-transport.md");
+    let contract = read(
+        "crates/modules/rustok-forum/contracts/forum-category-route-storefront-transport.json",
+    );
+    let docs =
+        read("crates/modules/rustok-forum/docs/forum-24n-category-route-storefront-transport.md");
     for marker in [
         "\"category_route_mounted_in_host\": false",
         "\"category_links_changed\": false",

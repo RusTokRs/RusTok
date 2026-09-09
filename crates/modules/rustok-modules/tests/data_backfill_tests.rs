@@ -129,7 +129,10 @@ async fn test_uncertain_outcome_reconciliation() {
         .record_uncertain_outcome(backfill_id)
         .await
         .expect("record uncertain");
-    assert_eq!(uncertain.status, BackfillStatus::UncertainOutcomeReconciling);
+    assert_eq!(
+        uncertain.status,
+        BackfillStatus::UncertainOutcomeReconciling
+    );
 
     // Reconcile and resume cleanly
     let reconciled = coordinator

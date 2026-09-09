@@ -132,7 +132,8 @@ impl IndexDriftSourcePageDiagnosisMutation {
         ctx: &Context<'_>,
         input: IndexDriftSourcePageDiagnosisInput,
     ) -> GraphqlResult<IndexDriftSourcePageDiagnosisPayload> {
-        let auth = ctx.data::<AuthContext>()
+        let auth = ctx
+            .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 

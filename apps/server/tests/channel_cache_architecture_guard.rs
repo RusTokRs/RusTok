@@ -69,7 +69,8 @@ fn channel_cache_is_registered_atomically() {
 fn native_and_rest_channel_mutations_publish_durable_invalidation() {
     let middleware_mod = source("apps/server/src/middleware/mod.rs");
     let wrapper = source("apps/server/src/middleware/channel_native_wrapper.rs");
-    let adapter = source("crates/modules/rustok-channel/admin/src/transport/native_server_adapter.rs");
+    let adapter =
+        source("crates/modules/rustok-channel/admin/src/transport/native_server_adapter.rs");
     let controller = source("apps/server/src/controllers/channel.rs");
 
     assert!(middleware_mod.contains("#[path = \"channel_native_wrapper.rs\"]\npub mod channel;"));
@@ -268,7 +269,8 @@ fn cache_workflow_retains_channel_compiled_evidence() {
         );
     }
 
-    let postgres = source("crates/modules/rustok-channel/tests/postgres_invalidation_generation.rs");
+    let postgres =
+        source("crates/modules/rustok-channel/tests/postgres_invalidation_generation.rs");
     for required in [
         "postgres_generation_is_transactional_concurrent_and_recoverable",
         "ConnectOptions::new(url.to_string())",

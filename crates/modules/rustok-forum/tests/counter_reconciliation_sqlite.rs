@@ -1,12 +1,8 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
-use rustok_forum::{
-    ForumCounterDriftKind, ForumCounterReconciliationService, ForumModule,
-};
+use rustok_forum::{ForumCounterDriftKind, ForumCounterReconciliationService, ForumModule};
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
-};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -149,9 +145,36 @@ async fn counter_reconciliation_detects_clean_state_and_all_drifts_sqlite() {
     seed_topic(&db, tenant_id, cat1, top1, author_id, 2).await;
     seed_topic(&db, tenant_id, cat1, top2, author_id, 1).await;
 
-    seed_reply(&db, tenant_id, top1, Uuid::new_v4(), author_id, "approved", 1).await;
-    seed_reply(&db, tenant_id, top1, Uuid::new_v4(), author_id, "approved", 2).await;
-    seed_reply(&db, tenant_id, top2, Uuid::new_v4(), author_id, "approved", 1).await;
+    seed_reply(
+        &db,
+        tenant_id,
+        top1,
+        Uuid::new_v4(),
+        author_id,
+        "approved",
+        1,
+    )
+    .await;
+    seed_reply(
+        &db,
+        tenant_id,
+        top1,
+        Uuid::new_v4(),
+        author_id,
+        "approved",
+        2,
+    )
+    .await;
+    seed_reply(
+        &db,
+        tenant_id,
+        top2,
+        Uuid::new_v4(),
+        author_id,
+        "approved",
+        1,
+    )
+    .await;
     seed_reply(&db, tenant_id, top2, Uuid::new_v4(), author_id, "hidden", 2).await;
 
     // Cat2 has Top3. Top3 has 0 replies.
@@ -175,8 +198,12 @@ async fn counter_reconciliation_detects_clean_state_and_all_drifts_sqlite() {
     assert!(!clean_report.has_more_categories);
 
     // Drop self-correcting triggers so we can simulate drifted state
-    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_topics_public_reply_count_update;").await.unwrap();
-    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_categories_public_reply_count_update;").await.unwrap();
+    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_topics_public_reply_count_update;")
+        .await
+        .unwrap();
+    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_categories_public_reply_count_update;")
+        .await
+        .unwrap();
 
     // 2. Introduce TopicReplyCount drift on top1: stored = 99, expected = 2
     db.execute_unprepared(&format!(

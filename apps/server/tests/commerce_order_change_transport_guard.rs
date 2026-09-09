@@ -1,11 +1,15 @@
 #[test]
 fn order_change_application_uses_commerce_orchestration() {
-    let rest = include_str!("../../../crates/modules/rustok-commerce/src/controllers/admin/changes.rs");
-    let graphql =
-        include_str!("../../../crates/modules/rustok-commerce/src/graphql/mutations/fulfillment.rs");
-    let graphql_runtime = include_str!("../../../crates/modules/rustok-commerce/src/graphql_runtime.rs");
-    let orchestration =
-        include_str!("../../../crates/modules/rustok-commerce/src/services/order_change_orchestration.rs");
+    let rest =
+        include_str!("../../../crates/modules/rustok-commerce/src/controllers/admin/changes.rs");
+    let graphql = include_str!(
+        "../../../crates/modules/rustok-commerce/src/graphql/mutations/fulfillment.rs"
+    );
+    let graphql_runtime =
+        include_str!("../../../crates/modules/rustok-commerce/src/graphql_runtime.rs");
+    let orchestration = include_str!(
+        "../../../crates/modules/rustok-commerce/src/services/order_change_orchestration.rs"
+    );
 
     assert!(
         rest.contains("OrderChangeOrchestrationService::from_order_ports("),

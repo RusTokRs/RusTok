@@ -101,9 +101,7 @@ impl ServerFlexSchemaTranslationOwner {
             &before.source_revision,
         )?;
         if request.expected_target_revision != before.target_revision {
-            return Err(FlexSchemaTranslationError::RevisionConflict {
-                revision: "target",
-            });
+            return Err(FlexSchemaTranslationError::RevisionConflict { revision: "target" });
         }
 
         // Derived full target state is deliberately validated only after the locked
@@ -130,10 +128,8 @@ impl ServerFlexSchemaTranslationOwner {
             ));
         }
 
-        let target_name = required_requested_value(
-            &requested_targets,
-            &FlexSchemaTranslationLeaf::SchemaName,
-        )?;
+        let target_name =
+            required_requested_value(&requested_targets, &FlexSchemaTranslationLeaf::SchemaName)?;
         let source_has_description =
             source_leaves.contains(&FlexSchemaTranslationLeaf::SchemaDescription);
         let requested_description = source_has_description
@@ -190,10 +186,8 @@ impl ServerFlexSchemaTranslationOwner {
 
         let schema_after_fields = if fields_changed {
             let mut active: flex_schemas::ActiveModel = schema.clone().into();
-            active.fields_config = Set(
-                serialize_standalone_fields_config(definitions)
-                    .map_err(|error| persisted_contract_error("fields_config", error))?,
-            );
+            active.fields_config = Set(serialize_standalone_fields_config(definitions)
+                .map_err(|error| persisted_contract_error("fields_config", error))?);
             active.update(&txn).await.map_err(database_error)?
         } else {
             schema.clone()
@@ -201,8 +195,8 @@ impl ServerFlexSchemaTranslationOwner {
 
         let row_changed = match existing_target {
             Some(existing) => {
-                let changed = existing.name != target_name
-                    || existing.description != target_description;
+                let changed =
+                    existing.name != target_name || existing.description != target_description;
                 if changed {
                     let mut active: flex_schema_translations::ActiveModel = existing.clone().into();
                     active.name = Set(target_name.clone());
@@ -354,7 +348,9 @@ impl FlexSchemaTranslationOwnerPort for ServerFlexSchemaTranslationOwner {
         if has_more {
             schemas.truncate(usize::from(limit));
         }
-        let next_after = has_more.then(|| schemas.last().map(|schema| schema.id)).flatten();
+        let next_after = has_more
+            .then(|| schemas.last().map(|schema| schema.id))
+            .flatten();
         if schemas.is_empty() {
             return Ok(FlexSchemaTranslationResourcePage {
                 resources: Vec::new(),
@@ -510,14 +506,8 @@ fn build_snapshot(
             source_locale,
             &source_values,
         ),
-        target_revision: (!target_values.is_empty()).then(|| {
-            locale_revision(
-                schema.tenant_id,
-                schema.id,
-                target_locale,
-                &target_values,
-            )
-        }),
+        target_revision: (!target_values.is_empty())
+            .then(|| locale_revision(schema.tenant_id, schema.id, target_locale, &target_values)),
         exact_locales: exact_locales.into_iter().collect(),
         leaves,
     })
@@ -808,7 +798,8 @@ fn validate_schema_description(value: &str) -> FlexSchemaTranslationResult<()> {
 }
 
 fn validate_runtime_locale(locale: &str) -> FlexSchemaTranslationResult<()> {
-    if locale == LEGACY_UNDETERMINED_LOCALE || normalize_locale_tag(locale).as_deref() != Some(locale)
+    if locale == LEGACY_UNDETERMINED_LOCALE
+        || normalize_locale_tag(locale).as_deref() != Some(locale)
     {
         return Err(FlexSchemaTranslationError::OwnerInvariant(format!(
             "Flex schema translation row contains invalid runtime locale `{locale}`"
@@ -841,8 +832,8 @@ fn decode_receipt(
     value: JsonValue,
     expected_schema_id: Uuid,
 ) -> FlexSchemaTranslationResult<FlexSchemaTranslationExactLocaleApplyReceipt> {
-    let receipt: FlexSchemaTranslationExactLocaleApplyReceipt =
-        serde_json::from_value(value).map_err(|error| {
+    let receipt: FlexSchemaTranslationExactLocaleApplyReceipt = serde_json::from_value(value)
+        .map_err(|error| {
             FlexSchemaTranslationError::Operation(PortError::invariant_violation(
                 "outbox.operation_receipt_corrupt",
                 error.to_string(),

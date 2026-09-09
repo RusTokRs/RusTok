@@ -20,7 +20,9 @@ pub enum ProductOptionTranslationExactLocaleError {
     #[error("Product option translation locale is incomplete: {locale} for option {option_id}")]
     IncompleteLocale { option_id: Uuid, locale: String },
 
-    #[error("Product option translation target locale missing after apply: {locale} for option {option_id}")]
+    #[error(
+        "Product option translation target locale missing after apply: {locale} for option {option_id}"
+    )]
     TargetLocaleMissingAfterApply { option_id: Uuid, locale: String },
 
     #[error("Product option translation value set does not match the current option values")]
@@ -244,7 +246,9 @@ LIMIT $3
             },
         );
         let option_translations = entities::product_option_translation::Entity::find()
-            .filter(entities::product_option_translation::Column::OptionId.is_in(option_ids.clone()))
+            .filter(
+                entities::product_option_translation::Column::OptionId.is_in(option_ids.clone()),
+            )
             .order_by_asc(entities::product_option_translation::Column::OptionId)
             .order_by_asc(entities::product_option_translation::Column::Locale)
             .all(&self.db)
@@ -279,19 +283,20 @@ LIMIT $3
         };
         let value_to_option = values_by_option
             .iter()
-            .flat_map(|(option_id, values)| {
-                values.iter().map(|value| (value.id, *option_id))
-            })
+            .flat_map(|(option_id, values)| values.iter().map(|value| (value.id, *option_id)))
             .collect::<HashMap<_, _>>();
         let mut value_translations_by_option = value_translations.into_iter().try_fold(
             HashMap::<Uuid, Vec<entities::product_option_value_translation::Model>>::new(),
             |mut grouped, translation| {
-                let option_id = value_to_option.get(&translation.value_id).copied().ok_or_else(|| {
-                    CommerceError::Validation(
-                        "Product option translation value escaped its owner inventory"
-                            .to_string(),
-                    )
-                })?;
+                let option_id = value_to_option
+                    .get(&translation.value_id)
+                    .copied()
+                    .ok_or_else(|| {
+                        CommerceError::Validation(
+                            "Product option translation value escaped its owner inventory"
+                                .to_string(),
+                        )
+                    })?;
                 grouped.entry(option_id).or_default().push(translation);
                 Ok::<_, CommerceError>(grouped)
             },
@@ -370,9 +375,8 @@ LIMIT $3
         actor_user_id: Option<Uuid>,
         option_id: Uuid,
         request: ProductOptionTranslationExactLocaleApply,
-    ) -> ProductOptionTranslationExactLocaleResult<
-        ProductOptionTranslationExactLocaleApplyReceipt,
-    > {
+    ) -> ProductOptionTranslationExactLocaleResult<ProductOptionTranslationExactLocaleApplyReceipt>
+    {
         validate_option_translation_title(&request.title)?;
         validate_option_translation_values(&request.values)?;
 
@@ -394,7 +398,9 @@ LIMIT $3
             .lock_exclusive()
             .one(&txn)
             .await?
-            .ok_or(ProductOptionTranslationExactLocaleError::OptionNotFound(option_id))?;
+            .ok_or(ProductOptionTranslationExactLocaleError::OptionNotFound(
+                option_id,
+            ))?;
         let values = entities::product_option_value::Entity::find()
             .filter(entities::product_option_value::Column::OptionId.eq(option_id))
             .order_by_asc(entities::product_option_value::Column::Position)
@@ -412,9 +418,11 @@ LIMIT $3
             &option_translations,
             &value_translations,
         )?
-        .ok_or_else(|| ProductOptionTranslationExactLocaleError::SourceLocaleNotFound {
-            option_id,
-            locale: source_locale.clone(),
+        .ok_or_else(|| {
+            ProductOptionTranslationExactLocaleError::SourceLocaleNotFound {
+                option_id,
+                locale: source_locale.clone(),
+            }
         })?;
         let target = exact_option_locale_record(
             option_id,
@@ -572,7 +580,9 @@ where
         .filter(entities::product::Column::TenantId.eq(tenant_id))
         .one(db)
         .await?
-        .ok_or(ProductOptionTranslationExactLocaleError::OptionNotFound(option_id))
+        .ok_or(ProductOptionTranslationExactLocaleError::OptionNotFound(
+            option_id,
+        ))
 }
 
 async fn load_option_product<C>(
@@ -654,10 +664,12 @@ fn build_option_exact_locale_snapshot(
         &option_translations,
         &value_translations,
     )?
-    .ok_or_else(|| ProductOptionTranslationExactLocaleError::SourceLocaleNotFound {
-        option_id: option.id,
-        locale: source_locale.clone(),
-    })?;
+    .ok_or_else(
+        || ProductOptionTranslationExactLocaleError::SourceLocaleNotFound {
+            option_id: option.id,
+            locale: source_locale.clone(),
+        },
+    )?;
     let target = exact_option_locale_record(
         option.id,
         &target_locale,
@@ -729,10 +741,12 @@ fn exact_option_locale_record(
         let translation = translated_values
             .iter()
             .find(|translation| translation.value_id == value.id)
-            .ok_or_else(|| ProductOptionTranslationExactLocaleError::IncompleteLocale {
-                option_id,
-                locale: locale.to_string(),
-            })?;
+            .ok_or_else(
+                || ProductOptionTranslationExactLocaleError::IncompleteLocale {
+                    option_id,
+                    locale: locale.to_string(),
+                },
+            )?;
         records.push(ProductOptionTranslationExactLocaleValueRecord {
             value_id: value.id,
             position: value.position,
@@ -742,7 +756,10 @@ fn exact_option_locale_record(
 
     Ok(Some(ProductOptionTranslationExactLocaleRecord {
         locale: locale.to_string(),
-        title: title.expect("validated exact title row must exist").title.clone(),
+        title: title
+            .expect("validated exact title row must exist")
+            .title
+            .clone(),
         values: records,
     }))
 }
@@ -803,9 +820,7 @@ fn validate_option_locale_pair(
     Ok(())
 }
 
-fn validate_option_translation_title(
-    title: &str,
-) -> ProductOptionTranslationExactLocaleResult<()> {
+fn validate_option_translation_title(title: &str) -> ProductOptionTranslationExactLocaleResult<()> {
     let length = title.chars().count();
     if length == 0 || length > 100 {
         return Err(CommerceError::Validation(

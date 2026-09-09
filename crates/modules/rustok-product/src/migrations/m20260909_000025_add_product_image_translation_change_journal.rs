@@ -77,9 +77,7 @@ CREATE INDEX idx_product_image_translation_change_target_seq
 
         manager
             .get_connection()
-            .execute_unprepared(
-                "DROP TABLE IF EXISTS product_image_translation_change_journal;",
-            )
+            .execute_unprepared("DROP TABLE IF EXISTS product_image_translation_change_journal;")
             .await?;
         Ok(())
     }

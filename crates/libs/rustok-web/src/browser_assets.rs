@@ -129,7 +129,11 @@ impl BrowserAssetRegistry {
     /// Activates a release (e.g. promoting N+1 to N).
     /// Predecessor release (N) remains in `retained_releases` with retention extended
     /// for `client_cache_lifetime` from now.
-    pub fn activate_release(&mut self, release_id: &str, now: DateTime<Utc>) -> Result<(), BrowserAssetError> {
+    pub fn activate_release(
+        &mut self,
+        release_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), BrowserAssetError> {
         if !self.retained_releases.contains_key(release_id) {
             return Err(BrowserAssetError::ReleaseNotFound(release_id.to_string()));
         }

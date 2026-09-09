@@ -12,14 +12,13 @@ use uuid::Uuid;
 use rustok_api::ArtifactPermissionLocalization;
 use rustok_core::MigrationSource;
 use rustok_modules::{
-    ArtifactAdmissionStatus, ArtifactModuleKind, ArtifactPayloadKind,
-    ArtifactPermissionDescriptor, ArtifactSchemaDocument,
-    CanonicalPresentationState, DynamicLifecycleService, ExecuteDataPurgeCommand,
-    ExecuteDisableCommand, ExecuteEnableCommand, ExecuteInstallCommand,
+    ArtifactAdmissionStatus, ArtifactModuleKind, ArtifactPayloadKind, ArtifactPermissionDescriptor,
+    ArtifactSchemaDocument, CanonicalPresentationState, DynamicLifecycleService,
+    ExecuteDataPurgeCommand, ExecuteDisableCommand, ExecuteEnableCommand, ExecuteInstallCommand,
     ExecuteSettingsPurgeCommand, ExecuteUninstallCommand,
-    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor,
-    ModuleCommandContext, ModuleInstallationScope, ModuleOperatorService,
-    ModuleReleaseCoordinate, ModuleVersionDiff, ModulesModule, UpdateMode,
+    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor, ModuleCommandContext,
+    ModuleInstallationScope, ModuleOperatorService, ModuleReleaseCoordinate, ModuleVersionDiff,
+    ModulesModule, UpdateMode,
 };
 use rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI;
 
@@ -55,7 +54,11 @@ fn sample_command_context() -> ModuleCommandContext {
     }
 }
 
-fn stateless_descriptor(slug: &str, version: &str, payload_digest: &str) -> ModuleArtifactDescriptor {
+fn stateless_descriptor(
+    slug: &str,
+    version: &str,
+    payload_digest: &str,
+) -> ModuleArtifactDescriptor {
     ModuleArtifactDescriptor {
         schema_version: MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
         slug: slug.to_string(),
@@ -87,14 +90,19 @@ fn stateless_descriptor(slug: &str, version: &str, payload_digest: &str) -> Modu
     }
 }
 
-fn brokered_descriptor(slug: &str, version: &str, payload_digest: &str) -> ModuleArtifactDescriptor {
+fn brokered_descriptor(
+    slug: &str,
+    version: &str,
+    payload_digest: &str,
+) -> ModuleArtifactDescriptor {
     let settings_schema = serde_json::json!({
         "type": "object",
         "properties": {
             "api_endpoint": { "type": "string" }
         }
     });
-    let settings_digest = sha256_digest(serde_json::to_string(&settings_schema).unwrap().as_bytes());
+    let settings_digest =
+        sha256_digest(serde_json::to_string(&settings_schema).unwrap().as_bytes());
 
     let data_schema = serde_json::json!({
         "type": "object",
@@ -246,7 +254,10 @@ async fn test_wave_1_stateless_dynamic_module_pilot() {
         .get_status("text_formatter", &scope)
         .await
         .expect("status check succeeds");
-    assert_eq!(status_initial.presentation_state, CanonicalPresentationState::Ready);
+    assert_eq!(
+        status_initial.presentation_state,
+        CanonicalPresentationState::Ready
+    );
     assert_eq!(status_initial.work_generation, 0);
 
     // 2. Install stateless module: creates inactive installation
@@ -283,7 +294,10 @@ async fn test_wave_1_stateless_dynamic_module_pilot() {
         .get_status("text_formatter", &scope)
         .await
         .expect("status check succeeds");
-    assert_eq!(status_active.presentation_state, CanonicalPresentationState::Accepted);
+    assert_eq!(
+        status_active.presentation_state,
+        CanonicalPresentationState::Accepted
+    );
     assert_eq!(status_active.display_label, "Active");
 
     // 4. Disable stateless module: returns to Inactive

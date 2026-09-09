@@ -103,20 +103,13 @@ impl FlexAttachedValuesService {
             #[cfg(feature = "mod-taxonomy")]
             TAXONOMY_CATEGORY_ENTITY_TYPE => {
                 let txn = db.begin().await?;
-                let schema = lock_attached_translation_schema_in_tx(
-                    &txn,
-                    tenant_id,
-                    entity_type,
-                )
-                .await
-                .map_err(map_flex_host_error)?;
-                let owner = rustok_taxonomy::lock_category_owner_revision_in_tx(
-                    &txn,
-                    tenant_id,
-                    entity_id,
-                )
-                .await
-                .map_err(map_taxonomy_owner_error)?;
+                let schema = lock_attached_translation_schema_in_tx(&txn, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                let owner =
+                    rustok_taxonomy::lock_category_owner_revision_in_tx(&txn, tenant_id, entity_id)
+                        .await
+                        .map_err(map_taxonomy_owner_error)?;
                 let entity = attached_ref(tenant_id, entity_type, entity_id);
                 let before_shared = load_generic_attached_shared_values(&txn, entity.clone())
                     .await
@@ -138,11 +131,8 @@ impl FlexAttachedValuesService {
                     }
                     _ => None,
                 };
-                let changed = prepared_write_changed(
-                    &before_shared,
-                    before_localized.as_ref(),
-                    &prepared,
-                );
+                let changed =
+                    prepared_write_changed(&before_shared, before_localized.as_ref(), &prepared);
                 if changed {
                     persist_prepared_generic_attached_values(&txn, entity, &prepared)
                         .await
@@ -198,25 +188,18 @@ impl FlexAttachedValuesService {
             #[cfg(feature = "mod-taxonomy")]
             TAXONOMY_CATEGORY_ENTITY_TYPE => {
                 let txn = db.begin().await?;
-                let owner = rustok_taxonomy::lock_category_owner_revision_in_tx(
-                    &txn,
-                    tenant_id,
-                    entity_id,
-                )
-                .await
-                .map_err(map_taxonomy_owner_error)?;
+                let owner =
+                    rustok_taxonomy::lock_category_owner_revision_in_tx(&txn, tenant_id, entity_id)
+                        .await
+                        .map_err(map_taxonomy_owner_error)?;
                 let entity = attached_ref(tenant_id, entity_type, entity_id);
                 let before_shared = load_generic_attached_shared_values(&txn, entity.clone())
                     .await
                     .map_err(map_flex_host_error)?;
-                let before_localized = load_localized_values_by_locale(
-                    &txn,
-                    tenant_id,
-                    entity_type,
-                    entity_id,
-                )
-                .await
-                .map_err(map_flex_host_error)?;
+                let before_localized =
+                    load_localized_values_by_locale(&txn, tenant_id, entity_type, entity_id)
+                        .await
+                        .map_err(map_flex_host_error)?;
                 let changed = !normalized_object(Some(&before_shared))
                     .as_object()
                     .is_some_and(Map::is_empty)

@@ -9,8 +9,7 @@ use rustok_modules::{
     CURRENT_OPERATIONS_TOOL_PROTOCOL, ConflictFenceSet, ModulesModule,
     OPERATIONS_TOOL_RELEASE_CONTRACT, OperationsToolComponent, OperationsToolError,
     OperationsToolProtocolMatrix, OperationsToolRelease, OperationsToolReleasePayload,
-    OperationsToolService, OperationsToolSupervisorReport,
-    StartOperationsToolMaintenanceCommand,
+    OperationsToolService, OperationsToolSupervisorReport, StartOperationsToolMaintenanceCommand,
 };
 use sea_orm::Database;
 use sea_orm_migration::{MigrationTrait, SchemaManager};

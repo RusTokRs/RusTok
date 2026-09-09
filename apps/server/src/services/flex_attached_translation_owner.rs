@@ -67,21 +67,14 @@ impl ServerFlexTaxonomyCategoryTranslationOwner {
 
         // Lock order is shared with the canonical attached GraphQL writer:
         // Flex schema generation first, then the Taxonomy Category owner row.
-        let schema = lock_attached_translation_schema_in_tx(
-            &txn,
-            tenant_id,
-            TAXONOMY_CATEGORY_ENTITY_TYPE,
-        )
-        .await
-        .map_err(flex_storage_error)?
-        .schema;
-        let owner = rustok_taxonomy::lock_category_owner_revision_in_tx(
-            &txn,
-            tenant_id,
-            entity_id,
-        )
-        .await
-        .map_err(|error| taxonomy_owner_error(error, entity_id))?;
+        let schema =
+            lock_attached_translation_schema_in_tx(&txn, tenant_id, TAXONOMY_CATEGORY_ENTITY_TYPE)
+                .await
+                .map_err(flex_storage_error)?
+                .schema;
+        let owner = rustok_taxonomy::lock_category_owner_revision_in_tx(&txn, tenant_id, entity_id)
+            .await
+            .map_err(|error| taxonomy_owner_error(error, entity_id))?;
         let before_values = load_attached_translation_localized_values(
             &txn,
             tenant_id,
@@ -119,9 +112,7 @@ impl ServerFlexTaxonomyCategoryTranslationOwner {
             &before.source_revision,
         )?;
         if request.expected_target_revision != before.target_revision {
-            return Err(FlexAttachedTranslationError::RevisionConflict {
-                revision: "target",
-            });
+            return Err(FlexAttachedTranslationError::RevisionConflict { revision: "target" });
         }
         request.validate()?;
 
@@ -153,10 +144,7 @@ impl ServerFlexTaxonomyCategoryTranslationOwner {
         for (leaf, value) in &requested {
             match value {
                 Some(value) => {
-                    desired_target.insert(
-                        leaf.field_key.clone(),
-                        JsonValue::String(value.clone()),
-                    );
+                    desired_target.insert(leaf.field_key.clone(), JsonValue::String(value.clone()));
                 }
                 None => {
                     desired_target.remove(&leaf.field_key);
@@ -278,11 +266,7 @@ impl ServerFlexTaxonomyCategoryTranslationOwner {
         Ok(receipt)
     }
 
-    async fn fail_receipt(
-        &self,
-        lease: idempotency::Lease,
-        error: &FlexAttachedTranslationError,
-    ) {
+    async fn fail_receipt(&self, lease: idempotency::Lease, error: &FlexAttachedTranslationError) {
         let port_error = owner_error_to_port_error(error);
         if let Err(receipt_error) = idempotency::fail(&self.db, lease, &port_error).await {
             tracing::error!(
@@ -323,21 +307,13 @@ impl FlexAttachedTranslationOwnerPort for ServerFlexTaxonomyCategoryTranslationO
             )
             .await
             .map_err(database_error)?;
-        let schema = load_attached_translation_schema_in(
-            &txn,
-            tenant_id,
-            TAXONOMY_CATEGORY_ENTITY_TYPE,
-        )
-        .await
-        .map_err(flex_storage_error)?;
-        let page = rustok_taxonomy::list_category_owner_revisions_in(
-            &txn,
-            tenant_id,
-            after,
-            limit,
-        )
-        .await
-        .map_err(taxonomy_inventory_error)?;
+        let schema =
+            load_attached_translation_schema_in(&txn, tenant_id, TAXONOMY_CATEGORY_ENTITY_TYPE)
+                .await
+                .map_err(flex_storage_error)?;
+        let page = rustok_taxonomy::list_category_owner_revisions_in(&txn, tenant_id, after, limit)
+            .await
+            .map_err(taxonomy_inventory_error)?;
         let ids = page
             .categories
             .iter()
@@ -403,29 +379,23 @@ impl FlexAttachedTranslationOwnerPort for ServerFlexTaxonomyCategoryTranslationO
             )
             .await
             .map_err(database_error)?;
-        let exists = rustok_taxonomy::load_category_owner_revisions_in(
-            &txn,
-            tenant_id,
-            &[entity_id],
-        )
-        .await
-        .map_err(taxonomy_inventory_error)?
-        .into_iter()
-        .next()
-        .is_some();
+        let exists =
+            rustok_taxonomy::load_category_owner_revisions_in(&txn, tenant_id, &[entity_id])
+                .await
+                .map_err(taxonomy_inventory_error)?
+                .into_iter()
+                .next()
+                .is_some();
         if !exists {
             return Err(FlexAttachedTranslationError::EntityNotFound {
                 entity_type: TAXONOMY_CATEGORY_ENTITY_TYPE.to_string(),
                 entity_id,
             });
         }
-        let schema = load_attached_translation_schema_in(
-            &txn,
-            tenant_id,
-            TAXONOMY_CATEGORY_ENTITY_TYPE,
-        )
-        .await
-        .map_err(flex_storage_error)?;
+        let schema =
+            load_attached_translation_schema_in(&txn, tenant_id, TAXONOMY_CATEGORY_ENTITY_TYPE)
+                .await
+                .map_err(flex_storage_error)?;
         let values = load_attached_translation_localized_values(
             &txn,
             tenant_id,
@@ -521,7 +491,8 @@ pub(crate) fn build_snapshot_from_batch(
 ) -> FlexAttachedTranslationResult<FlexAttachedTranslationExactLocaleSnapshot> {
     validate_flex_attached_translation_locale_pair(source_locale, target_locale)?;
     let localized = batch.get(&entity_id).cloned().unwrap_or_default();
-    let source_values = exact_values_for_locale(schema, localized.get(source_locale), source_locale)?;
+    let source_values =
+        exact_values_for_locale(schema, localized.get(source_locale), source_locale)?;
     if source_values.is_empty() {
         return Err(FlexAttachedTranslationError::SourceLocaleNotFound {
             entity_type: TAXONOMY_CATEGORY_ENTITY_TYPE.to_string(),
@@ -534,7 +505,8 @@ pub(crate) fn build_snapshot_from_batch(
             "attached Translation resource {entity_id} is source-visible but has no durable Flex revision"
         ))
     })?;
-    let target_values = exact_values_for_locale(schema, localized.get(target_locale), target_locale)?;
+    let target_values =
+        exact_values_for_locale(schema, localized.get(target_locale), target_locale)?;
     let required = eligible_definitions(schema)
         .into_iter()
         .map(|definition| {
@@ -570,9 +542,8 @@ pub(crate) fn build_snapshot_from_batch(
         target_locale: target_locale.to_string(),
         resource_revision,
         source_revision: locale_revision(tenant_id, entity_id, source_locale, &source_values),
-        target_revision: (!target_values.is_empty()).then(|| {
-            locale_revision(tenant_id, entity_id, target_locale, &target_values)
-        }),
+        target_revision: (!target_values.is_empty())
+            .then(|| locale_revision(tenant_id, entity_id, target_locale, &target_values)),
         exact_locales: exact_locales.into_iter().collect(),
         leaves,
     };
@@ -745,8 +716,8 @@ fn decode_receipt(
     value: JsonValue,
     expected_entity_id: Uuid,
 ) -> FlexAttachedTranslationResult<FlexAttachedTranslationExactLocaleApplyReceipt> {
-    let receipt: FlexAttachedTranslationExactLocaleApplyReceipt =
-        serde_json::from_value(value).map_err(|error| {
+    let receipt: FlexAttachedTranslationExactLocaleApplyReceipt = serde_json::from_value(value)
+        .map_err(|error| {
             FlexAttachedTranslationError::Operation(PortError::invariant_violation(
                 "outbox.operation_receipt_corrupt",
                 error.to_string(),

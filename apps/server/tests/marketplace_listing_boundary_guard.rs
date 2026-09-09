@@ -3,10 +3,12 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
     let lib = include_str!("../../../crates/modules/rustok-marketplace-listing/src/lib.rs");
     let listing_entity =
         include_str!("../../../crates/modules/rustok-marketplace-listing/src/entities/listing.rs");
-    let terms_entity =
-        include_str!("../../../crates/modules/rustok-marketplace-listing/src/entities/listing_terms.rs");
-    let event_entity =
-        include_str!("../../../crates/modules/rustok-marketplace-listing/src/entities/listing_event.rs");
+    let terms_entity = include_str!(
+        "../../../crates/modules/rustok-marketplace-listing/src/entities/listing_terms.rs"
+    );
+    let event_entity = include_str!(
+        "../../../crates/modules/rustok-marketplace-listing/src/entities/listing_event.rs"
+    );
     let migration = include_str!(
         "../../../crates/modules/rustok-marketplace-listing/src/migrations/m20260716_000001_create_marketplace_listings.rs"
     );
@@ -16,12 +18,14 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
     let service = include_str!("../../../crates/modules/rustok-marketplace-listing/src/service.rs");
     let receipt =
         include_str!("../../../crates/modules/rustok-marketplace-listing/src/command_receipts.rs");
-    let provider_events =
-        include_str!("../../../crates/modules/rustok-marketplace-listing/src/replay_safe_commands.rs");
+    let provider_events = include_str!(
+        "../../../crates/modules/rustok-marketplace-listing/src/replay_safe_commands.rs"
+    );
     let moderation_events =
         include_str!("../../../crates/modules/rustok-marketplace-listing/src/evented_commands.rs");
-    let lifecycle_events =
-        include_str!("../../../crates/modules/rustok-marketplace-listing/src/lifecycle_event_commands.rs");
+    let lifecycle_events = include_str!(
+        "../../../crates/modules/rustok-marketplace-listing/src/lifecycle_event_commands.rs"
+    );
     let ports = include_str!("../../../crates/modules/rustok-marketplace-listing/src/ports.rs");
     let registry = include_str!(
         "../../../crates/modules/rustok-marketplace-listing/contracts/marketplace-listing-fba-registry.json"
@@ -246,11 +250,15 @@ fn marketplace_listing_schema_preserves_owner_and_version_boundaries() {
 #[test]
 fn marketplace_root_consumes_listing_projection_without_owner_internals() {
     let root = include_str!("../../../crates/modules/rustok-marketplace/src/lib.rs");
-    let consumer = include_str!("../../../crates/modules/rustok-marketplace/src/listing_directory.rs");
-    let root_manifest = include_str!("../../../crates/modules/rustok-marketplace/rustok-module.toml");
+    let consumer =
+        include_str!("../../../crates/modules/rustok-marketplace/src/listing_directory.rs");
+    let root_manifest =
+        include_str!("../../../crates/modules/rustok-marketplace/rustok-module.toml");
     let modules = include_str!("../../../modules.toml");
-    let distribution_manifest = include_str!("../../../crates/modules/rustok-distribution/Cargo.toml");
-    let distribution_source = include_str!("../../../crates/modules/rustok-distribution/src/lib.rs");
+    let distribution_manifest =
+        include_str!("../../../crates/modules/rustok-distribution/Cargo.toml");
+    let distribution_source =
+        include_str!("../../../crates/modules/rustok-distribution/src/lib.rs");
     let server_manifest = include_str!("../../../apps/server/Cargo.toml");
 
     assert!(root.contains("MarketplaceListingDirectoryService"));

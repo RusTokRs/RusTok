@@ -171,14 +171,13 @@ pub use source_reconciliation_runner::{
     IndexReconciliationRunRequest, IndexReconciliationRunStatus, IndexReconciliationTerminalState,
     PostgresIndexReconciliationRunner,
 };
-pub use source_reconciliation_scheduler::{
-    INDEX_RECONCILIATION_WORKER, IndexReconciliationSchedulerPolicy,
-    PostgresIndexReconciliationWorkAdapter,
-    IndexReconciliationSchedulerCompositionError,
-    register_postgres_index_reconciliation_work,
-};
 #[cfg(test)]
 pub(crate) use source_reconciliation_scheduler::IndexReconciliationWorkRegistration;
+pub use source_reconciliation_scheduler::{
+    INDEX_RECONCILIATION_WORKER, IndexReconciliationSchedulerCompositionError,
+    IndexReconciliationSchedulerPolicy, PostgresIndexReconciliationWorkAdapter,
+    register_postgres_index_reconciliation_work,
+};
 pub use source_replay::PostgresIndexReplayCheckpointStore;
 pub use source_replay_job::{
     IndexReplayJobAcquireOutcome, IndexReplayJobError, IndexReplayJobLease,

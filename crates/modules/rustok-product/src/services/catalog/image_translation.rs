@@ -16,7 +16,9 @@ pub enum ProductImageTranslationExactLocaleError {
     #[error("Product image translation source locale not found: {locale} for image {image_id}")]
     SourceLocaleNotFound { image_id: Uuid, locale: String },
 
-    #[error("Product image translation target locale missing after apply: {locale} for image {image_id}")]
+    #[error(
+        "Product image translation target locale missing after apply: {locale} for image {image_id}"
+    )]
     TargetLocaleMissingAfterApply { image_id: Uuid, locale: String },
 
     #[error("Product image translation {revision} revision conflict")]
@@ -38,9 +40,7 @@ pub struct ProductImageTranslationExactLocaleRecord {
     pub alt_text: Option<String>,
 }
 
-impl From<entities::product_image_translation::Model>
-    for ProductImageTranslationExactLocaleRecord
-{
+impl From<entities::product_image_translation::Model> for ProductImageTranslationExactLocaleRecord {
     fn from(value: entities::product_image_translation::Model) -> Self {
         Self {
             locale: value.locale,
@@ -115,10 +115,8 @@ impl CatalogService {
             .column(entities::product_image_translation::Column::ImageId)
             .from(entities::product_image_translation::Entity)
             .and_where(
-                sea_orm::sea_query::Expr::col(
-                    entities::product_image_translation::Column::Locale,
-                )
-                .eq(source_locale.clone()),
+                sea_orm::sea_query::Expr::col(entities::product_image_translation::Column::Locale)
+                    .eq(source_locale.clone()),
             )
             .to_owned();
         let mut query = entities::product_image::Entity::find()
@@ -316,12 +314,13 @@ impl CatalogService {
         }
 
         let translations_after = load_image_translations(&txn, image_id).await?;
-        let target_after = exact_image_locale_row(&translations_after, &target_locale).ok_or_else(
-            || ProductImageTranslationExactLocaleError::TargetLocaleMissingAfterApply {
-                image_id,
-                locale: target_locale.clone(),
-            },
-        )?;
+        let target_after =
+            exact_image_locale_row(&translations_after, &target_locale).ok_or_else(|| {
+                ProductImageTranslationExactLocaleError::TargetLocaleMissingAfterApply {
+                    image_id,
+                    locale: target_locale.clone(),
+                }
+            })?;
         let resource_revision =
             product_image_translation_resource_revision(&product, &image, &translations_after);
         let target_revision = product_image_translation_locale_revision(target_after);
@@ -424,10 +423,12 @@ fn build_image_exact_locale_snapshot(
 ) -> ProductImageTranslationExactLocaleResult<ProductImageTranslationExactLocaleSnapshot> {
     let source = exact_image_locale_row(&translations, &source_locale)
         .cloned()
-        .ok_or_else(|| ProductImageTranslationExactLocaleError::SourceLocaleNotFound {
-            image_id: image.id,
-            locale: source_locale.clone(),
-        })?;
+        .ok_or_else(
+            || ProductImageTranslationExactLocaleError::SourceLocaleNotFound {
+                image_id: image.id,
+                locale: source_locale.clone(),
+            },
+        )?;
     let target = exact_image_locale_row(&translations, &target_locale).cloned();
 
     let resource_revision =
@@ -515,10 +516,7 @@ fn product_image_translation_resource_revision(
     translations: &[entities::product_image_translation::Model],
 ) -> String {
     let mut hasher = Sha256::new();
-    digest_image_text(
-        &mut hasher,
-        "rustok-product/image-translation-resource/v1",
-    );
+    digest_image_text(&mut hasher, "rustok-product/image-translation-resource/v1");
     digest_image_text(&mut hasher, &product.id.to_string());
     digest_image_text(&mut hasher, &product.tenant_id.to_string());
     digest_image_text(&mut hasher, &product.status.to_string());
@@ -539,10 +537,7 @@ fn product_image_translation_locale_revision(
     translation: &entities::product_image_translation::Model,
 ) -> String {
     let mut hasher = Sha256::new();
-    digest_image_text(
-        &mut hasher,
-        "rustok-product/image-translation-locale/v1",
-    );
+    digest_image_text(&mut hasher, "rustok-product/image-translation-locale/v1");
     digest_image_translation(&mut hasher, translation);
     finish_image_revision(hasher)
 }

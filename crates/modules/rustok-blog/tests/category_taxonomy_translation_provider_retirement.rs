@@ -1,6 +1,7 @@
 const LIB: &str = include_str!("../src/lib.rs");
 const OWNER: &str = include_str!("../src/services/category_owner.rs");
-const SERVER: &str = include_str!("../../../../apps/server/src/services/module_event_dispatcher.rs");
+const SERVER: &str =
+    include_str!("../../../../apps/server/src/services/module_event_dispatcher.rs");
 
 #[test]
 fn blog_category_translation_provider_is_retired_after_taxonomy_cutover() {

@@ -130,10 +130,7 @@ fn canonical_locale(locale: &str) -> CollectionTranslationExactLocaleResult<Stri
         .map_err(|error| CommerceError::Validation(error.to_string()).into())
 }
 
-fn progress_count(
-    value: i64,
-    field: &'static str,
-) -> CollectionTranslationExactLocaleResult<u64> {
+fn progress_count(value: i64, field: &'static str) -> CollectionTranslationExactLocaleResult<u64> {
     u64::try_from(value).map_err(|_| {
         CommerceError::Validation(format!(
             "Collection translation progress {field} must not be negative"

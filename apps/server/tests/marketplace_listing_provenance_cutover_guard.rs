@@ -2,10 +2,12 @@
 fn marketplace_listing_legacy_provenance_is_truthful_and_irreversible() {
     let listing =
         include_str!("../../../crates/modules/rustok-marketplace-listing/src/entities/listing.rs");
-    let event =
-        include_str!("../../../crates/modules/rustok-marketplace-listing/src/entities/listing_event.rs");
+    let event = include_str!(
+        "../../../crates/modules/rustok-marketplace-listing/src/entities/listing_event.rs"
+    );
     let dto = include_str!("../../../crates/modules/rustok-marketplace-listing/src/dto.rs");
-    let storage = include_str!("../../../crates/modules/rustok-marketplace-listing/src/listing_events.rs");
+    let storage =
+        include_str!("../../../crates/modules/rustok-marketplace-listing/src/listing_events.rs");
     let migration = include_str!(
         "../../../crates/modules/rustok-marketplace-listing/src/migrations/m20260717_000003_backfill_listing_event_provenance.rs"
     );

@@ -64,9 +64,7 @@ CREATE INDEX idx_flex_schema_translation_change_target_seq
         }
         manager
             .get_connection()
-            .execute_unprepared(
-                "DROP TABLE IF EXISTS flex_schema_translation_change_journal;",
-            )
+            .execute_unprepared("DROP TABLE IF EXISTS flex_schema_translation_change_journal;")
             .await?;
         Ok(())
     }

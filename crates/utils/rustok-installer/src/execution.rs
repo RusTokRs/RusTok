@@ -286,14 +286,22 @@ where
         Ok(import) => import,
         Err(error) => {
             let _ = ports
-                .set_state(&database.runtime, session.id, InstallState::FreshInstallCleaned)
+                .set_state(
+                    &database.runtime,
+                    session.id,
+                    InstallState::FreshInstallCleaned,
+                )
                 .await;
             return Err(error);
         }
     };
     if let Err(error) = ports.apply_remaining_schema(&database.runtime).await {
         let _ = ports
-            .set_state(&database.runtime, session.id, InstallState::FreshInstallCleaned)
+            .set_state(
+                &database.runtime,
+                session.id,
+                InstallState::FreshInstallCleaned,
+            )
             .await;
         return Err(error);
     }
@@ -372,7 +380,11 @@ where
         Ok(outcome) => outcome,
         Err(error) => {
             let _ = ports
-                .set_state(&database.runtime, session.id, InstallState::RecoveryRequired)
+                .set_state(
+                    &database.runtime,
+                    session.id,
+                    InstallState::RecoveryRequired,
+                )
                 .await;
             return Err(error);
         }
@@ -404,7 +416,11 @@ where
         Ok(pw) => pw,
         Err(error) => {
             let _ = ports
-                .set_state(&database.runtime, session.id, InstallState::RecoveryRequired)
+                .set_state(
+                    &database.runtime,
+                    session.id,
+                    InstallState::RecoveryRequired,
+                )
                 .await;
             return Err(InstallExecutionError::new(error.to_string()));
         }
@@ -416,7 +432,11 @@ where
         Ok(outcome) => outcome,
         Err(error) => {
             let _ = ports
-                .set_state(&database.runtime, session.id, InstallState::RecoveryRequired)
+                .set_state(
+                    &database.runtime,
+                    session.id,
+                    InstallState::RecoveryRequired,
+                )
                 .await;
             return Err(error);
         }
@@ -456,7 +476,11 @@ where
         Ok(out) => out,
         Err(error) => {
             let _ = ports
-                .set_state(&database.runtime, session_id, InstallState::RecoveryRequired)
+                .set_state(
+                    &database.runtime,
+                    session_id,
+                    InstallState::RecoveryRequired,
+                )
                 .await;
             return Err(error);
         }
@@ -470,7 +494,11 @@ where
         Ok(outcome) => outcome,
         Err(error) => {
             let _ = ports
-                .set_state(&database.runtime, session.id, InstallState::RecoveryRequired)
+                .set_state(
+                    &database.runtime,
+                    session.id,
+                    InstallState::RecoveryRequired,
+                )
                 .await;
             return Err(error);
         }
@@ -509,7 +537,11 @@ where
         Ok(fin) => fin,
         Err(error) => {
             let _ = ports
-                .set_state(&database.runtime, session.id, InstallState::RecoveryRequired)
+                .set_state(
+                    &database.runtime,
+                    session.id,
+                    InstallState::RecoveryRequired,
+                )
                 .await;
             return Err(error);
         }

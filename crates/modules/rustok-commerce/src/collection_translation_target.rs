@@ -491,10 +491,7 @@ fn application_receipt(
             owner_receipt.resource_revision.clone(),
             "resource_revision",
         )?,
-        target_revision: opaque_revision(
-            owner_receipt.target_revision.clone(),
-            "target_revision",
-        )?,
+        target_revision: opaque_revision(owner_receipt.target_revision.clone(), "target_revision")?,
         applied_field_keys: request
             .fields
             .iter()
@@ -533,7 +530,9 @@ fn collection_error_to_port_error(error: CollectionTranslationExactLocaleError) 
             "Commerce Collection translation state conflicts with the request",
         ),
         CollectionTranslationExactLocaleError::OperationReceipt(error) => error,
-        CollectionTranslationExactLocaleError::Commerce(error) => commerce_error_to_port_error(error),
+        CollectionTranslationExactLocaleError::Commerce(error) => {
+            commerce_error_to_port_error(error)
+        }
     }
 }
 

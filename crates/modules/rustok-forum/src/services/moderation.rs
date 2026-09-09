@@ -9,8 +9,8 @@ use rustok_outbox::TransactionalEventBus;
 
 use crate::audience::SharedForumAudienceFactsPort;
 use crate::error::ForumResult;
-use crate::services::moderation_audience_authorization::ForumModerationAudienceAuthorizationService;
 use crate::services::TopicService;
+use crate::services::moderation_audience_authorization::ForumModerationAudienceAuthorizationService;
 use crate::state_machine::TopicStatus;
 
 pub struct ModerationService {
@@ -42,7 +42,6 @@ impl ModerationService {
             audience,
         }
     }
-
 
     #[instrument(skip(self, security))]
     pub async fn pin_topic(
@@ -89,7 +88,6 @@ impl ModerationService {
         self.set_topic_pinned(tenant_id, topic_id, security, Some(context), false)
             .await
     }
-
 
     #[instrument(skip(self, security))]
     pub async fn close_topic(
@@ -178,7 +176,6 @@ impl ModerationService {
         .await
     }
 
-
     async fn set_topic_pinned(
         &self,
         tenant_id: Uuid,
@@ -207,7 +204,6 @@ impl ModerationService {
         txn.commit().await?;
         Ok(())
     }
-
 
     async fn moderate_topic_status(
         &self,

@@ -218,9 +218,7 @@ async fn record_live_product_options(
         Vec::new()
     } else {
         entities::product_option_value_translation::Entity::find()
-            .filter(
-                entities::product_option_value_translation::Column::ValueId.is_in(value_ids),
-            )
+            .filter(entities::product_option_value_translation::Column::ValueId.is_in(value_ids))
             .order_by_asc(entities::product_option_value_translation::Column::ValueId)
             .order_by_asc(entities::product_option_value_translation::Column::Locale)
             .all(txn)
@@ -251,12 +249,15 @@ async fn record_live_product_options(
     let mut value_translations_by_option = value_translations.into_iter().try_fold(
         HashMap::<Uuid, Vec<entities::product_option_value_translation::Model>>::new(),
         |mut grouped, translation| {
-            let option_id = value_to_option.get(&translation.value_id).copied().ok_or_else(|| {
-                CommerceError::Validation(
-                    "Product Option translation journal value escaped its owner aggregate"
-                        .to_owned(),
-                )
-            })?;
+            let option_id = value_to_option
+                .get(&translation.value_id)
+                .copied()
+                .ok_or_else(|| {
+                    CommerceError::Validation(
+                        "Product Option translation journal value escaped its owner aggregate"
+                            .to_owned(),
+                    )
+                })?;
             grouped.entry(option_id).or_default().push(translation);
             Ok::<_, CommerceError>(grouped)
         },
@@ -311,8 +312,7 @@ async fn record_deleted_product_options(
     for option_id in option_ids {
         if option_id.is_nil() || !seen.insert(*option_id) {
             return Err(CommerceError::Validation(
-                "Product Option translation delete targets must be unique non-nil UUIDs"
-                    .to_owned(),
+                "Product Option translation delete targets must be unique non-nil UUIDs".to_owned(),
             ));
         }
         ordered.push(*option_id);
@@ -320,10 +320,9 @@ async fn record_deleted_product_options(
     ordered.sort_unstable();
 
     for option_id in ordered {
-        if previous
-            .get(&option_id)
-            .is_some_and(|previous| previous.lifecycle == ProductOptionTranslationChangeLifecycle::Deleted)
-        {
+        if previous.get(&option_id).is_some_and(|previous| {
+            previous.lifecycle == ProductOptionTranslationChangeLifecycle::Deleted
+        }) {
             continue;
         }
         let resource_revision = deleted_revision(root_event_id, option_id);
@@ -421,7 +420,9 @@ ON CONFLICT (root_event_id, option_id) DO NOTHING
     Ok(())
 }
 
-fn change_record_from_row(row: QueryResult) -> CommerceResult<ProductOptionTranslationChangeRecord> {
+fn change_record_from_row(
+    row: QueryResult,
+) -> CommerceResult<ProductOptionTranslationChangeRecord> {
     let change_seq = positive_sequence(row.try_get("", "change_seq")?, "change")?;
     let product_id: Uuid = row.try_get("", "product_id")?;
     let option_id: Uuid = row.try_get("", "option_id")?;
@@ -464,10 +465,7 @@ fn option_translation_resource_revision(
     value_translations: &[entities::product_option_value_translation::Model],
 ) -> String {
     let mut hasher = Sha256::new();
-    digest_text(
-        &mut hasher,
-        "rustok-product/option-translation-resource/v1",
-    );
+    digest_text(&mut hasher, "rustok-product/option-translation-resource/v1");
     digest_text(&mut hasher, &product.id.to_string());
     digest_text(&mut hasher, &product.tenant_id.to_string());
     digest_text(&mut hasher, &product.status.to_string());
@@ -538,7 +536,9 @@ fn ensure_postgres(db: &DatabaseConnection) -> CommerceResult<()> {
 }
 
 fn optional_positive_sequence(value: Option<i64>, field: &str) -> CommerceResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
 fn positive_sequence(value: i64, field: &str) -> CommerceResult<u64> {

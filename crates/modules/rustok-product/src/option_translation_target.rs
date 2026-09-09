@@ -521,10 +521,7 @@ fn application_receipt(
             owner_receipt.resource_revision.clone(),
             "resource_revision",
         )?,
-        target_revision: opaque_revision(
-            owner_receipt.target_revision.clone(),
-            "target_revision",
-        )?,
+        target_revision: opaque_revision(owner_receipt.target_revision.clone(), "target_revision")?,
         applied_field_keys: request
             .fields
             .iter()

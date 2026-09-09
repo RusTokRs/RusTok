@@ -65,7 +65,8 @@ fn production_code_uses_only_the_canonical_degradation_aware_fallback() {
     assert!(!core_lib.contains("pub use cache::RedisCacheBackend;"));
     assert!(!core_lib.contains("pub use cache_atomic::{FallbackCacheBackend"));
 
-    let canonical = std::fs::read_to_string(root.join("crates/modules/rustok-cache/src/shared_backend.rs"))
-        .expect("canonical shared cache backend source");
+    let canonical =
+        std::fs::read_to_string(root.join("crates/modules/rustok-cache/src/shared_backend.rs"))
+            .expect("canonical shared cache backend source");
     assert!(canonical.contains("DegradationAwareFallbackBackend::new("));
 }

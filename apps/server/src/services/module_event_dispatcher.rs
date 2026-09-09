@@ -287,7 +287,8 @@ pub fn build_shared_runtime_extensions_with_host_providers(
                     "Product translation target provider registration failed: {error}"
                 ))
             })?;
-        let provider = rustok_product::ProductVariantTranslationTargetProvider::new(service.clone());
+        let provider =
+            rustok_product::ProductVariantTranslationTargetProvider::new(service.clone());
         rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
             .map_err(|error| {
                 Error::Message(format!(

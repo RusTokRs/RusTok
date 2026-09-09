@@ -11,22 +11,16 @@ use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-const COUNTER_AND_SOLUTION_GRAPHQL: &str =
-    include_str!("../src/graphql/reconciliation_query.rs");
+const COUNTER_AND_SOLUTION_GRAPHQL: &str = include_str!("../src/graphql/reconciliation_query.rs");
 const SUBSCRIPTION_GRAPHQL: &str =
     include_str!("../src/graphql/subscription_reconciliation_query.rs");
-const MENTION_GRAPHQL: &str =
-    include_str!("../src/graphql/mention_reconciliation_query.rs");
+const MENTION_GRAPHQL: &str = include_str!("../src/graphql/mention_reconciliation_query.rs");
 
 #[test]
 fn graphql_schema_exposes_all_reconciliation_reports() {
-    let schema = Schema::build(
-        ForumQuery::default(),
-        EmptyMutation,
-        EmptySubscription,
-    )
-    .extension(ForumGraphqlErrorExtension)
-    .finish();
+    let schema = Schema::build(ForumQuery::default(), EmptyMutation, EmptySubscription)
+        .extension(ForumGraphqlErrorExtension)
+        .finish();
     let sdl = schema.sdl();
 
     for marker in [
@@ -195,13 +189,9 @@ async fn graphql_reconciliation_execution_rejects_unauthenticated_and_unauthoriz
     .await
     .expect("tenant_modules seed should apply");
 
-    let schema = Schema::build(
-        ForumQuery::default(),
-        EmptyMutation,
-        EmptySubscription,
-    )
-    .extension(ForumGraphqlErrorExtension)
-    .finish();
+    let schema = Schema::build(ForumQuery::default(), EmptyMutation, EmptySubscription)
+        .extension(ForumGraphqlErrorExtension)
+        .finish();
 
     let query = r#"
         query {
@@ -213,9 +203,7 @@ async fn graphql_reconciliation_execution_rejects_unauthenticated_and_unauthoriz
     "#;
 
     // 1. Unauthenticated (no AuthContext in request data)
-    let req = Request::new(query)
-        .data(tenant.clone())
-        .data(db.clone());
+    let req = Request::new(query).data(tenant.clone()).data(db.clone());
     let res = schema.execute(req).await;
     assert!(!res.errors.is_empty(), "expected unauthenticated error");
     let err_msg = res.errors[0].message.to_lowercase();
@@ -275,13 +263,9 @@ async fn graphql_reconciliation_execution_succeeds_for_operator_on_clean_state()
     .await
     .expect("tenant_modules seed should apply");
 
-    let schema = Schema::build(
-        ForumQuery::default(),
-        EmptyMutation,
-        EmptySubscription,
-    )
-    .extension(ForumGraphqlErrorExtension)
-    .finish();
+    let schema = Schema::build(ForumQuery::default(), EmptyMutation, EmptySubscription)
+        .extension(ForumGraphqlErrorExtension)
+        .finish();
 
     let operator_auth = test_auth_context(
         tenant_id,
@@ -309,7 +293,11 @@ async fn graphql_reconciliation_execution_succeeds_for_operator_on_clean_state()
         .data(operator_auth.clone())
         .data(db.clone());
     let res = schema.execute(req).await;
-    assert!(res.errors.is_empty(), "unexpected counter report errors: {:?}", res.errors);
+    assert!(
+        res.errors.is_empty(),
+        "unexpected counter report errors: {:?}",
+        res.errors
+    );
     let data = res.data.into_json().expect("valid JSON response");
     assert_eq!(data["forumCounterReconciliationReport"]["clean"], true);
     assert_eq!(data["forumCounterReconciliationReport"]["driftCount"], 0);
@@ -332,7 +320,11 @@ async fn graphql_reconciliation_execution_succeeds_for_operator_on_clean_state()
         .data(operator_auth.clone())
         .data(db.clone());
     let res = schema.execute(req).await;
-    assert!(res.errors.is_empty(), "unexpected solution report errors: {:?}", res.errors);
+    assert!(
+        res.errors.is_empty(),
+        "unexpected solution report errors: {:?}",
+        res.errors
+    );
     let data = res.data.into_json().expect("valid JSON response");
     assert_eq!(data["forumSolutionReconciliationReport"]["clean"], true);
     assert_eq!(data["forumSolutionReconciliationReport"]["driftCount"], 0);
@@ -355,10 +347,17 @@ async fn graphql_reconciliation_execution_succeeds_for_operator_on_clean_state()
         .data(operator_auth.clone())
         .data(db.clone());
     let res = schema.execute(req).await;
-    assert!(res.errors.is_empty(), "unexpected subscription report errors: {:?}", res.errors);
+    assert!(
+        res.errors.is_empty(),
+        "unexpected subscription report errors: {:?}",
+        res.errors
+    );
     let data = res.data.into_json().expect("valid JSON response");
     assert_eq!(data["forumSubscriptionReconciliationReport"]["clean"], true);
-    assert_eq!(data["forumSubscriptionReconciliationReport"]["driftCount"], 0);
+    assert_eq!(
+        data["forumSubscriptionReconciliationReport"]["driftCount"],
+        0
+    );
 
     // 4. Mention report
     let query = r#"
@@ -377,7 +376,11 @@ async fn graphql_reconciliation_execution_succeeds_for_operator_on_clean_state()
         .data(operator_auth.clone())
         .data(db.clone());
     let res = schema.execute(req).await;
-    assert!(res.errors.is_empty(), "unexpected mention report errors: {:?}", res.errors);
+    assert!(
+        res.errors.is_empty(),
+        "unexpected mention report errors: {:?}",
+        res.errors
+    );
     let data = res.data.into_json().expect("valid JSON response");
     assert_eq!(data["forumMentionReconciliationReport"]["clean"], true);
     assert_eq!(data["forumMentionReconciliationReport"]["driftCount"], 0);

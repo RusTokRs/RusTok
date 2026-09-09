@@ -53,9 +53,7 @@ CREATE INDEX idx_product_translation_change_journal_tenant_product_seq
 
         manager
             .get_connection()
-            .execute_unprepared(
-                "DROP TABLE IF EXISTS product_translation_change_journal;",
-            )
+            .execute_unprepared("DROP TABLE IF EXISTS product_translation_change_journal;")
             .await?;
         Ok(())
     }

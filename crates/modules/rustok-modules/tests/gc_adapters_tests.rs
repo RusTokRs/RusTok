@@ -1,9 +1,8 @@
 use chrono::{Duration, Utc};
 use rustok_modules::{
-    ArtifactDataObjectGcAdapter, ArtifactObjectState, BrowserAssetGcAdapter,
-    BuildAttemptGcAdapter, BuildAttemptStatus, DiagnosticLogGcAdapter,
-    EncryptedSettingsRecoveryPointGcAdapter, GcCoordinator, GcError,
-    GcFinalRecheckDecision, GcTargetKind, GcTombstoneStatus,
+    ArtifactDataObjectGcAdapter, ArtifactObjectState, BrowserAssetGcAdapter, BuildAttemptGcAdapter,
+    BuildAttemptStatus, DiagnosticLogGcAdapter, EncryptedSettingsRecoveryPointGcAdapter,
+    GcCoordinator, GcError, GcFinalRecheckDecision, GcTargetKind, GcTombstoneStatus,
     NodeSlotGcAdapter, OciArtifactGcAdapter, OperationsToolGcAdapter,
     PlatformExecutableCasGcAdapter, RetentionHoldKind, RetentionHoldLedger, RetentionTarget,
     SnapshotRestoreCopyGcAdapter, SourceCasGcAdapter,
@@ -39,7 +38,8 @@ fn test_tombstone_initiates_grace_period_and_blocks_premature_final_recheck() {
     assert!(tombstone.tombstone_digest.starts_with("sha256:"));
 
     // Attempting final recheck immediately (within grace period) must be denied
-    let decision = coordinator.evaluate_final_recheck(tombstone.tombstone_id, &ledger, &adapter, now);
+    let decision =
+        coordinator.evaluate_final_recheck(tombstone.tombstone_id, &ledger, &adapter, now);
     match decision {
         GcFinalRecheckDecision::DeniedInGracePeriod { remaining_seconds } => {
             assert!(remaining_seconds > 0);
@@ -84,7 +84,8 @@ fn test_authoritative_retention_holds_block_final_recheck_after_grace() {
     // Fast forward past grace period
     let after_grace = now + Duration::hours(2);
 
-    let decision = coordinator.evaluate_final_recheck(tombstone.tombstone_id, &ledger, &adapter, after_grace);
+    let decision =
+        coordinator.evaluate_final_recheck(tombstone.tombstone_id, &ledger, &adapter, after_grace);
     match decision {
         GcFinalRecheckDecision::DeniedActiveHolds {
             active_holds,
@@ -164,7 +165,8 @@ fn test_live_references_block_oci_artifact_final_recheck() {
     let after_grace = now + Duration::hours(1);
 
     // Recheck: layer is still referenced by active manifest -> denied
-    let decision = coordinator.evaluate_final_recheck(tombstone.tombstone_id, &ledger, &adapter, after_grace);
+    let decision =
+        coordinator.evaluate_final_recheck(tombstone.tombstone_id, &ledger, &adapter, after_grace);
     match decision {
         GcFinalRecheckDecision::DeniedLiveReference { reason } => {
             assert!(reason.contains("referenced by active manifest"));
@@ -269,7 +271,8 @@ fn test_encrypted_settings_recovery_point_kms_and_schema_root_protection() {
     let after_grace = now + Duration::hours(2);
 
     // Denied while KMS key version is active
-    let dec1 = coordinator.evaluate_final_recheck(tombstone.tombstone_id, &ledger, &adapter, after_grace);
+    let dec1 =
+        coordinator.evaluate_final_recheck(tombstone.tombstone_id, &ledger, &adapter, after_grace);
     match dec1 {
         GcFinalRecheckDecision::DeniedLiveReference { reason } => {
             assert!(reason.contains("active KMS key root"));
@@ -279,7 +282,8 @@ fn test_encrypted_settings_recovery_point_kms_and_schema_root_protection() {
 
     // Retiring KMS key version still keeps schema root active
     adapter.active_kms_key_versions.remove(&kms_key_version);
-    let dec2 = coordinator.evaluate_final_recheck(tombstone.tombstone_id, &ledger, &adapter, after_grace);
+    let dec2 =
+        coordinator.evaluate_final_recheck(tombstone.tombstone_id, &ledger, &adapter, after_grace);
     match dec2 {
         GcFinalRecheckDecision::DeniedLiveReference { reason } => {
             assert!(reason.contains("active schema root"));
@@ -289,7 +293,8 @@ fn test_encrypted_settings_recovery_point_kms_and_schema_root_protection() {
 
     // Retiring schema root allows collection
     adapter.active_schema_roots.remove(&schema_root_digest);
-    let dec3 = coordinator.evaluate_final_recheck(tombstone.tombstone_id, &ledger, &adapter, after_grace);
+    let dec3 =
+        coordinator.evaluate_final_recheck(tombstone.tombstone_id, &ledger, &adapter, after_grace);
     match dec3 {
         GcFinalRecheckDecision::Authorized { token } => {
             let receipt = coordinator
@@ -336,8 +341,12 @@ fn test_operations_tool_and_node_slot_adapters() {
         )
         .expect("Tombstone must succeed");
 
-    let dec_ops =
-        coordinator.evaluate_final_recheck(tomb_ops.tombstone_id, &ledger, &ops_adapter, after_grace);
+    let dec_ops = coordinator.evaluate_final_recheck(
+        tomb_ops.tombstone_id,
+        &ledger,
+        &ops_adapter,
+        after_grace,
+    );
     match dec_ops {
         GcFinalRecheckDecision::DeniedLiveReference { reason } => {
             assert!(reason.contains("protected for fast crash recovery"));
@@ -366,8 +375,12 @@ fn test_operations_tool_and_node_slot_adapters() {
         )
         .expect("Tombstone must succeed");
 
-    let dec_slot =
-        coordinator.evaluate_final_recheck(tomb_slot.tombstone_id, &ledger, &node_adapter, after_grace);
+    let dec_slot = coordinator.evaluate_final_recheck(
+        tomb_slot.tombstone_id,
+        &ledger,
+        &node_adapter,
+        after_grace,
+    );
     match dec_slot {
         GcFinalRecheckDecision::DeniedLiveReference { reason } => {
             assert!(reason.contains("actively serving"));
@@ -376,11 +389,13 @@ fn test_operations_tool_and_node_slot_adapters() {
     }
 
     // Mark slot not serving
-    node_adapter
-        .serving_slots
-        .remove("node-1:sha256:slot123");
-    let dec_slot2 =
-        coordinator.evaluate_final_recheck(tomb_slot.tombstone_id, &ledger, &node_adapter, after_grace);
+    node_adapter.serving_slots.remove("node-1:sha256:slot123");
+    let dec_slot2 = coordinator.evaluate_final_recheck(
+        tomb_slot.tombstone_id,
+        &ledger,
+        &node_adapter,
+        after_grace,
+    );
     match dec_slot2 {
         GcFinalRecheckDecision::Authorized { token } => {
             coordinator
@@ -413,8 +428,12 @@ fn test_tombstone_revocation() {
         )
         .expect("Revoke must succeed");
 
-    let decision =
-        coordinator.evaluate_final_recheck(tombstone.tombstone_id, &ledger, &adapter, now + Duration::hours(2));
+    let decision = coordinator.evaluate_final_recheck(
+        tombstone.tombstone_id,
+        &ledger,
+        &adapter,
+        now + Duration::hours(2),
+    );
     match decision {
         GcFinalRecheckDecision::DeniedInactiveStatus {
             status: GcTombstoneStatus::Revoked { reason },

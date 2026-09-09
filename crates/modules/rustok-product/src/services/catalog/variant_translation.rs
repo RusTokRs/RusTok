@@ -13,10 +13,14 @@ pub enum ProductVariantTranslationExactLocaleError {
     #[error("Product variant not found: {0}")]
     VariantNotFound(Uuid),
 
-    #[error("Product variant translation source locale not found: {locale} for variant {variant_id}")]
+    #[error(
+        "Product variant translation source locale not found: {locale} for variant {variant_id}"
+    )]
     SourceLocaleNotFound { variant_id: Uuid, locale: String },
 
-    #[error("Product variant translation target locale missing after apply: {locale} for variant {variant_id}")]
+    #[error(
+        "Product variant translation target locale missing after apply: {locale} for variant {variant_id}"
+    )]
     TargetLocaleMissingAfterApply { variant_id: Uuid, locale: String },
 
     #[error("Product variant translation {revision} revision conflict")]
@@ -200,9 +204,8 @@ impl CatalogService {
         variant_id: Uuid,
         source_locale: &str,
         target_locale: &str,
-    ) -> ProductVariantTranslationExactLocaleResult<
-        ProductVariantTranslationExactLocaleSnapshot,
-    > {
+    ) -> ProductVariantTranslationExactLocaleResult<ProductVariantTranslationExactLocaleSnapshot>
+    {
         let source_locale = canonical_variant_translation_locale(source_locale)?;
         let target_locale = canonical_variant_translation_locale(target_locale)?;
         validate_variant_locale_pair(&source_locale, &target_locale)?;
@@ -234,9 +237,8 @@ impl CatalogService {
         actor_user_id: Option<Uuid>,
         variant_id: Uuid,
         request: ProductVariantTranslationExactLocaleApply,
-    ) -> ProductVariantTranslationExactLocaleResult<
-        ProductVariantTranslationExactLocaleApplyReceipt,
-    > {
+    ) -> ProductVariantTranslationExactLocaleResult<ProductVariantTranslationExactLocaleApplyReceipt>
+    {
         validate_variant_translation_title(request.title.as_deref())?;
 
         let source_locale = canonical_variant_translation_locale(&request.source_locale)?;
@@ -253,7 +255,9 @@ impl CatalogService {
             .lock_exclusive()
             .one(&txn)
             .await?
-            .ok_or(CommerceError::ProductNotFound(discovered_variant.product_id))?;
+            .ok_or(CommerceError::ProductNotFound(
+                discovered_variant.product_id,
+            ))?;
         let variant = entities::product_variant::Entity::find_by_id(variant_id)
             .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
             .filter(entities::product_variant::Column::ProductId.eq(product.id))
@@ -289,9 +293,9 @@ impl CatalogService {
             &current_source_revision,
         )?;
         if request.expected_target_revision != current_target_revision {
-            return Err(ProductVariantTranslationExactLocaleError::RevisionConflict {
-                revision: "target",
-            });
+            return Err(
+                ProductVariantTranslationExactLocaleError::RevisionConflict { revision: "target" },
+            );
         }
 
         if let Some(existing) = target.cloned() {
@@ -418,10 +422,12 @@ fn build_variant_exact_locale_snapshot(
 ) -> ProductVariantTranslationExactLocaleResult<ProductVariantTranslationExactLocaleSnapshot> {
     let source = exact_variant_locale_row(&translations, &source_locale)
         .cloned()
-        .ok_or_else(|| ProductVariantTranslationExactLocaleError::SourceLocaleNotFound {
-            variant_id: variant.id,
-            locale: source_locale.clone(),
-        })?;
+        .ok_or_else(
+            || ProductVariantTranslationExactLocaleError::SourceLocaleNotFound {
+                variant_id: variant.id,
+                locale: source_locale.clone(),
+            },
+        )?;
     let target = exact_variant_locale_row(&translations, &target_locale).cloned();
 
     let resource_revision =
@@ -532,10 +538,7 @@ fn product_variant_translation_locale_revision(
     translation: &entities::variant_translation::Model,
 ) -> String {
     let mut hasher = Sha256::new();
-    digest_variant_text(
-        &mut hasher,
-        "rustok-product/variant-translation-locale/v1",
-    );
+    digest_variant_text(&mut hasher, "rustok-product/variant-translation-locale/v1");
     digest_variant_translation(&mut hasher, translation);
     finish_variant_revision(hasher)
 }

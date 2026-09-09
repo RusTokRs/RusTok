@@ -1,12 +1,15 @@
 #[test]
 fn marketplace_listing_owner_writes_are_receipted_and_evented() {
-    let provider =
-        include_str!("../../../crates/modules/rustok-marketplace-listing/src/replay_safe_commands.rs");
-    let lifecycle =
-        include_str!("../../../crates/modules/rustok-marketplace-listing/src/lifecycle_event_commands.rs");
+    let provider = include_str!(
+        "../../../crates/modules/rustok-marketplace-listing/src/replay_safe_commands.rs"
+    );
+    let lifecycle = include_str!(
+        "../../../crates/modules/rustok-marketplace-listing/src/lifecycle_event_commands.rs"
+    );
     let moderation =
         include_str!("../../../crates/modules/rustok-marketplace-listing/src/evented_commands.rs");
-    let storage = include_str!("../../../crates/modules/rustok-marketplace-listing/src/listing_events.rs");
+    let storage =
+        include_str!("../../../crates/modules/rustok-marketplace-listing/src/listing_events.rs");
     let service = include_str!("../../../crates/modules/rustok-marketplace-listing/src/service.rs");
     let ports = include_str!("../../../crates/modules/rustok-marketplace-listing/src/ports.rs");
     let lib = include_str!("../../../crates/modules/rustok-marketplace-listing/src/lib.rs");

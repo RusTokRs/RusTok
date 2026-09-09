@@ -5,11 +5,11 @@ use std::collections::{BTreeSet, HashSet};
 use async_trait::async_trait;
 use hex::ToHex;
 use rustok_api::{
-    ArtifactPermissionContinuityReceipt, ArtifactPermissionDiff,
-    ArtifactPermissionRegistration, ArtifactPermissionRegistrationPort,
-    ArtifactPermissionScope, PermissionContinuityEvaluationRequest, PortError,
-    ReleasePermissionAdmissionRequest, ScopedPermissionProjectionRequest,
-    compute_canonical_authorization_fingerprint, normalize_locale_tag,
+    ArtifactPermissionContinuityReceipt, ArtifactPermissionDiff, ArtifactPermissionRegistration,
+    ArtifactPermissionRegistrationPort, ArtifactPermissionScope,
+    PermissionContinuityEvaluationRequest, PortError, ReleasePermissionAdmissionRequest,
+    ScopedPermissionProjectionRequest, compute_canonical_authorization_fingerprint,
+    normalize_locale_tag,
 };
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
@@ -195,8 +195,7 @@ impl ArtifactPermissionRegistrationPort for RbacArtifactPermissionCatalog {
                     )
                 })?;
 
-            let persisted_scoped_id: Uuid =
-                definition.try_get("", "id").map_err(storage_error)?;
+            let persisted_scoped_id: Uuid = definition.try_get("", "id").map_err(storage_error)?;
 
             // Copy translations from release definition
             let translations = transaction
@@ -211,8 +210,9 @@ impl ArtifactPermissionRegistrationPort for RbacArtifactPermissionCatalog {
             for trans_row in translations {
                 let locale: String = trans_row.try_get("", "locale").map_err(storage_error)?;
                 let label: String = trans_row.try_get("", "label").map_err(storage_error)?;
-                let description: String =
-                    trans_row.try_get("", "description").map_err(storage_error)?;
+                let description: String = trans_row
+                    .try_get("", "description")
+                    .map_err(storage_error)?;
 
                 transaction
                     .execute_raw(Statement::from_sql_and_values(
@@ -254,11 +254,9 @@ impl ArtifactPermissionRegistrationPort for RbacArtifactPermissionCatalog {
             .map(|p| p.key.clone())
             .collect();
 
-        let unchanged_keys: Vec<String> =
-            pred_keys.intersection(&cand_keys).cloned().collect();
+        let unchanged_keys: Vec<String> = pred_keys.intersection(&cand_keys).cloned().collect();
         let added_keys: Vec<String> = cand_keys.difference(&pred_keys).cloned().collect();
-        let removed_dormant_keys: Vec<String> =
-            pred_keys.difference(&cand_keys).cloned().collect();
+        let removed_dormant_keys: Vec<String> = pred_keys.difference(&cand_keys).cloned().collect();
         let modified_keys = Vec::new();
 
         let diff = ArtifactPermissionDiff {
@@ -395,7 +393,9 @@ fn storage_error(error: impl std::fmt::Display) -> PortError {
     PortError::unavailable("rbac.artifact_permission_catalog", error.to_string())
 }
 
-fn validate_admission_request(request: &ReleasePermissionAdmissionRequest) -> Result<(), PortError> {
+fn validate_admission_request(
+    request: &ReleasePermissionAdmissionRequest,
+) -> Result<(), PortError> {
     if request.module_slug.trim().is_empty()
         || request.release_digest.trim().is_empty()
         || request.permissions.is_empty()
@@ -864,7 +864,10 @@ mod tests {
 
         // Even though labels changed, authorization fingerprint is identical and approved is true!
         assert!(receipt.approved);
-        assert_eq!(receipt.diff.unchanged_keys, vec!["sample_module.events.handle"]);
+        assert_eq!(
+            receipt.diff.unchanged_keys,
+            vec!["sample_module.events.handle"]
+        );
         assert!(receipt.diff.added_keys.is_empty());
         assert!(receipt.diff.removed_dormant_keys.is_empty());
 
@@ -893,6 +896,9 @@ mod tests {
 
         // Key set changed -> approved must be false, requiring explicit operator approval!
         assert!(!receipt_modified.approved);
-        assert_eq!(receipt_modified.diff.added_keys, vec!["sample_module.admin.delete"]);
+        assert_eq!(
+            receipt_modified.diff.added_keys,
+            vec!["sample_module.admin.delete"]
+        );
     }
 }

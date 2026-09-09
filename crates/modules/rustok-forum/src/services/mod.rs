@@ -154,10 +154,10 @@ mod topic_subscription_lock;
 mod topic_tag_lock;
 pub mod topic_visibility;
 mod topic_vote_lock;
+pub mod ugc_translation_apply;
 pub mod user_stats;
 mod user_trust;
 mod user_trust_audience_facts;
-pub mod ugc_translation_apply;
 pub mod vote;
 pub mod widget_contract;
 mod widget_preview;
@@ -205,6 +205,10 @@ pub use counter_reconciliation::{
 pub use event::ForumEventService;
 pub use import_write::{
     ForumImportWriteResult, ForumImportWriteService, MAX_FORUM_IMPORT_APPLY_RECORDS_PER_BATCH,
+};
+pub use mention_reconciliation::{
+    ForumMentionDrift, ForumMentionDriftKind, ForumMentionReconciliationReport,
+    ForumMentionReconciliationService,
 };
 #[allow(unused_imports)]
 pub(crate) use mention_relation::MentionRelationService;
@@ -267,10 +271,6 @@ pub use subscription::reconciliation::{
     ForumSubscriptionCursor, ForumSubscriptionDrift, ForumSubscriptionDriftKind,
     ForumSubscriptionReconciliationReport, ForumSubscriptionReconciliationService,
     ForumSubscriptionTargetKind,
-};
-pub use mention_reconciliation::{
-    ForumMentionDrift, ForumMentionDriftKind, ForumMentionReconciliationReport,
-    ForumMentionReconciliationService,
 };
 pub use topic::MAX_FORUM_TOPIC_TAGS;
 pub use topic_audience::{
@@ -357,6 +357,10 @@ pub use topic_split::{
 pub use topic_visibility::{
     ForumTopicVisibilityScope, ForumTopicVisibilityService, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,
 };
+pub use ugc_translation_apply::{
+    ApplyExactForumReplyTranslationInput, ApplyExactForumTopicTranslationInput,
+    ForumUgcTranslationApplyError, ForumUgcTranslationApplyResult,
+};
 pub use user_stats::UserStatsService;
 pub use user_trust::{
     ForumUserTrustChange, ForumUserTrustRevision, ForumUserTrustRevisionPage,
@@ -367,7 +371,3 @@ pub use user_trust_audience_facts::ForumUserTrustAudienceFactsPort;
 pub use vote::VoteService;
 pub use widget_contract::ForumWidgetContractService;
 pub use widget_preview::ForumWidgetPreviewService;
-pub use ugc_translation_apply::{
-    ApplyExactForumReplyTranslationInput, ApplyExactForumTopicTranslationInput,
-    ForumUgcTranslationApplyError, ForumUgcTranslationApplyResult,
-};

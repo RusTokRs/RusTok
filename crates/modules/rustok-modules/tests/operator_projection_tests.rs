@@ -12,11 +12,9 @@ use uuid::Uuid;
 use rustok_api::ArtifactPermissionLocalization;
 use rustok_core::MigrationSource;
 use rustok_modules::{
-    ArtifactModuleKind, ArtifactPayloadKind,
-    ArtifactPermissionDescriptor, ArtifactSchemaDocument,
-    CanonicalPresentationState, ExecuteInstallCommand,
-    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor,
-    ModuleCommandContext, ModuleInstallationScope, ModuleOperatorError,
+    ArtifactModuleKind, ArtifactPayloadKind, ArtifactPermissionDescriptor, ArtifactSchemaDocument,
+    CanonicalPresentationState, ExecuteInstallCommand, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+    ModuleArtifactDescriptor, ModuleCommandContext, ModuleInstallationScope, ModuleOperatorError,
     ModuleOperatorService, ModuleReleaseCoordinate, ModulesModule, UpdateMode,
 };
 use rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI;
@@ -179,13 +177,33 @@ async fn test_canonical_presentation_tokens_and_friendly_labels() {
     let states = [
         (CanonicalPresentationState::Ready, "ready", "Ready"),
         (CanonicalPresentationState::Running, "running", "Updating"),
-        (CanonicalPresentationState::Observing, "observing", "Observing"),
+        (
+            CanonicalPresentationState::Observing,
+            "observing",
+            "Observing",
+        ),
         (CanonicalPresentationState::Accepted, "accepted", "Active"),
-        (CanonicalPresentationState::Recovering, "recovering", "Recovering"),
-        (CanonicalPresentationState::Recovered, "recovered", "Recovered"),
+        (
+            CanonicalPresentationState::Recovering,
+            "recovering",
+            "Recovering",
+        ),
+        (
+            CanonicalPresentationState::Recovered,
+            "recovered",
+            "Recovered",
+        ),
         (CanonicalPresentationState::Rejected, "rejected", "Rejected"),
-        (CanonicalPresentationState::Cancelled, "cancelled", "Cancelled"),
-        (CanonicalPresentationState::RecoveryRequired, "recovery_required", "Recovery required"),
+        (
+            CanonicalPresentationState::Cancelled,
+            "cancelled",
+            "Cancelled",
+        ),
+        (
+            CanonicalPresentationState::RecoveryRequired,
+            "recovery_required",
+            "Recovery required",
+        ),
     ];
 
     for (state, expected_token, expected_label) in states {
@@ -243,14 +261,8 @@ async fn test_transition_preview_projection_and_blast_radius() {
     let operator = ModuleOperatorService::new(db.clone());
 
     let script = b"fn main() { print(\"preview test\"); }";
-    let release_digest = admit_test_release(
-        &db,
-        "billing_engine",
-        "2.1.0",
-        script,
-        "billing-corp",
-    )
-    .await;
+    let release_digest =
+        admit_test_release(&db, "billing_engine", "2.1.0", script, "billing-corp").await;
 
     let tenant_id = Uuid::new_v4();
     let scope = ModuleInstallationScope::Tenant { tenant_id };
@@ -297,15 +309,13 @@ async fn test_preview_denies_automatic_mode_for_schema_migrations() {
         version_label: "v0.2.0".to_string(),
         distribution_release_id: Uuid::new_v4(),
         bundle_root_digest: sha256_digest(b"bundle-root-v2"),
-        module_version_diffs: vec![
-            rustok_modules::ModuleVersionDiff {
-                module_slug: "commerce".to_string(),
-                previous_version: Some("0.1.0".to_string()),
-                candidate_version: "0.2.0".to_string(),
-                previous_digest: Some(sha256_digest(b"commerce-v1")),
-                candidate_digest: sha256_digest(b"commerce-v2"),
-            },
-        ],
+        module_version_diffs: vec![rustok_modules::ModuleVersionDiff {
+            module_slug: "commerce".to_string(),
+            previous_version: Some("0.1.0".to_string()),
+            candidate_version: "0.2.0".to_string(),
+            previous_digest: Some(sha256_digest(b"commerce-v1")),
+            candidate_digest: sha256_digest(b"commerce-v2"),
+        }],
     };
 
     let scope = ModuleInstallationScope::Platform;
@@ -358,14 +368,8 @@ async fn test_operator_status_reads_and_support_bundle_generation() {
     let operator = ModuleOperatorService::new(db.clone());
 
     let script = b"fn main() { print(\"status test\"); }";
-    let release_digest = admit_test_release(
-        &db,
-        "inventory_sync",
-        "1.0.0",
-        script,
-        "inventory-corp",
-    )
-    .await;
+    let release_digest =
+        admit_test_release(&db, "inventory_sync", "1.0.0", script, "inventory-corp").await;
 
     let tenant_id = Uuid::new_v4();
     let scope = ModuleInstallationScope::Tenant { tenant_id };
@@ -375,7 +379,10 @@ async fn test_operator_status_reads_and_support_bundle_generation() {
         .get_status("inventory_sync", &scope)
         .await
         .expect("query status succeeds");
-    assert_eq!(status_initial.presentation_state, CanonicalPresentationState::Ready);
+    assert_eq!(
+        status_initial.presentation_state,
+        CanonicalPresentationState::Ready
+    );
     assert_eq!(status_initial.work_generation, 0);
     assert!(!status_initial.retired);
 
@@ -400,7 +407,10 @@ async fn test_operator_status_reads_and_support_bundle_generation() {
         .get_status("inventory_sync", &scope)
         .await
         .expect("query status succeeds");
-    assert_eq!(status_installed.presentation_state, CanonicalPresentationState::Ready);
+    assert_eq!(
+        status_installed.presentation_state,
+        CanonicalPresentationState::Ready
+    );
     assert_eq!(status_installed.work_generation, 1);
     assert!(!status_installed.retired);
 

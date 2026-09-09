@@ -205,7 +205,8 @@ impl PostgresIndexQueryAdmissionCatalog {
 }
 
 fn referenced_first_hop_links(query: &IndexQuery) -> BTreeSet<String> {
-    query.referenced_paths()
+    query
+        .referenced_paths()
         .into_iter()
         .filter_map(|path| path.links().first().map(|link| link.as_str().to_owned()))
         .collect()
@@ -528,7 +529,10 @@ mod tests {
     #[test]
     fn linked_query_collects_only_first_hop_link_names() {
         let query = query_with_fields(vec![FieldPath::linked(
-            [LinkName::new("variants").unwrap(), LinkName::new("details").unwrap()],
+            [
+                LinkName::new("variants").unwrap(),
+                LinkName::new("details").unwrap(),
+            ],
             FieldName::new("sku").unwrap(),
         )]);
         let links = referenced_first_hop_links(&query);
@@ -574,7 +578,13 @@ mod tests {
             .apply_link_target_availability(&query, &mut compiled)
             .unwrap();
         assert!(compiled.sql.contains("availability_link"));
-        assert!(compiled.exact_count.unwrap().sql.contains("availability_link"));
+        assert!(
+            compiled
+                .exact_count
+                .unwrap()
+                .sql
+                .contains("availability_link")
+        );
     }
 
     #[test]

@@ -114,11 +114,8 @@ fn test_end_to_end_watchdog_auto_rollback_on_candidate_crash() {
 
 #[test]
 fn test_side_by_side_pre_switch_failure_consumes_zero_attempts() {
-    let mut coordinator = HttpSsrSwitchingCoordinator::new(
-        "sha256:predecessor_stable".to_string(),
-        8081,
-        8082,
-    );
+    let mut coordinator =
+        HttpSsrSwitchingCoordinator::new("sha256:predecessor_stable".to_string(), 8081, 8082);
 
     assert_eq!(coordinator.proxy_target_port(), 8081);
     assert_eq!(coordinator.recovery_attempts_consumed(), 0);
@@ -153,16 +150,15 @@ fn test_side_by_side_pre_switch_failure_consumes_zero_attempts() {
 
 #[test]
 fn test_side_by_side_traffic_switch_and_post_switch_recovery() {
-    let mut coordinator = HttpSsrSwitchingCoordinator::new(
-        "sha256:predecessor_v1".to_string(),
-        8081,
-        8082,
-    );
+    let mut coordinator =
+        HttpSsrSwitchingCoordinator::new("sha256:predecessor_v1".to_string(), 8081, 8082);
 
     let candidate_digest = "sha256:candidate_v2".to_string();
 
     // 1. Pre-stage and mark candidate ready on standby slot B
-    coordinator.pre_stage_candidate(candidate_digest.clone()).unwrap();
+    coordinator
+        .pre_stage_candidate(candidate_digest.clone())
+        .unwrap();
     coordinator.mark_candidate_ready(candidate_digest).unwrap();
 
     // 2. Commit atomic traffic switch
@@ -238,4 +234,3 @@ fn test_fenced_worker_generation_handoff_and_rollback() {
     let second_rollback = coordinator.rollback_generation(0);
     assert!(second_rollback.is_err());
 }
-
