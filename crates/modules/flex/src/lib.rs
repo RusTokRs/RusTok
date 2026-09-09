@@ -16,7 +16,9 @@ pub mod attached_storage;
 pub mod attached_translation;
 pub mod attached_translation_changes;
 pub mod attached_translation_guard;
+pub mod attached_translation_progress_target;
 pub mod attached_translation_storage;
+pub mod attached_translation_target;
 pub mod cache_generation;
 pub mod entity_type;
 pub mod errors;
@@ -74,11 +76,13 @@ pub use attached_translation_guard::{
     FlexAttachedTranslationSchemaLease, load_attached_translation_schema_in,
     lock_attached_translation_schema_in_tx,
 };
+pub use attached_translation_progress_target::FlexAttachedTranslationProgressTargetProvider;
 pub use attached_translation_storage::{
     FlexAttachedLocalizedValuesByEntity, FlexAttachedTranslationResourceRevisionsByEntity,
     MAX_ATTACHED_TRANSLATION_STORAGE_BATCH, load_attached_translation_localized_values,
     load_attached_translation_resource_revisions,
 };
+pub use attached_translation_target::FlexAttachedTranslationTargetProvider;
 pub use entity_type::{
     MAX_FLEX_ENTITY_TYPE_BYTES, TAXONOMY_CATEGORY_ENTITY_TYPE, is_valid_flex_entity_type,
     normalize_flex_entity_type,
