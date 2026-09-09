@@ -91,7 +91,7 @@ mod-navigation = ["dep:rustok-navigation", "dep:rustok-translation-targets", "ru
 mod-page_builder = ["dep:rustok-page-builder", "rustok-distribution/mod-page_builder"]
 mod-taxonomy  = ["dep:rustok-taxonomy", "dep:rustok-translation-targets", "mod-content", "rustok-distribution/mod-taxonomy"]
 mod-alloy     = ["dep:alloy", "rustok-distribution/mod-alloy"]
-mod-flex      = ["rustok-distribution/mod-flex"]
+mod-flex      = ["dep:rustok-translation-targets", "rustok-distribution/mod-flex"]
 mod-media     = ["dep:rustok-media", "dep:rustok-translation-targets", "rustok-distribution/mod-media"]
 mod-translation = [
   "dep:rustok-translation",
