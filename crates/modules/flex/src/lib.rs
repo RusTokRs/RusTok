@@ -75,8 +75,8 @@ pub use schema_translation::{
     validate_flex_schema_translation_locale_pair, validate_flex_schema_translation_resource_page,
 };
 pub use schema_translation_fields::{
-    apply_schema_definition_translation_targets, schema_definition_translation_leaves,
-    schema_definition_translation_locales,
+    apply_schema_definition_translation_targets, schema_definition_translation_exact_values,
+    schema_definition_translation_leaves, schema_definition_translation_locales,
 };
 pub use standalone::{
     CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView,
