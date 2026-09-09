@@ -3,11 +3,11 @@ use flex::{
     FlexAttachedTranslationError, FlexAttachedTranslationExactProgress,
     FlexAttachedTranslationProgressOwnerPort, FlexAttachedTranslationResult,
     TAXONOMY_CATEGORY_ENTITY_TYPE, load_attached_translation_localized_values,
-    load_attached_translation_schema_in, validate_flex_attached_translation_locale_pair,
+    load_attached_translation_resource_revisions, load_attached_translation_schema_in,
+    validate_flex_attached_translation_locale_pair,
 };
 use sea_orm::{
-    AccessMode, ConnectionTrait, DatabaseBackend, DatabaseConnection, IsolationLevel,
-    TransactionTrait,
+    AccessMode, DatabaseBackend, DatabaseConnection, IsolationLevel, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -40,22 +40,24 @@ impl FlexAttachedTranslationProgressOwnerPort for ServerFlexTaxonomyCategoryTran
     ) -> FlexAttachedTranslationResult<FlexAttachedTranslationExactProgress> {
         validate_uuid(tenant_id, "tenant_id")?;
         validate_flex_attached_translation_locale_pair(source_locale, target_locale)?;
-
-        // Progress spans Taxonomy inventory pages and Flex value rows. PostgreSQL uses one
-        // repeatable-read/read-only transaction so every page observes the same donor/schema/
-        // values snapshot. SQLite pins its read transaction on first access.
-        let txn = match self.db.get_database_backend() {
-            DatabaseBackend::Postgres => {
-                self.db
-                    .begin_with_config(
-                        Some(IsolationLevel::RepeatableRead),
-                        Some(AccessMode::ReadOnly),
-                    )
-                    .await
-            }
-            _ => self.db.begin().await,
+        if self.db.get_database_backend() != DatabaseBackend::Postgres {
+            return Err(FlexAttachedTranslationError::Invalid(
+                "attached Translation aggregate progress requires PostgreSQL durable revision state"
+                    .to_string(),
+            ));
         }
-        .map_err(database_error)?;
+
+        // Progress spans Taxonomy inventory pages plus Flex schema/value/revision state. Keep the
+        // complete aggregation in one PostgreSQL repeatable-read snapshot so every observed leaf
+        // and its `attached:N` resource revision describe the same owner state.
+        let txn = self
+            .db
+            .begin_with_config(
+                Some(IsolationLevel::RepeatableRead),
+                Some(AccessMode::ReadOnly),
+            )
+            .await
+            .map_err(database_error)?;
 
         let schema = load_attached_translation_schema_in(
             &txn,
@@ -92,14 +94,22 @@ impl FlexAttachedTranslationProgressOwnerPort for ServerFlexTaxonomyCategoryTran
             )
             .await
             .map_err(flex_storage_error)?;
+            let revisions = load_attached_translation_resource_revisions(
+                &txn,
+                tenant_id,
+                TAXONOMY_CATEGORY_ENTITY_TYPE,
+                &ids,
+            )
+            .await
+            .map_err(flex_storage_error)?;
 
             for category in &page.categories {
                 let snapshot = match build_snapshot_from_batch(
                     tenant_id,
                     category.category_id,
-                    category.revision,
                     &schema,
                     &values,
+                    &revisions,
                     source_locale,
                     target_locale,
                 ) {
