@@ -1,14 +1,18 @@
-use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    TransactionTrait,
+};
 use serde_json::Value;
 use uuid::Uuid;
 
 use flex::{
     AttachedEntityRef, FlexMappedErrorKind, GenericAttachedFieldDefinitionService,
     TAXONOMY_CATEGORY_ENTITY_TYPE, delete_attached_localized_values,
-    delete_generic_attached_values, map_flex_error, persist_localized_values,
-    persist_prepared_generic_attached_values, prepare_attached_values_create,
-    prepare_attached_values_update, prepare_generic_attached_values_update,
-    resolve_attached_payload, resolve_generic_attached_values,
+    delete_generic_attached_values, lock_generic_attached_entity_write, map_flex_error,
+    persist_localized_values, persist_prepared_generic_attached_values,
+    prepare_attached_values_create, prepare_attached_values_update,
+    prepare_generic_attached_values_update, resolve_attached_payload,
+    resolve_generic_attached_values,
 };
 use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
 
@@ -97,7 +101,7 @@ impl FlexAttachedValuesService {
         payload: Option<Value>,
     ) -> ServerResult<PreparedAttachedValuesWrite> {
         ensure_registered_owner_exists(db, tenant_id, entity_type, entity_id).await?;
-        let schema = load_schema(db, tenant_id, entity_type)
+        let schema = load_registered_generic_schema(db, tenant_id, entity_type)
             .await
             .map_err(map_flex_host_error)?;
         prepare_generic_attached_values_update(
@@ -111,6 +115,55 @@ impl FlexAttachedValuesService {
         .map_err(map_flex_host_error)
     }
 
+    /// Canonical registered-donor update path. Preparation and persistence share the
+    /// same owner serialization lock, so a full exact-locale write cannot overwrite a
+    /// concurrent update that landed after an earlier read.
+    pub async fn update_registered_generic_values_atomic(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        entity_type: &str,
+        entity_id: Uuid,
+        locale: &str,
+        payload: Option<Value>,
+    ) -> ServerResult<Option<Value>> {
+        let txn = db.begin().await?;
+        let entity = attached_ref(tenant_id, entity_type, entity_id);
+        lock_generic_attached_entity_write(&txn, entity.clone())
+            .await
+            .map_err(map_flex_host_error)?;
+        ensure_registered_owner_exists(&txn, tenant_id, entity_type, entity_id).await?;
+        let schema = load_registered_generic_schema(&txn, tenant_id, entity_type)
+            .await
+            .map_err(map_flex_host_error)?;
+        let prepared = prepare_generic_attached_values_update(
+            &txn,
+            entity.clone(),
+            schema,
+            locale,
+            payload,
+        )
+        .await
+        .map_err(map_flex_host_error)?;
+        persist_prepared_generic_attached_values(&txn, entity.clone(), &prepared)
+            .await
+            .map_err(map_flex_host_error)?;
+
+        let schema = load_registered_generic_schema(&txn, tenant_id, entity_type)
+            .await
+            .map_err(map_flex_host_error)?;
+        let resolved = resolve_generic_attached_values(
+            &txn,
+            entity,
+            schema,
+            locale,
+            locale,
+        )
+        .await
+        .map_err(map_flex_host_error)?;
+        txn.commit().await?;
+        Ok(resolved)
+    }
+
     pub async fn persist_registered_generic_values(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -119,14 +172,14 @@ impl FlexAttachedValuesService {
         prepared: &PreparedAttachedValuesWrite,
     ) -> ServerResult<()> {
         let txn = db.begin().await?;
+        let entity = attached_ref(tenant_id, entity_type, entity_id);
+        lock_generic_attached_entity_write(&txn, entity.clone())
+            .await
+            .map_err(map_flex_host_error)?;
         ensure_registered_owner_exists(&txn, tenant_id, entity_type, entity_id).await?;
-        persist_prepared_generic_attached_values(
-            &txn,
-            attached_ref(tenant_id, entity_type, entity_id),
-            prepared,
-        )
-        .await
-        .map_err(map_flex_host_error)?;
+        persist_prepared_generic_attached_values(&txn, entity, prepared)
+            .await
+            .map_err(map_flex_host_error)?;
         txn.commit().await?;
         Ok(())
     }
@@ -140,7 +193,7 @@ impl FlexAttachedValuesService {
         tenant_default_locale: &str,
     ) -> ServerResult<Option<Value>> {
         ensure_registered_owner_exists(db, tenant_id, entity_type, entity_id).await?;
-        let schema = load_schema(db, tenant_id, entity_type)
+        let schema = load_registered_generic_schema(db, tenant_id, entity_type)
             .await
             .map_err(map_flex_host_error)?;
         resolve_generic_attached_values(
@@ -161,8 +214,12 @@ impl FlexAttachedValuesService {
         entity_id: Uuid,
     ) -> ServerResult<()> {
         let txn = db.begin().await?;
+        let entity = attached_ref(tenant_id, entity_type, entity_id);
+        lock_generic_attached_entity_write(&txn, entity.clone())
+            .await
+            .map_err(map_flex_host_error)?;
         ensure_registered_owner_exists(&txn, tenant_id, entity_type, entity_id).await?;
-        delete_generic_attached_values(&txn, attached_ref(tenant_id, entity_type, entity_id))
+        delete_generic_attached_values(&txn, entity)
             .await
             .map_err(map_flex_host_error)?;
         txn.commit().await?;
@@ -237,32 +294,13 @@ impl flex::graphql::AttachedValuesGraphqlPort for FlexAttachedValuesGraphqlAdapt
         locale: &str,
         payload: Option<Value>,
     ) -> Result<Option<Value>, FlexError> {
-        let prepared = FlexAttachedValuesService::prepare_registered_generic_update(
+        FlexAttachedValuesService::update_registered_generic_values_atomic(
             &self.db,
             tenant_id,
             entity_type,
             entity_id,
             locale,
             payload,
-        )
-        .await
-        .map_err(|error| map_host_error_to_flex(error, entity_id))?;
-        FlexAttachedValuesService::persist_registered_generic_values(
-            &self.db,
-            tenant_id,
-            entity_type,
-            entity_id,
-            &prepared,
-        )
-        .await
-        .map_err(|error| map_host_error_to_flex(error, entity_id))?;
-        FlexAttachedValuesService::resolve_registered_generic_values(
-            &self.db,
-            tenant_id,
-            entity_type,
-            entity_id,
-            locale,
-            locale,
         )
         .await
         .map_err(|error| map_host_error_to_flex(error, entity_id))
@@ -312,7 +350,7 @@ impl rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort for FlexTaxonomyCategory
     }
 }
 
-fn attached_ref<'a>(
+pub(crate) fn attached_ref<'a>(
     tenant_id: Uuid,
     entity_type: &'a str,
     entity_id: Uuid,
@@ -324,7 +362,7 @@ fn attached_ref<'a>(
     }
 }
 
-async fn ensure_registered_owner_exists<C>(
+pub(crate) async fn ensure_registered_owner_exists<C>(
     db: &C,
     tenant_id: Uuid,
     entity_type: &str,
@@ -354,6 +392,30 @@ where
             "generic Flex owner adapter is not registered for {other}"
         ))),
     }
+}
+
+pub(crate) async fn load_registered_generic_schema<C>(
+    db: &C,
+    tenant_id: Uuid,
+    entity_type: &str,
+) -> Result<CustomFieldsSchema, FlexError>
+where
+    C: ConnectionTrait,
+{
+    let rows = flex::attached_definitions::Entity::find()
+        .filter(flex::attached_definitions::Column::TenantId.eq(tenant_id))
+        .filter(flex::attached_definitions::Column::EntityType.eq(entity_type))
+        .filter(flex::attached_definitions::Column::IsActive.eq(true))
+        .order_by_asc(flex::attached_definitions::Column::Position)
+        .order_by_asc(flex::attached_definitions::Column::FieldKey)
+        .all(db)
+        .await
+        .map_err(|error| FlexError::Database(error.to_string()))?;
+    let definitions = rows
+        .iter()
+        .filter_map(flex::field_definition_from_source)
+        .collect();
+    Ok(CustomFieldsSchema::new(definitions))
 }
 
 fn map_flex_host_error(error: FlexError) -> Error {
