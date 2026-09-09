@@ -278,38 +278,17 @@ CREATE TRIGGER trg_flex_attached_translation_value_change
 AFTER INSERT OR UPDATE OR DELETE ON flex_attached_localized_values
 FOR EACH ROW EXECUTE FUNCTION rustok_record_flex_attached_translation_resource_change();
 
-CREATE OR REPLACE FUNCTION rustok_record_flex_attached_translation_schema_change()
+-- Field-definition DELETE/UPDATE can cascade into localized rows. Capture the OLD resource set
+-- before those FK cascades run so removing or moving a translation-relevant field cannot erase
+-- the very resource ids whose snapshots changed.
+CREATE OR REPLACE FUNCTION rustok_record_flex_attached_translation_schema_change_before()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
     old_eligible BOOLEAN := FALSE;
-    new_eligible BOOLEAN := FALSE;
-    old_tenant_id UUID;
-    old_entity_type TEXT;
-    old_field_key TEXT;
-    new_tenant_id UUID;
-    new_entity_type TEXT;
-    new_field_key TEXT;
     resource RECORD;
 BEGIN
-    IF TG_OP <> 'INSERT' THEN
-        old_eligible := OLD.is_active
-            AND OLD.is_localized
-            AND OLD.field_type IN ('text', 'textarea');
-        old_tenant_id := OLD.tenant_id;
-        old_entity_type := OLD.entity_type;
-        old_field_key := OLD.field_key;
-    END IF;
-    IF TG_OP <> 'DELETE' THEN
-        new_eligible := NEW.is_active
-            AND NEW.is_localized
-            AND NEW.field_type IN ('text', 'textarea');
-        new_tenant_id := NEW.tenant_id;
-        new_entity_type := NEW.entity_type;
-        new_field_key := NEW.field_key;
-    END IF;
-
     IF TG_OP = 'UPDATE'
        AND OLD.tenant_id IS NOT DISTINCT FROM NEW.tenant_id
        AND OLD.entity_type IS NOT DISTINCT FROM NEW.entity_type
@@ -322,34 +301,24 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    IF NOT old_eligible AND NOT new_eligible THEN
-        IF TG_OP = 'DELETE' THEN
-            RETURN OLD;
-        END IF;
-        RETURN NEW;
+    old_eligible := OLD.is_active
+        AND OLD.is_localized
+        AND OLD.field_type IN ('text', 'textarea');
+    IF old_eligible THEN
+        FOR resource IN
+            SELECT DISTINCT value.tenant_id, value.entity_type, value.entity_id
+            FROM flex_attached_localized_values value
+            WHERE value.tenant_id = OLD.tenant_id
+              AND value.entity_type = OLD.entity_type
+              AND value.field_key = OLD.field_key
+        LOOP
+            PERFORM rustok_flex_bump_attached_translation_resource(
+                resource.tenant_id,
+                resource.entity_type,
+                resource.entity_id
+            );
+        END LOOP;
     END IF;
-
-    FOR resource IN
-        SELECT DISTINCT value.tenant_id, value.entity_type, value.entity_id
-        FROM flex_attached_localized_values value
-        WHERE (
-            old_eligible
-            AND value.tenant_id = old_tenant_id
-            AND value.entity_type = old_entity_type
-            AND value.field_key = old_field_key
-        ) OR (
-            new_eligible
-            AND value.tenant_id = new_tenant_id
-            AND value.entity_type = new_entity_type
-            AND value.field_key = new_field_key
-        )
-    LOOP
-        PERFORM rustok_flex_bump_attached_translation_resource(
-            resource.tenant_id,
-            resource.entity_type,
-            resource.entity_id
-        );
-    END LOOP;
 
     IF TG_OP = 'DELETE' THEN
         RETURN OLD;
@@ -358,9 +327,59 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER trg_flex_attached_translation_schema_change
-AFTER INSERT OR UPDATE OR DELETE ON flex_attached_field_definitions
-FOR EACH ROW EXECUTE FUNCTION rustok_record_flex_attached_translation_schema_change();
+CREATE TRIGGER trg_flex_attached_translation_schema_change_before
+BEFORE UPDATE OR DELETE ON flex_attached_field_definitions
+FOR EACH ROW EXECUTE FUNCTION rustok_record_flex_attached_translation_schema_change_before();
+
+-- INSERT/UPDATE NEW-side fan-out runs after FK cascades so renamed/moved field definitions touch
+-- the resources at their post-statement identity. The per-transaction resource guard collapses
+-- OLD- and NEW-side touches into one externally visible revision.
+CREATE OR REPLACE FUNCTION rustok_record_flex_attached_translation_schema_change_after()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    new_eligible BOOLEAN := FALSE;
+    resource RECORD;
+BEGIN
+    IF TG_OP = 'UPDATE'
+       AND OLD.tenant_id IS NOT DISTINCT FROM NEW.tenant_id
+       AND OLD.entity_type IS NOT DISTINCT FROM NEW.entity_type
+       AND OLD.field_key IS NOT DISTINCT FROM NEW.field_key
+       AND OLD.field_type IS NOT DISTINCT FROM NEW.field_type
+       AND OLD.is_localized IS NOT DISTINCT FROM NEW.is_localized
+       AND OLD.is_required IS NOT DISTINCT FROM NEW.is_required
+       AND OLD.validation::text IS NOT DISTINCT FROM NEW.validation::text
+       AND OLD.is_active IS NOT DISTINCT FROM NEW.is_active THEN
+        RETURN NEW;
+    END IF;
+
+    new_eligible := NEW.is_active
+        AND NEW.is_localized
+        AND NEW.field_type IN ('text', 'textarea');
+    IF new_eligible THEN
+        FOR resource IN
+            SELECT DISTINCT value.tenant_id, value.entity_type, value.entity_id
+            FROM flex_attached_localized_values value
+            WHERE value.tenant_id = NEW.tenant_id
+              AND value.entity_type = NEW.entity_type
+              AND value.field_key = NEW.field_key
+        LOOP
+            PERFORM rustok_flex_bump_attached_translation_resource(
+                resource.tenant_id,
+                resource.entity_type,
+                resource.entity_id
+            );
+        END LOOP;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_flex_attached_translation_schema_change_after
+AFTER INSERT OR UPDATE ON flex_attached_field_definitions
+FOR EACH ROW EXECUTE FUNCTION rustok_record_flex_attached_translation_schema_change_after();
 "#,
             )
             .await?;
@@ -377,9 +396,12 @@ FOR EACH ROW EXECUTE FUNCTION rustok_record_flex_attached_translation_schema_cha
             .get_connection()
             .execute_unprepared(
                 r#"
-DROP TRIGGER IF EXISTS trg_flex_attached_translation_schema_change
+DROP TRIGGER IF EXISTS trg_flex_attached_translation_schema_change_after
     ON flex_attached_field_definitions;
-DROP FUNCTION IF EXISTS rustok_record_flex_attached_translation_schema_change();
+DROP FUNCTION IF EXISTS rustok_record_flex_attached_translation_schema_change_after();
+DROP TRIGGER IF EXISTS trg_flex_attached_translation_schema_change_before
+    ON flex_attached_field_definitions;
+DROP FUNCTION IF EXISTS rustok_record_flex_attached_translation_schema_change_before();
 DROP TRIGGER IF EXISTS trg_flex_attached_translation_value_change
     ON flex_attached_localized_values;
 DROP FUNCTION IF EXISTS rustok_record_flex_attached_translation_resource_change();
