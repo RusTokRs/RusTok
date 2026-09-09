@@ -76,8 +76,9 @@ pub use attached_translation_guard::{
     lock_attached_translation_schema_in_tx,
 };
 pub use attached_translation_storage::{
-    FlexAttachedLocalizedValuesByEntity, MAX_ATTACHED_TRANSLATION_STORAGE_BATCH,
-    load_attached_translation_localized_values,
+    FlexAttachedLocalizedValuesByEntity, FlexAttachedTranslationResourceRevisionsByEntity,
+    MAX_ATTACHED_TRANSLATION_STORAGE_BATCH, load_attached_translation_localized_values,
+    load_attached_translation_resource_revisions,
 };
 pub use entity_type::{
     MAX_FLEX_ENTITY_TYPE_BYTES, TAXONOMY_CATEGORY_ENTITY_TYPE, is_valid_flex_entity_type,
