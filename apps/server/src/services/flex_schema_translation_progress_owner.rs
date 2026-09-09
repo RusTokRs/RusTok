@@ -2,15 +2,19 @@ use std::collections::{BTreeMap, HashMap};
 
 use async_trait::async_trait;
 use flex::{
-    FlexSchemaTranslationError, FlexSchemaTranslationExactProgress, FlexSchemaTranslationLeaf,
-    FlexSchemaTranslationProgressOwnerPort, FlexSchemaTranslationResult, UpdateFlexSchemaCommand,
+    FlexSchemaTranslationChangeLifecycle, FlexSchemaTranslationChangeOwnerPort,
+    FlexSchemaTranslationChangeRecord, FlexSchemaTranslationError,
+    FlexSchemaTranslationExactProgress, FlexSchemaTranslationLeaf,
+    FlexSchemaTranslationProgressOwnerPort, FlexSchemaTranslationResult,
+    MAX_FLEX_SCHEMA_TRANSLATION_CHANGE_PAGE, UpdateFlexSchemaCommand,
     flex_schema_translation_leaf_required, parse_standalone_fields_config,
     schema_definition_translation_exact_values, validate_flex_schema_translation_locale_pair,
     validate_update_schema_command,
 };
 use sea_orm::{
     AccessMode, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
-    IsolationLevel, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    FromQueryResult, IsolationLevel, QueryFilter, QueryOrder, QuerySelect, Statement,
+    TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -26,6 +30,93 @@ pub struct ServerFlexSchemaTranslationProgressOwner {
 impl ServerFlexSchemaTranslationProgressOwner {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
+    }
+}
+
+#[derive(Debug, FromQueryResult)]
+struct ChangeHighwaterRow {
+    highwater: Option<i64>,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct ChangeRow {
+    change_seq: i64,
+    schema_id: Uuid,
+    resource_revision: String,
+    lifecycle: String,
+}
+
+#[async_trait]
+impl FlexSchemaTranslationChangeOwnerPort for ServerFlexSchemaTranslationProgressOwner {
+    async fn read_change_highwater(
+        &self,
+        tenant_id: Uuid,
+    ) -> FlexSchemaTranslationResult<Option<u64>> {
+        validate_uuid(tenant_id, "tenant_id")?;
+        ensure_change_postgres(&self.db)?;
+        let row = ChangeHighwaterRow::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT MAX(change_seq) AS highwater FROM flex_schema_translation_change_journal WHERE tenant_id = $1",
+            vec![tenant_id.into()],
+        ))
+        .one(&self.db)
+        .await
+        .map_err(database_error)?
+        .ok_or_else(|| {
+            FlexSchemaTranslationError::OwnerInvariant(
+                "Flex schema translation change high-water query returned no row".to_string(),
+            )
+        })?;
+        optional_positive_sequence(row.highwater, "high-water")
+    }
+
+    async fn read_changes(
+        &self,
+        tenant_id: Uuid,
+        after_seq: u64,
+        through_seq: u64,
+        limit: u16,
+    ) -> FlexSchemaTranslationResult<Vec<FlexSchemaTranslationChangeRecord>> {
+        validate_uuid(tenant_id, "tenant_id")?;
+        if through_seq == 0 || after_seq > through_seq {
+            return Err(FlexSchemaTranslationError::Invalid(
+                "Flex schema translation change cursor bounds are invalid".to_string(),
+            ));
+        }
+        if limit == 0 || limit > MAX_FLEX_SCHEMA_TRANSLATION_CHANGE_PAGE {
+            return Err(FlexSchemaTranslationError::Invalid(format!(
+                "Flex schema translation change page size must be between 1 and {MAX_FLEX_SCHEMA_TRANSLATION_CHANGE_PAGE}"
+            )));
+        }
+        ensure_change_postgres(&self.db)?;
+
+        let rows = ChangeRow::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+SELECT change_seq, schema_id, resource_revision, lifecycle
+FROM flex_schema_translation_change_journal
+WHERE tenant_id = $1
+  AND change_seq > $2
+  AND change_seq <= $3
+ORDER BY change_seq ASC
+LIMIT $4
+"#,
+            vec![
+                tenant_id.into(),
+                i64::try_from(after_seq)
+                    .map_err(|_| invalid_sequence("after"))?
+                    .into(),
+                i64::try_from(through_seq)
+                    .map_err(|_| invalid_sequence("through"))?
+                    .into(),
+                i64::from(limit).into(),
+            ],
+        ))
+        .all(&self.db)
+        .await
+        .map_err(database_error)?;
+
+        rows.into_iter().map(change_record_from_row).collect()
     }
 }
 
@@ -242,6 +333,53 @@ fn validate_translation_row(
             "persisted Flex schema translation row violates the owner contract: {error}"
         ))
     })
+}
+
+fn change_record_from_row(
+    row: ChangeRow,
+) -> FlexSchemaTranslationResult<FlexSchemaTranslationChangeRecord> {
+    let change_seq = positive_sequence(row.change_seq, "change")?;
+    if row.schema_id.is_nil() || row.resource_revision.trim().is_empty() {
+        return Err(FlexSchemaTranslationError::OwnerInvariant(
+            "Flex schema translation change journal returned an invalid row".to_string(),
+        ));
+    }
+    Ok(FlexSchemaTranslationChangeRecord {
+        change_seq,
+        schema_id: row.schema_id,
+        resource_revision: row.resource_revision,
+        lifecycle: FlexSchemaTranslationChangeLifecycle::parse(&row.lifecycle)?,
+    })
+}
+
+fn ensure_change_postgres(db: &DatabaseConnection) -> FlexSchemaTranslationResult<()> {
+    if db.get_database_backend() != DatabaseBackend::Postgres {
+        return Err(FlexSchemaTranslationError::Invalid(
+            "Flex schema translation ChangeCursor requires PostgreSQL".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn optional_positive_sequence(
+    value: Option<i64>,
+    field: &str,
+) -> FlexSchemaTranslationResult<Option<u64>> {
+    value.map(|value| positive_sequence(value, field)).transpose()
+}
+
+fn positive_sequence(value: i64, field: &str) -> FlexSchemaTranslationResult<u64> {
+    let value = u64::try_from(value).map_err(|_| invalid_sequence(field))?;
+    if value == 0 {
+        return Err(invalid_sequence(field));
+    }
+    Ok(value)
+}
+
+fn invalid_sequence(field: &str) -> FlexSchemaTranslationError {
+    FlexSchemaTranslationError::OwnerInvariant(format!(
+        "Flex schema translation change {field} sequence must be positive"
+    ))
 }
 
 fn checked_increment(value: &mut u64, label: &str) -> FlexSchemaTranslationResult<()> {
