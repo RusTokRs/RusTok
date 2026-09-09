@@ -17,6 +17,7 @@ use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm_migration::MigrationTrait;
 
+mod collection_translation_changes;
 mod collection_translation_progress;
 mod collection_translation_progress_target;
 mod collection_translation_target;
@@ -44,6 +45,10 @@ extern crate self as rustok_commerce;
 #[cfg(test)]
 mod state_machine_proptest;
 
+pub use collection_translation_changes::{
+    CollectionTranslationChangeLifecycle, CollectionTranslationChangeRecord,
+    MAX_COLLECTION_TRANSLATION_CHANGE_PAGE,
+};
 pub use collection_translation_progress_target::CommerceCollectionTranslationTargetProvider;
 pub use error::{CommerceError, CommerceResult};
 pub use services::{
