@@ -18,9 +18,9 @@ const FIELD_DEFINITION_CACHE_GENERATION_ID: i32 = 1;
 ///
 /// `observed_generation` is deliberately *not* a Translation resource revision: the
 /// durable cache-generation singleton is shared by every field-definition owner and may
-/// advance for unrelated entity types. Its purpose here is to provide a database-backed
-/// serialization barrier. The caller derives its exact resource revision from the donor
-/// revision plus the concrete schema returned in this lease.
+/// advance for unrelated entity types. Its purpose here is only to provide the schema
+/// serialization barrier. Translation resource revisions come from Flex-owned durable
+/// per-resource state (`attached:N`) and are read separately inside the same transaction.
 pub struct FlexAttachedTranslationSchemaLease {
     pub observed_generation: i64,
     pub schema: CustomFieldsSchema,
