@@ -156,7 +156,7 @@ impl FlexAttachedTranslationChangeOwnerPort for FlexAttachedTranslationChangeRea
         ))
         .one(&self.db)
         .await
-        .map_err(database_error)?
+        .map_err(change_database_error)?
         .ok_or_else(|| {
             FlexAttachedTranslationError::OwnerInvariant(
                 "attached Translation change high-water query returned no row".to_string(),
@@ -209,7 +209,7 @@ LIMIT $5
         ))
         .all(&self.db)
         .await
-        .map_err(database_error)?;
+        .map_err(change_database_error)?;
 
         rows.into_iter().map(change_record_from_row).collect()
     }
@@ -251,6 +251,8 @@ pub fn flex_attached_translation_deleted_revision(
 /// Append the final donor-owned deletion tombstone in the same transaction that deletes
 /// the canonical resource. A tombstone is emitted only for a resource that previously had
 /// attached Translation state; unrelated Category deletions do not pollute the cursor.
+/// If localized-value triggers already recorded this resource in the transaction, the
+/// transaction-scoped journal row is converted to the final deletion tombstone in place.
 pub async fn record_flex_attached_translation_deleted_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -296,7 +298,7 @@ pub async fn record_flex_attached_translation_deleted_in_tx(
     txn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         format!(
-            "INSERT INTO {FLEX_ATTACHED_TRANSLATION_CHANGE_JOURNAL_TABLE} (tenant_id, entity_type, entity_id, resource_revision, lifecycle) VALUES ($1, $2, $3, $4, 'deleted')"
+            "INSERT INTO {FLEX_ATTACHED_TRANSLATION_CHANGE_JOURNAL_TABLE} (tx_id, tenant_id, entity_type, entity_id, resource_revision, lifecycle) VALUES (txid_current(), $1, $2, $3, $4, 'deleted') ON CONFLICT (tx_id, tenant_id, entity_type, entity_id) DO UPDATE SET resource_revision = EXCLUDED.resource_revision, lifecycle = 'deleted'"
         ),
         vec![
             tenant_id.into(),
@@ -368,6 +370,10 @@ fn invalid_sequence(field: &str) -> FlexAttachedTranslationError {
     FlexAttachedTranslationError::OwnerInvariant(format!(
         "attached Translation change {field} sequence must be positive"
     ))
+}
+
+fn change_database_error(error: sea_orm::DbErr) -> FlexAttachedTranslationError {
+    FlexAttachedTranslationError::Storage(error.to_string())
 }
 
 fn database_error(error: sea_orm::DbErr) -> FlexError {
