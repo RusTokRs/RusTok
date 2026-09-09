@@ -21,6 +21,7 @@ pub mod parsing;
 pub mod registry;
 pub mod rest;
 pub mod schema_translation;
+pub mod schema_translation_changes;
 pub mod schema_translation_fields;
 pub mod schema_translation_progress_target;
 pub mod schema_translation_target;
@@ -77,6 +78,10 @@ pub use schema_translation::{
     FlexSchemaTranslationTargetValue, MAX_FLEX_SCHEMA_TRANSLATION_RESOURCE_PAGE,
     flex_schema_translation_leaf_required, validate_flex_schema_translation_locale_pair,
     validate_flex_schema_translation_resource_page,
+};
+pub use schema_translation_changes::{
+    FlexSchemaTranslationChangeLifecycle, flex_schema_translation_deleted_revision,
+    record_flex_schema_translation_change_in_tx,
 };
 pub use schema_translation_fields::{
     apply_schema_definition_translation_targets, schema_definition_translation_exact_values,
