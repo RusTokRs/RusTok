@@ -243,6 +243,18 @@ impl ServerFlexSchemaTranslationOwner {
 
         let changed = fields_changed || row_changed;
         if changed {
+            flex::record_flex_schema_translation_change_in_tx(
+                &txn,
+                lease.operation_id,
+                tenant_id,
+                schema_id,
+                &after.resource_revision,
+                flex::FlexSchemaTranslationChangeLifecycle::from_is_active(
+                    schema_after_fields.is_active,
+                ),
+            )
+            .await?;
+
             self.event_bus
                 .publish_in_tx_with_envelope_id(
                     &txn,
