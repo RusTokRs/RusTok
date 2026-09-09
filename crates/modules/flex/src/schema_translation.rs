@@ -1,9 +1,11 @@
 use async_trait::async_trait;
+use rustok_api::normalize_locale_tag;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{collections::BTreeSet, fmt};
 use uuid::Uuid;
 
 pub const MAX_FLEX_SCHEMA_TRANSLATION_RESOURCE_PAGE: u16 = 200;
+const LEGACY_UNDETERMINED_LOCALE: &str = "und";
 
 /// A structurally declared localized presentation leaf inside one standalone Flex schema.
 ///
@@ -16,20 +18,36 @@ pub const MAX_FLEX_SCHEMA_TRANSLATION_RESOURCE_PAGE: u16 = 200;
 pub enum FlexSchemaTranslationLeaf {
     SchemaName,
     SchemaDescription,
-    FieldLabel {
-        field_key: String,
-    },
-    FieldDescription {
-        field_key: String,
-    },
-    FieldValidationErrorMessage {
-        field_key: String,
-    },
+    FieldLabel { field_key: String },
+    FieldDescription { field_key: String },
+    FieldValidationErrorMessage { field_key: String },
     FieldOptionLabel {
         field_key: String,
-        option_index: u16,
+        /// Select option values are validated as unique within one field and therefore
+        /// form the stable leaf identity. Array position is intentionally excluded so
+        /// option reordering cannot rename Translation work.
         option_value: String,
     },
+}
+
+impl FlexSchemaTranslationLeaf {
+    fn validate(&self) -> FlexSchemaTranslationResult<()> {
+        match self {
+            Self::SchemaName | Self::SchemaDescription => Ok(()),
+            Self::FieldLabel { field_key }
+            | Self::FieldDescription { field_key }
+            | Self::FieldValidationErrorMessage { field_key } => {
+                validate_identity_component(field_key, "field_key")
+            }
+            Self::FieldOptionLabel {
+                field_key,
+                option_value,
+            } => {
+                validate_identity_component(field_key, "field_key")?;
+                validate_identity_component(option_value, "option_value")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,11 +82,33 @@ pub struct FlexSchemaTranslationResourcePage {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlexSchemaTranslationTargetValue {
     pub leaf: FlexSchemaTranslationLeaf,
+    /// `None` means remove the exact target-locale value for an optional leaf. Empty
+    /// strings are deliberately not a second spelling of absence.
     pub value: Option<String>,
+}
+
+/// Translation workflow evidence that must participate in the owner's durable
+/// idempotency request hash. This prevents one idempotency key from replaying a result
+/// produced for a different proposal or approval receipt even when translated values
+/// happen to be identical.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlexSchemaTranslationOperationContext {
+    pub idempotency_key: String,
+    pub proposal_id: String,
+    pub approval_receipt_id: String,
+}
+
+impl FlexSchemaTranslationOperationContext {
+    pub fn validate(&self) -> FlexSchemaTranslationResult<()> {
+        validate_nonblank(&self.idempotency_key, "idempotency_key")?;
+        validate_nonblank(&self.proposal_id, "proposal_id")?;
+        validate_nonblank(&self.approval_receipt_id, "approval_receipt_id")
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlexSchemaTranslationExactLocaleApply {
+    pub operation: FlexSchemaTranslationOperationContext,
     pub source_locale: String,
     pub target_locale: String,
     /// Complete target values for the exact source-visible leaf set returned by the
@@ -79,9 +119,44 @@ pub struct FlexSchemaTranslationExactLocaleApply {
     pub expected_target_revision: Option<String>,
 }
 
+impl FlexSchemaTranslationExactLocaleApply {
+    pub fn validate(&self) -> FlexSchemaTranslationResult<()> {
+        self.operation.validate()?;
+        validate_flex_schema_translation_locale_pair(&self.source_locale, &self.target_locale)?;
+        validate_nonblank(&self.expected_resource_revision, "expected_resource_revision")?;
+        validate_nonblank(&self.expected_source_revision, "expected_source_revision")?;
+        if let Some(revision) = &self.expected_target_revision {
+            validate_nonblank(revision, "expected_target_revision")?;
+        }
+        if self.target_values.is_empty() {
+            return Err(FlexSchemaTranslationError::Invalid(
+                "Flex schema translation apply must contain at least one target value".to_string(),
+            ));
+        }
+
+        let mut leaves = BTreeSet::new();
+        for target in &self.target_values {
+            target.leaf.validate()?;
+            if !leaves.insert(target.leaf.clone()) {
+                return Err(FlexSchemaTranslationError::Invalid(
+                    "Flex schema translation apply contains a duplicate leaf".to_string(),
+                ));
+            }
+            if target.value.as_ref().is_some_and(|value| value.trim().is_empty()) {
+                return Err(FlexSchemaTranslationError::Invalid(
+                    "Flex schema translation target values must be nonblank or null".to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlexSchemaTranslationExactLocaleApplyReceipt {
-    pub operation_id: Option<Uuid>,
+    /// Provider-facing applies always run under a durable owner operation lease, so
+    /// receipt identity is mandatory rather than best-effort.
+    pub operation_id: Uuid,
     pub schema_id: Uuid,
     pub resource_revision: String,
     pub target_revision: String,
@@ -94,6 +169,7 @@ pub enum FlexSchemaTranslationError {
     SchemaNotFound(Uuid),
     SourceLocaleNotFound { schema_id: Uuid, locale: String },
     RevisionConflict { revision: &'static str },
+    Operation(String),
     Database(String),
     OwnerInvariant(String),
 }
@@ -112,7 +188,12 @@ impl fmt::Display for FlexSchemaTranslationError {
             Self::RevisionConflict { revision } => {
                 write!(formatter, "Flex schema translation {revision} revision conflict")
             }
-            Self::Database(message) => write!(formatter, "Flex schema translation database error: {message}"),
+            Self::Operation(message) => {
+                write!(formatter, "Flex schema translation operation failed: {message}")
+            }
+            Self::Database(message) => {
+                write!(formatter, "Flex schema translation database error: {message}")
+            }
             Self::OwnerInvariant(message) => {
                 write!(formatter, "Flex schema translation owner invariant failed: {message}")
             }
@@ -123,6 +204,56 @@ impl fmt::Display for FlexSchemaTranslationError {
 impl std::error::Error for FlexSchemaTranslationError {}
 
 pub type FlexSchemaTranslationResult<T> = Result<T, FlexSchemaTranslationError>;
+
+pub fn validate_flex_schema_translation_resource_page(limit: u16) -> FlexSchemaTranslationResult<()> {
+    if limit == 0 || limit > MAX_FLEX_SCHEMA_TRANSLATION_RESOURCE_PAGE {
+        return Err(FlexSchemaTranslationError::Invalid(format!(
+            "Flex schema translation resource page size must be between 1 and {MAX_FLEX_SCHEMA_TRANSLATION_RESOURCE_PAGE}"
+        )));
+    }
+    Ok(())
+}
+
+pub fn validate_flex_schema_translation_locale_pair(
+    source_locale: &str,
+    target_locale: &str,
+) -> FlexSchemaTranslationResult<()> {
+    validate_authoring_locale(source_locale, "source_locale")?;
+    validate_authoring_locale(target_locale, "target_locale")?;
+    if source_locale == target_locale {
+        return Err(FlexSchemaTranslationError::Invalid(
+            "Flex schema translation source and target locale must differ".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_authoring_locale(locale: &str, field: &str) -> FlexSchemaTranslationResult<()> {
+    if locale == LEGACY_UNDETERMINED_LOCALE || normalize_locale_tag(locale).as_deref() != Some(locale) {
+        return Err(FlexSchemaTranslationError::Invalid(format!(
+            "Flex schema translation {field} must be a normalized authoring locale other than `und`"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_identity_component(value: &str, field: &str) -> FlexSchemaTranslationResult<()> {
+    if value.trim().is_empty() || value.len() > 128 {
+        return Err(FlexSchemaTranslationError::Invalid(format!(
+            "Flex schema translation {field} must contain 1..=128 non-whitespace bytes"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_nonblank(value: &str, field: &str) -> FlexSchemaTranslationResult<()> {
+    if value.trim().is_empty() {
+        return Err(FlexSchemaTranslationError::Invalid(format!(
+            "Flex schema translation {field} must not be blank"
+        )));
+    }
+    Ok(())
+}
 
 /// Provider-facing exact-locale owner port for standalone Flex schema copy.
 ///
