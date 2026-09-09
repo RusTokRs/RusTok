@@ -252,12 +252,23 @@
       "owner_slug": "flex",
       "resource_kind": "schema_copy",
       "readiness": "blocked",
-      "provider_status": "not_registered",
+      "provider_status": "registered",
       "field_profiles": ["plain_text", "localized_scalar"],
       "data_classification": ["tenant_private"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/flex/docs/README.md"],
-      "blockers": ["Expose provider-facing exact source/target reads, revision-safe apply, and a field policy limited to declared localized leaves."]
+      "evidence_paths": [
+        "crates/modules/flex/src/schema_translation.rs",
+        "crates/modules/flex/src/schema_translation_target.rs",
+        "crates/modules/flex/src/schema_translation_progress.rs",
+        "crates/modules/flex/src/schema_translation_progress_target.rs",
+        "crates/modules/flex/src/schema_translation_changes.rs",
+        "crates/modules/flex/src/migrations/m20260909_000002_add_schema_translation_change_journal.rs",
+        "apps/server/src/services/flex_schema_translation_owner.rs",
+        "apps/server/src/services/flex_schema_translation_progress_owner.rs",
+        "apps/server/src/services/flex_standalone_service_journaled.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["Collect retained PostgreSQL migration, concurrent owner/standalone CRUD CAS and idempotent replay, aggregate-progress stability, and change-cursor recovery evidence before pilot promotion."]
     },
     {
       "id": "flex_attached_values",
