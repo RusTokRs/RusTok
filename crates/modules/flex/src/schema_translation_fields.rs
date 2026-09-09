@@ -79,8 +79,9 @@ pub fn schema_definition_translation_leaves(
     Ok(leaves)
 }
 
-/// Return every normalized locale explicitly present in declared field-definition copy.
-/// Callers can union this with row-backed schema-copy locales for exact-locale inventory.
+/// Return every normalized runtime locale explicitly present in declared field-definition
+/// copy. Storage-only `und` provenance is intentionally ignored rather than promoted into
+/// Translation authoring inventory.
 pub fn schema_definition_translation_locales(
     definitions: &[FieldDefinition],
 ) -> FlexSchemaTranslationResult<BTreeSet<String>> {
@@ -156,7 +157,11 @@ pub fn apply_schema_definition_translation_targets(
                     .validation
                     .as_mut()
                     .and_then(|validation| validation.options.as_mut())
-                    .and_then(|options| options.iter_mut().find(|option| option.value == *option_value))
+                    .and_then(|options| {
+                        options
+                            .iter_mut()
+                            .find(|option| option.value.as_str() == option_value.as_str())
+                    })
                     .ok_or_else(|| unknown_leaf(leaf))?;
                 require_exact_source(&option.label, source_locale, leaf)?;
                 let value = required_target(value, leaf)?;
@@ -213,9 +218,12 @@ fn collect_map_locales(
     values: &std::collections::HashMap<String, String>,
 ) -> FlexSchemaTranslationResult<()> {
     for (locale, value) in values {
-        if locale == "und" || rustok_api::normalize_locale_tag(locale).as_deref() != Some(locale) {
+        if locale == "und" {
+            continue;
+        }
+        if rustok_api::normalize_locale_tag(locale).as_deref() != Some(locale) {
             return Err(FlexSchemaTranslationError::OwnerInvariant(format!(
-                "declared Flex schema copy contains invalid authoring locale `{locale}`"
+                "declared Flex schema copy contains invalid locale `{locale}`"
             )));
         }
         if value.trim().is_empty() {
