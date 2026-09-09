@@ -34,6 +34,7 @@ use crate::{
 const TRANSLATION_OWNER_SLUG: &str = "flex";
 const TRANSLATION_RESOURCE_KIND: &str = "schema_copy";
 const FIELD_KEY_NAMESPACE: &str = "rustok-flex/schema-copy-field-key/v1";
+const PATCH_FINGERPRINT_NAMESPACE: &str = "rustok-flex/schema-copy-neutral-patch/v1";
 
 #[derive(Clone)]
 pub struct FlexSchemaTranslationTargetProvider {
@@ -176,16 +177,15 @@ impl TranslationTargetProvider for FlexSchemaTranslationTargetProvider {
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
         let schema_id = parse_identity(&request.identity)?;
+        let request_fingerprint = neutral_request_fingerprint(&request);
         let read_request = read_request_from_patch(&request);
         let owner_snapshot = self.load_owner_snapshot(tenant_id, &read_request).await?;
         let neutral = neutralize_snapshot(owner_snapshot.clone(), &read_request)?;
 
         // The owner owns durable admission and authoritative resource/source/target CAS.
         // During apply, keep neutral field-key and source-hash validation here but allow
-        // revision conflicts to reach owner admission. That preserves idempotent replay:
-        // a successful previous apply naturally changed resource/target revisions, and a
-        // retry with the same key must reach the durable owner receipt instead of being
-        // rejected by a pre-admission neutral snapshot check.
+        // revision conflicts to reach owner admission. That preserves ordinary idempotent
+        // replay after the first successful apply changed resource/target revisions.
         let validation = only_field_issues(validate_patch_against_snapshot(
             &request,
             &neutral.snapshot,
@@ -206,6 +206,7 @@ impl TranslationTargetProvider for FlexSchemaTranslationTargetProvider {
                         idempotency_key: context.idempotency_key.clone().unwrap_or_default(),
                         proposal_id: request.proposal_id.clone(),
                         approval_receipt_id: request.approval_receipt_id.clone(),
+                        request_fingerprint,
                     },
                     source_locale: request.source_locale.as_str().to_string(),
                     target_locale: request.target_locale.as_str().to_string(),
@@ -435,6 +436,51 @@ fn dynamic_field_key(kind: &str, components: &[&String]) -> String {
         hash_component(&mut hasher, component);
     }
     format!("flex_leaf_v1:{kind}:{}", hex::encode(hasher.finalize()))
+}
+
+fn neutral_request_fingerprint(request: &TranslationPatchRequest) -> String {
+    let mut hasher = Sha256::new();
+    hash_component(&mut hasher, PATCH_FINGERPRINT_NAMESPACE);
+    hash_component(&mut hasher, request.identity.owner_slug.as_str());
+    hash_component(&mut hasher, request.identity.resource_kind.as_str());
+    hash_component(&mut hasher, request.identity.resource_id.as_str());
+    hash_optional_component(
+        &mut hasher,
+        request.identity.subresource_id.as_ref().map(|value| value.as_str()),
+    );
+    hash_component(&mut hasher, request.source_locale.as_str());
+    hash_component(&mut hasher, request.target_locale.as_str());
+    hash_component(&mut hasher, request.expected_resource_revision.as_str());
+    hash_component(&mut hasher, request.expected_source_revision.as_str());
+    hash_optional_component(
+        &mut hasher,
+        request
+            .expected_target_revision
+            .as_ref()
+            .map(|revision| revision.as_str()),
+    );
+    hash_component(&mut hasher, &request.proposal_id);
+    hash_component(&mut hasher, &request.approval_receipt_id);
+
+    let mut fields = request.fields.iter().collect::<Vec<_>>();
+    fields.sort_by(|left, right| left.key.as_str().cmp(right.key.as_str()));
+    hasher.update((fields.len() as u64).to_be_bytes());
+    for field in fields {
+        hash_component(&mut hasher, field.key.as_str());
+        hash_component(&mut hasher, &field.value);
+        hash_component(&mut hasher, &field.expected_source_hash);
+    }
+    format!("flex-neutral-patch-v1:{}", hex::encode(hasher.finalize()))
+}
+
+fn hash_optional_component(hasher: &mut Sha256, value: Option<&str>) {
+    match value {
+        Some(value) => {
+            hasher.update([1]);
+            hash_component(hasher, value);
+        }
+        None => hasher.update([0]),
+    }
 }
 
 fn hash_component(hasher: &mut Sha256, value: &str) {
