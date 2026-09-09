@@ -76,7 +76,7 @@ pub async fn lock_attached_translation_schema_in_tx(
         })?;
     let observed_generation: i64 = generation_row
         .try_get("", "generation")
-        .map_err(database_error)?;
+        .map_err(|error| FlexError::Database(error.to_string()))?;
     if observed_generation < 0 {
         return Err(FlexError::Database(
             "Flex field-definition cache generation must remain non-negative".to_string(),
