@@ -1,12 +1,3 @@
-#![allow(
-    clippy::clone_on_copy,
-    clippy::if_same_then_else,
-    clippy::needless_return,
-    clippy::redundant_locals,
-    clippy::too_many_arguments,
-    clippy::useless_format
-)]
-
 use super::detail::governance_form::GovernanceForm;
 use super::detail::metadata_checklist_view::MetadataChecklistView;
 use super::detail::version_trail::VersionTrailView;
@@ -16,21 +7,19 @@ use std::collections::HashMap;
 
 use crate::entities::module::model::{MarketplaceModuleVersion, RegistryReleaseLifecycle};
 use crate::entities::module::{MarketplaceModule, ModuleSettingField, TenantModule};
-use crate::features::modules::transport::{
-    self, RegistryMutationResult, RegistryPublishStatusContract,
-};
+use crate::features::modules::transport::{self, RegistryMutationResult, RegistryPublishStatus};
 use crate::shared::ui::Button;
 use crate::{Locale, use_i18n};
 
 use super::detail::{
     governance::{
-        RegistryAutomatedCheckItem, automated_check_label, curl_snippet_for_live_api_action,
+        automated_check_label, curl_snippet_for_live_api_action,
         destructive_governance_confirmation_message, follow_up_gate_label,
         follow_up_gate_status_summary, governance_action_reason_code_required,
         governance_action_reason_code_validation_message, governance_action_reason_required,
-        governance_event_summary, governance_event_title, latest_validation_event,
-        latest_validation_job_event, lifecycle_detail_lines, merge_governance_actions,
-        moderation_history_badge_label, moderation_history_badge_status,
+        governance_event_summary, governance_event_title, latest_automated_checks,
+        latest_validation_event, latest_validation_job_event, lifecycle_detail_lines,
+        merge_governance_actions, moderation_history_badge_label, moderation_history_badge_status,
         moderation_history_context_lines, moderation_history_events, registry_governance_hint,
         registry_live_api_action_lines, registry_mutation_result_summary,
         registry_next_action_lines, registry_operator_command_lines,
@@ -149,27 +138,50 @@ fn setting_field_placeholder(field: &ModuleSettingField) -> Option<&'static str>
     }
 }
 
+#[derive(Clone)]
+pub struct ModuleDetailPanelInput {
+    pub admin_surface: String,
+    pub selected_slug: String,
+    pub module: Option<MarketplaceModule>,
+    pub tenant_module: Option<TenantModule>,
+    pub settings_schema: Vec<ModuleSettingField>,
+    pub settings_form_supported: Signal<bool>,
+    pub settings_form_draft: Signal<HashMap<String, String>>,
+    pub settings_draft: Signal<String>,
+    pub settings_editable: Signal<bool>,
+    pub settings_saving: Signal<bool>,
+    pub loading: Signal<bool>,
+    pub access_token: Signal<Option<String>>,
+    pub tenant_slug: Signal<Option<String>>,
+    pub on_settings_field_input: Callback<(String, String)>,
+    pub on_settings_input: Callback<String>,
+    pub on_save_settings: Callback<()>,
+    pub on_refresh_detail: Callback<()>,
+    pub on_close: Callback<()>,
+}
+
 #[component]
-pub fn ModuleDetailPanel(
-    admin_surface: String,
-    selected_slug: String,
-    module: Option<MarketplaceModule>,
-    tenant_module: Option<TenantModule>,
-    settings_schema: Vec<ModuleSettingField>,
-    #[prop(into)] settings_form_supported: Signal<bool>,
-    #[prop(into)] settings_form_draft: Signal<HashMap<String, String>>,
-    #[prop(into)] settings_draft: Signal<String>,
-    #[prop(into)] settings_editable: Signal<bool>,
-    #[prop(into)] settings_saving: Signal<bool>,
-    #[prop(into)] loading: Signal<bool>,
-    #[prop(into)] access_token: Signal<Option<String>>,
-    #[prop(into)] tenant_slug: Signal<Option<String>>,
-    on_settings_field_input: Callback<(String, String)>,
-    on_settings_input: Callback<String>,
-    on_save_settings: Callback<()>,
-    on_refresh_detail: Callback<()>,
-    on_close: Callback<()>,
-) -> impl IntoView {
+pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
+    let ModuleDetailPanelInput {
+        admin_surface,
+        selected_slug,
+        module,
+        tenant_module,
+        settings_schema,
+        settings_form_supported,
+        settings_form_draft,
+        settings_draft,
+        settings_editable,
+        settings_saving,
+        loading,
+        access_token,
+        tenant_slug,
+        on_settings_field_input,
+        on_settings_input,
+        on_save_settings,
+        on_refresh_detail,
+        on_close,
+    } = input;
     let locale = use_i18n().get_locale();
     let detail = module.clone();
     let detail_for_body = StoredValue::new(module.clone());
@@ -189,7 +201,7 @@ pub fn ModuleDetailPanel(
         signal(None::<String>);
     let (governance_intent_action, set_governance_intent_action) = signal(None::<String>);
     let (governance_status_contract, set_governance_status_contract) =
-        signal(None::<RegistryPublishStatusContract>);
+        signal(None::<RegistryPublishStatus>);
     let (governance_status_contract_loading, set_governance_status_contract_loading) =
         signal(false);
     let (governance_status_contract_error, set_governance_status_contract_error) =
@@ -467,7 +479,7 @@ pub fn ModuleDetailPanel(
                                     event.actor.clone(),
                                 )
                             });
-                        let automated_check_items: Vec<RegistryAutomatedCheckItem> = Vec::new();
+                        let automated_check_items = latest_automated_checks(&recent_governance_events);
                         let automated_check_items_for_show =
                             StoredValue::new(automated_check_items.clone());
                         let latest_validation_job_summary = latest_validation_job_event(
@@ -535,18 +547,8 @@ pub fn ModuleDetailPanel(
                             .showcase_admin_surfaces
                             .iter()
                             .any(|surface| surface == &admin_surface);
-                        let refresh_detail_after_validate = on_refresh_detail.clone();
-                        let refresh_detail_after_approve = on_refresh_detail.clone();
-                        let refresh_detail_after_request_changes = on_refresh_detail.clone();
-                        let refresh_detail_after_hold = on_refresh_detail.clone();
-                        let refresh_detail_after_resume = on_refresh_detail.clone();
-                        let refresh_detail_after_reject = on_refresh_detail.clone();
-                        let refresh_detail_after_transfer = on_refresh_detail.clone();
-                        let refresh_detail_after_yank = on_refresh_detail.clone();
                         let on_validate_request = {
                             let request_id = request_id.clone();
-                            let access_token = access_token;
-                            let tenant_slug = tenant_slug;
                             Callback::new(move |_| {
                                 set_governance_intent_action.set(Some("validate".to_string()));
                                 set_governance_confirmation_action.set(None);
@@ -578,7 +580,7 @@ pub fn ModuleDetailPanel(
                                             ));
                                             set_governance_result.set(Some(result));
                                             set_governance_contract_refresh_nonce.update(|value| *value += 1);
-                                            refresh_detail_after_validate.run(());
+                                            on_refresh_detail.run(());
                                         }
                                         Err(error) => {
                                             set_governance_error
@@ -591,8 +593,6 @@ pub fn ModuleDetailPanel(
                         };
                         let on_approve_request = {
                             let request_id = request_id.clone();
-                            let access_token = access_token;
-                            let tenant_slug = tenant_slug;
                             Callback::new(move |_| {
                                 set_governance_intent_action.set(Some("approve".to_string()));
                                 set_governance_confirmation_action.set(None);
@@ -667,7 +667,7 @@ pub fn ModuleDetailPanel(
                                             ));
                                             set_governance_result.set(Some(result));
                                             set_governance_contract_refresh_nonce.update(|value| *value += 1);
-                                            refresh_detail_after_approve.run(());
+                                            on_refresh_detail.run(());
                                         }
                                         Err(error) => {
                                             set_governance_error
@@ -680,8 +680,6 @@ pub fn ModuleDetailPanel(
                         };
                         let on_request_changes_request = {
                             let request_id = request_id.clone();
-                            let access_token = access_token;
-                            let tenant_slug = tenant_slug;
                             Callback::new(move |_| {
                                 set_governance_intent_action
                                     .set(Some("request_changes".to_string()));
@@ -756,7 +754,7 @@ pub fn ModuleDetailPanel(
                                             ));
                                             set_governance_result.set(Some(result));
                                             set_governance_contract_refresh_nonce.update(|value| *value += 1);
-                                            refresh_detail_after_request_changes.run(());
+                                            on_refresh_detail.run(());
                                         }
                                         Err(error) => {
                                             set_governance_error
@@ -769,8 +767,6 @@ pub fn ModuleDetailPanel(
                         };
                         let on_hold_request = {
                             let request_id = request_id.clone();
-                            let access_token = access_token;
-                            let tenant_slug = tenant_slug;
                             Callback::new(move |_| {
                                 set_governance_intent_action.set(Some("hold".to_string()));
                                 set_governance_confirmation_action.set(None);
@@ -844,7 +840,7 @@ pub fn ModuleDetailPanel(
                                             ));
                                             set_governance_result.set(Some(result));
                                             set_governance_contract_refresh_nonce.update(|value| *value += 1);
-                                            refresh_detail_after_hold.run(());
+                                            on_refresh_detail.run(());
                                         }
                                         Err(error) => {
                                             set_governance_error
@@ -857,8 +853,6 @@ pub fn ModuleDetailPanel(
                         };
                         let on_resume_request = {
                             let request_id = request_id.clone();
-                            let access_token = access_token;
-                            let tenant_slug = tenant_slug;
                             Callback::new(move |_| {
                                 set_governance_intent_action.set(Some("resume".to_string()));
                                 set_governance_confirmation_action.set(None);
@@ -932,7 +926,7 @@ pub fn ModuleDetailPanel(
                                             ));
                                             set_governance_result.set(Some(result));
                                             set_governance_contract_refresh_nonce.update(|value| *value += 1);
-                                            refresh_detail_after_resume.run(());
+                                            on_refresh_detail.run(());
                                         }
                                         Err(error) => {
                                             set_governance_error
@@ -945,8 +939,6 @@ pub fn ModuleDetailPanel(
                         };
                         let on_reject_request = {
                             let request_id = request_id.clone();
-                            let access_token = access_token;
-                            let tenant_slug = tenant_slug;
                             let module_slug_for_actions = module_slug_for_actions.clone();
                             Callback::new(move |_| {
                                 set_governance_intent_action.set(Some("reject".to_string()));
@@ -1040,7 +1032,7 @@ pub fn ModuleDetailPanel(
                                             ));
                                             set_governance_result.set(Some(result));
                                             set_governance_contract_refresh_nonce.update(|value| *value += 1);
-                                            refresh_detail_after_reject.run(());
+                                            on_refresh_detail.run(());
                                         }
                                         Err(error) => {
                                             set_governance_error
@@ -1053,8 +1045,6 @@ pub fn ModuleDetailPanel(
                         };
                         let on_transfer_owner = {
                             let module_slug_for_actions = module_slug_for_actions.clone();
-                            let access_token = access_token;
-                            let tenant_slug = tenant_slug;
                             Callback::new(move |_| {
                                 set_governance_intent_action
                                     .set(Some("owner_transfer".to_string()));
@@ -1158,7 +1148,7 @@ pub fn ModuleDetailPanel(
                                             ));
                                             set_governance_result.set(Some(result));
                                             set_governance_contract_refresh_nonce.update(|value| *value += 1);
-                                            refresh_detail_after_transfer.run(());
+                                            on_refresh_detail.run(());
                                         }
                                         Err(error) => {
                                             set_governance_error
@@ -1172,8 +1162,6 @@ pub fn ModuleDetailPanel(
                         let on_yank_release = {
                             let module_slug_for_actions = module_slug_for_actions.clone();
                             let release_version = release_version.clone();
-                            let access_token = access_token;
-                            let tenant_slug = tenant_slug;
                             Callback::new(move |_| {
                                 set_governance_intent_action.set(Some("yank".to_string()));
                                 let reason = governance_reason.get_untracked().trim().to_string();
@@ -1262,7 +1250,7 @@ pub fn ModuleDetailPanel(
                                             ));
                                             set_governance_result.set(Some(result));
                                             set_governance_contract_refresh_nonce.update(|value| *value += 1);
-                                            refresh_detail_after_yank.run(());
+                                            on_refresh_detail.run(());
                                         }
                                         Err(error) => {
                                             set_governance_error
@@ -1274,7 +1262,6 @@ pub fn ModuleDetailPanel(
                             })
                         };
                         let on_governance_refresh = {
-                            let on_refresh_detail = on_refresh_detail.clone();
                             Callback::new(move |_| {
                                 set_governance_intent_action.set(None);
                                 set_governance_confirmation_action.set(None);
@@ -1711,7 +1698,9 @@ pub fn ModuleDetailPanel(
                                                                             {humanize_token(&check.status)}
                                                                         </span>
                                                                     </div>
-                                                                    <p class="mt-1">{check.detail}</p>
+                                                                    {check.detail.map(|detail| {
+                                                                        view! { <p class="mt-1">{detail}</p> }
+                                                                    })}
                                                                 </div>
                                                             }
                                                         }).collect_view()}

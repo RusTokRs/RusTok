@@ -945,7 +945,11 @@ try {
   const transitionBoundarySource = [
     read("apps/server/src/graphql/mutations.rs"),
     read("apps/server/src/graphql/queries.rs"),
+    read("apps/server/src/graphql/transition_lifecycle.rs"),
     read("apps/admin/src/features/modules/transport/client.rs"),
+    read("apps/admin/src/features/modules/transport/native_server_adapter.rs"),
+    read("apps/admin/src/features/modules/transport/types.rs"),
+    read("crates/libs/rustok-api/src/module_transition.rs"),
     read(
       "apps/admin/src/features/modules/components/transition_control_card.rs",
     ),
@@ -960,10 +964,660 @@ try {
     ) ||
     !transitionBoundarySource.includes("finalizeModuleTransition") ||
     !transitionBoundarySource.includes("expectedRevision") ||
-    !transitionBoundarySource.includes("idempotencyKey")
+    !transitionBoundarySource.includes("idempotencyKey") ||
+    !transitionBoundarySource.includes("ModuleTransitionCheckpointView") ||
+    !transitionBoundarySource.includes("ModuleRetentionHoldView") ||
+    !transitionBoundarySource.includes("module_transition_checkpoint_native") ||
+    !transitionBoundarySource.includes("finalize_module_transition_native") ||
+    /pub\s+(?:struct|enum)\s+(?:ModuleTransitionCheckpoint|ModuleTransitionState|RetentionHold)\b/.test(
+      read("apps/admin/src/features/modules/transport/types.rs"),
+    )
   ) {
     fail(
-      "module transition transports must expose only the real revision-guarded, idempotent owner finalization command",
+      "module transition transports must expose only the real revision-guarded, idempotent owner finalization command over canonical DTOs",
+    );
+  }
+  const lifecycleRecoveryBoundarySource = [
+    read("crates/modules/rustok-modules/src/recovery.rs"),
+    read("crates/libs/rustok-api/src/module_lifecycle.rs"),
+    read("apps/server/src/graphql/types.rs"),
+    read("apps/server/src/graphql/queries.rs"),
+    read("apps/server/src/services/platform_composition.rs"),
+    read("apps/server/src/graphql/mutations.rs"),
+    read("apps/admin/src/entities/module/model.rs"),
+  ].join("\n");
+  if (
+    !lifecycleRecoveryBoundarySource.includes(
+      "ModuleOperationRecoveryPlanView",
+    ) ||
+    /pub\s+struct\s+ModuleOperationRecoveryPlan\b/.test(
+      read("apps/admin/src/entities/module/model.rs"),
+    )
+  ) {
+    fail(
+      "static lifecycle recovery must use the owner-issued canonical DTO instead of an Admin-local recovery plan shape",
+    );
+  }
+  const staticLifecycleViewBoundarySource = [
+    read("crates/modules/rustok-modules/src/lifecycle_writer.rs"),
+    read("crates/libs/rustok-api/src/module_lifecycle.rs"),
+    read("apps/server/src/services/effective_module_policy.rs"),
+    read("apps/server/src/graphql/queries.rs"),
+    read("apps/server/src/graphql/types.rs"),
+    read("apps/admin/src/entities/module/model.rs"),
+    read("apps/admin/src/features/modules/transport/native_server_adapter.rs"),
+  ].join("\n");
+  if (
+    !staticLifecycleViewBoundarySource.includes("StaticTenantModuleView") ||
+    /pub\s+struct\s+(?:TenantModule|ToggleModuleResult)\b/.test(
+      read("apps/admin/src/entities/module/model.rs"),
+    )
+  ) {
+    fail(
+      "static lifecycle reads and Admin mutation results must share the owner-issued StaticTenantModuleView contract",
+    );
+  }
+  const compositionSnapshotBoundarySource = [
+    read("crates/modules/rustok-modules/src/composition.rs"),
+    read("crates/libs/rustok-api/src/module_composition.rs"),
+    read("apps/server/src/graphql/types.rs"),
+    read("apps/server/src/graphql/queries.rs"),
+    read("apps/admin/src/entities/module/model.rs"),
+  ].join("\n");
+  if (
+    !compositionSnapshotBoundarySource.includes("ModuleCompositionSnapshotView") ||
+    /pub\s+struct\s+ModuleCompositionSnapshot\b/.test(
+      read("apps/admin/src/entities/module/model.rs"),
+    )
+  ) {
+    fail(
+      "static composition revision must use the owner-issued ModuleCompositionSnapshotView contract",
+    );
+  }
+  const installedModuleViewBoundarySource = [
+    read("crates/libs/rustok-api/src/module_composition.rs"),
+    read("crates/modules/rustok-modules/src/composition.rs"),
+    read("apps/server/src/services/platform_composition.rs"),
+    read("apps/server/src/services/app_router.rs"),
+    read("apps/server/src/graphql/types.rs"),
+    read("apps/server/src/graphql/queries.rs"),
+    read("apps/admin/src/entities/module/model.rs"),
+    read("apps/admin/src/features/modules/transport/native_server_adapter.rs"),
+  ].join("\n");
+  const adminModuleModelSource = read("apps/admin/src/entities/module/model.rs");
+  const nativeModuleTransportSource = read(
+    "apps/admin/src/features/modules/transport/native_server_adapter.rs",
+  );
+  const moduleRegistryNativeStart = nativeModuleTransportSource.indexOf(
+    "pub async fn list_module_registry_native",
+  );
+  const moduleRegistryNativeEnd = nativeModuleTransportSource.indexOf(
+    '#[server(prefix = "/api/fn", endpoint = "admin/installed-modules")]',
+    moduleRegistryNativeStart,
+  );
+  const moduleRegistryNativeSource =
+    moduleRegistryNativeStart === -1 || moduleRegistryNativeEnd === -1
+      ? ""
+      : nativeModuleTransportSource.slice(
+          moduleRegistryNativeStart,
+          moduleRegistryNativeEnd,
+        );
+  const tenantModulesNativeStart = nativeModuleTransportSource.indexOf(
+    "pub async fn list_tenant_modules_native",
+  );
+  const tenantModulesNativeEnd = nativeModuleTransportSource.indexOf(
+    '#[server(prefix = "/api/fn", endpoint = "admin/marketplace")]',
+    tenantModulesNativeStart,
+  );
+  const tenantModulesNativeSource =
+    tenantModulesNativeStart === -1 || tenantModulesNativeEnd === -1
+      ? ""
+      : nativeModuleTransportSource.slice(
+          tenantModulesNativeStart,
+          tenantModulesNativeEnd,
+        );
+  const installedModulesNativeStart = nativeModuleTransportSource.indexOf(
+    "pub async fn list_installed_modules_native",
+  );
+  const installedModulesNativeEnd = nativeModuleTransportSource.indexOf(
+    '#[server(prefix = "/api/fn", endpoint = "admin/list-tenant-modules")]',
+    installedModulesNativeStart,
+  );
+  const installedModulesNativeSource =
+    installedModulesNativeStart === -1 || installedModulesNativeEnd === -1
+      ? ""
+      : nativeModuleTransportSource.slice(
+          installedModulesNativeStart,
+          installedModulesNativeEnd,
+        );
+  const graphqlTypesSource = read("apps/server/src/graphql/types.rs");
+  const installedModuleDefinitionStart = graphqlTypesSource.indexOf(
+    "pub struct InstalledModule {",
+  );
+  const installedModuleDefinitionEnd = graphqlTypesSource.indexOf(
+    "\n}",
+    installedModuleDefinitionStart,
+  );
+  const installedModuleDefinition =
+    installedModuleDefinitionStart === -1 || installedModuleDefinitionEnd === -1
+      ? ""
+      : graphqlTypesSource.slice(
+          installedModuleDefinitionStart,
+          installedModuleDefinitionEnd,
+        );
+  if (
+    !installedModuleViewBoundarySource.includes("StaticInstalledModuleView") ||
+    !installedModuleViewBoundarySource.includes("StaticInstalledModuleReader") ||
+    !installedModuleViewBoundarySource.includes(
+      "ServerStaticInstalledModuleReader",
+    ) ||
+    !installedModuleViewBoundarySource.includes(
+      ".with_shared_value(static_installed_module_reader)",
+    ) ||
+    !installedModuleViewBoundarySource.includes(
+      "SharedStaticInstalledModuleReader",
+    ) ||
+    !installedModuleViewBoundarySource.includes(
+      "impl From<StaticInstalledModuleView> for InstalledModule",
+    ) ||
+    !adminModuleModelSource.includes(
+      "pub use rustok_api::StaticInstalledModuleView as InstalledModule;",
+    ) ||
+    /pub\s+struct\s+InstalledModule\b/.test(adminModuleModelSource) ||
+    !installedModulesNativeSource.includes("static_installed_modules_native") ||
+    /\bactive_runtime_platform_snapshot\b|\bmanifest\.modules\b|\bManifestManager\b|\bInstalledModule\s*\{/.test(
+      installedModulesNativeSource,
+    ) ||
+    /\b(?:git|rev|path)\b/.test(installedModuleDefinition)
+  ) {
+    fail(
+      "installed-module reads must use one browser-safe static composition view through the host-composed reader, without Admin manifest decoding or private manifest locators in GraphQL",
+    );
+  }
+  const staticLifecycleReaderBoundarySource = [
+    read("crates/modules/rustok-modules/src/lifecycle_writer.rs"),
+    read("apps/server/src/services/effective_module_policy.rs"),
+    read("apps/server/src/services/app_router.rs"),
+    nativeModuleTransportSource,
+  ].join("\n");
+  if (
+    !staticLifecycleReaderBoundarySource.includes("StaticModuleLifecycleReader") ||
+    !staticLifecycleReaderBoundarySource.includes(
+      "ServerStaticModuleLifecycleReader",
+    ) ||
+    !staticLifecycleReaderBoundarySource.includes(
+      ".with_shared_value(static_module_lifecycle_reader)",
+    ) ||
+    !staticLifecycleReaderBoundarySource.includes(
+      "SharedStaticModuleLifecycleReader",
+    ) ||
+    !tenantModulesNativeSource.includes("static_tenant_module_views_native") ||
+    /\b(?:ModuleControlPlane::new|active_runtime_platform_snapshot|static_lifecycle_snapshots)\b|\.lifecycle\(/.test(
+      tenantModulesNativeSource,
+    ) ||
+    /\b(?:RuntimePlatformSnapshot|RuntimeModulesManifest)\b/.test(
+      nativeModuleTransportSource,
+    ) ||
+    fs.existsSync(
+      path.join(
+        root,
+        "apps/admin/src/features/modules/transport/manifest.rs",
+      ),
+    )
+  ) {
+    fail(
+      "static lifecycle reads must use the host-composed active-policy reader, fail closed on missing revisions, and never rebuild lifecycle state from an Admin manifest projection",
+    );
+  }
+  const graphqlQueriesSource = read("apps/server/src/graphql/queries.rs");
+  const moduleRegistryGraphqlStart = graphqlQueriesSource.indexOf(
+    "async fn module_registry(",
+  );
+  const moduleRegistryGraphqlEnd = graphqlQueriesSource.indexOf(
+    "async fn tenant_modules(",
+    moduleRegistryGraphqlStart,
+  );
+  const moduleRegistryGraphqlSource =
+    moduleRegistryGraphqlStart === -1 || moduleRegistryGraphqlEnd === -1
+      ? ""
+      : graphqlQueriesSource.slice(
+          moduleRegistryGraphqlStart,
+          moduleRegistryGraphqlEnd,
+        );
+  const staticModuleRegistryViewBoundarySource = [
+    read("crates/libs/rustok-api/src/module_registry_contract.rs"),
+    read("crates/modules/rustok-modules/src/composition.rs"),
+    read("apps/server/src/services/static_module_registry.rs"),
+    read("apps/server/src/services/app_router.rs"),
+    read("apps/server/src/services/graphql_schema.rs"),
+    read("apps/server/src/graphql/schema.rs"),
+    graphqlQueriesSource,
+    read("apps/server/src/graphql/types.rs"),
+    adminModuleModelSource,
+    read("apps/admin/src/features/modules/transport/types.rs"),
+    nativeModuleTransportSource,
+  ].join("\n");
+  const adminBuildSource = read("apps/admin/build.rs");
+  const adminModulesSource = read("apps/admin/src/app/modules/mod.rs");
+  if (
+    !staticModuleRegistryViewBoundarySource.includes(
+      "StaticModuleRegistryView",
+    ) ||
+    !staticModuleRegistryViewBoundarySource.includes(
+      "StaticModuleRegistryReader",
+    ) ||
+    !staticModuleRegistryViewBoundarySource.includes(
+      "ServerStaticModuleRegistryReader",
+    ) ||
+    !staticModuleRegistryViewBoundarySource.includes(
+      "static_module_registry_reader_from_context",
+    ) ||
+    !staticModuleRegistryViewBoundarySource.includes(
+      ".with_shared_value(static_module_registry_reader)",
+    ) ||
+    !staticModuleRegistryViewBoundarySource.includes(
+      ".data(static_module_registry_reader)",
+    ) ||
+    !moduleRegistryGraphqlSource.includes(
+      ".list(StaticModuleRegistryQuery",
+    ) ||
+    !moduleRegistryNativeSource.includes("static_module_registry_views_native") ||
+    !adminModuleModelSource.includes(
+      "pub use rustok_api::StaticModuleRegistryView as ModuleInfo;",
+    ) ||
+    /pub\s+struct\s+ModuleInfo\b/.test(adminModuleModelSource) ||
+    /\b(?:ModuleRegistry|module_runtime_metadata|ModuleControlPlane::new|active_runtime_platform_snapshot|static_lifecycle|effective_module_policy_view_native|PlatformCompositionService)\b/.test(
+      moduleRegistryNativeSource,
+    ) ||
+    /\b(?:PlatformCompositionService|load_marketplace_catalog|EffectiveModulePolicyService|static_lifecycle_snapshots)\b/.test(
+      moduleRegistryGraphqlSource,
+    ) ||
+    /\b(?:module_runtime_metadata|GeneratedModuleRuntimeMetadata|ModuleRuntimeMetadataEntry|settings_schema_json)\b/.test(
+      [adminBuildSource, adminModulesSource].join("\n"),
+    ) ||
+    !read("apps/admin/src/features/modules/transport/types.rs").includes(
+      "hasAdminUi hasStorefrontUi uiClassification",
+    )
+  ) {
+    fail(
+      "module-registry reads must use one host-composed browser-safe static view across GraphQL and Admin native transport, without build-time manifest metadata or duplicate lifecycle/policy reconstruction",
+    );
+  }
+  const marketplaceBoundarySource = [
+    read("crates/libs/rustok-api/src/module_marketplace.rs"),
+    read("crates/modules/rustok-modules/src/marketplace.rs"),
+    read("apps/server/src/services/marketplace_catalog_adapter.rs"),
+    read("apps/server/src/graphql/queries.rs"),
+    read("apps/server/src/graphql/types.rs"),
+    adminModuleModelSource,
+    read("apps/admin/src/features/modules/transport/types.rs"),
+    nativeModuleTransportSource,
+  ].join("\n");
+  const marketplaceGraphqlStart = graphqlQueriesSource.indexOf(
+    "async fn marketplace(",
+  );
+  const marketplaceGraphqlEnd = graphqlQueriesSource.indexOf(
+    "async fn marketplace_module(",
+    marketplaceGraphqlStart,
+  );
+  const marketplaceGraphqlSource =
+    marketplaceGraphqlStart === -1 || marketplaceGraphqlEnd === -1
+      ? ""
+      : graphqlQueriesSource.slice(
+          marketplaceGraphqlStart,
+          marketplaceGraphqlEnd,
+        );
+  const marketplaceNativeStart = nativeModuleTransportSource.indexOf(
+    "pub async fn list_marketplace_modules_native",
+  );
+  const marketplaceNativeEnd = nativeModuleTransportSource.indexOf(
+    '#[server(prefix = "/api/fn", endpoint = "admin/marketplace-module")]',
+    marketplaceNativeStart,
+  );
+  const marketplaceNativeSource =
+    marketplaceNativeStart === -1 || marketplaceNativeEnd === -1
+      ? ""
+      : nativeModuleTransportSource.slice(
+          marketplaceNativeStart,
+          marketplaceNativeEnd,
+        );
+  if (
+    !marketplaceBoundarySource.includes("pub struct MarketplaceModule") ||
+    !marketplaceBoundarySource.includes(
+      "Result<Vec<MarketplaceModule>, ModuleMarketplaceError>",
+    ) ||
+    !marketplaceBoundarySource.includes("fn map_marketplace_entry") ||
+    !marketplaceBoundarySource.includes(
+      "impl From<rustok_api::MarketplaceModule> for MarketplaceModule",
+    ) ||
+    !marketplaceGraphqlSource.includes("marketplace_module_from_view") ||
+    !nativeModuleTransportSource.includes("SharedModuleMarketplaceCatalog") ||
+    /(?:ModuleMarketplaceEntry|map_marketplace_entry|ModuleSettingSpec|RegistryPrincipalRef|registry_principal_label_from_value)/.test(
+      [marketplaceGraphqlSource, marketplaceNativeSource].join("\n"),
+    ) ||
+    /pub\s+struct\s+(?:MarketplaceModule|MarketplaceModuleVersion|RegistryModuleLifecycle|RegistryPublishRequestLifecycle|RegistryReleaseLifecycle|RegistryOwnerLifecycle|RegistryGovernanceEventLifecycle|RegistryGovernanceEventPayloadLifecycle|RegistryOwnerTransitionLifecycle|RegistryFollowUpGateLifecycle|RegistryValidationStageLifecycle|RegistryModerationPolicyLifecycle|RegistryGovernanceActionLifecycle|ModuleSettingField)\b/.test(
+      adminModuleModelSource,
+    ) ||
+    /\bRegistryPrincipal\b/.test(read("apps/server/src/graphql/types.rs")) ||
+    !read("apps/admin/src/features/modules/transport/types.rs").includes(
+      "owner boundBy boundAt updatedAt",
+    )
+  ) {
+    fail(
+      "marketplace reads must expose the canonical rustok-api browser projection through the host catalog, without Admin/GraphQL owner DTO reconstruction or raw registry principal envelopes",
+    );
+  }
+  const registryPublishStatusApiSource = read(
+    "crates/libs/rustok-api/src/module_marketplace.rs",
+  );
+  const registryPublishStatusAdminSource = [
+    adminModuleModelSource,
+    read("apps/admin/src/features/modules/transport/types.rs"),
+    nativeModuleTransportSource,
+  ].join("\n");
+  const registryPublishStatusControllerSource = read(
+    "apps/server/src/controllers/marketplace_registry.rs",
+  );
+  const registryPublishStatusCatalogSource = read(
+    "apps/server/src/services/marketplace_catalog.rs",
+  );
+  const registryGovernanceServiceSource = read(
+    "apps/server/src/services/registry_governance/mod.rs",
+  );
+  const registryGovernanceReleaseAdapterSource = read(
+    "apps/server/src/services/registry_governance/releases.rs",
+  );
+  const registryGovernancePublishingAdapterSource = read(
+    "apps/server/src/services/registry_governance/publishing.rs",
+  );
+  const registryGovernanceOwnerSource = read(
+    "crates/modules/rustok-modules/src/governance.rs",
+  );
+  const registryValidationWorkerSource = read(
+    "crates/workers/rustok-registry-validation-worker/src/lib.rs",
+  );
+  const registryMarketplaceAdapterSource = read(
+    "apps/server/src/services/marketplace_catalog_adapter.rs",
+  );
+  const registryGraphqlTypesSource = read("apps/server/src/graphql/types.rs");
+  const adminGovernanceDetailSource = read(
+    "apps/admin/src/features/modules/components/detail/governance.rs",
+  );
+  const adminModuleDetailPanelSource = read(
+    "apps/admin/src/features/modules/components/module_detail_panel.rs",
+  );
+  const registryMutationResponseStart = registryPublishStatusCatalogSource.indexOf(
+    "pub struct RegistryMutationResponse",
+  );
+  const registryPublishStatusResponseStart = registryPublishStatusCatalogSource.indexOf(
+    "pub struct RegistryPublishStatusResponse",
+  );
+  const registryGovernanceActionStart = registryPublishStatusCatalogSource.indexOf(
+    "pub struct RegistryGovernanceAction",
+    registryPublishStatusResponseStart,
+  );
+  const registryValidationStageResponseStart = registryPublishStatusCatalogSource.indexOf(
+    "pub struct RegistryPublishStatusValidationStage",
+  );
+  const registryPublishStatusResponseAdapterStart =
+    registryPublishStatusCatalogSource.indexOf(
+      "impl From<RegistryPublishStatus> for RegistryPublishStatusResponse",
+    );
+  const registryMutationResponseSource =
+    registryMutationResponseStart === -1 || registryPublishStatusResponseStart === -1
+      ? ""
+      : registryPublishStatusCatalogSource.slice(
+          registryMutationResponseStart,
+          registryPublishStatusResponseStart,
+        );
+  const registryPublishStatusResponseSource =
+    registryPublishStatusResponseStart === -1 || registryGovernanceActionStart === -1
+      ? ""
+      : registryPublishStatusCatalogSource.slice(
+          registryPublishStatusResponseStart,
+          registryGovernanceActionStart,
+        );
+  const registryValidationStageResponseSource =
+    registryValidationStageResponseStart === -1 ||
+    registryPublishStatusResponseAdapterStart === -1
+      ? ""
+      : registryPublishStatusCatalogSource.slice(
+          registryValidationStageResponseStart,
+          registryPublishStatusResponseAdapterStart,
+        );
+  const registryStatusNativeStart = nativeModuleTransportSource.indexOf(
+    "pub async fn fetch_registry_publish_request_status_native",
+  );
+  const registryStatusNativeEnd = nativeModuleTransportSource.indexOf(
+    '#[server(\n    prefix = "/api/fn",\n    endpoint = "admin/registry-validate-publish-request"',
+    registryStatusNativeStart,
+  );
+  const registryStatusNativeSource =
+    registryStatusNativeStart === -1 || registryStatusNativeEnd === -1
+      ? ""
+      : nativeModuleTransportSource.slice(
+          registryStatusNativeStart,
+          registryStatusNativeEnd,
+        );
+  const completeRegistryValidationStageFields = [
+    "execution_mode: String",
+    "runnable: bool",
+    "requires_manual_confirmation: bool",
+    "allowed_terminal_reason_codes: Vec<String>",
+    "suggested_pass_reason_code: Option<String>",
+    "suggested_failure_reason_code: Option<String>",
+    "suggested_blocked_reason_code: Option<String>",
+  ];
+  if (
+    !registryPublishStatusApiSource.includes(
+      "pub struct RegistryMutationResult",
+    ) ||
+    !registryPublishStatusApiSource.includes(
+      "pub struct RegistryPublishStatus",
+    ) ||
+    !registryPublishStatusAdminSource.includes(
+      "pub use crate::entities::module::{RegistryMutationResult, RegistryPublishStatus};",
+    ) ||
+    /pub\s+struct\s+(?:RegistryMutationResult|RegistryPublishStatus(?:Contract)?)\b/.test(
+      [
+        adminModuleModelSource,
+        read("apps/admin/src/features/modules/transport/types.rs"),
+      ].join("\n"),
+    ) ||
+    registryPublishStatusAdminSource.includes("RegistryPublishStatusContract") ||
+    !registryStatusNativeSource.includes(
+      "Result<RegistryPublishStatus, ServerFnError>",
+    ) ||
+    !registryStatusNativeSource.includes("registry_governance_get_native") ||
+    !registryPublishStatusControllerSource.includes(
+      "RegistryPublishStatusResponse::from(status)",
+    ) ||
+    !registryPublishStatusControllerSource.includes(
+      ".map(map_registry_follow_up_gate)",
+    ) ||
+    !registryPublishStatusControllerSource.includes(
+      ".map(map_registry_validation_stage)",
+    ) ||
+    !registryPublishStatusControllerSource.includes(
+      ".map(map_registry_governance_action)",
+    ) ||
+    /fn\s+publish_status_(?:follow_up_gate|validation_stage|governance_action)\b/.test(
+      registryPublishStatusControllerSource,
+    ) ||
+    !registryPublishStatusCatalogSource.includes(
+      "impl From<RegistryPublishStatus> for RegistryPublishStatusResponse",
+    ) ||
+    /pub\s+struct\s+Registry(?:FollowUpGate|ValidationStage|GovernanceAction)Snapshot\b/.test(
+      registryGovernanceServiceSource,
+    ) ||
+    !registryGovernanceServiceSource.includes(
+      "pub status: ModuleGovernancePublishRequestStatusSnapshot",
+    ) ||
+    /pub\s+struct\s+RegistryPublish(?:Request(?:Status|Authorization)?|ArtifactDownload)Snapshot\b/.test(
+      [registryGovernanceServiceSource, registryGovernanceReleaseAdapterSource].join(
+        "\n",
+      ),
+    ) ||
+    /\bmap_owner_request(?:_status)?_snapshot\b/.test(
+      registryGovernanceReleaseAdapterSource,
+    ) ||
+    !registryGovernanceReleaseAdapterSource.includes(
+      "anyhow::Result<Option<ModuleGovernancePublishRequestStatusSnapshot>>",
+    ) ||
+    !registryGovernanceReleaseAdapterSource.includes(
+      "anyhow::Result<Option<ModuleGovernancePublishArtifactDownloadSnapshot>>",
+    ) ||
+    !registryGovernanceReleaseAdapterSource.includes(
+      "anyhow::Result<ModuleGovernancePublishRequestStatusSnapshot>",
+    ) ||
+    !registryGovernancePublishingAdapterSource.includes(
+      "anyhow::Result<ModuleGovernancePublishRequestStatusSnapshot>",
+    ) ||
+    !registryGovernancePublishingAdapterSource.includes(
+      "anyhow::Result<ModuleGovernanceRequestSnapshot>",
+    ) ||
+    /\bschema_version\b/.test(
+      [registryMutationResponseSource, registryPublishStatusResponseSource].join(
+        "\n",
+      ),
+    ) ||
+    !completeRegistryValidationStageFields.every((field) =>
+      registryValidationStageResponseSource.includes(field),
+    ) ||
+    registryPublishStatusCatalogSource.includes(
+      "#![allow(clippy::items_after_test_module)]",
+    )
+  ) {
+    fail(
+      "registry publish-status and mutation responses must preserve the owner-issued complete validation-stage snapshot through one strict rustok-api browser contract, without server/Admin-local DTOs or response-version fallbacks",
+    );
+  }
+  if (
+    !registryGovernanceOwnerSource.includes(
+      "pub struct ModuleGovernanceAutomatedCheck",
+    ) ||
+    !registryGovernanceOwnerSource.includes(
+      "pub automated_checks: Vec<ModuleGovernanceAutomatedCheck>",
+    ) ||
+    registryGovernanceOwnerSource.includes(
+      "pub automated_checks: serde_json::Value",
+    ) ||
+    !registryGovernanceOwnerSource.includes(
+      "normalize_governance_automated_checks",
+    ) ||
+    !registryGovernanceOwnerSource.includes(
+      "ORDER BY created_at DESC, id DESC LIMIT 10",
+    ) ||
+    !registryValidationWorkerSource.includes("ModuleGovernanceAutomatedCheck") ||
+    registryValidationWorkerSource.includes('{"check"') ||
+    !registryPublishStatusApiSource.includes(
+      "pub struct RegistryAutomatedCheckLifecycle",
+    ) ||
+    !registryPublishStatusApiSource.includes(
+      "pub automated_checks: Vec<RegistryAutomatedCheckLifecycle>",
+    ) ||
+    !registryMarketplaceAdapterSource.includes("map_registry_event_payload") ||
+    !registryMarketplaceAdapterSource.includes("automated_checks: payload") ||
+    !registryGraphqlTypesSource.includes(
+      "pub struct RegistryAutomatedCheckLifecycle",
+    ) ||
+    !registryGraphqlTypesSource.includes(
+      "automated_checks: Vec<RegistryAutomatedCheckLifecycle>",
+    ) ||
+    !read("apps/admin/src/entities/module/model.rs").includes(
+      "RegistryAutomatedCheckLifecycle",
+    ) ||
+    !read("apps/admin/src/features/modules/transport/types.rs").includes(
+      "automatedChecks { key status detail }",
+    ) ||
+    !adminGovernanceDetailSource.includes("pub fn latest_automated_checks") ||
+    adminGovernanceDetailSource.includes("RegistryAutomatedCheckItem") ||
+    adminGovernanceDetailSource.includes("governance_detail_automated_checks") ||
+    /let\s+automated_check_items[^=]*=\s*Vec::new\(\)/.test(
+      adminModuleDetailPanelSource,
+    ) ||
+    adminModuleDetailPanelSource.includes("#![allow(") ||
+    /\b(?:RegistryModuleLifecycleSnapshot|RegistryGovernanceEventSnapshot|RegistryGovernanceEventPayload|RegistryOwnerTransitionPayload)\b/.test(
+      [registryGovernanceServiceSource, registryGovernanceReleaseAdapterSource].join(
+        "\n",
+      ),
+    )
+  ) {
+    fail(
+      "automated validation evidence must use one typed, deterministically ordered owner-to-browser contract through the worker, API, GraphQL, and Admin UI, without raw JSON parsing, empty UI placeholders, lint suppression, or an unused duplicate server lifecycle adapter",
+    );
+  }
+  const effectivePolicyViewBoundarySource = [
+    read("crates/libs/rustok-api/src/module_policy.rs"),
+    read("crates/modules/rustok-modules/src/policy.rs"),
+    read("apps/server/src/services/effective_module_policy.rs"),
+    read("apps/server/src/services/app_router.rs"),
+    read("apps/server/src/graphql/types.rs"),
+    read("apps/server/src/graphql/queries.rs"),
+    read("apps/server/src/graphql/module_security.rs"),
+    read("apps/admin/src/entities/module/model.rs"),
+    read("apps/admin/src/features/modules/transport/types.rs"),
+    read("apps/admin/src/features/modules/transport/client.rs"),
+    read("apps/admin/src/features/modules/transport/native_server_adapter.rs"),
+    read("apps/admin/src/shared/context/enabled_modules.rs"),
+    read("apps/admin/src/features/modules/components/modules_list.rs"),
+  ].join("\n");
+  const effectivePolicyAdminSource = [
+    read("apps/admin/src/features/modules/transport/types.rs"),
+    read("apps/admin/src/features/modules/transport/client.rs"),
+    read("apps/admin/src/features/modules/transport/native_server_adapter.rs"),
+    read("apps/admin/src/shared/context/enabled_modules.rs"),
+  ].join("\n");
+  const modulesListSource = read(
+    "apps/admin/src/features/modules/components/modules_list.rs",
+  );
+  const effectivePolicyRegistrySource = [
+    read("apps/server/src/graphql/queries.rs"),
+    read("apps/admin/src/features/modules/transport/native_server_adapter.rs"),
+  ].join("\n");
+  if (
+    !effectivePolicyViewBoundarySource.includes("ModuleEffectivePolicyView") ||
+    !effectivePolicyViewBoundarySource.includes(
+      "ModuleEffectivePolicyDecisionView",
+    ) ||
+    !effectivePolicyViewBoundarySource.includes(
+      "ModuleEffectivePolicyDenialReasonView",
+    ) ||
+    !effectivePolicyViewBoundarySource.includes("ModuleEffectivePolicyReader") ||
+    !effectivePolicyViewBoundarySource.includes(
+      "ServerEffectiveModulePolicyReader",
+    ) ||
+    !effectivePolicyViewBoundarySource.includes("with_corequisites(co_requisites)") ||
+    !effectivePolicyViewBoundarySource.includes(
+      ".with_shared_value(effective_policy_reader)",
+    ) ||
+    !effectivePolicyViewBoundarySource.includes("ModuleEffectivePolicyGql") ||
+    !effectivePolicyViewBoundarySource.includes("module_effective_policy") ||
+    !effectivePolicyViewBoundarySource.includes('"moduleEffectivePolicy"') ||
+    !effectivePolicyViewBoundarySource.includes(
+      "module_effective_policy_native",
+    ) ||
+    !effectivePolicyViewBoundarySource.includes(
+      "fetch_module_effective_policy",
+    ) ||
+    !effectivePolicyViewBoundarySource.includes("enabled_module_slugs()") ||
+    !effectivePolicyViewBoundarySource.includes("refresh_generation") ||
+    !modulesListSource.includes("transport::fetch_modules(") ||
+    /(?:fetch_enabled_modules|list_enabled_modules_native|effective_enabled_modules_native|ENABLED_MODULES_QUERY|EnabledModulesResponse|set_module_enabled)\b/.test(
+      effectivePolicyAdminSource,
+    ) ||
+    /module\.enabled\s*=\s*result\.enabled/.test(modulesListSource) ||
+    /existing\.enabled\s*=\s*module\.enabled/.test(modulesListSource) ||
+    effectivePolicyAdminSource.includes("core_module_slugs") ||
+    /registry\.is_core\(module\.slug\(\)\)\s*\|\|\s*enabled_(?:set|modules)\.contains\(module\.slug\(\)\)/.test(
+      effectivePolicyRegistrySource,
+    ) ||
+    /pub\s+struct\s+ModuleEffectivePolicy\b/.test(
+      read("apps/admin/src/entities/module/model.rs"),
+    )
+  ) {
+    fail(
+      "effective module availability must use the owner-issued redacted policy view with one co-requisite-aware GraphQL/native decision path and no Admin-local enabled-set inference",
     );
   }
   const staticLifecycleJournal = fs.readFileSync(

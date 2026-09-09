@@ -967,15 +967,10 @@ impl RootMutation {
         .await
         .map_err(map_toggle_module_error)?;
 
-        Ok(TenantModule {
-            module_slug: module.module_slug,
-            enabled: module.enabled,
-            settings: module.settings.to_string(),
-            revision: i64::try_from(module.revision).map_err(|_| {
-                <FieldError as GraphQLError>::internal_error(
-                    "Static module lifecycle revision is outside the GraphQL range",
-                )
-            })?,
+        TenantModule::try_from(module).map_err(|_| {
+            <FieldError as GraphQLError>::internal_error(
+                "Static module lifecycle revision is outside the GraphQL range",
+            )
         })
     }
 
@@ -1471,7 +1466,9 @@ impl RootMutation {
         .await
         .map_err(map_module_operation_recovery_error)?;
 
-        Ok(ModuleOperationRecoveryPlan::from(&plan))
+        Ok(ModuleOperationRecoveryPlan::from(
+            rustok_api::ModuleOperationRecoveryPlanView::from(plan),
+        ))
     }
 
     async fn compensate_failed_module_operation(
@@ -1506,15 +1503,10 @@ impl RootMutation {
         .await
         .map_err(map_module_operation_recovery_error)?;
 
-        Ok(TenantModule {
-            module_slug: module.module_slug,
-            enabled: module.enabled,
-            settings: module.settings.to_string(),
-            revision: i64::try_from(module.revision).map_err(|_| {
-                <FieldError as GraphQLError>::internal_error(
-                    "Static module lifecycle revision is outside the GraphQL range",
-                )
-            })?,
+        TenantModule::try_from(module).map_err(|_| {
+            <FieldError as GraphQLError>::internal_error(
+                "Static module lifecycle revision is outside the GraphQL range",
+            )
         })
     }
 
@@ -1632,15 +1624,10 @@ impl RootMutation {
             }
         })?;
 
-        Ok(TenantModule {
-            module_slug: module.module_slug,
-            enabled: module.enabled,
-            settings: module.settings.to_string(),
-            revision: i64::try_from(module.revision).map_err(|_| {
-                <FieldError as GraphQLError>::internal_error(
-                    "Static module lifecycle revision is outside the GraphQL range",
-                )
-            })?,
+        TenantModule::try_from(module).map_err(|_| {
+            <FieldError as GraphQLError>::internal_error(
+                "Static module lifecycle revision is outside the GraphQL range",
+            )
         })
     }
 
@@ -1674,7 +1661,7 @@ impl RootMutation {
             .await
             .map_err(crate::graphql::transition_lifecycle::map_transition_service_error)?;
 
-        Ok(receipt.checkpoint.into())
+        Ok(rustok_api::ModuleTransitionCheckpointView::from(receipt.checkpoint).into())
     }
 }
 

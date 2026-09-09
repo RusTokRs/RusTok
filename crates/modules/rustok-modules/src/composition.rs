@@ -11,14 +11,16 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
+use std::sync::Arc;
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::{
     ModuleCommandContext,
     data::{now_expression, placeholder},
 };
 use rustok_api::{
-    PortError,
+    ModuleCompositionSnapshotView, PortError, StaticInstalledModuleView, StaticModuleRegistryView,
     manifest_hash::{canonical_manifest_snapshot_json, hash_manifest_snapshot},
 };
 use rustok_outbox::idempotency::{self, Admission};
@@ -36,6 +38,72 @@ pub struct ModuleCompositionSnapshot {
     pub manifest_hash: String,
     pub manifest: Value,
 }
+
+impl From<ModuleCompositionSnapshot> for ModuleCompositionSnapshotView {
+    fn from(snapshot: ModuleCompositionSnapshot) -> Self {
+        Self {
+            revision: snapshot.revision,
+        }
+    }
+}
+
+/// Host-composed read boundary for browser-safe installed static modules.
+///
+/// The composition owner controls the active revision, while the host adapts
+/// its private manifest into the canonical projection exactly once. Browser
+/// transports must not deserialize or inspect that manifest themselves.
+#[async_trait]
+pub trait StaticInstalledModuleReader: Send + Sync {
+    async fn list(
+        &self,
+    ) -> Result<Vec<StaticInstalledModuleView>, StaticInstalledModuleReaderError>;
+}
+
+/// Stable host-port failure for an unavailable installed-module projection.
+#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
+pub enum StaticInstalledModuleReaderError {
+    #[error("static installed module projection is unavailable")]
+    Unavailable,
+}
+
+/// A host-composed installed-module reader shared with internal transports.
+#[derive(Clone)]
+pub struct SharedStaticInstalledModuleReader(pub Arc<dyn StaticInstalledModuleReader>);
+
+/// Upper bound shared by GraphQL and native module-registry reads.
+pub const STATIC_MODULE_REGISTRY_MAX_LIMIT: u32 = 100;
+
+/// Request for one tenant- and locale-aware browser-safe module-registry view.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StaticModuleRegistryQuery {
+    pub tenant_id: Uuid,
+    pub preferred_locale: String,
+    pub fallback_locale: String,
+    pub limit: u32,
+}
+
+/// Host-composed read boundary for the canonical static module-registry view.
+///
+/// The host resolves one active composition and applies catalog, effective
+/// policy, and lifecycle projections before returning this browser-safe DTO.
+#[async_trait]
+pub trait StaticModuleRegistryReader: Send + Sync {
+    async fn list(
+        &self,
+        query: StaticModuleRegistryQuery,
+    ) -> Result<Vec<StaticModuleRegistryView>, StaticModuleRegistryReaderError>;
+}
+
+/// Stable host-port failure for an unavailable static registry projection.
+#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
+pub enum StaticModuleRegistryReaderError {
+    #[error("static module registry projection is unavailable")]
+    Unavailable,
+}
+
+/// A host-composed static module-registry reader shared with internal transports.
+#[derive(Clone)]
+pub struct SharedStaticModuleRegistryReader(pub Arc<dyn StaticModuleRegistryReader>);
 
 /// Typed caller identity and concurrency context for one composition mutation.
 /// The owner admits it before the host adapts the active manifest, which keeps
@@ -551,6 +619,21 @@ mod tests {
             operation,
             manifest,
         }
+    }
+
+    #[test]
+    fn owner_projects_the_browser_safe_composition_revision() {
+        let view = ModuleCompositionSnapshotView::from(ModuleCompositionSnapshot {
+            revision: 9,
+            manifest_hash: "sha256:manifest".to_string(),
+            manifest: serde_json::json!({ "modules": {} }),
+        });
+
+        assert_eq!(view.revision, 9);
+        assert_eq!(
+            serde_json::to_value(view).expect("composition view serializes"),
+            serde_json::json!({ "revision": 9 })
+        );
     }
 
     async fn admit_recording_operation(

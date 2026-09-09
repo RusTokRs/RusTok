@@ -6,6 +6,11 @@
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - Transport profile: temporary native-only; native/GraphQL admin parity is in progress.
+- Active contract-test profile: `in_process` only. Remote adapters and remote
+  profile switching are deferred under the embedded-first platform plan.
+- The compatible provider-registry baseline is validated through
+  `crates/libs/rustok-fba/contracts/provider-registry-v1.schema.json` before
+  RBAC-specific semantic checks run.
 - FBA provider contract: `RbacPermissionDecisionPort` / `rbac.permission_decision.v1` in `crates/modules/rustok-rbac/contracts/rbac-fba-registry.json`.
 - Static and runtime evidence: `crates/modules/rustok-rbac/contracts/evidence/rbac-contract-test-static-matrix.json` and `crates/modules/rustok-rbac/contracts/evidence/rbac-provider-runtime-order-smoke.json`.
 - Evidence: `scripts/verify/verify-rbac-admin-boundary.mjs` locks the admin boundary guardrail.
@@ -330,11 +335,11 @@ exists.
 
 - Cycle: `cycle-001`
 - Status: `in_progress`
-- Last verified at (UTC): `2026-08-17`.
-- Scope inspected: `merged registered-CLI repair propagation and multi-replica RBAC runtime evidence from #3590; its push-to-main confirmation; generator-produced event-contract digest evidence from #3617; exact merge-SHA provenance and zero-diff review; current owner/master handoff state`.
-- Findings: `source baseline remains P0=0, P1=11, P2=1, P3=2 and is source-fixed. No new RBAC product-semantics defect was found. The #3590 merge revision confirms #2849, #2853, #2856 and #2862 under the permanent runtime workflow. The #3617 merge revision proves the committed event-contract digest is generator-current. The component remains in_progress because broad exact-head compile/test/module, migration/rollback, incident/transport, operator, and promotion gates remain open.`
-- Fixed in this pass: `PR #3590 was confirmed after merge by RBAC Runtime Evidence run 32004633206 and artifact 9280508296. PR #3617 added the permanent exact-SHA artifact-event-digest workflow and merged as 65a63a33d457ed5ff7c592f2c81b839cbf690d96; push run 32061362433 and artifact 9298285369 retain exact-SHA, toolchain, generated digest and zero-diff evidence. No production RBAC/event runtime semantics changed.`
+- Last verified at (UTC): `2026-09-06`.
+- Scope inspected: `embedded-first FBA contract metadata, RBAC permission-decision port, and current local/central readiness records`.
+- Findings: `source baseline remains P0=0, P1=11, P2=1, P3=2 and is source-fixed. The RBAC contract matrix incorrectly retained a deferred remote profile although remote adapters and profile switching are explicitly deferred. No new RBAC product-semantics defect was found.`
+- Fixed in this pass: `removed the deferred remote placeholder from the RBAC registry and static matrix. The sole active contract-test profile is in_process; embedded fallback metadata, port behavior, and boundary status are unchanged.`
 - Remaining risks or blockers: `broad exact-head formatting, Events/RBAC/Admin/server compilation, focused tests, source verifiers and module gates; SQLite/PostgreSQL migration and rollback proofs; incident/live negative transport evidence; native operator parity; composed-host/degraded-path evidence; and FFA/FBA promotion remain open.`
-- Evidence: `PR #3590 merged as 67ed475549598720486188f175fcfce0ab826a3b. Its exact-head run 31885429843 at 06554657c50535204cdca7f7baf87c7b8d55ba65 passed the four source contracts, architecture guard, #2849 PostgreSQL concurrency, #2853 durable watchdog, #2856 Redis restart, #2862 registered-CLI propagation, artifact archive and final gate. Push-to-main run 32004633206 succeeded on the merge SHA; artifact 9280508296 records CARGO_PROFILE_TEST_DEBUG=0, PostgreSQL 16, Redis 7.0.15 where applicable, and rustc/cargo 1.97.1. PR #3617 merged as 65a63a33d457ed5ff7c592f2c81b839cbf690d96. Its push-to-main RBAC Artifact Event Digest run 32061362433 succeeded; artifact 9298285369 records expected_sha=actual_sha=65a63a33d457ed5ff7c592f2c81b839cbf690d96, CARGO_PROFILE_TEST_DEBUG=0, rustc/cargo 1.97.1, generated file SHA-256 ca261acbf570615cb1ea180854a2d927aeca385db74917cbb487e0dfd9b730b9, and a zero-byte generated.diff. No local Cargo pass is claimed because the agent environment has no Rust toolchain.`
+- Evidence: `node scripts/verify/verify-rbac-fba.mjs, node scripts/verify/verify-owner-fba-runtime-order.mjs, and node scripts/verify/verify-rbac-admin-boundary.mjs passed after the registry correction. Retained CI evidence remains recorded above; no broad local Cargo pass is claimed.`
 - Next action: `execute and retain the exact-head formatting, Events/RBAC/Admin/server compilation, focused tests, source verifiers, and cargo xtask module validate/test rbac gates; classify every failure against the RBAC diff before moving into migration compatibility and PostgreSQL rollback evidence. Keep the verification cursor on cycle-001/core-rbac.`
 - Resume command: `cargo fmt --all -- --check`

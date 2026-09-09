@@ -232,7 +232,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Fluid Backend Architecture for RusTok](./research/fluid-backend-architecture.md)
 - [Flutter Application Architecture for RusTok](./research/flutter.md)
 - [FFA for Flutter: Platform Mobile Architecture Article](./research/flutter-ffa-architecture-article.md)
-- [Unified Fluid Backend Architecture Implementation Plan](./research/fluid-backend-architecture-unified-plan.md)
+- [Unified Fluid Backend Architecture Implementation Plan](./research/fluid-backend-architecture-unified-plan.md) — active embedded-first production focus, then evidence-gated remote profiles
 - [FFA UI Refactoring Plan and Dioxus Preparation](./research/dioxus-ffa-ui-migration-plan.md)
 - [FFA/Dioxus Pilot Connectivity Map (Phase A)](./research/dioxus-ffa-pilot-connectivity-map.md)
 - [FFA UI Migration Parity Checklist](./verification/ffa-ui-parity-checklist.md)

@@ -1,9 +1,9 @@
 use async_graphql::{Enum, ErrorExtensions, FieldError, SimpleObject};
 use rustok_api::graphql::GraphQLError;
-use rustok_modules::{
-    ModuleTransitionCheckpoint, ModuleTransitionServiceError, ModuleTransitionState,
-    RetentionHoldRecord, TransitionCoordinatorError,
+use rustok_api::{
+    ModuleRetentionHoldView, ModuleTransitionCheckpointView, ModuleTransitionStateView,
 };
+use rustok_modules::{ModuleTransitionServiceError, TransitionCoordinatorError};
 use uuid::Uuid;
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq, Debug)]
@@ -35,56 +35,41 @@ pub struct ModuleTransitionCheckpointGql {
     pub updated_at: String,
 }
 
-impl From<ModuleTransitionCheckpoint> for ModuleTransitionCheckpointGql {
-    fn from(cp: ModuleTransitionCheckpoint) -> Self {
-        let (state_gql, details) = match &cp.state {
-            ModuleTransitionState::Preflighting => (ModuleTransitionStateGql::Preflighting, None),
-            ModuleTransitionState::Fenced => (ModuleTransitionStateGql::Fenced, None),
-            ModuleTransitionState::PreStaging => (ModuleTransitionStateGql::Prestaging, None),
-            ModuleTransitionState::Activating => (ModuleTransitionStateGql::Activating, None),
-            ModuleTransitionState::Observing { timeout_at } => (
-                ModuleTransitionStateGql::Observing,
-                Some(format!("Timeout at {}", timeout_at.to_rfc3339())),
-            ),
-            ModuleTransitionState::PointOfNoReturn {
-                reason,
-                committed_at,
-            } => (
-                ModuleTransitionStateGql::PointOfNoReturn,
-                Some(format!(
-                    "Committed at {}: {}",
-                    committed_at.to_rfc3339(),
-                    reason
-                )),
-            ),
-            ModuleTransitionState::RecoveredToPredecessor { failure_reason, .. } => (
-                ModuleTransitionStateGql::RecoveredToPredecessor,
-                Some(failure_reason.clone()),
-            ),
-            ModuleTransitionState::Converged { finalized_at } => (
-                ModuleTransitionStateGql::Converged,
-                Some(format!("Finalized at {}", finalized_at.to_rfc3339())),
-            ),
-            ModuleTransitionState::FailedClosed { failure_reason } => (
-                ModuleTransitionStateGql::FailedClosed,
-                Some(failure_reason.clone()),
-            ),
+impl From<ModuleTransitionCheckpointView> for ModuleTransitionCheckpointGql {
+    fn from(checkpoint: ModuleTransitionCheckpointView) -> Self {
+        let state = match checkpoint.state {
+            ModuleTransitionStateView::Preflighting => ModuleTransitionStateGql::Preflighting,
+            ModuleTransitionStateView::Fenced => ModuleTransitionStateGql::Fenced,
+            ModuleTransitionStateView::Prestaging => ModuleTransitionStateGql::Prestaging,
+            ModuleTransitionStateView::Activating => ModuleTransitionStateGql::Activating,
+            ModuleTransitionStateView::Observing => ModuleTransitionStateGql::Observing,
+            ModuleTransitionStateView::PointOfNoReturn => ModuleTransitionStateGql::PointOfNoReturn,
+            ModuleTransitionStateView::RecoveredToPredecessor => {
+                ModuleTransitionStateGql::RecoveredToPredecessor
+            }
+            ModuleTransitionStateView::Converged => ModuleTransitionStateGql::Converged,
+            ModuleTransitionStateView::FailedClosed => ModuleTransitionStateGql::FailedClosed,
         };
-
         Self {
-            operation_id: cp.operation_id,
-            revision: i64::try_from(cp.revision)
-                .expect("persisted transition revisions are constrained to BIGINT"),
-            module_slug: cp.module_slug,
-            tenant_id: cp.tenant_id,
-            predecessor_digest: cp.predecessor_digest,
-            candidate_digest: cp.candidate_digest,
-            state: state_gql,
-            state_details: details,
-            security_epoch: cp.security_epoch.value() as i64,
-            recovery_attempt_count: cp.recovery_attempt_count as i32,
-            created_at: cp.created_at.to_rfc3339(),
-            updated_at: cp.updated_at.to_rfc3339(),
+            operation_id: checkpoint
+                .operation_id
+                .parse()
+                .expect("owner transition view contains a UUID operation identity"),
+            revision: checkpoint.revision,
+            module_slug: checkpoint.module_slug,
+            tenant_id: checkpoint
+                .tenant_id
+                .map(|tenant_id| tenant_id.parse())
+                .transpose()
+                .expect("owner transition view contains a UUID tenant identity"),
+            predecessor_digest: checkpoint.predecessor_digest,
+            candidate_digest: checkpoint.candidate_digest,
+            state,
+            state_details: checkpoint.state_details,
+            security_epoch: checkpoint.security_epoch,
+            recovery_attempt_count: checkpoint.recovery_attempt_count,
+            created_at: checkpoint.created_at,
+            updated_at: checkpoint.updated_at,
         }
     }
 }
@@ -143,19 +128,17 @@ pub struct RetentionHoldGql {
     pub created_at: String,
 }
 
-impl From<RetentionHoldRecord> for RetentionHoldGql {
-    fn from(record: RetentionHoldRecord) -> Self {
-        let (target_type, target_identity) = record.target.identity_key();
-
-        let kind_str =
-            serde_json::to_string(&record.kind).unwrap_or_else(|_| "unknown".to_string());
-
+impl From<ModuleRetentionHoldView> for RetentionHoldGql {
+    fn from(record: ModuleRetentionHoldView) -> Self {
         Self {
-            hold_id: record.hold_id,
-            target_type: target_type.to_string(),
-            target_identity,
-            kind: kind_str,
-            created_at: record.created_at.to_rfc3339(),
+            hold_id: record
+                .hold_id
+                .parse()
+                .expect("owner retention hold view contains a UUID hold identity"),
+            target_type: record.target_type,
+            target_identity: record.target_identity,
+            kind: record.kind,
+            created_at: record.created_at,
         }
     }
 }

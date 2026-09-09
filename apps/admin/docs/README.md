@@ -139,10 +139,20 @@ call a native adapter directly.
 - Module-control-plane GraphQL reads fail closed on transport or owner errors.
   The admin host does not synthesize registry, installation, tenant intent, or
   marketplace facts from its generated navigation registry. Native marketplace
-  and registry lifecycle reads use the host-provided owner catalog and
-  governance snapshot. The admin host contains no direct registry SQL,
+  and registry lifecycle reads use the host-provided catalog whose public view is
+  `rustok_api::MarketplaceModule`. The server maps its owner-private
+  `ModuleMarketplaceEntry` once, reduces governance principals to display labels,
+  and supplies the same canonical data to GraphQL and native Admin. The Admin
+  entity aliases the shared DTOs rather than decoding raw principal JSON or
+  defining local marketplace and lifecycle models. The admin host contains no
+  direct registry SQL,
   workspace/Cargo scanner, catalog hashing, dependency solving, or build
   planning path.
+- Automated validation evidence is selected as typed `automatedChecks` from the
+  same lifecycle event contract. The detail panel renders the newest
+  owner-issued check set, including an optional owner-supplied explanation; it
+  neither parses raw governance-event JSON nor substitutes an empty placeholder
+  when validation evidence exists.
 - The Marketplace tab renders owner-projected freshness for each configured
   federated registry. Its native and GraphQL transports require
   `modules.manage` and expose only logical registry ID, typed status, last
@@ -210,6 +220,12 @@ discrepancies found are filed as parity debt and fixed on a case-by-case basis.
 - Each module-owned admin surface gets a root `Overview` item; declared child pages become nested links under the module container. The host hides disabled tenant modules and empty containers.
 - Tenant/module settings remain in the host-owned `/modules` governance UI. If `rustok-module.toml` contains `[settings]`, the sidebar adds a contextual link `/modules?module_slug=<slug>`; module-owned packages do not duplicate this editor. The editor reads the owner-issued lifecycle revision, sends it with a fresh UUID idempotency key through `updateModuleSettings`, and replaces the local revision only from the returned owner state; it has no native/server-function write fallback.
 - Recovery for failed module lifecycle post-hook operations remains a host/control-plane scenario: Leptos admin shows a host-owned `Lifecycle recovery` block, reads `failedModuleOperationRecoveryPlans`, and calls `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` via canonical GraphQL helpers in `features/modules/transport`. Each user action provides a fresh UUID idempotency key and the current module lifecycle revision while the server derives tenant and actor identity; local SQL, local rollback, and custom lifecycle taxonomy are prohibited.
+- Effective availability is read only from the owner-issued `ModuleEffectivePolicyView`. Native and GraphQL transports use the same active-composition policy decision; `EnabledModulesProvider` and the module registry refresh that result after lifecycle commands and do not locally infer enablement from mutation responses or tenant rows. A module's Core identity never overrides an unavailable owner decision.
+- Installed static-module reads use the canonical `StaticInstalledModuleView`. The server composes a `SharedStaticInstalledModuleReader` from the active composition, GraphQL maps the same projection, and the Admin entity only aliases that type. The native function never decodes the manifest; source-control and filesystem locators (`git`, `rev`, and `path`) do not cross the browser boundary.
+- Static tenant-lifecycle views use `SharedStaticModuleLifecycleReader`. The server resolves the active-composition-aware owner projection once; native Admin functions never deserialize active-manifest defaults.
+- The full static module registry uses `rustok_api::StaticModuleRegistryView` through `SharedStaticModuleRegistryReader`. The server resolves one active composition and applies its catalog, effective-policy, lifecycle, and locale projections before GraphQL or native Admin receives the DTO. Admin aliases the shared type, and no transport may reconstruct it from generated manifest metadata, direct lifecycle reads, or false UI defaults.
+- Marketplace list and detail reads use the shared `rustok_api::MarketplaceModule` contract. Registry-governance principals are browser-safe display-label scalars; the Admin host has no fallback JSON parser, local lifecycle DTO family, or transport-specific defaulting path.
+- Admin-consumed registry publish status and generic governance mutation results use the strict shared `rustok_api::RegistryPublishStatus` and `RegistryMutationResult` contracts. The native adapter preserves the owner-provided execution mode, runnable/manual-confirmation facts, terminal reason codes, and suggested stage outcomes; it does not default missing lifecycle fields or accept a response-version fallback.
 - The host passes the effective locale via `UiRouteContext.locale`; module-owned Leptos packages must use this value and must not introduce their own query/header/cookie fallback chain.
 - Module-owned admin packages must support the same runtime split: `#[server]` preferred in SSR/hydrate, GraphQL/REST fallback for standalone CSR/debug. The package must become neither GraphQL-only for monolith nor `#[server]`-only for headless/debug.
 - Core modules with UI are subject to the same ownership rule as optional modules: the presence of UI does not make the host the owner of the module surface.

@@ -2,10 +2,10 @@ use super::{humanize_token, short_checksum, tr};
 use crate::Locale;
 use crate::entities::module::MarketplaceModule;
 use crate::entities::module::model::{
-    RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
-    RegistryGovernanceEventLifecycle, RegistryGovernanceEventPayloadLifecycle,
-    RegistryOwnerLifecycle, RegistryPublishRequestLifecycle, RegistryReleaseLifecycle,
-    RegistryValidationStageLifecycle,
+    RegistryAutomatedCheckLifecycle, RegistryFollowUpGateLifecycle,
+    RegistryGovernanceActionLifecycle, RegistryGovernanceEventLifecycle,
+    RegistryGovernanceEventPayloadLifecycle, RegistryOwnerLifecycle,
+    RegistryPublishRequestLifecycle, RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
 };
 use crate::features::modules::transport::RegistryMutationResult;
 
@@ -18,13 +18,6 @@ pub struct RegistryLiveApiActionHint {
     pub header_hint: Option<String>,
     pub xtask_hint: Option<String>,
     pub write_path: bool,
-}
-
-#[derive(Clone)]
-pub struct RegistryAutomatedCheckItem {
-    pub key: String,
-    pub status: String,
-    pub detail: String,
 }
 
 pub const REGISTRY_APPROVE_OVERRIDE_REASON_CODES: &[&str] = &[
@@ -647,29 +640,19 @@ pub fn latest_validation_job_event(
         .find(|event| is_validation_job_event_type(&event.event_type))
 }
 
-#[allow(dead_code)]
-pub fn governance_detail_automated_checks(
-    details: &serde_json::Value,
-) -> Vec<RegistryAutomatedCheckItem> {
-    details
-        .get("automated_checks")
-        .and_then(|value| value.as_array())
-        .into_iter()
-        .flatten()
-        .filter_map(|item| {
-            let key = item.get("key")?.as_str()?.trim();
-            let status = item.get("status")?.as_str()?.trim();
-            let detail = item.get("detail")?.as_str()?.trim();
-            if key.is_empty() || status.is_empty() || detail.is_empty() {
-                return None;
-            }
-            Some(RegistryAutomatedCheckItem {
-                key: key.to_string(),
-                status: status.to_string(),
-                detail: detail.to_string(),
-            })
+/// Returns the latest owner-issued validation evidence. Lifecycle events are
+/// ordered newest first by the owner, so a newer retry cannot be hidden by an
+/// earlier completed validation job.
+pub fn latest_automated_checks(
+    events: &[RegistryGovernanceEventLifecycle],
+) -> Vec<RegistryAutomatedCheckLifecycle> {
+    events
+        .iter()
+        .find_map(|event| {
+            (!event.payload.automated_checks.is_empty())
+                .then(|| event.payload.automated_checks.clone())
         })
-        .collect()
+        .unwrap_or_default()
 }
 
 pub fn automated_check_label(key: &str, locale: Locale) -> String {
@@ -2529,7 +2512,6 @@ pub fn governance_event_type_label(event_type: &str, locale: Locale) -> &'static
 mod tests {
     use super::*;
     use crate::entities::module::model::RegistryOwnerLifecycle;
-    use serde_json::json;
 
     fn sample_owner(owner: &str) -> RegistryOwnerLifecycle {
         RegistryOwnerLifecycle {
@@ -2606,52 +2588,78 @@ mod tests {
 
     fn sample_event(
         event_type: &str,
-        details: serde_json::Value,
+        payload: RegistryGovernanceEventPayloadLifecycle,
     ) -> RegistryGovernanceEventLifecycle {
         RegistryGovernanceEventLifecycle {
             id: "evt_1".to_string(),
             event_type: event_type.to_string(),
             actor: "user:00000000-0000-0000-0000-000000000001".to_string(),
             publisher: None,
-            payload: RegistryGovernanceEventPayloadLifecycle::from_details(&details),
+            payload,
             created_at: "2026-04-05T10:00:00Z".to_string(),
         }
     }
 
+    fn empty_event_payload() -> RegistryGovernanceEventPayloadLifecycle {
+        RegistryGovernanceEventPayloadLifecycle {
+            reason: None,
+            reason_code: None,
+            detail: None,
+            version: None,
+            stage_key: None,
+            attempt_number: None,
+            owner_transition: None,
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            mode: None,
+            automated_checks: Vec::new(),
+        }
+    }
+
     #[test]
-    fn governance_detail_automated_checks_parses_only_valid_items() {
-        let checks = governance_detail_automated_checks(&json!({
-            "automated_checks": [
-                {
-                    "key": "artifact_bundle_contract",
-                    "status": "passed",
-                    "detail": "Bundle contract passed."
+    fn latest_automated_checks_uses_the_newest_owner_event() {
+        let checks = latest_automated_checks(&[
+            sample_event(
+                "validation_failed",
+                RegistryGovernanceEventPayloadLifecycle {
+                    automated_checks: vec![RegistryAutomatedCheckLifecycle {
+                        key: "artifact_contract".to_string(),
+                        status: "failed".to_string(),
+                        detail: Some("Artifact contract validation failed.".to_string()),
+                    }],
+                    ..empty_event_payload()
                 },
-                {
-                    "key": "artifact_bundle_contract",
-                    "status": "",
-                    "detail": "Should be ignored."
-                }
-            ]
-        }));
+            ),
+            sample_event(
+                "validation_passed",
+                RegistryGovernanceEventPayloadLifecycle {
+                    automated_checks: vec![RegistryAutomatedCheckLifecycle {
+                        key: "artifact_contract".to_string(),
+                        status: "passed".to_string(),
+                        detail: Some("Artifact contract validation passed.".to_string()),
+                    }],
+                    ..empty_event_payload()
+                },
+            ),
+        ]);
 
         assert_eq!(checks.len(), 1);
-        assert_eq!(checks[0].key, "artifact_bundle_contract");
-        assert_eq!(checks[0].status, "passed");
-        assert_eq!(checks[0].detail, "Bundle contract passed.");
+        assert_eq!(checks[0].key, "artifact_contract");
+        assert_eq!(checks[0].status, "failed");
+        assert_eq!(
+            checks[0].detail.as_deref(),
+            Some("Artifact contract validation failed.")
+        );
     }
 
     #[test]
     fn validation_job_event_context_lines_include_trace_fields() {
         let event = sample_event(
             "validation_job_failed",
-            json!({
-                "job_id": "rvj_123",
-                "attempt_number": 2,
-                "queue_reason": "validation_resumed",
-                "request_status": "rejected",
-                "error": "checksum mismatch"
-            }),
+            RegistryGovernanceEventPayloadLifecycle {
+                attempt_number: Some(2),
+                ..empty_event_payload()
+            },
         );
 
         let lines = validation_job_event_context_lines(&event, Locale::en);
@@ -2664,11 +2672,12 @@ mod tests {
     fn moderation_history_context_lines_include_reason_code() {
         let event = sample_event(
             "request_rejected",
-            json!({
-                "version": "1.2.3",
-                "reason": "Ownership evidence is incomplete.",
-                "reason_code": "ownership_mismatch"
-            }),
+            RegistryGovernanceEventPayloadLifecycle {
+                version: Some("1.2.3".to_string()),
+                reason: Some("Ownership evidence is incomplete.".to_string()),
+                reason_code: Some("ownership_mismatch".to_string()),
+                ..empty_event_payload()
+            },
         );
 
         let lines = moderation_history_context_lines(&event, Locale::en);

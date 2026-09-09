@@ -32,14 +32,6 @@ struct ModulePackageManifest {
 struct ModuleMetadata {
     slug: String,
     name: String,
-    #[serde(default = "default_module_ownership")]
-    ownership: String,
-    #[serde(default = "default_module_trust_level")]
-    trust_level: String,
-    #[serde(default)]
-    recommended_admin_surfaces: Vec<String>,
-    #[serde(default)]
-    showcase_admin_surfaces: Vec<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -93,16 +85,6 @@ struct CoreModuleEntry {
 }
 
 #[derive(Debug)]
-struct ModuleRuntimeMetadataEntry {
-    slug: String,
-    ownership: String,
-    trust_level: String,
-    recommended_admin_surfaces: Vec<String>,
-    showcase_admin_surfaces: Vec<String>,
-    settings_schema_json: String,
-}
-
-#[derive(Debug)]
 struct AdminChildPageEntry {
     subpath: String,
     title: String,
@@ -132,7 +114,6 @@ fn generate_admin_module_codegen() -> Result<(), Box<dyn Error>> {
     let modules: ModulesManifest = toml::from_str(&fs::read_to_string(&manifest_path)?)?;
     let mut entries = Vec::new();
     let mut core_modules = Vec::new();
-    let mut metadata_entries = Vec::new();
 
     for spec in modules.modules.into_values() {
         if spec.required
@@ -163,14 +144,6 @@ fn generate_admin_module_codegen() -> Result<(), Box<dyn Error>> {
         let package_manifest: ModulePackageManifest =
             toml::from_str(&fs::read_to_string(&package_manifest_path)?)?;
         validate_admin_ui_wiring(&module_root, &package_manifest)?;
-        metadata_entries.push(ModuleRuntimeMetadataEntry {
-            slug: package_manifest.module.slug.clone(),
-            ownership: package_manifest.module.ownership.clone(),
-            trust_level: package_manifest.module.trust_level.clone(),
-            recommended_admin_surfaces: package_manifest.module.recommended_admin_surfaces.clone(),
-            showcase_admin_surfaces: package_manifest.module.showcase_admin_surfaces.clone(),
-            settings_schema_json: serde_json::to_string(&package_manifest.settings)?,
-        });
         let Some(admin_ui) = package_manifest.provides.admin_ui else {
             continue;
         };
@@ -221,7 +194,7 @@ fn generate_admin_module_codegen() -> Result<(), Box<dyn Error>> {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
     fs::write(
         out_dir.join("module_registry_codegen.rs"),
-        render_admin_registry_codegen(&entries, &core_modules, &metadata_entries),
+        render_admin_registry_codegen(&entries, &core_modules),
     )?;
 
     Ok(())
@@ -264,7 +237,6 @@ fn validate_admin_ui_wiring(
 fn render_admin_registry_codegen(
     entries: &[AdminUiEntry],
     core_modules: &[CoreModuleEntry],
-    metadata_entries: &[ModuleRuntimeMetadataEntry],
 ) -> String {
     let mut out = String::new();
     out.push_str("use leptos::prelude::*;\n");
@@ -316,49 +288,6 @@ fn render_admin_registry_codegen(
         ));
     }
     out.push_str("    ]\n");
-    out.push_str("}\n\n");
-
-    out.push_str("pub fn module_runtime_metadata(slug: &str) -> Option<super::GeneratedModuleRuntimeMetadata> {\n");
-    out.push_str("    match slug {\n");
-    for entry in metadata_entries {
-        let recommended = if entry.recommended_admin_surfaces.is_empty() {
-            "&[]".to_string()
-        } else {
-            format!(
-                "&[{}]",
-                entry
-                    .recommended_admin_surfaces
-                    .iter()
-                    .map(|surface| format!("\"{surface}\""))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        };
-        let showcase = if entry.showcase_admin_surfaces.is_empty() {
-            "&[]".to_string()
-        } else {
-            format!(
-                "&[{}]",
-                entry
-                    .showcase_admin_surfaces
-                    .iter()
-                    .map(|surface| format!("\"{surface}\""))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        };
-        out.push_str(&format!(
-            "        \"{slug}\" => Some(super::GeneratedModuleRuntimeMetadata {{ ownership: \"{ownership}\", trust_level: \"{trust_level}\", recommended_admin_surfaces: {recommended}, showcase_admin_surfaces: {showcase}, settings_schema_json: {settings_schema_json:?} }}),\n",
-            slug = entry.slug,
-            ownership = entry.ownership,
-            trust_level = entry.trust_level,
-            recommended = recommended,
-            showcase = showcase,
-            settings_schema_json = entry.settings_schema_json,
-        ));
-    }
-    out.push_str("        _ => None,\n");
-    out.push_str("    }\n");
     out.push_str("}\n\n");
 
     out.push_str("pub fn register_generated_components() {\n");
@@ -477,14 +406,6 @@ fn render_admin_registry_codegen(
     }
 
     out
-}
-
-fn default_module_ownership() -> String {
-    "third_party".to_string()
-}
-
-fn default_module_trust_level() -> String {
-    "unverified".to_string()
 }
 
 fn normalize_nav_group(group: &str) -> String {

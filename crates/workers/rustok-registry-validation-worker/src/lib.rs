@@ -8,17 +8,25 @@ use rustok_build_publication::{RegistryCredentialBroker, RegistryCredentialError
 use sha2::{Digest, Sha256};
 
 use rustok_modules::{
-    ModulePlatformPublicationEvidenceCommand, ModulePlatformPublicationEvidenceProducer,
-    ModulePublicationArtifactOrigin, ModulePublicationArtifactRegistryProvider,
-    ModuleValidationJobResultCommand, ModuleValidationJobResultOutcome,
-    ModuleValidationJobRetryCommand, OciArtifactPublicationTarget, OciArtifactReference,
-    OciDistributionArtifactRegistry, SeaOrmModuleGovernanceService,
-    validate_module_publish_artifact,
+    ModuleGovernanceAutomatedCheck, ModulePlatformPublicationEvidenceCommand,
+    ModulePlatformPublicationEvidenceProducer, ModulePublicationArtifactOrigin,
+    ModulePublicationArtifactRegistryProvider, ModuleValidationJobResultCommand,
+    ModuleValidationJobResultOutcome, ModuleValidationJobRetryCommand,
+    OciArtifactPublicationTarget, OciArtifactReference, OciDistributionArtifactRegistry,
+    SeaOrmModuleGovernanceService, validate_module_publish_artifact,
 };
 use rustok_storage::StorageRuntime;
 
 const ARTIFACT_LOAD_RETRY_DELAYS_SECONDS: &[u64] = &[1, 3, 5];
 const OCI_CREDENTIAL_MINIMUM_TTL: Duration = Duration::from_secs(6 * 60);
+
+fn automated_check(key: &str, status: &str, detail: &str) -> ModuleGovernanceAutomatedCheck {
+    ModuleGovernanceAutomatedCheck {
+        key: key.to_string(),
+        status: status.to_string(),
+        detail: Some(detail.to_string()),
+    }
+}
 
 /// Deployment-owned policy revisions and identities used only when a claimed
 /// platform-built bundle reaches supply-chain verification.
@@ -204,12 +212,24 @@ impl RegistryValidationWorker {
                 ModuleValidationJobResultOutcome::Passed,
                 Vec::new(),
                 if work_item.artifact_origin == ModulePublicationArtifactOrigin::PlatformBuilt {
-                    serde_json::json!([
-                        {"check":"artifact_contract","status":"passed"},
-                        {"check":"platform_publication_evidence","status":"passed"}
-                    ])
+                    vec![
+                        automated_check(
+                            "artifact_contract",
+                            "passed",
+                            "Artifact contract validation passed.",
+                        ),
+                        automated_check(
+                            "platform_publication_evidence",
+                            "passed",
+                            "Platform publication evidence verification passed.",
+                        ),
+                    ]
                 } else {
-                    serde_json::json!([{"check":"artifact_contract","status":"passed"}])
+                    vec![automated_check(
+                        "artifact_contract",
+                        "passed",
+                        "Artifact contract validation passed.",
+                    )]
                 },
             )
         } else {
@@ -218,16 +238,43 @@ impl RegistryValidationWorker {
                 errors.push(error);
             }
             dedupe(&mut errors);
-            let automated_checks = if work_item.artifact_origin
-                == ModulePublicationArtifactOrigin::PlatformBuilt
-            {
-                serde_json::json!([
-                    {"check":"artifact_contract","status":if artifact_contract_passed {"passed"} else {"failed"}},
-                    {"check":"platform_publication_evidence","status":if artifact_contract_passed {"failed"} else {"not_run"}}
-                ])
-            } else {
-                serde_json::json!([{"check":"artifact_contract","status":"failed"}])
-            };
+            let automated_checks =
+                if work_item.artifact_origin == ModulePublicationArtifactOrigin::PlatformBuilt {
+                    vec![
+                        automated_check(
+                            "artifact_contract",
+                            if artifact_contract_passed {
+                                "passed"
+                            } else {
+                                "failed"
+                            },
+                            if artifact_contract_passed {
+                                "Artifact contract validation passed."
+                            } else {
+                                "Artifact contract validation failed."
+                            },
+                        ),
+                        automated_check(
+                            "platform_publication_evidence",
+                            if artifact_contract_passed {
+                                "failed"
+                            } else {
+                                "not_run"
+                            },
+                            if artifact_contract_passed {
+                                "Platform publication evidence verification failed."
+                            } else {
+                                "Not run because artifact contract validation failed."
+                            },
+                        ),
+                    ]
+                } else {
+                    vec![automated_check(
+                        "artifact_contract",
+                        "failed",
+                        "Artifact contract validation failed.",
+                    )]
+                };
             (
                 ModuleValidationJobResultOutcome::Failed,
                 errors,
@@ -286,7 +333,11 @@ impl RegistryValidationWorker {
                                 outcome: ModuleValidationJobResultOutcome::Failed,
                                 warnings: work_item.existing_warnings.clone(),
                                 errors: vec!["Validation job exhausted artifact-load retries before artifact checks.".to_string()],
-                                automated_checks: serde_json::json!([{"check":"artifact_load","status":"failed"}]),
+                                automated_checks: vec![automated_check(
+                                    "artifact_load",
+                                    "failed",
+                                    "Artifact could not be loaded after the retry budget was exhausted.",
+                                )],
                             })
                             .await
                             .map_err(|owner_error| owner_error.to_string())?;

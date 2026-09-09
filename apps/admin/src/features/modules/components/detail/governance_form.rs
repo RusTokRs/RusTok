@@ -1,6 +1,6 @@
 use crate::Locale;
 use crate::entities::module::model::RegistryGovernanceActionLifecycle;
-use crate::features::modules::transport::{RegistryMutationResult, RegistryPublishStatusContract};
+use crate::features::modules::transport::{RegistryMutationResult, RegistryPublishStatus};
 use crate::shared::ui::{Button, Input};
 use leptos::prelude::*;
 
@@ -18,7 +18,7 @@ pub fn GovernanceForm(
     locale: Locale,
     governance_dry_run: Signal<bool>,
     set_governance_dry_run: WriteSignal<bool>,
-    governance_status_contract: Signal<Option<RegistryPublishStatusContract>>,
+    governance_status_contract: Signal<Option<RegistryPublishStatus>>,
     governance_status_contract_loading: Signal<bool>,
     governance_status_contract_error: Signal<Option<String>>,
     has_request_status_contract: bool,

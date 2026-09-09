@@ -23,6 +23,11 @@ Current entry points:
 - `FbaProviderDescriptor`
 - `FbaConsumerDependency`
 
+`contracts/provider-registry-v1.schema.json` is the canonical structural
+baseline for compatible provider registry artifacts. The shared fast validator
+uses this schema for metadata shape, while module verifiers retain owner-specific
+port, persistence, consumer, and runtime semantics.
+
 Use this crate for provider/consumer metadata and topology descriptors. Port request,
 response and error semantics still use `rustok-api::ports` primitives; transport
 implementations stay in owner modules or adapter crates.

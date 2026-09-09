@@ -31,15 +31,59 @@ Module-control-plane GraphQL adapters now propagate transport/owner failures
 instead of constructing successful-looking registry, installation, tenant, or
 marketplace responses from compile-time navigation metadata. This removes a
 second state model while preserving the native and GraphQL transport paths.
-Native marketplace and registry lifecycle reads consume host-provided owner
-ports. The former direct registry SQL, workspace/Cargo scanning, catalog
-synthesis, canonical hashing, dependency solving, and build planning have been
-deleted from the admin host.
+Native marketplace and registry lifecycle reads consume the host-provided
+`SharedModuleMarketplaceCatalog`, whose public list and detail view is
+`rustok_api::MarketplaceModule`. The server converts its owner-private
+`ModuleMarketplaceEntry` once, reduces registry-principal JSON to display-label
+scalars, and gives GraphQL and native the same canonical facts. Admin aliases
+the shared DTO family; it does not parse principal JSON, define fallback
+lifecycle types, or supply transport-specific defaults. The former direct
+registry SQL, workspace/Cargo scanning, catalog synthesis, canonical hashing,
+dependency solving, and build planning have been deleted from the admin host.
+Registry publish-status and generic governance mutation responses likewise use
+the strict shared `rustok_api::RegistryPublishStatus` and
+`RegistryMutationResult` types. The native adapter consumes the complete
+owner-issued validation-stage contract directly, without a local status model,
+defaulted execution-policy fields, or a response-schema fallback.
+Lifecycle events also carry the canonical typed
+`RegistryAutomatedCheckLifecycle` collection. The GraphQL selection includes
+`automatedChecks`, and the detail panel displays the newest owner-issued check
+set with its optional detail rather than parsing raw event JSON or creating a
+local empty result.
 The module operator surface also consumes per-registry freshness through the
 same owner catalog facade. Both native and GraphQL paths require
 `modules.manage`; the UI renders logical registry identity, status, last
 success, and consecutive failures without learning endpoint or remote error
 details.
+
+Effective module availability is an owner-issued
+`rustok_api::ModuleEffectivePolicyView`, not a host calculation over tenant
+rows. The native `module_effective_policy_native` function receives the
+host-composed, active-composition reader and GraphQL exposes the matching
+`moduleEffectivePolicy` query. `EnabledModulesProvider` derives its enabled
+slugs from that view, and the module registry refreshes its owner-issued state
+after lifecycle commands rather than optimistically mutating a local enabled
+set. Core identity does not bypass a channel, maintenance, or other unavailable
+owner decision.
+
+Installed static-module reads use `rustok_api::StaticInstalledModuleView`. The
+server injects `SharedStaticInstalledModuleReader` into the host runtime;
+GraphQL maps the same projection and the Admin entity aliases it. Native Admin
+does not decode the active manifest or expose source-control and filesystem
+locators.
+
+Static tenant-lifecycle views use the host-composed
+`SharedStaticModuleLifecycleReader`. Native Admin receives the same
+active-composition-aware owner projections as GraphQL and never deserializes
+manifest defaults to rebuild lifecycle state.
+
+The full static module registry uses
+`rustok_api::StaticModuleRegistryView` through
+`SharedStaticModuleRegistryReader`. The server resolves one active composition
+and applies catalog metadata, effective policy, lifecycle revisions, and the
+host-provided locale before either GraphQL or native Admin consumes the view.
+The Admin entity aliases that DTO; it does not generate manifest metadata,
+rebuild lifecycle/policy state, omit UI flags, or invent defaults.
 
 Static composition install, uninstall, and upgrade use GraphQL only. The host
 reads the owner-issued composition revision, passes it as a required optimistic
@@ -69,7 +113,8 @@ display text or lifecycle correlation.
 - Keep locale propagation host-owned; module UI receives effective locale from
   host context and must not add local cookie/header/query fallback chains.
 - Keep module-control-plane native reads behind owner services and the
-  host-composed marketplace catalog handle.
+  host-composed marketplace catalog, static-installed-module, and
+  static-module-registry handles.
 - Continue the owner-by-owner
   [Richtext cutover](../../../docs/modules/rich-text-implementation-plan.md).
   Blog now mounts the shared sandboxed editor during hydration and selects
@@ -99,6 +144,7 @@ For host FFA changes, run:
 cargo fmt --manifest-path apps\admin\Cargo.toml --check
 cargo check --manifest-path apps\admin\Cargo.toml --lib -j 1
 node scripts\verify\verify-frontend-host-ffa-contract.mjs
+node scripts\verify\verify-module-control-plane-write-path.mjs
 node scripts\verify\verify-workflow-admin-boundary.mjs
 git diff --check
 ```

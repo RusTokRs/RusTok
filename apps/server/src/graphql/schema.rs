@@ -6,6 +6,7 @@ use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
 use rustok_core::EventBus;
+use rustok_modules::SharedStaticModuleRegistryReader;
 use rustok_outbox::TransactionalEventBus;
 #[cfg(feature = "mod-profiles")]
 use rustok_profiles::ProfileSummaryLoader;
@@ -132,6 +133,7 @@ pub struct GraphqlSchemaDependencies {
     pub event_bus: EventBus,
     pub transactional_event_bus: TransactionalEventBus,
     pub graphql_runtime_inputs: rustok_api::graphql::GraphqlRuntimeInputs,
+    pub static_module_registry_reader: SharedStaticModuleRegistryReader,
     pub build_event_hub: Arc<BuildEventHub>,
     pub field_definition_cache: FieldDefinitionCache,
     pub runtime_extensions: Arc<ModuleRuntimeExtensions>,
@@ -163,6 +165,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         event_bus,
         transactional_event_bus,
         graphql_runtime_inputs,
+        static_module_registry_reader,
         build_event_hub,
         field_definition_cache,
         runtime_extensions,
@@ -248,6 +251,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         .data(db)
         .data(event_bus)
         .data(transactional_event_bus)
+        .data(static_module_registry_reader)
         .data(build_event_hub)
         .data(flex_runtime)
         .data(marketplace_catalog)

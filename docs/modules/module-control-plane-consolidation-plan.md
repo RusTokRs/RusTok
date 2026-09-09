@@ -1159,8 +1159,13 @@ adapter and must not be used as artifact identity or durable policy state.
   running after 15 minutes as failed with the stable
   `validation_worker_lease_expired` reason, then creates the next durable
   attempt and audit facts atomically. The worker supplies only immutable
-  bundle-check evidence; the owner atomically transitions the request and job,
-  creates follow-up stages, and writes all related audit facts.
+  bundle-check evidence as typed `ModuleGovernanceAutomatedCheck` values; the
+  owner rejects blank or duplicate keys, normalizes the accepted values,
+  atomically transitions the request and job, creates follow-up stages, and
+  writes all related audit facts. Lifecycle projection exposes only the typed
+  browser-safe check set from the newest event, with optional owner detail;
+  transports and Admin do not parse raw event JSON or manufacture an empty
+  evidence result.
   A successful job claim now carries an immutable delivery work item with the
   exact artifact storage key, SHA-256, size, content type, and publish-metadata
   snapshot. The independent `rustok-registry-validation-worker` polls and
@@ -3116,8 +3121,10 @@ multi-node reconciliation path consumed by those transports.
   the static host-manifest adapter, then controls the
   composition-CAS/build/receipt transaction. Resolvers no longer load, mutate,
   validate, serialize, or hash a manifest directly. The
-  `installedModules` query also consumes the adapter's owner-backed installed
-  projection rather than inspecting the manifest in GraphQL.
+  `installedModules` query also consumes the adapter's owner-backed
+  `StaticInstalledModuleView` projection rather than inspecting the manifest
+  in GraphQL. That browser-safe contract contains only module identity and
+  dependency facts; source-control and filesystem locators remain private.
 - [x] Move remote validation lease observability behind the registry owner. The
   runtime guardrail receives the active and expired running-remote-lease counts
   from `SeaOrmModuleGovernanceService`; it no longer queries
@@ -3136,9 +3143,14 @@ multi-node reconciliation path consumed by those transports.
   Module build-worker and registry-release transports remain open under the
   aggregate item above.
 - [x] Move marketplace list/detail reads to the host-composed
-  `SharedModuleMarketplaceCatalog`. GraphQL and native admin consume the same
-  owner DTO, and detail lifecycle metadata is mapped directly from the owner
-  snapshot without transport-local stage or moderation fallbacks. The durable
+  `SharedModuleMarketplaceCatalog`. Its public list and detail contract is
+  `rustok_api::MarketplaceModule`: the server adapter maps the owner-private
+  `ModuleMarketplaceEntry` exactly once, reduces registry-principal JSON to
+  browser-safe display-label scalars, and gives GraphQL and native Admin the same
+  canonical facts. Admin aliases that contract instead of defining local
+  marketplace, governance, or setting DTOs; GraphQL adapts it to its schema.
+  Detail lifecycle metadata is therefore mapped directly from the owner snapshot
+  without transport-local stage or moderation fallbacks. The durable
   registry-release projection that enriches static catalog entries with
   localized active metadata, canonical artifact references, yanked versions,
   and publisher identity is now also an owner query on
@@ -3155,6 +3167,17 @@ multi-node reconciliation path consumed by those transports.
   follow-up read path. After all required stages pass, an approved request
   resolves to final publication rather than repeating a completed stage
   operation.
+  Browser-visible registry status and generic governance mutation results are
+  the strict `rustok_api::RegistryPublishStatus` and `RegistryMutationResult`
+  contracts. The server carries
+  `ModuleGovernancePublishRequestStatusSnapshot`, its nested
+  `ModuleGovernanceRequestSnapshot`, and
+  `ModuleGovernancePublishArtifactDownloadSnapshot` directly, with no shadow
+  publish-request/status/download DTOs or owner-to-server field-copy adapters.
+  It retains the owner-issued gate/action data and every validation-stage
+  execution-policy field through its endpoint adapter, rather than rebuilding
+  server-local snapshots, defaulting omitted fields, or adding a
+  response-version fallback for native Admin.
   External-prebuilt and platform-build staging similarly dispatch directly to
   owner commands and reuse the same exact status snapshot for dry-run and
   committed response identity/status, rather than a server-local
@@ -3308,8 +3331,60 @@ multi-node reconciliation path consumed by those transports.
   content/surface/confirmation contract plus the redacted
   `ArtifactBindingExecutionAuditEntry` contract: `rustok-modules` creates
   those owner projections and HTTP/native/GraphQL clients consume them without
-  descriptor-local duplicates. Other control-plane DTO families remain under
-  this aggregate item.
+  descriptor-local duplicates. The transition-control slice now similarly uses
+  `rustok-api::{ModuleTransitionCheckpointView, ModuleTransitionStateView,
+  ModuleRetentionHoldView}`. The owner creates the view; GraphQL adapts that
+  view to its public schema, while Leptos selects native functions or the same
+  GraphQL operation without local transition DTOs. Static lifecycle recovery
+  now similarly uses `rustok-api::ModuleOperationRecoveryPlanView`: the owner
+  projects the redacted action/retry facts, GraphQL adapts them, and the Admin
+  entity re-exports that canonical type instead of defining a duplicate.
+  Explicit static lifecycle rows now use
+  `rustok-api::StaticTenantModuleView`; `ModuleLifecycleDbWriter` joins the
+  override with its owner aggregate revision before GraphQL or native Leptos
+  receives it, and Admin aliases the shared read/mutation shape. The server
+  composes `SharedStaticModuleLifecycleReader` from the same active-manifest
+  normalization and co-requisites used by GraphQL, so native tenant views and
+  registry revisions use owner projections, fail closed on a missing revision,
+  and never deserialize manifest defaults. Other control-plane DTO families
+  remain under this aggregate item. The static
+  composition snapshot now uses `rustok-api::ModuleCompositionSnapshotView`:
+  its owner exposes only the immutable optimistic-concurrency revision, and
+  GraphQL/Admin adapt or re-export that contract without exposing the manifest.
+  Installed static modules likewise use
+  `rustok-api::StaticInstalledModuleView`: the server maps the private active
+  manifest once, composes `SharedStaticInstalledModuleReader` for native Admin,
+   and GraphQL maps the same view. Admin aliases the contract rather than
+   defining an installed-module DTO, and neither public path exposes manifest
+   `git`, `rev`, or `path` locators.
+   The full static module registry now similarly uses
+   `rustok_api::StaticModuleRegistryView` behind
+   `SharedStaticModuleRegistryReader`. Its server adapter resolves one active
+   composition before applying catalog metadata, owner-issued effective policy,
+   checked lifecycle revisions, and preferred/fallback locale. GraphQL maps
+   that view and native Admin returns it directly; the Admin entity aliases the
+   DTO and no longer generates manifest metadata, rebuilds lifecycle/policy
+   state, or supplies synthetic UI defaults.
+   Effective availability now likewise uses
+  `rustok-api::ModuleEffectivePolicyView`: its owner-issued per-module result,
+  policy revision, and stable redacted denial taxonomy replace host-side
+  reconstruction from tenant rows. The full policy evidence remains private.
+  The server composes `SharedModuleEffectivePolicyReader` with the active
+  manifest's normalized co-requisites; GraphQL `moduleEffectivePolicy` and the
+  native Admin function consume the same reader, and `EnabledModulesProvider`
+  plus the module registry refresh the owner decision after lifecycle commands
+  rather than changing a local enabled set. Core identity is not a transport
+  exception: a channel, maintenance, or other owner denial remains unavailable.
+- [x] Canonicalize browser marketplace list and detail DTOs in
+  `rustok-api`. `MarketplaceModule` is the sole internal browser contract for
+  the owner catalog, GraphQL adapter, and native Admin path. The owner-private
+  catalog entry and raw registry-principal envelopes end at the server adapter;
+  only display labels cross the browser boundary.
+- [x] Canonicalize registry publish-status and generic governance mutation
+  browser DTOs in `rustok-api`. The server transfers the owner-issued complete
+  validation-stage snapshot through its REST adapter, and native Admin aliases
+  the strict shared types rather than defining local status/mutation models or
+  response fallbacks.
 - [x] Reuse canonical framework-neutral build/release snapshots across
   `SharedBuildControl`, GraphQL, and native admin. `rustok-api` owns the typed
   status/stage/profile contract, `rustok-build` alone maps SeaORM persistence,
@@ -3334,7 +3409,11 @@ multi-node reconciliation path consumed by those transports.
   platform-scope or arbitrary rollback-target selector. The aggregate remains
   open for the other control-plane operations.
 - [ ] Add GraphQL/native parity fixtures for success, validation, conflict,
-  policy denial, recovery, and build failure.
+  policy denial, recovery, and build failure. Transition control has a scoped
+  parity fixture: the owner serializes its canonical checkpoint/hold views,
+  the GraphQL adapter consumes those exact views, and native Admin functions
+  return the same types while delegating to the same tenant-scoped owner API.
+  The full cross-family scenario matrix remains open.
 
 ### 7.3 Dynamic Marketplace UI Boundary
 
@@ -3440,6 +3519,10 @@ uses an explicit UI trust boundary.
   admin navigation registry after GraphQL failures. The transport now preserves
   owner errors; native owner cutover remains open under the surrounding items.
 - [x] Remove admin-owned module/Cargo manifest scanning and filesystem loading.
+- [x] Remove Admin-generated module-registry metadata. Static registry identity,
+  catalog/UI facts, effective enablement, and lifecycle revision now come only
+  from the server-composed `StaticModuleRegistryView`; the Admin build code
+  generator retains navigation wiring only.
 - [x] Remove admin-owned canonical hashing, dependency solving, build planning,
   and marketplace synthesis. The active-composition DTO is retained only as a
   transport-neutral snapshot shape.

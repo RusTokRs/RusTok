@@ -19,8 +19,13 @@ use crate::middleware;
 use crate::middleware::rate_limit::rate_limit_for_paths;
 use crate::services::app_runtime::AppRuntimeBootstrap;
 use crate::services::commerce_provider_runtime::attach_commerce_provider_registries;
+use crate::services::effective_module_policy::{
+    ServerEffectiveModulePolicyReader, ServerStaticModuleLifecycleReader,
+};
 use crate::services::event_bus::transactional_event_bus_from_context;
+use crate::services::platform_composition::ServerStaticInstalledModuleReader;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
+use crate::services::static_module_registry::static_module_registry_reader_from_context;
 
 pub(crate) mod routes_codegen {
     include!(concat!(env!("OUT_DIR"), "/app_routes_codegen.rs"));
@@ -219,6 +224,20 @@ pub fn compose_application_router(
             )));
     }
 
+    let effective_policy_reader = ServerEffectiveModulePolicyReader::shared(
+        middleware_runtime_ctx.db_clone(),
+        runtime.registry.clone(),
+    );
+    let static_module_lifecycle_reader = ServerStaticModuleLifecycleReader::shared(
+        middleware_runtime_ctx.db_clone(),
+        runtime.registry.clone(),
+    );
+    let static_installed_module_reader =
+        ServerStaticInstalledModuleReader::shared(middleware_runtime_ctx.db_clone());
+    let static_module_registry_reader = static_module_registry_reader_from_context(
+        &middleware_runtime_ctx,
+        runtime.registry.clone(),
+    );
     let server_fn_runtime_ctx = {
         let runtime_ctx = HostRuntimeContext::new(middleware_runtime_ctx.db_clone())
             .with_shared_value(transactional_event_bus_from_context(
@@ -234,6 +253,10 @@ pub fn compose_application_router(
                     middleware_runtime_ctx.clone(),
                 ),
             )))
+            .with_shared_value(effective_policy_reader)
+            .with_shared_value(static_module_lifecycle_reader)
+            .with_shared_value(static_installed_module_reader)
+            .with_shared_value(static_module_registry_reader)
             .with_shared_value(HostSettingsSnapshot::new(settings_snapshot));
         let runtime_ctx = if let Some(registry) =
             middleware_runtime_ctx.shared_get::<rustok_core::ModuleRegistry>()

@@ -276,9 +276,10 @@ pub fn build_shared_runtime_extensions_with_host_providers(
 
     #[cfg(feature = "mod-translation")]
     {
-        let provider = crate::static_settings_translation_target::StaticSettingsTranslationTargetProvider::new(
-            db.clone(),
-        );
+        let provider =
+            crate::static_settings_translation_target::StaticSettingsTranslationTargetProvider::new(
+                db.clone(),
+            );
         rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
             .map_err(|error| {
                 Error::Message(format!(

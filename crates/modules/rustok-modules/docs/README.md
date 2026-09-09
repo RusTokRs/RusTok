@@ -64,6 +64,32 @@ maintenance blocks serving without changing tenant enablement. Lifecycle writes 
 obtain the enabled projection from this same decision object; unknown modules
 and unavailable artifact runtime state are explicitly denied instead of
 appearing as absent implementation details.
+Browser transports receive only `rustok_api::ModuleEffectivePolicyView`: its
+policy revision, per-module effective result, and stable redacted denial
+taxonomy. The host composes one `SharedModuleEffectivePolicyReader` with the
+active manifest's normalized co-requisites, and native Admin and GraphQL
+transports consume that exact projection rather than recomputing availability.
+Core identity is part of the definition catalog, not a transport-side bypass of
+an unavailable owner decision.
+
+Installed static composition reaches browser transports only through
+`rustok_api::StaticInstalledModuleView`. The server adapts its private active
+manifest once, supplies `SharedStaticInstalledModuleReader` to native Admin,
+and GraphQL maps the same view. Source-control and filesystem locators remain
+host-private manifest facts.
+
+Static tenant-lifecycle browser reads similarly pass through the
+host-composed `SharedStaticModuleLifecycleReader`. Its server adapter uses the
+same active-manifest normalization and co-requisites as GraphQL, projects
+browser-safe lifecycle revisions, and fails closed rather than allowing native
+Admin to deserialize defaults or invent a missing revision.
+
+The full browser-safe static module registry is a separate
+`rustok_api::StaticModuleRegistryView` read contract. The host composes one
+`SharedStaticModuleRegistryReader`, resolves one active manifest, and applies
+catalog metadata, effective policy, lifecycle revisions, and locale projection
+before GraphQL or native Admin receives it. Transports cannot rebuild the view
+from build-time manifest metadata, direct lifecycle rows, or UI defaults.
 
 Node readiness is a separate host-owned snapshot. It carries Core readiness,
 artifact graph, CAS, executor ABI, and node/policy revisions. The node must
@@ -546,13 +572,18 @@ instructions. Validation-stage and delivery-retry audit records use stable
 owner-generated diagnostics rather than caller or runner output.
 
 `ModuleMarketplaceCatalog` is the framework-neutral read port for the current
-catalog. The host composes local and configured remote providers behind
-`SharedModuleMarketplaceCatalog`; native and GraphQL adapters consume that same
-handle and may not scan the workspace or synthesize catalog state. Registry
-release projection also belongs to `SeaOrmModuleGovernanceService`: it enriches
-host-supplied static facts only with durable localized active metadata, canonical
-artifact references, yanked versions, and publisher identity. GraphQL and the
-public registry adapter map its owner DTO without reading registry tables.
+catalog. Its public list and detail operations return
+`rustok_api::MarketplaceModule`; `ModuleMarketplaceEntry` remains an
+owner-private intermediate projection. The host composes local and configured
+remote providers behind `SharedModuleMarketplaceCatalog`. Its server adapter
+maps each owner entry once, reduces registry-principal JSON to browser-safe
+display labels, and gives GraphQL and native Admin the same canonical view.
+Neither transport may scan the workspace, synthesize catalog state, or rebuild
+the projection. Registry-release projection also belongs to
+`SeaOrmModuleGovernanceService`: it enriches host-supplied static facts only with
+durable localized active metadata, canonical artifact references, yanked
+versions, and publisher identity. GraphQL and the public registry adapter consume
+those owner projections without reading registry tables.
 The same owner exposes one request-scoped publish-status snapshot for public
 status and approval-preview paths. The status projection loads only the
 addressed immutable request, includes its identity,
@@ -562,6 +593,19 @@ actions from durable facts. It never substitutes a newer request for the same
 slug. The server supplies only authenticated principal/permission facts and
 maps a semantic next action to its own route and response text; it does not
 read a publish-request persistence model or recreate lifecycle policy.
+The browser-visible status and generic governance mutation envelopes are the
+strict shared `rustok_api::RegistryPublishStatus` and `RegistryMutationResult`
+contracts. The server carries the owner-issued gate, action, and complete
+validation-stage snapshots through to that boundary, including execution mode,
+runnable/manual-confirmation policy, terminal reason codes, and suggested
+outcomes; no server or Admin-local snapshot may drop those fields or supply
+response-version defaults.
+Automated worker evidence uses the owner-owned
+`ModuleGovernanceAutomatedCheck` contract. The owner rejects blank or duplicate
+check identities, normalizes the accepted evidence before persistence, and
+projects it from the newest lifecycle event as browser-safe
+`RegistryAutomatedCheckLifecycle` values. Check detail is intentionally
+optional; no browser consumer reads raw governance-event JSON.
 The external-prebuilt and platform-build staging responses reuse that same
 snapshot for request identity and status in both dry-run and committed paths;
 they do not query a server SeaORM publish-request model before or after the

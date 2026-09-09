@@ -32,15 +32,14 @@ use crate::modules::{CatalogManifestModule, ManifestManager};
 use crate::services::marketplace_catalog::{
     RegistryAuthorSignatureEvidenceRequest, RegistryCatalogModule, RegistryCatalogResponse,
     RegistryExternalPrebuiltStageRequest, RegistryExternalPrebuiltStageResponse,
-    RegistryGovernanceAction, RegistryMutationResponse, RegistryOwnerTransferRequest,
-    RegistryPlatformBuildStageRequest, RegistryPlatformBuildStageResponse,
-    RegistryPublishDecisionRequest, RegistryPublishRequest, RegistryPublishStatusFollowUpGate,
-    RegistryPublishStatusResponse, RegistryPublishStatusValidationStage,
-    RegistryPublishValidationRequest, RegistryRunnerClaimPayload, RegistryRunnerClaimRequest,
-    RegistryRunnerClaimResponse, RegistryRunnerCompletionRequest, RegistryRunnerHeartbeatRequest,
-    RegistryRunnerMutationResponse, RegistryValidationStageReportRequest, RegistryYankRequest,
-    registry_catalog_from_modules, registry_catalog_module_path, registry_catalog_path,
-    registry_owner_transfer_path, registry_publish_approve_path, registry_publish_artifact_path,
+    RegistryMutationResponse, RegistryOwnerTransferRequest, RegistryPlatformBuildStageRequest,
+    RegistryPlatformBuildStageResponse, RegistryPublishDecisionRequest, RegistryPublishRequest,
+    RegistryPublishStatusResponse, RegistryPublishValidationRequest, RegistryRunnerClaimPayload,
+    RegistryRunnerClaimRequest, RegistryRunnerClaimResponse, RegistryRunnerCompletionRequest,
+    RegistryRunnerHeartbeatRequest, RegistryRunnerMutationResponse,
+    RegistryValidationStageReportRequest, RegistryYankRequest, registry_catalog_from_modules,
+    registry_catalog_module_path, registry_catalog_path, registry_owner_transfer_path,
+    registry_publish_approve_path, registry_publish_artifact_path,
     registry_publish_author_signature_path, registry_publish_external_stage_path,
     registry_publish_hold_path, registry_publish_path, registry_publish_platform_build_stage_path,
     registry_publish_reject_path, registry_publish_request_changes_path,
@@ -49,6 +48,9 @@ use crate::services::marketplace_catalog::{
     registry_runner_fail_path, registry_runner_heartbeat_path, registry_yank_path,
     validate_registry_mutation_schema_version,
 };
+use crate::services::marketplace_catalog_adapter::{
+    map_registry_follow_up_gate, map_registry_governance_action, map_registry_validation_stage,
+};
 use crate::services::platform_composition::PlatformCompositionService;
 use crate::services::registry_governance::{
     REGISTRY_APPROVE_OVERRIDE_REASON_CODES, REGISTRY_HOLD_REASON_CODES,
@@ -56,8 +58,7 @@ use crate::services::registry_governance::{
     REGISTRY_REQUEST_CHANGES_REASON_CODES, REGISTRY_RESUME_REASON_CODES,
     REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES, RegistryArtifactUpload,
     RegistryAuthorSignatureEvidenceInput, RegistryExternalPrebuiltStageInput,
-    RegistryFollowUpGateSnapshot, RegistryGovernanceActionSnapshot, RegistryGovernanceError,
-    RegistryGovernanceService, RegistryPlatformBuildStageInput, RegistryValidationStageSnapshot,
+    RegistryGovernanceError, RegistryGovernanceService, RegistryPlatformBuildStageInput,
 };
 use crate::services::registry_principal::RegistryAuthority;
 use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
@@ -70,7 +71,7 @@ use rustok_api::context::AuthContextExtension;
 use rustok_api::request::RequestContext;
 use rustok_modules::{
     ModuleCommandContext, ModuleExternalSourceEvidence, ModuleGovernanceError,
-    ModuleGovernanceErrorCategory,
+    ModuleGovernanceErrorCategory, ModuleGovernanceValidationStageSnapshot,
 };
 use rustok_web::HttpError;
 
@@ -249,8 +250,6 @@ async fn publish(
         return Ok((
             StatusCode::ACCEPTED,
             Json(RegistryMutationResponse {
-                schema_version:
-                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
                 action: "publish".to_string(),
                 dry_run: false,
                 accepted: true,
@@ -271,7 +270,6 @@ async fn publish(
     Ok((
         StatusCode::OK,
         Json(RegistryMutationResponse {
-            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "publish".to_string(),
             dry_run: true,
             accepted: true,
@@ -329,8 +327,7 @@ async fn publish_status(
         warnings.push(warning);
     }
 
-    Ok(Json(RegistryPublishStatusResponse {
-        schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+    let status = rustok_api::RegistryPublishStatus {
         request_id: snapshot.request.id,
         revision: snapshot.request.revision,
         slug: snapshot.request.slug,
@@ -343,22 +340,24 @@ async fn publish_status(
         follow_up_gates: snapshot
             .follow_up_gates
             .into_iter()
-            .map(publish_status_follow_up_gate)
+            .map(map_registry_follow_up_gate)
             .collect(),
         validation_stages: snapshot
             .validation_stages
-            .iter()
-            .map(publish_status_validation_stage)
+            .into_iter()
+            .map(map_registry_validation_stage)
             .collect(),
         approval_override_required: snapshot.approval_override_required,
         approval_override_reason_codes: snapshot.approval_override_reason_codes,
         governance_actions: snapshot
             .governance_actions
             .into_iter()
-            .map(publish_status_governance_action)
+            .map(map_registry_governance_action)
             .collect(),
         next_step,
-    }))
+    };
+
+    Ok(Json(RegistryPublishStatusResponse::from(status)))
 }
 
 /// PUT /v2/catalog/publish/{request_id}/artifact - Upload a registry publish artifact
@@ -439,7 +438,6 @@ async fn upload_publish_artifact(
     Ok((
         StatusCode::ACCEPTED,
         Json(RegistryMutationResponse {
-            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "publish".to_string(),
             dry_run: false,
             accepted: snapshot.accepted,
@@ -728,10 +726,8 @@ async fn record_author_signature_evidence(
             .await
             .map_err(map_registry_governance_error)?;
         return Ok((
-            StatusCode::OK,
-            Json(RegistryMutationResponse {
-                schema_version:
-                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
                 action: "author_signature".to_string(),
                 dry_run: true,
                 accepted: true,
@@ -765,7 +761,6 @@ async fn record_author_signature_evidence(
     Ok((
         StatusCode::OK,
         Json(RegistryMutationResponse {
-            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "author_signature".to_string(),
             dry_run: false,
             accepted: true,
@@ -912,10 +907,8 @@ async fn validate_publish_request_step(
             .map_err(map_registry_governance_error)?
             .ok_or(Error::NotFound)?;
         return Ok((
-            StatusCode::OK,
-            Json(RegistryMutationResponse {
-                schema_version:
-                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
                 action: "validate".to_string(),
                 dry_run: true,
                 accepted: true,
@@ -951,7 +944,6 @@ async fn validate_publish_request_step(
     Ok((
         status_code,
         Json(RegistryMutationResponse {
-            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "validate".to_string(),
             dry_run: false,
             accepted: validated.accepted,
@@ -1027,10 +1019,8 @@ async fn report_validation_stage(
             ));
         }
         return Ok((
-            StatusCode::OK,
-            Json(RegistryMutationResponse {
-                schema_version:
-                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
                 action: "validation_stage".to_string(),
                 dry_run: true,
                 accepted: true,
@@ -1072,7 +1062,6 @@ async fn report_validation_stage(
     Ok((
         StatusCode::OK,
         Json(RegistryMutationResponse {
-            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "validation_stage".to_string(),
             dry_run: false,
             accepted: true,
@@ -1156,8 +1145,6 @@ async fn approve_publish_request(
         return Ok((
             StatusCode::OK,
             Json(RegistryMutationResponse {
-                schema_version:
-                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
                 action: "approve".to_string(),
                 dry_run: true,
                 accepted: true,
@@ -1192,7 +1179,6 @@ async fn approve_publish_request(
     Ok((
         StatusCode::OK,
         Json(RegistryMutationResponse {
-            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "approve".to_string(),
             dry_run: false,
             accepted: approved.accepted,
@@ -1252,10 +1238,8 @@ async fn reject_publish_request(
             .map_err(map_registry_governance_error)?
             .ok_or(Error::NotFound)?;
         return Ok((
-            StatusCode::OK,
-            Json(RegistryMutationResponse {
-                schema_version:
-                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
                 action: "reject".to_string(),
                 dry_run: true,
                 accepted: true,
@@ -1321,7 +1305,6 @@ async fn reject_publish_request(
     Ok((
         StatusCode::OK,
         Json(RegistryMutationResponse {
-            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "reject".to_string(),
             dry_run: false,
             accepted: rejected.accepted,
@@ -1381,10 +1364,8 @@ async fn request_changes_publish_request(
             .map_err(map_registry_governance_error)?
             .ok_or(Error::NotFound)?;
         return Ok((
-            StatusCode::OK,
-            Json(RegistryMutationResponse {
-                schema_version:
-                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
                 action: "request_changes".to_string(),
                 dry_run: true,
                 accepted: true,
@@ -1451,7 +1432,6 @@ async fn request_changes_publish_request(
     Ok((
         StatusCode::OK,
         Json(RegistryMutationResponse {
-            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "request_changes".to_string(),
             dry_run: false,
             accepted: updated.accepted,
@@ -1511,10 +1491,8 @@ async fn hold_publish_request(
             .map_err(map_registry_governance_error)?
             .ok_or(Error::NotFound)?;
         return Ok((
-            StatusCode::OK,
-            Json(RegistryMutationResponse {
-                schema_version:
-                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
                 action: "hold".to_string(),
                 dry_run: true,
                 accepted: true,
@@ -1579,7 +1557,6 @@ async fn hold_publish_request(
     Ok((
         StatusCode::OK,
         Json(RegistryMutationResponse {
-            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "hold".to_string(),
             dry_run: false,
             accepted: updated.accepted,
@@ -1639,10 +1616,8 @@ async fn resume_publish_request(
             .map_err(map_registry_governance_error)?
             .ok_or(Error::NotFound)?;
         return Ok((
-            StatusCode::OK,
-            Json(RegistryMutationResponse {
-                schema_version:
-                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+        StatusCode::OK,
+        Json(RegistryMutationResponse {
                 action: "resume".to_string(),
                 dry_run: true,
                 accepted: true,
@@ -1709,7 +1684,6 @@ async fn resume_publish_request(
     Ok((
         StatusCode::OK,
         Json(RegistryMutationResponse {
-            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "resume".to_string(),
             dry_run: false,
             accepted: updated.accepted,
@@ -2023,8 +1997,6 @@ async fn yank(
         return Ok((
             StatusCode::OK,
             Json(RegistryMutationResponse {
-                schema_version:
-                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
                 action: "yank".to_string(),
                 dry_run: false,
                 accepted: true,
@@ -2042,7 +2014,6 @@ async fn yank(
     Ok((
         StatusCode::OK,
         Json(RegistryMutationResponse {
-            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "yank".to_string(),
             dry_run: true,
             accepted: true,
@@ -2140,8 +2111,6 @@ async fn transfer_owner(
         return Ok((
             StatusCode::OK,
             Json(RegistryMutationResponse {
-                schema_version:
-                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
                 action: "owner_transfer".to_string(),
                 dry_run: false,
                 accepted: true,
@@ -2159,7 +2128,6 @@ async fn transfer_owner(
     Ok((
         StatusCode::OK,
         Json(RegistryMutationResponse {
-            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "owner_transfer".to_string(),
             dry_run: true,
             accepted: true,
@@ -2931,7 +2899,7 @@ fn publish_status_next_step(
 
 fn approval_override_next_step(
     request_id: &str,
-    validation_stages: &[RegistryValidationStageSnapshot],
+    validation_stages: &[ModuleGovernanceValidationStageSnapshot],
 ) -> String {
     format!(
         "Mark the remaining follow-up stages as passed via POST {} or approve with an explicit override reason plus reason_code ({}). Pending stages: {}.",
@@ -2942,50 +2910,13 @@ fn approval_override_next_step(
 }
 
 fn approval_override_stage_labels(
-    validation_stages: &[RegistryValidationStageSnapshot],
+    validation_stages: &[ModuleGovernanceValidationStageSnapshot],
 ) -> Vec<String> {
     validation_stages
         .iter()
         .filter(|stage| !stage.status.eq_ignore_ascii_case("passed"))
         .map(|stage| format!("{} ({})", stage.key, stage.status.to_ascii_lowercase()))
         .collect()
-}
-
-fn publish_status_follow_up_gate(
-    gate: RegistryFollowUpGateSnapshot,
-) -> RegistryPublishStatusFollowUpGate {
-    RegistryPublishStatusFollowUpGate {
-        key: gate.key,
-        status: gate.status,
-        detail: gate.detail,
-        updated_at: gate.updated_at,
-    }
-}
-
-fn publish_status_validation_stage(
-    stage: &RegistryValidationStageSnapshot,
-) -> RegistryPublishStatusValidationStage {
-    RegistryPublishStatusValidationStage {
-        key: stage.key.clone(),
-        status: stage.status.clone(),
-        detail: stage.detail.clone(),
-        attempt_number: stage.attempt_number,
-        updated_at: stage.updated_at.clone(),
-        started_at: stage.started_at.clone(),
-        finished_at: stage.finished_at.clone(),
-    }
-}
-
-fn publish_status_governance_action(
-    action: RegistryGovernanceActionSnapshot,
-) -> RegistryGovernanceAction {
-    RegistryGovernanceAction {
-        key: action.key,
-        reason_required: action.reason_required,
-        reason_code_required: action.reason_code_required,
-        reason_codes: action.reason_codes,
-        destructive: action.destructive,
-    }
 }
 
 fn map_registry_governance_error(error: anyhow::Error) -> Error {

@@ -1,5 +1,5 @@
 use super::module_card::ModuleCard;
-use super::module_detail_panel::ModuleDetailPanel;
+use super::module_detail_panel::{ModuleDetailPanel, ModuleDetailPanelInput};
 use super::module_update_card::ModuleUpdateCard;
 use super::transition_control_card::TransitionControlCard;
 use crate::app::providers::enabled_modules::use_enabled_modules_context;
@@ -7,7 +7,7 @@ use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleCompositionSnapshot, ModuleInfo,
     ModuleOperationRecoveryPlan, ModuleSettingField, TenantModule,
 };
-use crate::features::modules::transport::{self, ModuleTransitionCheckpoint, RetentionHold};
+use crate::features::modules::transport;
 #[cfg(target_arch = "wasm32")]
 use crate::shared::api as shared_api;
 use crate::shared::ui::ui_success_message as UiSuccessMessage;
@@ -19,6 +19,7 @@ use leptos_hook_form::FormState;
 use leptos_router::hooks::{use_navigate, use_query_map};
 use leptos_use::use_interval_fn;
 use rustok_api::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
+use rustok_api::{ModuleRetentionHoldView, ModuleTransitionCheckpointView};
 use std::collections::{HashMap, HashSet};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::{JsCast, closure::Closure};
@@ -462,8 +463,8 @@ pub fn ModulesList(
     let is_showcase_surface = admin_surface == "next-admin";
 
     let (active_transition, set_active_transition) =
-        signal::<Option<ModuleTransitionCheckpoint>>(None);
-    let (retention_holds, set_retention_holds) = signal::<Vec<RetentionHold>>(vec![]);
+        signal::<Option<ModuleTransitionCheckpointView>>(None);
+    let (retention_holds, set_retention_holds) = signal::<Vec<ModuleRetentionHoldView>>(vec![]);
 
     let refresh_transition_state = move || {
         let token_val = token.get();
@@ -578,11 +579,19 @@ pub fn ModulesList(
             }
         });
     };
+    let enabled_modules_for_orchestration = enabled_modules;
     let refresh_orchestration_state =
         move |token_value: Option<String>,
               tenant_value: Option<String>,
               filters: CatalogFilters| {
+            let enabled_modules_for_refresh = enabled_modules_for_orchestration;
             spawn_local(async move {
+                enabled_modules_for_refresh.refresh();
+                if let Ok(modules) =
+                    transport::fetch_modules(token_value.clone(), tenant_value.clone()).await
+                {
+                    set_module_list.set(modules);
+                }
                 if let Ok(snapshot) = transport::fetch_module_composition_snapshot(
                     token_value.clone(),
                     tenant_value.clone(),
@@ -928,7 +937,6 @@ pub fn ModulesList(
         });
     };
 
-    let enabled_modules_for_toggle = enabled_modules.clone();
     let module_list_for_toggle = module_list;
     let on_toggle = Callback::new(move |(slug, enabled): (String, bool)| {
         let Some(expected_revision) = module_list_for_toggle
@@ -949,7 +957,6 @@ pub fn ModulesList(
         set_success_message.set(None);
         let token_val = token.get();
         let tenant_val = tenant.get();
-        let enabled_modules_for_toggle_async = enabled_modules_for_toggle.clone();
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
             match transport::toggle_module(
@@ -957,21 +964,12 @@ pub fn ModulesList(
                 enabled,
                 expected_revision,
                 idempotency_key,
-                token_val,
-                tenant_val,
+                token_val.clone(),
+                tenant_val.clone(),
             )
             .await
             {
                 Ok(result) => {
-                    set_module_list.update(|modules| {
-                        if let Some(module) = modules
-                            .iter_mut()
-                            .find(|module| module.module_slug == slug_clone)
-                        {
-                            module.enabled = result.enabled;
-                            module.lifecycle_revision = result.revision;
-                        }
-                    });
                     set_tenant_module_list.update(|modules: &mut Vec<TenantModule>| {
                         let module = TenantModule {
                             module_slug: result.module_slug.clone(),
@@ -989,8 +987,11 @@ pub fn ModulesList(
                             modules.sort_by(|left, right| left.module_slug.cmp(&right.module_slug));
                         }
                     });
-                    enabled_modules_for_toggle_async
-                        .set_module_enabled(&slug_clone, result.enabled);
+                    refresh_orchestration_state(
+                        token_val,
+                        tenant_val,
+                        applied_catalog_filters.get(),
+                    );
                     let status = if result.enabled {
                         t_string!(i18n, modules.toast.enabled)
                     } else {
@@ -1072,7 +1073,6 @@ pub fn ModulesList(
         });
     });
 
-    let enabled_modules_for_compensation = enabled_modules.clone();
     let module_list_for_compensation = module_list;
     let failed_recovery_plans_for_compensation = failed_recovery_plans;
     let on_compensate_recovery = Callback::new(move |operation_id: String| {
@@ -1106,7 +1106,6 @@ pub fn ModulesList(
         set_form_state.set(FormState::idle());
         set_success_message.set(None);
         set_recovery_action_operation_id.set(Some(operation_id.clone()));
-        let enabled_modules_for_compensation = enabled_modules_for_compensation.clone();
         spawn_local(async move {
             match transport::compensate_failed_module_operation(
                 operation_id_for_call.clone(),
@@ -1129,17 +1128,11 @@ pub fn ModulesList(
                             modules.sort_by(|left, right| left.module_slug.cmp(&right.module_slug));
                         }
                     });
-                    set_module_list.update(|modules| {
-                        if let Some(existing) = modules
-                            .iter_mut()
-                            .find(|existing| existing.module_slug == module.module_slug)
-                        {
-                            existing.enabled = module.enabled;
-                            existing.lifecycle_revision = module.revision;
-                        }
-                    });
-                    enabled_modules_for_compensation
-                        .set_module_enabled(&module.module_slug, module.enabled);
+                    refresh_orchestration_state(
+                        token_val.clone(),
+                        tenant_val.clone(),
+                        applied_catalog_filters.get(),
+                    );
                     set_success_message.set(Some(format!(
                         "Compensation applied for {}",
                         module.module_slug
@@ -1200,7 +1193,6 @@ pub fn ModulesList(
             set_platform_loading_slug.set(None);
         });
     });
-    let enabled_modules_for_uninstall = enabled_modules.clone();
     let on_uninstall = Callback::new(move |slug: String| {
         let slug_clone = slug.clone();
         set_platform_loading_slug.set(Some(slug.clone()));
@@ -1219,7 +1211,6 @@ pub fn ModulesList(
         let tenant_val = tenant.get();
         let refresh_token = token_val.clone();
         let refresh_tenant = tenant_val.clone();
-        let enabled_modules_for_uninstall_async = enabled_modules_for_uninstall.clone();
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
             match transport::uninstall_module(
@@ -1243,15 +1234,6 @@ pub fn ModulesList(
                             module.enabled = false;
                         }
                     });
-                    set_module_list.update(|modules| {
-                        if let Some(module) = modules
-                            .iter_mut()
-                            .find(|module| module.module_slug == slug_clone)
-                        {
-                            module.enabled = false;
-                        }
-                    });
-                    enabled_modules_for_uninstall_async.set_module_enabled(&slug_clone, false);
                     push_build_job(build);
                     set_success_message.set(Some(format!("Uninstall queued for {}", slug_clone)));
                     refresh_orchestration_state(
@@ -1919,27 +1901,30 @@ pub fn ModulesList(
                 {move || {
                     let admin_surface_value = admin_surface_for_detail.get_value();
                     selected_module_slug.get().map(|slug| {
+                        let detail_panel_input = ModuleDetailPanelInput {
+                            admin_surface: admin_surface_value.clone(),
+                            selected_slug: slug,
+                            module: selected_module_detail.get(),
+                            tenant_module: selected_tenant_module.get(),
+                            settings_schema: selected_settings_schema.get(),
+                            settings_form_supported,
+                            settings_form_draft: Signal::derive(move || {
+                                module_settings_form_draft.get()
+                            }),
+                            settings_draft: Signal::derive(move || module_settings_draft.get()),
+                            settings_editable,
+                            settings_saving,
+                            loading: Signal::derive(move || module_detail_loading.get()),
+                            access_token: Signal::derive(move || token.get()),
+                            tenant_slug: Signal::derive(move || tenant.get()),
+                            on_settings_field_input,
+                            on_settings_input,
+                            on_save_settings,
+                            on_refresh_detail,
+                            on_close: on_close_detail,
+                        };
                         view! {
-                            <ModuleDetailPanel
-                                admin_surface=admin_surface_value.clone()
-                                selected_slug=slug
-                                module=selected_module_detail.get()
-                                tenant_module=selected_tenant_module.get()
-                                settings_schema=selected_settings_schema.get()
-                                settings_form_supported=settings_form_supported
-                                settings_form_draft=Signal::derive(move || module_settings_form_draft.get())
-                                settings_draft=Signal::derive(move || module_settings_draft.get())
-                                settings_editable=settings_editable
-                                settings_saving=settings_saving
-                                loading=Signal::derive(move || module_detail_loading.get())
-                                access_token=Signal::derive(move || token.get())
-                                tenant_slug=Signal::derive(move || tenant.get())
-                                on_settings_field_input=on_settings_field_input
-                                on_settings_input=on_settings_input
-                                on_save_settings=on_save_settings
-                                on_refresh_detail=on_refresh_detail
-                                on_close=on_close_detail
-                            />
+                            <ModuleDetailPanel input=detail_panel_input />
                         }
                     })
                 }}

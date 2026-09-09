@@ -72,7 +72,6 @@ mod release_admission_journal;
 mod release_preparation;
 mod resolution;
 mod retention;
-pub mod rhai_authoring;
 mod runtime;
 mod runtime_handles;
 mod schedule_delivery;
@@ -167,10 +166,6 @@ pub use release_admission_journal::{
 pub use retention::{
     ArtifactObjectState, RetentionError, RetentionHoldKind, RetentionHoldLedger,
     RetentionHoldRecord, RetentionTarget,
-};
-pub use rhai_authoring::{
-    RhaiAuthoringError, RhaiAuthoringPackageCommand, RhaiAuthoringPublishableRelease,
-    RhaiAuthoringService, RhaiOciPayload, RhaiSourceCasReceipt,
 };
 pub use security_epoch::{
     GlobalSecurityEpoch, SecurityEpochConflictError, SecurityEpochRecord, SecurityEpochRegistry,
@@ -296,7 +291,10 @@ pub use composition::{
     ModuleCompositionBuildEnqueueResult, ModuleCompositionBuildEnqueuer,
     ModuleCompositionBuildLease, ModuleCompositionBuildReceipt, ModuleCompositionError,
     ModuleCompositionOperation, ModuleCompositionSnapshot, ModuleCompositionUpdate,
-    SeaOrmModuleCompositionService,
+    STATIC_MODULE_REGISTRY_MAX_LIMIT, SeaOrmModuleCompositionService,
+    SharedStaticInstalledModuleReader, SharedStaticModuleRegistryReader,
+    StaticInstalledModuleReader, StaticInstalledModuleReaderError, StaticModuleRegistryQuery,
+    StaticModuleRegistryReader, StaticModuleRegistryReaderError,
 };
 pub use contracts::{
     ControlPlaneRevision, ModuleCommandContext, ModuleControlPlaneError,
@@ -430,15 +428,16 @@ pub use governance::{
     ModuleAlloyAuthoredStageResult, ModuleAuthorSignatureEvidenceCommand,
     ModuleBuildServiceAttestationCommand, ModuleExternalPrebuiltStageCommand,
     ModuleExternalPrebuiltStageResult, ModuleExternalSourceEvidence, ModuleGovernanceAction,
-    ModuleGovernanceActorContext, ModuleGovernanceError, ModuleGovernanceErrorCategory,
-    ModuleGovernanceEventPayload, ModuleGovernanceEventSnapshot, ModuleGovernanceGateSnapshot,
-    ModuleGovernanceLifecycleSnapshot, ModuleGovernanceModerationPolicy,
-    ModuleGovernanceOwnerSnapshot, ModuleGovernanceOwnerTransition,
-    ModuleGovernancePublishArtifactDownloadSnapshot, ModuleGovernancePublishArtifactUploadSlot,
-    ModuleGovernancePublishRequestNextAction, ModuleGovernancePublishRequestStatusSnapshot,
-    ModuleGovernanceReleaseSnapshot, ModuleGovernanceRequestAuthorizationSnapshot,
-    ModuleGovernanceRequestSnapshot, ModuleGovernanceValidationStageSnapshot,
-    ModuleOwnerTransferCommand, ModulePlatformAdmissionCommand, ModulePlatformPublicationSource,
+    ModuleGovernanceActorContext, ModuleGovernanceAutomatedCheck, ModuleGovernanceError,
+    ModuleGovernanceErrorCategory, ModuleGovernanceEventPayload, ModuleGovernanceEventSnapshot,
+    ModuleGovernanceGateSnapshot, ModuleGovernanceLifecycleSnapshot,
+    ModuleGovernanceModerationPolicy, ModuleGovernanceOwnerSnapshot,
+    ModuleGovernanceOwnerTransition, ModuleGovernancePublishArtifactDownloadSnapshot,
+    ModuleGovernancePublishArtifactUploadSlot, ModuleGovernancePublishRequestNextAction,
+    ModuleGovernancePublishRequestStatusSnapshot, ModuleGovernanceReleaseSnapshot,
+    ModuleGovernanceRequestAuthorizationSnapshot, ModuleGovernanceRequestSnapshot,
+    ModuleGovernanceValidationStageSnapshot, ModuleOwnerTransferCommand,
+    ModulePlatformAdmissionCommand, ModulePlatformPublicationSource,
     ModulePublicationArtifactOrigin, ModulePublicationEvidenceResult,
     ModulePublishApprovalOverride, ModulePublishArtifactAttachCommand,
     ModulePublishArtifactAttachResult, ModulePublishPlatformBuildStageCommand,
@@ -483,7 +482,8 @@ pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleO
 pub use lifecycle_writer::{
     ModuleLifecycleDbWriter, ModuleLifecycleDbWriterError, ModuleLifecycleRecoveryCommand,
     ModuleLifecycleSettingsCommand, ModuleLifecycleSettingsResult, ModuleLifecycleToggleCommand,
-    TenantModuleOverrideSnapshot,
+    SharedStaticModuleLifecycleReader, StaticModuleLifecycleReader,
+    StaticModuleLifecycleReaderError, TenantModuleOverrideSnapshot,
 };
 pub use marketplace::{
     MODULE_MARKETPLACE_DEFAULT_LIMIT, MODULE_MARKETPLACE_MAX_LIMIT,
@@ -530,9 +530,10 @@ pub use policy::{
     EffectivePolicyCacheIdentity, ModuleEffectivePolicy, ModuleEffectivePolicyChannelBinding,
     ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyDecision,
     ModuleEffectivePolicyDenialReason, ModuleEffectivePolicyError, ModuleEffectivePolicyFact,
-    ModuleEffectivePolicyMaintenanceInput, ModulePolicyRevisionApplyOutcome,
-    ModulePolicyRevisionGate, ModulePolicyRevisionGateError, ModulePolicyRevisionTransition,
-    ModuleToggleValidationError, TenantModuleOverride, validate_module_toggle,
+    ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyReader,
+    ModuleEffectivePolicyReaderError, ModulePolicyRevisionApplyOutcome, ModulePolicyRevisionGate,
+    ModulePolicyRevisionGateError, ModulePolicyRevisionTransition, ModuleToggleValidationError,
+    SharedModuleEffectivePolicyReader, TenantModuleOverride, validate_module_toggle,
 };
 pub use policy_cache::ModuleEffectivePolicyCache;
 pub use policy_revision_consumer::{

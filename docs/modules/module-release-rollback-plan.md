@@ -2133,14 +2133,16 @@ backend preflight.
 
 ### 5. Complete Dynamic Artifact Installation and Recovery
 
-- [x] Complete Rhai authoring so a publishable release contains the exact
-  bindings, permissions, schemas, persistence contract, reviewed workspace,
-  and immutable descriptor required by production dispatch. Replace direct
-  mutable-workspace packaging with reviewed Alloy revision -> deterministic
-  canonical bounded-workspace source object -> create-only source-CAS receipt
-  -> canonical OCI payload;
-  every retry reuses or verifies the exact identities.
-  Verified by `m20260904_000050_rhai_authoring_packages.rs`, `rhai_authoring.rs`, and `rhai_authoring_tests.rs`.
+- [ ] Complete canonical Rhai authoring so a publishable release contains the
+  exact bindings, permissions, schemas, persistence contract, reviewed
+  workspace, and immutable descriptor required by production dispatch. The
+  disconnected `RhaiAuthoringService` and its package table were removed
+  because they had no production caller and created a parallel source-CAS
+  authority. The active Alloy HTTP/GraphQL path selects an exact reviewed
+  revision and delegates the `alloy_authored` stage to `rustok-modules`; its
+  artifact attachment and validation remain on the same canonical
+  publish-request aggregate. Finish deterministic packaging and release
+  publication through the Phase 6 owner flow without restoring a second path.
 - [x] Compose digest-pinned OCI validation/admission into streamed platform-CAS
   publication; runtime and recovery read CAS only and never fall back to OCI.
   Verified by `m20260904_000051_admitted_oci_releases.rs`, `oci_admission.rs`,

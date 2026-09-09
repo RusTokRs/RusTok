@@ -1,7 +1,8 @@
 use super::*;
 use rustok_modules::{
     ModuleAuthorSignatureEvidenceCommand, ModuleCommandContext, ModuleExternalPrebuiltStageCommand,
-    ModuleExternalPrebuiltStageResult, ModulePublicationArtifactOrigin,
+    ModuleExternalPrebuiltStageResult, ModuleGovernancePublishRequestStatusSnapshot,
+    ModuleGovernanceRequestSnapshot, ModulePublicationArtifactOrigin,
     ModulePublishApprovalOverride, ModulePublishArtifactAttachCommand,
     ModulePublishPlatformBuildStageCommand, ModulePublishPlatformBuildStageResult,
     ModulePublishRequestChangesCommand, ModulePublishRequestCreateCommand,
@@ -14,7 +15,7 @@ impl RegistryGovernanceService {
         &self,
         request_id: &str,
         authority: &RegistryAuthority,
-    ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
+    ) -> anyhow::Result<ModuleGovernancePublishRequestStatusSnapshot> {
         self.authorized_publish_request_status_snapshot(
             request_id,
             authority,
@@ -33,7 +34,7 @@ impl RegistryGovernanceService {
         request_id: &str,
         authority: &RegistryAuthority,
         input: RegistryAuthorSignatureEvidenceInput,
-    ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
+    ) -> anyhow::Result<ModuleGovernancePublishRequestStatusSnapshot> {
         let request = self
             .preview_author_signature_evidence(request_id, authority)
             .await?;
@@ -66,7 +67,7 @@ impl RegistryGovernanceService {
         request: &RegistryPublishRequest,
         authority: &RegistryAuthority,
         context: ModuleCommandContext,
-    ) -> anyhow::Result<RegistryPublishRequestSnapshot> {
+    ) -> anyhow::Result<ModuleGovernanceRequestSnapshot> {
         let command = module_publish_request_create_command(
             request,
             context,
@@ -110,7 +111,7 @@ impl RegistryGovernanceService {
         authority: &RegistryAuthority,
         context: ModuleCommandContext,
         artifact: RegistryArtifactUpload,
-    ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
+    ) -> anyhow::Result<ModuleGovernancePublishRequestStatusSnapshot> {
         if artifact.bytes.len() > MODULE_PUBLISH_ARTIFACT_MAX_BYTES {
             return Err(malformed_error(format!(
                 "Registry publish artifact exceeds the {} byte maximum size",
@@ -240,7 +241,7 @@ impl RegistryGovernanceService {
         context: ModuleCommandContext,
         reason: Option<&str>,
         reason_code: Option<&str>,
-    ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
+    ) -> anyhow::Result<ModuleGovernancePublishRequestStatusSnapshot> {
         let request = self
             .authorized_publish_request_status_snapshot(
                 request_id,
@@ -332,7 +333,7 @@ impl RegistryGovernanceService {
         context: ModuleCommandContext,
         reason: &str,
         reason_code: &str,
-    ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
+    ) -> anyhow::Result<ModuleGovernancePublishRequestStatusSnapshot> {
         let request = self
             .authorized_publish_request_status_snapshot(
                 request_id,
@@ -371,7 +372,7 @@ impl RegistryGovernanceService {
         context: ModuleCommandContext,
         reason: &str,
         reason_code: &str,
-    ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
+    ) -> anyhow::Result<ModuleGovernancePublishRequestStatusSnapshot> {
         let request = self
             .authorized_publish_request_status_snapshot(
                 request_id,
@@ -410,7 +411,7 @@ impl RegistryGovernanceService {
         context: ModuleCommandContext,
         reason: &str,
         reason_code: &str,
-    ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
+    ) -> anyhow::Result<ModuleGovernancePublishRequestStatusSnapshot> {
         let request = self
             .authorized_publish_request_status_snapshot(
                 request_id,
@@ -448,7 +449,7 @@ impl RegistryGovernanceService {
         context: ModuleCommandContext,
         reason: &str,
         reason_code: &str,
-    ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
+    ) -> anyhow::Result<ModuleGovernancePublishRequestStatusSnapshot> {
         let request = self
             .authorized_publish_request_status_snapshot(
                 request_id,
@@ -481,7 +482,7 @@ impl RegistryGovernanceService {
 }
 
 fn validation_stage_snapshot_details_value(
-    stage: &RegistryValidationStageSnapshot,
+    stage: &rustok_modules::ModuleGovernanceValidationStageSnapshot,
 ) -> serde_json::Value {
     serde_json::json!({
         "stage_key": stage.key,

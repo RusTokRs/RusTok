@@ -25,7 +25,10 @@ The current source contract includes:
   mutation, including installer/bootstrap creation;
 - typed tenant reads for resolver, installer, storefront and commerce consumers;
 - explicit `--tenant-id` before OAuth CLI credential writes;
-- `ModuleControlPlane` effective policy for Tenant Admin module badges;
+- the host-composed `SharedModuleEffectivePolicyReader` for Tenant Admin module
+  badges, so its native surface uses the same active-composition,
+  co-requisite-aware decision as GraphQL and does not reconstruct enablement
+  from tenant rows;
 - physical removal of the public low-level tenant-module writer so runtime
   module changes can only use the lifecycle control plane;
 - durable generation recovery for tenant and tenant-locale caches, including

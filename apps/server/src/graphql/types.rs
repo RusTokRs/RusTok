@@ -3,8 +3,11 @@ use async_graphql::{
 };
 use rustok_api::{
     ArtifactBindingExecutionAuditEntry, ArtifactUiContributionView,
-    ArtifactUiContributionViewContent, ArtifactUiSurface as ArtifactUiSurfaceContract, Permission,
+    ArtifactUiContributionViewContent, ArtifactUiSurface as ArtifactUiSurfaceContract,
+    ModuleCompositionSnapshotView, ModuleEffectivePolicyDecisionView,
+    ModuleEffectivePolicyDenialReasonView, ModuleEffectivePolicyView, Permission,
     PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus, PlatformDeploymentProfile,
+    StaticInstalledModuleView, StaticModuleRegistryView, StaticTenantModuleView,
 };
 use rustok_core::{UserRole, UserStatus};
 use sea_orm::DatabaseConnection;
@@ -14,14 +17,12 @@ use uuid::Uuid;
 use crate::common::RequestContext;
 use crate::graphql::loaders::TenantNameLoader;
 use crate::models::users;
-use crate::modules::{InstalledManifestModule, ModuleSettingSpec, module_setting_shape_value};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
+use crate::services::module_lifecycle::ModuleLifecycleStateSnapshot;
 use crate::services::rbac_service::RbacService;
-use crate::services::registry_principal::RegistryPrincipalRef;
 use rustok_api::graphql::PageInfo;
 use rustok_build::BuildEvent;
 use rustok_build::build::{BuildStage, BuildStatus};
-use rustok_modules::ModuleOperationRecoveryPlan as ServiceModuleOperationRecoveryPlan;
 
 #[derive(SimpleObject, Clone)]
 pub struct Tenant {
@@ -180,6 +181,25 @@ pub struct TenantModule {
     pub enabled: bool,
     pub settings: String,
     pub revision: i64,
+}
+
+impl From<StaticTenantModuleView> for TenantModule {
+    fn from(module: StaticTenantModuleView) -> Self {
+        Self {
+            module_slug: module.module_slug,
+            enabled: module.enabled,
+            settings: module.settings,
+            revision: module.revision,
+        }
+    }
+}
+
+impl TryFrom<ModuleLifecycleStateSnapshot> for TenantModule {
+    type Error = &'static str;
+
+    fn try_from(module: ModuleLifecycleStateSnapshot) -> Result<Self, Self::Error> {
+        StaticTenantModuleView::try_from(module).map(Self::from)
+    }
 }
 
 /// Tenant-specific availability intent for one admitted artifact installation.
@@ -381,21 +401,27 @@ pub struct ModuleOperationRecoveryPlan {
     pub error_message: Option<String>,
 }
 
-impl From<&ServiceModuleOperationRecoveryPlan> for ModuleOperationRecoveryPlan {
-    fn from(plan: &ServiceModuleOperationRecoveryPlan) -> Self {
+impl From<rustok_api::ModuleOperationRecoveryPlanView> for ModuleOperationRecoveryPlan {
+    fn from(plan: rustok_api::ModuleOperationRecoveryPlanView) -> Self {
         Self {
-            operation_id: plan.operation_id,
-            tenant_id: plan.tenant_id,
-            module_slug: plan.module_slug.clone(),
+            operation_id: plan
+                .operation_id
+                .parse()
+                .expect("owner recovery view contains a UUID operation identity"),
+            tenant_id: plan
+                .tenant_id
+                .parse()
+                .expect("owner recovery view contains a UUID tenant identity"),
+            module_slug: plan.module_slug,
             requested_enabled: plan.requested_enabled,
             previous_effective_enabled: plan.previous_effective_enabled,
-            status: plan.status.as_str().to_string(),
-            issue: plan.issue.as_str().to_string(),
+            status: plan.status,
+            issue: plan.issue,
             retryable: plan.retryable,
-            recommended_action: plan.recommended_action.as_str().to_string(),
-            correlation_id: plan.correlation_id.clone(),
-            requested_by: plan.requested_by.clone(),
-            error_message: plan.error_message.clone(),
+            recommended_action: plan.recommended_action,
+            correlation_id: plan.correlation_id,
+            requested_by: plan.requested_by,
+            error_message: plan.error_message,
         }
     }
 }
@@ -406,9 +432,6 @@ pub struct InstalledModule {
     pub source: String,
     pub crate_name: String,
     pub version: Option<String>,
-    pub git: Option<String>,
-    pub rev: Option<String>,
-    pub path: Option<String>,
     pub required: bool,
     pub dependencies: Vec<String>,
 }
@@ -421,18 +444,81 @@ pub struct ModuleCompositionSnapshot {
     pub revision: i64,
 }
 
-impl From<&InstalledManifestModule> for InstalledModule {
-    fn from(module: &InstalledManifestModule) -> Self {
+impl From<ModuleCompositionSnapshotView> for ModuleCompositionSnapshot {
+    fn from(snapshot: ModuleCompositionSnapshotView) -> Self {
         Self {
-            slug: module.slug.clone(),
-            source: module.source.clone(),
-            crate_name: module.crate_name.clone(),
-            version: module.version.clone(),
-            git: module.git.clone(),
-            rev: module.rev.clone(),
-            path: module.path.clone(),
+            revision: snapshot.revision,
+        }
+    }
+}
+
+/// GraphQL transport projection of the owner-issued module availability
+/// decision. The full policy evidence remains inside the modules owner.
+#[derive(SimpleObject, Clone)]
+#[graphql(name = "ModuleEffectivePolicy")]
+pub struct ModuleEffectivePolicyGql {
+    pub policy_revision: String,
+    pub decisions: Vec<ModuleEffectivePolicyDecisionGql>,
+}
+
+impl From<ModuleEffectivePolicyView> for ModuleEffectivePolicyGql {
+    fn from(policy: ModuleEffectivePolicyView) -> Self {
+        Self {
+            policy_revision: policy.policy_revision,
+            decisions: policy.decisions.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+#[graphql(name = "ModuleEffectivePolicyDecision")]
+pub struct ModuleEffectivePolicyDecisionGql {
+    pub module_slug: String,
+    pub enabled: bool,
+    pub policy_revision: String,
+    pub denial_reasons: Vec<ModuleEffectivePolicyDenialReasonGql>,
+}
+
+impl From<ModuleEffectivePolicyDecisionView> for ModuleEffectivePolicyDecisionGql {
+    fn from(decision: ModuleEffectivePolicyDecisionView) -> Self {
+        Self {
+            module_slug: decision.module_slug,
+            enabled: decision.enabled,
+            policy_revision: decision.policy_revision,
+            denial_reasons: decision
+                .denial_reasons
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+#[graphql(name = "ModuleEffectivePolicyDenialReason")]
+pub struct ModuleEffectivePolicyDenialReasonGql {
+    pub kind: String,
+    pub module_slug: Option<String>,
+}
+
+impl From<ModuleEffectivePolicyDenialReasonView> for ModuleEffectivePolicyDenialReasonGql {
+    fn from(reason: ModuleEffectivePolicyDenialReasonView) -> Self {
+        let kind = reason.code().to_string();
+        let module_slug = reason.related_module_slug().map(str::to_owned);
+
+        Self { kind, module_slug }
+    }
+}
+
+impl From<StaticInstalledModuleView> for InstalledModule {
+    fn from(module: StaticInstalledModuleView) -> Self {
+        Self {
+            slug: module.slug,
+            source: module.source,
+            crate_name: module.crate_name,
+            version: module.version,
             required: module.required,
-            dependencies: module.depends_on.clone(),
+            dependencies: module.dependencies,
         }
     }
 }
@@ -448,46 +534,20 @@ pub struct MarketplaceModuleVersion {
 }
 
 #[derive(SimpleObject, Clone)]
-pub struct RegistryPrincipal {
-    pub kind: String,
-    pub user_id: Option<String>,
-    pub subject: String,
-    pub display_label: String,
-    pub legacy_label: Option<String>,
-}
-
-impl From<RegistryPrincipalRef> for RegistryPrincipal {
-    fn from(value: RegistryPrincipalRef) -> Self {
-        Self {
-            kind: match value.kind {
-                crate::services::registry_principal::RegistryPrincipalKind::User => "user",
-                crate::services::registry_principal::RegistryPrincipalKind::Runner => "runner",
-                crate::services::registry_principal::RegistryPrincipalKind::Legacy => "legacy",
-            }
-            .to_string(),
-            user_id: value.user_id.map(|value| value.to_string()),
-            subject: value.subject,
-            display_label: value.display_label,
-            legacy_label: value.legacy_label,
-        }
-    }
-}
-
-#[derive(SimpleObject, Clone)]
 pub struct RegistryPublishRequestLifecycle {
     pub id: String,
     pub revision: i64,
     pub status: String,
-    pub requested_by: RegistryPrincipal,
-    pub publisher: Option<RegistryPrincipal>,
-    pub approved_by: Option<RegistryPrincipal>,
-    pub rejected_by: Option<RegistryPrincipal>,
+    pub requested_by: String,
+    pub publisher: Option<String>,
+    pub approved_by: Option<String>,
+    pub rejected_by: Option<String>,
     pub rejection_reason: Option<String>,
-    pub changes_requested_by: Option<RegistryPrincipal>,
+    pub changes_requested_by: Option<String>,
     pub changes_requested_reason: Option<String>,
     pub changes_requested_reason_code: Option<String>,
     pub changes_requested_at: Option<String>,
-    pub held_by: Option<RegistryPrincipal>,
+    pub held_by: Option<String>,
     pub held_reason: Option<String>,
     pub held_reason_code: Option<String>,
     pub held_at: Option<String>,
@@ -503,27 +563,34 @@ pub struct RegistryPublishRequestLifecycle {
 pub struct RegistryReleaseLifecycle {
     pub version: String,
     pub status: String,
-    pub publisher: RegistryPrincipal,
+    pub publisher: String,
     pub checksum_sha256: Option<String>,
     pub published_at: String,
     pub yanked_reason: Option<String>,
-    pub yanked_by: Option<RegistryPrincipal>,
+    pub yanked_by: Option<String>,
     pub yanked_at: Option<String>,
 }
 
 #[derive(SimpleObject, Clone)]
 pub struct RegistryOwnerLifecycle {
-    pub owner: RegistryPrincipal,
-    pub bound_by: RegistryPrincipal,
+    pub owner: String,
+    pub bound_by: String,
     pub bound_at: String,
     pub updated_at: String,
 }
 
 #[derive(SimpleObject, Clone)]
 pub struct RegistryOwnerTransitionLifecycle {
-    pub previous_owner: Option<RegistryPrincipal>,
-    pub new_owner: Option<RegistryPrincipal>,
-    pub bound_by: Option<RegistryPrincipal>,
+    pub previous_owner: Option<String>,
+    pub new_owner: Option<String>,
+    pub bound_by: Option<String>,
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct RegistryAutomatedCheckLifecycle {
+    pub key: String,
+    pub status: String,
+    pub detail: Option<String>,
 }
 
 #[derive(SimpleObject, Clone)]
@@ -538,14 +605,15 @@ pub struct RegistryGovernanceEventPayloadLifecycle {
     pub warnings: Vec<String>,
     pub errors: Vec<String>,
     pub mode: Option<String>,
+    pub automated_checks: Vec<RegistryAutomatedCheckLifecycle>,
 }
 
 #[derive(SimpleObject, Clone)]
 pub struct RegistryGovernanceEventLifecycle {
     pub id: String,
     pub event_type: String,
-    pub actor: RegistryPrincipal,
-    pub publisher: Option<RegistryPrincipal>,
+    pub actor: String,
+    pub publisher: Option<String>,
     pub payload: RegistryGovernanceEventPayloadLifecycle,
     pub created_at: String,
 }
@@ -623,38 +691,6 @@ pub struct ModuleSettingField {
     pub shape: Option<serde_json::Value>,
 }
 
-impl ModuleSettingField {
-    pub fn from_spec(key: String, spec: &ModuleSettingSpec) -> Self {
-        let object_keys = if spec.properties.is_empty() {
-            spec.object_keys.clone()
-        } else {
-            let mut keys = spec.properties.keys().cloned().collect::<Vec<_>>();
-            keys.sort();
-            keys
-        };
-        let item_type = spec
-            .items
-            .as_deref()
-            .map(|item| item.value_type.trim().to_string())
-            .filter(|value| !value.is_empty())
-            .or_else(|| spec.item_type.clone());
-
-        Self {
-            key,
-            value_type: spec.value_type.clone(),
-            required: spec.required,
-            default_value: spec.default.clone(),
-            description: spec.description.clone(),
-            min: spec.min,
-            max: spec.max,
-            options: spec.options.clone(),
-            object_keys,
-            item_type,
-            shape: module_setting_shape_value(spec),
-        }
-    }
-}
-
 #[derive(SimpleObject, Clone)]
 pub struct MarketplaceModule {
     pub slug: String,
@@ -689,6 +725,264 @@ pub struct MarketplaceModule {
     pub installed: bool,
     pub installed_version: Option<String>,
     pub update_available: bool,
+}
+
+impl From<rustok_api::MarketplaceModuleVersion> for MarketplaceModuleVersion {
+    fn from(value: rustok_api::MarketplaceModuleVersion) -> Self {
+        Self {
+            version: value.version,
+            changelog: value.changelog,
+            yanked: value.yanked,
+            published_at: value.published_at,
+            checksum_sha256: value.checksum_sha256,
+            signature_present: value.signature_present,
+        }
+    }
+}
+
+impl From<rustok_api::RegistryOwnerTransitionLifecycle> for RegistryOwnerTransitionLifecycle {
+    fn from(value: rustok_api::RegistryOwnerTransitionLifecycle) -> Self {
+        Self {
+            previous_owner: value.previous_owner,
+            new_owner: value.new_owner,
+            bound_by: value.bound_by,
+        }
+    }
+}
+
+impl From<rustok_api::RegistryAutomatedCheckLifecycle> for RegistryAutomatedCheckLifecycle {
+    fn from(value: rustok_api::RegistryAutomatedCheckLifecycle) -> Self {
+        Self {
+            key: value.key,
+            status: value.status,
+            detail: value.detail,
+        }
+    }
+}
+
+impl From<rustok_api::RegistryGovernanceEventPayloadLifecycle>
+    for RegistryGovernanceEventPayloadLifecycle
+{
+    fn from(value: rustok_api::RegistryGovernanceEventPayloadLifecycle) -> Self {
+        Self {
+            reason: value.reason,
+            reason_code: value.reason_code,
+            detail: value.detail,
+            version: value.version,
+            stage_key: value.stage_key,
+            attempt_number: value.attempt_number,
+            owner_transition: value.owner_transition.map(Into::into),
+            warnings: value.warnings,
+            errors: value.errors,
+            mode: value.mode,
+            automated_checks: value.automated_checks.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<rustok_api::RegistryGovernanceEventLifecycle> for RegistryGovernanceEventLifecycle {
+    fn from(value: rustok_api::RegistryGovernanceEventLifecycle) -> Self {
+        Self {
+            id: value.id,
+            event_type: value.event_type,
+            actor: value.actor,
+            publisher: value.publisher,
+            payload: value.payload.into(),
+            created_at: value.created_at,
+        }
+    }
+}
+
+impl From<rustok_api::RegistryFollowUpGateLifecycle> for RegistryFollowUpGateLifecycle {
+    fn from(value: rustok_api::RegistryFollowUpGateLifecycle) -> Self {
+        Self {
+            key: value.key,
+            status: value.status,
+            detail: value.detail,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+impl From<rustok_api::RegistryValidationStageLifecycle> for RegistryValidationStageLifecycle {
+    fn from(value: rustok_api::RegistryValidationStageLifecycle) -> Self {
+        Self {
+            key: value.key,
+            status: value.status,
+            detail: value.detail,
+            attempt_number: value.attempt_number,
+            updated_at: value.updated_at,
+            started_at: value.started_at,
+            finished_at: value.finished_at,
+            execution_mode: value.execution_mode,
+            runnable: value.runnable,
+            requires_manual_confirmation: value.requires_manual_confirmation,
+            allowed_terminal_reason_codes: value.allowed_terminal_reason_codes,
+            suggested_pass_reason_code: value.suggested_pass_reason_code,
+            suggested_failure_reason_code: value.suggested_failure_reason_code,
+            suggested_blocked_reason_code: value.suggested_blocked_reason_code,
+        }
+    }
+}
+
+impl From<rustok_api::RegistryGovernanceActionLifecycle> for RegistryGovernanceActionLifecycle {
+    fn from(value: rustok_api::RegistryGovernanceActionLifecycle) -> Self {
+        Self {
+            key: value.key,
+            reason_required: value.reason_required,
+            reason_code_required: value.reason_code_required,
+            reason_codes: value.reason_codes,
+            destructive: value.destructive,
+        }
+    }
+}
+
+impl From<rustok_api::RegistryModerationPolicyLifecycle> for RegistryModerationPolicyLifecycle {
+    fn from(value: rustok_api::RegistryModerationPolicyLifecycle) -> Self {
+        Self {
+            mode: value.mode,
+            live_publish_supported: value.live_publish_supported,
+            live_governance_supported: value.live_governance_supported,
+            manual_review_required: value.manual_review_required,
+            restriction_reason_code: value.restriction_reason_code,
+            restriction_reason: value.restriction_reason,
+        }
+    }
+}
+
+impl From<rustok_api::RegistryOwnerLifecycle> for RegistryOwnerLifecycle {
+    fn from(value: rustok_api::RegistryOwnerLifecycle) -> Self {
+        Self {
+            owner: value.owner,
+            bound_by: value.bound_by,
+            bound_at: value.bound_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+impl From<rustok_api::RegistryPublishRequestLifecycle> for RegistryPublishRequestLifecycle {
+    fn from(value: rustok_api::RegistryPublishRequestLifecycle) -> Self {
+        Self {
+            id: value.id,
+            revision: value.revision,
+            status: value.status,
+            requested_by: value.requested_by,
+            publisher: value.publisher,
+            approved_by: value.approved_by,
+            rejected_by: value.rejected_by,
+            rejection_reason: value.rejection_reason,
+            changes_requested_by: value.changes_requested_by,
+            changes_requested_reason: value.changes_requested_reason,
+            changes_requested_reason_code: value.changes_requested_reason_code,
+            changes_requested_at: value.changes_requested_at,
+            held_by: value.held_by,
+            held_reason: value.held_reason,
+            held_reason_code: value.held_reason_code,
+            held_at: value.held_at,
+            held_from_status: value.held_from_status,
+            warnings: value.warnings,
+            errors: value.errors,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            published_at: value.published_at,
+        }
+    }
+}
+
+impl From<rustok_api::RegistryReleaseLifecycle> for RegistryReleaseLifecycle {
+    fn from(value: rustok_api::RegistryReleaseLifecycle) -> Self {
+        Self {
+            version: value.version,
+            status: value.status,
+            publisher: value.publisher,
+            checksum_sha256: value.checksum_sha256,
+            published_at: value.published_at,
+            yanked_reason: value.yanked_reason,
+            yanked_by: value.yanked_by,
+            yanked_at: value.yanked_at,
+        }
+    }
+}
+
+impl From<rustok_api::RegistryModuleLifecycle> for RegistryModuleLifecycle {
+    fn from(value: rustok_api::RegistryModuleLifecycle) -> Self {
+        Self {
+            moderation_policy: value.moderation_policy.into(),
+            owner_binding: value.owner_binding.map(Into::into),
+            latest_request: value.latest_request.map(Into::into),
+            latest_release: value.latest_release.map(Into::into),
+            recent_events: value.recent_events.into_iter().map(Into::into).collect(),
+            follow_up_gates: value.follow_up_gates.into_iter().map(Into::into).collect(),
+            validation_stages: value
+                .validation_stages
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            governance_actions: value
+                .governance_actions
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<rustok_api::ModuleSettingField> for ModuleSettingField {
+    fn from(value: rustok_api::ModuleSettingField) -> Self {
+        Self {
+            key: value.key,
+            value_type: value.value_type,
+            required: value.required,
+            default_value: value.default_value,
+            description: value.description,
+            min: value.min,
+            max: value.max,
+            options: value.options,
+            object_keys: value.object_keys,
+            item_type: value.item_type,
+            shape: value.shape,
+        }
+    }
+}
+
+impl From<rustok_api::MarketplaceModule> for MarketplaceModule {
+    fn from(value: rustok_api::MarketplaceModule) -> Self {
+        Self {
+            slug: value.slug,
+            name: value.name,
+            latest_version: value.latest_version,
+            description: value.description,
+            source: value.source,
+            kind: value.kind,
+            category: value.category,
+            tags: value.tags,
+            icon_url: value.icon_url,
+            banner_url: value.banner_url,
+            screenshots: value.screenshots,
+            crate_name: value.crate_name,
+            dependencies: value.dependencies,
+            ownership: value.ownership,
+            trust_level: value.trust_level,
+            rustok_min_version: value.rustok_min_version,
+            rustok_max_version: value.rustok_max_version,
+            publisher: value.publisher,
+            checksum_sha256: value.checksum_sha256,
+            signature_present: value.signature_present,
+            versions: value.versions.into_iter().map(Into::into).collect(),
+            has_admin_ui: value.has_admin_ui,
+            has_storefront_ui: value.has_storefront_ui,
+            ui_classification: value.ui_classification,
+            registry_lifecycle: value.registry_lifecycle.map(Into::into),
+            compatible: value.compatible,
+            recommended_admin_surfaces: value.recommended_admin_surfaces,
+            showcase_admin_surfaces: value.showcase_admin_surfaces,
+            settings_schema: value.settings_schema.into_iter().map(Into::into).collect(),
+            installed: value.installed,
+            installed_version: value.installed_version,
+            update_available: value.update_available,
+        }
+    }
 }
 
 #[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
@@ -989,7 +1283,28 @@ pub struct ModuleRegistryItem {
     pub ui_classification: String,
     pub recommended_admin_surfaces: Vec<String>,
     pub showcase_admin_surfaces: Vec<String>,
-    pub settings_schema: Vec<ModuleSettingField>,
+}
+
+impl From<StaticModuleRegistryView> for ModuleRegistryItem {
+    fn from(module: StaticModuleRegistryView) -> Self {
+        Self {
+            module_slug: module.module_slug,
+            name: module.name,
+            description: module.description,
+            version: module.version,
+            kind: module.kind,
+            enabled: module.enabled,
+            lifecycle_revision: module.lifecycle_revision,
+            dependencies: module.dependencies,
+            ownership: module.ownership,
+            trust_level: module.trust_level,
+            has_admin_ui: module.has_admin_ui,
+            has_storefront_ui: module.has_storefront_ui,
+            ui_classification: module.ui_classification,
+            recommended_admin_surfaces: module.recommended_admin_surfaces,
+            showcase_admin_surfaces: module.showcase_admin_surfaces,
+        }
+    }
 }
 
 #[derive(SimpleObject, Debug, Clone)]

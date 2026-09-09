@@ -331,6 +331,108 @@ evolves through readiness gates to avoid getting formal interfaces without evide
 
 ---
 
+## 2.4 Active Embedded-First Foundation Plan (2026-H2)
+
+### Current Execution Focus
+
+The active platform priority is to make owner modules production-ready in the
+modular monolith. FBA is applied now as boundary discipline, not as a mandate
+to deploy modules remotely. The default and only newly introduced runtime
+profile during this focus is embedded execution.
+
+This focus does not change the later stages in this document or authorize a
+remote deployment. It makes their prerequisites real while improving the
+current product: module ownership, tenant safety, operator behaviour, UI
+parity, observable failure handling, and recovery all have value before any
+process boundary exists.
+
+### Scope
+
+For each production-priority module, complete the following work in its own
+implementation plan before treating a new technical extraction as a priority:
+
+1. **Finish the owner path.** The module owns its domain rules, persistence,
+   migrations, events, authorization decisions, and operational recovery. No
+   host controller or neighbouring module becomes the owner of those rules.
+2. **Ship its required product surfaces.** Keep the applicable native
+   `#[server]`, GraphQL, REST, admin, storefront, and operator contracts in
+   their documented parity state. A transport remains a thin adapter over the
+   owner service or an existing real port.
+3. **Harden real boundaries.** When a module has a genuine cross-module,
+   host, CLI, or headless consumer, use the canonical `PortContext`,
+   `PortCallPolicy`, and `PortError`; validate deadline and idempotency at the
+   owner boundary; and prohibit direct foreign-table access on that path.
+   Do not introduce a port merely to satisfy a template.
+4. **Record executable evidence.** Verify the embedded owner path with
+   targeted tests or a real smoke scenario. Source markers and static metadata
+   can prevent drift, but they do not establish production readiness on their
+   own.
+5. **Keep the FBA record honest.** For an existing provider/consumer track,
+   synchronize the module implementation plan, `rustok-module.toml` or
+   module registry, evidence packet, and the central readiness board in the
+   same change. Do not promote a status for work that has not executed.
+
+### Foundation Improvements Allowed During This Focus
+
+Foundation work is allowed only when it removes demonstrated repetition or
+protects a current embedded production path. It must remain transport-neutral
+and cannot introduce a second implementation of a domain workflow.
+
+| Improvement | Current value | Entry condition | Completion evidence |
+|---|---|---|---|
+| Canonical FBA registry validation | Prevent malformed provider/consumer metadata and stale evidence links. | At least two registries require the same structural rule that is currently duplicated in verifier scripts. | One shared schema/validator plus module-specific semantic checks; existing module gates continue to pass. |
+| Embedded port conformance harness | Run the same observable owner-port cases consistently across modules. | A second owner module needs the same real conformance cases as the first. | Targeted tests exercise the real embedded provider, tenant context, deadline, idempotency, and typed errors. |
+| In-process tracing propagation | Keep correlation, causation, and trace context intact across module calls. | A current cross-module path lacks trace continuity or cannot be diagnosed from existing spans. | A smoke scenario demonstrates one trace across the caller and owner service without exposing sensitive data. |
+| Shared policy helper | Remove repeated, identical enforcement of an already-canonical port policy. | The exact helper exists in two owners and cannot remain on `PortContext` itself. | Both owners use one helper and preserve the same rejection and error semantics in tests. |
+| Error-mapping test utilities | Keep REST, GraphQL, native, and owner-port errors consistently classified. | Two adapters duplicate the same `PortError` assertion or mapping logic. | Real adapter tests prove the same public error contract; domain error ownership remains unchanged. |
+
+The shared location follows ownership: stable transport-neutral contracts in
+`crates/libs/rustok-api`, executable runtime helpers in
+`crates/libs/rustok-runtime`, Axum boundary helpers in
+`crates/libs/rustok-web`, and FBA metadata in `crates/libs/rustok-fba`.
+Do not create a new foundation crate unless the responsibility cannot belong
+to one of those existing owners.
+
+### Explicitly Deferred
+
+The following are not active work under the embedded-first focus:
+
+- new `*-grpc` adapter crates, remote profile switching, or a general remote
+  invocation pipeline;
+- process, database, or storage separation for an owner module;
+- shared remote retry, circuit-breaker, or load-shedding infrastructure;
+- a dynamic provider-discovery mechanism that bypasses the selected
+  distribution registry;
+- introducing WebAssembly/WIT solely to make an embedded module appear more
+  portable.
+
+Existing transport and worker boundaries remain supported only within their
+current owner scope. They are not a precedent to create a remote adapter for a
+new module.
+
+### Completion and Re-entry Gate
+
+This execution focus remains active until the production-priority modules and
+their documented embedded surfaces have current owner-path evidence. It is not
+ended by the presence of ports, registries, or static verifier output alone.
+
+Remote-profile work may resume only for a named module when all of the
+following are true:
+
+1. the module satisfies the Definition of Ready in section 10;
+2. there is a production reason that cannot be met by the embedded profile;
+3. an ADR names the owner, operational cost, failure model, rollout,
+   rollback, and storage impact;
+4. the module has a real embedded conformance baseline against which the new
+   profile can be compared; and
+5. the work is explicitly scheduled as a platform priority.
+
+Until then, `boundary_ready` means a well-defined and evidenced embedded
+boundary. It does not mean that the module should be deployed as a separate
+service.
+
+---
+
 ## 3) Stage A — Audit and Readiness Matrix
 
 ## 3.1 Mandatory Artifacts

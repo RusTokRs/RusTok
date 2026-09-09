@@ -15,6 +15,7 @@ use crate::services::profile_media_public_image_runtime::attach_profile_media_pu
 #[cfg(feature = "mod-seo")]
 use crate::services::seo_redirect_cache_reconciliation::start_seo_redirect_cache_reconciliation;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::static_module_registry::static_module_registry_reader_from_context;
 
 /// Keeps at least one watch receiver alive for API-only hosts so `StopHandle::stop()` can publish
 /// the terminal value even when no background worker has subscribed yet.
@@ -42,6 +43,8 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     let registry = ctx
         .shared_get::<rustok_core::ModuleRegistry>()
         .expect("ModuleRegistry not initialized; bootstrap_app_runtime must run first");
+    let static_module_registry_reader =
+        static_module_registry_reader_from_context(ctx, registry.clone());
     let host_runtime = rustok_api::HostRuntimeContext::new(ctx.db_clone())
         .with_shared_value(transactional_event_bus.clone())
         .with_shared_value(registry);
@@ -79,6 +82,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         event_bus: event_bus.clone(),
         transactional_event_bus,
         graphql_runtime_inputs,
+        static_module_registry_reader,
         build_event_hub: build_event_hub_from_context(ctx),
         field_definition_cache: field_definition_cache_from_context(ctx, event_bus),
         runtime_extensions,

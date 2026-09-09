@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { validateProviderRegistryBaseline } from './lib/fba-registry-validation.mjs';
 
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -18,13 +19,19 @@ const cargo = read('crates/modules/rustok-rbac/Cargo.toml');
 const lib = read('crates/modules/rustok-rbac/src/lib.rs');
 const ports = read('crates/modules/rustok-rbac/src/ports.rs');
 
-if (registry.schema_version !== 1) fail('registry schema_version must be 1');
-if (registry.module !== 'rbac' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
-if (registry.contract_version !== 'rbac.permission_decision.v1') fail('contract version drift');
+try {
+  validateProviderRegistryBaseline({
+    registry,
+    expectedModule: 'rbac',
+    expectedContractVersion: 'rbac.permission_decision.v1',
+    allowedStatuses: ['in_progress', 'boundary_ready'],
+  });
+} catch (error) {
+  fail(error.message);
+}
 const [port] = registry.ports ?? [];
 if (!port || port.name !== 'RbacPermissionDecisionPort') fail('RbacPermissionDecisionPort missing');
 if (!port.operations.includes('check_permissions')) fail('port lacks check_permissions');
-if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('context/error drift');
 if (port.deadline_required !== true || port.idempotency_required !== false) fail('permission decision must be read-like with deadline semantics');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/rbac-fba-registry.json"') || !manifest.includes('contract_version = "rbac.permission_decision.v1"')) fail('manifest metadata drift');
 if (!cargo.includes('rustok-api.workspace = true')) fail('Cargo.toml must depend on rustok-api');

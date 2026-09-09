@@ -1,8 +1,9 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 
-use crate::features::modules::transport::{
-    ModuleTransitionCheckpoint, ModuleTransitionState, RetentionHold, finalize_module_transition,
+use crate::features::modules::transport::finalize_module_transition;
+use rustok_api::{
+    ModuleRetentionHoldView, ModuleTransitionCheckpointView, ModuleTransitionStateView,
 };
 
 fn short_digest(digest: &str) -> String {
@@ -15,8 +16,8 @@ fn short_digest(digest: &str) -> String {
 
 #[component]
 pub fn TransitionControlCard(
-    checkpoint: ModuleTransitionCheckpoint,
-    #[prop(default = vec![])] retention_holds: Vec<RetentionHold>,
+    checkpoint: ModuleTransitionCheckpointView,
+    #[prop(default = vec![])] retention_holds: Vec<ModuleRetentionHoldView>,
     #[prop(optional)] on_refresh: Option<Callback<()>>,
 ) -> impl IntoView {
     let token = use_token();
@@ -27,37 +28,41 @@ pub fn TransitionControlCard(
     let (show_holds, set_show_holds) = signal(false);
 
     let op_id = checkpoint.operation_id.clone();
-    let is_observing = checkpoint.state == ModuleTransitionState::Observing;
-    let is_past_point_of_no_return = checkpoint.state == ModuleTransitionState::PointOfNoReturn;
-    let is_failed = checkpoint.state == ModuleTransitionState::FailedClosed;
-    let is_converged = checkpoint.state == ModuleTransitionState::Converged;
+    let is_observing = checkpoint.state == ModuleTransitionStateView::Observing;
+    let is_past_point_of_no_return = checkpoint.state == ModuleTransitionStateView::PointOfNoReturn;
+    let is_failed = checkpoint.state == ModuleTransitionStateView::FailedClosed;
+    let is_converged = checkpoint.state == ModuleTransitionStateView::Converged;
     let recovery_limit_reached = checkpoint.recovery_attempt_count >= 1;
 
     let state_badge_class = match checkpoint.state {
-        ModuleTransitionState::Observing => "bg-amber-500/15 text-amber-500 border-amber-500/30",
-        ModuleTransitionState::Converged => {
+        ModuleTransitionStateView::Observing => {
+            "bg-amber-500/15 text-amber-500 border-amber-500/30"
+        }
+        ModuleTransitionStateView::Converged => {
             "bg-emerald-500/15 text-emerald-500 border-emerald-500/30"
         }
-        ModuleTransitionState::RecoveredToPredecessor => {
+        ModuleTransitionStateView::RecoveredToPredecessor => {
             "bg-indigo-500/15 text-indigo-500 border-indigo-500/30"
         }
-        ModuleTransitionState::PointOfNoReturn => {
+        ModuleTransitionStateView::PointOfNoReturn => {
             "bg-purple-500/15 text-purple-500 border-purple-500/30"
         }
-        ModuleTransitionState::FailedClosed => "bg-rose-500/15 text-rose-500 border-rose-500/30",
+        ModuleTransitionStateView::FailedClosed => {
+            "bg-rose-500/15 text-rose-500 border-rose-500/30"
+        }
         _ => "bg-blue-500/15 text-blue-500 border-blue-500/30",
     };
 
     let state_label = match checkpoint.state {
-        ModuleTransitionState::Preflighting => "Preflighting",
-        ModuleTransitionState::Fenced => "Fenced",
-        ModuleTransitionState::Prestaging => "Pre-Staging",
-        ModuleTransitionState::Activating => "Activating",
-        ModuleTransitionState::Observing => "Observing Window",
-        ModuleTransitionState::PointOfNoReturn => "Point of No Return (Irreversible)",
-        ModuleTransitionState::RecoveredToPredecessor => "Recovered to Predecessor",
-        ModuleTransitionState::Converged => "Converged",
-        ModuleTransitionState::FailedClosed => "Failed Closed (Quarantined)",
+        ModuleTransitionStateView::Preflighting => "Preflighting",
+        ModuleTransitionStateView::Fenced => "Fenced",
+        ModuleTransitionStateView::Prestaging => "Pre-Staging",
+        ModuleTransitionStateView::Activating => "Activating",
+        ModuleTransitionStateView::Observing => "Observing Window",
+        ModuleTransitionStateView::PointOfNoReturn => "Point of No Return (Irreversible)",
+        ModuleTransitionStateView::RecoveredToPredecessor => "Recovered to Predecessor",
+        ModuleTransitionStateView::Converged => "Converged",
+        ModuleTransitionStateView::FailedClosed => "Failed Closed (Quarantined)",
     };
 
     let finalize_transition_action = Callback::new({

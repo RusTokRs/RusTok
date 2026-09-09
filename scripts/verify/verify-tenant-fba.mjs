@@ -151,8 +151,9 @@ for (const marker of [
   'rustok_modules::ModuleControlPlane::new(db)',
   '.composition()',
   '.active_snapshot()',
-  '.effective_policy(&registry, manifest.settings.default_enabled)',
-  '.resolve_enabled(tenant.id)',
+  '.shared_get::<rustok_modules::SharedModuleEffectivePolicyReader>()',
+  '.resolve(tenant.id)',
+  '.enabled_module_slugs()',
   'let enabled = effective_modules.contains(module.slug());',
   '"manifest-default"',
   '"policy-dependency"',
@@ -162,6 +163,8 @@ for (const marker of [
 for (const forbidden of [
   'enabled: if is_core',
   'explicit.unwrap_or(false)',
+  '.effective_policy(&registry, manifest.settings.default_enabled)',
+  '.resolve_enabled(tenant.id)',
 ]) {
   if (tenantAdminNative.includes(forbidden)) fail(`tenant admin must not treat raw tenant_modules as effective policy through ${forbidden}`);
 }

@@ -1,5 +1,8 @@
 //! Durable owner service for module transition convergence.
 
+use rustok_api::{
+    ModuleRetentionHoldView, ModuleTransitionCheckpointView, ModuleTransitionStateView,
+};
 use rustok_events::DomainEvent;
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
@@ -18,6 +21,82 @@ use crate::{
 };
 
 const OPERATION_KIND: &str = "finalize";
+
+impl From<ModuleTransitionCheckpoint> for ModuleTransitionCheckpointView {
+    fn from(checkpoint: ModuleTransitionCheckpoint) -> Self {
+        let (state, state_details) = match checkpoint.state {
+            crate::ModuleTransitionState::Preflighting => {
+                (ModuleTransitionStateView::Preflighting, None)
+            }
+            crate::ModuleTransitionState::Fenced => (ModuleTransitionStateView::Fenced, None),
+            crate::ModuleTransitionState::PreStaging => {
+                (ModuleTransitionStateView::Prestaging, None)
+            }
+            crate::ModuleTransitionState::Activating => {
+                (ModuleTransitionStateView::Activating, None)
+            }
+            crate::ModuleTransitionState::Observing { timeout_at } => (
+                ModuleTransitionStateView::Observing,
+                Some(format!("Timeout at {}", timeout_at.to_rfc3339())),
+            ),
+            crate::ModuleTransitionState::PointOfNoReturn {
+                reason,
+                committed_at,
+            } => (
+                ModuleTransitionStateView::PointOfNoReturn,
+                Some(format!(
+                    "Committed at {}: {}",
+                    committed_at.to_rfc3339(),
+                    reason
+                )),
+            ),
+            crate::ModuleTransitionState::RecoveredToPredecessor { failure_reason, .. } => (
+                ModuleTransitionStateView::RecoveredToPredecessor,
+                Some(failure_reason),
+            ),
+            crate::ModuleTransitionState::Converged { finalized_at } => (
+                ModuleTransitionStateView::Converged,
+                Some(format!("Finalized at {}", finalized_at.to_rfc3339())),
+            ),
+            crate::ModuleTransitionState::FailedClosed { failure_reason } => (
+                ModuleTransitionStateView::FailedClosed,
+                Some(failure_reason),
+            ),
+        };
+
+        Self {
+            operation_id: checkpoint.operation_id.to_string(),
+            revision: i64::try_from(checkpoint.revision)
+                .expect("persisted transition revisions are constrained to BIGINT"),
+            module_slug: checkpoint.module_slug,
+            tenant_id: checkpoint.tenant_id.map(|tenant_id| tenant_id.to_string()),
+            predecessor_digest: checkpoint.predecessor_digest,
+            candidate_digest: checkpoint.candidate_digest,
+            state,
+            state_details,
+            security_epoch: i64::try_from(checkpoint.security_epoch.value())
+                .expect("persisted transition security epochs are constrained to BIGINT"),
+            recovery_attempt_count: i32::try_from(checkpoint.recovery_attempt_count)
+                .expect("persisted transition recovery attempts are constrained to INTEGER"),
+            created_at: checkpoint.created_at.to_rfc3339(),
+            updated_at: checkpoint.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<crate::RetentionHoldRecord> for ModuleRetentionHoldView {
+    fn from(record: crate::RetentionHoldRecord) -> Self {
+        let (target_type, target_identity) = record.target.identity_key();
+        Self {
+            hold_id: record.hold_id.to_string(),
+            target_type: target_type.to_string(),
+            target_identity,
+            kind: serde_json::to_string(&record.kind)
+                .expect("retention hold kinds are serializable owner contracts"),
+            created_at: record.created_at.to_rfc3339(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleTransitionFinalizeReceipt {

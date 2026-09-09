@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { validateProviderRegistryBaseline } from './lib/fba-registry-validation.mjs';
 
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -25,13 +26,19 @@ const graphqlAdapter = read('crates/modules/rustok-workflow/admin/src/transport/
 const transportFacade = read('crates/modules/rustok-workflow/admin/src/transport/mod.rs');
 const packageJson = json('package.json');
 
-if (registry.schema_version !== 1) fail('registry schema_version must be 1');
-if (registry.module !== 'workflow' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
-if (registry.contract_version !== 'workflow.read_projection.v1') fail('contract version drift');
+try {
+  validateProviderRegistryBaseline({
+    registry,
+    expectedModule: 'workflow',
+    expectedContractVersion: 'workflow.read_projection.v1',
+    allowedStatuses: ['in_progress', 'boundary_ready'],
+  });
+} catch (error) {
+  fail(error.message);
+}
 const [port] = registry.ports ?? [];
 if (!port || port.name !== 'WorkflowReadPort') fail('WorkflowReadPort missing');
 for (const op of ['list_workflows', 'get_workflow']) if (!port.operations.includes(op)) fail(`port lacks ${op}`);
-if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('context/error drift');
 if (port.deadline_required !== true || port.idempotency_required !== false) fail('read projection semantics drift');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/workflow-fba-registry.json"') || !manifest.includes('contract_version = "workflow.read_projection.v1"')) fail('manifest FBA metadata drift');
 if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');

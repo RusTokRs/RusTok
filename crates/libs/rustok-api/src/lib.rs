@@ -17,8 +17,12 @@ pub mod event_delivery;
 pub mod graphql;
 pub mod locale;
 pub mod manifest_hash;
+pub mod module_composition;
+pub mod module_lifecycle;
 pub mod module_marketplace;
+pub mod module_policy;
 pub mod module_registry_contract;
+pub mod module_transition;
 pub mod module_work;
 pub mod permissions;
 pub mod platform_build;
@@ -66,8 +70,25 @@ pub use locale::{
     is_valid_locale_tag, locale_primary_language, locale_tags_match, normalize_locale_tag,
     push_locale_candidate,
 };
-pub use module_marketplace::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
-pub use module_registry_contract::is_valid_module_slug;
+pub use module_composition::{ModuleCompositionSnapshotView, StaticInstalledModuleView};
+pub use module_lifecycle::{ModuleOperationRecoveryPlanView, StaticTenantModuleView};
+pub use module_marketplace::{
+    MarketplaceModule, MarketplaceModuleVersion, MarketplaceRegistryFreshness,
+    MarketplaceRegistryStatus, ModuleSettingField, RegistryAutomatedCheckLifecycle,
+    RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
+    RegistryGovernanceEventLifecycle, RegistryGovernanceEventPayloadLifecycle,
+    RegistryModerationPolicyLifecycle, RegistryModuleLifecycle, RegistryMutationResult,
+    RegistryOwnerLifecycle, RegistryOwnerTransitionLifecycle, RegistryPublishRequestLifecycle,
+    RegistryPublishStatus, RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
+};
+pub use module_policy::{
+    ModuleEffectivePolicyDecisionView, ModuleEffectivePolicyDenialReasonView,
+    ModuleEffectivePolicyView,
+};
+pub use module_registry_contract::{StaticModuleRegistryView, is_valid_module_slug};
+pub use module_transition::{
+    ModuleRetentionHoldView, ModuleTransitionCheckpointView, ModuleTransitionStateView,
+};
 pub use module_work::{
     ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
 };

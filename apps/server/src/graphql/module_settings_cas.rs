@@ -89,16 +89,13 @@ impl ModuleSettingsCasMutation {
         .await
         .map_err(map_settings_error)?
         {
-            ModuleRolloutPromotionSettingsOutcome::Updated(module) => Ok(TenantModule {
-                module_slug: module.module_slug,
-                enabled: module.enabled,
-                settings: module.settings.to_string(),
-                revision: i64::try_from(module.revision).map_err(|_| {
+            ModuleRolloutPromotionSettingsOutcome::Updated(module) => {
+                TenantModule::try_from(module).map_err(|_| {
                     <FieldError as GraphQLError>::internal_error(
                         "Static module lifecycle revision is outside the GraphQL range",
                     )
-                })?,
-            }),
+                })
+            }
             ModuleRolloutPromotionSettingsOutcome::Conflict => Err(FieldError::new(
                 "Module settings changed since the reviewed snapshot",
             )

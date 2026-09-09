@@ -34,7 +34,7 @@ domain contract and must not dissolve into middleware or host-specific logic.
 - `TenantService::new` is the only service constructor; lifecycle publication cannot be disabled by omitted host wiring;
 - installer/bootstrap callers delegate tenant creation to `ensure_tenant`; its owner-side replay keeps independent provisioning calls idempotent without host-local retries;
 - tenant admin read paths must go through tenant-scoped RBAC checks (`tenants:(read|list|manage)` + `modules:(read|list|manage)`) and remain synchronized with server adapters;
-- tenant admin native server-function transport consumes host-provided `rustok_api::HostRuntimeContext` for DB access and must not import a host-wide `AppContext`;
+- tenant admin native server-function transport consumes host-provided `rustok_api::HostRuntimeContext` for DB access and the shared owner-issued effective-policy reader; it must not import a host-wide `AppContext` or reconstruct availability from tenant rows;
 - Redis/in-memory cache semantics and cross-instance invalidation belong to the host cache layer, but must remain synchronized with the module contract;
 - host provisioning/deprovisioning flows must call tenant cache invalidation hooks (`invalidate_tenant_cache_by_uuid/slug/host`) after create/update/deactivate/domain-change; without this, stale positive cache may live up to `TENANT_CACHE_TTL=300s`, and negative cache miss up to `TENANT_NEGATIVE_CACHE_TTL=60s`;
 - runtime enable/disable of modules must go through `ModuleLifecycleService` / `ModuleControlPlane`, which perform policy/dependency checks, lifecycle hooks and journaling; `TenantService` has no public low-level module-state writer;

@@ -28,6 +28,7 @@ impl ModuleGraphqlField {
             (
                 OperationType::Query,
                 "enabledModules"
+                | "moduleEffectivePolicy"
                 | "moduleRegistry"
                 | "tenantModules"
                 | "artifactTenantLifecycle"
@@ -66,6 +67,7 @@ impl ModuleGraphqlField {
         Some(Self {
             name: match field_name {
                 "enabledModules" => "enabledModules",
+                "moduleEffectivePolicy" => "moduleEffectivePolicy",
                 "moduleRegistry" => "moduleRegistry",
                 "tenantModules" => "tenantModules",
                 "artifactTenantLifecycle" => "artifactTenantLifecycle",
@@ -261,6 +263,7 @@ mod tests {
                 query ModuleState { ...ModuleFields }
                 fragment ModuleFields on Query {
                     enabledModules
+                    moduleEffectivePolicy { policyRevision }
                     moduleRegistry { moduleSlug }
                     artifactTenantLifecycle(
                         installationId: "00000000-0000-0000-0000-000000000000"
@@ -286,6 +289,13 @@ mod tests {
         assert!(policy.0.iter().any(
             |field| field.name == "enabledModules" && field.authority == ModuleAuthority::Read
         ));
+        assert!(
+            policy
+                .0
+                .iter()
+                .any(|field| field.name == "moduleEffectivePolicy"
+                    && field.authority == ModuleAuthority::Read)
+        );
         assert!(policy.0.iter().any(
             |field| field.name == "moduleRegistry" && field.authority == ModuleAuthority::Read
         ));

@@ -1,11 +1,13 @@
-#![allow(clippy::items_after_test_module)]
-
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, SecondsFormat, Utc};
+use rustok_api::{
+    RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle, RegistryPublishStatus,
+    RegistryValidationStageLifecycle,
+};
 use rustok_core::ModuleRegistry;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -568,30 +570,22 @@ fn evidence_kind_slug(value: ModuleMarketplaceEvidenceKind) -> &'static str {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RegistryMutationResponse {
-    #[serde(default = "default_registry_mutation_schema_version")]
-    pub schema_version: u32,
     pub action: String,
     pub dry_run: bool,
     pub accepted: bool,
-    #[serde(default)]
     pub request_id: Option<String>,
-    #[serde(default)]
     pub status: Option<String>,
     pub slug: String,
     pub version: String,
-    #[serde(default)]
     pub warnings: Vec<String>,
-    #[serde(default)]
     pub errors: Vec<String>,
     pub next_step: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RegistryPublishStatusResponse {
-    #[serde(default = "default_registry_mutation_schema_version")]
-    pub schema_version: u32,
     pub request_id: String,
     /// Monotonically increasing publish-request aggregate revision for a
     /// subsequent compare-and-swap mutation.
@@ -602,36 +596,34 @@ pub struct RegistryPublishStatusResponse {
     #[serde(rename = "artifactOrigin")]
     pub artifact_origin: String,
     pub accepted: bool,
-    #[serde(default)]
     pub warnings: Vec<String>,
-    #[serde(default)]
     pub errors: Vec<String>,
-    #[serde(default, rename = "followUpGates")]
+    #[serde(rename = "followUpGates")]
     pub follow_up_gates: Vec<RegistryPublishStatusFollowUpGate>,
-    #[serde(default, rename = "validationStages")]
+    #[serde(rename = "validationStages")]
     pub validation_stages: Vec<RegistryPublishStatusValidationStage>,
-    #[serde(default, rename = "approvalOverrideRequired")]
+    #[serde(rename = "approvalOverrideRequired")]
     pub approval_override_required: bool,
-    #[serde(default, rename = "approvalOverrideReasonCodes")]
+    #[serde(rename = "approvalOverrideReasonCodes")]
     pub approval_override_reason_codes: Vec<String>,
-    #[serde(default, rename = "governanceActions")]
+    #[serde(rename = "governanceActions")]
     pub governance_actions: Vec<RegistryGovernanceAction>,
     pub next_step: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RegistryGovernanceAction {
     pub key: String,
     #[serde(rename = "reasonRequired")]
     pub reason_required: bool,
     #[serde(rename = "reasonCodeRequired")]
     pub reason_code_required: bool,
-    #[serde(default, rename = "reasonCodes")]
+    #[serde(rename = "reasonCodes")]
     pub reason_codes: Vec<String>,
     pub destructive: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RegistryPublishStatusFollowUpGate {
     pub key: String,
     pub status: String,
@@ -640,7 +632,7 @@ pub struct RegistryPublishStatusFollowUpGate {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RegistryPublishStatusValidationStage {
     pub key: String,
     pub status: String,
@@ -653,6 +645,93 @@ pub struct RegistryPublishStatusValidationStage {
     pub started_at: Option<String>,
     #[serde(rename = "finishedAt")]
     pub finished_at: Option<String>,
+    #[serde(rename = "executionMode")]
+    pub execution_mode: String,
+    pub runnable: bool,
+    #[serde(rename = "requiresManualConfirmation")]
+    pub requires_manual_confirmation: bool,
+    #[serde(rename = "allowedTerminalReasonCodes")]
+    pub allowed_terminal_reason_codes: Vec<String>,
+    #[serde(rename = "suggestedPassReasonCode")]
+    pub suggested_pass_reason_code: Option<String>,
+    #[serde(rename = "suggestedFailureReasonCode")]
+    pub suggested_failure_reason_code: Option<String>,
+    #[serde(rename = "suggestedBlockedReasonCode")]
+    pub suggested_blocked_reason_code: Option<String>,
+}
+
+impl From<RegistryPublishStatus> for RegistryPublishStatusResponse {
+    fn from(status: RegistryPublishStatus) -> Self {
+        Self {
+            request_id: status.request_id,
+            revision: status.revision,
+            slug: status.slug,
+            version: status.version,
+            status: status.status,
+            artifact_origin: status.artifact_origin,
+            accepted: status.accepted,
+            warnings: status.warnings,
+            errors: status.errors,
+            follow_up_gates: status.follow_up_gates.into_iter().map(Into::into).collect(),
+            validation_stages: status
+                .validation_stages
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            approval_override_required: status.approval_override_required,
+            approval_override_reason_codes: status.approval_override_reason_codes,
+            governance_actions: status
+                .governance_actions
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            next_step: status.next_step,
+        }
+    }
+}
+
+impl From<RegistryGovernanceActionLifecycle> for RegistryGovernanceAction {
+    fn from(action: RegistryGovernanceActionLifecycle) -> Self {
+        Self {
+            key: action.key,
+            reason_required: action.reason_required,
+            reason_code_required: action.reason_code_required,
+            reason_codes: action.reason_codes,
+            destructive: action.destructive,
+        }
+    }
+}
+
+impl From<RegistryFollowUpGateLifecycle> for RegistryPublishStatusFollowUpGate {
+    fn from(gate: RegistryFollowUpGateLifecycle) -> Self {
+        Self {
+            key: gate.key,
+            status: gate.status,
+            detail: gate.detail,
+            updated_at: gate.updated_at,
+        }
+    }
+}
+
+impl From<RegistryValidationStageLifecycle> for RegistryPublishStatusValidationStage {
+    fn from(stage: RegistryValidationStageLifecycle) -> Self {
+        Self {
+            key: stage.key,
+            status: stage.status,
+            detail: stage.detail,
+            attempt_number: stage.attempt_number,
+            updated_at: stage.updated_at,
+            started_at: stage.started_at,
+            finished_at: stage.finished_at,
+            execution_mode: stage.execution_mode,
+            runnable: stage.runnable,
+            requires_manual_confirmation: stage.requires_manual_confirmation,
+            allowed_terminal_reason_codes: stage.allowed_terminal_reason_codes,
+            suggested_pass_reason_code: stage.suggested_pass_reason_code,
+            suggested_failure_reason_code: stage.suggested_failure_reason_code,
+            suggested_blocked_reason_code: stage.suggested_blocked_reason_code,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -1198,10 +1277,173 @@ pub fn filter_catalog_modules(
         .collect()
 }
 
+fn compare_registry_versions(
+    left: &CatalogModuleVersion,
+    right: &CatalogModuleVersion,
+) -> Ordering {
+    left.yanked
+        .cmp(&right.yanked)
+        .then_with(|| compare_registry_semver_desc(&left.version, &right.version))
+        .then_with(|| right.published_at.cmp(&left.published_at))
+        .then_with(|| right.version.cmp(&left.version))
+}
+
+fn compare_registry_semver_desc(left: &str, right: &str) -> Ordering {
+    match (Version::parse(left), Version::parse(right)) {
+        (Ok(left), Ok(right)) => right.cmp(&left),
+        (Ok(_), Err(_)) => Ordering::Less,
+        (Err(_), Ok(_)) => Ordering::Greater,
+        (Err(_), Err(_)) => Ordering::Equal,
+    }
+}
+
+#[cfg(test)]
+fn validate_registry_schema_version(schema_version: u32) -> anyhow::Result<()> {
+    if schema_version == REGISTRY_CATALOG_SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    anyhow::bail!(
+        "Unsupported registry catalog schema_version={schema_version}; expected {}",
+        REGISTRY_CATALOG_SCHEMA_VERSION
+    );
+}
+
+pub fn validate_registry_mutation_schema_version(schema_version: u32) -> anyhow::Result<()> {
+    if schema_version == REGISTRY_MUTATION_SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    anyhow::bail!(
+        "Unsupported registry mutation schema_version={schema_version}; expected {}",
+        REGISTRY_MUTATION_SCHEMA_VERSION
+    );
+}
+
+fn default_registry_source() -> String {
+    "registry".to_string()
+}
+
+fn default_registry_catalog_schema_version() -> u32 {
+    REGISTRY_CATALOG_SCHEMA_VERSION
+}
+
+fn default_registry_mutation_schema_version() -> u32 {
+    REGISTRY_MUTATION_SCHEMA_VERSION
+}
+
+fn default_registry_ownership() -> String {
+    "third_party".to_string()
+}
+
+fn default_registry_trust_level() -> String {
+    "unverified".to_string()
+}
+
+fn normalize_optional_registry_publisher(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn normalize_optional_registry_checksum(value: Option<String>) -> Option<String> {
+    let value = value?.trim().to_ascii_lowercase();
+    (value.len() == 64 && value.chars().all(|ch| ch.is_ascii_hexdigit())).then_some(value)
+}
+
+fn normalize_optional_registry_published_at(value: Option<String>) -> Option<String> {
+    let value = value?.trim().to_string();
+    if value.is_empty() {
+        return None;
+    }
+
+    DateTime::parse_from_rfc3339(&value).ok().map(|value| {
+        value
+            .with_timezone(&Utc)
+            .to_rfc3339_opts(SecondsFormat::Secs, true)
+    })
+}
+
+fn normalize_registry_versions(
+    mut versions: Vec<CatalogModuleVersion>,
+) -> Vec<CatalogModuleVersion> {
+    for version in &mut versions {
+        version.published_at =
+            normalize_optional_registry_published_at(version.published_at.take());
+        version.checksum_sha256 =
+            normalize_optional_registry_checksum(version.checksum_sha256.take());
+    }
+
+    versions.sort_by(compare_registry_versions);
+    versions
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::modules::ModulesManifest;
+
+    #[test]
+    fn publish_status_response_preserves_the_complete_validation_stage_contract() {
+        let response = RegistryPublishStatusResponse::from(RegistryPublishStatus {
+            request_id: "request-1".to_string(),
+            revision: 4,
+            slug: "forum".to_string(),
+            version: "1.2.3".to_string(),
+            status: "validating".to_string(),
+            artifact_origin: "platform_built".to_string(),
+            accepted: true,
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            follow_up_gates: vec![RegistryFollowUpGateLifecycle {
+                key: "platform_build".to_string(),
+                status: "pending".to_string(),
+                detail: "Awaiting build".to_string(),
+                updated_at: "2026-09-08T00:00:00Z".to_string(),
+            }],
+            validation_stages: vec![RegistryValidationStageLifecycle {
+                key: "targeted_tests".to_string(),
+                status: "running".to_string(),
+                detail: "Executing targeted tests".to_string(),
+                attempt_number: 2,
+                updated_at: "2026-09-08T00:00:00Z".to_string(),
+                started_at: Some("2026-09-08T00:00:00Z".to_string()),
+                finished_at: None,
+                execution_mode: "remote".to_string(),
+                runnable: true,
+                requires_manual_confirmation: false,
+                allowed_terminal_reason_codes: vec!["test_failure".to_string()],
+                suggested_pass_reason_code: None,
+                suggested_failure_reason_code: Some("test_failure".to_string()),
+                suggested_blocked_reason_code: None,
+            }],
+            approval_override_required: false,
+            approval_override_reason_codes: Vec::new(),
+            governance_actions: vec![RegistryGovernanceActionLifecycle {
+                key: "hold".to_string(),
+                reason_required: true,
+                reason_code_required: true,
+                reason_codes: vec!["release_window".to_string()],
+                destructive: false,
+            }],
+            next_step: None,
+        });
+
+        let stage = response
+            .validation_stages
+            .first()
+            .expect("validation stage");
+        assert_eq!(stage.execution_mode, "remote");
+        assert!(stage.runnable);
+        assert_eq!(
+            stage.allowed_terminal_reason_codes,
+            vec!["test_failure".to_string()]
+        );
+        assert_eq!(
+            stage.suggested_failure_reason_code.as_deref(),
+            Some("test_failure")
+        );
+    }
 
     #[test]
     fn validation_stage_report_rejects_removed_detail_field() {
@@ -1824,105 +2066,4 @@ mod tests {
         assert!(validate_registry_schema_version(1).is_ok());
         assert!(validate_registry_schema_version(2).is_err());
     }
-}
-
-fn default_registry_source() -> String {
-    "registry".to_string()
-}
-
-fn default_registry_catalog_schema_version() -> u32 {
-    REGISTRY_CATALOG_SCHEMA_VERSION
-}
-
-fn default_registry_mutation_schema_version() -> u32 {
-    REGISTRY_MUTATION_SCHEMA_VERSION
-}
-
-fn default_registry_ownership() -> String {
-    "third_party".to_string()
-}
-
-fn default_registry_trust_level() -> String {
-    "unverified".to_string()
-}
-
-fn normalize_optional_registry_publisher(value: Option<String>) -> Option<String> {
-    value
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn normalize_optional_registry_checksum(value: Option<String>) -> Option<String> {
-    let value = value?.trim().to_ascii_lowercase();
-    (value.len() == 64 && value.chars().all(|ch| ch.is_ascii_hexdigit())).then_some(value)
-}
-
-fn normalize_optional_registry_published_at(value: Option<String>) -> Option<String> {
-    let value = value?.trim().to_string();
-    if value.is_empty() {
-        return None;
-    }
-
-    DateTime::parse_from_rfc3339(&value).ok().map(|value| {
-        value
-            .with_timezone(&Utc)
-            .to_rfc3339_opts(SecondsFormat::Secs, true)
-    })
-}
-
-fn normalize_registry_versions(
-    mut versions: Vec<CatalogModuleVersion>,
-) -> Vec<CatalogModuleVersion> {
-    for version in &mut versions {
-        version.published_at =
-            normalize_optional_registry_published_at(version.published_at.take());
-        version.checksum_sha256 =
-            normalize_optional_registry_checksum(version.checksum_sha256.take());
-    }
-
-    versions.sort_by(compare_registry_versions);
-    versions
-}
-
-fn compare_registry_versions(
-    left: &CatalogModuleVersion,
-    right: &CatalogModuleVersion,
-) -> Ordering {
-    left.yanked
-        .cmp(&right.yanked)
-        .then_with(|| compare_registry_semver_desc(&left.version, &right.version))
-        .then_with(|| right.published_at.cmp(&left.published_at))
-        .then_with(|| right.version.cmp(&left.version))
-}
-
-fn compare_registry_semver_desc(left: &str, right: &str) -> Ordering {
-    match (Version::parse(left), Version::parse(right)) {
-        (Ok(left), Ok(right)) => right.cmp(&left),
-        (Ok(_), Err(_)) => Ordering::Less,
-        (Err(_), Ok(_)) => Ordering::Greater,
-        (Err(_), Err(_)) => Ordering::Equal,
-    }
-}
-
-#[cfg(test)]
-fn validate_registry_schema_version(schema_version: u32) -> anyhow::Result<()> {
-    if schema_version == REGISTRY_CATALOG_SCHEMA_VERSION {
-        return Ok(());
-    }
-
-    anyhow::bail!(
-        "Unsupported registry catalog schema_version={schema_version}; expected {}",
-        REGISTRY_CATALOG_SCHEMA_VERSION
-    );
-}
-
-pub fn validate_registry_mutation_schema_version(schema_version: u32) -> anyhow::Result<()> {
-    if schema_version == REGISTRY_MUTATION_SCHEMA_VERSION {
-        return Ok(());
-    }
-
-    anyhow::bail!(
-        "Unsupported registry mutation schema_version={schema_version}; expected {}",
-        REGISTRY_MUTATION_SCHEMA_VERSION
-    );
 }

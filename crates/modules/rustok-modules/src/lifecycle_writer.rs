@@ -1,6 +1,10 @@
+use async_trait::async_trait;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -30,7 +34,7 @@ use crate::{
     artifact_settings::{self, ArtifactSettingsStoreError},
     execute_module_toggle,
 };
-use rustok_api::PortError;
+use rustok_api::{PortError, StaticTenantModuleView};
 use rustok_core::ModuleRegistry;
 use rustok_outbox::idempotency::{self, Admission};
 
@@ -57,6 +61,37 @@ pub struct TenantModuleOverrideSnapshot {
     pub enabled: bool,
     pub settings: serde_json::Value,
 }
+
+/// Host-composed read boundary for static tenant lifecycle projections.
+///
+/// The host supplies active-composition inputs through one implementation of
+/// this port. Native transports must not deserialize the manifest or rebuild
+/// lifecycle revisions from override rows.
+#[async_trait]
+pub trait StaticModuleLifecycleReader: Send + Sync {
+    async fn static_tenant_module_views(
+        &self,
+        tenant_id: Uuid,
+        limit: u32,
+    ) -> Result<Vec<StaticTenantModuleView>, StaticModuleLifecycleReaderError>;
+
+    async fn static_lifecycle_revisions(
+        &self,
+        tenant_id: Uuid,
+        module_slugs: Vec<String>,
+    ) -> Result<BTreeMap<String, i64>, StaticModuleLifecycleReaderError>;
+}
+
+/// Stable host-port failure for unavailable static lifecycle projections.
+#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
+pub enum StaticModuleLifecycleReaderError {
+    #[error("static module lifecycle projection is unavailable")]
+    Unavailable,
+}
+
+/// A host-composed static lifecycle reader shared with internal transports.
+#[derive(Clone)]
+pub struct SharedStaticModuleLifecycleReader(pub Arc<dyn StaticModuleLifecycleReader>);
 
 /// Authenticated, replayable command for one platform-native tenant lifecycle
 /// transition. Hosts derive the complete tenant-matched context from the
@@ -967,6 +1002,24 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             .collect()
     }
 
+    /// Returns bounded browser-safe static lifecycle projections. The owner
+    /// joins the explicit override with its concurrency aggregate so transports
+    /// cannot invent a revision or reconstruct this state from persistence.
+    pub async fn static_tenant_module_views(
+        &self,
+        tenant_id: Uuid,
+        limit: u32,
+    ) -> Result<Vec<StaticTenantModuleView>, ModuleLifecycleDbWriterError> {
+        let overrides = self.tenant_override_snapshots(tenant_id, limit).await?;
+        let lifecycle_revisions = self
+            .static_lifecycle_snapshots(
+                tenant_id,
+                overrides.iter().map(|module| module.module_slug.clone()),
+            )
+            .await?;
+        project_static_tenant_module_views(overrides, &lifecycle_revisions)
+    }
+
     /// Resolves the explainable, revisioned availability policy from the exact
     /// owner catalog, platform defaults, tenant overrides, and artifact runtime
     /// evidence used by writes.
@@ -1332,6 +1385,37 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
     }
 }
 
+fn project_static_tenant_module_views(
+    overrides: Vec<TenantModuleOverrideSnapshot>,
+    lifecycle_revisions: &BTreeMap<String, StaticTenantLifecycleSnapshot>,
+) -> Result<Vec<StaticTenantModuleView>, ModuleLifecycleDbWriterError> {
+    overrides
+        .into_iter()
+        .map(|module| {
+            let revision = lifecycle_revisions
+                .get(&module.module_slug)
+                .ok_or_else(|| {
+                    ModuleLifecycleDbWriterError::Configuration(format!(
+                        "missing static lifecycle revision for `{}`",
+                        module.module_slug
+                    ))
+                })?
+                .revision;
+            Ok(StaticTenantModuleView {
+                module_slug: module.module_slug,
+                enabled: module.enabled,
+                settings: module.settings.to_string(),
+                revision: i64::try_from(revision).map_err(|_| {
+                    ModuleLifecycleDbWriterError::Configuration(
+                        "static module lifecycle revision exceeds the browser-safe range"
+                            .to_string(),
+                    )
+                })?,
+            })
+        })
+        .collect()
+}
+
 fn validate_recovery_command(
     command: &ModuleLifecycleRecoveryCommand,
 ) -> Result<(), ModuleLifecycleDbWriterError> {
@@ -1544,5 +1628,60 @@ fn map_artifact_settings_error(
             module_slug: module_slug.to_string(),
             reason: "artifact settings instance was purged and requires an explicit recovery restore",
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn static_lifecycle_projection_keeps_owner_settings_and_revision_together() {
+        let tenant_id = Uuid::new_v4();
+        let mut revisions = BTreeMap::new();
+        revisions.insert(
+            "forum".to_string(),
+            StaticTenantLifecycleSnapshot {
+                tenant_id,
+                module_slug: "forum".to_string(),
+                revision: 4,
+                active_idempotency_key: None,
+            },
+        );
+
+        let views = project_static_tenant_module_views(
+            vec![TenantModuleOverrideSnapshot {
+                module_slug: "forum".to_string(),
+                enabled: true,
+                settings: serde_json::json!({ "visibility": "public" }),
+            }],
+            &revisions,
+        )
+        .expect("owner projection");
+
+        assert_eq!(views.len(), 1);
+        assert_eq!(views[0].module_slug, "forum");
+        assert!(views[0].enabled);
+        assert_eq!(views[0].settings, r#"{"visibility":"public"}"#);
+        assert_eq!(views[0].revision, 4);
+    }
+
+    #[test]
+    fn static_lifecycle_projection_fails_closed_without_a_matching_revision() {
+        let error = project_static_tenant_module_views(
+            vec![TenantModuleOverrideSnapshot {
+                module_slug: "forum".to_string(),
+                enabled: true,
+                settings: serde_json::json!({}),
+            }],
+            &BTreeMap::new(),
+        )
+        .expect_err("missing aggregate revision must not become a synthetic response");
+
+        assert!(
+            error
+                .to_string()
+                .contains("missing static lifecycle revision")
+        );
     }
 }

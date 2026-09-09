@@ -1,3 +1,4 @@
+use rustok_api::ModuleOperationRecoveryPlanView;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use thiserror::Error;
 
@@ -34,6 +35,25 @@ pub struct ModuleOperationRecoveryPlan {
     pub trace_id: Option<String>,
     pub requested_by: Option<String>,
     pub error_message: Option<String>,
+}
+
+impl From<ModuleOperationRecoveryPlan> for ModuleOperationRecoveryPlanView {
+    fn from(plan: ModuleOperationRecoveryPlan) -> Self {
+        Self {
+            operation_id: plan.operation_id.to_string(),
+            tenant_id: plan.tenant_id.to_string(),
+            module_slug: plan.module_slug,
+            requested_enabled: plan.requested_enabled,
+            previous_effective_enabled: plan.previous_effective_enabled,
+            status: plan.status.as_str().to_string(),
+            issue: plan.issue.as_str().to_string(),
+            retryable: plan.retryable,
+            recommended_action: plan.recommended_action.as_str().to_string(),
+            correlation_id: plan.correlation_id,
+            requested_by: plan.requested_by,
+            error_message: plan.error_message,
+        }
+    }
 }
 
 impl ModuleOperationRecoveryPlan {
@@ -508,6 +528,30 @@ mod tests {
         assert_eq!(
             recovery_state.recommended_action,
             ModuleOperationRecoveryAction::None
+        );
+    }
+
+    #[test]
+    fn owner_projects_a_redacted_recovery_view() {
+        let plan = ModuleOperationRecoveryPlan::from_snapshot(
+            snapshot(Some("post-hook: timeout")),
+            Some(override_state()),
+        );
+        let operation_id = plan.operation_id;
+        let tenant_id = plan.tenant_id;
+        let view = ModuleOperationRecoveryPlanView::from(plan);
+
+        assert_eq!(view.operation_id, operation_id.to_string());
+        assert_eq!(view.tenant_id, tenant_id.to_string());
+        assert_eq!(view.issue, "post_hook_failed");
+        assert_eq!(view.recommended_action, "retry_post_hook");
+        assert!(view.correlation_id.is_some());
+        assert_eq!(view.requested_by.as_deref(), Some("operator"));
+        assert!(
+            serde_json::to_value(view)
+                .expect("recovery view serializes")
+                .get("traceId")
+                .is_none()
         );
     }
 

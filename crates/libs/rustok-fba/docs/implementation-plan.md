@@ -4,9 +4,10 @@
 
 `rustok-fba` provides serializable metadata types for backend topology,
 transport profiles, provider descriptors, consumer dependencies, and call
-context. It reuses `rustok-api` port context, policy, and error types. No
-module registry currently consumes these Rust types in production; existing
-module-local FBA registries remain JSON evidence artifacts.
+context. It also owns the v1 provider-registry structural schema. The shared
+fast validator adopts that schema for compatible RBAC and Workflow registry
+artifacts; module-local verifiers retain their owner-specific semantics. No
+module registry currently consumes these Rust types in production.
 
 ## Readiness
 
@@ -20,23 +21,22 @@ module-local FBA registries remain JSON evidence artifacts.
 
 ## Next results
 
-1. **Adopt typed metadata only after demonstrated repetition.** When two or
-   more module registries require the same provider/consumer descriptor shape,
-   introduce an owner-approved conversion from the module artifact to
-   `rustok-fba` types. Done when the adoption removes duplicate metadata rather
-   than creating a parallel registry path.
+1. **Extend adoption only across compatible shapes.** Migrate another provider
+   registry when it has the v1 required owner, port, consumer, evidence, and
+   contract-test metadata. Do not force mixed-generation registries through an
+   adapter or compatibility shape.
 2. **Lock the first adopted wire contract.** Add JSON fixtures and
    serialization/backward-compatibility tests for the concrete descriptor,
    including topology, transport, degraded modes, and capability version. Done
    when a breaking metadata change fails a repeatable check.
-3. **Add a registry-use guard after adoption.** Verify that new registries use
-   the shared metadata shape where it applies, while retaining module-local
-   domain evidence and `rustok-api` port semantics. Done when the guard rejects
-   duplicate shared metadata without forcing unrelated registries to migrate.
+3. **Keep the registry-use guard structural.** The shared validator must reject
+   malformed common metadata while module gates continue to prove domain
+   semantics, source order, and runtime evidence.
 
 ## Verification
 
 - `cargo test -p rustok-fba`
+- `node scripts/verify/lib/fba-registry-validation.test.mjs`
 - Targeted registry fixture/compatibility checks once a module adopts the
   shared types.
 - Review against [backend module architecture](../../../docs/backend/module-backend-architecture.md).

@@ -1,13 +1,16 @@
 use anyhow::{Context, anyhow};
 use object_store::{ObjectStoreExt, PutMode, path::Path};
-use rustok_modules::{ModuleControlPlane, SeaOrmModuleGovernanceService};
+use rustok_modules::{
+    ModuleControlPlane, ModuleGovernancePublishRequestStatusSnapshot,
+    ModuleGovernanceValidationStageSnapshot, SeaOrmModuleGovernanceService,
+};
 use rustok_storage::StorageRuntime;
 use sea_orm::DatabaseConnection;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::services::marketplace_catalog::{RegistryPublishArtifactOrigin, RegistryPublishRequest};
-use crate::services::registry_principal::{RegistryAuthority, RegistryPrincipalRef};
+use crate::services::registry_principal::RegistryAuthority;
 use thiserror::Error;
 
 pub use rustok_modules::MODULE_PUBLISH_ARTIFACT_MAX_BYTES;
@@ -134,15 +137,15 @@ pub struct RegistryGovernanceService {
 
 #[derive(Debug, Clone)]
 pub struct RegistryValidationQueueResult {
-    pub status: RegistryPublishRequestStatusSnapshot,
+    pub status: ModuleGovernancePublishRequestStatusSnapshot,
     pub queued: bool,
     pub validation_job_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct RegistryValidationStageReportResult {
-    pub status: RegistryPublishRequestStatusSnapshot,
-    pub stage: RegistryValidationStageSnapshot,
+    pub status: ModuleGovernancePublishRequestStatusSnapshot,
+    pub stage: ModuleGovernanceValidationStageSnapshot,
 }
 
 #[derive(Debug, Clone)]
@@ -165,157 +168,10 @@ pub struct RegistryRemoteValidationClaim {
     pub crate_name: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct RegistryPublishRequestSnapshot {
-    pub id: String,
-    pub revision: i64,
-    pub slug: String,
-    pub version: String,
-    pub status: String,
-    pub artifact_origin: String,
-    pub requested_by: RegistryPrincipalRef,
-    pub publisher: Option<RegistryPrincipalRef>,
-    pub approved_by: Option<RegistryPrincipalRef>,
-    pub rejected_by: Option<RegistryPrincipalRef>,
-    pub rejection_reason: Option<String>,
-    pub changes_requested_by: Option<RegistryPrincipalRef>,
-    pub changes_requested_reason: Option<String>,
-    pub changes_requested_reason_code: Option<String>,
-    pub changes_requested_at: Option<String>,
-    pub held_by: Option<RegistryPrincipalRef>,
-    pub held_reason: Option<String>,
-    pub held_reason_code: Option<String>,
-    pub held_at: Option<String>,
-    pub held_from_status: Option<String>,
-    pub warnings: Vec<String>,
-    pub errors: Vec<String>,
-    pub created_at: String,
-    pub updated_at: String,
-    pub published_at: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RegistryModuleReleaseSnapshot {
-    pub version: String,
-    pub status: String,
-    pub publisher: RegistryPrincipalRef,
-    pub checksum_sha256: Option<String>,
-    pub published_at: String,
-    pub yanked_reason: Option<String>,
-    pub yanked_by: Option<RegistryPrincipalRef>,
-    pub yanked_at: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RegistryModuleOwnerSnapshot {
-    pub owner: RegistryPrincipalRef,
-    pub bound_by: RegistryPrincipalRef,
-    pub bound_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct RegistryGovernanceEventSnapshot {
-    pub id: String,
-    pub event_type: String,
-    pub actor: RegistryPrincipalRef,
-    pub publisher: Option<RegistryPrincipalRef>,
-    pub payload: RegistryGovernanceEventPayload,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct RegistryGovernanceEventPayload {
-    pub reason: Option<String>,
-    pub reason_code: Option<String>,
-    pub detail: Option<String>,
-    pub version: Option<String>,
-    pub stage_key: Option<String>,
-    pub attempt_number: Option<i32>,
-    pub owner_transition: Option<RegistryOwnerTransitionPayload>,
-    pub warnings: Vec<String>,
-    pub errors: Vec<String>,
-    pub mode: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RegistryOwnerTransitionPayload {
-    pub previous_owner: Option<RegistryPrincipalRef>,
-    pub new_owner: Option<RegistryPrincipalRef>,
-    pub bound_by: Option<RegistryPrincipalRef>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RegistryFollowUpGateSnapshot {
-    pub key: String,
-    pub status: String,
-    pub detail: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct RegistryValidationStageSnapshot {
-    pub key: String,
-    pub status: String,
-    pub detail: String,
-    pub attempt_number: i32,
-    pub updated_at: String,
-    pub started_at: Option<String>,
-    pub finished_at: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RegistryGovernanceActionSnapshot {
-    pub key: String,
-    pub reason_required: bool,
-    pub reason_code_required: bool,
-    pub reason_codes: Vec<String>,
-    pub destructive: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct RegistryModuleLifecycleSnapshot {
-    pub owner_binding: Option<RegistryModuleOwnerSnapshot>,
-    pub latest_request: Option<RegistryPublishRequestSnapshot>,
-    pub latest_release: Option<RegistryModuleReleaseSnapshot>,
-    pub recent_events: Vec<RegistryGovernanceEventSnapshot>,
-    pub follow_up_gates: Vec<RegistryFollowUpGateSnapshot>,
-    pub validation_stages: Vec<RegistryValidationStageSnapshot>,
-    pub governance_actions: Vec<RegistryGovernanceActionSnapshot>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RegistryPublishRequestStatusSnapshot {
-    pub request: RegistryPublishRequestSnapshot,
-    pub authorization: RegistryPublishRequestAuthorizationSnapshot,
-    pub effective_publisher_principal: Option<serde_json::Value>,
-    pub rejected_retry_allowed: bool,
-    pub follow_up_gates: Vec<RegistryFollowUpGateSnapshot>,
-    pub validation_stages: Vec<RegistryValidationStageSnapshot>,
-    pub approval_override_required: bool,
-    pub approval_override_reason_codes: Vec<String>,
-    pub approval_override_warning: Option<String>,
-    pub governance_actions: Vec<RegistryGovernanceActionSnapshot>,
-    pub accepted: bool,
-    pub next_action: Option<rustok_modules::ModuleGovernancePublishRequestNextAction>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RegistryPublishRequestAuthorizationSnapshot {
-    pub can_manage: bool,
-    pub can_review: bool,
-}
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum RegistryPublishRequestPermission {
     Manage,
     Review,
-}
-
-#[derive(Debug, Clone)]
-pub struct RegistryPublishArtifactDownloadSnapshot {
-    pub storage_key: String,
-    pub content_type: String,
 }
 
 pub mod publishing;

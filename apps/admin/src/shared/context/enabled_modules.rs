@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 
-use crate::app::modules::core_module_slugs;
 use crate::features::modules::transport;
 
 fn local_resource<S, Fut, T>(
@@ -18,11 +17,12 @@ where
     LocalResource::new(move || fetcher(source()))
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct EnabledModulesContext {
     pub modules: RwSignal<HashSet<String>>,
     pub is_loading: RwSignal<bool>,
     pub error: RwSignal<Option<String>>,
+    refresh_generation: RwSignal<u64>,
 }
 
 impl EnabledModulesContext {
@@ -31,6 +31,7 @@ impl EnabledModulesContext {
             modules: RwSignal::new(HashSet::new()),
             is_loading: RwSignal::new(true),
             error: RwSignal::new(None),
+            refresh_generation: RwSignal::new(0),
         }
     }
 
@@ -41,14 +42,11 @@ impl EnabledModulesContext {
         self.modules.set(modules.into_iter().collect());
     }
 
-    pub fn set_module_enabled(&self, slug: &str, enabled: bool) {
-        self.modules.update(|modules| {
-            if enabled {
-                modules.insert(slug.to_string());
-            } else {
-                modules.remove(slug);
-            }
-        });
+    /// Re-resolves the exact owner-issued availability decision after a
+    /// lifecycle command instead of locally inferring effective enablement.
+    pub fn refresh(&self) {
+        self.refresh_generation
+            .update(|generation| *generation = generation.wrapping_add(1));
     }
 }
 
@@ -61,36 +59,40 @@ impl Default for EnabledModulesContext {
 #[component]
 pub fn EnabledModulesProvider(children: Children) -> impl IntoView {
     let context = EnabledModulesContext::new();
-    provide_context(context.clone());
+    provide_context(context);
 
     let token = use_token();
     let tenant = use_tenant();
 
+    let context_for_resource = context;
     let resource = local_resource(
-        move || (token.get(), tenant.get()),
-        move |(token_value, tenant_value)| async move {
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                context_for_resource.refresh_generation.get(),
+            )
+        },
+        move |(token_value, tenant_value, _refresh_generation)| async move {
             if token_value.is_none() || tenant_value.is_none() {
                 return Ok(Vec::new());
             }
 
-            transport::fetch_enabled_modules(token_value, tenant_value).await
+            transport::fetch_module_effective_policy(token_value, tenant_value)
+                .await
+                .map(|policy| policy.enabled_module_slugs())
         },
     );
 
-    let context_for_effect = context.clone();
+    let context_for_effect = context;
     Effect::new(move |_| match resource.get() {
         Some(Ok(modules)) => {
-            context_for_effect.replace_modules(
-                modules
-                    .into_iter()
-                    .chain(core_module_slugs().iter().map(|slug| slug.to_string())),
-            );
+            context_for_effect.replace_modules(modules);
             context_for_effect.error.set(None);
             context_for_effect.is_loading.set(false);
         }
         Some(Err(err)) => {
-            context_for_effect
-                .replace_modules(core_module_slugs().iter().map(|slug| slug.to_string()));
+            context_for_effect.replace_modules(std::iter::empty());
             context_for_effect.error.set(Some(format!("{}", err)));
             context_for_effect.is_loading.set(false);
         }

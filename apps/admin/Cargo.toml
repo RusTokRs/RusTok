@@ -224,7 +224,6 @@ tower.workspace = true
 [build-dependencies]
 leptos_i18n_build = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
 toml = { workspace = true }
 
 [package.metadata.leptos]

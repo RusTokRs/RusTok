@@ -228,6 +228,19 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
             return Err(ServerFnError::new("Tenant admin access is denied"));
         }
 
+        let effective_policy_reader = runtime_ctx
+            .shared_get::<rustok_modules::SharedModuleEffectivePolicyReader>()
+            .ok_or_else(|| {
+                tenant_admin_internal_error(
+                    "effective module policy reader is not configured",
+                    "resolve_enabled",
+                    correlation_id.as_str(),
+                    tenant.id,
+                    "tenant.admin_effective_policy_unavailable",
+                    "Effective module policy is temporarily unavailable",
+                )
+            })?;
+
         let db = runtime_ctx.db_clone();
         let service = TenantService::new(db.clone());
         let tenant_record = service.get_tenant(tenant.id).await.map_err(|error| {
@@ -255,8 +268,7 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
             .map(|module| (module.module_slug, module.enabled))
             .collect::<HashMap<_, _>>();
 
-        let control_plane = rustok_modules::ModuleControlPlane::new(db);
-        let snapshot = control_plane
+        let snapshot = rustok_modules::ModuleControlPlane::new(db)
             .composition()
             .active_snapshot()
             .await
@@ -287,9 +299,9 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
             .iter()
             .cloned()
             .collect::<HashSet<_>>();
-        let effective_modules = control_plane
-            .effective_policy(&registry, manifest.settings.default_enabled)
-            .resolve_enabled(tenant.id)
+        let effective_modules = effective_policy_reader
+            .0
+            .resolve(tenant.id)
             .await
             .map_err(|error| {
                 tenant_admin_internal_error(
@@ -300,7 +312,10 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
                     "tenant.admin_effective_policy_unavailable",
                     "Effective module policy is temporarily unavailable",
                 )
-            })?;
+            })?
+            .enabled_module_slugs()
+            .into_iter()
+            .collect::<HashSet<_>>();
 
         let mut modules = registry
             .list()

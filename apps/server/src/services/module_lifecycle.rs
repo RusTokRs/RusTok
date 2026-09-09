@@ -1,7 +1,7 @@
 use sea_orm::{DatabaseConnection, DbErr};
 use thiserror::Error;
 
-use rustok_api::PortError;
+use rustok_api::{PortError, StaticTenantModuleView};
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
     ModuleCommandContext, ModuleControlPlane, ModuleLifecycleDbWriterError,
@@ -23,6 +23,20 @@ pub struct ModuleLifecycleStateSnapshot {
     pub settings: serde_json::Value,
     pub operation_id: Option<uuid::Uuid>,
     pub revision: u64,
+}
+
+impl TryFrom<ModuleLifecycleStateSnapshot> for StaticTenantModuleView {
+    type Error = &'static str;
+
+    fn try_from(snapshot: ModuleLifecycleStateSnapshot) -> Result<Self, Self::Error> {
+        Ok(Self {
+            module_slug: snapshot.module_slug,
+            enabled: snapshot.enabled,
+            settings: snapshot.settings.to_string(),
+            revision: i64::try_from(snapshot.revision)
+                .map_err(|_| "static module lifecycle revision exceeds the browser-safe range")?,
+        })
+    }
 }
 
 #[derive(Debug, Error)]

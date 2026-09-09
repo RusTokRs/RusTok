@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::MarketplaceRegistryFreshness;
+use rustok_api::{MarketplaceModule, MarketplaceRegistryFreshness};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -246,8 +246,9 @@ pub struct ModuleMarketplaceVersion {
     pub artifact: Option<ModuleMarketplaceArtifactRelease>,
 }
 
-/// Complete marketplace projection consumed identically by GraphQL and native
-/// admin transports. It contains no server, HTTP, filesystem, or UI types.
+/// Owner-private marketplace entry used while catalog and governance services
+/// enrich a release. The server host maps it once to the canonical
+/// rustok_api::MarketplaceModule view before browser transports receive it.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ModuleMarketplaceEntry {
     pub slug: String,
@@ -299,14 +300,14 @@ pub trait ModuleMarketplaceCatalog: Send + Sync {
     async fn list(
         &self,
         query: ModuleMarketplaceQuery,
-    ) -> Result<Vec<ModuleMarketplaceEntry>, ModuleMarketplaceError>;
+    ) -> Result<Vec<MarketplaceModule>, ModuleMarketplaceError>;
 
     async fn get(
         &self,
         slug: &str,
         preferred_locale: Option<String>,
         fallback_locale: Option<String>,
-    ) -> Result<Option<ModuleMarketplaceEntry>, ModuleMarketplaceError>;
+    ) -> Result<Option<MarketplaceModule>, ModuleMarketplaceError>;
 
     /// Returns one snapshot per explicitly configured federated registry.
     /// Local compiled-manifest composition is intentionally not represented as
@@ -315,7 +316,8 @@ pub trait ModuleMarketplaceCatalog: Send + Sync {
 }
 
 /// Typed host-runtime handle for the selected local/remote marketplace
-/// composition. Absence is a configuration error; callers never fall back to
+/// composition. Its public read methods return the canonical browser-safe API
+/// projection; absence is a configuration error and callers never fall back to
 /// workspace scanning.
 #[derive(Clone)]
 pub struct SharedModuleMarketplaceCatalog(pub Arc<dyn ModuleMarketplaceCatalog>);

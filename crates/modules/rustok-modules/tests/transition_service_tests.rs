@@ -1,4 +1,7 @@
 use chrono::{Duration, Utc};
+use rustok_api::{
+    ModuleRetentionHoldView, ModuleTransitionCheckpointView, ModuleTransitionStateView,
+};
 use rustok_core::MigrationSource;
 use rustok_modules::{
     ConflictFenceSet, ControlPlaneInfrastructure, GlobalSecurityEpoch, ModuleCommandContext,
@@ -60,6 +63,43 @@ fn checkpoint(operation_id: Uuid) -> ModuleTransitionCheckpoint {
         created_at: now,
         updated_at: now,
     }
+}
+
+#[test]
+fn transition_owner_projects_the_canonical_browser_safe_contract() {
+    let operation_id = Uuid::new_v4();
+    let checkpoint = checkpoint(operation_id);
+    let view = ModuleTransitionCheckpointView::from(checkpoint.clone());
+
+    assert_eq!(view.operation_id, operation_id.to_string());
+    assert_eq!(view.module_slug, checkpoint.module_slug);
+    assert_eq!(view.revision, 1);
+    assert_eq!(view.state, ModuleTransitionStateView::Observing);
+    assert!(
+        view.state_details
+            .as_deref()
+            .is_some_and(|details| details.starts_with("Timeout at "))
+    );
+    assert_eq!(
+        serde_json::to_value(&view).expect("view serialization")["operationId"],
+        serde_json::Value::String(operation_id.to_string())
+    );
+
+    let hold_id = Uuid::new_v4();
+    let hold = ModuleRetentionHoldView::from(RetentionHoldRecord {
+        hold_id,
+        target: RetentionTarget::AdmittedPayloadCas {
+            digest: "sha256:predecessor".to_string(),
+        },
+        kind: RetentionHoldKind::ActiveRolloutWindow {
+            operation_id,
+            expires_at: Utc::now() + Duration::minutes(5),
+        },
+        created_at: Utc::now(),
+    });
+    assert_eq!(hold.hold_id, hold_id.to_string());
+    assert_eq!(hold.target_type, "payload_cas");
+    assert_eq!(hold.target_identity, "sha256:predecessor");
 }
 
 #[tokio::test]

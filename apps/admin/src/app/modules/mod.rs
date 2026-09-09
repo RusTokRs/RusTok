@@ -9,21 +9,11 @@ use std::cell::Cell;
 
 pub use generated_ui_codegen::core_module_slugs;
 pub use generated_ui_codegen::module_navigation_entries;
-pub use generated_ui_codegen::module_runtime_metadata;
 pub use registry::{
     AdminChildPageRegistration, AdminComponentRegistration, AdminPageRegistration, AdminSlot,
     components_for_slot, page_for_route_segment, register_component, register_page,
 };
 pub use search_composition::SearchAdminComposition;
-
-#[derive(Clone, Copy)]
-pub struct GeneratedModuleRuntimeMetadata {
-    pub ownership: &'static str,
-    pub trust_level: &'static str,
-    pub recommended_admin_surfaces: &'static [&'static str],
-    pub showcase_admin_surfaces: &'static [&'static str],
-    pub settings_schema_json: &'static str,
-}
 
 #[derive(Clone, Copy)]
 pub struct GeneratedModuleNavigationEntry {

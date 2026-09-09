@@ -1,9 +1,8 @@
-use leptos::prelude::*;
 use rustok_ui_transport::UiTransportPath;
 
 use crate::entities::module::{
-    BuildJob, InstalledModule, MarketplaceModule, ModuleCompositionSnapshot, ModuleInfo,
-    ModuleOperationRecoveryPlan, TenantModule, ToggleModuleResult,
+    BuildJob, InstalledModule, MarketplaceModule, ModuleCompositionSnapshot, ModuleEffectivePolicy,
+    ModuleInfo, ModuleOperationRecoveryPlan, TenantModule, ToggleModuleResult,
 };
 use crate::shared::api::{ApiError, map_server_fn_error, request};
 
@@ -18,34 +17,25 @@ fn selected_transport_path() -> UiTransportPath {
     }
 }
 
-pub async fn fetch_enabled_modules(
+pub async fn fetch_module_effective_policy(
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<Vec<String>, ApiError> {
+) -> Result<ModuleEffectivePolicy, ApiError> {
     match selected_transport_path() {
-        UiTransportPath::NativeServer => fetch_enabled_modules_server()
+        UiTransportPath::NativeServer => module_effective_policy_native()
             .await
             .map_err(map_server_fn_error),
-        UiTransportPath::Graphql => fetch_enabled_modules_graphql(token, tenant_slug).await,
+        UiTransportPath::Graphql => {
+            let response: ModuleEffectivePolicyResponse = request(
+                MODULE_EFFECTIVE_POLICY_QUERY,
+                serde_json::json!({}),
+                token,
+                tenant_slug,
+            )
+            .await?;
+            Ok(response.module_effective_policy)
+        }
     }
-}
-
-pub async fn fetch_enabled_modules_server() -> Result<Vec<String>, ServerFnError> {
-    list_enabled_modules_native().await
-}
-
-pub async fn fetch_enabled_modules_graphql(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<Vec<String>, ApiError> {
-    let response: EnabledModulesResponse = request(
-        ENABLED_MODULES_QUERY,
-        serde_json::json!({}),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.enabled_modules)
 }
 
 pub async fn fetch_modules(
@@ -474,7 +464,7 @@ pub async fn fetch_registry_publish_request_status(
     request_id: String,
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<RegistryPublishStatusContract, ApiError> {
+) -> Result<RegistryPublishStatus, ApiError> {
     let token = token.ok_or(ApiError::Unauthorized)?;
     fetch_registry_publish_request_status_native(token, tenant_slug.unwrap_or_default(), request_id)
         .await
@@ -705,29 +695,43 @@ pub async fn fetch_transition_checkpoint(
     token: Option<String>,
     tenant_slug: Option<String>,
     operation_id: String,
-) -> Result<Option<ModuleTransitionCheckpoint>, ApiError> {
-    let response: ModuleTransitionCheckpointResponse = request(
-        TRANSITION_CHECKPOINT_QUERY,
-        serde_json::json!({ "opId": operation_id }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.checkpoint)
+) -> Result<Option<rustok_api::ModuleTransitionCheckpointView>, ApiError> {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => module_transition_checkpoint_native(operation_id)
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
+            let response: ModuleTransitionCheckpointResponse = request(
+                TRANSITION_CHECKPOINT_QUERY,
+                serde_json::json!({ "opId": operation_id }),
+                token,
+                tenant_slug,
+            )
+            .await?;
+            Ok(response.checkpoint)
+        }
+    }
 }
 
 pub async fn fetch_retention_holds(
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<Vec<RetentionHold>, ApiError> {
-    let response: ModuleRetentionHoldsResponse = request(
-        RETENTION_HOLDS_QUERY,
-        serde_json::json!({}),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.holds)
+) -> Result<Vec<rustok_api::ModuleRetentionHoldView>, ApiError> {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => module_retention_holds_native()
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
+            let response: ModuleRetentionHoldsResponse = request(
+                RETENTION_HOLDS_QUERY,
+                serde_json::json!({}),
+                token,
+                tenant_slug,
+            )
+            .await?;
+            Ok(response.holds)
+        }
+    }
 }
 
 pub async fn finalize_module_transition(
@@ -736,31 +740,47 @@ pub async fn finalize_module_transition(
     operation_id: String,
     expected_revision: i64,
     idempotency_key: String,
-) -> Result<ModuleTransitionCheckpoint, ApiError> {
-    let response: FinalizeModuleTransitionResponse = request(
-        FINALIZE_TRANSITION_MUTATION,
-        serde_json::json!({
-            "opId": operation_id,
-            "expectedRevision": expected_revision,
-            "idempotencyKey": idempotency_key,
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.checkpoint)
+) -> Result<rustok_api::ModuleTransitionCheckpointView, ApiError> {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => {
+            finalize_module_transition_native(operation_id, expected_revision, idempotency_key)
+                .await
+                .map_err(map_server_fn_error)
+        }
+        UiTransportPath::Graphql => {
+            let response: FinalizeModuleTransitionResponse = request(
+                FINALIZE_TRANSITION_MUTATION,
+                serde_json::json!({
+                    "opId": operation_id,
+                    "expectedRevision": expected_revision,
+                    "idempotencyKey": idempotency_key,
+                }),
+                token,
+                tenant_slug,
+            )
+            .await?;
+            Ok(response.checkpoint)
+        }
+    }
 }
 
 pub async fn fetch_active_transitions(
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<Vec<ModuleTransitionCheckpoint>, ApiError> {
-    let response: ActiveModuleTransitionsResponse = request(
-        ACTIVE_MODULE_TRANSITIONS_QUERY,
-        serde_json::json!({}),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.active_transitions)
+) -> Result<Vec<rustok_api::ModuleTransitionCheckpointView>, ApiError> {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => active_module_transitions_native()
+            .await
+            .map_err(map_server_fn_error),
+        UiTransportPath::Graphql => {
+            let response: ActiveModuleTransitionsResponse = request(
+                ACTIVE_MODULE_TRANSITIONS_QUERY,
+                serde_json::json!({}),
+                token,
+                tenant_slug,
+            )
+            .await?;
+            Ok(response.active_transitions)
+        }
+    }
 }

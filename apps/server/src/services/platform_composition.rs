@@ -6,7 +6,7 @@ use thiserror::Error;
 use crate::modules::{
     InstalledManifestModule, ManifestDiff, ManifestError, ManifestManager, ModulesManifest,
 };
-use rustok_api::PortError;
+use rustok_api::{ModuleCompositionSnapshotView, PortError, StaticInstalledModuleView};
 use rustok_build::build::Model as Build;
 use rustok_build::{BuildEventPublisher, BuildRequest, BuildService};
 use rustok_modules::{
@@ -14,13 +14,24 @@ use rustok_modules::{
     ModuleCompositionBuildEnqueuer, ModuleCompositionBuildLease, ModuleCompositionError,
     ModuleCompositionOperation, ModuleCompositionSnapshot, ModuleCompositionUpdate,
     ModuleControlPlane, ModuleDefinitionError, SeaOrmModuleCompositionService,
+    SharedStaticInstalledModuleReader, StaticInstalledModuleReader,
+    StaticInstalledModuleReaderError,
 };
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlatformCompositionSnapshot {
     pub revision: i64,
     pub manifest_hash: String,
     pub manifest: ModulesManifest,
+}
+
+impl From<PlatformCompositionSnapshot> for ModuleCompositionSnapshotView {
+    fn from(snapshot: PlatformCompositionSnapshot) -> Self {
+        Self {
+            revision: snapshot.revision,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -143,6 +154,36 @@ impl ModuleCompositionBuildEnqueuer for ServerCompositionBuildEnqueuer {
 
 pub struct PlatformCompositionService;
 
+/// Server adapter that exposes the active static composition through the
+/// owner-owned browser-safe installed-module port.
+#[derive(Clone)]
+pub struct ServerStaticInstalledModuleReader {
+    db: DatabaseConnection,
+}
+
+impl ServerStaticInstalledModuleReader {
+    pub fn shared(db: DatabaseConnection) -> SharedStaticInstalledModuleReader {
+        SharedStaticInstalledModuleReader(Arc::new(Self { db }))
+    }
+}
+
+#[async_trait::async_trait]
+impl StaticInstalledModuleReader for ServerStaticInstalledModuleReader {
+    async fn list(
+        &self,
+    ) -> Result<Vec<StaticInstalledModuleView>, StaticInstalledModuleReaderError> {
+        PlatformCompositionService::installed_modules(&self.db)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    error = %error,
+                    "failed to resolve the static installed-module projection"
+                );
+                StaticInstalledModuleReaderError::Unavailable
+            })
+    }
+}
+
 impl PlatformCompositionService {
     pub async fn active_snapshot(
         db: &DatabaseConnection,
@@ -168,14 +209,25 @@ impl PlatformCompositionService {
         Ok(Self::active_snapshot(db).await?.manifest)
     }
 
+    /// Returns the bounded browser-safe composition projection after the host
+    /// has ensured the owner snapshot is initialized.
+    pub async fn active_snapshot_view(
+        db: &DatabaseConnection,
+    ) -> Result<ModuleCompositionSnapshotView, PlatformCompositionError> {
+        Self::active_snapshot(db).await.map(Into::into)
+    }
+
     /// Returns the installed platform-native module projection from the
     /// durable active composition. GraphQL and native transports must not
     /// inspect the manifest directly.
     pub async fn installed_modules(
         db: &DatabaseConnection,
-    ) -> Result<Vec<InstalledManifestModule>, PlatformCompositionError> {
+    ) -> Result<Vec<StaticInstalledModuleView>, PlatformCompositionError> {
         let manifest = Self::active_manifest(db).await?;
-        Ok(ManifestManager::installed_modules(&manifest))
+        Ok(ManifestManager::installed_modules(&manifest)
+            .into_iter()
+            .map(static_installed_module_view)
+            .collect())
     }
 
     pub fn manifest_snapshot_json(
@@ -215,6 +267,17 @@ impl PlatformCompositionService {
                 error: err.to_string(),
             })
         })
+    }
+}
+
+fn static_installed_module_view(module: InstalledManifestModule) -> StaticInstalledModuleView {
+    StaticInstalledModuleView {
+        slug: module.slug,
+        source: module.source,
+        crate_name: module.crate_name,
+        version: module.version,
+        required: module.required,
+        dependencies: module.depends_on,
     }
 }
 
@@ -433,6 +496,8 @@ fn composition_operation_failure(error: &PlatformCompositionBuildError) -> PortE
 
 #[cfg(test)]
 mod tests {
+    use super::static_installed_module_view;
+    use crate::modules::InstalledManifestModule;
     use rustok_api::manifest_hash::hash_manifest_snapshot;
 
     #[test]
@@ -464,5 +529,32 @@ mod tests {
             "modules": {"pricing": {"enabled": false}, "catalog": {"enabled": true}}
         }));
         assert_eq!(left, right);
+    }
+
+    #[test]
+    fn installed_module_view_redacts_private_manifest_locators() {
+        let view = static_installed_module_view(InstalledManifestModule {
+            slug: "catalog".to_string(),
+            source: "git".to_string(),
+            crate_name: "rustok-catalog".to_string(),
+            version: Some("1.2.3".to_string()),
+            git: Some("https://example.invalid/catalog.git".to_string()),
+            rev: Some("deadbeef".to_string()),
+            path: Some("crates/modules/rustok-catalog".to_string()),
+            required: false,
+            depends_on: vec!["content".to_string()],
+        });
+
+        assert_eq!(
+            serde_json::to_value(view).expect("installed module view serializes"),
+            serde_json::json!({
+                "slug": "catalog",
+                "source": "git",
+                "crateName": "rustok-catalog",
+                "version": "1.2.3",
+                "required": false,
+                "dependencies": ["content"],
+            })
+        );
     }
 }

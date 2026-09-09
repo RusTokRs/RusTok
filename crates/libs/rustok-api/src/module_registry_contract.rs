@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Canonical module slug grammar shared by manifests, artifact declarations,
@@ -12,6 +13,44 @@ pub fn is_valid_module_slug(value: &str) -> bool {
         })
         && !value.starts_with('_')
         && !value.ends_with('_')
+}
+
+/// Browser-safe static registry projection shared by internal transports.
+///
+/// The host resolves active-composition, lifecycle, and catalog metadata before
+/// constructing this view. Consumers must not reconstruct it from a manifest,
+/// build-time code generation, or direct lifecycle rows.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct StaticModuleRegistryView {
+    #[serde(rename = "moduleSlug")]
+    pub module_slug: String,
+    pub name: String,
+    pub description: String,
+    pub version: String,
+    pub kind: String,
+    pub dependencies: Vec<String>,
+    pub enabled: bool,
+    #[serde(rename = "lifecycleRevision")]
+    pub lifecycle_revision: i64,
+    pub ownership: String,
+    #[serde(rename = "trustLevel")]
+    pub trust_level: String,
+    #[serde(rename = "hasAdminUi")]
+    pub has_admin_ui: bool,
+    #[serde(rename = "hasStorefrontUi")]
+    pub has_storefront_ui: bool,
+    #[serde(rename = "uiClassification")]
+    pub ui_classification: String,
+    #[serde(rename = "recommendedAdminSurfaces")]
+    pub recommended_admin_surfaces: Vec<String>,
+    #[serde(rename = "showcaseAdminSurfaces")]
+    pub showcase_admin_surfaces: Vec<String>,
+}
+
+impl StaticModuleRegistryView {
+    pub fn is_core(&self) -> bool {
+        self.kind == "core"
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -218,5 +257,48 @@ mod tests {
         assert!(!is_valid_module_slug("sample-module"));
         assert!(!is_valid_module_slug("_sample"));
         assert!(!is_valid_module_slug(&"a".repeat(49)));
+    }
+
+    #[test]
+    fn static_registry_view_uses_the_transport_field_contract() {
+        let view = StaticModuleRegistryView {
+            module_slug: "blog".to_string(),
+            name: "Blog".to_string(),
+            description: "Publishing".to_string(),
+            version: "1.2.3".to_string(),
+            kind: "optional".to_string(),
+            dependencies: vec!["content".to_string()],
+            enabled: true,
+            lifecycle_revision: 42,
+            ownership: "first_party".to_string(),
+            trust_level: "verified".to_string(),
+            has_admin_ui: true,
+            has_storefront_ui: false,
+            ui_classification: "admin_only".to_string(),
+            recommended_admin_surfaces: vec!["leptos-admin".to_string()],
+            showcase_admin_surfaces: vec!["next-admin".to_string()],
+        };
+
+        assert_eq!(
+            serde_json::to_value(&view).expect("static module registry view serializes"),
+            serde_json::json!({
+                "moduleSlug": "blog",
+                "name": "Blog",
+                "description": "Publishing",
+                "version": "1.2.3",
+                "kind": "optional",
+                "dependencies": ["content"],
+                "enabled": true,
+                "lifecycleRevision": 42,
+                "ownership": "first_party",
+                "trustLevel": "verified",
+                "hasAdminUi": true,
+                "hasStorefrontUi": false,
+                "uiClassification": "admin_only",
+                "recommendedAdminSurfaces": ["leptos-admin"],
+                "showcaseAdminSurfaces": ["next-admin"],
+            })
+        );
+        assert!(!view.is_core());
     }
 }

@@ -22,6 +22,9 @@ transfer to this package.
 - FFA status: `phase_b_ready`
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
+- The compatible provider-registry baseline is validated through
+  `crates/libs/rustok-fba/contracts/provider-registry-v1.schema.json` before
+  Workflow-specific semantic checks run.
 - FBA provider contract: `WorkflowReadPort` / `workflow.read_projection.v1` in
   `crates/modules/rustok-workflow/contracts/workflow-fba-registry.json`.
 - Static, runtime-order, and compile-free evidence:

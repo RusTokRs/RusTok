@@ -454,6 +454,18 @@ pub struct ModuleGovernanceEventPayload {
     pub warnings: Vec<String>,
     pub errors: Vec<String>,
     pub mode: Option<String>,
+    pub automated_checks: Vec<ModuleGovernanceAutomatedCheck>,
+}
+
+/// One immutable result produced by an automated validation check.
+///
+/// The modules owner validates and normalizes this evidence before it becomes
+/// part of a durable governance event or a browser-safe lifecycle projection.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceAutomatedCheck {
+    pub key: String,
+    pub status: String,
+    pub detail: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -671,7 +683,7 @@ pub struct ModuleValidationJobResultCommand {
     pub outcome: ModuleValidationJobResultOutcome,
     pub warnings: Vec<String>,
     pub errors: Vec<String>,
-    pub automated_checks: serde_json::Value,
+    pub automated_checks: Vec<ModuleGovernanceAutomatedCheck>,
 }
 
 /// Immutable retry observation emitted by a running host worker. It keeps
@@ -2213,10 +2225,17 @@ impl ModuleValidationJobClaimCommand {
 
 impl ModuleValidationJobResultCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        let mut automated_check_keys = std::collections::HashSet::new();
+        let invalid_automated_checks = self.automated_checks.iter().any(|check| {
+            let key = check.key.trim();
+            key.is_empty()
+                || check.status.trim().is_empty()
+                || !automated_check_keys.insert(key.to_ascii_lowercase())
+        });
         if self.validation_job_id.trim().is_empty()
             || self.expected_request_revision < 1
             || !self.actor_principal.is_object()
-            || !self.automated_checks.is_array()
+            || invalid_automated_checks
             || self
                 .actor_principal
                 .get("id")
@@ -2831,7 +2850,7 @@ impl SeaOrmModuleGovernanceService {
                             CAST(publisher_principal AS TEXT) AS publisher_principal, \
                             CAST(details AS TEXT) AS details, created_at \
                      FROM registry_governance_events WHERE slug = {} \
-                     ORDER BY created_at DESC LIMIT 10",
+                     ORDER BY created_at DESC, id DESC LIMIT 10",
                     mark(1)
                 ),
                 vec![slug.into()],
@@ -6792,6 +6811,7 @@ impl SeaOrmModuleGovernanceService {
         command: ModuleValidationJobResultCommand,
     ) -> Result<String, ModuleGovernanceError> {
         command.validate()?;
+        let automated_checks = normalize_governance_automated_checks(&command.automated_checks);
         let tx = self
             .db
             .begin()
@@ -7043,11 +7063,11 @@ impl SeaOrmModuleGovernanceService {
         let result_event = match command.outcome {
             ModuleValidationJobResultOutcome::Passed => (
                 "validation_passed",
-                serde_json::json!({"version":version,"status":"approved","warnings":warnings,"automated_checks":command.automated_checks,"follow_up_gates":follow_up_gates,"validation_stages":stage_details}),
+                serde_json::json!({"version":version,"status":"approved","warnings":warnings,"automated_checks":automated_checks,"follow_up_gates":follow_up_gates,"validation_stages":stage_details}),
             ),
             ModuleValidationJobResultOutcome::Failed => (
                 "validation_failed",
-                serde_json::json!({"version":version,"status":"rejected","reason":last_error,"warnings":warnings,"errors":errors,"automated_checks":command.automated_checks}),
+                serde_json::json!({"version":version,"status":"rejected","reason":last_error,"warnings":warnings,"errors":errors,"automated_checks":automated_checks}),
             ),
         };
         for (event_type, details) in [
@@ -9794,7 +9814,7 @@ async fn terminalize_invalid_validation_work_item(
                 "status": "rejected",
                 "reason": VALIDATION_WORK_ITEM_INVALID_ERROR,
                 "errors": errors,
-                "automated_checks": [{"check":"delivery_work_item","status":"failed"}],
+                "automated_checks": [{"key":"delivery_work_item","status":"failed"}],
             }),
         ),
         (
@@ -10692,7 +10712,49 @@ fn governance_event_payload(details: &serde_json::Value) -> ModuleGovernanceEven
             .map(ToString::to_string)
             .collect(),
         mode: string("mode"),
+        automated_checks: details
+            .get("automated_checks")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|item| {
+                let key = item.get("key")?.as_str()?.trim();
+                let status = item.get("status")?.as_str()?.trim();
+                if key.is_empty() || status.is_empty() {
+                    return None;
+                }
+                let detail = item
+                    .get("detail")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::trim)
+                    .filter(|detail| !detail.is_empty())
+                    .map(ToString::to_string);
+                Some(ModuleGovernanceAutomatedCheck {
+                    key: key.to_string(),
+                    status: status.to_string(),
+                    detail,
+                })
+            })
+            .collect(),
     }
+}
+
+fn normalize_governance_automated_checks(
+    checks: &[ModuleGovernanceAutomatedCheck],
+) -> Vec<ModuleGovernanceAutomatedCheck> {
+    checks
+        .iter()
+        .map(|check| ModuleGovernanceAutomatedCheck {
+            key: check.key.trim().to_string(),
+            status: check.status.trim().to_string(),
+            detail: check
+                .detail
+                .as_deref()
+                .map(str::trim)
+                .filter(|detail| !detail.is_empty())
+                .map(ToString::to_string),
+        })
+        .collect()
 }
 
 fn governance_gate_detail(key: &str) -> &'static str {
@@ -14774,7 +14836,7 @@ mod tests {
                 outcome: ModuleValidationJobResultOutcome::Passed,
                 warnings: Vec::new(),
                 errors: vec!["unexpected error".to_string()],
-                automated_checks: serde_json::json!([]),
+                automated_checks: Vec::new(),
             }
             .validate(),
             Err(ModuleGovernanceError::InvalidValidationJobResultCommand)
@@ -14787,11 +14849,82 @@ mod tests {
                 outcome: ModuleValidationJobResultOutcome::Failed,
                 warnings: Vec::new(),
                 errors: Vec::new(),
-                automated_checks: serde_json::json!([]),
+                automated_checks: Vec::new(),
             }
             .validate(),
             Err(ModuleGovernanceError::InvalidValidationJobResultCommand)
         ));
+    }
+
+    #[test]
+    fn validation_job_result_rejects_invalid_automated_check_evidence() {
+        let base = ModuleValidationJobResultCommand {
+            validation_job_id: "job-1".to_string(),
+            expected_request_revision: 1,
+            actor_principal: serde_json::json!({ "kind": "service", "id": "worker" }),
+            outcome: ModuleValidationJobResultOutcome::Passed,
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            automated_checks: vec![ModuleGovernanceAutomatedCheck {
+                key: "artifact_contract".to_string(),
+                status: "passed".to_string(),
+                detail: Some("Artifact contract validation passed.".to_string()),
+            }],
+        };
+        assert!(base.validate().is_ok());
+
+        let mut blank_key = base.clone();
+        blank_key.automated_checks[0].key = " ".to_string();
+        assert_eq!(
+            blank_key.validate(),
+            Err(ModuleGovernanceError::InvalidValidationJobResultCommand)
+        );
+
+        let mut duplicate = base;
+        duplicate
+            .automated_checks
+            .push(ModuleGovernanceAutomatedCheck {
+                key: "ARTIFACT_CONTRACT".to_string(),
+                status: "passed".to_string(),
+                detail: None,
+            });
+        assert_eq!(
+            duplicate.validate(),
+            Err(ModuleGovernanceError::InvalidValidationJobResultCommand)
+        );
+    }
+
+    #[test]
+    fn governance_event_payload_exposes_only_valid_typed_automated_checks() {
+        let payload = governance_event_payload(&serde_json::json!({
+            "automated_checks": [
+                {
+                    "key": " artifact_contract ",
+                    "status": " passed ",
+                    "detail": " Artifact contract validation passed. "
+                },
+                {
+                    "key": "platform_publication_evidence",
+                    "status": "failed",
+                    "detail": " "
+                },
+                {"unknown": "missing_key", "status": "failed"},
+                {"key": "", "status": "failed"}
+            ]
+        }));
+
+        assert_eq!(payload.automated_checks.len(), 2);
+        assert_eq!(payload.automated_checks[0].key, "artifact_contract");
+        assert_eq!(payload.automated_checks[0].status, "passed");
+        assert_eq!(
+            payload.automated_checks[0].detail.as_deref(),
+            Some("Artifact contract validation passed.")
+        );
+        assert_eq!(
+            payload.automated_checks[1].key,
+            "platform_publication_evidence"
+        );
+        assert!(payload.automated_checks[1].detail.is_none());
     }
 
     #[tokio::test]
@@ -14955,7 +15088,11 @@ mod tests {
             outcome: ModuleValidationJobResultOutcome::Failed,
             warnings: Vec::new(),
             errors: vec!["artifact validation failed".to_string()],
-            automated_checks: serde_json::json!([{"check":"artifact_contract","status":"failed"}]),
+            automated_checks: vec![ModuleGovernanceAutomatedCheck {
+                key: "artifact_contract".to_string(),
+                status: "failed".to_string(),
+                detail: Some("Artifact contract validation failed.".to_string()),
+            }],
         };
         let mut stale_result = failed_result.clone();
         stale_result.expected_request_revision = 3;

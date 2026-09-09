@@ -5,7 +5,7 @@
   "generated_from": "crates/modules/rustok-rbac/contracts/rbac-fba-registry.json",
   "runner": "scripts/verify/verify-rbac-fba.mjs",
   "contract_version": "rbac.permission_decision.v1",
-  "profiles": ["in_process", "remote_adapter_placeholder"],
+  "profiles": ["in_process"],
   "cases": [
     {
       "operation": "check_permissions",

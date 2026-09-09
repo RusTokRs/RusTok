@@ -400,38 +400,6 @@ pub fn merge_module_package_manifest(
     Ok(spec)
 }
 
-pub fn module_setting_shape_value(spec: &ModuleSettingSpec) -> Option<serde_json::Value> {
-    let mut shape = serde_json::Map::new();
-
-    if !spec.properties.is_empty() {
-        let properties = spec
-            .properties
-            .iter()
-            .map(|(key, property_spec)| {
-                (
-                    key.clone(),
-                    serde_json::to_value(property_spec)
-                        .expect("module setting schema should serialize to shape json"),
-                )
-            })
-            .collect::<serde_json::Map<String, serde_json::Value>>();
-        shape.insert(
-            "properties".to_string(),
-            serde_json::Value::Object(properties),
-        );
-    }
-
-    if let Some(items) = &spec.items {
-        shape.insert(
-            "items".to_string(),
-            serde_json::to_value(items.as_ref())
-                .expect("module setting item schema should serialize to shape json"),
-        );
-    }
-
-    (!shape.is_empty()).then_some(serde_json::Value::Object(shape))
-}
-
 pub fn to_module_settings_schema(
     schema: &HashMap<String, ModuleSettingSpec>,
 ) -> HashMap<String, rustok_modules::ModuleSettingSpec> {

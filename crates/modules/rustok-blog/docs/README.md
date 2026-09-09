@@ -48,12 +48,13 @@ when later bounded migrations retire an earlier design.
 
 Blog post localization remains owner-local:
 
-- `blog_posts` owns identity, lifecycle, relations, counters, publication state,
-  and the locale-neutral canonical route key;
+- `blog_posts.slug` is an explicitly locale-neutral canonical route identifier;
+  `blog_posts` owns identity, lifecycle, relations, counters, and publication
+  state;
 - localized post title, excerpt, body and SEO copy belong to
   `blog_post_translations`;
-- tenant locale policy controls resolution only and does not own localized Blog
-  fields.
+- tenant default/effective locale controls resolution only and does not own
+  localized Blog fields.
 
 Blog Category localization no longer uses a live Blog translation mirror:
 

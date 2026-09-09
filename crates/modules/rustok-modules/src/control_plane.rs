@@ -25,17 +25,17 @@ use crate::{
     ModuleStaticDistributionReleaseVerifier, ModuleStaticDistributionRolloutAuthorizer,
     ModuleStaticDistributionTopologyResolver, ModuleStaticDistributionWorkerAuthorizer,
     ModuleStaticPromotionAuthorizer, OciReleaseAdmissionService, ReleaseAdmissionIntentJournal,
-    RhaiAuthoringService, SeaOrmArtifactBindingExecutionAuditReader,
-    SeaOrmArtifactBindingIdempotencyStore, SeaOrmArtifactDataCapabilityBrokerResolver,
-    SeaOrmArtifactDataExportService, SeaOrmArtifactDataObjectCapabilityBrokerResolver,
-    SeaOrmArtifactDataObjectGcService, SeaOrmArtifactDataPurgeService,
-    SeaOrmArtifactDataSnapshotCollectionService, SeaOrmArtifactDataSnapshotRetentionService,
-    SeaOrmArtifactDataSnapshotService, SeaOrmArtifactEventCapabilityBrokerResolver,
-    SeaOrmArtifactEventSubscriptionProjector, SeaOrmArtifactExecutionObserver,
-    SeaOrmArtifactHttpCapabilityBrokerResolver, SeaOrmArtifactInstallationStore,
-    SeaOrmArtifactNodeReadiness, SeaOrmArtifactSandboxPolicyResolver,
-    SeaOrmArtifactScheduleDeliveryQueue, SeaOrmArtifactSecretCapabilityBrokerResolver,
-    SeaOrmArtifactSecretHandlePolicy, SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
+    SeaOrmArtifactBindingExecutionAuditReader, SeaOrmArtifactBindingIdempotencyStore,
+    SeaOrmArtifactDataCapabilityBrokerResolver, SeaOrmArtifactDataExportService,
+    SeaOrmArtifactDataObjectCapabilityBrokerResolver, SeaOrmArtifactDataObjectGcService,
+    SeaOrmArtifactDataPurgeService, SeaOrmArtifactDataSnapshotCollectionService,
+    SeaOrmArtifactDataSnapshotRetentionService, SeaOrmArtifactDataSnapshotService,
+    SeaOrmArtifactEventCapabilityBrokerResolver, SeaOrmArtifactEventSubscriptionProjector,
+    SeaOrmArtifactExecutionObserver, SeaOrmArtifactHttpCapabilityBrokerResolver,
+    SeaOrmArtifactInstallationStore, SeaOrmArtifactNodeReadiness,
+    SeaOrmArtifactSandboxPolicyResolver, SeaOrmArtifactScheduleDeliveryQueue,
+    SeaOrmArtifactSecretCapabilityBrokerResolver, SeaOrmArtifactSecretHandlePolicy,
+    SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
     SeaOrmArtifactSettingsRecoveryService, SeaOrmModuleArtifactNodeAgentService,
     SeaOrmModuleArtifactNodeReconciliationService, SeaOrmModuleArtifactSecurityResolver,
     SeaOrmModuleArtifactSecurityService, SeaOrmModuleBuildService, SeaOrmModuleCompositionService,
@@ -122,6 +122,18 @@ impl<'a> EffectivePolicyService<'a> {
     ) -> Result<Vec<crate::TenantModuleOverrideSnapshot>, crate::ModuleLifecycleDbWriterError> {
         self.lifecycle
             .tenant_override_snapshots(tenant_id, limit)
+            .await
+    }
+
+    /// Returns the owner-issued browser-safe static lifecycle state for the
+    /// explicit tenant override rows in this bounded query.
+    pub async fn static_tenant_module_views(
+        &self,
+        tenant_id: uuid::Uuid,
+        limit: u32,
+    ) -> Result<Vec<rustok_api::StaticTenantModuleView>, crate::ModuleLifecycleDbWriterError> {
+        self.lifecycle
+            .static_tenant_module_views(tenant_id, limit)
             .await
     }
 }
@@ -371,12 +383,6 @@ impl ModuleControlPlane {
     /// Returns the post-purge artifact data recovery service for isolated staging and verified CAS cutover.
     pub fn artifact_data_post_purge_recovery(&self) -> ArtifactDataPostPurgeRecoveryService {
         ArtifactDataPostPurgeRecoveryService::new(self.db.clone())
-    }
-
-    /// Returns the Rhai authoring service for packaging reviewed Alloy revisions into
-    /// immutable publishable releases with deterministic source-CAS receipts.
-    pub fn rhai_authoring(&self, blob_store: Arc<dyn ArtifactBlobStore>) -> RhaiAuthoringService {
-        RhaiAuthoringService::new(self.db.clone(), blob_store)
     }
 
     /// Returns the OCI release admission service for admitting digest-pinned OCI packages

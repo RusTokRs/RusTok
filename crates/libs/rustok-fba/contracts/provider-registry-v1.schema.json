@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rustok.dev/contracts/fba/provider-registry-v1.schema.json",
+  "title": "RusToK FBA provider registry v1 baseline",
+  "description": "Shared structural requirements for provider registries. Owner-specific semantics remain in module verifiers.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "module",
+    "role",
+    "status",
+    "contract_version",
+    "ports",
+    "consumers",
+    "evidence",
+    "contract_tests"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "module": { "$ref": "#/$defs/non_empty_string" },
+    "role": { "const": "provider" },
+    "status": {
+      "enum": ["not_started", "in_progress", "boundary_ready", "transport_verified"]
+    },
+    "contract_version": { "$ref": "#/$defs/non_empty_string" },
+    "ports": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/port" }
+    },
+    "consumers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/consumer" }
+    },
+    "evidence": { "$ref": "#/$defs/evidence" },
+    "contract_tests": { "$ref": "#/$defs/contract_tests" }
+  },
+  "$defs": {
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "string_list": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/non_empty_string" }
+    },
+    "port": {
+      "type": "object",
+      "required": [
+        "name",
+        "owner",
+        "operations",
+        "context",
+        "error",
+        "idempotency_required",
+        "deadline_required"
+      ],
+      "properties": {
+        "name": { "$ref": "#/$defs/non_empty_string" },
+        "owner": { "$ref": "#/$defs/non_empty_string" },
+        "operations": { "$ref": "#/$defs/string_list" },
+        "context": { "const": "rustok_api::ports::PortContext" },
+        "error": { "const": "rustok_api::ports::PortError" },
+        "idempotency_required": { "type": "boolean" },
+        "deadline_required": { "type": "boolean" }
+      }
+    },
+    "consumer": {
+      "type": "object",
+      "required": ["module", "degraded_modes"],
+      "properties": {
+        "module": { "$ref": "#/$defs/non_empty_string" },
+        "degraded_modes": { "$ref": "#/$defs/string_list" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["local_plan", "central_board", "verifier"],
+      "properties": {
+        "local_plan": { "$ref": "#/$defs/non_empty_string" },
+        "central_board": { "$ref": "#/$defs/non_empty_string" },
+        "verifier": { "$ref": "#/$defs/non_empty_string" }
+      }
+    },
+    "contract_tests": {
+      "type": "object",
+      "required": ["status", "profiles", "cases", "fallback_smoke"],
+      "properties": {
+        "status": { "$ref": "#/$defs/non_empty_string" },
+        "profiles": { "$ref": "#/$defs/string_list" },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/contract_test_case" }
+        },
+        "fallback_smoke": { "$ref": "#/$defs/fallback_smoke" }
+      }
+    },
+    "contract_test_case": {
+      "type": "object",
+      "required": ["operation", "assertions"],
+      "properties": {
+        "operation": { "$ref": "#/$defs/non_empty_string" },
+        "assertions": { "$ref": "#/$defs/string_list" }
+      }
+    },
+    "fallback_smoke": {
+      "type": "object",
+      "required": ["profiles"],
+      "properties": {
+        "profiles": { "$ref": "#/$defs/string_list" }
+      }
+    }
+  }
+}

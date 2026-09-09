@@ -1,6 +1,13 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashSet},
+    sync::Arc,
+};
 
-use rustok_api::manifest_hash::hash_manifest;
+use async_trait::async_trait;
+use rustok_api::{
+    ModuleEffectivePolicyDecisionView, ModuleEffectivePolicyDenialReasonView,
+    ModuleEffectivePolicyView, manifest_hash::hash_manifest,
+};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -151,6 +158,46 @@ pub enum ModuleEffectivePolicyDenialReason {
     ChannelBindingUnavailable,
     ChannelDisabled,
     MaintenanceActive,
+}
+
+impl From<ModuleEffectivePolicyDenialReason> for ModuleEffectivePolicyDenialReasonView {
+    fn from(reason: ModuleEffectivePolicyDenialReason) -> Self {
+        match reason {
+            ModuleEffectivePolicyDenialReason::UnknownModule => Self::UnknownModule,
+            ModuleEffectivePolicyDenialReason::NotSelected => Self::NotSelected,
+            ModuleEffectivePolicyDenialReason::TenantDisabled => Self::TenantDisabled,
+            ModuleEffectivePolicyDenialReason::ArtifactInstallationUnavailable => {
+                Self::ArtifactInstallationUnavailable
+            }
+            ModuleEffectivePolicyDenialReason::CapabilityPolicyUnavailable => {
+                Self::CapabilityPolicyUnavailable
+            }
+            ModuleEffectivePolicyDenialReason::ExecutorUnavailable => Self::ExecutorUnavailable,
+            ModuleEffectivePolicyDenialReason::DependencyUnavailable { module_slug } => {
+                Self::DependencyUnavailable { module_slug }
+            }
+            ModuleEffectivePolicyDenialReason::CoRequisiteUnavailable { module_slug } => {
+                Self::CoRequisiteUnavailable { module_slug }
+            }
+            ModuleEffectivePolicyDenialReason::CoRequisiteVersionMismatch { module_slug } => {
+                Self::CoRequisiteVersionMismatch { module_slug }
+            }
+            ModuleEffectivePolicyDenialReason::RegistryReleaseUnavailable => {
+                Self::RegistryReleaseUnavailable
+            }
+            ModuleEffectivePolicyDenialReason::SecurityStateUnavailable => {
+                Self::SecurityStateUnavailable
+            }
+            ModuleEffectivePolicyDenialReason::Quarantined => Self::Quarantined,
+            ModuleEffectivePolicyDenialReason::Revoked => Self::Revoked,
+            ModuleEffectivePolicyDenialReason::ChannelInactive => Self::ChannelInactive,
+            ModuleEffectivePolicyDenialReason::ChannelBindingUnavailable => {
+                Self::ChannelBindingUnavailable
+            }
+            ModuleEffectivePolicyDenialReason::ChannelDisabled => Self::ChannelDisabled,
+            ModuleEffectivePolicyDenialReason::MaintenanceActive => Self::MaintenanceActive,
+        }
+    }
 }
 
 /// Explainable availability result for one module under one policy revision.
@@ -974,6 +1021,54 @@ impl ModuleEffectivePolicy {
     }
 }
 
+impl From<ModuleEffectivePolicyDecision> for ModuleEffectivePolicyDecisionView {
+    fn from(decision: ModuleEffectivePolicyDecision) -> Self {
+        Self {
+            module_slug: decision.module_slug,
+            enabled: decision.enabled,
+            policy_revision: decision.policy_revision,
+            denial_reasons: decision
+                .denial_reasons
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<ModuleEffectivePolicy> for ModuleEffectivePolicyView {
+    fn from(policy: ModuleEffectivePolicy) -> Self {
+        Self {
+            policy_revision: policy.policy_revision,
+            decisions: policy.decisions.into_values().map(Into::into).collect(),
+        }
+    }
+}
+
+/// Host-composed read boundary for the browser-safe effective-policy decision.
+///
+/// The module owner retains policy semantics and private facts. Hosts supply
+/// their active composition inputs through one implementation of this port;
+/// operator transports never rebuild effective availability from tenant rows.
+#[async_trait]
+pub trait ModuleEffectivePolicyReader: Send + Sync {
+    async fn resolve(
+        &self,
+        tenant_id: uuid::Uuid,
+    ) -> Result<ModuleEffectivePolicyView, ModuleEffectivePolicyReaderError>;
+}
+
+/// Stable host-port failure for an unavailable effective-policy projection.
+#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
+pub enum ModuleEffectivePolicyReaderError {
+    #[error("effective module policy is unavailable")]
+    Unavailable,
+}
+
+/// A host-composed effective-policy reader shared with internal transports.
+#[derive(Clone)]
+pub struct SharedModuleEffectivePolicyReader(pub Arc<dyn ModuleEffectivePolicyReader>);
+
 #[derive(Serialize)]
 struct EffectivePolicyRevisionInput<'a> {
     contract: &'static str,
@@ -1229,6 +1324,14 @@ mod tests {
             fact,
             ModuleEffectivePolicyFact::ChannelBinding { enabled: true, .. }
         )));
+
+        let view: rustok_api::ModuleEffectivePolicyView = policy.into();
+        assert!(view.enabled_module_slugs().is_empty());
+        assert!(
+            view.decisions
+                .iter()
+                .any(|decision| decision.module_slug == "modules" && !decision.enabled)
+        );
     }
 
     #[test]
@@ -1572,6 +1675,40 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["taxonomy"]
         );
+    }
+
+    #[test]
+    fn owner_projects_a_redacted_effective_policy_view() {
+        let policy = ModuleEffectivePolicyQuery::new(
+            &corequisite_catalog(),
+            ["taxonomy".to_string(), "product".to_string()],
+            [],
+            [],
+        )
+        .with_corequisites([ModuleEffectivePolicyCoRequisite {
+            module_slug: "product".to_string(),
+            required_module_slug: "inventory".to_string(),
+            version_requirement: ">=0.1.0".to_string(),
+        }])
+        .execute()
+        .expect("policy");
+
+        let view: rustok_api::ModuleEffectivePolicyView = policy.into();
+        let product = view
+            .decisions
+            .iter()
+            .find(|decision| decision.module_slug == "product")
+            .expect("product decision");
+
+        assert!(!product.enabled);
+        assert_eq!(product.policy_revision, view.policy_revision);
+        assert!(product.denial_reasons.iter().any(|reason| matches!(
+            reason,
+            rustok_api::ModuleEffectivePolicyDenialReasonView::CoRequisiteUnavailable {
+                module_slug
+            } if module_slug == "inventory"
+        )));
+        assert_eq!(view.enabled_module_slugs(), vec!["taxonomy"]);
     }
 
     #[test]

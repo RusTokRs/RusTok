@@ -14,8 +14,8 @@ The cross-component sequence and completion rules are defined by the
 
 - Runtime kind: `Core`
 - Rollback unit: `Platform`
-- Data boundary owner: `module_transition_checkpoints`, `module_retention_holds`, `module_artifact_admission_commands`, `module_artifact_rhai_authoring_packages`, `module_executor_readiness_receipts`, `module_source_object_receipts`, `module_source_object_retention_holds`, `module_operations_tool_releases`, `module_operations_tool_maintenance_operations`, `module_operations_tool_assignments`
-- Native migrations: `m20260903_000047_artifact_data_copy_operations`, `m20260903_000048_artifact_data_object_copy_operations`, `m20260904_000050_rhai_authoring_packages`, `m20260904_000051_static_localized_settings`, `m20260904_000052_static_settings_change_cursor`, `m20260904_000053_static_settings_source_locale`, `m20260904_000051_admitted_oci_releases`, `m20260904_000052_module_source_objects`, `m20260904_000053_module_operations_tool`
+- Data boundary owner: `module_transition_checkpoints`, `module_retention_holds`, `module_artifact_admission_commands`, `module_executor_readiness_receipts`, `module_source_object_receipts`, `module_source_object_retention_holds`, `module_operations_tool_releases`, `module_operations_tool_maintenance_operations`, `module_operations_tool_assignments`
+- Native migrations: `m20260903_000047_artifact_data_copy_operations`, `m20260903_000048_artifact_data_object_copy_operations`, `m20260904_000051_static_localized_settings`, `m20260904_000052_static_settings_change_cursor`, `m20260904_000053_static_settings_source_locale`, `m20260904_000051_admitted_oci_releases`, `m20260904_000052_module_source_objects`, `m20260904_000053_module_operations_tool`
 - Supported migration policy: `AdditiveOnly`
 - Predecessor standby strategy: `Standby DB + CAS Holds`
 - Rollback eligibility: `AutomaticSingleAttempt`
@@ -57,6 +57,62 @@ numeric persistence uses checked conversions, and the write-path verifier now
 rejects host transition-table writes, direct transition-service construction,
 and reintroduction of the deleted status-only recovery transport.
 
+The transition-control slice now uses one browser-safe contract in
+`rustok-api`: `ModuleTransitionCheckpointView`,
+`ModuleTransitionStateView`, and `ModuleRetentionHoldView`. The owner produces
+those projections; GraphQL adapts them to its schema and the Leptos transport
+selects either its native server functions or the same GraphQL operations.
+Neither Admin adapter owns a duplicate transition DTO or a status-only recovery
+command. This closes the transition slice of the remaining Phase 7 DTO and
+dual-path parity work; the broader Phase 7 aggregate remains open for its other
+control-plane families and complete scenario matrix.
+
+The static lifecycle recovery slice likewise uses the owner-issued
+`rustok-api::ModuleOperationRecoveryPlanView`. It deliberately redacts override
+and trace evidence while retaining the action and retry facts operators need.
+The GraphQL adapter consumes this projection directly, and the Admin entity is
+only a re-export of the canonical contract rather than a local recovery DTO.
+
+Explicit static lifecycle rows now use the same contract discipline through
+`rustok-api::StaticTenantModuleView`. `ModuleLifecycleDbWriter` joins the
+override and its lifecycle revision before a transport receives it; GraphQL and
+native Leptos therefore cannot produce divergent synthetic revision defaults.
+The server composes `SharedStaticModuleLifecycleReader` from the same active
+manifest normalization and co-requisites used by GraphQL; native Admin reads
+owner-issued tenant views and checked browser-safe revisions through that port,
+fails closed on a missing revision, and never decodes manifest defaults.
+The Admin `TenantModule` and mutation result are aliases of that shared type.
+
+The complete static module registry now uses the browser-safe
+`rustok_api::StaticModuleRegistryView`. The server composes
+`SharedStaticModuleRegistryReader` once per host runtime; its adapter resolves
+one active composition and applies catalog metadata, effective policy, checked
+lifecycle revisions, and preferred/fallback locale before GraphQL or native
+Admin maps the result. Admin aliases the DTO, and no transport retains
+build-time manifest metadata, direct registry/lifecycle reconstruction, or
+synthetic UI defaults.
+
+The immutable static-composition concurrency token likewise uses
+`rustok-api::ModuleCompositionSnapshotView`. The owner projects only the
+revision needed for optimistic concurrency; GraphQL adapts it and Admin
+re-exports it, keeping the manifest and digest private.
+
+Installed static modules now share the browser-safe
+`rustok-api::StaticInstalledModuleView`. The server alone adapts its active
+manifest, supplies `SharedStaticInstalledModuleReader` to native Admin, and
+maps the same projection in GraphQL. Admin aliases the canonical DTO; neither
+transport can expose source-control or filesystem locators from the manifest.
+
+Effective availability now uses `rustok-api::ModuleEffectivePolicyView` with
+per-module owner decisions, one policy revision, and a stable redacted denial
+taxonomy. The complete `ModuleEffectivePolicy` facts remain owner-private. The
+server composes `SharedModuleEffectivePolicyReader` with the active manifest's
+normalized co-requisites, so GraphQL `moduleEffectivePolicy` and the native
+Admin function resolve the exact same decision. `EnabledModulesProvider`
+and the module registry re-resolve that owner decision after lifecycle commands
+instead of locally changing a boolean set. Core identity is not reintroduced
+when the exact owner policy marks it unavailable.
+
 Verified on the current tree by:
 
 - `cargo clippy --locked -p rustok-modules --tests -- -D warnings`.
@@ -65,6 +121,21 @@ Verified on the current tree by:
   and source-object integration suites (43 passed).
 - `cargo check --locked -p rustok-server -p rustok-admin` and the server
   GraphQL transition lifecycle/parity suites.
+- Effective-policy, static installed-module, and static lifecycle projection
+  cutovers passed the focused owner-policy test, `cargo test --locked -p
+  rustok-api --lib module_composition` (2 passed), the focused server mapping
+  test, `cargo test --locked -p rustok-server --lib
+  services::platform_composition::tests::installed_module_view_redacts_private_manifest_locators`
+  (1 passed), `cargo test --locked -p rustok-modules --lib
+  lifecycle_writer::tests` (2 passed), `cargo test --locked -p rustok-server
+  --lib services::effective_module_policy::tests` (2 passed), and `cargo test
+  --locked -p rustok-server --test module_graphql_native_parity` (4 passed).
+  `cargo check --locked -p rustok-admin --features ssr`, `cargo xtask module
+  validate modules`, `cargo xtask module test modules`,
+  `scripts/verify/verify-module-control-plane-write-path.mjs`, the Tenant Admin
+  boundary verifiers, and the architecture/host-FFA guards also passed. The
+  linker stdout notices were compiler-generated; Rust's future-incompatibility
+  notice names `proc-macro-error2`.
 - `cargo test --locked -p rustok-events`, including canonical committed event
   digest verification.
 - The architecture, module control-plane write-path, event digest admission,
@@ -95,21 +166,15 @@ On 2026-09-04, Media-Neutral `SourceObjectStore` and CAS Cutover were delivered 
   - `cargo test --locked -p rustok-build-source` (7 passed, 0 warnings).
   - `node scripts/verify/verify-module-source-archive.mjs` (passed).
 
-On 2026-09-04, Rhai Authoring Pipeline and Immutable Release Packaging were delivered per Section 5 of the Rollback Plan:
-- `crates/modules/rustok-modules/src/migrations/m20260904_000050_rhai_authoring_packages.rs` created persistent table `module_artifact_rhai_authoring_packages` with RLS tenant isolation.
-- `crates/modules/rustok-modules/src/rhai_authoring.rs` implemented `RhaiAuthoringService`:
-  - Enforces deterministic packaging from reviewed Alloy revision identity (`alloy_script_id`, `alloy_revision`, `review_decision_id`, `review_digest`).
-  - Serializes `RhaiWorkspace` into canonical bytes (`canonical_bytes()`) and computes SHA-256 `source_digest`.
-  - Implements create-only source-CAS publication (`RhaiSourceCasReceipt`) into `ArtifactBlobStore`.
-  - Constructs and validates finalized `ModuleArtifactDescriptor` with exact runtime bindings (`ModuleRuntimeBinding`), permissions (`ArtifactPermissionDescriptor`), schemas (`ArtifactSchemaDocument`), and persistence contract (`ArtifactPersistenceContract`).
-  - Generates canonical `RhaiOciPayload` descriptor and persists the authoring package.
-  - Guarantees strict idempotency on retries (`IdempotencyConflict` on content mutation).
-- `crates/modules/rustok-modules/src/control_plane.rs` exposed `rhai_authoring()` on `ModuleControlPlane`.
-- Verified by:
-  - `cargo test --locked -p rustok-modules --test rhai_authoring_tests` (2 passed, 0 warnings).
-  - `cargo test --locked -p rustok-modules --test snapshot_intents_and_post_purge_recovery_tests` (2 passed, 0 warnings).
-  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
-  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+The disconnected Rhai authoring package service and its unused persistence table
+were removed. It had no production caller and formed a second source-CAS and
+package-receipt authority beside the active Alloy release path. Alloy now selects
+the exact reviewed immutable source revision and delegates only
+`stage_alloy_authored` to the module owner; the owner remains the sole registry
+writer and later artifact attachment and validation use the same canonical
+publish-request aggregate. Completing canonical authoring and packaging remains
+tracked in the cross-component Phase 6 work rather than retaining an
+unreachable parallel implementation.
 
 On 2026-09-03, Durable Snapshot/Restore Intents, Staging Receipts, and Post-Purge Data Recovery were delivered per Section 4 of the Rollback Plan:
 - `crates/modules/rustok-modules/src/migrations/m20260903_000049_artifact_data_snapshot_and_recovery_operations.rs` created persistent tables `module_artifact_data_snapshot_copy_intents` and `module_artifact_data_namespace_recovery_operations` with RLS tenant isolation.
@@ -328,6 +393,10 @@ Implemented:
   kinds, entrypoints, runtime ABI, digests, and capability declarations;
 - Core/Optional effective-policy calculation and dependency-aware toggle
   validation;
+- browser-safe owner-issued effective-policy views with a stable denial
+  taxonomy; GraphQL and native Admin resolve the same active-composition,
+  co-requisite-aware reader and the client refreshes that decision after a
+  lifecycle command;
 - tenant state/settings persistence, lifecycle hooks, journal transitions,
   recovery plans, and post-hook retry;
 - digest-pinned OCI manifest/config/layer resolution through
@@ -847,7 +916,12 @@ The admin GraphQL adapter now fails closed when module-control-plane reads fail;
 it no longer converts its generated navigation registry into synthetic module
 registry, installation, tenant-intent, or marketplace success responses. The
 native module catalog and registry lifecycle reads now consume the owner-backed
-`SharedModuleMarketplaceCatalog` and governance lifecycle snapshot. The admin
+`SharedModuleMarketplaceCatalog`, whose public list and detail operations return
+`rustok_api::MarketplaceModule`. The server adapter maps the owner-private
+`ModuleMarketplaceEntry` once, converts registry-principal JSON into
+browser-safe display labels, and gives GraphQL and native Admin the same
+canonical facts. The Admin entity aliases the DTO family rather than parsing
+principal JSON or defining local governance and setting models. The admin
 workspace/Cargo scanner, local catalog synthesis, canonical hashing,
 dependency/build planning, and direct registry SQL have been deleted. The
 governance owner also projects durable release metadata onto the shared
@@ -861,12 +935,29 @@ and approval previews. The status snapshot supplies request identity,
 warnings/errors, accepted state,
 approval-override guidance, and the semantic next action in addition to
 persisted validation stages, follow-up gates, and actor-visible actions. The
-server supplies only authenticated principal/permission context and maps the
-semantic action to its HTTP route/text; it cannot substitute lifecycle facts
-from another request with the same slug or recreate lifecycle policy from a
-SeaORM model. Once all required follow-up stages pass, an approved request now
-resolves to final publication rather than repeatedly suggesting the completed
-stage operation.
+server carries that status projection, its nested
+`ModuleGovernanceRequestSnapshot`, and the host-only
+`ModuleGovernancePublishArtifactDownloadSnapshot` directly. It supplies only
+authenticated principal/permission context and maps the semantic action to its
+HTTP route/text; it has no server-local publish-request/status/download shadow
+DTOs or owner-to-server field-copy adapters. It cannot substitute lifecycle
+facts from another request with the same slug or recreate lifecycle policy from
+a SeaORM model. Once all required follow-up stages pass, an approved request
+now resolves to final publication rather than repeatedly suggesting the
+completed stage operation.
+The browser contract is `rustok_api::RegistryPublishStatus`, paired with
+`RegistryMutationResult` for generic governance mutations. Server adapters
+retain owner gate/action snapshots and every validation-stage execution-policy
+field through that strict contract: execution mode, runnable/manual-confirmation
+state, terminal reason codes, and suggested outcomes. They do not recreate
+server-local stage DTOs, default omitted fields, or emit a response-version
+fallback for native Admin.
+Automated validation outcomes use typed `ModuleGovernanceAutomatedCheck`
+evidence from the worker through durable governance events. The owner rejects
+blank or duplicate check identities, trims accepted values before persistence,
+and maps the latest event evidence to the browser-safe
+`RegistryAutomatedCheckLifecycle` contract. Detail is optional by design; the
+server and Admin do not parse raw event JSON or create an empty local fallback.
 Staging adapters invoke the external-prebuilt and platform-build owner commands
 directly and use the same status snapshot for their response
 identity/status in dry-run and committed paths. They no longer issue a
@@ -2465,6 +2556,54 @@ projection cannot report the release-safety target as available before the
 corresponding runtime verification gates pass.
 
 ## Verification
+
+### 2026-09-08 marketplace browser-contract slice
+
+- Marketplace list and detail reads now use the single browser-safe
+  `rustok_api::MarketplaceModule` family. `ModuleMarketplaceEntry` and raw
+  `RegistryPrincipalRef` data remain owner/server-private; the marketplace
+  catalog adapter maps an owner entry once and emits only display-label
+  principal facts before GraphQL or native Admin consumes the result.
+- The Admin entity aliases the canonical DTOs, native functions return them
+  directly, and GraphQL adapts the same view to its schema. The transport no
+  longer contains local marketplace/governance/setting DTOs, principal JSON
+  parsers, or lifecycle/defaulting reconstruction paths.
+- Focused verification passed: `cargo test --locked -p rustok-api --lib
+  module_marketplace` (2 tests), `cargo test --locked -p rustok-admin --lib
+  governance::tests` (8 tests), and `cargo test --locked -p rustok-server
+  --test module_graphql_native_parity` (6 tests). `cargo xtask module validate
+  modules`, `cargo xtask module test modules`,
+  `node scripts/verify/verify-module-control-plane-write-path.mjs`,
+  `npm run verify:frontend:host-ffa-contract`, and
+  `scripts/verify/verify-architecture.ps1` also passed. Existing Windows
+  linker messages and the `proc-macro-error2` future-incompatibility warning
+  remain outside this slice; no workspace-wide compile or test run is claimed.
+
+### 2026-09-08 static module-registry projection slice
+
+- The browser-facing static registry is now one
+  `rustok_api::StaticModuleRegistryView` projection. The modules owner exposes
+  it through `SharedStaticModuleRegistryReader`; its server adapter resolves
+  one active composition before applying catalog metadata, effective policy,
+  checked lifecycle revisions, and the preferred/fallback locale. GraphQL maps
+  that same view and native Admin returns it directly.
+- Admin aliases the canonical DTO and its build generator retains navigation
+  wiring only. Generated manifest registry metadata, direct registry/lifecycle
+  reconstruction, and synthetic UI defaults were removed.
+- Focused verification passed: `cargo test --locked -p rustok-api --lib
+  module_registry_contract` (7 tests), `cargo test --locked -p rustok-server
+  --lib services::static_module_registry::tests` (1 test), and
+  `cargo test --locked -p rustok-server --test module_graphql_native_parity`
+  (5 tests). `cargo check --locked -p rustok-server`, `cargo check --locked
+  -p rustok-admin --features ssr`, `cargo xtask module validate modules`,
+  `cargo xtask module test modules`,
+  `node scripts/verify/verify-module-control-plane-write-path.mjs`,
+  `npm run verify:frontend:host-ffa-contract`, and
+  `scripts/verify/verify-architecture.ps1` also passed. Targeted
+  `rustfmt --edition 2024 --check` and `git diff --check` passed. Existing
+  Windows linker messages and the existing `proc-macro-error2`
+  future-incompatibility warning remain outside this slice; no workspace-wide
+  compile or test run is claimed.
 
 ### 2026-08-30 registry publication command-context slice
 

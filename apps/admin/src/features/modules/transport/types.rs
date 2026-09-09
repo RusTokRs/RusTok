@@ -1,16 +1,13 @@
-use crate::entities::module::model::{
-    RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
-    RegistryValidationStageLifecycle,
-};
 use crate::entities::module::{
-    BuildJob, InstalledModule, MarketplaceModule, ModuleCompositionSnapshot, ModuleInfo,
-    ModuleOperationRecoveryPlan, TenantModule, ToggleModuleResult,
+    BuildJob, InstalledModule, MarketplaceModule, ModuleCompositionSnapshot, ModuleEffectivePolicy,
+    ModuleInfo, ModuleOperationRecoveryPlan, TenantModule, ToggleModuleResult,
 };
+pub use crate::entities::module::{RegistryMutationResult, RegistryPublishStatus};
 use serde::{Deserialize, Serialize};
 
-pub const ENABLED_MODULES_QUERY: &str = "query EnabledModules { enabledModules }";
+pub const MODULE_EFFECTIVE_POLICY_QUERY: &str = "query ModuleEffectivePolicy { moduleEffectivePolicy { policyRevision decisions { moduleSlug enabled policyRevision denialReasons { kind moduleSlug } } } }";
 
-pub const MODULE_REGISTRY_QUERY: &str = "query ModuleRegistry { moduleRegistry { moduleSlug name description version kind dependencies enabled lifecycleRevision ownership trustLevel recommendedAdminSurfaces showcaseAdminSurfaces } }";
+pub const MODULE_REGISTRY_QUERY: &str = "query ModuleRegistry { moduleRegistry { moduleSlug name description version kind dependencies enabled lifecycleRevision ownership trustLevel hasAdminUi hasStorefrontUi uiClassification recommendedAdminSurfaces showcaseAdminSurfaces } }";
 
 pub const INSTALLED_MODULES_QUERY: &str = "query InstalledModules { installedModules { slug source crateName version required dependencies } }";
 
@@ -20,9 +17,9 @@ pub const MODULE_COMPOSITION_SNAPSHOT_QUERY: &str =
 pub const TENANT_MODULES_QUERY: &str =
     "query TenantModules { tenantModules { moduleSlug enabled settings revision } }";
 
-pub const MARKETPLACE_QUERY: &str = "query Marketplace($search: String, $category: String, $tag: String, $source: String, $trustLevel: String, $onlyCompatible: Boolean, $installedOnly: Boolean) { marketplace(search: $search, category: $category, tag: $tag, source: $source, trustLevel: $trustLevel, onlyCompatible: $onlyCompatible, installedOnly: $installedOnly) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
+pub const MARKETPLACE_QUERY: &str = "query Marketplace($search: String, $category: String, $tag: String, $source: String, $trustLevel: String, $onlyCompatible: Boolean, $installedOnly: Boolean) { marketplace(search: $search, category: $category, tag: $tag, source: $source, trustLevel: $trustLevel, onlyCompatible: $onlyCompatible, installedOnly: $installedOnly) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } hasAdminUi hasStorefrontUi uiClassification compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 
-pub const MARKETPLACE_MODULE_QUERY: &str = "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { ownerBinding { owner { displayLabel } boundBy { displayLabel } boundAt updatedAt } latestRequest { id revision status requestedBy { displayLabel } publisher { displayLabel } approvedBy { displayLabel } rejectedBy { displayLabel } rejectionReason changesRequestedBy { displayLabel } changesRequestedReason changesRequestedReasonCode changesRequestedAt heldBy { displayLabel } heldReason heldReasonCode heldAt heldFromStatus warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher { displayLabel } checksumSha256 publishedAt yankedReason yankedBy { displayLabel } yankedAt } recentEvents { id eventType actor { displayLabel } publisher { displayLabel } payload { reason reasonCode detail version stageKey attemptNumber warnings errors mode ownerTransition { previousOwner { displayLabel } newOwner { displayLabel } boundBy { displayLabel } } } createdAt } followUpGates { key status detail updatedAt } validationStages { key status detail attemptNumber updatedAt startedAt finishedAt } governanceActions { key reasonRequired reasonCodeRequired reasonCodes destructive } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
+pub const MARKETPLACE_MODULE_QUERY: &str = "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } hasAdminUi hasStorefrontUi uiClassification registryLifecycle { ownerBinding { owner boundBy boundAt updatedAt } latestRequest { id revision status requestedBy publisher approvedBy rejectedBy rejectionReason changesRequestedBy changesRequestedReason changesRequestedReasonCode changesRequestedAt heldBy heldReason heldReasonCode heldAt heldFromStatus warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher checksumSha256 publishedAt yankedReason yankedBy yankedAt } recentEvents { id eventType actor publisher payload { reason reasonCode detail version stageKey attemptNumber warnings errors mode automatedChecks { key status detail } ownerTransition { previousOwner newOwner boundBy } } createdAt } followUpGates { key status detail updatedAt } validationStages { key status detail attemptNumber updatedAt startedAt finishedAt executionMode runnable requiresManualConfirmation allowedTerminalReasonCodes suggestedPassReasonCode suggestedFailureReasonCode suggestedBlockedReasonCode } governanceActions { key reasonRequired reasonCodeRequired reasonCodes destructive } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 
 pub const MARKETPLACE_REGISTRY_FRESHNESS_QUERY: &str = "query MarketplaceRegistryFreshness { marketplaceRegistryFreshness { registryId status lastSuccessUnixMs consecutiveFailures } }";
 
@@ -75,9 +72,9 @@ pub const UPGRADE_MODULE_MUTATION: &str = "mutation UpgradeModule($slug: String!
 pub const REGISTRY_MUTATION_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct EnabledModulesResponse {
-    #[serde(rename = "enabledModules")]
-    pub enabled_modules: Vec<String>,
+pub struct ModuleEffectivePolicyResponse {
+    #[serde(rename = "moduleEffectivePolicy")]
+    pub module_effective_policy: ModuleEffectivePolicy,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -198,48 +195,6 @@ pub struct UpgradeModuleResponse {
     pub upgrade_module: BuildJob,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct RegistryMutationResult {
-    pub schema_version: u32,
-    pub action: String,
-    pub dry_run: bool,
-    pub accepted: bool,
-    pub request_id: Option<String>,
-    pub status: Option<String>,
-    pub slug: String,
-    pub version: String,
-    #[serde(default)]
-    pub warnings: Vec<String>,
-    #[serde(default)]
-    pub errors: Vec<String>,
-    pub next_step: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct RegistryPublishStatusContract {
-    pub schema_version: u32,
-    pub request_id: String,
-    pub slug: String,
-    pub version: String,
-    pub status: String,
-    pub accepted: bool,
-    #[serde(default)]
-    pub warnings: Vec<String>,
-    #[serde(default)]
-    pub errors: Vec<String>,
-    #[serde(default, rename = "followUpGates")]
-    pub follow_up_gates: Vec<RegistryFollowUpGateLifecycle>,
-    #[serde(default, rename = "validationStages")]
-    pub validation_stages: Vec<RegistryValidationStageLifecycle>,
-    #[serde(default, rename = "approvalOverrideRequired")]
-    pub approval_override_required: bool,
-    #[serde(default, rename = "approvalOverrideReasonCodes")]
-    pub approval_override_reason_codes: Vec<String>,
-    #[serde(default, rename = "governanceActions")]
-    pub governance_actions: Vec<RegistryGovernanceActionLifecycle>,
-    pub next_step: Option<String>,
-}
-
 #[derive(Clone, Debug, Serialize)]
 pub struct ToggleModuleVariables {
     #[serde(rename = "moduleSlug")]
@@ -339,87 +294,26 @@ pub struct UpgradeModuleVariables {
     pub idempotency_key: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub enum ModuleTransitionState {
-    #[serde(rename = "PREFLIGHTING")]
-    Preflighting,
-    #[serde(rename = "FENCED")]
-    Fenced,
-    #[serde(rename = "PRESTAGING")]
-    Prestaging,
-    #[serde(rename = "ACTIVATING")]
-    Activating,
-    #[serde(rename = "OBSERVING")]
-    Observing,
-    #[serde(rename = "POINT_OF_NO_RETURN")]
-    PointOfNoReturn,
-    #[serde(rename = "RECOVERED_TO_PREDECESSOR")]
-    RecoveredToPredecessor,
-    #[serde(rename = "CONVERGED")]
-    Converged,
-    #[serde(rename = "FAILED_CLOSED")]
-    FailedClosed,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ModuleTransitionCheckpoint {
-    #[serde(rename = "operationId")]
-    pub operation_id: String,
-    pub revision: i64,
-    #[serde(rename = "moduleSlug")]
-    pub module_slug: String,
-    #[serde(rename = "tenantId")]
-    pub tenant_id: Option<String>,
-    #[serde(rename = "predecessorDigest")]
-    pub predecessor_digest: Option<String>,
-    #[serde(rename = "candidateDigest")]
-    pub candidate_digest: String,
-    pub state: ModuleTransitionState,
-    #[serde(rename = "stateDetails")]
-    pub state_details: Option<String>,
-    #[serde(rename = "securityEpoch")]
-    pub security_epoch: i64,
-    #[serde(rename = "recoveryAttemptCount")]
-    pub recovery_attempt_count: i32,
-    #[serde(rename = "createdAt")]
-    pub created_at: String,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RetentionHold {
-    #[serde(rename = "holdId")]
-    pub hold_id: String,
-    #[serde(rename = "targetType")]
-    pub target_type: String,
-    #[serde(rename = "targetIdentity")]
-    pub target_identity: String,
-    pub kind: String,
-    #[serde(rename = "createdAt")]
-    pub created_at: String,
-}
-
 #[derive(Deserialize)]
 pub struct ModuleTransitionCheckpointResponse {
     #[serde(rename = "moduleTransitionCheckpoint")]
-    pub checkpoint: Option<ModuleTransitionCheckpoint>,
+    pub checkpoint: Option<rustok_api::ModuleTransitionCheckpointView>,
 }
 
 #[derive(Deserialize)]
 pub struct ModuleRetentionHoldsResponse {
     #[serde(rename = "moduleRetentionHolds")]
-    pub holds: Vec<RetentionHold>,
+    pub holds: Vec<rustok_api::ModuleRetentionHoldView>,
 }
 
 #[derive(Deserialize)]
 pub struct FinalizeModuleTransitionResponse {
     #[serde(rename = "finalizeModuleTransition")]
-    pub checkpoint: ModuleTransitionCheckpoint,
+    pub checkpoint: rustok_api::ModuleTransitionCheckpointView,
 }
 
 #[derive(Deserialize)]
 pub struct ActiveModuleTransitionsResponse {
     #[serde(rename = "activeModuleTransitions")]
-    pub active_transitions: Vec<ModuleTransitionCheckpoint>,
+    pub active_transitions: Vec<rustok_api::ModuleTransitionCheckpointView>,
 }

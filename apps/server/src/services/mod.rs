@@ -368,6 +368,7 @@ pub mod social_graph_index_poison_observer;
 pub mod social_graph_index_position_observer;
 #[cfg(feature = "mod-social_graph")]
 pub mod social_graph_index_worker;
+pub mod static_module_registry;
 pub mod tenant_cache_generation;
 pub mod tenant_cache_generation_status;
 pub mod tenant_generation_delivery_gate;
