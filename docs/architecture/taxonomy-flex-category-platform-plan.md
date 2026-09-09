@@ -46,8 +46,11 @@ has exact source/target snapshots, idempotent revision-safe apply, aggregate pro
 PostgreSQL per-resource state, bounded ordered ChangeCursor evidence, schema-change fan-out and
 same-transaction deletion tombstones. The snapshot resource revision has been cut over to the
 Flex-owned durable `attached:N` token; Taxonomy aggregate revision remains only the owner
-serialization/CAS mechanism. The attached provider itself remains intentionally unregistered until a
-separate activation slice, preserving a clean activation/rollback boundary.
+serialization/CAS mechanism. The neutral `flex/attached_localized_value` provider is now registered
+for `taxonomy.category` when `mod-flex + mod-taxonomy` are composed. It delegates exact list/read,
+validate/apply, aggregate progress and bounded ChangeCursor behavior to those same owner contracts.
+Translation readiness remains blocked until retained PostgreSQL migration, concurrency and recovery
+evidence exists; activation must not reintroduce a second provider or revision path.
 
 No TAXONOMY-CAT-35 Product slice or next Category consumer is currently accepted by this plan. A
 future consumer migration must be named explicitly and start from fresh `main` with its own typed
@@ -190,8 +193,11 @@ Forum-specific custom-field implementation.
 - Snapshot list/read composition observes schema, donor existence, localized rows and revision state
   in one PostgreSQL repeatable-read snapshot; apply keeps schema and Taxonomy owner serialization in
   its write transaction while the Translation revision itself comes only from Flex state.
-- Provider activation is a separate rollout slice after revision cutover; do not combine activation
-  with another revision source or compatibility path.
+- Provider activation is complete as a separate rollout slice after revision cutover. The registered
+  provider must keep `attached:N` as the sole resource revision and remain readiness-blocked until
+  retained PostgreSQL/concurrency/recovery evidence exists.
+- Dynamic attached leaves deny AI export by default until a reusable Flex schema-level
+  classification/export policy explicitly admits a leaf.
 - Add category custom-field rendering to the generic admin schema-builder path; Taxonomy must not
   implement a second custom-fields editor.
 - Extend field types only through Flex when demonstrated (`Media`, references, rich text, etc.).
@@ -260,12 +266,16 @@ its boundary. At minimum the completed program must prove:
 - Flex opt-in registry: unsupported entity types fail closed;
 - `forum.topic` remains registered and its custom fields cannot replace normalized Forum invariants;
 - Category Flex definitions/values are tenant-scoped and multilingual where configured;
+- registered `flex/attached_localized_value` discovery/list/read/progress/change/apply all route
+  through the same donor-scoped owner/progress/change contracts;
 - attached Category Flex Translation snapshots/change rows share durable `attached:N` revisions and
   never derive resource revision from Taxonomy aggregate revision or schema hash;
 - attached list/read state is snapshot-consistent under concurrent writes and ChangeCursor pages are
   bounded by owner high-water evidence;
 - schema eligibility/key moves and deletes reach the real affected resource ids despite FK cascades;
 - Category hard delete records the final tombstone in the owner transaction;
+- machine export remains denied when an attached leaf lacks explicit reusable classification/export
+  policy;
 - consumer bindings reject cross-tenant Taxonomy category references;
 - legacy category UUID/data backfill is deterministic and rollback/recovery is documented;
 - the retained Forum mounted multilingual/RTL packet remains source-guarded against Taxonomy-owned category data and is executed only in final production validation;

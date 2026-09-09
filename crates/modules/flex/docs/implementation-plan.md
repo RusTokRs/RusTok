@@ -21,10 +21,13 @@ Snapshot `resource_revision` is the Flex-owned durable `attached:N` token. Taxon
 revision remains a serialization/CAS mechanism for owner mutation; it is not a second Translation
 resource revision.
 
-`flex/schema_copy` is already a registered Translation target. The `taxonomy.category` attached
-Translation provider remains deliberately unregistered until the owner revision cutover is merged;
-provider activation is the next separate rollout slice so activation/rollback does not get mixed with
-the resource-revision contract change.
+`flex/schema_copy` is already a registered Translation target. The neutral
+`flex/attached_localized_value` provider is now also registered for the `taxonomy.category` donor
+when `mod-flex + mod-taxonomy` are composed. It exposes list/read/validate/apply, aggregate progress
+and the bounded Flex ChangeCursor over the same owner contracts and durable `attached:N` revision.
+Attached dynamic fields remain fail-closed for AI export until Flex has explicit schema-level
+classification/export policy. Production/pilot promotion remains an evidence gate, not another
+provider or revision implementation step.
 
 Owner-owned contracts live in `flex::graphql`, `flex::registry`, `flex::rest` and
 `flex::standalone`. The server composes `FlexGraphqlRuntime`, SeaORM, registry/cache adapters and
@@ -74,13 +77,18 @@ The attached Translation projection has one resource-revision source of truth:
 - Category hard delete emits the final same-transaction `deleted` tombstone and removes active state;
 - list/read snapshot composition reads schema, donor existence, localized values and durable
   `attached:N` evidence from one PostgreSQL repeatable-read snapshot;
+- aggregate progress reads those same durable resource revisions in one PostgreSQL repeatable-read
+  snapshot and fails closed outside PostgreSQL rather than synthesizing another revision source;
 - apply keeps the schema-generation barrier plus Taxonomy owner lock, performs the owner mutation,
   then observes the Flex-owned revision inside the same write transaction;
+- the registered neutral provider delegates all read/apply/progress/change behavior to those owner
+  contracts and does not reconstruct state in the host;
 - no hash derived from Taxonomy revision/schema, host-side counter, polling reconstruction or dual
-  revision path is allowed.
+  revision/provider path is allowed.
 
-The durable journal migration is `ExpandContract / PreActivation`. The revision cutover is the final
-owner-side contract step before separate provider activation.
+The durable journal migration is `ExpandContract / PreActivation`. Revision cutover and provider
+activation are complete at source level; the remaining gate is retained PostgreSQL/concurrency/
+recovery evidence on the registered provider.
 
 ## Cache convergence
 
@@ -116,50 +124,59 @@ cache workflow passes its compiled and PostgreSQL jobs on one revision.
 
 ## Open results
 
-1. **Activate the `taxonomy.category` attached Translation provider.** Compose the already-existing
-   exact owner, aggregate progress and Flex-owned ChangeCursor into the neutral Translation target
-   registry only after the `attached:N` snapshot cutover is in `main`.
-   **Depends on:** durable ChangeCursor/state and the owner revision cutover.
-   **Done when:** one provider is registered for the attached Category extension surface, runtime
-   discovery/read/progress/change/apply all use the same owner contracts, missing PostgreSQL evidence
-   fails closed, and no parallel provider/revision path exists.
+1. **Collect retained evidence for the registered `taxonomy.category` attached Translation provider.**
+   Exercise the already-registered neutral provider against PostgreSQL without introducing a test-only
+   owner path.
+   **Depends on:** the merged durable ChangeCursor/state, `attached:N` snapshot cutover and provider
+   composition.
+   **Done when:** retained evidence covers migration/backfill, concurrent resource/source/target CAS,
+   idempotent replay, aggregate-progress stability, schema OLD/NEW fan-out, hard-delete tombstones and
+   bounded change-cursor recovery on one revision. Until then readiness remains `blocked` even though
+   provider status is `registered`.
 
-2. **Reduce remaining donor onboarding plumbing using `taxonomy.category` as the reference.** Existing
+2. **Add explicit attached-field classification/export policy before enabling machine translation.**
+   Generic dynamic fields currently have no typed schema-level data classification or AI-export
+   admission metadata, so the Translation adapter intentionally exposes `ai_export_allowed = false`.
+   **Depends on:** a reviewed reusable Flex schema policy rather than donor-specific hard-coding.
+   **Done when:** each eligible attached leaf has owner-governed classification/export policy and the
+   adapter can admit AI export only for explicitly safe leaves; absence remains fail-closed.
+
+3. **Reduce remaining donor onboarding plumbing using `taxonomy.category` as the reference.** Existing
    Topic and older donor adapters should converge on the generic attached definition/value contract
    where behavior is reusable instead of preserving donor-specific service stacks.
    **Depends on:** the active generic Category donor and existing registry/GraphQL/runtime contracts.
    **Done when:** a new demonstrated donor can opt in through one bounded adapter without copying
    field-definition, localization, change/revision or transport machinery.
 
-3. **Preserve the Topic extension boundary.** Keep `topic` attached fields as optional extension data
+4. **Preserve the Topic extension boundary.** Keep `topic` attached fields as optional extension data
    and prevent Flex schemas from becoming a substitute for Forum normalized state.
    **Depends on:** Forum Topic write/read adapters and the common donor contract.
    **Done when:** Topic custom fields roundtrip through the same generic Flex semantics as other
    donors, critical Forum fields are neither writable nor shadowable through Flex, and no Forum-only
    custom-field engine exists.
 
-4. **Close standalone Translation exact-owner parity.** Standalone Flex localized values must expose
+5. **Close standalone Translation exact-owner parity.** Standalone Flex localized values must expose
    the same owner-safe exact source/target, revision, progress and bounded-change semantics before a
    standalone localized-value Translation target can be activated.
    **Depends on:** canonical standalone parallel localized storage and owner service.
    **Done when:** standalone authoring never seeds from fallback/default locale, arbitrary JSON is not
    exposed as copy, and the provider uses one durable owner revision/change contract.
 
-5. **Execute durable field-cache recovery evidence.** Run the source-complete SQLite owner matrix,
+6. **Execute durable field-cache recovery evidence.** Run the source-complete SQLite owner matrix,
    PostgreSQL transaction/concurrency/replay test and two-replica server outage/regression recovery
    test on one reconciled `main` revision, then fix every format, compile, test or Clippy failure.
    **Depends on:** the permanent cache workflow or another Rust 1.96 environment with PostgreSQL 17.
    **Done when:** compiled and PostgreSQL jobs pass on the same revision and the result is recorded
    without copying raw logs.
 
-6. **Finish the owner transport extraction with targeted runtime evidence.** Remove remaining
+7. **Finish the owner transport extraction with targeted runtime evidence.** Remove remaining
    server Flex artifacts beyond allowed SeaORM/bootstrap/composition adapters and run targeted
    owner-root GraphQL/REST tests when compilation evidence is available.
    **Depends on:** host-composed `FlexGraphqlRuntime` and targeted test fixtures.
    **Done when:** server holds only allowed adapters and owner-owned roots execute with persistence,
    RBAC, errors, events and cache invalidation.
 
-7. **Close attached and standalone migration and exact-authoring verification.** Verify localized
+8. **Close attached and standalone migration and exact-authoring verification.** Verify localized
    value backfill/cleanup, PATCH merges, tenant scoping, schema validation, donor read/write paths,
    attached Translation revision/change behavior and standalone schema/entry roundtrips against
    production persistence.
@@ -168,7 +185,7 @@ cache workflow passes its compiled and PostgreSQL jobs on one revision.
    copies another locale into its target, all live donors retain their data and integration evidence
    is stable.
 
-8. **Evolve advanced Flex capability only for demonstrated product needs.** Add future types such as
+9. **Evolve advanced Flex capability only for demonstrated product needs.** Add future types such as
    Media/reference/rich-text only through the common Flex contract and only with explicit ownership,
    governance, permissions, indexing and documentation decisions.
    **Depends on:** a concrete product requirement and capability review.
@@ -209,14 +226,16 @@ review before merge and must not claim runtime evidence that was not executed.
 1. Flex support is explicit product opt-in; never infer it from a metadata column alone.
 2. Keep donor business persistence and attachment relations with their owning module unless a
    generic Flex value store is explicitly the accepted attached-value owner.
-3. Keep reusable generation/trigger/revision/change helpers and Flex contracts in this crate; owner
-   modules contribute only canonical identity/lifecycle and bounded adapters.
+3. Keep reusable generation/trigger/revision/change/provider helpers and Flex contracts in this crate;
+   owner modules contribute only canonical identity/lifecycle and bounded adapters.
 4. Do not create a module-local custom-field definition/validation/localization/transport engine.
    Improve Flex when a donor needs reusable behavior.
 5. Flex fields may extend a donor but must not replace normalized owner invariants.
 6. Keep server work to composition and concrete persistence/runtime adapters; do not reconstruct Flex
    revision/change semantics in the host.
-7. Update the canonical Flex README, implementation plan, donor docs and relevant central ownership
+7. Default dynamic attached-field AI export to denied until explicit reusable schema policy says
+   otherwise.
+8. Update the canonical Flex README, implementation plan, donor docs and relevant central ownership
    documentation with a capability contract change.
-8. Before completion, remove superseded names/paths and verify that no deprecated or parallel
+9. Before completion, remove superseded names/paths and verify that no deprecated or parallel
    internal contract remains in the touched scope.
