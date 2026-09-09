@@ -4,10 +4,6 @@
 //! CRUD. Schema create/update/delete are owned here so parent/translation persistence and
 //! Translation change evidence share one transaction and one parent serialization law.
 
-mod legacy {
-    include!("flex_standalone_service.rs");
-}
-
 use async_trait::async_trait;
 use flex::{
     FlexSchemaTranslationChangeLifecycle, FlexSchemaTranslationError,
@@ -23,21 +19,21 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
     EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
-use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::models::{flex_schema_translations, flex_schemas, tenants};
 use crate::services::flex_schema_translation_owner::resource_revision;
+use crate::services::flex_standalone_service_legacy;
 
 pub struct FlexStandaloneSeaOrmService {
     db: DatabaseConnection,
-    legacy: legacy::FlexStandaloneSeaOrmService,
+    legacy: flex_standalone_service_legacy::FlexStandaloneSeaOrmService,
 }
 
 impl FlexStandaloneSeaOrmService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            legacy: legacy::FlexStandaloneSeaOrmService::new(db.clone()),
+            legacy: flex_standalone_service_legacy::FlexStandaloneSeaOrmService::new(db.clone()),
             db,
         }
     }
