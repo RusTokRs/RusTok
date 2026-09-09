@@ -1,4 +1,7 @@
-use std::{collections::{BTreeMap, BTreeSet}, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -7,11 +10,10 @@ use rustok_translation_targets::{
     FieldKey, ListTranslationResourcesRequest, OpaqueCursor, OpaqueRevision, OwnerSlug,
     ReadTranslationResourceRequest, ResourceId, ResourceKind, TranslationApplicationReceipt,
     TranslationDataClassification, TranslationFieldDescriptor, TranslationFieldSnapshot,
-    TranslationPatchIssue, TranslationPatchIssueSeverity, TranslationPatchRequest,
-    TranslationPatchValidation, TranslationResourceIdentity, TranslationResourceLifecycle,
-    TranslationResourcePage, TranslationResourceSnapshot, TranslationResourceSummary,
-    TranslationStrategy, TranslationTargetCapability, TranslationTargetProvider,
-    TranslationTargetProviderDescriptor, TranslationValueProfile,
+    TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
+    TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
+    TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
+    TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
         contract_validation_error, field_hash, normalize_optional_target_value,
         read_request_from_patch, required_target_value, validate_patch_against_snapshot,
@@ -177,7 +179,17 @@ impl TranslationTargetProvider for FlexSchemaTranslationTargetProvider {
         let read_request = read_request_from_patch(&request);
         let owner_snapshot = self.load_owner_snapshot(tenant_id, &read_request).await?;
         let neutral = neutralize_snapshot(owner_snapshot.clone(), &read_request)?;
-        let validation = validate_patch_against_snapshot(&request, &neutral.snapshot);
+
+        // The owner owns durable admission and authoritative resource/source/target CAS.
+        // During apply, keep neutral field-key and source-hash validation here but allow
+        // revision conflicts to reach owner admission. That preserves idempotent replay:
+        // a successful previous apply naturally changed resource/target revisions, and a
+        // retry with the same key must reach the durable owner receipt instead of being
+        // rejected by a pre-admission neutral snapshot check.
+        let validation = only_field_issues(validate_patch_against_snapshot(
+            &request,
+            &neutral.snapshot,
+        ));
         if !validation.accepted {
             return Err(validation_to_port_error(&validation));
         }
@@ -297,7 +309,9 @@ fn field_snapshot(
     leaf: &crate::FlexSchemaTranslationLeafSnapshot,
 ) -> TranslationFieldSnapshot {
     let (profile, required, max_characters) = match &leaf.leaf {
-        FlexSchemaTranslationLeaf::SchemaName => (TranslationValueProfile::PlainText, true, Some(255)),
+        FlexSchemaTranslationLeaf::SchemaName => {
+            (TranslationValueProfile::PlainText, true, Some(255))
+        }
         FlexSchemaTranslationLeaf::SchemaDescription => {
             (TranslationValueProfile::PlainText, false, None)
         }
@@ -469,7 +483,11 @@ fn application_receipt(
         provider_receipt_id: format!("flex-schema:{}", owner.operation_id),
         resource_revision: opaque_revision(owner.resource_revision.clone(), "resource_revision")?,
         target_revision: opaque_revision(owner.target_revision.clone(), "target_revision")?,
-        applied_field_keys: request.fields.iter().map(|field| field.key.clone()).collect(),
+        applied_field_keys: request
+            .fields
+            .iter()
+            .map(|field| field.key.clone())
+            .collect(),
     })
 }
 
@@ -630,18 +648,5 @@ fn only_field_issues(validation: TranslationPatchValidation) -> TranslationPatch
     TranslationPatchValidation {
         accepted: issues.is_empty(),
         issues,
-    }
-}
-
-fn field_issue(
-    field: FieldKey,
-    code: &str,
-    message: &str,
-) -> TranslationPatchIssue {
-    TranslationPatchIssue {
-        field: Some(field),
-        severity: TranslationPatchIssueSeverity::Error,
-        code: code.to_string(),
-        message: message.to_string(),
     }
 }
