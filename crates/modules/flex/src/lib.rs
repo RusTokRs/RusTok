@@ -21,6 +21,7 @@ pub mod parsing;
 pub mod registry;
 pub mod rest;
 pub mod schema_translation;
+pub mod schema_translation_fields;
 pub mod standalone;
 
 pub struct FlexModule;
@@ -72,6 +73,10 @@ pub use schema_translation::{
     FlexSchemaTranslationResourcePage, FlexSchemaTranslationResult,
     FlexSchemaTranslationTargetValue, MAX_FLEX_SCHEMA_TRANSLATION_RESOURCE_PAGE,
     validate_flex_schema_translation_locale_pair, validate_flex_schema_translation_resource_page,
+};
+pub use schema_translation_fields::{
+    apply_schema_definition_translation_targets, schema_definition_translation_leaves,
+    schema_definition_translation_locales,
 };
 pub use standalone::{
     CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView,
