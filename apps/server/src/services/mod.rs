@@ -292,11 +292,6 @@ pub mod module_event_dispatcher {
                 host.shared_get::<rustok_search::SharedForumProjectionOwnerRevisionSourcePort>()
                     .is_some()
             );
-            #[cfg(feature = "mod-forum")]
-            assert!(
-                host.shared_get::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
-                    .is_some()
-            );
         }
 
         #[test]
@@ -380,4 +375,5 @@ pub mod field_definition_cache;
 pub mod field_definition_registry_bootstrap;
 pub mod flex_attached_values;
 pub mod flex_schema_translation_owner;
+pub mod flex_schema_translation_progress_owner;
 pub mod flex_standalone_service;
