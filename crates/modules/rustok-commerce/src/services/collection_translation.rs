@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, future::Future};
 
-use rustok_api::TenantLocale;
+use rustok_api::{PortError, TenantLocale};
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{TransactionalEventBus, idempotency};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, Set, TransactionTrait,
@@ -14,7 +14,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::entities::{collection, collection_translation};
-use crate::{CommerceError, CommerceResult};
+use crate::CommerceError;
 
 pub const MAX_COLLECTION_TRANSLATION_RESOURCE_PAGE: u16 = 200;
 
@@ -24,6 +24,28 @@ const COLLECTION_COPY_RESOURCE_REVISION_NAMESPACE: &str =
     "rustok-commerce/collection-copy-resource/v1";
 const COLLECTION_COPY_LOCALE_REVISION_NAMESPACE: &str =
     "rustok-commerce/collection-copy-locale/v1";
+
+tokio::task_local! {
+    static COLLECTION_TRANSLATION_OPERATION_LEASE: idempotency::Lease;
+}
+
+pub(crate) async fn with_collection_translation_operation_receipt<F, T>(
+    lease: idempotency::Lease,
+    future: F,
+) -> T
+where
+    F: Future<Output = T>,
+{
+    COLLECTION_TRANSLATION_OPERATION_LEASE
+        .scope(lease, future)
+        .await
+}
+
+fn current_operation_lease() -> Option<idempotency::Lease> {
+    COLLECTION_TRANSLATION_OPERATION_LEASE
+        .try_with(|lease| *lease)
+        .ok()
+}
 
 #[derive(Debug, Error)]
 pub enum CollectionTranslationExactLocaleError {
@@ -41,6 +63,9 @@ pub enum CollectionTranslationExactLocaleError {
 
     #[error("Collection translation {revision} revision conflict")]
     RevisionConflict { revision: &'static str },
+
+    #[error("Collection translation owner receipt failed: {0}")]
+    OperationReceipt(PortError),
 }
 
 impl From<sea_orm::DbErr> for CollectionTranslationExactLocaleError {
@@ -117,10 +142,10 @@ impl CollectionTranslationService {
         Self { db, event_bus }
     }
 
-    /// Lists active tenant-owned Collections that contain the requested exact
-    /// source locale. Pagination is stable by Collection UUID and snapshots are
-    /// assembled from bounded bulk reads, so Translation never owns a shadow
-    /// inventory or fallback locale policy.
+    pub(crate) fn database(&self) -> &DatabaseConnection {
+        &self.db
+    }
+
     pub async fn list_exact_resources(
         &self,
         tenant_id: Uuid,
@@ -205,11 +230,9 @@ impl CollectionTranslationService {
                 target_locale.clone(),
             )?);
         }
-
         Ok((snapshots, next_after))
     }
 
-    /// Reads exact source and target locale rows without storefront fallback.
     pub async fn read_exact_locale(
         &self,
         tenant_id: Uuid,
@@ -228,12 +251,6 @@ impl CollectionTranslationService {
         build_snapshot(collection, translations, source_locale, target_locale)
     }
 
-    /// Applies one exact target locale under resource/source/target CAS.
-    ///
-    /// All tenant Collection rows are locked in UUID order before the target is
-    /// resolved. Translation writes are rare, and this deterministic owner lock
-    /// gives handle collision checks a race-free per-tenant boundary without
-    /// denormalizing tenant identity into `collection_translations`.
     pub async fn apply_exact_locale(
         &self,
         tenant_id: Uuid,
@@ -243,12 +260,16 @@ impl CollectionTranslationService {
     ) -> CollectionTranslationExactLocaleResult<CollectionTranslationExactLocaleApplyReceipt> {
         validate_tenant_id(tenant_id)?;
         validate_collection_id(collection_id)?;
-        validate_copy(&request.title, &request.handle, request.description.as_deref())?;
+        validate_copy(&request.title, &request.handle)?;
         let source_locale = canonical_locale(&request.source_locale)?;
         let target_locale = canonical_locale(&request.target_locale)?;
         validate_locale_pair(&source_locale, &target_locale)?;
 
         let txn = self.db.begin().await?;
+
+        // Collection translations do not carry tenant_id. Lock every Collection
+        // parent for this tenant in deterministic UUID order so concurrent owner
+        // writes serialize before locale+handle collision checks.
         let tenant_collections = collection::Entity::find()
             .filter(collection::Column::TenantId.eq(tenant_id))
             .order_by_asc(collection::Column::Id)
@@ -336,10 +357,13 @@ impl CollectionTranslationService {
         let target_revision = locale_revision(target_after);
         let target = CollectionTranslationExactLocaleRecord::from(target_after.clone());
 
-        let operation_id = if unchanged {
-            None
-        } else {
-            let operation_id = generate_id();
+        let operation_lease = current_operation_lease();
+        let operation_id = operation_lease
+            .map(|lease| lease.operation_id)
+            .or_else(|| (!unchanged).then(generate_id));
+
+        if !unchanged {
+            let correlation_id = operation_id.expect("changed owner apply must have operation id");
             self.event_bus
                 .publish_in_tx_with_envelope_id(
                     &txn,
@@ -353,21 +377,28 @@ impl CollectionTranslationService {
                         resource_revision: resource_revision.clone(),
                         target_revision: target_revision.clone(),
                         operation: "apply_exact_locale".to_owned(),
-                        correlation_id: operation_id.to_string(),
+                        correlation_id: correlation_id.to_string(),
                     },
                 )
-                .await?;
-            Some(operation_id)
-        };
+                .await
+                .map_err(|error| CommerceError::Core(error))?;
+        }
 
-        txn.commit().await?;
-        Ok(CollectionTranslationExactLocaleApplyReceipt {
+        let receipt = CollectionTranslationExactLocaleApplyReceipt {
             operation_id,
             collection_id,
             resource_revision,
             target_revision,
             target,
-        })
+        };
+        if let Some(lease) = operation_lease {
+            idempotency::complete(&txn, lease, &receipt)
+                .await
+                .map_err(CollectionTranslationExactLocaleError::OperationReceipt)?;
+        }
+
+        txn.commit().await?;
+        Ok(receipt)
     }
 }
 
@@ -539,11 +570,7 @@ fn validate_collection_id(collection_id: Uuid) -> CollectionTranslationExactLoca
     Ok(())
 }
 
-fn validate_copy(
-    title: &str,
-    handle: &str,
-    _description: Option<&str>,
-) -> CollectionTranslationExactLocaleResult<()> {
+fn validate_copy(title: &str, handle: &str) -> CollectionTranslationExactLocaleResult<()> {
     if title.trim().is_empty() || title.chars().count() > 255 {
         return Err(CommerceError::Validation(
             "Collection translation title must be nonblank and at most 255 characters".to_owned(),
@@ -639,6 +666,3 @@ fn digest_optional_text(hasher: &mut Sha256, value: Option<&str>) {
 fn finish_revision(hasher: Sha256) -> String {
     format!("sha256:{}", hex::encode(hasher.finalize()))
 }
-
-#[allow(dead_code)]
-fn _assert_commerce_result_alias(_: CommerceResult<()>) {}
