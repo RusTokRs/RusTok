@@ -12,6 +12,7 @@ pub mod attached_definitions;
 pub mod attached_storage;
 pub mod attached_translation;
 pub mod attached_translation_guard;
+pub mod attached_translation_storage;
 pub mod cache_generation;
 pub mod entity_type;
 pub mod errors;
@@ -59,7 +60,12 @@ pub use attached_translation::{
     validate_flex_attached_translation_resource_page,
 };
 pub use attached_translation_guard::{
-    FlexAttachedTranslationSchemaLease, lock_attached_translation_schema_in_tx,
+    FlexAttachedTranslationSchemaLease, load_attached_translation_schema_in,
+    lock_attached_translation_schema_in_tx,
+};
+pub use attached_translation_storage::{
+    FlexAttachedLocalizedValuesByEntity, MAX_ATTACHED_TRANSLATION_STORAGE_BATCH,
+    load_attached_translation_localized_values,
 };
 pub use entity_type::{
     MAX_FLEX_ENTITY_TYPE_BYTES, TAXONOMY_CATEGORY_ENTITY_TYPE, is_valid_flex_entity_type,

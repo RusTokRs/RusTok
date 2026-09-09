@@ -10,10 +10,77 @@ use crate::{
     entities::taxonomy_term,
 };
 
+pub const MAX_TAXONOMY_CATEGORY_OWNER_PAGE: u16 = 200;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TaxonomyCategoryOwnerRevision {
     pub category_id: Uuid,
     pub revision: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaxonomyCategoryOwnerRevisionPage {
+    pub categories: Vec<TaxonomyCategoryOwnerRevision>,
+    pub next_after: Option<Uuid>,
+}
+
+/// List the canonical Category owner inventory in stable UUID order without exposing
+/// Taxonomy persistence rows to a host adapter.
+///
+/// This is intentionally independent from consumer scope. `taxonomy.category` is one
+/// Flex donor type across global and module Category scopes, so Translation inventory
+/// must be derived from canonical Taxonomy existence rather than whichever attached
+/// Flex rows happen to exist.
+pub async fn list_category_owner_revisions_in<C>(
+    connection: &C,
+    tenant_id: Uuid,
+    after: Option<Uuid>,
+    limit: u16,
+) -> TaxonomyResult<TaxonomyCategoryOwnerRevisionPage>
+where
+    C: ConnectionTrait,
+{
+    if limit == 0 || limit > MAX_TAXONOMY_CATEGORY_OWNER_PAGE {
+        return Err(TaxonomyError::validation(format!(
+            "Category owner page size must be between 1 and {MAX_TAXONOMY_CATEGORY_OWNER_PAGE}"
+        )));
+    }
+
+    let mut query = taxonomy_term::Entity::find()
+        .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
+        .order_by_asc(taxonomy_term::Column::Id);
+    if let Some(after) = after {
+        query = query.filter(taxonomy_term::Column::Id.gt(after));
+    }
+
+    let mut rows = query
+        .limit(u64::from(limit) + 1)
+        .all(connection)
+        .await?;
+    let has_more = rows.len() > usize::from(limit);
+    if has_more {
+        rows.truncate(usize::from(limit));
+    }
+
+    let categories = rows
+        .into_iter()
+        .map(|row| {
+            validate_revision(row.id, row.revision)?;
+            Ok(TaxonomyCategoryOwnerRevision {
+                category_id: row.id,
+                revision: row.revision,
+            })
+        })
+        .collect::<TaxonomyResult<Vec<_>>>()?;
+    let next_after = has_more
+        .then(|| categories.last().map(|category| category.category_id))
+        .flatten();
+
+    Ok(TaxonomyCategoryOwnerRevisionPage {
+        categories,
+        next_after,
+    })
 }
 
 /// Read owner revisions for a bounded set of Category identities without exposing

@@ -26,6 +26,36 @@ pub struct FlexAttachedTranslationSchemaLease {
     pub schema: CustomFieldsSchema,
 }
 
+/// Read the exact active attached schema through any host transaction/connection.
+/// Progress uses this inside its repeatable-read owner snapshot; apply uses the locking
+/// variant below so no field-definition mutation can cross its CAS window.
+pub async fn load_attached_translation_schema_in<C>(
+    connection: &C,
+    tenant_id: Uuid,
+    entity_type: &str,
+) -> Result<CustomFieldsSchema, FlexError>
+where
+    C: ConnectionTrait,
+{
+    if !is_valid_flex_entity_type(entity_type) {
+        return Err(FlexError::UnknownEntityType(entity_type.to_string()));
+    }
+    let rows = attached_definitions::Entity::find()
+        .filter(attached_definitions::Column::TenantId.eq(tenant_id))
+        .filter(attached_definitions::Column::EntityType.eq(entity_type))
+        .filter(attached_definitions::Column::IsActive.eq(true))
+        .order_by_asc(attached_definitions::Column::Position)
+        .order_by_asc(attached_definitions::Column::FieldKey)
+        .all(connection)
+        .await
+        .map_err(database_error)?;
+    let definitions = rows
+        .iter()
+        .filter_map(field_definition_from_source)
+        .collect();
+    Ok(CustomFieldsSchema::new(definitions))
+}
+
 /// Serialize an attached Translation apply against every field-definition mutation and
 /// load the exact active schema for one registered generic donor in the same transaction.
 ///
@@ -83,23 +113,10 @@ pub async fn lock_attached_translation_schema_in_tx(
         ));
     }
 
-    let rows = attached_definitions::Entity::find()
-        .filter(attached_definitions::Column::TenantId.eq(tenant_id))
-        .filter(attached_definitions::Column::EntityType.eq(entity_type))
-        .filter(attached_definitions::Column::IsActive.eq(true))
-        .order_by_asc(attached_definitions::Column::Position)
-        .order_by_asc(attached_definitions::Column::FieldKey)
-        .all(txn)
-        .await
-        .map_err(database_error)?;
-    let definitions = rows
-        .iter()
-        .filter_map(field_definition_from_source)
-        .collect();
-
+    let schema = load_attached_translation_schema_in(txn, tenant_id, entity_type).await?;
     Ok(FlexAttachedTranslationSchemaLease {
         observed_generation,
-        schema: CustomFieldsSchema::new(definitions),
+        schema,
     })
 }
 

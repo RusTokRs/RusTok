@@ -46,8 +46,10 @@ pub use module_term_mutation::{
 pub use normalization::{normalize_term_locale, normalize_term_route_key};
 pub use owner_category_read::{TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader};
 pub use owner_category_revision::{
-    TaxonomyCategoryOwnerRevision, advance_category_owner_revision_in_tx,
-    load_category_owner_revisions_in, lock_category_owner_revision_in_tx,
+    MAX_TAXONOMY_CATEGORY_OWNER_PAGE, TaxonomyCategoryOwnerRevision,
+    TaxonomyCategoryOwnerRevisionPage, advance_category_owner_revision_in_tx,
+    list_category_owner_revisions_in, load_category_owner_revisions_in,
+    lock_category_owner_revision_in_tx,
 };
 pub use owner_category_route_sync::{
     TaxonomyModuleCategoryLocaleCopy, load_module_category_locale_copy_in_tx,
