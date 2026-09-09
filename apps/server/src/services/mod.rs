@@ -327,6 +327,7 @@ pub mod module_event_dispatcher {
             #[cfg(feature = "mod-forum")]
             assert!(
                 host.shared_get::<rustok_search::SharedStorefrontSearchResultEligibilityPort>()
+                    .is_some()
             );
         }
 
