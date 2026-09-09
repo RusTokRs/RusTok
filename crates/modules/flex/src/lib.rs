@@ -64,10 +64,12 @@ pub use attached_translation::{
     validate_flex_attached_translation_resource_page,
 };
 pub use attached_translation_changes::{
-    FLEX_ATTACHED_TRANSLATION_CHANGE_JOURNAL_TABLE, FlexAttachedTranslationChangeKind,
-    FlexAttachedTranslationChangeOwnerPort, FlexAttachedTranslationChangeRecord,
-    MAX_FLEX_ATTACHED_TRANSLATION_CHANGE_PAGE, flex_attached_translation_deleted_revision,
-    record_flex_attached_translation_deleted_in_tx, validate_flex_attached_translation_change_page,
+    FLEX_ATTACHED_TRANSLATION_CHANGE_JOURNAL_TABLE,
+    FLEX_ATTACHED_TRANSLATION_RESOURCE_STATE_TABLE, FlexAttachedTranslationChangeLifecycle,
+    FlexAttachedTranslationChangeOwnerPort, FlexAttachedTranslationChangeReader,
+    FlexAttachedTranslationChangeRecord, MAX_FLEX_ATTACHED_TRANSLATION_CHANGE_PAGE,
+    flex_attached_translation_deleted_revision, record_flex_attached_translation_deleted_in_tx,
+    validate_flex_attached_translation_change_page,
 };
 pub use attached_translation_guard::{
     FlexAttachedTranslationSchemaLease, load_attached_translation_schema_in,
