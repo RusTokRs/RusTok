@@ -4,12 +4,19 @@
 
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{
+    MigrationDependencyDescriptor, MigrationPhaseConstraint, MigrationSafetyClass,
+    MigrationSafetyMetadata, MigrationSource, RusToKModule,
+};
 use sea_orm_migration::MigrationTrait;
 
 pub mod attached;
 pub mod attached_definitions;
 pub mod attached_storage;
+pub mod attached_translation;
+pub mod attached_translation_changes;
+pub mod attached_translation_guard;
+pub mod attached_translation_storage;
 pub mod cache_generation;
 pub mod entity_type;
 pub mod errors;
@@ -20,6 +27,11 @@ pub mod orchestration;
 pub mod parsing;
 pub mod registry;
 pub mod rest;
+pub mod schema_translation;
+pub mod schema_translation_changes;
+pub mod schema_translation_fields;
+pub mod schema_translation_progress_target;
+pub mod schema_translation_target;
 pub mod standalone;
 
 pub struct FlexModule;
@@ -38,6 +50,35 @@ pub use attached_storage::{
     load_generic_attached_shared_values, persist_generic_attached_shared_values,
     persist_prepared_generic_attached_values, prepare_generic_attached_values_update,
     resolve_generic_attached_values,
+};
+pub use attached_translation::{
+    FlexAttachedTranslationError, FlexAttachedTranslationExactLocaleApply,
+    FlexAttachedTranslationExactLocaleApplyReceipt, FlexAttachedTranslationExactLocaleSnapshot,
+    FlexAttachedTranslationExactProgress, FlexAttachedTranslationLeaf,
+    FlexAttachedTranslationLeafSnapshot, FlexAttachedTranslationOperationContext,
+    FlexAttachedTranslationOwnerPort, FlexAttachedTranslationProgressOwnerPort,
+    FlexAttachedTranslationResourcePage, FlexAttachedTranslationResult,
+    FlexAttachedTranslationTargetValue, MAX_FLEX_ATTACHED_TRANSLATION_RESOURCE_PAGE,
+    flex_attached_translation_field_eligible, validate_flex_attached_translation_entity_type,
+    validate_flex_attached_translation_locale_pair,
+    validate_flex_attached_translation_resource_page,
+};
+pub use attached_translation_changes::{
+    FLEX_ATTACHED_TRANSLATION_CHANGE_JOURNAL_TABLE,
+    FLEX_ATTACHED_TRANSLATION_RESOURCE_STATE_TABLE, FlexAttachedTranslationChangeLifecycle,
+    FlexAttachedTranslationChangeOwnerPort, FlexAttachedTranslationChangeReader,
+    FlexAttachedTranslationChangeRecord, MAX_FLEX_ATTACHED_TRANSLATION_CHANGE_PAGE,
+    flex_attached_translation_deleted_revision, record_flex_attached_translation_deleted_in_tx,
+    validate_flex_attached_translation_change_page,
+};
+pub use attached_translation_guard::{
+    FlexAttachedTranslationSchemaLease, load_attached_translation_schema_in,
+    lock_attached_translation_schema_in_tx,
+};
+pub use attached_translation_storage::{
+    FlexAttachedLocalizedValuesByEntity, FlexAttachedTranslationResourceRevisionsByEntity,
+    MAX_ATTACHED_TRANSLATION_STORAGE_BATCH, load_attached_translation_localized_values,
+    load_attached_translation_resource_revisions,
 };
 pub use entity_type::{
     MAX_FLEX_ENTITY_TYPE_BYTES, TAXONOMY_CATEGORY_ENTITY_TYPE, is_valid_flex_entity_type,
@@ -63,6 +104,28 @@ pub use rest::{
     CreateFlexEntryRequest, CreateFlexSchemaRequest, DeleteFlexResponse, FlexEntryResponse,
     FlexSchemaResponse, UpdateFlexEntryRequest, UpdateFlexSchemaRequest,
 };
+pub use schema_translation::{
+    FlexSchemaTranslationError, FlexSchemaTranslationExactLocaleApply,
+    FlexSchemaTranslationExactLocaleApplyReceipt, FlexSchemaTranslationExactLocaleSnapshot,
+    FlexSchemaTranslationExactProgress, FlexSchemaTranslationLeaf,
+    FlexSchemaTranslationLeafSnapshot, FlexSchemaTranslationOperationContext,
+    FlexSchemaTranslationOwnerPort, FlexSchemaTranslationProgressOwnerPort,
+    FlexSchemaTranslationResourcePage, FlexSchemaTranslationResult,
+    FlexSchemaTranslationTargetValue, MAX_FLEX_SCHEMA_TRANSLATION_RESOURCE_PAGE,
+    flex_schema_translation_leaf_required, validate_flex_schema_translation_locale_pair,
+    validate_flex_schema_translation_resource_page,
+};
+pub use schema_translation_changes::{
+    FlexSchemaTranslationChangeLifecycle, FlexSchemaTranslationChangeOwnerPort,
+    FlexSchemaTranslationChangeRecord, MAX_FLEX_SCHEMA_TRANSLATION_CHANGE_PAGE,
+    flex_schema_translation_deleted_revision, record_flex_schema_translation_change_in_tx,
+};
+pub use schema_translation_fields::{
+    apply_schema_definition_translation_targets, schema_definition_translation_exact_values,
+    schema_definition_translation_leaves, schema_definition_translation_locales,
+};
+pub use schema_translation_progress_target::FlexSchemaTranslationProgressTargetProvider;
+pub use schema_translation_target::FlexSchemaTranslationTargetProvider;
 pub use standalone::{
     CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView,
     FlexStandaloneService, StandaloneEntryViewSource, StandaloneSchemaTranslationSource,
@@ -88,6 +151,24 @@ pub use events::{
 impl MigrationSource for FlexModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
+    }
+
+    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
+        vec![MigrationDependencyDescriptor::new(
+            "m20260909_000003_add_attached_translation_change_journal",
+            vec![
+                "m20260405_000004_create_flex_attached_localized_values",
+                "m20260822_000001_create_generic_attached_donor_storage",
+            ],
+        )]
+    }
+
+    fn migration_safety_metadata(&self) -> Vec<MigrationSafetyMetadata> {
+        vec![MigrationSafetyMetadata::new(
+            "m20260909_000003_add_attached_translation_change_journal",
+            MigrationSafetyClass::ExpandContract,
+            MigrationPhaseConstraint::PreActivation,
+        )]
     }
 }
 

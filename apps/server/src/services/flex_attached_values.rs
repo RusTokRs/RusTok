@@ -1,13 +1,15 @@
 use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use flex::{
     AttachedEntityRef, FlexMappedErrorKind, GenericAttachedFieldDefinitionService,
     TAXONOMY_CATEGORY_ENTITY_TYPE, delete_attached_localized_values,
-    delete_generic_attached_values, map_flex_error, persist_localized_values,
-    persist_prepared_generic_attached_values, prepare_attached_values_create,
-    prepare_attached_values_update, prepare_generic_attached_values_update,
+    delete_generic_attached_values, load_exact_locale_values, load_generic_attached_shared_values,
+    load_localized_values_by_locale, lock_attached_translation_schema_in_tx, map_flex_error,
+    persist_localized_values, persist_prepared_generic_attached_values,
+    prepare_attached_values_create, prepare_attached_values_update,
+    prepare_generic_attached_values_update, record_flex_attached_translation_deleted_in_tx,
     resolve_attached_payload, resolve_generic_attached_values,
 };
 use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
@@ -83,52 +85,84 @@ impl FlexAttachedValuesService {
         )
         .await
     }
-
-    /// Prepare an exact-locale update for a donor that uses Flex-owned generic
-    /// attached storage. The owner identity is validated before any Flex row is
-    /// read, so a Taxonomy Tag, foreign-tenant term, or stale UUID cannot be
-    /// treated as `taxonomy.category`.
-    pub async fn prepare_registered_generic_update(
+    /// Canonical exact-locale mutation for a registered generic donor.
+    ///
+    /// Lock order is Flex schema generation -> donor owner. The write is prepared from
+    /// current shared/exact values inside that transaction, persisted only on semantic
+    /// change, and then advances the donor aggregate revision in the same commit. This is
+    /// the mutation law shared with attached Translation CAS.
+    pub async fn update_registered_generic_values(
         db: &DatabaseConnection,
         tenant_id: Uuid,
         entity_type: &str,
         entity_id: Uuid,
         locale: &str,
         payload: Option<Value>,
-    ) -> ServerResult<PreparedAttachedValuesWrite> {
-        ensure_registered_owner_exists(db, tenant_id, entity_type, entity_id).await?;
-        let schema = load_schema(db, tenant_id, entity_type)
-            .await
-            .map_err(map_flex_host_error)?;
-        prepare_generic_attached_values_update(
-            db,
-            attached_ref(tenant_id, entity_type, entity_id),
-            schema,
-            locale,
-            payload,
-        )
-        .await
-        .map_err(map_flex_host_error)
-    }
-
-    pub async fn persist_registered_generic_values(
-        db: &DatabaseConnection,
-        tenant_id: Uuid,
-        entity_type: &str,
-        entity_id: Uuid,
-        prepared: &PreparedAttachedValuesWrite,
     ) -> ServerResult<()> {
-        let txn = db.begin().await?;
-        ensure_registered_owner_exists(&txn, tenant_id, entity_type, entity_id).await?;
-        persist_prepared_generic_attached_values(
-            &txn,
-            attached_ref(tenant_id, entity_type, entity_id),
-            prepared,
-        )
-        .await
-        .map_err(map_flex_host_error)?;
-        txn.commit().await?;
-        Ok(())
+        match entity_type {
+            #[cfg(feature = "mod-taxonomy")]
+            TAXONOMY_CATEGORY_ENTITY_TYPE => {
+                let txn = db.begin().await?;
+                let schema = lock_attached_translation_schema_in_tx(
+                    &txn,
+                    tenant_id,
+                    entity_type,
+                )
+                .await
+                .map_err(map_flex_host_error)?;
+                let owner = rustok_taxonomy::lock_category_owner_revision_in_tx(
+                    &txn,
+                    tenant_id,
+                    entity_id,
+                )
+                .await
+                .map_err(map_taxonomy_owner_error)?;
+                let entity = attached_ref(tenant_id, entity_type, entity_id);
+                let before_shared = load_generic_attached_shared_values(&txn, entity.clone())
+                    .await
+                    .map_err(map_flex_host_error)?;
+                let prepared = prepare_generic_attached_values_update(
+                    &txn,
+                    entity.clone(),
+                    schema.schema,
+                    locale,
+                    payload,
+                )
+                .await
+                .map_err(map_flex_host_error)?;
+                let before_localized = match prepared.locale.as_deref() {
+                    Some(locale) if prepared.localized_values.is_some() => {
+                        load_exact_locale_values(&txn, tenant_id, entity_type, entity_id, locale)
+                            .await
+                            .map_err(map_flex_host_error)?
+                    }
+                    _ => None,
+                };
+                let changed = prepared_write_changed(
+                    &before_shared,
+                    before_localized.as_ref(),
+                    &prepared,
+                );
+                if changed {
+                    persist_prepared_generic_attached_values(&txn, entity, &prepared)
+                        .await
+                        .map_err(map_flex_host_error)?;
+                    rustok_taxonomy::advance_category_owner_revision_in_tx(
+                        &txn,
+                        tenant_id,
+                        entity_id,
+                        owner.revision,
+                    )
+                    .await
+                    .map_err(map_taxonomy_owner_error)?;
+                }
+                txn.commit().await?;
+                Ok(())
+            }
+            other => Err(Error::BadRequest(format!(
+                "generic Flex owner adapter is not registered for {other}"
+            ))),
+        }
     }
 
     pub async fn resolve_registered_generic_values(
@@ -160,13 +194,57 @@ impl FlexAttachedValuesService {
         entity_type: &str,
         entity_id: Uuid,
     ) -> ServerResult<()> {
-        let txn = db.begin().await?;
-        ensure_registered_owner_exists(&txn, tenant_id, entity_type, entity_id).await?;
-        delete_generic_attached_values(&txn, attached_ref(tenant_id, entity_type, entity_id))
-            .await
-            .map_err(map_flex_host_error)?;
-        txn.commit().await?;
-        Ok(())
+        match entity_type {
+            #[cfg(feature = "mod-taxonomy")]
+            TAXONOMY_CATEGORY_ENTITY_TYPE => {
+                let txn = db.begin().await?;
+                let owner = rustok_taxonomy::lock_category_owner_revision_in_tx(
+                    &txn,
+                    tenant_id,
+                    entity_id,
+                )
+                .await
+                .map_err(map_taxonomy_owner_error)?;
+                let entity = attached_ref(tenant_id, entity_type, entity_id);
+                let before_shared = load_generic_attached_shared_values(&txn, entity.clone())
+                    .await
+                    .map_err(map_flex_host_error)?;
+                let before_localized = load_localized_values_by_locale(
+                    &txn,
+                    tenant_id,
+                    entity_type,
+                    entity_id,
+                )
+                .await
+                .map_err(map_flex_host_error)?;
+                let changed = !normalized_object(Some(&before_shared))
+                    .as_object()
+                    .is_some_and(Map::is_empty)
+                    || !before_localized.is_empty();
+
+                // Always clean capability rows, including any legacy-invalid locale rows
+                // hidden by normalized read helpers. Only owner-visible semantic state bumps
+                // the Category revision.
+                delete_generic_attached_values(&txn, entity)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                if changed {
+                    rustok_taxonomy::advance_category_owner_revision_in_tx(
+                        &txn,
+                        tenant_id,
+                        entity_id,
+                        owner.revision,
+                    )
+                    .await
+                    .map_err(map_taxonomy_owner_error)?;
+                }
+                txn.commit().await?;
+                Ok(())
+            }
+            other => Err(Error::BadRequest(format!(
+                "generic Flex owner adapter is not registered for {other}"
+            ))),
+        }
     }
 
     pub async fn persist_localized_values<C>(
@@ -237,22 +315,13 @@ impl flex::graphql::AttachedValuesGraphqlPort for FlexAttachedValuesGraphqlAdapt
         locale: &str,
         payload: Option<Value>,
     ) -> Result<Option<Value>, FlexError> {
-        let prepared = FlexAttachedValuesService::prepare_registered_generic_update(
+        FlexAttachedValuesService::update_registered_generic_values(
             &self.db,
             tenant_id,
             entity_type,
             entity_id,
             locale,
             payload,
-        )
-        .await
-        .map_err(|error| map_host_error_to_flex(error, entity_id))?;
-        FlexAttachedValuesService::persist_registered_generic_values(
-            &self.db,
-            tenant_id,
-            entity_type,
-            entity_id,
-            &prepared,
         )
         .await
         .map_err(|error| map_host_error_to_flex(error, entity_id))?;
@@ -308,7 +377,18 @@ impl rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort for FlexTaxonomyCategory
         .await
         .map_err(|error| {
             rustok_taxonomy::TaxonomyError::Database(sea_orm::DbErr::Custom(error.to_string()))
-        })
+        })?;
+        record_flex_attached_translation_deleted_in_tx(
+            txn,
+            tenant_id,
+            TAXONOMY_CATEGORY_ENTITY_TYPE,
+            category_id,
+        )
+        .await
+        .map_err(|error| {
+            rustok_taxonomy::TaxonomyError::Database(sea_orm::DbErr::Custom(error.to_string()))
+        })?;
+        Ok(())
     }
 }
 
@@ -322,6 +402,30 @@ fn attached_ref<'a>(
         entity_type,
         entity_id,
     }
+}
+
+fn prepared_write_changed(
+    before_shared: &Value,
+    before_localized: Option<&Value>,
+    prepared: &PreparedAttachedValuesWrite,
+) -> bool {
+    let desired_shared = normalized_object(prepared.metadata.as_ref());
+    if normalized_object(Some(before_shared)) != desired_shared {
+        return true;
+    }
+    match prepared.localized_values.as_ref() {
+        Some(desired) => normalized_object(before_localized) != normalized_object(Some(desired)),
+        None => false,
+    }
+}
+
+fn normalized_object(value: Option<&Value>) -> Value {
+    Value::Object(
+        value
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default(),
+    )
 }
 
 async fn ensure_registered_owner_exists<C>(
@@ -353,6 +457,16 @@ where
         other => Err(Error::BadRequest(format!(
             "generic Flex owner adapter is not registered for {other}"
         ))),
+    }
+}
+
+#[cfg(feature = "mod-taxonomy")]
+fn map_taxonomy_owner_error(error: rustok_taxonomy::TaxonomyError) -> Error {
+    match error {
+        rustok_taxonomy::TaxonomyError::TermNotFound(_) => Error::NotFound,
+        rustok_taxonomy::TaxonomyError::Validation(message) => Error::BadRequest(message),
+        rustok_taxonomy::TaxonomyError::Database(error) => Error::Database(error),
+        error => Error::Message(format!("Taxonomy Flex owner mutation failed: {error}")),
     }
 }
 
