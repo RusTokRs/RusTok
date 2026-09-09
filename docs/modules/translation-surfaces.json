@@ -232,12 +232,20 @@
       "owner_slug": "commerce",
       "resource_kind": "collection_copy",
       "readiness": "blocked",
-      "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "seo_text", "slug"],
-      "data_classification": ["public", "tenant_private"],
+      "provider_status": "registered",
+      "field_profiles": ["plain_text", "slug"],
+      "data_classification": ["public"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/rustok-commerce/README.md"],
-      "blockers": ["Resolve Product/Commerce Foundation schema ownership and add owner-local exact-locale CAS apply."]
+      "evidence_paths": [
+        "crates/modules/rustok-commerce/src/services/collection_translation.rs",
+        "crates/modules/rustok-commerce/src/collection_translation_target.rs",
+        "crates/modules/rustok-commerce/src/collection_translation_progress.rs",
+        "crates/modules/rustok-commerce/src/collection_translation_progress_target.rs",
+        "crates/modules/rustok-commerce/src/collection_translation_changes.rs",
+        "crates/modules/rustok-commerce/src/migrations/m20260909_000008_add_collection_translation_change_journal.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["Collect retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress stability, and change-cursor recovery evidence before pilot promotion."]
     },
     {
       "id": "flex_schema_copy",
