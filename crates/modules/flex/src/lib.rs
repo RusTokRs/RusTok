@@ -20,6 +20,7 @@ pub mod orchestration;
 pub mod parsing;
 pub mod registry;
 pub mod rest;
+pub mod schema_translation;
 pub mod standalone;
 
 pub struct FlexModule;
@@ -62,6 +63,15 @@ pub use registry::{
 pub use rest::{
     CreateFlexEntryRequest, CreateFlexSchemaRequest, DeleteFlexResponse, FlexEntryResponse,
     FlexSchemaResponse, UpdateFlexEntryRequest, UpdateFlexSchemaRequest,
+};
+pub use schema_translation::{
+    FlexSchemaTranslationError, FlexSchemaTranslationExactLocaleApply,
+    FlexSchemaTranslationExactLocaleApplyReceipt, FlexSchemaTranslationExactLocaleSnapshot,
+    FlexSchemaTranslationLeaf, FlexSchemaTranslationLeafSnapshot,
+    FlexSchemaTranslationOperationContext, FlexSchemaTranslationOwnerPort,
+    FlexSchemaTranslationResourcePage, FlexSchemaTranslationResult,
+    FlexSchemaTranslationTargetValue, MAX_FLEX_SCHEMA_TRANSLATION_RESOURCE_PAGE,
+    validate_flex_schema_translation_locale_pair, validate_flex_schema_translation_resource_page,
 };
 pub use standalone::{
     CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView,
