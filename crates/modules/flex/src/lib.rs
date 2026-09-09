@@ -4,13 +4,17 @@
 
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{
+    MigrationDependencyDescriptor, MigrationPhaseConstraint, MigrationSafetyClass,
+    MigrationSafetyMetadata, MigrationSource, RusToKModule,
+};
 use sea_orm_migration::MigrationTrait;
 
 pub mod attached;
 pub mod attached_definitions;
 pub mod attached_storage;
 pub mod attached_translation;
+pub mod attached_translation_changes;
 pub mod attached_translation_guard;
 pub mod attached_translation_storage;
 pub mod cache_generation;
@@ -58,6 +62,14 @@ pub use attached_translation::{
     flex_attached_translation_field_eligible, validate_flex_attached_translation_entity_type,
     validate_flex_attached_translation_locale_pair,
     validate_flex_attached_translation_resource_page,
+};
+pub use attached_translation_changes::{
+    FLEX_ATTACHED_TRANSLATION_CHANGE_JOURNAL_TABLE,
+    FLEX_ATTACHED_TRANSLATION_RESOURCE_STATE_TABLE, FlexAttachedTranslationChangeLifecycle,
+    FlexAttachedTranslationChangeOwnerPort, FlexAttachedTranslationChangeRecord,
+    MAX_FLEX_ATTACHED_TRANSLATION_CHANGE_PAGE, MAX_FLEX_ATTACHED_TRANSLATION_REVISION_BATCH,
+    flex_attached_translation_resource_revision, load_attached_translation_resource_revisions,
+    record_attached_translation_deleted_in_tx,
 };
 pub use attached_translation_guard::{
     FlexAttachedTranslationSchemaLease, load_attached_translation_schema_in,
@@ -138,6 +150,24 @@ pub use events::{
 impl MigrationSource for FlexModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
+    }
+
+    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
+        vec![MigrationDependencyDescriptor::new(
+            "m20260909_000003_add_attached_translation_resource_state",
+            vec![
+                "m20260405_000004_create_flex_attached_localized_values",
+                "m20260822_000001_create_generic_attached_donor_storage",
+            ],
+        )]
+    }
+
+    fn migration_safety_metadata(&self) -> Vec<MigrationSafetyMetadata> {
+        vec![MigrationSafetyMetadata::new(
+            "m20260909_000003_add_attached_translation_resource_state",
+            MigrationSafetyClass::ExpandContract,
+            MigrationPhaseConstraint::PreActivation,
+        )]
     }
 }
 
