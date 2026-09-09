@@ -1,9 +1,11 @@
+use async_trait::async_trait;
 use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{FlexSchemaTranslationError, FlexSchemaTranslationResult};
 
+pub const MAX_FLEX_SCHEMA_TRANSLATION_CHANGE_PAGE: u16 = 200;
 const DELETED_REVISION_NAMESPACE: &str = "rustok-flex/schema-copy-deleted/v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +24,17 @@ impl FlexSchemaTranslationChangeLifecycle {
         }
     }
 
+    pub fn parse(value: &str) -> FlexSchemaTranslationResult<Self> {
+        match value {
+            "active" => Ok(Self::Active),
+            "archived" => Ok(Self::Archived),
+            "deleted" => Ok(Self::Deleted),
+            _ => Err(FlexSchemaTranslationError::OwnerInvariant(
+                "Flex schema translation change journal returned an invalid lifecycle".to_string(),
+            )),
+        }
+    }
+
     pub fn from_is_active(is_active: bool) -> Self {
         if is_active {
             Self::Active
@@ -29,6 +42,34 @@ impl FlexSchemaTranslationChangeLifecycle {
             Self::Archived
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlexSchemaTranslationChangeRecord {
+    pub change_seq: u64,
+    pub schema_id: Uuid,
+    pub resource_revision: String,
+    pub lifecycle: FlexSchemaTranslationChangeLifecycle,
+}
+
+/// Separate owner read-model capability for the durable schema-copy change journal.
+///
+/// The neutral Translation target can observe only stable owner change facts; storage,
+/// SQL, transaction details, and journal implementation remain host-adapter concerns.
+#[async_trait]
+pub trait FlexSchemaTranslationChangeOwnerPort: Send + Sync {
+    async fn read_change_highwater(
+        &self,
+        tenant_id: Uuid,
+    ) -> FlexSchemaTranslationResult<Option<u64>>;
+
+    async fn read_changes(
+        &self,
+        tenant_id: Uuid,
+        after_seq: u64,
+        through_seq: u64,
+        limit: u16,
+    ) -> FlexSchemaTranslationResult<Vec<FlexSchemaTranslationChangeRecord>>;
 }
 
 /// Append one durable schema-copy change under the caller's owner transaction.
