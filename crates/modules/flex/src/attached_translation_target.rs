@@ -345,7 +345,7 @@ fn field_snapshot(
             strategy: TranslationStrategy::Translate,
             classification: TranslationDataClassification::TenantPrivate,
             required: leaf.required,
-            ai_export_allowed: true,
+            ai_export_allowed: false,
             max_characters: None,
             preserves_whitespace: false,
         },
