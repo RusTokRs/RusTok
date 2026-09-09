@@ -50,6 +50,18 @@ impl FlexSchemaTranslationLeaf {
     }
 }
 
+/// Translation-field requiredness is a property of schema presentation copy, not of the
+/// runtime data field. Every schema/field/option label is required presentation identity;
+/// descriptions and validation messages are optional copy.
+pub fn flex_schema_translation_leaf_required(leaf: &FlexSchemaTranslationLeaf) -> bool {
+    matches!(
+        leaf,
+        FlexSchemaTranslationLeaf::SchemaName
+            | FlexSchemaTranslationLeaf::FieldLabel { .. }
+            | FlexSchemaTranslationLeaf::FieldOptionLabel { .. }
+    )
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlexSchemaTranslationLeafSnapshot {
     pub leaf: FlexSchemaTranslationLeaf,
@@ -77,6 +89,39 @@ pub struct FlexSchemaTranslationExactLocaleSnapshot {
 pub struct FlexSchemaTranslationResourcePage {
     pub resources: Vec<FlexSchemaTranslationExactLocaleSnapshot>,
     pub next_after: Option<Uuid>,
+}
+
+/// Owner facts for one exact source/target locale pair. Units are dynamic because each
+/// schema owns a different declared-leaf set.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlexSchemaTranslationExactProgress {
+    pub required_units: u64,
+    pub exact_required_units: u64,
+    pub optional_units: u64,
+    pub exact_optional_units: u64,
+    pub resources: u64,
+    pub complete_resources: u64,
+}
+
+impl FlexSchemaTranslationExactProgress {
+    pub fn validate(&self) -> FlexSchemaTranslationResult<()> {
+        if self.exact_required_units > self.required_units {
+            return Err(FlexSchemaTranslationError::OwnerInvariant(
+                "Flex schema exact required progress exceeds required units".to_string(),
+            ));
+        }
+        if self.exact_optional_units > self.optional_units {
+            return Err(FlexSchemaTranslationError::OwnerInvariant(
+                "Flex schema exact optional progress exceeds optional units".to_string(),
+            ));
+        }
+        if self.complete_resources > self.resources {
+            return Err(FlexSchemaTranslationError::OwnerInvariant(
+                "Flex schema complete resources exceed inventory resources".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -302,4 +347,17 @@ pub trait FlexSchemaTranslationOwnerPort: Send + Sync {
         schema_id: Uuid,
         request: FlexSchemaTranslationExactLocaleApply,
     ) -> FlexSchemaTranslationResult<FlexSchemaTranslationExactLocaleApplyReceipt>;
+}
+
+/// Separate owner read-model port for dynamic aggregate progress. Keeping this apart from
+/// the mutation port lets host persistence compute a repeatable-read snapshot without
+/// leaking database concepts into the neutral TranslationTarget contract.
+#[async_trait]
+pub trait FlexSchemaTranslationProgressOwnerPort: Send + Sync {
+    async fn read_exact_progress(
+        &self,
+        tenant_id: Uuid,
+        source_locale: &str,
+        target_locale: &str,
+    ) -> FlexSchemaTranslationResult<FlexSchemaTranslationExactProgress>;
 }

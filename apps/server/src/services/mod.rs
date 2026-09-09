@@ -380,4 +380,5 @@ pub mod field_definition_cache;
 pub mod field_definition_registry_bootstrap;
 pub mod flex_attached_values;
 pub mod flex_schema_translation_owner;
+pub mod flex_schema_translation_progress_owner;
 pub mod flex_standalone_service;
