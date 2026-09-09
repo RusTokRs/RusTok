@@ -80,8 +80,9 @@ pub use schema_translation::{
     validate_flex_schema_translation_resource_page,
 };
 pub use schema_translation_changes::{
-    FlexSchemaTranslationChangeLifecycle, flex_schema_translation_deleted_revision,
-    record_flex_schema_translation_change_in_tx,
+    FlexSchemaTranslationChangeLifecycle, FlexSchemaTranslationChangeOwnerPort,
+    FlexSchemaTranslationChangeRecord, MAX_FLEX_SCHEMA_TRANSLATION_CHANGE_PAGE,
+    flex_schema_translation_deleted_revision, record_flex_schema_translation_change_in_tx,
 };
 pub use schema_translation_fields::{
     apply_schema_definition_translation_targets, schema_definition_translation_exact_values,
