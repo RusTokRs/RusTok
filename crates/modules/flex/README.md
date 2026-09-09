@@ -62,10 +62,12 @@ semantics in the application layer.
 - Owner hard delete records the final `deleted` tombstone in the same transaction as donor cleanup/deletion.
 - The Flex-owned ChangeCursor reader captures a high-water mark and returns only journal rows bounded by that mark, so a page cannot drift as concurrent writes arrive.
 - State backfill establishes revision `1` for pre-existing attached Translation resources without fabricating historical journal events.
+- Attached Translation snapshots now use the same durable `attached:N` state for `resource_revision`; the previous Taxonomy-owner/schema hash is no longer a revision source.
+- Snapshot list/read composition uses one PostgreSQL repeatable-read snapshot for donor existence, Flex schema, exact localized values and durable resource revision. Apply rereads the durable revision after mutation inside the same serialized write transaction.
 
-This infrastructure is an ExpandContract / PreActivation step. Snapshot revision cutover and host
-provider activation remain later rollout steps; until those land, do not add a second revision source,
-polling reconstruction, compatibility branch, or dual provider path.
+The journal/state migration is the ExpandContract / PreActivation foundation and snapshot revision
+cutover is complete. Host provider activation remains a separate rollout step; until that lands, do
+not add polling reconstruction, a compatibility revision branch, or a dual provider path.
 
 ## Interactions
 
@@ -89,6 +91,7 @@ polling reconstruction, compatibility branch, or dual provider path.
 - `flex::{StandaloneSchemaViewSource, StandaloneSchemaTranslationSource, StandaloneEntryViewSource, standalone_schema_view_from_source, standalone_entry_view_from_source}`
 - `flex::normalize_and_validate_standalone_entry`
 - `flex::FlexAttachedTranslationChangeReader`
+- `flex::load_attached_translation_resource_revisions`
 
 ## Docs
 
