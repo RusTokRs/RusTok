@@ -9,8 +9,8 @@ use flex::{
     load_localized_values_by_locale, lock_attached_translation_schema_in_tx, map_flex_error,
     persist_localized_values, persist_prepared_generic_attached_values,
     prepare_attached_values_create, prepare_attached_values_update,
-    prepare_generic_attached_values_update, resolve_attached_payload,
-    resolve_generic_attached_values,
+    prepare_generic_attached_values_update, record_flex_attached_translation_deleted_in_tx,
+    resolve_attached_payload, resolve_generic_attached_values,
 };
 use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
 
@@ -473,7 +473,18 @@ impl rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort for FlexTaxonomyCategory
         .await
         .map_err(|error| {
             rustok_taxonomy::TaxonomyError::Database(sea_orm::DbErr::Custom(error.to_string()))
-        })
+        })?;
+        record_flex_attached_translation_deleted_in_tx(
+            txn,
+            tenant_id,
+            TAXONOMY_CATEGORY_ENTITY_TYPE,
+            category_id,
+        )
+        .await
+        .map_err(|error| {
+            rustok_taxonomy::TaxonomyError::Database(sea_orm::DbErr::Custom(error.to_string()))
+        })?;
+        Ok(())
     }
 }
 
