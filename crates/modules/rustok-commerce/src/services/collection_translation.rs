@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::collection_translation_changes::record_collection_translation_change_in_tx;
 use crate::entities::{collection, collection_translation};
 use crate::CommerceError;
 
@@ -364,7 +365,8 @@ impl CollectionTranslationService {
 
         if !unchanged {
             let correlation_id = operation_id.expect("changed owner apply must have operation id");
-            self.event_bus
+            let root_event_id = self
+                .event_bus
                 .publish_in_tx_with_envelope_id(
                     &txn,
                     tenant_id,
@@ -381,7 +383,15 @@ impl CollectionTranslationService {
                     },
                 )
                 .await
-                .map_err(|error| CommerceError::Core(error))?;
+                .map_err(CommerceError::Core)?;
+            record_collection_translation_change_in_tx(
+                &txn,
+                tenant_id,
+                collection_id,
+                root_event_id,
+                &resource_revision,
+            )
+            .await?;
         }
 
         let receipt = CollectionTranslationExactLocaleApplyReceipt {
