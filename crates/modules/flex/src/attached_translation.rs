@@ -70,9 +70,10 @@ impl FlexAttachedTranslationLeafSnapshot {
 
 /// Exact source/target view for one canonical donor entity.
 ///
-/// Resource lifecycle and `resource_revision` are donor-owned. Exact localized values and
-/// their source/target revisions are composed with Flex storage by the donor adapter. This
-/// split prevents generic Flex storage from pretending it owns donor existence or CAS.
+/// The canonical donor owns existence and lifecycle. Flex owns the durable attached
+/// `resource_revision` plus exact localized extension values; the donor adapter composes
+/// those sources without deriving a second resource revision. Source/target revisions stay
+/// exact-locale content revisions used for leaf-level CAS.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlexAttachedTranslationExactLocaleSnapshot {
     pub entity_type: String,
@@ -368,10 +369,10 @@ fn validate_nonblank(value: &str, field: &str) -> FlexAttachedTranslationResult<
 
 /// Donor-scoped owner contract for attached Flex translation.
 ///
-/// One implementation represents exactly one canonical donor entity type. That owner must
-/// compose its own inventory/existence/lifecycle and resource revision with Flex-owned
-/// localized storage. A generic Flex store is deliberately insufficient to implement this
-/// port on its own.
+/// One implementation represents exactly one canonical donor entity type. The adapter composes
+/// donor-owned inventory/existence/lifecycle with Flex-owned localized storage and durable
+/// `resource_revision`. Donor aggregate revisions may serialize owner mutations, but they are not a
+/// second Translation resource revision source.
 #[async_trait]
 pub trait FlexAttachedTranslationOwnerPort: Send + Sync {
     /// Stable normalized donor identifier (for example `taxonomy.category`).
