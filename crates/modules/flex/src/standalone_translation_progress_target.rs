@@ -215,6 +215,9 @@ impl TranslationTargetProvider for FlexStandaloneTranslationProgressTargetProvid
                         FlexStandaloneTranslationChangeLifecycle::Active => {
                             TranslationResourceLifecycle::Active
                         }
+                        FlexStandaloneTranslationChangeLifecycle::Archived => {
+                            TranslationResourceLifecycle::Archived
+                        }
                         FlexStandaloneTranslationChangeLifecycle::Deleted => {
                             TranslationResourceLifecycle::Deleted
                         }
