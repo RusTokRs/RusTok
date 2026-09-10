@@ -237,6 +237,16 @@ pub mod module_event_dispatcher {
                         "Flex taxonomy.category attached Translation provider composition failed: {error}"
                     ))
                 })?;
+                let provider = flex::FlexAttachedTranslationPolicyTargetProvider::new(
+                    provider,
+                    flex::TAXONOMY_CATEGORY_ENTITY_TYPE,
+                    Arc::new(flex::FlexAttachedFieldPolicyStore::new(db.clone())),
+                )
+                .map_err(|error| {
+                    Error::Message(format!(
+                        "Flex taxonomy.category attached Translation policy composition failed: {error}"
+                    ))
+                })?;
                 rustok_translation_targets::register_translation_target_provider(
                     &mut extensions,
                     provider,

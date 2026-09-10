@@ -25,9 +25,12 @@ resource revision.
 `flex/attached_localized_value` provider is now also registered for the `taxonomy.category` donor
 when `mod-flex + mod-taxonomy` are composed. It exposes list/read/validate/apply, aggregate progress
 and the bounded Flex ChangeCursor over the same owner contracts and durable `attached:N` revision.
-Attached dynamic fields remain fail-closed for AI export until Flex has explicit schema-level
-classification/export policy. Production/pilot promotion remains an evidence gate, not another
-provider or revision implementation step.
+Attached dynamic fields now have a separate Flex-owned classification / AI-export policy plane keyed
+by `(tenant_id, entity_type, field_key)`. Translation enriches live field descriptors through that
+policy without changing content revisions or ChangeCursor semantics. Missing policy remains
+`tenant_private + ai_export_allowed=false`, and secret/immutable-transaction fields cannot be made
+AI-exportable. Production/pilot promotion remains an evidence gate, not another provider or revision
+implementation step.
 
 Owner-owned contracts live in `flex::graphql`, `flex::registry`, `flex::rest` and
 `flex::standalone`. The server composes `FlexGraphqlRuntime`, SeaORM, registry/cache adapters and
@@ -90,6 +93,30 @@ The durable journal migration is `ExpandContract / PreActivation`. Revision cuto
 activation are complete at source level; the remaining gate is retained PostgreSQL/concurrency/
 recovery evidence on the registered provider.
 
+## Attached field governance policy
+
+Classification and AI-export admission are a separate governance plane from donor definitions and
+translated content:
+
+- `flex_attached_field_policies` is keyed by tenant + namespaced entity type + stable field key;
+- there is deliberately no FK to `flex_attached_field_definitions`, so legacy donors with their own
+  definition tables can converge on the same policy contract;
+- `FlexDataClassification` is typed in Flex and maps exhaustively to the neutral Translation
+  classification contract;
+- every policy resolver returns a value for every requested field; an absent row resolves to
+  `tenant_private` with AI export denied;
+- explicit `ai_export_allowed=true` is rejected for `secret` and `immutable_transaction`;
+- reads validate explicit policy before it can influence a Translation descriptor;
+- the database-backed store exposes bounded resolve/upsert/delete APIs so future owner/admin adapters
+  do not bypass the policy contract with direct SQL;
+- the registered attached Translation provider is decorated at host composition with the policy
+  resolver; list/progress/change and donor apply semantics remain delegated to the existing provider;
+- policy changes do not manufacture content revisions or ChangeCursor entries. Consumers must treat
+  classification/export admission as live governance metadata and re-read it at export time.
+
+No permissive seed/backfill is created. Existing dynamic fields therefore remain fail-closed until an
+owner explicitly writes reviewed policy.
+
 ## Cache convergence
 
 The field-definition cache is byte-weighted and keeps the local EventBus consumer as a low-latency
@@ -134,12 +161,15 @@ cache workflow passes its compiled and PostgreSQL jobs on one revision.
    bounded change-cursor recovery on one revision. Until then readiness remains `blocked` even though
    provider status is `registered`.
 
-2. **Add explicit attached-field classification/export policy before enabling machine translation.**
-   Generic dynamic fields currently have no typed schema-level data classification or AI-export
-   admission metadata, so the Translation adapter intentionally exposes `ai_export_allowed = false`.
-   **Depends on:** a reviewed reusable Flex schema policy rather than donor-specific hard-coding.
-   **Done when:** each eligible attached leaf has owner-governed classification/export policy and the
-   adapter can admit AI export only for explicitly safe leaves; absence remains fail-closed.
+2. **Verify the reusable attached-field classification/export policy before enabling machine translation.**
+   Source implementation is present: typed Flex policy, fail-closed resolution, safe mutation API,
+   persistence migration and live Translation descriptor decoration are wired without donor-specific
+   hard-coding. No permissive policy is seeded.
+   **Depends on:** review/compile/database evidence for the reusable Flex policy rather than a
+   donor-specific field-definition change.
+   **Done when:** retained evidence proves an explicit safe policy can admit AI export, forbidden
+   classifications cannot, missing policy remains fail-closed, and `taxonomy.category` composition
+   reads the same policy plane without changing content revision/ChangeCursor behavior.
 
 3. **Reduce remaining donor onboarding plumbing using `taxonomy.category` as the reference.** Existing
    Topic and older donor adapters should converge on the generic attached definition/value contract
@@ -233,8 +263,8 @@ review before merge and must not claim runtime evidence that was not executed.
 5. Flex fields may extend a donor but must not replace normalized owner invariants.
 6. Keep server work to composition and concrete persistence/runtime adapters; do not reconstruct Flex
    revision/change semantics in the host.
-7. Default dynamic attached-field AI export to denied until explicit reusable schema policy says
-   otherwise.
+7. Dynamic attached-field AI export stays denied unless an explicit valid Flex policy allows it;
+   absence and invalid policy are never permissive fallbacks.
 8. Update the canonical Flex README, implementation plan, donor docs and relevant central ownership
    documentation with a capability contract change.
 9. Before completion, remove superseded names/paths and verify that no deprecated or parallel
