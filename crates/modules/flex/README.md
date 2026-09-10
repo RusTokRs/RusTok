@@ -19,6 +19,7 @@ Flex is explicit product opt-in. A domain entity does not become a Flex donor me
 - Owner-owned attached field-definition and standalone GraphQL query/mutation roots, runtime handle, and input/output DTOs under `flex::graphql`.
 - Owner-owned standalone REST request/response DTOs, request-to-command mappings, and view-to-response mappings under `flex::rest`; the server controller remains only the Axum adapter.
 - Owner-owned standalone fields_config parsing/schema building/serialization, localized field-key derivation, row-to-view mapping, entry normalization/schema validation, shared/localized split, read resolution, and PATCH merge helpers; server persistence adapters only expose source traits and adapt SeaORM rows into storage calls.
+- Flex-owned attached-field governance policy keyed by tenant + donor entity type + field key, with typed data classification, explicit AI-export admission and fail-closed resolution.
 - `FlexModule` capability-only runtime metadata for the manifest-driven module registry.
 
 ## Donor policy
@@ -45,7 +46,7 @@ The current Flex multilingual contract is already partially live and must be tre
 - Authoring accepts only a valid normalized locale and prepares locale-aware updates from that exact row. Read-time fallback is a presentation concern and must never seed another locale or become input to a write.
 - Attached field-definition and standalone schemas/entries GraphQL surfaces are live through manifest-driven host composition; GraphQL roots, runtime handle, permission checks, error mapping, event publication, and DTOs are owner-owned in `flex::graphql`. Standalone REST contract DTOs and view mappings are owner-owned in `flex::rest`, while server only supplies the Axum handler adapter, concrete standalone persistence adapter, and attached registry/cache/DB wiring through `FlexGraphqlRuntime`. Rollout/governance is enforced through the `capability_only` ghost-module manifest, `mod-flex` host wiring, explicit `flex_schemas:*` / `flex_entries:*` RBAC, and repo-side validation (`cargo xtask validate-manifest`, `cargo xtask module validate flex`, `node scripts/verify/verify-flex-multilingual-contract.mjs`, `node scripts/verify/verify-flex-standalone-contract.mjs`).
 - The neutral `flex/attached_localized_value` Translation provider is registered for the `taxonomy.category` donor when `mod-flex + mod-taxonomy` are composed. It exposes exact list/read, validate/apply, aggregate progress, and the Flex-owned bounded ChangeCursor over the same durable owner state.
-- Attached dynamic fields are not AI-exportable by default. Until Flex gains an explicit schema-level classification/export policy, the provider remains fail-closed for machine export while manual Translation workflow remains available.
+- Attached dynamic fields use the Flex-owned `flex_attached_field_policies` plane rather than extending every donor definition table. `FlexDataClassification` is typed, missing policy resolves to `tenant_private` with `ai_export_allowed=false`, and secret/immutable-transaction policy can never enable AI export. The registered Category provider is decorated with this live policy while content revisions and ChangeCursor remain owner-content evidence.
 - Full end-to-end integration coverage remains an explicit verification debt; do not treat it as a contract gap or as permission to reintroduce inline localized storage.
 
 Do not implement new Flex multilingual behavior from older plans that assume inline localized copy in base rows or treat JSON blobs as the canonical multilingual storage path.
@@ -68,19 +69,23 @@ semantics in the application layer.
 - Snapshot list/read composition uses one PostgreSQL repeatable-read snapshot for donor existence, Flex schema, exact localized values and durable resource revision. Apply rereads the durable revision after mutation inside the same serialized write transaction.
 - Aggregate progress reads the same durable per-resource revisions in one PostgreSQL repeatable-read snapshot; non-PostgreSQL progress fails closed instead of synthesizing another revision source.
 
+Classification/export policy is deliberately orthogonal to this content revision stream. It is resolved
+live when field snapshots are exposed and must be reread by an export path; changing policy does not
+manufacture an attached content revision or ChangeCursor row.
+
 The journal/state migration is the ExpandContract / PreActivation foundation, snapshot revision cutover
 is complete, and the `taxonomy.category` provider is now host-registered. Pilot/production promotion
 remains blocked until retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress,
-schema fan-out, hard-delete tombstone, and change-cursor recovery evidence is collected. Do not add
-polling reconstruction, a compatibility revision branch, a second provider, or a permissive AI-export
-fallback while that evidence gate is open.
+schema fan-out, hard-delete tombstone, change-cursor recovery, and attached-field policy evidence is
+collected. Do not add polling reconstruction, a compatibility revision branch, a second provider, or a
+permissive AI-export fallback while that evidence gate is open.
 
 ## Interactions
 
 - Depends on `rustok-core` (`FlexError`, `FieldType`, `ValidationRule`).
 - Depends on `rustok-events` (`EventEnvelope`).
 - Registered in `modules.toml` as a capability-only ghost module with `flex_schemas:*` and `flex_entries:*` permissions.
-- Consumed by manifest-driven host schema composition, REST, bootstrap wiring and the neutral Translation target registry; GraphQL ownership, REST DTO/command-mapping ownership, field-definition row/view/command/persisted-JSON/lifecycle policy ownership, standalone fields_config/schema/key-derivation/row-view/entry validation/split/merge ownership, and attached Translation revision/change ownership are in this crate, while the host supplies persistence/registry/cache and donor composition adapters.
+- Consumed by manifest-driven host schema composition, REST, bootstrap wiring and the neutral Translation target registry; GraphQL ownership, REST DTO/command-mapping ownership, field-definition row/view/command/persisted-JSON/lifecycle policy ownership, standalone fields_config/schema/key-derivation/row-view/entry validation/split/merge ownership, attached-field classification/export policy, and attached Translation revision/change ownership are in this crate, while the host supplies persistence/registry/cache and donor composition adapters.
 
 ## Entry points
 
@@ -96,8 +101,11 @@ fallback while that evidence gate is open.
 - `flex::{parse_standalone_fields_config, build_standalone_custom_fields_schema, serialize_standalone_fields_config, standalone_localized_field_keys}`
 - `flex::{StandaloneSchemaViewSource, StandaloneSchemaTranslationSource, StandaloneEntryViewSource, standalone_schema_view_from_source, standalone_entry_view_from_source}`
 - `flex::normalize_and_validate_standalone_entry`
+- `flex::{FlexDataClassification, FlexAttachedFieldPolicy, FlexAttachedFieldPolicyStore, FlexAttachedFieldPolicyResolver}`
+- `flex::{resolve_attached_field_policies, upsert_attached_field_policy, delete_attached_field_policy}`
 - `flex::FlexAttachedTranslationTargetProvider`
 - `flex::FlexAttachedTranslationProgressTargetProvider`
+- `flex::FlexAttachedTranslationPolicyTargetProvider`
 - `flex::FlexAttachedTranslationChangeReader`
 - `flex::load_attached_translation_resource_revisions`
 
