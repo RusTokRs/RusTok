@@ -5,7 +5,7 @@ use std::{collections::BTreeSet, future::Future, sync::Arc, time::Duration};
 use flex::graphql::AttachedValuesGraphqlPort;
 use flex::{
     CreateFieldDefinitionCommand, FieldDefinitionService, GenericAttachedFieldDefinitionService,
-    TAXONOMY_CATEGORY_ENTITY_TYPE,
+    TAXONOMY_CATEGORY_ENTITY_TYPE, UpdateFieldDefinitionCommand,
 };
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
 use rustok_auth::AuthConfig;
@@ -17,7 +17,7 @@ use rustok_migrations::Migrator;
 use rustok_server::{
     common::settings::RustokSettings,
     services::{
-        flex_attached_values::FlexAttachedValuesGraphqlAdapter,
+        flex_attached_values::{FlexAttachedValuesGraphqlAdapter, FlexTaxonomyCategoryDeleteCleanup},
         module_event_dispatcher::build_shared_runtime_extensions_with_host_providers,
         server_runtime_context::ServerRuntimeContext,
     },
@@ -58,7 +58,9 @@ async fn flex_attached_provider_multi_replica_cas_replay_progress_and_cursor_rec
 
             let taxonomy = TaxonomyService::new(replica_a.clone());
             let category_id = create_category(&taxonomy, tenant_id).await?;
-            GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)
+            let definitions =
+                GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE);
+            let (field_definition, _) = definitions
                 .create(
                     &replica_a,
                     tenant_id,
@@ -288,30 +290,12 @@ async fn flex_attached_provider_multi_replica_cas_replay_progress_and_cursor_rec
                 .clone()
                 .ok_or("attached target ChangeCursor is missing")?;
 
-            let resumed = recovery_provider
-                .read_changes(
-                    read_context(tenant_id),
-                    TranslationTargetChangesRequest {
-                        after: Some(target_cursor.clone()),
-                        limit: 10,
-                    },
-                )
-                .await?;
-            if !resumed.changes.is_empty()
-                || resumed.next_cursor.as_ref() != Some(&target_cursor)
-            {
-                return Err(format!(
-                    "attached ChangeCursor recovery redelivered committed work: {resumed:?}"
-                )
-                .into());
-            }
-
             let recovered_progress = recovery_provider
                 .read_progress(
                     read_context(tenant_id),
                     TranslationTargetProgressRequest {
-                        source_locale,
-                        target_locale,
+                        source_locale: source_locale.clone(),
+                        target_locale: target_locale.clone(),
                     },
                 )
                 .await?;
@@ -325,6 +309,173 @@ async fn flex_attached_provider_multi_replica_cas_replay_progress_and_cursor_rec
             {
                 return Err(format!(
                     "recovered attached progress is inconsistent with the committed cursor: {recovered_progress:?}"
+                )
+                .into());
+            }
+
+            definitions
+                .update(
+                    &recovery,
+                    tenant_id,
+                    Some(Uuid::new_v4()),
+                    field_definition.id,
+                    UpdateFieldDefinitionCommand {
+                        is_required: Some(false),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+
+            let schema_changes = recovery_provider
+                .read_changes(
+                    read_context(tenant_id),
+                    TranslationTargetChangesRequest {
+                        after: Some(target_cursor.clone()),
+                        limit: 10,
+                    },
+                )
+                .await?;
+            if schema_changes.changes.len() != 1
+                || schema_changes.changes[0].identity != identity
+                || schema_changes.changes[0].lifecycle != TranslationResourceLifecycle::Active
+            {
+                return Err(format!(
+                    "attached schema fan-out did not produce exactly one active resource change: {schema_changes:?}"
+                )
+                .into());
+            }
+            let schema_cursor = schema_changes
+                .next_cursor
+                .clone()
+                .ok_or("attached schema fan-out ChangeCursor is missing")?;
+            let schema_snapshot = recovery_provider
+                .read_resource(read_context(tenant_id), read_request.clone())
+                .await?;
+            let schema_field = schema_snapshot
+                .fields
+                .iter()
+                .find(|field| field.descriptor.key.as_str() == FIELD_KEY)
+                .ok_or("attached field disappeared after schema fan-out")?;
+            if schema_field.descriptor.required
+                || schema_field.exact_target_value.as_deref() != Some(winner_value.as_str())
+                || schema_snapshot.summary.resource_revision
+                    != schema_changes.changes[0].resource_revision
+                || schema_snapshot.summary.resource_revision == winner_receipt.resource_revision
+            {
+                return Err(format!(
+                    "schema fan-out did not advance the provider-visible attached resource revision exactly once: snapshot={schema_snapshot:?}, changes={schema_changes:?}"
+                )
+                .into());
+            }
+
+            let schema_progress = recovery_provider
+                .read_progress(
+                    read_context(tenant_id),
+                    TranslationTargetProgressRequest {
+                        source_locale: source_locale.clone(),
+                        target_locale: target_locale.clone(),
+                    },
+                )
+                .await?;
+            if schema_progress.required_units != 0
+                || schema_progress.exact_required_units != 0
+                || schema_progress.optional_units != 1
+                || schema_progress.exact_optional_units != 1
+                || schema_progress.resources != 1
+                || schema_progress.complete_resources != 1
+                || schema_progress.owner_change_cursor.as_ref() != Some(&schema_cursor)
+            {
+                return Err(format!(
+                    "attached progress did not stabilize on the schema fan-out cursor: {schema_progress:?}"
+                )
+                .into());
+            }
+
+            TaxonomyService::new(recovery.clone())
+                .delete_category_with_cleanup(
+                    tenant_id,
+                    category_id,
+                    admin(),
+                    &FlexTaxonomyCategoryDeleteCleanup,
+                )
+                .await?;
+
+            let delete_changes = recovery_provider
+                .read_changes(
+                    read_context(tenant_id),
+                    TranslationTargetChangesRequest {
+                        after: Some(schema_cursor),
+                        limit: 10,
+                    },
+                )
+                .await?;
+            let expected_deleted_revision =
+                format!("deleted:{TAXONOMY_CATEGORY_ENTITY_TYPE}:{category_id}");
+            if delete_changes.changes.len() != 1
+                || delete_changes.changes[0].identity != identity
+                || delete_changes.changes[0].lifecycle != TranslationResourceLifecycle::Deleted
+                || delete_changes.changes[0].resource_revision.as_str() != expected_deleted_revision
+            {
+                return Err(format!(
+                    "hard delete did not produce the canonical attached tombstone: {delete_changes:?}"
+                )
+                .into());
+            }
+            let delete_cursor = delete_changes
+                .next_cursor
+                .clone()
+                .ok_or("attached hard-delete ChangeCursor is missing")?;
+
+            let deleted_read = recovery_provider
+                .read_resource(read_context(tenant_id), read_request)
+                .await
+                .expect_err("deleted attached resource must not remain readable");
+            if deleted_read.kind != PortErrorKind::NotFound
+                || deleted_read.code != "flex.attached_translation_resource_not_found"
+            {
+                return Err(format!(
+                    "deleted attached resource returned an unexpected provider error: {deleted_read:?}"
+                )
+                .into());
+            }
+
+            let deleted_progress = recovery_provider
+                .read_progress(
+                    read_context(tenant_id),
+                    TranslationTargetProgressRequest {
+                        source_locale,
+                        target_locale,
+                    },
+                )
+                .await?;
+            if deleted_progress.required_units != 0
+                || deleted_progress.exact_required_units != 0
+                || deleted_progress.optional_units != 0
+                || deleted_progress.exact_optional_units != 0
+                || deleted_progress.resources != 0
+                || deleted_progress.complete_resources != 0
+                || deleted_progress.owner_change_cursor.as_ref() != Some(&delete_cursor)
+            {
+                return Err(format!(
+                    "attached progress did not converge after the owner hard delete: {deleted_progress:?}"
+                )
+                .into());
+            }
+
+            let resumed = recovery_provider
+                .read_changes(
+                    read_context(tenant_id),
+                    TranslationTargetChangesRequest {
+                        after: Some(delete_cursor.clone()),
+                        limit: 10,
+                    },
+                )
+                .await?;
+            if !resumed.changes.is_empty()
+                || resumed.next_cursor.as_ref() != Some(&delete_cursor)
+            {
+                return Err(format!(
+                    "attached ChangeCursor recovery redelivered committed work: {resumed:?}"
                 )
                 .into());
             }
