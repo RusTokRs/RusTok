@@ -250,6 +250,54 @@ CREATE TRIGGER trg_flex_standalone_translation_entry_change
 AFTER INSERT OR UPDATE OR DELETE ON flex_entries
 FOR EACH ROW EXECUTE FUNCTION rustok_record_flex_standalone_translation_entry_change();
 
+-- Serialize every localized-value mutation through its parent entry. This makes source/target CAS
+-- and the revision journal safe even for SQL writers that bypass the canonical host facade.
+CREATE OR REPLACE FUNCTION rustok_lock_flex_standalone_translation_locale_parent()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        PERFORM 1
+        FROM flex_entries entry
+        WHERE entry.tenant_id = NEW.tenant_id
+          AND entry.id = NEW.entry_id
+        FOR UPDATE;
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+        PERFORM 1
+        FROM flex_entries entry
+        WHERE entry.tenant_id = OLD.tenant_id
+          AND entry.id = OLD.entry_id
+        FOR UPDATE;
+        RETURN OLD;
+    END IF;
+
+    IF OLD.tenant_id IS NOT DISTINCT FROM NEW.tenant_id
+       AND OLD.entry_id IS NOT DISTINCT FROM NEW.entry_id THEN
+        PERFORM 1
+        FROM flex_entries entry
+        WHERE entry.tenant_id = NEW.tenant_id
+          AND entry.id = NEW.entry_id
+        FOR UPDATE;
+    ELSE
+        PERFORM 1
+        FROM flex_entries entry
+        WHERE (entry.tenant_id = OLD.tenant_id AND entry.id = OLD.entry_id)
+           OR (entry.tenant_id = NEW.tenant_id AND entry.id = NEW.entry_id)
+        ORDER BY entry.tenant_id, entry.id
+        FOR UPDATE;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_flex_standalone_translation_locale_parent_lock
+BEFORE INSERT OR UPDATE OR DELETE ON flex_entry_localized_values
+FOR EACH ROW EXECUTE FUNCTION rustok_lock_flex_standalone_translation_locale_parent();
+
 CREATE OR REPLACE FUNCTION rustok_record_flex_standalone_translation_locale_change()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -289,8 +337,8 @@ AFTER INSERT OR UPDATE OR DELETE ON flex_entry_localized_values
 FOR EACH ROW EXECUTE FUNCTION rustok_record_flex_standalone_translation_locale_change();
 
 -- A schema definition/lifecycle edit changes the Translation field set/lifecycle for every entry
--- even when no entry row changes. Deletion writes tombstones before FK cascades so ordering of the
--- internal cascade triggers cannot lose the final resource identity.
+-- even when no entry row changes. Lock affected entries before changing the schema so exact-locale
+-- applies serialize before or after the schema revision instead of observing an interleaving.
 CREATE OR REPLACE FUNCTION rustok_record_flex_standalone_translation_schema_change()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -300,11 +348,19 @@ DECLARE
     new_lifecycle TEXT;
 BEGIN
     IF TG_OP = 'DELETE' THEN
+        PERFORM 1
+        FROM flex_entries entry
+        WHERE entry.tenant_id = OLD.tenant_id
+          AND entry.schema_id = OLD.id
+        ORDER BY entry.id
+        FOR UPDATE;
+
         FOR resource IN
             SELECT entry.tenant_id, entry.id AS entry_id, entry.schema_id
             FROM flex_entries entry
             WHERE entry.tenant_id = OLD.tenant_id
               AND entry.schema_id = OLD.id
+            ORDER BY entry.id
         LOOP
             INSERT INTO flex_standalone_translation_change_journal (
                 tx_id, tenant_id, entry_id, schema_id, resource_revision, lifecycle
@@ -334,12 +390,20 @@ BEGIN
         RETURN NEW;
     END IF;
 
+    PERFORM 1
+    FROM flex_entries entry
+    WHERE entry.tenant_id = OLD.tenant_id
+      AND entry.schema_id = OLD.id
+    ORDER BY entry.id
+    FOR UPDATE;
+
     new_lifecycle := CASE WHEN NEW.is_active THEN 'active' ELSE 'archived' END;
     FOR resource IN
         SELECT entry.tenant_id, entry.id AS entry_id, entry.schema_id
         FROM flex_entries entry
         WHERE entry.tenant_id = OLD.tenant_id
           AND entry.schema_id = OLD.id
+        ORDER BY entry.id
     LOOP
         PERFORM rustok_flex_bump_standalone_translation_resource(
             resource.tenant_id, resource.entry_id, resource.schema_id, new_lifecycle
@@ -373,6 +437,8 @@ DROP TRIGGER IF EXISTS trg_flex_standalone_translation_schema_change ON flex_sch
 DROP FUNCTION IF EXISTS rustok_record_flex_standalone_translation_schema_change();
 DROP TRIGGER IF EXISTS trg_flex_standalone_translation_locale_change ON flex_entry_localized_values;
 DROP FUNCTION IF EXISTS rustok_record_flex_standalone_translation_locale_change();
+DROP TRIGGER IF EXISTS trg_flex_standalone_translation_locale_parent_lock ON flex_entry_localized_values;
+DROP FUNCTION IF EXISTS rustok_lock_flex_standalone_translation_locale_parent();
 DROP TRIGGER IF EXISTS trg_flex_standalone_translation_entry_change ON flex_entries;
 DROP FUNCTION IF EXISTS rustok_record_flex_standalone_translation_entry_change();
 DROP FUNCTION IF EXISTS rustok_flex_touch_standalone_translation_entry(UUID, UUID);
