@@ -8,9 +8,7 @@ use flex::{
     GenericAttachedFieldDefinitionService, TAXONOMY_CATEGORY_ENTITY_TYPE,
 };
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
-use rustok_core::{
-    MigrationSource, ModuleRegistry, SecurityContext, UserRole, field_schema::FieldType,
-};
+use rustok_core::{ModuleRegistry, SecurityContext, UserRole, field_schema::FieldType};
 use rustok_migrations::Migrator;
 use rustok_server::{
     auth::AuthConfig,
@@ -34,7 +32,7 @@ use rustok_translation_targets::{
     TranslationTargetProgressRequest, TranslationTargetProvider, translation_target_registry,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
-use sea_orm_migration::{MigratorTrait, SchemaManager};
+use sea_orm_migration::MigratorTrait;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -71,13 +69,6 @@ async fn taxonomy_category_flex_registered_translation_provider_multi_replica_ev
 async fn run_contract(database_url: &str) -> TestResult<()> {
     let seed_connection = connect_postgres(database_url).await?;
     Migrator::up(&seed_connection, None).await?;
-    let manager = SchemaManager::new(&seed_connection);
-    for migration in FlexModule.migrations() {
-        migration.up(&manager).await?;
-    }
-    for migration in TaxonomyModule.migrations() {
-        migration.up(&manager).await?;
-    }
 
     let tenant_id = Uuid::new_v4();
     seed_tenant(&seed_connection, tenant_id).await?;
