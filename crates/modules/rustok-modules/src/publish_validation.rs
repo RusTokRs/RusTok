@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    MODULE_ARTIFACT_SOURCE_MANIFEST_FILE, ModuleArtifactSourceManifest,
+    MODULE_ARTIFACT_SOURCE_MANIFEST_FILE, ModuleArtifactDescriptor, ModuleArtifactSourceManifest,
     ModulePublicationArtifactOrigin, ModulePublishValidationContract,
 };
 
@@ -110,12 +110,13 @@ pub fn build_module_publish_bundle(
 pub fn validate_module_publish_artifact(
     artifact_origin: ModulePublicationArtifactOrigin,
     contract: &ModulePublishValidationContract,
+    alloy_descriptor: Option<&ModuleArtifactDescriptor>,
     content_type: &str,
     bytes: &[u8],
 ) -> ModulePublishBundleValidation {
     match artifact_origin {
         ModulePublicationArtifactOrigin::AlloyAuthored => {
-            validate_alloy_workspace_delivery(content_type, bytes)
+            validate_alloy_workspace_delivery(contract, alloy_descriptor, content_type, bytes)
         }
         ModulePublicationArtifactOrigin::PlatformBuilt
         | ModulePublicationArtifactOrigin::ExternalPrebuilt => {
@@ -125,10 +126,32 @@ pub fn validate_module_publish_artifact(
 }
 
 fn validate_alloy_workspace_delivery(
+    contract: &ModulePublishValidationContract,
+    descriptor: Option<&ModuleArtifactDescriptor>,
     content_type: &str,
     bytes: &[u8],
 ) -> ModulePublishBundleValidation {
     let mut validation = ModulePublishBundleValidation::default();
+    let Some(descriptor) = descriptor else {
+        validation.errors.push(
+            "Alloy workspace artifact is missing its immutable owner receipt descriptor."
+                .to_string(),
+        );
+        return validation;
+    };
+    if descriptor.validate().is_err()
+        || descriptor.slug != contract.slug
+        || descriptor.version != contract.version
+        || descriptor.payload_kind != crate::ArtifactPayloadKind::Rhai
+        || descriptor.module_kind != crate::ArtifactModuleKind::Optional
+        || descriptor.runtime_abi != rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI
+    {
+        validation.errors.push(
+            "Alloy workspace artifact descriptor does not match the immutable publish contract."
+                .to_string(),
+        );
+        return validation;
+    }
     if bytes.len() > MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES {
         validation.errors.push(format!(
             "Alloy workspace artifact exceeds the {} byte validation limit.",
@@ -142,41 +165,53 @@ fn validate_alloy_workspace_delivery(
             .push("Alloy workspace artifact content type is unsupported.".to_string());
         return validation;
     }
-    let workspace = match serde_json::from_slice::<serde_json::Value>(bytes) {
-        Ok(serde_json::Value::Object(workspace)) => workspace,
+    let workspace = match serde_json::from_slice::<rustok_sandbox::RhaiWorkspace>(bytes) {
+        Ok(workspace) => workspace,
         _ => {
             validation
                 .errors
-                .push("Alloy workspace artifact is not a valid JSON object.".to_string());
+                .push("Alloy workspace artifact is not a valid canonical workspace.".to_string());
             return validation;
         }
     };
-    if workspace
-        .get("schema_version")
-        .and_then(serde_json::Value::as_u64)
-        != Some(1)
-    {
+    let canonical_bytes = match workspace.canonical_bytes() {
+        Ok(canonical_bytes) => canonical_bytes,
+        Err(_) => {
+            validation
+                .errors
+                .push("Alloy workspace artifact is not a valid canonical workspace.".to_string());
+            return validation;
+        }
+    };
+    if canonical_bytes != bytes {
         validation
             .errors
-            .push("Alloy workspace artifact schema_version is unsupported.".to_string());
+            .push("Alloy workspace artifact bytes are not in canonical form.".to_string());
+        return validation;
+    }
+    let digest = match workspace.digest() {
+        Ok(digest) => digest,
+        Err(_) => {
+            validation
+                .errors
+                .push("Alloy workspace artifact digest could not be verified.".to_string());
+            return validation;
+        }
+    };
+    if descriptor.artifact_digest != digest || descriptor.entrypoint != workspace.entrypoint {
+        validation
+            .errors
+            .push("Alloy workspace artifact does not match its immutable descriptor.".to_string());
+        return validation;
     }
     if workspace
-        .get("entrypoint")
-        .and_then(serde_json::Value::as_str)
-        .is_none_or(|entrypoint| entrypoint.trim().is_empty())
+        .validate_declared_capabilities(&descriptor.capabilities)
+        .is_err()
     {
-        validation
-            .errors
-            .push("Alloy workspace artifact entrypoint is missing.".to_string());
-    }
-    if workspace
-        .get("files")
-        .and_then(serde_json::Value::as_array)
-        .is_none_or(Vec::is_empty)
-    {
-        validation
-            .errors
-            .push("Alloy workspace artifact files are missing.".to_string());
+        validation.errors.push(
+            "Alloy workspace artifact capabilities do not match its immutable descriptor."
+                .to_string(),
+        );
     }
     validation
 }
@@ -764,6 +799,35 @@ mod tests {
         )
     }
 
+    fn alloy_workspace() -> rustok_sandbox::RhaiWorkspace {
+        rustok_sandbox::RhaiWorkspace::single_source("40 + 2")
+    }
+
+    fn alloy_descriptor(workspace: &rustok_sandbox::RhaiWorkspace) -> ModuleArtifactDescriptor {
+        ModuleArtifactDescriptor {
+            schema_version: crate::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+            slug: "sample_module".to_string(),
+            version: "1.0.0".to_string(),
+            payload_kind: crate::ArtifactPayloadKind::Rhai,
+            module_kind: crate::ArtifactModuleKind::Optional,
+            runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.to_string(),
+            platform_compatibility: "^0.1".to_string(),
+            required_features: Vec::new(),
+            artifact_digest: workspace.digest().expect("workspace digest"),
+            entrypoint: workspace.entrypoint.clone(),
+            capabilities: Vec::new(),
+            bindings: Vec::new(),
+            dependencies: Vec::new(),
+            permissions: Vec::new(),
+            schema_documents: Vec::new(),
+            settings_schema_digest: None,
+            data_schema_digest: None,
+            localization_catalogs: Vec::new(),
+            ui_contributions: Vec::new(),
+            persistence_contract: None,
+        }
+    }
+
     #[test]
     fn canonical_writer_emits_the_current_source_manifest_bundle() {
         let fixture = bundle();
@@ -850,31 +914,61 @@ mod tests {
     }
 
     #[test]
-    fn alloy_delivery_accepts_only_the_bounded_workspace_envelope() {
-        let workspace = br#"{"schema_version":1,"entrypoint":"src/main.rhai","files":[{"path":"src/main.rhai","kind":"source","contents":"40 + 2"}]}"#;
+    fn alloy_delivery_requires_the_exact_receipted_canonical_workspace() {
+        let workspace = alloy_workspace();
+        let descriptor = alloy_descriptor(&workspace);
+        let bytes = workspace
+            .canonical_bytes()
+            .expect("canonical workspace bytes");
         let accepted = validate_module_publish_artifact(
             ModulePublicationArtifactOrigin::AlloyAuthored,
             &contract(),
+            Some(&descriptor),
             rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE,
-            workspace,
+            &bytes,
         );
         assert!(accepted.errors.is_empty());
 
         let wrong_type = validate_module_publish_artifact(
             ModulePublicationArtifactOrigin::AlloyAuthored,
             &contract(),
+            Some(&descriptor),
             "application/json",
-            workspace,
+            &bytes,
         );
         assert_eq!(wrong_type.errors.len(), 1);
 
         let oversized = validate_module_publish_artifact(
             ModulePublicationArtifactOrigin::AlloyAuthored,
             &contract(),
+            Some(&descriptor),
             rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE,
             &vec![b'x'; MODULE_PUBLISH_ALLOY_WORKSPACE_MAX_BYTES + 1],
         );
         assert_eq!(oversized.errors.len(), 1);
+
+        let missing_receipt = validate_module_publish_artifact(
+            ModulePublicationArtifactOrigin::AlloyAuthored,
+            &contract(),
+            None,
+            rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE,
+            &bytes,
+        );
+        assert_eq!(missing_receipt.errors.len(), 1);
+
+        let mut substituted_workspace = workspace.clone();
+        substituted_workspace.files[0].contents = "40 + 3".to_string();
+        let substituted = substituted_workspace
+            .canonical_bytes()
+            .expect("substituted canonical workspace bytes");
+        let substituted_validation = validate_module_publish_artifact(
+            ModulePublicationArtifactOrigin::AlloyAuthored,
+            &contract(),
+            Some(&descriptor),
+            rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE,
+            &substituted,
+        );
+        assert_eq!(substituted_validation.errors.len(), 1);
     }
 
     #[test]

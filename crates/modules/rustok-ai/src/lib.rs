@@ -2,6 +2,8 @@
 mod accounting;
 pub mod agent;
 #[cfg(feature = "server")]
+mod agent_safety;
+#[cfg(feature = "server")]
 pub mod direct;
 pub mod engine;
 #[cfg(feature = "server")]
@@ -74,19 +76,20 @@ pub use error::{AiError, AiResult};
 pub use graphql_runtime::AI_GRAPHQL_CONTRIBUTION;
 #[cfg(all(feature = "graphql", feature = "server"))]
 pub use graphql_runtime::{AiGraphqlRuntimeData, attach_schema_data};
-pub use mcp::{McpClientAdapter, ToolExecutionResult};
+pub use mcp::{McpClientAdapter, ToolExecutionResult, ToolSourceLineage};
 #[cfg(feature = "server")]
 pub use metrics::{AiMetricBucket, AiRuntimeMetricsSnapshot};
 #[cfg(feature = "server")]
 pub use migrations::AiMigrationSource;
 pub use model::{
-    AiAlloyTaskInput, AiBlogDraftTaskInput, AiImageAssetTaskInput, AiProductCopyTaskInput,
-    AiProviderConfig, AiRunDecisionTrace, AiRunRequest, ChatMessage, ChatMessageRole,
-    DirectExecutionTarget, ExecutionMode, ExecutionOverride, PendingApproval, ProviderCapability,
-    ProviderChatRequest, ProviderChatResponse, ProviderImageRequest, ProviderImageResponse,
-    ProviderStreamEmitter, ProviderStreamEvent, ProviderStructuredRequest,
-    ProviderStructuredResponse, ProviderTestResult, ProviderUsage, ProviderUsagePolicy,
-    RuntimeOutcome, RuntimeRequest, TaskProfile, ToolCall, ToolDefinition, ToolTrace,
+    AgentPromptTemplateEvidence, AgentUsageEvidence, AiAlloyTaskInput, AiBlogDraftTaskInput,
+    AiImageAssetTaskInput, AiProductCopyTaskInput, AiProviderConfig, AiRunDecisionTrace,
+    AiRunRequest, ChatMessage, ChatMessageRole, DirectExecutionTarget, ExecutionMode,
+    ExecutionOverride, PendingApproval, ProviderCapability, ProviderChatRequest,
+    ProviderChatResponse, ProviderImageRequest, ProviderImageResponse, ProviderStreamEmitter,
+    ProviderStreamEvent, ProviderStructuredRequest, ProviderStructuredResponse, ProviderTestResult,
+    ProviderUsage, ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest, TaskProfile, ToolCall,
+    ToolDefinition, ToolOperationClass, ToolPolicyEvidence, ToolTrace,
     default_provider_capabilities,
 };
 pub use policy::ToolExecutionPolicy;

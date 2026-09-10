@@ -286,6 +286,20 @@ pub(crate) fn remove_private_directory(path: &Path) {
     }
 }
 
+pub(crate) fn remove_private_file(path: &Path) {
+    if path.is_absolute()
+        && path.parent() == Some(std::env::temp_dir().as_path())
+        && path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("rustok-cosign-predicate-"))
+        && std::fs::symlink_metadata(path)
+            .is_ok_and(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
+    {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 async fn read_bounded<R>(mut reader: R) -> Result<Vec<u8>, ()>
 where
     R: AsyncRead + Unpin,

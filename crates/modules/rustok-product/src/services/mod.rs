@@ -14,6 +14,9 @@ mod write_transaction;
 pub use catalog::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
     MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter,
+    ProductImageTranslationExactLocaleApply, ProductImageTranslationExactLocaleApplyReceipt,
+    ProductImageTranslationExactLocaleError, ProductImageTranslationExactLocaleRecord,
+    ProductImageTranslationExactLocaleResult, ProductImageTranslationExactLocaleSnapshot,
     ProductOptionTranslationExactLocaleApply, ProductOptionTranslationExactLocaleApplyReceipt,
     ProductOptionTranslationExactLocaleError, ProductOptionTranslationExactLocaleRecord,
     ProductOptionTranslationExactLocaleResult, ProductOptionTranslationExactLocaleSnapshot,

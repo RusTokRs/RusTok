@@ -288,10 +288,117 @@ impl MigrationTrait for Migration {
                     .col(AlloyComponentCandidateBuilds::CreatedAt)
                     .to_owned(),
             )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(AlloyComponentCandidateBuildExecutions::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::CandidateBuildId)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::CandidateId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            AlloyComponentCandidateBuildExecutions::CandidateSourceDigest,
+                        )
+                        .string_len(71)
+                        .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::ScenarioDigest)
+                            .string_len(71)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::ArchiveSourceDigest)
+                            .string_len(71)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::BuildRequestId)
+                            .uuid()
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::SourceReference)
+                            .string_len(512)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::BuildResultRevision)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::ComponentDigest)
+                            .string_len(71)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::SbomDigest)
+                            .string_len(71)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::ProvenanceDigest)
+                            .string_len(71)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::Publication)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::ScenarioComparison)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(AlloyComponentCandidateBuildExecutions::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_alloy_component_candidate_build_executions_tenant_candidate")
+                    .table(AlloyComponentCandidateBuildExecutions::Table)
+                    .col(AlloyComponentCandidateBuildExecutions::TenantId)
+                    .col(AlloyComponentCandidateBuildExecutions::CandidateId)
+                    .col(AlloyComponentCandidateBuildExecutions::CreatedAt)
+                    .to_owned(),
+            )
             .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(AlloyComponentCandidateBuildExecutions::Table)
+                    .to_owned(),
+            )
+            .await?;
         manager
             .drop_table(
                 Table::drop()
@@ -370,6 +477,26 @@ enum AlloyComponentCandidateBuilds {
     CreatedAt,
 }
 
+#[derive(DeriveIden)]
+enum AlloyComponentCandidateBuildExecutions {
+    Table,
+    CandidateBuildId,
+    CandidateId,
+    TenantId,
+    CandidateSourceDigest,
+    ScenarioDigest,
+    ArchiveSourceDigest,
+    BuildRequestId,
+    SourceReference,
+    BuildResultRevision,
+    ComponentDigest,
+    SbomDigest,
+    ProvenanceDigest,
+    Publication,
+    ScenarioComparison,
+    CreatedAt,
+}
+
 #[cfg(test)]
 mod tests {
     use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Statement};
@@ -400,6 +527,7 @@ mod tests {
             "alloy_component_candidates",
             "alloy_component_candidate_reviews",
             "alloy_component_candidate_builds",
+            "alloy_component_candidate_build_executions",
         ] {
             assert!(table_exists(&database, table).await, "{table} should exist");
         }
@@ -408,6 +536,7 @@ mod tests {
             "alloy_component_candidates",
             "alloy_component_candidate_reviews",
             "alloy_component_candidate_builds",
+            "alloy_component_candidate_build_executions",
         ] {
             assert!(
                 !table_exists(&database, table).await,

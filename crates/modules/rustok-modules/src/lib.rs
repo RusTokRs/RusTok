@@ -264,12 +264,13 @@ pub use binding_idempotency::{
 };
 pub use build::{
     MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_PROTOCOL_VERSION, MODULE_BUILD_RUNTIME_ABI,
-    MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD, ModuleBuildAuthoring,
-    ModuleBuildClaimedRequest, ModuleBuildCompletedResult, ModuleBuildComponentInterface,
-    ModuleBuildDependencyPolicy, ModuleBuildDiagnostic, ModuleBuildDiagnosticStage,
-    ModuleBuildEvidence, ModuleBuildExecutionClaim, ModuleBuildFailureCode, ModuleBuildLimits,
-    ModuleBuildMetrics, ModuleBuildNetworkPolicy, ModuleBuildNextAction, ModuleBuildOutcome,
-    ModuleBuildProtocolError, ModuleBuildPublicationReceipt, ModuleBuildRequest, ModuleBuildResult,
+    MODULE_BUILD_SANDBOX_SCENARIO_PATH, MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD,
+    ModuleBuildAuthoring, ModuleBuildClaimedRequest, ModuleBuildCompletedResult,
+    ModuleBuildComponentInterface, ModuleBuildDependencyPolicy, ModuleBuildDiagnostic,
+    ModuleBuildDiagnosticStage, ModuleBuildEvidence, ModuleBuildExecutionClaim,
+    ModuleBuildFailureCode, ModuleBuildLimits, ModuleBuildMetrics, ModuleBuildNetworkPolicy,
+    ModuleBuildNextAction, ModuleBuildOutcome, ModuleBuildProtocolError,
+    ModuleBuildPublicationReceipt, ModuleBuildRequest, ModuleBuildResult, ModuleBuildResultReader,
     ModuleBuildResultRecord, ModuleBuildScenario, ModuleBuildSignatureAuthority, ModuleBuildSource,
     ModuleBuildSubmission, ModuleBuildToolchain, ModuleBuildValidationOutcome,
     ModuleBuildValidationProfile, ModuleBuildValidationResult, ModuleBuildWitContract,
@@ -425,19 +426,19 @@ pub use external_prebuilt_ingress::{
 };
 pub use governance::{
     ALLOY_PUBLICATION_SMOKE_TEST_PATH, ModuleAlloyAuthoredStageCommand,
-    ModuleAlloyAuthoredStageResult, ModuleAuthorSignatureEvidenceCommand,
-    ModuleBuildServiceAttestationCommand, ModuleExternalPrebuiltStageCommand,
-    ModuleExternalPrebuiltStageResult, ModuleExternalSourceEvidence, ModuleGovernanceAction,
-    ModuleGovernanceActorContext, ModuleGovernanceAutomatedCheck, ModuleGovernanceError,
-    ModuleGovernanceErrorCategory, ModuleGovernanceEventPayload, ModuleGovernanceEventSnapshot,
-    ModuleGovernanceGateSnapshot, ModuleGovernanceLifecycleSnapshot,
-    ModuleGovernanceModerationPolicy, ModuleGovernanceOwnerSnapshot,
-    ModuleGovernanceOwnerTransition, ModuleGovernancePublishArtifactDownloadSnapshot,
-    ModuleGovernancePublishArtifactUploadSlot, ModuleGovernancePublishRequestNextAction,
-    ModuleGovernancePublishRequestStatusSnapshot, ModuleGovernanceReleaseSnapshot,
-    ModuleGovernanceRequestAuthorizationSnapshot, ModuleGovernanceRequestSnapshot,
-    ModuleGovernanceValidationStageSnapshot, ModuleOwnerTransferCommand,
-    ModulePlatformAdmissionCommand, ModulePlatformPublicationSource,
+    ModuleAlloyAuthoredStageResult, ModuleAlloyPublicationSource,
+    ModuleAuthorSignatureEvidenceCommand, ModuleBuildServiceAttestationCommand,
+    ModuleExternalPrebuiltStageCommand, ModuleExternalPrebuiltStageResult,
+    ModuleExternalSourceEvidence, ModuleGovernanceAction, ModuleGovernanceActorContext,
+    ModuleGovernanceAutomatedCheck, ModuleGovernanceError, ModuleGovernanceErrorCategory,
+    ModuleGovernanceEventPayload, ModuleGovernanceEventSnapshot, ModuleGovernanceGateSnapshot,
+    ModuleGovernanceLifecycleSnapshot, ModuleGovernanceModerationPolicy,
+    ModuleGovernanceOwnerSnapshot, ModuleGovernanceOwnerTransition,
+    ModuleGovernancePublishArtifactDownloadSnapshot, ModuleGovernancePublishArtifactUploadSlot,
+    ModuleGovernancePublishRequestNextAction, ModuleGovernancePublishRequestStatusSnapshot,
+    ModuleGovernanceReleaseSnapshot, ModuleGovernanceRequestAuthorizationSnapshot,
+    ModuleGovernanceRequestSnapshot, ModuleGovernanceValidationStageSnapshot,
+    ModuleOwnerTransferCommand, ModulePlatformAdmissionCommand, ModulePlatformPublicationSource,
     ModulePublicationArtifactOrigin, ModulePublicationEvidenceResult,
     ModulePublishApprovalOverride, ModulePublishArtifactAttachCommand,
     ModulePublishArtifactAttachResult, ModulePublishPlatformBuildStageCommand,
@@ -505,13 +506,12 @@ pub use mcp::{
 };
 #[cfg(feature = "oci-distribution")]
 pub use oci::{
-    MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE, MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE,
-    MODULE_ARTIFACT_RELEASE_LINEAGE_MEDIA_TYPE, MODULE_ARTIFACT_SBOM_MEDIA_TYPE,
+    MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE, MODULE_ARTIFACT_RELEASE_LINEAGE_MEDIA_TYPE,
     MODULE_ARTIFACT_TEST_EVIDENCE_MEDIA_TYPE, OCI_EMPTY_CONFIG_MEDIA_TYPE, OciArtifactEvidence,
-    OciArtifactEvidenceKind, OciArtifactPublicationBundle, OciArtifactPublicationError,
-    OciArtifactPublicationReceipt, OciArtifactPublicationTarget, OciArtifactPublisher,
-    OciBuildPublicationArtifact, OciBuildPublicationBlob, OciDistributionArtifactPublisher,
-    OciDistributionArtifactRegistry, OciRegistryProxyMode, OciRegistryTransportPolicy,
+    OciArtifactPublicationBundle, OciArtifactPublicationError, OciArtifactPublicationTarget,
+    OciArtifactPublisher, OciBuildPublicationArtifact, OciBuildPublicationBlob,
+    OciDistributionArtifactPublisher, OciDistributionArtifactRegistry, OciRegistryProxyMode,
+    OciRegistryTransportPolicy, OciRhaiWorkspacePublicationProvenance,
 };
 pub use oci_admission::{
     OciAdmissionReceipt, OciReleaseAdmissionCommand, OciReleaseAdmissionError,
@@ -550,6 +550,8 @@ pub use promotion::{
     ModuleStaticPromotionRequestCommand, ModuleStaticPromotionStatus, SeaOrmModulePromotionService,
 };
 pub use publication_evidence::{
+    ModuleAlloyPublicationEvidenceCommand, ModuleAlloyPublicationEvidenceError,
+    ModuleAlloyPublicationEvidenceOwner, ModuleAlloyPublicationEvidenceProducer,
     ModulePlatformPublicationEvidenceCommand, ModulePlatformPublicationEvidenceError,
     ModulePlatformPublicationEvidenceOwner, ModulePlatformPublicationEvidenceProducer,
     ModulePlatformPublicationEvidenceResult, ModulePublicationArtifactRegistryProvider,
@@ -639,8 +641,10 @@ pub use static_settings_source_locale::{
     StaticSettingsSourceLocaleService,
 };
 pub use trust::{
-    TrustEvidenceKind, TrustEvidenceReference, TrustPolicyRevision, TrustVerificationDecision,
-    TrustVerificationRequest, TrustVerifier,
+    ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE, ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID,
+    ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF, ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI,
+    TrustAlloyWorkspaceProvenance, TrustEvidenceKind, TrustEvidenceReference, TrustPolicyRevision,
+    TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
 };
 
 /// Mandatory Core entry point for module and marketplace control-plane ownership.

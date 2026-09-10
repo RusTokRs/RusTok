@@ -36,8 +36,13 @@ Implemented:
 - canonical `RhaiWorkspace`, in-memory import resolver, record proxy, standard
   library, and brokered HTTP helpers owned by `rustok-sandbox`, so the isolated
   worker remains independent from Alloy and product infrastructure;
-- immutable Rhai descriptor/source lineage staging, packaging, and forking
-  helpers.
+- immutable Rhai descriptor/source lineage staging and forking, plus canonical
+  OCI publication through the registry-validation worker. The worker reloads
+  the owner receipt, re-canonicalizes the bounded workspace and exact
+  descriptor/capability declaration, derives deterministic CycloneDX/SLSA
+  evidence from owner facts, Cosign-signs the digest-pinned package and emits
+  both documents as signed attestations, then records only independently
+  verified platform admission.
 
 Remaining:
 
@@ -263,15 +268,19 @@ review decision references immutable evidence.
   `capability_call` and `http_*` helper surface, requires literal capability
   names for generic calls, and rejects missing/unused declarations, dynamic
   names, and helper shadowing before staging or packaging.
-- Stage approved source through `rustok-modules`; do not write marketplace
-  state. The owner records a distinct `alloy_authored` origin with the source
-  digest/revision, Alloy tenant/script identity, and review evidence under
-  durable idempotency. Origin-aware artifact upload and validation now accept
-  only the bounded canonical workspace with a checksum equal to the reviewed
-  source digest. Authenticated HTTP and GraphQL staging adapters delegate to
-  the owner service; matching platform admission and final release promotion
-  remain owner workflows. The package's workspace media type is an immutable admission
-  fact and survives runtime resolution.
+- [x] Publish approved source only through `rustok-modules`; Alloy does not
+  write marketplace state. The owner records a distinct `alloy_authored` stage
+  with source/review, tenant/script, descriptor, and canonical descriptor-digest
+  evidence under durable idempotency. The registry-validation worker reloads
+  that receipt, re-canonicalizes the workspace, derives deterministic
+  CycloneDX/SLSA evidence, publishes and Cosign-signs a digest-pinned workspace
+  OCI package, emits both documents as signed attestations, and re-fetches it
+  for isolated verification. SLSA must retain
+  the exact owner request/review/descriptor/entrypoint binding; successful
+  verification records platform admission but never a build-service attestation.
+  Origin-aware upload, validation, and final promotion remain owner workflows.
+  The workspace media type is an immutable admission fact and survives runtime
+  resolution.
 - [x] Persist an eligible published Rhai workspace as a new tenant-scoped draft
   with its exact parent release on both the current row and immutable source
   revision. A durable `(tenant_id, idempotency_key)` receipt is created in the
@@ -361,6 +370,17 @@ preserve reproducible lineage.
   and WASM behavior is equivalent. The immutable build request carries the
   same source-local scenario path and reviewed canonical digest, so an isolated
   worker can reject a substituted scenario before it runs the candidate.
+- [x] Record a completed candidate build only from the module owner's
+  read-only `ModuleBuildResultReader` pair. `AlloyEvolutionExecutionService`
+  re-loads the durable candidate-build receipt and rejects any request/result
+  whose tenant, source-CAS reference/digest, source-local scenario path/digest,
+  manifest identity, or Rhai parent differs from the candidate. The immutable
+  Alloy evidence row retains only the owner build-result revision,
+  component/SBOM/provenance digests, digest-pinned publication receipt, and
+  redacted scenario comparison. Exact replay returns the row; source bytes,
+  logs, callbacks, filesystem paths, and credentials never cross this boundary.
+  This is owner-completion evidence, not a claim of hardened OCI-job deployment
+  proof or Rhai/WASM semantic parity.
 - Compare deterministic scenario/contract evidence between Rhai and WASM. The
   fixed publication smoke has a canonical persisted scenario digest. The
   neutral sandbox now defines the candidate comparison projection as a

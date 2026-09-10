@@ -4913,6 +4913,7 @@ where
             descriptor: package.descriptor.clone(),
             trust_policy_revision: self.trust_policy.trust_policy_revision,
             capability_policy_revision: self.trust_policy.capability_policy_revision,
+            expected_alloy_workspace_provenance: None,
         };
         let decision = self
             .verifier

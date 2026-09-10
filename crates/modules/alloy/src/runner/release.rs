@@ -104,6 +104,11 @@ where
         if command.artifact_digest != source.source_digest {
             return Err(AlloyReleaseError::ArtifactSourceDigestMismatch);
         }
+        let descriptor = crate::artifact::prepare_rhai_module_descriptor(&source.workspace)
+            .map_err(|error| AlloyReleaseError::ArtifactDescriptorInvalid(error.to_string()))?;
+        if descriptor.artifact_digest != source.source_digest {
+            return Err(AlloyReleaseError::ArtifactSourceDigestMismatch);
+        }
         let reviews = self
             .registry
             .list_reviews(command.script_id, command.expected_revision)
@@ -151,6 +156,7 @@ where
                 artifact_digest: command.artifact_digest,
                 source_digest: source.source_digest,
                 source_revision: source.revision,
+                descriptor,
                 parent_release: source.parent_release.clone(),
                 review_reference: review_reference(review),
                 review_digest: review_evidence_digest(review)?,
@@ -206,6 +212,24 @@ mod tests {
         ReviewCommand, ReviewStatus, RhaiWorkspace, RhaiWorkspaceFile, RhaiWorkspaceFileKind,
         Script, ScriptRegistry, ScriptTrigger, alloy_release_command_context,
     };
+
+    fn release_manifest() -> RhaiWorkspaceFile {
+        RhaiWorkspaceFile {
+            path: crate::artifact::RHAI_MODULE_SOURCE_MANIFEST_PATH.to_string(),
+            kind: RhaiWorkspaceFileKind::Policy,
+            contents: serde_json::json!({
+                "schema_version": rustok_modules::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+                "slug": "tax_rule",
+                "version": "1.1.0",
+                "payload_kind": "rhai",
+                "module_kind": "optional",
+                "runtime_abi": rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI,
+                "platform_compatibility": "^0.1",
+                "entrypoint": "src/main.rhai",
+            })
+            .to_string(),
+        }
+    }
 
     #[derive(Default)]
     struct CapturingGovernance {
@@ -267,6 +291,7 @@ mod tests {
             kind: RhaiWorkspaceFileKind::Test,
             contents: "true".to_string(),
         });
+        script.workspace.files.push(release_manifest());
 
         let storage = Arc::new(InMemoryStorage::new());
         let script = storage.save(script).await.expect("save imported draft");

@@ -22,8 +22,8 @@ use rustok_mcp::{
     default_tool_requirement,
 };
 
-use crate::mcp::{McpClientAdapter, ToolExecutionResult};
-use crate::model::ToolDefinition;
+use crate::mcp::{McpClientAdapter, ToolExecutionResult, ToolSourceLineage};
+use crate::model::{ToolDefinition, ToolOperationClass};
 use crate::{AiError, AiResult};
 
 use super::helpers::json_err;
@@ -56,52 +56,76 @@ impl InProcessMcpAdapter {
         input: serde_json::Value,
     ) -> AiResult<ToolExecutionResult> {
         let state = &self.scaffolds;
-        let content = match tool_name {
-            TOOL_ALLOY_SCAFFOLD_MODULE => serde_json::to_value(
-                alloy_tools::alloy_scaffold_module(
+        let (raw_payload, source_lineage) = match tool_name {
+            TOOL_ALLOY_SCAFFOLD_MODULE => {
+                let response = alloy_tools::alloy_scaffold_module(
                     state,
                     None,
                     serde_json::from_value::<rustok_mcp::ScaffoldModuleRequest>(input)
                         .map_err(json_err)?,
                 )
                 .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD => serde_json::to_value(
-                alloy_tools::alloy_review_module_scaffold(
+                .map_err(AiError::Mcp)?;
+                (
+                    serde_json::to_value(&response).map_err(json_err)?,
+                    vec![scaffold_source_lineage(
+                        tool_name,
+                        &response.draft_id,
+                        &response.source_digest,
+                    )],
+                )
+            }
+            TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD => {
+                let response = alloy_tools::alloy_review_module_scaffold(
                     state,
                     None,
                     serde_json::from_value::<ReviewModuleScaffoldRequest>(input)
                         .map_err(json_err)?,
                 )
                 .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_APPLY_MODULE_SCAFFOLD => serde_json::to_value(
-                alloy_tools::alloy_apply_module_scaffold(
+                .map_err(AiError::Mcp)?;
+                (
+                    serde_json::to_value(&response).map_err(json_err)?,
+                    vec![scaffold_source_lineage(
+                        tool_name,
+                        &response.draft.draft_id,
+                        &response.source_digest,
+                    )],
+                )
+            }
+            TOOL_ALLOY_APPLY_MODULE_SCAFFOLD => {
+                let response = alloy_tools::alloy_apply_module_scaffold(
                     state,
                     None,
                     serde_json::from_value::<ApplyModuleScaffoldRequest>(input)
                         .map_err(json_err)?,
                 )
                 .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_LIST_ENTITY_TYPES => {
-                serde_json::to_value(alloy_tools::alloy_list_entity_types()).map_err(json_err)?
+                .map_err(AiError::Mcp)?;
+                (
+                    serde_json::to_value(&response).map_err(json_err)?,
+                    vec![scaffold_source_lineage(
+                        tool_name,
+                        &response.draft_id,
+                        &response.source_digest,
+                    )],
+                )
             }
-            TOOL_ALLOY_SCRIPT_HELPERS => {
-                serde_json::to_value(alloy_tools::alloy_script_helpers()).map_err(json_err)?
-            }
+            TOOL_ALLOY_LIST_ENTITY_TYPES => (
+                serde_json::to_value(alloy_tools::alloy_list_entity_types()).map_err(json_err)?,
+                Vec::new(),
+            ),
+            TOOL_ALLOY_SCRIPT_HELPERS => (
+                serde_json::to_value(alloy_tools::alloy_script_helpers()).map_err(json_err)?,
+                Vec::new(),
+            ),
             _ => return Err(AiError::Mcp(format!("unknown tool: {tool_name}"))),
         };
 
         Ok(ToolExecutionResult {
-            content: serde_json::to_string(&content).map_err(json_err)?,
-            raw_payload: content,
+            content: serde_json::to_string(&raw_payload).map_err(json_err)?,
+            raw_payload,
+            source_lineage,
         })
     }
 }
@@ -114,51 +138,61 @@ impl McpClientAdapter for InProcessMcpAdapter {
                 TOOL_LIST_MODULES,
                 "List all registered RusToK modules with their metadata",
                 schema_for!(()),
+                ToolOperationClass::ReadOnly,
             ),
             tool_def(
                 TOOL_QUERY_MODULES,
                 "List modules with filters and pagination",
                 schema_for!(ModuleQueryRequest),
+                ToolOperationClass::ReadOnly,
             ),
             tool_def(
                 TOOL_MODULE_EXISTS,
                 "Check if a module exists by its slug",
                 schema_for!(ModuleLookupRequest),
+                ToolOperationClass::ReadOnly,
             ),
             tool_def(
                 TOOL_MODULE_DETAILS,
                 "Fetch module metadata by slug",
                 schema_for!(ModuleLookupRequest),
+                ToolOperationClass::ReadOnly,
             ),
             tool_def(
                 TOOL_CONTENT_MODULE,
                 "Fetch content module metadata",
                 schema_for!(()),
+                ToolOperationClass::ReadOnly,
             ),
             tool_def(
                 TOOL_BLOG_MODULE,
                 "Fetch blog module metadata",
                 schema_for!(()),
+                ToolOperationClass::ReadOnly,
             ),
             tool_def(
                 TOOL_FORUM_MODULE,
                 "Fetch forum module metadata",
                 schema_for!(()),
+                ToolOperationClass::ReadOnly,
             ),
             tool_def(
                 TOOL_PAGES_MODULE,
                 "Fetch pages module metadata",
                 schema_for!(()),
+                ToolOperationClass::ReadOnly,
             ),
             tool_def(
                 TOOL_MCP_HEALTH,
                 "MCP readiness and configuration status",
                 schema_for!(()),
+                ToolOperationClass::ReadOnly,
             ),
             tool_def(
                 TOOL_MCP_WHOAMI,
                 "Inspect the current MCP identity, permissions, scopes, and tool policy",
                 schema_for!(()),
+                ToolOperationClass::ReadOnly,
             ),
         ];
 
@@ -167,26 +201,31 @@ impl McpClientAdapter for InProcessMcpAdapter {
                     TOOL_ALLOY_SCAFFOLD_MODULE,
                     "Stage a reviewed draft RusToK module crate scaffold without writing it into the workspace yet",
                     schema_for!(rustok_mcp::ScaffoldModuleRequest),
+                    ToolOperationClass::DraftMutation,
                 ),
                 tool_def(
                     TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD,
                     "Fetch a staged Alloy module scaffold draft for review before apply",
                     schema_for!(ReviewModuleScaffoldRequest),
+                    ToolOperationClass::ReadOnly,
                 ),
                 tool_def(
                     TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
                     "Apply a reviewed Alloy module scaffold draft into the workspace with explicit confirmation",
                     schema_for!(ApplyModuleScaffoldRequest),
+                    ToolOperationClass::WorkspaceMutation,
                 ),
                 tool_def(
                     TOOL_ALLOY_LIST_ENTITY_TYPES,
                     "List all known entity types in the platform",
                     schema_for!(()),
+                    ToolOperationClass::ReadOnly,
                 ),
                 tool_def(
                     TOOL_ALLOY_SCRIPT_HELPERS,
                     "List available Rhai helper functions with signatures and descriptions",
                     schema_for!(()),
+                    ToolOperationClass::ReadOnly,
                 ),
         ]);
 
@@ -269,7 +308,12 @@ impl McpClientAdapter for InProcessMcpAdapter {
     }
 }
 
-pub fn tool_def(name: &str, description: &str, schema: schemars::Schema) -> ToolDefinition {
+pub fn tool_def(
+    name: &str,
+    description: &str,
+    schema: schemars::Schema,
+    operation_class: ToolOperationClass,
+) -> ToolDefinition {
     let input_schema = serde_json::to_value(schema)
         .ok()
         .and_then(|value| value.as_object().cloned())
@@ -279,7 +323,21 @@ pub fn tool_def(name: &str, description: &str, schema: schemars::Schema) -> Tool
         name: name.to_string(),
         description: description.to_string(),
         input_schema,
+        operation_class,
         sensitive: false,
+    }
+}
+
+fn scaffold_source_lineage(
+    tool_name: &str,
+    source_id: &str,
+    source_digest: &str,
+) -> ToolSourceLineage {
+    ToolSourceLineage {
+        owner: "rustok-mcp".to_string(),
+        tool_name: tool_name.to_string(),
+        source_id: source_id.to_string(),
+        source_digest: source_digest.to_string(),
     }
 }
 
@@ -288,6 +346,7 @@ pub fn serialize_result<T: Serialize>(payload: T) -> AiResult<ToolExecutionResul
     Ok(ToolExecutionResult {
         content: serde_json::to_string(&raw_payload).map_err(json_err)?,
         raw_payload,
+        source_lineage: Vec::new(),
     })
 }
 

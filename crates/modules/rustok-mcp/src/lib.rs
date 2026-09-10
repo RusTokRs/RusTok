@@ -58,7 +58,7 @@ pub use alloy_scaffold::{
     ApplyModuleScaffoldRequest, ApplyModuleScaffoldResponse, ModuleScaffoldDraftStatus,
     ReviewModuleScaffoldRequest, ReviewModuleScaffoldResponse, ScaffoldModuleFile,
     ScaffoldModulePreview, ScaffoldModuleRequest, StageModuleScaffoldResponse,
-    StagedModuleScaffold, apply_staged_scaffold, generate_module_scaffold,
+    StagedModuleScaffold, apply_staged_scaffold, generate_module_scaffold, scaffold_source_digest,
 };
 pub use alloy_tools::{
     ALL_ALLOY_TOOLS, AlloyScaffoldState, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,

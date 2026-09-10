@@ -686,6 +686,7 @@ impl ExternalPrebuiltIngressService {
                 descriptor: package.descriptor.clone(),
                 trust_policy_revision: command.trust_policy_revision.unwrap_or(0),
                 capability_policy_revision: command.capability_policy_revision.unwrap_or(0),
+                expected_alloy_workspace_provenance: None,
             };
             let decision = verifier
                 .verify(req)

@@ -6,7 +6,7 @@ use rustok_sandbox::{CapabilityBrokerRouter, ExecutorRegistry, SandboxRuntime};
 use sea_orm_migration::MigrationTrait;
 
 pub mod api;
-pub mod artifact;
+mod artifact;
 pub mod authoring;
 pub mod bridge;
 pub mod context;
@@ -26,10 +26,6 @@ pub mod scheduler;
 pub mod storage;
 pub mod utils;
 
-pub use artifact::{
-    AlloyArtifactError, fork_rhai_module_release, observed_rhai_capabilities,
-    package_rhai_module_release, stage_rhai_module_release, validate_rhai_capabilities,
-};
 pub use authoring::{
     AlloyAuthoringError, AlloyAuthoringService, AlloyExecutionOutcome, AlloyScriptLifecycleAction,
     AlloyScriptValidation, AuthoringEntityInput, ChangeAlloyDeletedEvidenceRetentionCommand,
@@ -62,17 +58,19 @@ pub use model::{
     ReviewError, ReviewStatus, RhaiWorkspace, RhaiWorkspaceError, RhaiWorkspaceFile,
     RhaiWorkspaceFileKind, RustComponentCandidate, RustComponentCandidateBuild,
     RustComponentCandidateBuildCommand, RustComponentCandidateBuildError,
-    RustComponentCandidateCommand, RustComponentCandidateError, RustComponentCandidateReview,
-    RustComponentCandidateReviewCommand, RustComponentSourceFile, RustComponentWorkspace,
-    RustComponentWorkspaceError, Script, ScriptDeletionCommand, ScriptDeletionError,
-    ScriptEvidenceRetentionAction, ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionError,
-    ScriptEvidenceRetentionState, ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger,
-    SourceProvenance, TestCommand, TestRun, TestRunClaim, TestRunCompletion, TestRunError,
-    TestRunLease, TestRunStatus, alloy_release_command_context, deleted_evidence_retention,
-    register_entity_proxy, validate_candidate_parent_release,
+    RustComponentCandidateBuildExecution, RustComponentCandidateCommand,
+    RustComponentCandidateError, RustComponentCandidateExecutionError,
+    RustComponentCandidateReview, RustComponentCandidateReviewCommand, RustComponentSourceFile,
+    RustComponentWorkspace, RustComponentWorkspaceError, Script, ScriptDeletionCommand,
+    ScriptDeletionError, ScriptEvidenceRetentionAction, ScriptEvidenceRetentionCommand,
+    ScriptEvidenceRetentionError, ScriptEvidenceRetentionState, ScriptId, ScriptSourceRevision,
+    ScriptStatus, ScriptTrigger, SourceProvenance, TestCommand, TestRun, TestRunClaim,
+    TestRunCompletion, TestRunError, TestRunLease, TestRunStatus, alloy_release_command_context,
+    deleted_evidence_retention, register_entity_proxy, validate_candidate_parent_release,
 };
 pub use runner::{
-    AlloyEvolutionBuildError, AlloyEvolutionBuildService, AlloyPublishedRhaiSourceProvider,
+    AlloyEvolutionBuildError, AlloyEvolutionBuildService, AlloyEvolutionExecutionError,
+    AlloyEvolutionExecutionService, AlloyPublishedRhaiSourceProvider,
     AlloyPublishedRhaiSourceProviderHandle, AlloyReleaseGovernance, AlloyReleaseGovernanceHandle,
     AlloyReleaseImporter, ExecutionOutcome, ExecutionResult, HookOutcome, RevisionedReleaseStager,
     RevisionedTestRunner, ScriptExecutor, ScriptOrchestrator,

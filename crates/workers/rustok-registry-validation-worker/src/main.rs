@@ -5,10 +5,14 @@ use std::{
     time::Duration,
 };
 
-use rustok_build_publication::CommandRegistryCredentialBroker;
-use rustok_modules::{ModuleControlPlane, ModulePlatformPublicationEvidenceProducer};
+use rustok_build_publication::{CommandRegistryCredentialBroker, CosignArtifactSigner};
+use rustok_modules::{
+    ModuleAlloyPublicationEvidenceProducer, ModuleControlPlane,
+    ModulePlatformPublicationEvidenceProducer, OciArtifactPublicationTarget,
+};
 use rustok_registry_validation_worker::{
-    CredentialedOciRegistryProvider, RegistryValidationPublicationPolicy, RegistryValidationWorker,
+    CredentialedOciRegistryProvider, RegistryValidationAlloyPublication,
+    RegistryValidationPublicationPolicy, RegistryValidationWorker,
 };
 use rustok_storage::{StorageConfig, StorageRuntime};
 use rustok_verification_transport::GrpcTrustVerifier;
@@ -58,13 +62,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?,
         required_env("RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER_DIGEST")?,
     )?);
-    let registry_provider = Arc::new(CredentialedOciRegistryProvider::new(credential_broker)?);
+    let registry_provider = Arc::new(CredentialedOciRegistryProvider::new(
+        credential_broker.clone(),
+    )?);
     let owner = ModuleControlPlane::new(database).publication();
     let publication_evidence = Arc::new(ModulePlatformPublicationEvidenceProducer::new(
+        Arc::new(owner.clone()),
+        registry_provider.clone(),
+        verifier.clone(),
+    ));
+    let alloy_publication_target = OciArtifactPublicationTarget {
+        registry: required_env("RUSTOK_REGISTRY_VALIDATION_ALLOY_PUBLICATION_REGISTRY")?,
+        repository: required_env("RUSTOK_REGISTRY_VALIDATION_ALLOY_PUBLICATION_REPOSITORY")?,
+    };
+    let alloy_signer = Arc::new(CosignArtifactSigner::new(
+        required_instance_path(&layout, "RUSTOK_REGISTRY_VALIDATION_COSIGN_PROGRAM")?,
+        required_env("RUSTOK_REGISTRY_VALIDATION_COSIGN_PROGRAM_DIGEST")?,
+        required_env("RUSTOK_REGISTRY_VALIDATION_COSIGN_KEY_REFERENCE")?,
+    )?);
+    let alloy_publication_evidence = Arc::new(ModuleAlloyPublicationEvidenceProducer::new(
         Arc::new(owner.clone()),
         registry_provider,
         verifier,
     ));
+    let alloy_publication = RegistryValidationAlloyPublication::new(
+        alloy_publication_evidence,
+        alloy_publication_target,
+        credential_broker,
+        alloy_signer,
+    )?;
     let publication_policy = RegistryValidationPublicationPolicy {
         registry_id: required_env("RUSTOK_REGISTRY_VALIDATION_REGISTRY_ID")?,
         trust_policy_revision: required_u64("RUSTOK_REGISTRY_VALIDATION_TRUST_POLICY_REVISION")?,
@@ -83,6 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         storage,
         actor_id,
         publication_evidence,
+        alloy_publication,
         publication_policy,
     )?;
     loop {

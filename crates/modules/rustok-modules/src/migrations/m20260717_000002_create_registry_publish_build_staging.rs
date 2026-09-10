@@ -24,8 +24,6 @@ impl MigrationTrait for Migration {
                     parent_release_digest TEXT NULL CHECK (parent_release_digest IS NULL OR length(parent_release_digest) = 71),\
                     component_digest TEXT NOT NULL CHECK (length(component_digest) = 71),\
                     artifact_manifest_digest TEXT NOT NULL CHECK (length(artifact_manifest_digest) = 71),\
-                    sbom_manifest_digest TEXT NOT NULL CHECK (length(sbom_manifest_digest) = 71),\
-                    provenance_manifest_digest TEXT NOT NULL CHECK (length(provenance_manifest_digest) = 71),\
                     signature_manifest_digest TEXT NOT NULL CHECK (length(signature_manifest_digest) = 71),\
                     staged_by_principal JSONB NOT NULL,\
                     actor_id UUID NOT NULL,\
@@ -54,8 +52,6 @@ impl MigrationTrait for Migration {
                     parent_release_digest TEXT NULL CHECK (parent_release_digest IS NULL OR length(parent_release_digest) = 71),\
                     component_digest TEXT NOT NULL CHECK (length(component_digest) = 71),\
                     artifact_manifest_digest TEXT NOT NULL CHECK (length(artifact_manifest_digest) = 71),\
-                    sbom_manifest_digest TEXT NOT NULL CHECK (length(sbom_manifest_digest) = 71),\
-                    provenance_manifest_digest TEXT NOT NULL CHECK (length(provenance_manifest_digest) = 71),\
                     signature_manifest_digest TEXT NOT NULL CHECK (length(signature_manifest_digest) = 71),\
                     staged_by_principal JSON NOT NULL,\
                     actor_id TEXT NOT NULL,\

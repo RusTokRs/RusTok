@@ -73,6 +73,9 @@ pub enum ScriptError {
 
     #[error(transparent)]
     ComponentCandidateBuild(#[from] crate::model::RustComponentCandidateBuildError),
+
+    #[error(transparent)]
+    ComponentCandidateExecution(#[from] crate::model::RustComponentCandidateExecutionError),
 }
 
 impl From<crate::model::RhaiWorkspaceError> for ScriptError {

@@ -159,11 +159,17 @@ stream the received bytes into a private temporary file while enforcing the
 same size limit and SHA-256 digest.
 
 `OciDistributionArtifactPublisher` publishes the descriptor-selected payload
-and OCI 1.1 SBOM/provenance referrers. The isolated build worker subsequently
-uses Cosign with a deployment-owned KMS provider reference to sign the returned
-artifact digest, then resolves Cosign's compatible OCI signature manifest to a
-digest-pinned publication receipt. The standard Cosign tag is used only while
-resolving the signature manifest and never becomes installation identity.
+and hands its verified source SBOM/provenance evidence to the shared publication
+boundary. The source-side SLSA v1 statement remains payload-bound while the
+boundary validates it, then supplies only its predicate to Cosign. Cosign owns
+the final in-toto envelope and binds that signed attestation to the returned
+digest-pinned OCI manifest; package admission separately re-fetches and
+verifies the descriptor-selected payload. The isolated build worker uses a
+deployment-owned KMS provider reference to sign the manifest and emit current
+SLSA v1 and CycloneDX signed attestations, then resolves Cosign's compatible
+OCI signature manifest to a digest-pinned publication receipt. The standard
+Cosign tag is used only while resolving the signature manifest and never
+becomes installation identity.
 The component/payload digest and the registry-returned OCI manifest digest are
 separate immutable identities and are never compared for equality. Platform
 build staging rehashes and matches the submitted payload against the completed
@@ -184,6 +190,13 @@ Successful build results must carry the complete component, SBOM, provenance,
 interface, and validation evidence. Failed and cancelled results reject those
 success artifacts and require a structured diagnostic matching the terminal
 failure, so a stale successful payload cannot be admitted through a failed result.
+`ModuleBuildResultReader` is the sole cross-owner read port for a completed
+immutable request/result pair. Alloy uses it to bind a reviewed Component
+candidate to its matching source-CAS digest, scenario comparison, publication
+receipt, and build-result revision; it never receives a caller-provided worker
+result or queries `module_build_requests` directly. The read port establishes
+owner completion facts only. Deployment proof for the hardened OCI job remains
+an operational evidence requirement and is not inferred from this API.
 Before that publication window the worker obtains a repository-scoped,
 short-lived lease through its deployment-owned credential broker. Credentials
 never enter module contracts, descriptors, build requests, runner output, or

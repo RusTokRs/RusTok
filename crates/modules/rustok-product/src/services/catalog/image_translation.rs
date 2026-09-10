@@ -1,6 +1,7 @@
 use super::*;
 
 use rustok_api::TenantLocale;
+use sea_orm::sea_query::ExprTrait;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;

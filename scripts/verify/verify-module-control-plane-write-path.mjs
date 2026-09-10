@@ -1923,16 +1923,111 @@ try {
     !registryValidationWorkerLibrary.includes(
       "CredentialedOciRegistryProvider",
     ) ||
-    !registryValidationWorkerLibrary.includes(".produce(command).await") ||
+    !registryValidationWorkerLibrary.includes(".produce(command)") ||
     !publicationEvidence.includes(".load_source(&command.request_id)") ||
-    !publicationEvidence.includes(
-      ".fetch(&source.receipt.artifact, self.limits)",
-    ) ||
+    !publicationEvidence.includes("async fn verify_published_artifact(") ||
+    !publicationEvidence.includes(".registry_for(input.reference)") ||
+    !publicationEvidence.includes(".fetch(input.reference, limits)") ||
     !publicationEvidence.includes(".record_build_service_attestation(") ||
     !publicationEvidence.includes(".record_platform_admission(")
   ) {
     fail(
       "production publication evidence must bind owner staging, exact OCI bytes, isolated verification, and reserved owner records",
+    );
+  }
+  const alloyOciPublication = read("crates/modules/rustok-modules/src/oci.rs");
+  const alloyTrustContract = read("crates/modules/rustok-modules/src/trust.rs");
+  const verificationCosign = read(
+    "crates/workers/rustok-verification-worker/src/cosign.rs",
+  );
+  const sharedSignedPublication = read(
+    "crates/utils/rustok-build-publication/src/publication.rs",
+  );
+  const sharedCosignSigner = read(
+    "crates/utils/rustok-build-publication/src/signing.rs",
+  );
+  const alloyEvidenceProducerStart = publicationEvidence.indexOf(
+    "pub struct ModuleAlloyPublicationEvidenceProducer",
+  );
+  const alloyEvidenceProducerEnd = publicationEvidence.indexOf(
+    "fn map_alloy_publication_verification_error",
+    alloyEvidenceProducerStart,
+  );
+  const alloyEvidenceProducer =
+    alloyEvidenceProducerStart === -1 || alloyEvidenceProducerEnd === -1
+      ? ""
+      : publicationEvidence.slice(
+          alloyEvidenceProducerStart,
+          alloyEvidenceProducerEnd,
+        );
+  if (
+    !alloyOwnerSource.includes("pub struct ModuleAlloyPublicationSource") ||
+    !alloyOwnerSource.includes("pub async fn load_alloy_publication_source(") ||
+    !alloyOwnerSource.includes(
+      "AlloyPublicationEvidenceSourceUnavailable",
+    ) ||
+    !alloyOwnerSource.includes(
+      "alloy_publication_source_requires_the_exact_owner_receipted_descriptor",
+    ) ||
+    !alloyOciPublication.includes("pub fn from_verified_rhai_workspace(") ||
+    !alloyOciPublication.includes("workspace.canonical_bytes()") ||
+    !alloyOciPublication.includes(
+      "validate_declared_capabilities(&descriptor.capabilities)",
+    ) ||
+    !alloyOciPublication.includes("canonical_alloy_workspace_provenance(") ||
+    !alloyTrustContract.includes("pub struct TrustAlloyWorkspaceProvenance") ||
+    !alloyTrustContract.includes(
+      "pub expected_alloy_workspace_provenance: Option<TrustAlloyWorkspaceProvenance>",
+    ) ||
+    !publicationEvidence.includes("pub struct ModuleAlloyPublicationEvidenceCommand") ||
+    !alloyEvidenceProducer.includes(
+      "expected_alloy_workspace_provenance: Some(&expected_provenance)",
+    ) ||
+    !alloyEvidenceProducer.includes("record_platform_admission(ModulePlatformAdmissionCommand") ||
+    alloyEvidenceProducer.includes("record_build_service_attestation") ||
+    !publicationEvidence.includes(
+      "alloy_producer_binds_exact_owner_workspace_provenance_without_a_build_attestation",
+    ) ||
+    !verificationCosign.includes("validate_slsa_with_alloy(") ||
+    !verificationCosign.includes("expected_manifest_sha256(&request.reference)") ||
+    !verificationCosign.includes(
+      "alloy_workspace_slsa_requires_the_exact_owner_receipt_binding",
+    ) ||
+    !sharedSignedPublication.includes("pub async fn publish_signed_oci_artifact(") ||
+    !sharedSignedPublication.includes(
+      "CosignAttestationPredicate::SlsaProvenance",
+    ) ||
+    !sharedSignedPublication.includes(
+      "CosignAttestationPredicate::CycloneDx",
+    ) ||
+    !sharedSignedPublication.includes(
+      "publisher.resolve_cosign_signature(target, &artifact)",
+    ) ||
+    !sharedCosignSigner.includes("pub async fn attest(") ||
+    !sharedCosignSigner.includes("normalize_cosign_predicate(predicate, predicate_bytes)") ||
+    !sharedCosignSigner.includes('"https://slsa.dev/provenance/v1"') ||
+    !sharedCosignSigner.includes('"https://cyclonedx.org/bom"') ||
+    !alloyOciPublication.includes("validate_slsa_statement(") ||
+    !alloyOciPublication.includes("descriptor_payload_layer_matches(") ||
+    alloyOciPublication.includes("async fn publish_referrer(") ||
+    !registryValidationWorkerLibrary.includes("async fn publish_alloy_workspace") ||
+    !registryValidationWorkerLibrary.includes(
+      "OciArtifactPublicationBundle::from_verified_rhai_workspace(",
+    ) ||
+    !registryValidationWorkerLibrary.includes("publish_signed_oci_artifact(") ||
+    !registryValidationWorkerLibrary.includes(".alloy_command(") ||
+    !registryValidationWorkerMain.includes(
+      "RUSTOK_REGISTRY_VALIDATION_ALLOY_PUBLICATION_REGISTRY",
+    ) ||
+    !registryValidationWorkerMain.includes(
+      "RUSTOK_REGISTRY_VALIDATION_ALLOY_PUBLICATION_REPOSITORY",
+    ) ||
+    !registryValidationWorkerMain.includes(
+      "RUSTOK_REGISTRY_VALIDATION_COSIGN_PROGRAM",
+    )
+  ) {
+    fail(
+      "Alloy release publication must recanonicalize the owner receipt, publish one digest-pinned Rhai OCI package, bind source SLSA to the payload before Cosign normalizes its predicate into a manifest-bound attestation, require exact isolated provenance, and record only the owner platform admission",
     );
   }
 

@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
-use rustok_modules::ArtifactReleaseRef;
+use rustok_modules::{ArtifactReleaseRef, ModuleBuildPublicationReceipt};
+use rustok_sandbox::LocalSandboxScenarioComparison;
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
@@ -12,13 +13,15 @@ use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
     AlloyImportedDraftCommand, AlloyImportedDraftResult, EventType, HttpMethod, ReviewCommand,
     ReviewDecision, ReviewStatus, RhaiWorkspace, RustComponentCandidate,
-    RustComponentCandidateBuild, RustComponentCandidateBuildError, RustComponentCandidateCommand,
-    RustComponentCandidateError, RustComponentCandidateReview, RustComponentCandidateReviewCommand,
-    RustComponentWorkspace, Script, ScriptDeletionCommand, ScriptDeletionError,
-    ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionError, ScriptEvidenceRetentionState,
-    ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestCommand, TestRun,
-    TestRunClaim, TestRunCompletion, TestRunLease, TestRunStatus, deleted_evidence_retention,
-    validate_candidate_parent_release, validate_transition,
+    RustComponentCandidateBuild, RustComponentCandidateBuildError,
+    RustComponentCandidateBuildExecution, RustComponentCandidateCommand,
+    RustComponentCandidateError, RustComponentCandidateExecutionError,
+    RustComponentCandidateReview, RustComponentCandidateReviewCommand, RustComponentWorkspace,
+    Script, ScriptDeletionCommand, ScriptDeletionError, ScriptEvidenceRetentionCommand,
+    ScriptEvidenceRetentionError, ScriptEvidenceRetentionState, ScriptId, ScriptSourceRevision,
+    ScriptStatus, ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion,
+    TestRunLease, TestRunStatus, deleted_evidence_retention, validate_candidate_parent_release,
+    validate_transition,
 };
 use crate::storage::{ScriptPage, ScriptQuery, ScriptRegistry};
 use rustok_core::RetentionPolicy;
@@ -352,6 +355,37 @@ mod component_candidate_build {
         pub actor_id: Uuid,
         pub idempotency_key: Uuid,
         pub request_digest: String,
+        pub created_at: DateTime<Utc>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+mod component_candidate_build_execution {
+    use chrono::{DateTime, Utc};
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "alloy_component_candidate_build_executions")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub candidate_build_id: Uuid,
+        pub candidate_id: Uuid,
+        pub tenant_id: Uuid,
+        pub candidate_source_digest: String,
+        pub scenario_digest: String,
+        pub archive_source_digest: String,
+        pub build_request_id: Uuid,
+        pub source_reference: String,
+        pub build_result_revision: i64,
+        pub component_digest: String,
+        pub sbom_digest: String,
+        pub provenance_digest: String,
+        pub publication: Json,
+        pub scenario_comparison: Json,
         pub created_at: DateTime<Utc>,
     }
 
@@ -918,6 +952,68 @@ impl SeaOrmStorage {
             actor_id: model.actor_id,
             idempotency_key: model.idempotency_key,
             request_digest: model.request_digest,
+            created_at: model.created_at,
+        })
+    }
+
+    fn model_to_component_candidate_build_execution(
+        model: component_candidate_build_execution::Model,
+    ) -> ScriptResult<RustComponentCandidateBuildExecution> {
+        let build_result_revision = u64::try_from(model.build_result_revision).map_err(|_| {
+            ScriptError::Storage(
+                "durable component candidate build execution revision is outside the supported range"
+                    .into(),
+            )
+        })?;
+        let publication: ModuleBuildPublicationReceipt = serde_json::from_value(model.publication)
+            .map_err(|error| {
+                ScriptError::Storage(format!(
+                    "stored component candidate build publication is invalid: {error}"
+                ))
+            })?;
+        let scenario_comparison: LocalSandboxScenarioComparison =
+            serde_json::from_value(model.scenario_comparison).map_err(|error| {
+                ScriptError::Storage(format!(
+                    "stored component candidate scenario comparison is invalid: {error}"
+                ))
+            })?;
+        if model.candidate_build_id.is_nil()
+            || model.candidate_id.is_nil()
+            || model.tenant_id.is_nil()
+            || model.build_request_id.is_nil()
+            || build_result_revision == 0
+            || !valid_digest(&model.candidate_source_digest)
+            || !valid_digest(&model.scenario_digest)
+            || !valid_digest(&model.archive_source_digest)
+            || !valid_digest(&model.component_digest)
+            || !valid_digest(&model.sbom_digest)
+            || !valid_digest(&model.provenance_digest)
+            || model.source_reference != format!("cas://{}", model.archive_source_digest)
+            || scenario_comparison.scenario_digest != model.scenario_digest
+            || publication.artifact.validate().is_err()
+            || publication.signature_manifest.validate().is_err()
+            || publication.artifact.registry != publication.signature_manifest.registry
+            || publication.artifact.repository != publication.signature_manifest.repository
+        {
+            return Err(ScriptError::Storage(
+                "stored component candidate build execution contains invalid evidence".into(),
+            ));
+        }
+        Ok(RustComponentCandidateBuildExecution {
+            candidate_id: model.candidate_id,
+            candidate_build_id: model.candidate_build_id,
+            tenant_id: model.tenant_id,
+            candidate_source_digest: model.candidate_source_digest,
+            scenario_digest: model.scenario_digest,
+            archive_source_digest: model.archive_source_digest,
+            build_request_id: model.build_request_id,
+            source_reference: model.source_reference,
+            build_result_revision,
+            component_digest: model.component_digest,
+            sbom_digest: model.sbom_digest,
+            provenance_digest: model.provenance_digest,
+            publication,
+            scenario_comparison,
             created_at: model.created_at,
         })
     }
@@ -2306,6 +2402,161 @@ impl ScriptRegistry for SeaOrmStorage {
             .transpose()
     }
 
+    async fn get_component_candidate_build_by_request(
+        &self,
+        candidate_id: Uuid,
+        build_request_id: Uuid,
+    ) -> ScriptResult<Option<RustComponentCandidateBuild>> {
+        let candidate = self.get_component_candidate(candidate_id).await?;
+        component_candidate_build::Entity::find()
+            .filter(component_candidate_build::Column::CandidateId.eq(candidate.id))
+            .filter(component_candidate_build::Column::TenantId.eq(candidate.tenant_id))
+            .filter(component_candidate_build::Column::BuildRequestId.eq(build_request_id))
+            .one(&self.db)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .map(Self::model_to_component_candidate_build)
+            .transpose()
+    }
+
+    async fn record_component_candidate_build_execution(
+        &self,
+        execution: RustComponentCandidateBuildExecution,
+    ) -> ScriptResult<RustComponentCandidateBuildExecution> {
+        let candidate = self.get_component_candidate(execution.candidate_id).await?;
+        let build = self
+            .get_component_candidate_build_by_request(candidate.id, execution.build_request_id)
+            .await?
+            .ok_or_else(|| ScriptError::NotFound {
+                name: execution.build_request_id.to_string(),
+            })?;
+        execution.validate_against(&candidate, &build)?;
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let candidate_visible = component_candidate::Entity::find_by_id(candidate.id)
+            .filter(component_candidate::Column::TenantId.eq(candidate.tenant_id))
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .is_some();
+        let build_visible = component_candidate_build::Entity::find_by_id(build.id)
+            .filter(component_candidate_build::Column::CandidateId.eq(candidate.id))
+            .filter(component_candidate_build::Column::TenantId.eq(candidate.tenant_id))
+            .filter(component_candidate_build::Column::BuildRequestId.eq(build.build_request_id))
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .is_some();
+        if !candidate_visible || !build_visible {
+            transaction
+                .rollback()
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            return Err(ScriptError::NotFound {
+                name: execution.build_request_id.to_string(),
+            });
+        }
+        let publication = serde_json::to_value(&execution.publication)
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let scenario_comparison = serde_json::to_value(&execution.scenario_comparison)
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let build_result_revision =
+            i64::try_from(execution.build_result_revision).map_err(|_| {
+                ScriptError::Storage(
+                    "component candidate build execution revision exceeds i64".to_string(),
+                )
+            })?;
+        component_candidate_build_execution::Entity::insert(
+            component_candidate_build_execution::ActiveModel {
+                candidate_build_id: ActiveValue::Set(build.id),
+                candidate_id: ActiveValue::Set(candidate.id),
+                tenant_id: ActiveValue::Set(candidate.tenant_id),
+                candidate_source_digest: ActiveValue::Set(
+                    execution.candidate_source_digest.clone(),
+                ),
+                scenario_digest: ActiveValue::Set(execution.scenario_digest.clone()),
+                archive_source_digest: ActiveValue::Set(execution.archive_source_digest.clone()),
+                build_request_id: ActiveValue::Set(execution.build_request_id),
+                source_reference: ActiveValue::Set(execution.source_reference.clone()),
+                build_result_revision: ActiveValue::Set(build_result_revision),
+                component_digest: ActiveValue::Set(execution.component_digest.clone()),
+                sbom_digest: ActiveValue::Set(execution.sbom_digest.clone()),
+                provenance_digest: ActiveValue::Set(execution.provenance_digest.clone()),
+                publication: ActiveValue::Set(publication),
+                scenario_comparison: ActiveValue::Set(scenario_comparison),
+                created_at: ActiveValue::Set(execution.created_at),
+            },
+        )
+        .on_conflict(
+            OnConflict::column(component_candidate_build_execution::Column::CandidateBuildId)
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec_without_returning(&transaction)
+        .await
+        .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let stored = component_candidate_build_execution::Entity::find_by_id(build.id)
+            .filter(component_candidate_build_execution::Column::CandidateId.eq(candidate.id))
+            .filter(component_candidate_build_execution::Column::TenantId.eq(candidate.tenant_id))
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .map(Self::model_to_component_candidate_build_execution)
+            .transpose()?
+            .ok_or_else(|| {
+                ScriptError::Storage(
+                    "component candidate build execution completed without durable evidence"
+                        .to_string(),
+                )
+            })?;
+        stored.validate_against(&candidate, &build)?;
+        if !stored.matches_evidence(&execution) {
+            transaction
+                .rollback()
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            return Err(RustComponentCandidateExecutionError::EvidenceConflict.into());
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        Ok(stored)
+    }
+
+    async fn get_component_candidate_build_execution(
+        &self,
+        candidate_id: Uuid,
+        build_request_id: Uuid,
+    ) -> ScriptResult<Option<RustComponentCandidateBuildExecution>> {
+        let candidate = self.get_component_candidate(candidate_id).await?;
+        let Some(build) = self
+            .get_component_candidate_build_by_request(candidate.id, build_request_id)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let execution = component_candidate_build_execution::Entity::find_by_id(build.id)
+            .filter(component_candidate_build_execution::Column::CandidateId.eq(candidate.id))
+            .filter(component_candidate_build_execution::Column::TenantId.eq(candidate.tenant_id))
+            .filter(
+                component_candidate_build_execution::Column::BuildRequestId
+                    .eq(build.build_request_id),
+            )
+            .one(&self.db)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .map(Self::model_to_component_candidate_build_execution)
+            .transpose()?;
+        if let Some(execution) = &execution {
+            execution.validate_against(&candidate, &build)?;
+        }
+        Ok(execution)
+    }
+
     async fn save(&self, mut script: Script) -> ScriptResult<Script> {
         self.ensure_script_scope(&script)?;
         script.workspace.validate().map_err(ScriptError::from)?;
@@ -2754,6 +3005,18 @@ impl ScriptRegistry for SeaOrmStorage {
                     .exec(&transaction)
                     .await
                     .map_err(|error| ScriptError::Storage(error.to_string()))?;
+                component_candidate_build_execution::Entity::delete_many()
+                    .filter(
+                        component_candidate_build_execution::Column::TenantId
+                            .eq(tombstone.tenant_id),
+                    )
+                    .filter(
+                        component_candidate_build_execution::Column::CandidateId
+                            .is_in(candidate_ids.clone()),
+                    )
+                    .exec(&transaction)
+                    .await
+                    .map_err(|error| ScriptError::Storage(error.to_string()))?;
                 component_candidate_build::Entity::delete_many()
                     .filter(component_candidate_build::Column::TenantId.eq(tombstone.tenant_id))
                     .filter(component_candidate_build::Column::CandidateId.is_in(candidate_ids))
@@ -2826,7 +3089,11 @@ impl ScriptRegistry for SeaOrmStorage {
 mod tests {
     use super::*;
     use crate::model::RustComponentCandidateBuildCommand;
-    use rustok_modules::{ModuleAuthoringBuildSubmission, ModuleCommandContext};
+    use rustok_modules::{
+        ModuleAuthoringBuildSubmission, ModuleBuildPublicationReceipt,
+        ModuleBuildSignatureAuthority, ModuleCommandContext, OciArtifactReference,
+    };
+    use rustok_sandbox::{LocalSandboxScenarioComparison, LocalSandboxScenarioResult};
     use sea_orm::Database;
     use sea_orm_migration::prelude::SchemaManager;
 
@@ -3051,6 +3318,59 @@ mod tests {
                 .expect("candidate build read"),
             Some(build.clone())
         );
+        let execution = crate::RustComponentCandidateBuildExecution {
+            candidate_id: candidate.id,
+            candidate_build_id: build.id,
+            tenant_id: owner_tenant,
+            candidate_source_digest: candidate.source_digest.clone(),
+            scenario_digest: candidate.scenario_digest.clone(),
+            archive_source_digest: build.archive_source_digest.clone(),
+            build_request_id: build.build_request_id,
+            source_reference: build.source_reference.clone(),
+            build_result_revision: 3,
+            component_digest: format!("sha256:{}", "f".repeat(64)),
+            sbom_digest: format!("sha256:{}", "1".repeat(64)),
+            provenance_digest: format!("sha256:{}", "2".repeat(64)),
+            publication: ModuleBuildPublicationReceipt {
+                artifact: OciArtifactReference {
+                    registry: "registry.example".to_string(),
+                    repository: "modules/sample-module".to_string(),
+                    digest: format!("sha256:{}", "3".repeat(64)),
+                },
+                signature_manifest: OciArtifactReference {
+                    registry: "registry.example".to_string(),
+                    repository: "modules/sample-module".to_string(),
+                    digest: format!("sha256:{}", "4".repeat(64)),
+                },
+                signature_authority: ModuleBuildSignatureAuthority::BuildService,
+            },
+            scenario_comparison: LocalSandboxScenarioComparison {
+                scenario_digest: candidate.scenario_digest.clone(),
+                result: LocalSandboxScenarioResult::Success,
+            },
+            created_at: Utc::now(),
+        };
+        assert_eq!(
+            owner
+                .record_component_candidate_build_execution(execution.clone())
+                .await
+                .expect("durable execution evidence"),
+            execution
+        );
+        assert_eq!(
+            owner
+                .record_component_candidate_build_execution(execution.clone())
+                .await
+                .expect("execution evidence replay"),
+            execution
+        );
+        assert_eq!(
+            owner
+                .get_component_candidate_build_execution(candidate.id, build.build_request_id)
+                .await
+                .expect("execution evidence read"),
+            Some(execution.clone())
+        );
         assert!(matches!(
             storage
                 .for_tenant(other_tenant)
@@ -3106,6 +3426,14 @@ mod tests {
                 .one(&storage.db)
                 .await
                 .expect("candidate build lookup after collection")
+                .is_none()
+        );
+        assert!(
+            component_candidate_build_execution::Entity::find()
+                .filter(component_candidate_build_execution::Column::CandidateId.eq(candidate.id))
+                .one(&storage.db)
+                .await
+                .expect("candidate build execution lookup after collection")
                 .is_none()
         );
     }

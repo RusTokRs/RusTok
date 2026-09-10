@@ -24,6 +24,8 @@ impl MigrationTrait for Migration {
                     artifact_digest TEXT NOT NULL CHECK (length(artifact_digest) = 71),\
                     source_digest TEXT NOT NULL CHECK (length(source_digest) = 71),\
                     source_revision BIGINT NOT NULL CHECK (source_revision > 0),\
+                    descriptor JSONB NOT NULL,\
+                    descriptor_digest TEXT NOT NULL CHECK (length(descriptor_digest) = 71),\
                     parent_release_slug TEXT NULL CHECK (parent_release_slug IS NULL OR length(trim(parent_release_slug)) BETWEEN 1 AND 128),\
                     parent_release_version TEXT NULL CHECK (parent_release_version IS NULL OR length(trim(parent_release_version)) BETWEEN 1 AND 128),\
                     parent_release_digest TEXT NULL CHECK (parent_release_digest IS NULL OR length(parent_release_digest) = 71),\
@@ -72,6 +74,8 @@ impl MigrationTrait for Migration {
                     artifact_digest TEXT NOT NULL CHECK (length(artifact_digest) = 71),\
                     source_digest TEXT NOT NULL CHECK (length(source_digest) = 71),\
                     source_revision INTEGER NOT NULL CHECK (source_revision > 0),\
+                    descriptor JSON NOT NULL,\
+                    descriptor_digest TEXT NOT NULL CHECK (length(descriptor_digest) = 71),\
                     parent_release_slug TEXT NULL CHECK (parent_release_slug IS NULL OR length(trim(parent_release_slug)) BETWEEN 1 AND 128),\
                     parent_release_version TEXT NULL CHECK (parent_release_version IS NULL OR length(trim(parent_release_version)) BETWEEN 1 AND 128),\
                     parent_release_digest TEXT NULL CHECK (parent_release_digest IS NULL OR length(parent_release_digest) = 71),\
@@ -191,6 +195,8 @@ mod tests {
             "correlation_id",
             "idempotency_key",
             "sandbox_scenario_digest",
+            "descriptor",
+            "descriptor_digest",
         ] {
             assert!(columns.iter().any(|name| name == column), "{column}");
         }

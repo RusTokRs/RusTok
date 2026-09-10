@@ -27,6 +27,7 @@
 - `pub struct StagedModuleScaffold`
 - `pub enum ModuleScaffoldDraftStatus`
 - `pub fn generate_module_scaffold(request: &ScaffoldModuleRequest) -> Result<ScaffoldModulePreview, ...>`
+- `pub fn scaffold_source_digest(preview: &ScaffoldModulePreview) -> Result<String, ...>`
 - `pub fn apply_staged_scaffold(draft: &StagedModuleScaffold, workspace_root: &str) -> Result<ApplyModuleScaffoldResponse, ...>`
 - `pub const TOOL_ALLOY_SCAFFOLD_MODULE: &str`
 - `pub const TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD: &str`
@@ -73,6 +74,9 @@
   - automatically register the module in the runtime;
   - bypass the review/apply boundary for generated code.
 - `alloy_apply_module_scaffold` must require explicit `confirm=true` and must not bypass the preceding review step.
+- Scaffold stage, review, and apply responses carry the canonical `sha256:` source digest of the
+  logical crate root and exact generated files. It is owner-issued provenance, not a digest
+  derived from model or MCP response text.
 - The persisted scaffold draft control plane lives in `apps/server` (`mcp_scaffold_drafts`, REST `/api/mcp/scaffold-drafts*`, GraphQL `mcpModuleScaffoldDraft*`) and does not replace the local crate API `rustok-mcp`.
 - GraphQL and Leptos native adapters must delegate via `McpManagementPort` to the server-owned `McpManagementService`; UI packages and owner GraphQL do not contain scaffold persistence, filesystem apply, or audit SQL.
 

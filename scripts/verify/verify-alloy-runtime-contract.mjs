@@ -102,14 +102,34 @@ if (contract.release_stage_contract?.idempotency !== 'publish_request_idempotenc
 if (contract.release_stage_contract?.ownership !== 'rustok_modules_is_sole_marketplace_writer') fail('release stage ownership contract drift');
 if (contract.release_stage_contract?.artifact_payload_media_type !== 'application/vnd.rustok.rhai.workspace.v1') fail('release stage artifact payload media type drift');
 if (contract.release_stage_contract?.artifact_digest_relation !== 'equals_reviewed_source_digest') fail('release stage artifact/source digest relation drift');
+if (contract.release_stage_contract?.descriptor_declaration !== 'policy_module_artifact_json_in_canonical_workspace') fail('release stage descriptor declaration drift');
+if (contract.release_stage_contract?.descriptor_receipt !== 'owner_staging_persists_descriptor_and_canonical_digest') fail('release stage descriptor receipt drift');
 if (contract.release_stage_contract?.transports !== 'graphql_and_host_http_require_scripts_and_modules_manage_and_verified_actor') fail('release stage transport authorization drift');
 if (contract.release_stage_contract?.transport_route !== '/api/alloy/scripts/{id}/releases/stage') fail('release stage host route drift');
-sameArray(contract.release_stage_contract?.evidence_fields, ['artifact_digest', 'source_digest', 'source_revision', 'alloy_tenant_id', 'alloy_script_id', 'review_reference', 'review_digest', 'review_policy_revision', 'sandbox_execution_id', 'sandbox_test_path', 'sandbox_scenario_digest', 'sandbox_executor', 'sandbox_runtime_abi', 'sandbox_policy_digest', 'sandbox_capability_grants', 'platform_admission'], 'release stage evidence fields');
+sameArray(contract.release_stage_contract?.evidence_fields, ['artifact_digest', 'source_digest', 'source_revision', 'alloy_tenant_id', 'alloy_script_id', 'review_reference', 'review_digest', 'review_policy_revision', 'sandbox_execution_id', 'sandbox_test_path', 'sandbox_scenario_digest', 'sandbox_executor', 'sandbox_runtime_abi', 'sandbox_policy_digest', 'sandbox_capability_grants', 'descriptor_digest', 'platform_admission'], 'release stage evidence fields');
 if (contract.release_capability_contract?.source_scope !== 'every_executable_src_rhai_file') fail('release capability source scope drift');
 if (contract.release_capability_contract?.generic_helper !== 'capability_call_requires_literal_valid_capability_name') fail('release generic capability helper drift');
 if (contract.release_capability_contract?.http_helpers !== 'http_get_http_post_http_request_require_platform_http') fail('release HTTP capability helper drift');
 if (contract.release_capability_contract?.declaration_relation !== 'descriptor_set_equals_observed_source_set') fail('release capability declaration relation drift');
+if (contract.release_capability_contract?.observer_owner !== 'rustok_sandbox_neutral_workspace_contract') fail('release capability observer ownership drift');
+if (contract.release_capability_contract?.delivery_revalidation !== 'isolated_registry_worker_revalidates_receipted_descriptor_against_canonical_workspace') fail('release capability delivery revalidation drift');
 sameArray(contract.release_capability_contract?.rejections, ['missing_declaration', 'unused_declaration', 'dynamic_capability_name', 'reserved_helper_shadowing'], 'release capability rejections');
+const releasePublication = contract.release_publication_contract;
+if (releasePublication?.publisher !== 'registry_validation_worker') fail('Alloy OCI publisher drift');
+if (releasePublication?.payload !== 'canonical_owner_receipted_rhai_workspace' || releasePublication?.payload_media_type !== 'application/vnd.rustok.rhai.workspace.v1') fail('Alloy OCI payload contract drift');
+if (releasePublication?.oci_identity !== 'deterministic_digest_pinned_manifest_with_cosign_signed_attestations' || releasePublication?.signature !== 'cosign_digest_pinned_signature_manifest_and_signed_attestations') fail('Alloy OCI identity or signature contract drift');
+if (releasePublication?.sbom !== 'deterministic_cyclonedx_workspace_inventory_attested_with_cosign') fail('Alloy OCI SBOM contract drift');
+if (releasePublication?.provenance?.format !== 'slsa_v1' || releasePublication?.provenance?.builder !== 'https://rustok.dev/registry-validation-worker' || releasePublication?.provenance?.build_type !== 'https://rustok.dev/build/rhai-workspace/v1' || releasePublication?.provenance?.source_uri !== 'https://rustok.dev/alloy/reviewed-workspace' || releasePublication?.provenance?.source_ref !== 'owner-receipted' || releasePublication?.provenance?.attestation !== 'cosign_slsa_v1_predicate_uri') fail('Alloy SLSA provenance contract drift');
+sameArray(releasePublication?.provenance?.owner_binding, ['request_id', 'alloy_tenant_id', 'alloy_script_id', 'source_revision', 'source_digest', 'review_digest', 'descriptor_digest', 'workspace_entrypoint'], 'Alloy SLSA owner binding');
+if (releasePublication?.verification !== 'isolated_trust_verifier_requires_exact_slsa_owner_binding' || releasePublication?.admission !== 'owner_records_platform_admission_without_build_service_attestation' || releasePublication?.retry !== 'deterministic_republication_and_owner_admission_are_idempotent') fail('Alloy OCI verification, admission, or retry contract drift');
+const componentCandidateExecution = contract.component_candidate_execution_contract;
+if (componentCandidateExecution?.owner_result !== 'module_build_result_reader_completed_pair') fail('Component candidate execution owner-result contract drift');
+if (componentCandidateExecution?.persistence !== 'immutable_tenant_scoped_component_candidate_build_execution') fail('Component candidate execution persistence contract drift');
+sameArray(componentCandidateExecution?.binding, ['candidate_build_receipt', 'tenant_id', 'source_cas_reference_and_digest', 'source_local_scenario_path_and_digest', 'candidate_manifest_identity', 'rhai_parent_release'], 'Component candidate execution binding');
+sameArray(componentCandidateExecution?.evidence_fields, ['build_result_revision', 'component_digest', 'sbom_digest', 'provenance_digest', 'digest_pinned_publication_receipt', 'redacted_scenario_comparison'], 'Component candidate execution evidence fields');
+if (componentCandidateExecution?.replay !== 'candidate_build_identity_exact_evidence_only') fail('Component candidate execution replay contract drift');
+sameArray(componentCandidateExecution?.forbidden_inputs, ['worker_callback_result', 'source_bytes', 'filesystem_path', 'worker_logs', 'registry_credentials'], 'Component candidate execution forbidden inputs');
+if (componentCandidateExecution?.deployment_proof !== 'not_inferred_from_owner_completion') fail('Component candidate execution deployment-proof contract drift');
 if (contract.workspace_contract?.persistence !== 'bounded_revisioned_json_workspace') fail('workspace persistence contract drift');
 if (contract.workspace_contract?.payload_media_type !== 'application/vnd.rustok.rhai.workspace.v1') fail('workspace payload media type drift');
 if (contract.workspace_contract?.sandbox_source_resolution !== 'alloy_extension_static_in_memory_resolver_from_canonical_workspace_bytes') fail('workspace source resolution contract drift');
@@ -126,8 +146,10 @@ sameArray(contract.scheduler_hook_contract?.hook_phases, ['Before', 'After', 'On
 sameArray(contract.scheduler_hook_contract?.before_outcomes, ['Continue', 'Rejected', 'Error'], 'before hook outcomes');
 
 if (evidence.generated_from !== contractPath || evidence.status !== contract.status) fail('evidence header drift');
-sameArray(evidence.cases.map(c => c.name), ['script_list_pagination_status_contract', 'execution_history_transport_contract', 'documentation_sync_contract', 'sandbox_limits_timeout_contract', 'scheduler_hook_runtime_contract', 'script_crud_validation_contract', 'execution_command_revision_contract', 'lifecycle_command_revision_contract', 'source_revision_ledger_read_contract', 'workspace_payload_contract', 'review_revision_contract', 'test_command_revision_contract', 'release_stage_revision_contract', 'release_capability_declaration_contract'], 'evidence cases');
+sameArray(evidence.cases.map(c => c.name), ['script_list_pagination_status_contract', 'execution_history_transport_contract', 'documentation_sync_contract', 'sandbox_limits_timeout_contract', 'scheduler_hook_runtime_contract', 'script_crud_validation_contract', 'execution_command_revision_contract', 'lifecycle_command_revision_contract', 'source_revision_ledger_read_contract', 'workspace_payload_contract', 'review_revision_contract', 'test_command_revision_contract', 'release_stage_revision_contract', 'component_candidate_execution_contract', 'release_capability_declaration_contract', 'release_oci_publication_and_admission_contract'], 'evidence cases');
 sameArray(evidence.cases.find(c => c.name === 'lifecycle_command_revision_contract')?.assertions, ['rest_activate_pause_require_expected_revision', 'rest_delete_requires_attributable_idempotent_command', 'graphql_status_mutations_require_expected_revision', 'graphql_delete_requires_attributable_idempotent_command', 'deletion_tombstone_persists_audit_receipt_and_replays_only_exactly', 'deletion_initializes_fixed_retain_until_window', 'expiry_reaper_collects_evidence_with_content_free_receipt', 'post_expiry_collection_erases_review_reasons_and_test_diagnostics', 'legal_hold_is_excluded_from_automatic_collection', 'legal_hold_owner_lifecycle_is_revision_guarded_and_idempotent', 'legal_hold_transports_are_tenant_bound_and_source_free', 'generic_mcp_does_not_expose_script_mutation'], 'lifecycle evidence assertions');
+sameArray(evidence.cases.find(c => c.name === 'component_candidate_execution_contract')?.assertions, ['completed_result_is_loaded_only_through_the_module_owner_read_port', 'candidate_build_receipt_is_rebound_before_execution_evidence_is_persisted', 'tenant_source_scenario_manifest_and_parent_are_exactly_matched', 'execution_evidence_is_redacted_idempotent_and_retention_collected', 'hardened_oci_job_deployment_proof_is_not_inferred'], 'Component candidate execution evidence assertions');
+sameArray(evidence.cases.find(c => c.name === 'release_oci_publication_and_admission_contract')?.assertions, ['owner_receipted_workspace_is_recanonicalized_before_oci_publication', 'oci_manifest_and_cosign_attested_sbom_slsa_provenance_are_deterministic_and_digest_pinned', 'slsa_provenance_binds_exact_owner_request_review_descriptor_and_workspace_facts', 'registry_validation_worker_signs_and_attests_with_cosign_and_resolves_a_digest_pinned_signature_manifest', 'isolated_verifier_requires_the_exact_alloy_owner_binding', 'alloy_publication_records_only_platform_admission_without_a_build_service_attestation', 'owner_source_reloads_and_revalidates_the_receipted_descriptor_before_publication'], 'Alloy OCI publication evidence assertions');
 
 const dto = read('crates/modules/alloy/src/api/dto.rs');
 hasAll(dto, [
@@ -215,6 +237,49 @@ hasAll(sea, [
   'mod draft_tombstone',
   'alloy_script_tombstones'
 ], 'sea orm storage');
+
+const componentCandidateExecutionSource = read('crates/modules/alloy/src/runner/evolution_execution.rs');
+hasAll(componentCandidateExecutionSource, [
+  'pub struct AlloyEvolutionExecutionService',
+  'ModuleBuildResultReader',
+  'get_component_candidate_build_by_request',
+  'get_component_candidate_build_execution',
+  '.load_completed(candidate.tenant_id, candidate_build.build_request_id)',
+  'RustComponentCandidateBuildExecution::from_completed_build',
+  'record_component_candidate_build_execution',
+  'deployment-level hardened OCI-job evidence remains'
+], 'Component candidate execution service');
+const componentCandidateModel = read('crates/modules/alloy/src/model/evolution.rs');
+hasAll(componentCandidateModel, [
+  'pub struct RustComponentCandidateBuildExecution',
+  'completed.request.source.digest != candidate_build.archive_source_digest',
+  'completed.request.scenario.source_path != MODULE_BUILD_SANDBOX_SCENARIO_PATH',
+  'completed.request.parent_release.as_ref() != Some(&candidate.parent_release)',
+  'pub publication: ModuleBuildPublicationReceipt',
+  'pub scenario_comparison: LocalSandboxScenarioComparison',
+  'pub(crate) fn matches_evidence'
+], 'Component candidate execution model');
+hasAll(memory, [
+  'component_candidate_build_executions',
+  'async fn record_component_candidate_build_execution',
+  'async fn get_component_candidate_build_execution',
+  'RustComponentCandidateExecutionError::EvidenceConflict'
+], 'in-memory Component candidate execution storage');
+hasAll(sea, [
+  'mod component_candidate_build_execution',
+  'alloy_component_candidate_build_executions',
+  'async fn record_component_candidate_build_execution',
+  'async fn get_component_candidate_build_execution',
+  'component_candidate_build_execution::Entity::delete_many()'
+], 'SeaORM Component candidate execution storage');
+const componentCandidateMigration = read('crates/modules/alloy/src/migrations/m20260825_000009_create_component_candidates.rs');
+hasAll(componentCandidateMigration, [
+  'AlloyComponentCandidateBuildExecutions',
+  'alloy_component_candidate_build_executions',
+  'CandidateBuildId',
+  'BuildResultRevision',
+  'ScenarioComparison'
+], 'Component candidate execution migration');
 
 const revisionMigration = read('crates/modules/alloy/src/migrations/m20260718_000003_create_script_revisions.rs');
 hasAll(revisionMigration, [
@@ -333,6 +398,7 @@ hasAll(releaseRunner, [
   '.list_reviews(command.script_id, command.expected_revision)',
   'is_release_approved(review)',
   '.execute_publication_smoke(&smoke_script, &smoke_context)',
+  'prepare_rhai_module_descriptor(&source.workspace)',
   'alloy_tenant_id: source.tenant_id',
   'alloy_script_id: source.script_id',
   'sandbox_execution_id: smoke_evidence.execution_id',
@@ -357,24 +423,137 @@ hasAll(governance, [
   'sandbox_scenario_digest',
   'pub async fn stage_alloy_authored',
   'registry_publish_alloy_staging',
+  'pub descriptor: crate::ModuleArtifactDescriptor',
+  'descriptor_digest',
+  'alloy_descriptor: Option<crate::ModuleArtifactDescriptor>',
+  'alloy_descriptor_for_validation_work_item',
+  'staged_descriptor != platform_admission.descriptor',
   'PublishRequestMissingAlloyAuthoredStage',
   'PublishRequestMissingAlloyPlatformAdmission'
 ], 'owner Alloy publication stage');
 const alloyArtifact = read('crates/modules/alloy/src/artifact.rs');
 hasAll(alloyArtifact, [
-  'rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE',
-  'canonical_bytes()',
-  'pub fn observed_rhai_capabilities',
-  'pub fn validate_rhai_capabilities',
+  'RHAI_MODULE_SOURCE_MANIFEST_PATH',
+  'prepare_rhai_module_descriptor',
+  'ModuleArtifactSourceManifest::parse',
+  '.validate_rhai_declaration(&workspace.entrypoint)',
+  '.validate_declared_capabilities(manifest.capabilities())',
+  'workspace.digest()',
+  'release_descriptor_is_finalized_from_the_reviewed_workspace',
+  'release_descriptor_requires_the_exact_declared_capability_set'
+], 'Alloy workspace descriptor preparation');
+for (const forbidden of [
+  'stage_rhai_module_release',
+  'package_rhai_module_release',
+  'observed_rhai_capabilities',
+  'validate_rhai_capabilities'
+]) {
+  if (alloyArtifact.includes(forbidden)) fail(`detached Alloy Rhai artifact helper remains: ${forbidden}`);
+}
+const sandboxWorkspace = read('crates/workers/rustok-sandbox/src/rhai_workspace.rs');
+hasAll(sandboxWorkspace, [
+  'pub fn observed_capabilities',
+  'pub fn validate_declared_capabilities',
   '"http_get" | "http_post" | "http_request"',
   'CapabilityDeclarationMismatch',
   'DynamicCapabilityCall',
-  'ReservedCapabilityHelper',
-  'validate_rhai_capabilities(&script.workspace, &capabilities)?',
-  'validate_rhai_capabilities(&script.workspace, &draft.descriptor.capabilities)?',
-  'release_capability_declarations_match_literal_source_tool_use',
-  'release_capability_validation_rejects_dynamic_and_shadowed_helpers'
-], 'Alloy workspace artifact package');
+  'ReservedCapabilityHelper'
+], 'neutral Rhai publication capability observer');
+const publishValidation = read('crates/modules/rustok-modules/src/publish_validation.rs');
+hasAll(publishValidation, [
+  'alloy_descriptor: Option<&ModuleArtifactDescriptor>',
+  'canonical_bytes != bytes',
+  'validate_declared_capabilities(&descriptor.capabilities)',
+  'immutable owner receipt descriptor'
+], 'Alloy canonical workspace delivery validation');
+const registryValidationWorker = read('crates/workers/rustok-registry-validation-worker/src/lib.rs');
+hasAll(registryValidationWorker, [
+  'work_item.alloy_descriptor.as_ref()',
+  'validate_module_publish_artifact(',
+  'async fn publish_alloy_workspace',
+  'load_alloy_publication_source(&work_item.request_id)',
+  'OciArtifactPublicationBundle::from_verified_rhai_workspace(',
+  'publish_signed_oci_artifact(',
+  '.alloy_command(',
+  'ModuleAlloyPublicationEvidenceProducer'
+], 'registry worker Alloy descriptor validation');
+const ociPublication = read('crates/modules/rustok-modules/src/oci.rs');
+hasAll(ociPublication, [
+  'pub fn from_verified_rhai_workspace(',
+  'workspace.canonical_bytes()',
+  'validate_declared_capabilities(&descriptor.capabilities)',
+  'canonical_alloy_workspace_sbom(',
+  'canonical_alloy_workspace_provenance(',
+  '"artifactOrigin": "alloy_authored"',
+  '"descriptorDigest": provenance.descriptor_digest.as_str()',
+  'rhai_workspace_publication_is_canonical_receipt_bound_and_workspace_typed'
+], 'canonical Alloy OCI publication bundle');
+const trust = read('crates/modules/rustok-modules/src/trust.rs');
+hasAll(trust, [
+  'pub const ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID',
+  'pub const ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE',
+  'pub const ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI',
+  'pub const ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF',
+  'pub struct TrustAlloyWorkspaceProvenance',
+  'pub expected_alloy_workspace_provenance: Option<TrustAlloyWorkspaceProvenance>'
+], 'Alloy trust provenance contract');
+const publicationEvidence = read('crates/modules/rustok-modules/src/publication_evidence.rs');
+hasAll(publicationEvidence, [
+  'pub struct ModuleAlloyPublicationEvidenceCommand',
+  'pub trait ModuleAlloyPublicationEvidenceOwner',
+  'pub struct ModuleAlloyPublicationEvidenceProducer',
+  'expected_alloy_workspace_provenance: Some(&expected_provenance)',
+  'record_platform_admission(ModulePlatformAdmissionCommand',
+  'alloy_producer_binds_exact_owner_workspace_provenance_without_a_build_attestation'
+], 'Alloy publication evidence producer');
+const alloyEvidenceStart = publicationEvidence.indexOf('pub struct ModuleAlloyPublicationEvidenceProducer');
+const alloyEvidenceEnd = publicationEvidence.indexOf('fn map_alloy_publication_verification_error', alloyEvidenceStart);
+if (alloyEvidenceStart === -1 || alloyEvidenceEnd === -1 || publicationEvidence.slice(alloyEvidenceStart, alloyEvidenceEnd).includes('record_build_service_attestation')) fail('Alloy publication evidence must not create a build-service attestation');
+const verificationCosign = read('crates/workers/rustok-verification-worker/src/cosign.rs');
+hasAll(verificationCosign, [
+  'validate_slsa_with_alloy(',
+  'expected_manifest_sha256(&request.reference)',
+  'alloy_workspace_provenance_matches(&statement, binding)',
+  'alloy_workspace_slsa_requires_the_exact_owner_receipt_binding'
+], 'isolated Alloy SLSA verification');
+const sharedPublication = read('crates/utils/rustok-build-publication/src/publication.rs');
+hasAll(sharedPublication, [
+  'pub async fn publish_signed_oci_artifact(',
+  'publisher.publish(target.clone(), bundle, limits)',
+  'sign(&artifact, &credential_lease, signing_timeout)',
+  'CosignAttestationPredicate::SlsaProvenance',
+  'CosignAttestationPredicate::CycloneDx',
+  'publisher.resolve_cosign_signature(target, &artifact)'
+], 'shared signed OCI publication boundary');
+const sharedSigner = read('crates/utils/rustok-build-publication/src/signing.rs');
+hasAll(sharedSigner, [
+  'pub async fn attest(',
+  'normalize_cosign_predicate(predicate, predicate_bytes)',
+  '"https://slsa.dev/provenance/v1"',
+  '"https://cyclonedx.org/bom"',
+  '"attest"',
+  '"--predicate"'
+], 'Cosign signed-attestation boundary');
+if (ociPublication.includes('async fn publish_referrer(')) fail('module OCI publication must not publish unsigned SBOM/provenance referrers alongside Cosign attestations');
+hasAll(ociPublication, [
+  'validate_slsa_statement(&self.provenance.bytes, &self.descriptor.artifact_digest)',
+  'descriptor_payload_layer_matches(&descriptor, &layer.digest, &layer.media_type)',
+  'descriptor_payload_selection_retains_the_canonical_rhai_workspace_media_type'
+], 'OCI source-SLSA and Rhai workspace media-type boundary');
+const registryValidationMain = read('crates/workers/rustok-registry-validation-worker/src/main.rs');
+hasAll(registryValidationMain, [
+  'RUSTOK_REGISTRY_VALIDATION_ALLOY_PUBLICATION_REGISTRY',
+  'RUSTOK_REGISTRY_VALIDATION_ALLOY_PUBLICATION_REPOSITORY',
+  'RUSTOK_REGISTRY_VALIDATION_COSIGN_PROGRAM',
+  'ModuleAlloyPublicationEvidenceProducer::new',
+  'RegistryValidationAlloyPublication::new'
+], 'registry worker Alloy OCI composition');
+hasAll(governance, [
+  'pub struct ModuleAlloyPublicationSource',
+  'pub async fn load_alloy_publication_source(',
+  'AlloyPublicationEvidenceSourceUnavailable',
+  'alloy_publication_source_requires_the_exact_owner_receipted_descriptor'
+], 'owner Alloy OCI publication source');
 const installation = read('crates/modules/rustok-modules/src/installation.rs');
 hasAll(installation, [
   'pub payload_media_type: String',

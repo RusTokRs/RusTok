@@ -84,7 +84,9 @@ generic MCP.
 `alloy_scaffold_module` stages a reviewed design scaffold for
 `crates/modules/rustok-<slug>`; it records requested transport surfaces in documentation
 but never creates fake GraphQL or REST handlers. The actual workspace write is
-separated into `alloy_apply_module_scaffold` with explicit confirmation.
+separated into `alloy_apply_module_scaffold` with explicit confirmation. Stage, review, and
+apply responses include an owner-issued canonical `sha256:` source digest for the logical crate
+root and generated files; this is provenance evidence, not a hash inferred from MCP text.
 
 ### What is implemented today
 

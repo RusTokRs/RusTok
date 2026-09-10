@@ -3,14 +3,19 @@ use std::time::Duration;
 use async_trait::async_trait;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use rustok_modules::{
-    TrustEvidenceKind, TrustEvidenceReference, TrustVerificationDecision, TrustVerificationRequest,
-    TrustVerifier,
+    TrustAlloyWorkspaceProvenance, TrustEvidenceKind, TrustEvidenceReference,
+    TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tokio::process::Command;
 
 use crate::{VerificationPolicy, VerificationTrustRoot, policy::vulnerability_severity_rank};
+
+const REQUIRED_ATTESTATION_TYPES: [&str; 2] = [
+    "https://slsa.dev/provenance/v1",
+    "https://cyclonedx.org/bom",
+];
 
 /// Concrete worker-only Cosign adapter. Values are passed as process arguments,
 /// never through a shell; trust-root flags derive exclusively from mounted
@@ -64,7 +69,7 @@ impl CosignTrustVerifier {
         let signature = self.run(signature).await?;
 
         let mut attestations = Vec::new();
-        for predicate in ["slsaprovenance", "cyclonedx"] {
+        for predicate in REQUIRED_ATTESTATION_TYPES {
             let mut command = vec![
                 "verify-attestation".to_string(),
                 "--type".to_string(),
@@ -76,8 +81,13 @@ impl CosignTrustVerifier {
             command.push(reference.clone());
             attestations.push(self.run(command).await?);
         }
-        let expected_digest = expected_sha256(request)?;
-        validate_slsa(&attestations[0], expected_digest, &self.policy)?;
+        let expected_digest = expected_manifest_sha256(&request.reference)?;
+        validate_slsa_with_alloy(
+            &attestations[0],
+            expected_digest,
+            &self.policy,
+            request.expected_alloy_workspace_provenance.as_ref(),
+        )?;
         validate_cyclonedx(&attestations[1], expected_digest, &self.policy)?;
         let [provenance, sbom] = attestations
             .try_into()
@@ -163,12 +173,23 @@ fn attestation_statements(output: &[u8]) -> Result<Vec<Value>, String> {
     Ok(statements)
 }
 
-fn expected_sha256(request: &TrustVerificationRequest) -> Result<&str, String> {
-    request
-        .descriptor
-        .artifact_digest
+/// Cosign's `attest` command creates the in-toto statement itself and binds its
+/// subject to the resolved OCI manifest. The descriptor payload digest is
+/// separately re-fetched and revalidated by the owner before this verifier is
+/// invoked; it must not be substituted for the attestation subject.
+fn expected_manifest_sha256(
+    reference: &rustok_modules::OciArtifactReference,
+) -> Result<&str, String> {
+    reference
+        .digest
         .strip_prefix("sha256:")
-        .ok_or_else(|| "artifact descriptor digest must be sha256".to_string())
+        .filter(|digest| {
+            digest.len() == 64
+                && digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+        .ok_or_else(|| "OCI manifest digest must be sha256".to_string())
 }
 
 fn verified_evidence_reference(
@@ -200,11 +221,15 @@ fn allowed(values: &[String], actual: &str) -> bool {
     values.iter().any(|value| value == actual)
 }
 
-fn validate_slsa(
+fn validate_slsa_with_alloy(
     output: &[u8],
     expected_digest: &str,
     policy: &VerificationPolicy,
+    expected_alloy_workspace_provenance: Option<&TrustAlloyWorkspaceProvenance>,
 ) -> Result<(), String> {
+    if expected_alloy_workspace_provenance.is_some_and(|binding| !binding.validate()) {
+        return Err("Alloy workspace provenance binding is invalid".to_string());
+    }
     let accepted = attestation_statements(output)?
         .into_iter()
         .any(|statement| {
@@ -227,11 +252,41 @@ fn validate_slsa(
                 && build_type.is_some_and(|value| allowed(&policy.allowed_build_types, value))
                 && source.is_some_and(|value| allowed(&policy.allowed_source_repositories, value))
                 && source_ref.is_some_and(|value| allowed(&policy.allowed_source_refs, value))
+                && expected_alloy_workspace_provenance
+                    .is_none_or(|binding| alloy_workspace_provenance_matches(&statement, binding))
         });
     accepted.then_some(()).ok_or_else(|| {
         "SLSA provenance does not satisfy subject, builder, build-type, or source policy"
             .to_string()
     })
+}
+
+fn alloy_workspace_provenance_matches(
+    statement: &Value,
+    expected: &TrustAlloyWorkspaceProvenance,
+) -> bool {
+    let Some(rustok) = statement
+        .pointer("/predicate/buildDefinition/externalParameters/rustok")
+        .and_then(Value::as_object)
+    else {
+        return false;
+    };
+    let tenant_id = expected.alloy_tenant_id.to_string();
+    let script_id = expected.alloy_script_id.to_string();
+    rustok.get("artifactOrigin").and_then(Value::as_str) == Some("alloy_authored")
+        && rustok.get("requestId").and_then(Value::as_str) == Some(expected.request_id.as_str())
+        && rustok.get("alloyTenantId").and_then(Value::as_str) == Some(tenant_id.as_str())
+        && rustok.get("alloyScriptId").and_then(Value::as_str) == Some(script_id.as_str())
+        && rustok.get("sourceRevision").and_then(Value::as_u64)
+            == Some(u64::from(expected.source_revision))
+        && rustok.get("sourceDigest").and_then(Value::as_str)
+            == Some(expected.source_digest.as_str())
+        && rustok.get("reviewDigest").and_then(Value::as_str)
+            == Some(expected.review_digest.as_str())
+        && rustok.get("descriptorDigest").and_then(Value::as_str)
+            == Some(expected.descriptor_digest.as_str())
+        && rustok.get("workspaceEntrypoint").and_then(Value::as_str)
+            == Some(expected.workspace_entrypoint.as_str())
 }
 
 fn component_licenses_are_allowed(bom: &Value, policy: &VerificationPolicy) -> bool {
@@ -393,12 +448,43 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        attestation_statements, validate_cyclonedx, validate_slsa, verified_evidence_reference,
+        REQUIRED_ATTESTATION_TYPES, attestation_statements, expected_manifest_sha256,
+        validate_cyclonedx, validate_slsa_with_alloy, verified_evidence_reference,
     };
     use crate::{VerificationPolicy, VerificationTrustRoot, VerificationTrustRoots};
-    use rustok_modules::TrustEvidenceKind;
+    use rustok_modules::{
+        ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE, ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID,
+        ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF, ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI,
+        OciArtifactReference, TrustAlloyWorkspaceProvenance, TrustEvidenceKind,
+    };
+    use uuid::Uuid;
 
     const DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    #[test]
+    fn verifier_requires_current_slsa_and_cyclonedx_predicate_types() {
+        assert_eq!(
+            REQUIRED_ATTESTATION_TYPES,
+            [
+                "https://slsa.dev/provenance/v1",
+                "https://cyclonedx.org/bom",
+            ]
+        );
+    }
+
+    #[test]
+    fn attestation_subject_uses_the_digest_pinned_oci_manifest() {
+        let reference = OciArtifactReference {
+            registry: "registry.example".to_string(),
+            repository: "modules/example".to_string(),
+            digest: format!("sha256:{DIGEST}"),
+        };
+
+        assert_eq!(
+            expected_manifest_sha256(&reference).expect("valid manifest subject"),
+            DIGEST
+        );
+    }
 
     #[test]
     fn verified_outputs_have_distinct_typed_evidence_identities() {
@@ -468,12 +554,13 @@ mod tests {
     #[test]
     fn slsa_fixture_requires_exact_subject_digest() {
         let output = cosign_output(include_str!("../fixtures/slsa-statement.json"));
-        assert!(validate_slsa(&output, DIGEST, &policy()).is_ok());
+        assert!(validate_slsa_with_alloy(&output, DIGEST, &policy(), None).is_ok());
         assert!(
-            validate_slsa(
+            validate_slsa_with_alloy(
                 &output,
                 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-                &policy()
+                &policy(),
+                None,
             )
             .is_err()
         );
@@ -505,10 +592,78 @@ mod tests {
                 .pointer_mut(pointer)
                 .expect("fixture policy field") = json!(replacement);
             assert!(
-                validate_slsa(&cosign_output_value(&substituted), DIGEST, &policy()).is_err(),
+                validate_slsa_with_alloy(
+                    &cosign_output_value(&substituted),
+                    DIGEST,
+                    &policy(),
+                    None,
+                )
+                .is_err(),
                 "substituted SLSA field {pointer} must fail closed"
             );
         }
+    }
+
+    #[test]
+    fn alloy_workspace_slsa_requires_the_exact_owner_receipt_binding() {
+        let tenant_id =
+            Uuid::parse_str("11111111-1111-1111-1111-111111111111").expect("tenant UUID");
+        let script_id =
+            Uuid::parse_str("22222222-2222-2222-2222-222222222222").expect("script UUID");
+        let binding = TrustAlloyWorkspaceProvenance {
+            request_id: "request-1".to_string(),
+            alloy_tenant_id: tenant_id,
+            alloy_script_id: script_id,
+            source_revision: 7,
+            source_digest: format!("sha256:{DIGEST}"),
+            review_digest: format!("sha256:{}", "b".repeat(64)),
+            descriptor_digest: format!("sha256:{}", "c".repeat(64)),
+            workspace_entrypoint: "src/main.rhai".to_string(),
+        };
+        let mut alloy_policy = policy();
+        alloy_policy.allowed_builders = vec![ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID.to_string()];
+        alloy_policy.allowed_build_types = vec![ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE.to_string()];
+        alloy_policy.allowed_source_repositories =
+            vec![ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI.to_string()];
+        alloy_policy.allowed_source_refs = vec![ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF.to_string()];
+        let mut statement = statement(include_str!("../fixtures/slsa-statement.json"));
+        *statement
+            .pointer_mut("/predicate/runDetails/builder/id")
+            .expect("builder") = json!(ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID);
+        *statement
+            .pointer_mut("/predicate/buildDefinition/buildType")
+            .expect("build type") = json!(ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE);
+        *statement
+            .pointer_mut("/predicate/buildDefinition/externalParameters/source/uri")
+            .expect("source URI") = json!(ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI);
+        *statement
+            .pointer_mut("/predicate/buildDefinition/externalParameters/source/ref")
+            .expect("source ref") = json!(ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF);
+        statement["predicate"]["buildDefinition"]["externalParameters"]["rustok"] = json!({
+            "artifactOrigin": "alloy_authored",
+            "requestId": binding.request_id.as_str(),
+            "alloyTenantId": binding.alloy_tenant_id,
+            "alloyScriptId": binding.alloy_script_id,
+            "sourceRevision": binding.source_revision,
+            "sourceDigest": binding.source_digest.as_str(),
+            "reviewDigest": binding.review_digest.as_str(),
+            "descriptorDigest": binding.descriptor_digest.as_str(),
+            "workspaceEntrypoint": binding.workspace_entrypoint.as_str(),
+        });
+        let output = cosign_output_value(&statement);
+        assert!(validate_slsa_with_alloy(&output, DIGEST, &alloy_policy, Some(&binding)).is_ok());
+
+        statement["predicate"]["buildDefinition"]["externalParameters"]["rustok"]["sourceRevision"] =
+            json!(8);
+        assert!(
+            validate_slsa_with_alloy(
+                &cosign_output_value(&statement),
+                DIGEST,
+                &alloy_policy,
+                Some(&binding),
+            )
+            .is_err()
+        );
     }
 
     #[test]

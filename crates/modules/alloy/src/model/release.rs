@@ -113,6 +113,8 @@ pub enum AlloyReleaseError {
     ReviewNotApproved,
     #[error("Alloy artifact digest does not match the reviewed source workspace")]
     ArtifactSourceDigestMismatch,
+    #[error("Alloy release descriptor is invalid: {0}")]
+    ArtifactDescriptorInvalid(String),
     #[error("Alloy publication sandbox smoke failed: {0}")]
     SandboxSmokeFailed(String),
     #[error("Alloy release evidence serialization failed: {0}")]

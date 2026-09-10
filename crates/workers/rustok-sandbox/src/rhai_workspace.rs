@@ -10,6 +10,8 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use thiserror::Error;
 
+use crate::capability::CapabilityName;
+
 pub const RHAI_WORKSPACE_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.workspace.v1";
 pub const RHAI_WORKSPACE_SCHEMA_VERSION: u16 = 1;
 pub const MAX_RHAI_WORKSPACE_FILES: usize = 64;
@@ -157,6 +159,63 @@ impl RhaiWorkspace {
         ))
     }
 
+    /// Returns the exact capability names reachable from executable Rhai
+    /// source files through the neutral sandbox helper surface. Publication
+    /// accepts only literal generic capability names: a dynamically chosen
+    /// capability cannot be proven against an immutable descriptor.
+    pub fn observed_capabilities(
+        &self,
+    ) -> Result<Vec<CapabilityName>, RhaiWorkspaceCapabilityError> {
+        self.validate()
+            .map_err(RhaiWorkspaceCapabilityError::Workspace)?;
+
+        let mut observed = BTreeSet::new();
+        for file in self
+            .files
+            .iter()
+            .filter(|file| file.kind == RhaiWorkspaceFileKind::Source)
+        {
+            observe_rhai_source_capabilities(&file.path, &file.contents, &mut observed)?;
+        }
+
+        observed
+            .into_iter()
+            .map(|name| {
+                CapabilityName::new(name).map_err(|_| {
+                    RhaiWorkspaceCapabilityError::InvalidLiteralCapability {
+                        path: self.entrypoint.clone(),
+                    }
+                })
+            })
+            .collect()
+    }
+
+    /// Requires the declared descriptor capability set to be exactly the set
+    /// of capability helpers observed in immutable source. This prevents both
+    /// undeclared tool calls and broader unused declarations from reaching
+    /// admission, where tenant policy could otherwise grant them later.
+    pub fn validate_declared_capabilities(
+        &self,
+        declared_capabilities: &[CapabilityName],
+    ) -> Result<(), RhaiWorkspaceCapabilityError> {
+        let observed = self
+            .observed_capabilities()?
+            .into_iter()
+            .map(|capability| capability.as_str().to_string())
+            .collect::<BTreeSet<_>>();
+        let declared = declared_capabilities
+            .iter()
+            .map(|capability| capability.as_str().to_string())
+            .collect::<BTreeSet<_>>();
+        let missing = observed.difference(&declared).cloned().collect::<Vec<_>>();
+        let unused = declared.difference(&observed).cloned().collect::<Vec<_>>();
+        if missing.is_empty() && unused.is_empty() {
+            Ok(())
+        } else {
+            Err(RhaiWorkspaceCapabilityError::CapabilityDeclarationMismatch { missing, unused })
+        }
+    }
+
     /// Installs a request-private Rhai resolver backed entirely by this validated
     /// workspace. Modules are compiled in dependency order into Rhai's public
     /// static resolver; no host filesystem path or external source is available.
@@ -259,6 +318,142 @@ impl RhaiWorkspace {
             entrypoint.to_string(),
         ))
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum RhaiToken {
+    Identifier(String),
+    StringLiteral { value: String, escaped: bool },
+    Symbol(char),
+}
+
+fn observe_rhai_source_capabilities(
+    path: &str,
+    source: &str,
+    observed: &mut BTreeSet<String>,
+) -> Result<(), RhaiWorkspaceCapabilityError> {
+    let tokens = tokenize_rhai(source);
+    for (index, token) in tokens.iter().enumerate() {
+        let RhaiToken::Identifier(name) = token else {
+            continue;
+        };
+        if name == "fn" {
+            let reserved = match tokens.get(index + 1) {
+                Some(RhaiToken::Identifier(helper)) if is_capability_helper(helper) => {
+                    Some(helper.clone())
+                }
+                _ => None,
+            };
+            if let Some(helper) = reserved {
+                return Err(RhaiWorkspaceCapabilityError::ReservedCapabilityHelper {
+                    path: path.to_string(),
+                    helper,
+                });
+            }
+        }
+        if !matches!(tokens.get(index + 1), Some(RhaiToken::Symbol('('))) {
+            continue;
+        }
+        match name.as_str() {
+            "http_get" | "http_post" | "http_request" => {
+                observed.insert("platform.http".to_string());
+            }
+            "capability_call" => {
+                let Some(RhaiToken::StringLiteral { value, escaped }) = tokens.get(index + 2)
+                else {
+                    return Err(RhaiWorkspaceCapabilityError::DynamicCapabilityCall {
+                        path: path.to_string(),
+                    });
+                };
+                if *escaped || CapabilityName::new(value.clone()).is_err() {
+                    return Err(RhaiWorkspaceCapabilityError::InvalidLiteralCapability {
+                        path: path.to_string(),
+                    });
+                }
+                observed.insert(value.clone());
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn is_capability_helper(name: &str) -> bool {
+    matches!(
+        name,
+        "capability_call" | "http_get" | "http_post" | "http_request"
+    )
+}
+
+fn tokenize_rhai(source: &str) -> Vec<RhaiToken> {
+    let characters = source.chars().collect::<Vec<_>>();
+    let mut tokens = Vec::new();
+    let mut index = 0;
+    while index < characters.len() {
+        let character = characters[index];
+        if character.is_whitespace() {
+            index += 1;
+        } else if character == '/' && characters.get(index + 1) == Some(&'/') {
+            index += 2;
+            while index < characters.len() && characters[index] != '\n' {
+                index += 1;
+            }
+        } else if character == '/' && characters.get(index + 1) == Some(&'*') {
+            index += 2;
+            let mut depth = 1_u32;
+            while index < characters.len() && depth > 0 {
+                if characters[index] == '/' && characters.get(index + 1) == Some(&'*') {
+                    depth += 1;
+                    index += 2;
+                } else if characters[index] == '*' && characters.get(index + 1) == Some(&'/') {
+                    depth -= 1;
+                    index += 2;
+                } else {
+                    index += 1;
+                }
+            }
+        } else if character == '"' {
+            index += 1;
+            let mut value = String::new();
+            let mut escaped = false;
+            while index < characters.len() {
+                match characters[index] {
+                    '"' => {
+                        index += 1;
+                        break;
+                    }
+                    '\\' => {
+                        escaped = true;
+                        index += 1;
+                        if index < characters.len() {
+                            value.push(characters[index]);
+                            index += 1;
+                        }
+                    }
+                    value_character => {
+                        value.push(value_character);
+                        index += 1;
+                    }
+                }
+            }
+            tokens.push(RhaiToken::StringLiteral { value, escaped });
+        } else if character.is_ascii_alphabetic() || character == '_' {
+            let start = index;
+            index += 1;
+            while index < characters.len()
+                && (characters[index].is_ascii_alphanumeric() || characters[index] == '_')
+            {
+                index += 1;
+            }
+            tokens.push(RhaiToken::Identifier(
+                characters[start..index].iter().collect(),
+            ));
+        } else {
+            tokens.push(RhaiToken::Symbol(character));
+            index += 1;
+        }
+    }
+    tokens
 }
 
 #[cfg(feature = "rhai")]
@@ -511,6 +706,30 @@ pub enum RhaiWorkspaceError {
     Serialize(String),
 }
 
+/// Publication-time capability evidence derived from the exact immutable Rhai
+/// workspace. The sandbox owns this because both Alloy authoring and isolated
+/// artifact validation must apply the same neutral helper semantics.
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+pub enum RhaiWorkspaceCapabilityError {
+    #[error("Rhai workspace is invalid: {0}")]
+    Workspace(#[source] RhaiWorkspaceError),
+    #[error(
+        "Rhai source uses a dynamic capability name in `{path}`; publication requires a literal declared name"
+    )]
+    DynamicCapabilityCall { path: String },
+    #[error("Rhai source redefines reserved capability helper `{helper}` in `{path}")]
+    ReservedCapabilityHelper { path: String, helper: String },
+    #[error(
+        "Rhai capability declarations do not match source tool use; missing declarations: {missing:?}; unused declarations: {unused:?}"
+    )]
+    CapabilityDeclarationMismatch {
+        missing: Vec<String>,
+        unused: Vec<String>,
+    },
+    #[error("Rhai source contains an invalid literal capability in `{path}")]
+    InvalidLiteralCapability { path: String },
+}
+
 #[cfg(all(test, feature = "rhai"))]
 mod tests {
     use rhai::Engine;
@@ -519,6 +738,7 @@ mod tests {
         MAX_RHAI_WORKSPACE_IMPORT_DEPTH, RhaiWorkspace, RhaiWorkspaceError, RhaiWorkspaceFile,
         RhaiWorkspaceFileKind,
     };
+    use crate::CapabilityName;
 
     #[test]
     fn canonical_workspace_digest_is_independent_of_file_order() {
@@ -659,6 +879,71 @@ mod tests {
         assert!(matches!(
             workspace.test_source("src/main.rhai"),
             Err(RhaiWorkspaceError::TestEntrypointMustBeTest(_))
+        ));
+    }
+
+    #[test]
+    fn publication_capability_evidence_matches_only_literal_helper_calls() {
+        let workspace = RhaiWorkspace {
+            schema_version: 1,
+            entrypoint: "src/main.rhai".into(),
+            files: vec![RhaiWorkspaceFile {
+                path: "src/main.rhai".into(),
+                kind: RhaiWorkspaceFileKind::Source,
+                contents: r#"
+                        let documentation = "http_get is only documentation";
+                        // capability_call("platform.secrets", "resolve", #{});
+                        /* http_post("https://example.test/ignored", #{}); */
+                        http_get("https://example.test/health");
+                        capability_call("platform.events", "emit", #{});
+                    "#
+                .into(),
+            }],
+        };
+
+        let observed = workspace
+            .observed_capabilities()
+            .expect("observe source capabilities")
+            .into_iter()
+            .map(|capability| capability.as_str().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(observed, vec!["platform.events", "platform.http"]);
+
+        let declared = vec![
+            CapabilityName::new("platform.events").expect("event capability"),
+            CapabilityName::new("platform.http").expect("HTTP capability"),
+        ];
+        assert!(workspace.validate_declared_capabilities(&declared).is_ok());
+
+        let error = workspace
+            .validate_declared_capabilities(&[
+                CapabilityName::new("platform.events").expect("event capability")
+            ])
+            .expect_err("missing HTTP declaration");
+        assert!(matches!(
+            error,
+            super::RhaiWorkspaceCapabilityError::CapabilityDeclarationMismatch { missing, unused }
+                if missing == vec!["platform.http"] && unused.is_empty()
+        ));
+    }
+
+    #[test]
+    fn publication_capability_evidence_rejects_dynamic_and_shadowed_helpers() {
+        let dynamic = RhaiWorkspace::single_source(
+            r#"
+                let capability = "platform.events";
+                capability_call(capability, "emit", #{});
+            "#,
+        );
+        assert!(matches!(
+            dynamic.validate_declared_capabilities(&[]),
+            Err(super::RhaiWorkspaceCapabilityError::DynamicCapabilityCall { .. })
+        ));
+
+        let shadowed = RhaiWorkspace::single_source("fn http_get(url) { url }");
+        assert!(matches!(
+            shadowed.validate_declared_capabilities(&[]),
+            Err(super::RhaiWorkspaceCapabilityError::ReservedCapabilityHelper { .. })
         ));
     }
 }

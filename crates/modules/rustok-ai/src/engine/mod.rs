@@ -20,7 +20,7 @@ pub use catalog::{
 #[cfg(feature = "server")]
 pub use inference::{InferenceEngine, inference_for_slug};
 #[cfg(feature = "server")]
-pub(crate) use inference::{assistant_choice, map_message, map_rig_message};
+pub(crate) use inference::{assistant_choice, extract_usage, map_message, map_rig_message};
 #[cfg(feature = "server")]
 pub use vectors::{
     EmbeddingRequest, EmbeddingResponse, RerankItem, RerankRequest, RerankResponse, embed, rerank,

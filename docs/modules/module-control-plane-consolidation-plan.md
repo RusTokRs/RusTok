@@ -2411,12 +2411,16 @@ trust policy before admission.
 - [x] Freeze media types for descriptor/config, Rhai source, WASM Component,
   sidecar metadata, static-promotion source reference, SBOM, provenance, test
   evidence, and release lineage. `rustok-modules` now exposes stable v1 media
-  types for descriptor config, every payload kind, and the four evidence
-  referrers. The OCI reader rejects a config media type, declared config size,
+  types for descriptor config, every payload kind, and raw test/release-lineage
+  referrers; SBOM/provenance are fixed Cosign attestation predicates. The OCI
+  reader rejects a config media type, declared config size,
   or raw config digest that does not match this contract and accepts exactly one
   descriptor-selected executable layer. `OciDistributionArtifactPublisher`
-  now emits the descriptor-configured executable layer and OCI 1.1 SBOM and
-  provenance referrer manifests, each with an exact subject descriptor.
+  now emits the descriptor-configured executable layer; the shared signed
+  publication boundary validates the source-side payload-bound SLSA statement,
+  supplies only its predicate to Cosign, and creates SBOM/provenance
+  attestations for the exact digest-pinned OCI manifest. Admission separately
+  re-fetches and validates the descriptor-selected payload.
 - [x] Publish by content digest; tags point to immutable releases but are never
   accepted as installation identity. The current adapter derives deterministic
   write tags only to satisfy registry mutation APIs, immediately resolves the
@@ -2425,17 +2429,22 @@ trust policy before admission.
   files and carries that receipt in its terminal result; owner persistence
   rejects successful results without it. Release-governance promotion remains
   separate work.
-- [x] Attach SBOM/provenance/signature evidence using OCI referrers or a
-  documented compatible layout. The adapter uploads bounded verified SBOM and
-  provenance as OCI 1.1 subject referrers. After publication, the isolated
-  build worker signs only the returned digest-pinned artifact through Cosign
-  with a deployment-owned KMS URI, resolves Cosign's standard compatible OCI
-  signature manifest to its digest, and returns that digest-pinned identity in
-  the immutable result. The lookup tag is never installation identity.
+- [x] Attach SBOM/provenance/signature evidence through one documented Cosign
+  attestation layout. After publication, the isolated build worker signs the
+  returned digest-pinned OCI manifest through Cosign with a deployment-owned
+  KMS URI, emits bounded verified SBOM and provenance as fixed CycloneDX and
+  SLSA attestations, resolves the standard compatible signature manifest to its
+  digest, and returns that digest-pinned identity in the immutable result. The
+  independent verifier verifies the manifest-bound subjects while the owner
+separately re-fetches the descriptor-selected payload, then records the digest
+of its actual verified evidence output. Lookup tags are never installation
+identity.
 - [x] Ensure exactly one executable layer matches descriptor payload kind and
   digest. `OciDistributionArtifactRegistry` rejects a manifest unless exactly
-  one layer has both the descriptor payload digest and its frozen payload media
-  type before it streams and rehashes that layer into staging.
+  one layer has both the descriptor payload digest and a payload-kind-approved
+  media type before it streams and rehashes that layer into staging. Rhai
+  preserves its admitted single-source or canonical-workspace media type for
+  runtime resolution.
 - [x] Use short-lived, least-privilege registry credentials through the host
   secret/provider boundary; credentials never enter descriptors, build inputs,
   logs, Alloy tools, or sandbox requests. The build worker now invokes only a
@@ -2512,8 +2521,8 @@ trust policy before admission.
   attestation is also reserved: only `ModuleBuildServiceAttestationCommand`
   can record it, after validating the complete `ModuleBuildPublicationReceipt`,
   its `build_service` authority, and its co-located digest-pinned OCI
-  payload/SBOM/provenance/signature identities. Platform admission is reserved
-  too: `ModulePlatformAdmissionCommand` accepts only an admitted immutable
+  payload/signature identities. Platform admission is reserved too:
+  `ModulePlatformAdmissionCommand` accepts only an admitted immutable
   verification decision for the exact OCI manifest, binds signature/SLSA/SBOM
   plus independent license/vulnerability policy outcomes, signer, policy
   revisions, and evidence-reference fingerprint, and
@@ -2876,7 +2885,16 @@ evolution while sharing the production sandbox and module release contracts.
 
 - [x] Stage and package immutable Rhai descriptors with source digest/lineage
   and preserve the exact admitted workspace media type through runtime
-  resolution.
+  resolution. The registry-validation worker reloads the immutable owner stage,
+  re-canonicalizes the bounded workspace, verifies the receipt-bound descriptor
+  and capability declaration, derives deterministic CycloneDX/SLSA evidence,
+  publishes one digest-pinned OCI manifest, Cosign-signs it, emits both
+  documents as signed attestations, and resolves the signature manifest by
+  digest. It re-fetches the package through
+  a fresh credential lease; the isolated verifier requires the exact owner
+  request, tenant/script, source/review, descriptor, and entrypoint SLSA facts
+  before the owner records platform admission. The Alloy route cannot write a
+  build-service attestation.
 - [x] Validate declared capabilities from observed source tool use. Alloy scans
   every executable `src/*.rhai` file before descriptor staging and packaging;
   `http_*` helpers map to `platform.http`, while `capability_call` requires a
@@ -2886,8 +2904,9 @@ evolution while sharing the production sandbox and module release contracts.
 - [x] Complete release source/descriptor publication through `rustok-modules`;
   Alloy does not write marketplace tables. The revision-pinned reviewed-source
   staging gate, origin-aware owner artifact upload, and authenticated HTTP /
-  GraphQL staging adapters are complete; final marketplace promotion remains
-  an owner governance operation.
+  GraphQL staging adapters are complete. Registry credentials, Cosign keys, and
+  trust roots stay in isolated deployment adapters; final marketplace promotion
+  remains an owner governance operation.
 - [x] Preserve author, prompt/tool provenance, tests, and review evidence under
   explicit retention/redaction rules. The first durable provenance slice now
   records the authenticated author plus owner-generated HTTP, GraphQL, remote
@@ -2992,8 +3011,16 @@ transpiler.
   evidence, non-approved candidates, invalid source references, and deleted
   parents fail closed. Receipt evidence is deleted with candidate retention.
 - [ ] Verify generated Rust build execution only through the isolated build
-  worker, including deployment evidence for the hardened OCI job. The completed
-  owner handoff above is deliberately not execution evidence.
+  worker, including deployment evidence for the hardened OCI job. Alloy now
+  consumes only `rustok-modules::ModuleBuildResultReader` and records an
+  immutable candidate execution row after it rebinds the owner-completed pair
+  to the exact candidate/build receipt, tenant, CAS source digest/reference,
+  scenario path/digest, manifest identity, and Rhai predecessor. The row keeps
+  only the build-result revision, component/SBOM/provenance digests,
+  digest-pinned publication receipt, and redacted scenario comparison; it never
+  accepts a callback result, source, path, logs, or credentials. This improves
+  owner-completion evidence but is deliberately not hardened OCI-job deployment
+  evidence, so this item remains open until an operational proof is available.
 - [ ] Compare scenario/contract evidence between Rhai and WASM versions. The
   owner now defines, validates, persists, and security-reconciles a
   domain-separated digest for the canonical zero-input, zero-grant Rhai
@@ -3057,17 +3084,40 @@ Marketplace descriptions, source code, README files, build logs, test output,
 MCP results, and module responses are untrusted model input. They cannot alter
 system/tool policy or grant capabilities.
 
-- [ ] Separate trusted system/tool instructions from untrusted artifact context.
-- [ ] Label and delimit untrusted context and cap its size.
+- [x] Separate trusted system/tool instructions from untrusted artifact context.
+- [x] Label and delimit untrusted context and cap its size.
 - [ ] Validate every tool call against typed schema, actor/tenant, revision,
   capability, and operation policy outside the model.
 - [ ] Bound agent iterations, parallelism, tokens/cost, execution/build attempts,
   and tool output.
-- [ ] Require explicit operator approval for publish, destructive data change,
+- [x] Require explicit operator approval for publish, destructive data change,
   trust-policy change, static promotion, and other externally consequential
   operations.
 - [ ] Audit model/provider, prompt/template revision, tool requests/results,
   policy decisions, and resulting source/build/release lineage with redaction.
+
+Implementation checkpoint: `rustok-ai` now has a host-side agent-tool guard that
+creates the only system message from owner task policy, bounds and labels user,
+RAG, MCP-description, and MCP-result context as untrusted, validates the
+current typed MCP inventory and every model call before execution, and stores
+redacted trace/result evidence rather than raw MCP payloads. A new approved
+call reloads the actor/tenant-scoped inventory and validates the persisted input
+against the current schema before it claims its execution lease; a durably
+staged outcome is replayed without a second external call. Fixed turn,
+tool-call, token, inventory, argument, and output bounds are also enforced.
+Owner-declared operation classes make workspace mutation, publish, destructive
+data, trust-policy, static-promotion, and an unknown external tool approval-gated
+independently of an operator profile. Each approval snapshots typed tool and
+effective-policy digests and revalidates them before a new external invocation.
+Each MCP tooling run also stores a content-free SHA-256 revision of the rendered
+trusted prompt before provider egress and durable aggregated provider usage;
+missing or inconsistent usage is explicit evidence rather than zero-cost data.
+The dedicated Rust prompt-injection, schema, output-redaction, execution-limit,
+approval-snapshot, and provider-usage tests are part of the capability crate,
+and the server-feature test gate is green. Alloy scaffold stage/review/apply
+now produce and retain typed owner-issued source lineage; build/release lineage
+and interactive agent price/budget settlement remain open evidence, not a
+second or compatibility accounting path.
 
 ### Verification Gate
 

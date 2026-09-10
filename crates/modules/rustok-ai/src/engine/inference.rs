@@ -588,7 +588,7 @@ async fn stream_with<M: CompletionModel>(
     ))
 }
 
-fn extract_usage(payload: &serde_json::Value) -> Option<ProviderUsage> {
+pub(crate) fn extract_usage(payload: &serde_json::Value) -> Option<ProviderUsage> {
     let usage = payload.get("usage")?;
     let input_tokens = usage
         .get("input_tokens")

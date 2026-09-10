@@ -4,10 +4,10 @@ use chrono::{DateTime, Utc};
 use crate::error::ScriptResult;
 use crate::model::{
     AlloyImportedDraftCommand, AlloyImportedDraftResult, EventType, ReviewCommand, ReviewDecision,
-    RustComponentCandidate, RustComponentCandidateBuild, RustComponentCandidateCommand,
-    RustComponentCandidateReview, RustComponentCandidateReviewCommand, Script,
-    ScriptDeletionCommand, ScriptId, ScriptSourceRevision, ScriptStatus, TestCommand, TestRun,
-    TestRunClaim, TestRunCompletion,
+    RustComponentCandidate, RustComponentCandidateBuild, RustComponentCandidateBuildExecution,
+    RustComponentCandidateCommand, RustComponentCandidateReview,
+    RustComponentCandidateReviewCommand, Script, ScriptDeletionCommand, ScriptId,
+    ScriptSourceRevision, ScriptStatus, TestCommand, TestRun, TestRunClaim, TestRunCompletion,
 };
 
 #[derive(Clone)]
@@ -90,6 +90,25 @@ pub trait ScriptRegistry: Send + Sync {
         candidate_id: uuid::Uuid,
         idempotency_key: uuid::Uuid,
     ) -> ScriptResult<Option<RustComponentCandidateBuild>>;
+    /// Reads the immutable build receipt by its owner-issued request identity.
+    /// The candidate identifier keeps the lookup tenant-scoped at the Alloy
+    /// boundary even when the build request ID is known.
+    async fn get_component_candidate_build_by_request(
+        &self,
+        candidate_id: uuid::Uuid,
+        build_request_id: uuid::Uuid,
+    ) -> ScriptResult<Option<RustComponentCandidateBuild>>;
+    /// Persists one completed build evidence row after it has been derived from
+    /// the module owner's immutable request/result pair.
+    async fn record_component_candidate_build_execution(
+        &self,
+        execution: RustComponentCandidateBuildExecution,
+    ) -> ScriptResult<RustComponentCandidateBuildExecution>;
+    async fn get_component_candidate_build_execution(
+        &self,
+        candidate_id: uuid::Uuid,
+        build_request_id: uuid::Uuid,
+    ) -> ScriptResult<Option<RustComponentCandidateBuildExecution>>;
     async fn save(&self, script: Script) -> ScriptResult<Script>;
     async fn delete(&self, command: ScriptDeletionCommand) -> ScriptResult<()>;
     /// Returns source-free retention state for a deleted draft that is still

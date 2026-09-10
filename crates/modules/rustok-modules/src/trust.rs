@@ -1,9 +1,26 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{ModuleArtifactDescriptor, OciArtifactReference};
 
 const MAX_TRUST_EVIDENCE_REFERENCE_BYTES: usize = 512;
+
+/// Stable SLSA builder identity for an OCI package assembled from an immutable
+/// owner-receipted Alloy workspace. This is deliberately distinct from the
+/// isolated WASM build-worker identity: no Alloy release may claim to have
+/// passed through that build service.
+pub const ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID: &str =
+    "https://rustok.dev/registry-validation-worker";
+/// Stable SLSA build type for a canonical Rhai workspace package.
+pub const ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE: &str =
+    "https://rustok.dev/build/rhai-workspace/v1";
+/// Policy-visible source class for owner-receipted Alloy workspaces. The
+/// per-release source identity lives in the signed `rustok` provenance facts.
+pub const ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI: &str =
+    "https://rustok.dev/alloy/reviewed-workspace";
+/// Stable source ref paired with `ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI`.
+pub const ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF: &str = "owner-receipted";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -55,6 +72,52 @@ pub struct TrustVerificationRequest {
     pub descriptor: ModuleArtifactDescriptor,
     pub trust_policy_revision: u64,
     pub capability_policy_revision: u64,
+    /// Present only for an Alloy-authored workspace whose source facts were
+    /// captured by the registry owner. The isolated verifier requires the
+    /// signed SLSA statement to retain this exact binding in addition to its
+    /// configured source-class policy.
+    pub expected_alloy_workspace_provenance: Option<TrustAlloyWorkspaceProvenance>,
+}
+
+/// Exact owner-receipted provenance facts that an Alloy workspace SLSA
+/// statement must carry. This is not a user-authored manifest and has no
+/// meaning for generic OCI admission paths.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustAlloyWorkspaceProvenance {
+    pub request_id: String,
+    pub alloy_tenant_id: Uuid,
+    pub alloy_script_id: Uuid,
+    pub source_revision: u32,
+    pub source_digest: String,
+    pub review_digest: String,
+    pub descriptor_digest: String,
+    pub workspace_entrypoint: String,
+}
+
+impl TrustAlloyWorkspaceProvenance {
+    pub fn validate(&self) -> bool {
+        !self.request_id.trim().is_empty()
+            && self.request_id.len() <= 256
+            && !self.request_id.chars().any(char::is_control)
+            && !self.alloy_tenant_id.is_nil()
+            && !self.alloy_script_id.is_nil()
+            && self.source_revision > 0
+            && sha256_digest(&self.source_digest)
+            && sha256_digest(&self.review_digest)
+            && sha256_digest(&self.descriptor_digest)
+            && !self.workspace_entrypoint.trim().is_empty()
+            && self.workspace_entrypoint.len() <= 160
+            && !self.workspace_entrypoint.chars().any(char::is_control)
+    }
+}
+
+fn sha256_digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
 }
 
 /// Immutable policy revisions selected by the control plane for one admission.

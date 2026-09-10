@@ -12,8 +12,8 @@ use std::{
 };
 
 use rustok_modules::{
-    ModuleAuthoringBuildCommand, ModuleAuthoringBuildControl, ModuleAuthoringBuildError,
-    ModuleAuthoringSourceArchiveBuilder, ModuleBuildScenario,
+    MODULE_BUILD_SANDBOX_SCENARIO_PATH, ModuleAuthoringBuildCommand, ModuleAuthoringBuildControl,
+    ModuleAuthoringBuildError, ModuleAuthoringSourceArchiveBuilder, ModuleBuildScenario,
 };
 use thiserror::Error;
 
@@ -120,7 +120,7 @@ impl<R: ScriptRegistry, B: ModuleAuthoringBuildControl> AlloyEvolutionBuildServi
             project_id: command.project_id.clone(),
             source_digest: archive.source_digest().to_string(),
             scenario: ModuleBuildScenario {
-                source_path: "tests/sandbox-scenario.json".to_string(),
+                source_path: MODULE_BUILD_SANDBOX_SCENARIO_PATH.to_string(),
                 digest: candidate.scenario_digest.clone(),
             },
             expected_module_slug: manifest.slug().to_string(),

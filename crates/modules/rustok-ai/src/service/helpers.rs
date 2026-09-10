@@ -871,7 +871,9 @@ pub async fn insert_approval_request(
         status: Set("pending".to_string()),
         resolved_by: Set(None),
         resolved_at: Set(None),
-        metadata: Set(json!({})),
+        metadata: Set(json!({
+            "tool_policy_evidence": approval.policy_evidence,
+        })),
         created_at: sea_orm::ActiveValue::NotSet,
         updated_at: sea_orm::ActiveValue::NotSet,
     }

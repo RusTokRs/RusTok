@@ -1,4 +1,5 @@
 mod evolution;
+mod evolution_execution;
 mod executor;
 mod import;
 mod orchestrator;
@@ -7,6 +8,7 @@ mod result;
 mod test;
 
 pub use evolution::{AlloyEvolutionBuildError, AlloyEvolutionBuildService};
+pub use evolution_execution::{AlloyEvolutionExecutionError, AlloyEvolutionExecutionService};
 pub use executor::ScriptExecutor;
 pub use import::{
     AlloyPublishedRhaiSourceProvider, AlloyPublishedRhaiSourceProviderHandle, AlloyReleaseImporter,

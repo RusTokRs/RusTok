@@ -28,8 +28,9 @@ use uuid::Uuid;
 use crate::{
     ArtifactReleaseRef, MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_PROTOCOL_VERSION,
     MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD,
-    MODULE_PUBLISH_BUNDLE_CONTENT_TYPE, ModuleBuildAuthoring, ModuleBuildDependencyPolicy,
-    ModuleBuildLimits, ModuleBuildNetworkPolicy, ModuleBuildRequest, ModuleBuildScenario,
+    MODULE_PUBLISH_BUNDLE_CONTENT_TYPE, ModuleBuildAuthoring, ModuleBuildCompletedResult,
+    ModuleBuildDependencyPolicy, ModuleBuildLimits, ModuleBuildNetworkPolicy,
+    ModuleBuildProtocolError, ModuleBuildRequest, ModuleBuildResultReader, ModuleBuildScenario,
     ModuleBuildSource, ModuleBuildToolchain, ModuleBuildValidationProfile, ModuleBuildWitContract,
     ModuleCommandContext, ModulePublicationArtifactOrigin, ModulePublishArtifactAttachCommand,
     ModulePublishBundleValidation, ModulePublishPlatformBuildStageCommand,
@@ -456,6 +457,17 @@ impl ModuleAuthoringBuildControl for SeaOrmModuleAuthoringBuildService {
 }
 
 #[async_trait]
+impl ModuleBuildResultReader for SeaOrmModuleAuthoringBuildService {
+    async fn load_completed(
+        &self,
+        tenant_id: Uuid,
+        request_id: Uuid,
+    ) -> Result<ModuleBuildCompletedResult, ModuleBuildProtocolError> {
+        self.builds.load_completed(tenant_id, request_id).await
+    }
+}
+
+#[async_trait]
 impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
     async fn submit_publish_request(
         &self,
@@ -484,6 +496,7 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
         let validation = validate_module_publish_artifact(
             ModulePublicationArtifactOrigin::PlatformBuilt,
             &contract,
+            None,
             MODULE_PUBLISH_BUNDLE_CONTENT_TYPE,
             &bundle,
         );

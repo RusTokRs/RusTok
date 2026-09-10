@@ -174,7 +174,12 @@ the exact reviewed immutable source revision and delegates only
 writer and later artifact attachment and validation use the same canonical
 publish-request aggregate. Completing canonical authoring and packaging remains
 tracked in the cross-component Phase 6 work rather than retaining an
-unreachable parallel implementation.
+unreachable parallel implementation. The owner-side Phase 6 publication path
+now reloads the immutable Alloy stage, revalidates its exact descriptor against
+canonical workspace bytes, and lets the registry-validation worker publish and
+Cosign-sign and attest deterministic OCI evidence before isolated verification
+records only platform admission. It never creates a build-service attestation for an
+Alloy-authored workspace.
 
 On 2026-09-03, Durable Snapshot/Restore Intents, Staging Receipts, and Post-Purge Data Recovery were delivered per Section 4 of the Rollback Plan:
 - `crates/modules/rustok-modules/src/migrations/m20260903_000049_artifact_data_snapshot_and_recovery_operations.rs` created persistent tables `module_artifact_data_snapshot_copy_intents` and `module_artifact_data_namespace_recovery_operations` with RLS tenant isolation.
@@ -1484,9 +1489,10 @@ bind the immutable source, lock, toolchain, WIT, and component digests plus
 independently versioned SDK/template inputs through the RusToK
 external-parameters envelope. `OciDistributionArtifactPublisher`
 now accepts only a publication bundle bound to that successful immutable result,
-publishes the descriptor-configured executable layer, and uploads OCI 1.1 SBOM
-and provenance referrers with an exact subject descriptor. It verifies every
-registry-returned manifest digest and returns only digest-pinned identities;
+publishes the descriptor-configured executable layer, and hands the exact SBOM
+and provenance predicates to the shared Cosign publication boundary. That
+boundary emits them as signed in-toto attestations for the exact subject. It
+verifies every registry-returned manifest digest and returns only digest-pinned identities;
 its deterministic write tags are never installation identity. The worker now
 creates the final descriptor exactly once after Component/WIT inspection by
 inserting the independently verified component digest into that source
@@ -1520,13 +1526,15 @@ marketplace ancestry.
 
 OCI artifact media types are frozen in the owner crate for immutable descriptor
 config, Rhai, WASM Component, sidecar, static-promotion payloads, and
-SBOM/provenance/test-evidence/release-lineage referrers. The distribution
-adapter rejects mismatched config media types, declared sizes, and raw config digests, then
+test-evidence/release-lineage referrers, plus fixed CycloneDX/SLSA attestation
+predicates. The distribution adapter rejects mismatched config media types, declared sizes, and raw config digests, then
 accepts exactly one descriptor-selected executable layer. The scoped publication
-adapter uploads verified descriptor-configured payloads and OCI 1.1
-SBOM/provenance referrers. The isolated build worker then signs the returned
-digest-pinned artifact through fixed Cosign/KMS configuration and records the
-resolved compatible signature-manifest digest. Owner governance keeps the
+adapter uploads a verified descriptor-configured payload. The isolated build
+worker then signs the returned digest-pinned artifact and emits its verified
+SBOM/provenance as fixed Cosign attestations through fixed Cosign/KMS
+configuration, recording the resolved signature-manifest digest. The
+independent verifier records the digest of actual verified evidence output.
+Owner governance keeps the
 component/payload digest distinct from that OCI manifest identity and requires
 the matching author, build-service, platform-admission, and marketplace facts
 before final publication.
@@ -1550,7 +1558,7 @@ reject received bytes beyond their OCI-declared size before extending memory or
 disk staging, and reject a final size mismatch before descriptor parsing or
 payload digest acceptance. The worker separately bounds its complete
 publication window to 15 minutes, while the OCI adapter cancels a complete
-artifact-and-referrer publication after ten minutes, leaving bounded time for
+artifact publication after ten minutes, leaving bounded time for
 Cosign within that worker deadline.
 
 Artifact Event bindings now declare up to 32 exact or terminal-wildcard topics
@@ -2276,12 +2284,14 @@ mutating current intent or emitting another outbox fact.
 ### M5 - Build and Publication Orchestration
 
 - Define immutable build request/result contracts before adding another crate.
-- Keep the owner-owned OCI config, executable-layer, and evidence-referrer
-  media types frozen and enforce them when resolving distribution artifacts.
+- Keep the owner-owned OCI config, executable-layer, evidence-referrer, and
+  fixed signed-attestation predicate contracts frozen and enforce them when
+  resolving distribution artifacts.
 - Publish verified Component bundles only through the owner publication port;
-  the distribution adapter uploads the descriptor-configured layer and OCI 1.1
-  SBOM/provenance referrers, then fixed Cosign/KMS signing contributes a
-  digest-pinned signature-manifest receipt.
+  the distribution adapter uploads the descriptor-configured layer, then fixed
+  Cosign/KMS signing emits the SBOM/provenance as signed attestations and
+  contributes a digest-pinned signature-manifest receipt; the independent
+  verifier owns persistent identities for its verified evidence output.
 - Schedule an isolated worker that uses `cargo_metadata`, pinned native Cargo
   targeting `wasm32-wasip2`, `cargo-deny`, `cargo-vet`, `wasm-tools`, and
   `cargo-cyclonedx`. Do not retain the superseded `cargo-component` path.

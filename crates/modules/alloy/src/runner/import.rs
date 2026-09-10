@@ -72,11 +72,12 @@ where
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
+    use rustok_modules::{ArtifactOrigin, ArtifactRelease, ArtifactSourceLineage};
 
     use super::*;
     use crate::{
-        InMemoryStorage, RhaiWorkspace, Script, ScriptRegistry, ScriptTrigger,
-        stage_rhai_module_release,
+        InMemoryStorage, RhaiWorkspace, RhaiWorkspaceFile, RhaiWorkspaceFileKind, Script,
+        ScriptRegistry, ScriptTrigger,
     };
 
     #[derive(Clone)]
@@ -100,15 +101,37 @@ mod tests {
     }
 
     fn published_source() -> AlloyPublishedRhaiSource {
-        let script = Script::new(
+        let mut script = Script::new(
             "published_tax_rule",
             RhaiWorkspace::single_source("40 + 2"),
             ScriptTrigger::Manual,
         );
-        let release = stage_rhai_module_release("tax_rule", "1.0.0", &script, Vec::new())
-            .expect("stage Rhai release")
-            .publish(Utc::now())
-            .expect("publish Rhai release");
+        script.workspace.files.push(RhaiWorkspaceFile {
+            path: crate::artifact::RHAI_MODULE_SOURCE_MANIFEST_PATH.to_string(),
+            kind: RhaiWorkspaceFileKind::Policy,
+            contents: serde_json::json!({
+                "schema_version": rustok_modules::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+                "slug": "tax_rule",
+                "version": "1.0.0",
+                "payload_kind": "rhai",
+                "module_kind": "optional",
+                "runtime_abi": rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI,
+                "platform_compatibility": "^0.1",
+                "entrypoint": "src/main.rhai",
+            })
+            .to_string(),
+        });
+        let source_digest = script.workspace.digest().expect("source digest");
+        let release = ArtifactRelease {
+            descriptor: crate::artifact::prepare_rhai_module_descriptor(&script.workspace)
+                .expect("stage Rhai release"),
+            lineage: ArtifactSourceLineage {
+                origin: ArtifactOrigin::Marketplace,
+                source_digest,
+                parent_release: None,
+            },
+            published_at: Utc::now(),
+        };
         AlloyPublishedRhaiSource {
             release,
             workspace: script.workspace,

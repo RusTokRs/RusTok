@@ -280,6 +280,8 @@
     "transport_route": "/api/alloy/scripts/{id}/releases/stage",
     "artifact_payload_media_type": "application/vnd.rustok.rhai.workspace.v1",
     "artifact_digest_relation": "equals_reviewed_source_digest",
+    "descriptor_declaration": "policy_module_artifact_json_in_canonical_workspace",
+    "descriptor_receipt": "owner_staging_persists_descriptor_and_canonical_digest",
     "evidence_fields": [
       "artifact_digest",
       "source_digest",
@@ -296,6 +298,7 @@
       "sandbox_runtime_abi",
       "sandbox_policy_digest",
       "sandbox_capability_grants",
+      "descriptor_digest",
       "platform_admission"
     ]
   },
@@ -304,12 +307,72 @@
     "generic_helper": "capability_call_requires_literal_valid_capability_name",
     "http_helpers": "http_get_http_post_http_request_require_platform_http",
     "declaration_relation": "descriptor_set_equals_observed_source_set",
+    "observer_owner": "rustok_sandbox_neutral_workspace_contract",
+    "delivery_revalidation": "isolated_registry_worker_revalidates_receipted_descriptor_against_canonical_workspace",
     "rejections": [
       "missing_declaration",
       "unused_declaration",
       "dynamic_capability_name",
       "reserved_helper_shadowing"
     ]
+  },
+  "release_publication_contract": {
+    "publisher": "registry_validation_worker",
+    "payload": "canonical_owner_receipted_rhai_workspace",
+    "payload_media_type": "application/vnd.rustok.rhai.workspace.v1",
+    "oci_identity": "deterministic_digest_pinned_manifest_with_cosign_signed_attestations",
+    "signature": "cosign_digest_pinned_signature_manifest_and_signed_attestations",
+    "sbom": "deterministic_cyclonedx_workspace_inventory_attested_with_cosign",
+    "provenance": {
+      "format": "slsa_v1",
+      "builder": "https://rustok.dev/registry-validation-worker",
+      "build_type": "https://rustok.dev/build/rhai-workspace/v1",
+      "source_uri": "https://rustok.dev/alloy/reviewed-workspace",
+      "source_ref": "owner-receipted",
+      "attestation": "cosign_slsa_v1_predicate_uri",
+      "owner_binding": [
+        "request_id",
+        "alloy_tenant_id",
+        "alloy_script_id",
+        "source_revision",
+        "source_digest",
+        "review_digest",
+        "descriptor_digest",
+        "workspace_entrypoint"
+      ]
+    },
+    "verification": "isolated_trust_verifier_requires_exact_slsa_owner_binding",
+    "admission": "owner_records_platform_admission_without_build_service_attestation",
+    "retry": "deterministic_republication_and_owner_admission_are_idempotent"
+  },
+  "component_candidate_execution_contract": {
+    "owner_result": "module_build_result_reader_completed_pair",
+    "persistence": "immutable_tenant_scoped_component_candidate_build_execution",
+    "binding": [
+      "candidate_build_receipt",
+      "tenant_id",
+      "source_cas_reference_and_digest",
+      "source_local_scenario_path_and_digest",
+      "candidate_manifest_identity",
+      "rhai_parent_release"
+    ],
+    "evidence_fields": [
+      "build_result_revision",
+      "component_digest",
+      "sbom_digest",
+      "provenance_digest",
+      "digest_pinned_publication_receipt",
+      "redacted_scenario_comparison"
+    ],
+    "replay": "candidate_build_identity_exact_evidence_only",
+    "forbidden_inputs": [
+      "worker_callback_result",
+      "source_bytes",
+      "filesystem_path",
+      "worker_logs",
+      "registry_credentials"
+    ],
+    "deployment_proof": "not_inferred_from_owner_completion"
   },
   "workspace_contract": {
     "persistence": "bounded_revisioned_json_workspace",

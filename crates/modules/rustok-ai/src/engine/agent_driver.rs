@@ -9,12 +9,19 @@ use rig::{
 use tokio::sync::watch;
 
 use crate::{
-    engine::{InferenceEngine, assistant_choice, map_message, map_rig_message},
+    agent_safety::{
+        MAX_AGENT_TOOL_CALLS_PER_RUN, MAX_AGENT_TOOL_CALLS_PER_TURN, bounded_tool_result,
+        effective_agent_turns, effective_response_tokens, prepare_runtime_messages,
+        redacted_json_evidence, redacted_text_evidence, redacted_tool_execution_evidence,
+        redacted_tool_failure_message, sanitize_provider_assistant_message,
+        validate_provider_context, validate_tool_arguments, validate_tool_inventory,
+    },
+    engine::{InferenceEngine, assistant_choice, extract_usage, map_message, map_rig_message},
     error::{AiError, AiResult},
     mcp::McpClientAdapter,
     model::{
-        ChatMessage, ChatMessageRole, ExecutionMode, PendingApproval, ProviderChatRequest,
-        ProviderStreamEmitter, RuntimeOutcome, RuntimeRequest, ToolTrace,
+        AgentUsageEvidence, ChatMessage, ChatMessageRole, ExecutionMode, PendingApproval,
+        ProviderChatRequest, ProviderStreamEmitter, RuntimeOutcome, RuntimeRequest, ToolTrace,
     },
     policy::ToolExecutionPolicy,
 };
@@ -45,12 +52,14 @@ impl RigAgentDriver {
         stream_emitter: Option<ProviderStreamEmitter>,
         mut cancellation: Option<watch::Receiver<()>>,
     ) -> AiResult<RuntimeOutcome> {
-        let tools = if matches!(request.execution_mode, ExecutionMode::McpTooling) {
+        let tool_inventory = if matches!(request.execution_mode, ExecutionMode::McpTooling) {
             self.tool_policy.apply(self.mcp_client.list_tools().await?)
         } else {
             Vec::new()
         };
-        let messages = localized_messages(&request);
+        let tool_inventory = validate_tool_inventory(tool_inventory)?;
+        let tools = tool_inventory.provider_tools().to_vec();
+        let messages = prepare_runtime_messages(&request)?;
         let mut rig_messages = messages
             .iter()
             .cloned()
@@ -61,7 +70,7 @@ impl RigAgentDriver {
         })?;
         let mut run = AgentRun::new(prompt)
             .with_history(rig_messages)
-            .max_turns(request.max_turns.max(1))
+            .max_turns(effective_agent_turns(request.max_turns))
             .max_invalid_tool_call_retries(1);
         let tool_names = tools
             .iter()
@@ -69,6 +78,8 @@ impl RigAgentDriver {
             .collect::<BTreeSet<_>>();
         let mut appended_messages = Vec::new();
         let mut traces = Vec::new();
+        let mut usage = AgentUsageEvidence::default();
+        let mut tool_call_attempts = 0_usize;
 
         loop {
             if cancellation
@@ -87,12 +98,21 @@ impl RigAgentDriver {
                     let mut provider_messages =
                         history.into_iter().map(map_rig_message).collect::<Vec<_>>();
                     provider_messages.push(map_rig_message(prompt));
+                    if validate_provider_context(&provider_messages).is_err() {
+                        return Ok(RuntimeOutcome::Failed {
+                            appended_messages,
+                            traces,
+                            error_message: "AI runtime context exceeds the agent execution policy"
+                                .to_string(),
+                            usage,
+                        });
+                    }
                     let provider_request = ProviderChatRequest {
                         model: request.model.clone(),
                         messages: provider_messages,
                         tools: tools.clone(),
                         temperature: request.temperature,
-                        max_tokens: request.max_tokens,
+                        max_tokens: Some(effective_response_tokens(request.max_tokens)),
                         locale: request.locale.clone(),
                     };
                     let response = if let Some(receiver) = cancellation.as_mut() {
@@ -108,7 +128,10 @@ impl RigAgentDriver {
                             .complete_stream(config, provider_request, stream_emitter.clone())
                             .await?
                     };
-                    let assistant = response.assistant_message;
+                    let provider_usage = extract_usage(&response.raw_payload);
+                    usage.record_provider_turn(provider_usage.as_ref());
+                    let assistant =
+                        sanitize_provider_assistant_message(response.assistant_message)?;
                     let choice = assistant_choice(&assistant)?;
                     appended_messages.push(assistant);
                     let turn = ModelTurn::new(
@@ -153,12 +176,14 @@ impl RigAgentDriver {
                             });
                             traces.push(ToolTrace {
                                 tool_name: invalid.tool_name,
-                                input_payload: invalid
-                                    .args
-                                    .as_deref()
-                                    .and_then(|value| serde_json::from_str(value).ok())
-                                    .unwrap_or(serde_json::Value::Null),
-                                output_payload: Some(serde_json::json!({"reason": reason})),
+                                input_payload: redacted_json_evidence(
+                                    &invalid
+                                        .args
+                                        .as_deref()
+                                        .and_then(|value| serde_json::from_str(value).ok())
+                                        .unwrap_or(serde_json::Value::Null),
+                                ),
+                                output_payload: Some(redacted_text_evidence(&reason)),
                                 status: "skipped".to_string(),
                                 duration_ms: 0,
                                 sensitive: false,
@@ -171,122 +196,168 @@ impl RigAgentDriver {
                                     traces,
                                     error_message: "Rig could not recover the invalid tool call"
                                         .to_string(),
+                                    usage,
                                 });
                             }
                         }
                     }
                 }
                 AgentRunStep::CallTools { calls } => {
-                    let pending_approvals = calls
-                        .iter()
-                        .filter(|call| {
-                            self.tool_policy
-                                .is_tool_allowed(&call.tool_call.function.name)
-                                && self
-                                    .tool_policy
-                                    .is_tool_sensitive(&call.tool_call.function.name)
-                        })
-                        .map(|call| PendingApproval {
-                            tool_name: call.tool_call.function.name.clone(),
-                            tool_call_id: call.tool_call.id.to_string(),
-                            input_payload: call.tool_call.function.arguments.clone(),
-                            reason: format!(
-                                "Tool `{}` requires operator approval before execution",
-                                call.tool_call.function.name
-                            ),
-                        })
-                        .collect::<Vec<_>>();
-                    let pending_sensitive_call_ids = pending_approvals
-                        .iter()
-                        .map(|approval| approval.tool_call_id.as_str())
-                        .collect::<BTreeSet<_>>();
-
+                    if calls.len() > MAX_AGENT_TOOL_CALLS_PER_TURN {
+                        return Ok(RuntimeOutcome::Failed {
+                            appended_messages,
+                            traces,
+                            error_message:
+                                "Model emitted more tool calls than the per-turn execution limit"
+                                    .to_string(),
+                            usage,
+                        });
+                    }
+                    if tool_call_attempts.saturating_add(calls.len()) > MAX_AGENT_TOOL_CALLS_PER_RUN
+                    {
+                        return Ok(RuntimeOutcome::Failed {
+                            appended_messages,
+                            traces,
+                            error_message:
+                                "Model emitted more tool calls than the per-run execution limit"
+                                    .to_string(),
+                            usage,
+                        });
+                    }
+                    tool_call_attempts = tool_call_attempts.saturating_add(calls.len());
                     let mut results = Vec::with_capacity(calls.len());
+                    let mut pending_approvals = Vec::new();
                     for call in calls {
                         let name = call.tool_call.function.name.clone();
                         let arguments = call.tool_call.function.arguments.clone();
-                        if pending_sensitive_call_ids.contains(call.tool_call.id.as_str()) {
-                            continue;
-                        }
                         let started = std::time::Instant::now();
-                        if !self.tool_policy.is_tool_allowed(&name) {
-                            let reason = format!(
+                        let definition = tool_inventory.definition(&name);
+                        let rejection = if !self.tool_policy.is_tool_allowed(&name) {
+                            Some(format!(
                                 "Tool `{name}` is denied by the execution policy and was not executed"
-                            );
+                            ))
+                        } else if let Some(definition) = definition {
+                            validate_tool_arguments(definition, &arguments)
+                                .err()
+                                .map(|_| {
+                                    format!(
+                                        "Tool `{name}` arguments were rejected by its typed schema"
+                                    )
+                                })
+                        } else {
+                            Some(format!(
+                                "Tool `{name}` is unavailable for this run and was not executed"
+                            ))
+                        };
+                        if let Some(reason) = rejection {
+                            let content = bounded_tool_result(&reason);
                             appended_messages.push(ChatMessage {
                                 role: ChatMessageRole::Tool,
-                                content: Some(reason.clone()),
+                                content: Some(content.clone()),
                                 name: Some(name.clone()),
                                 tool_call_id: Some(call.tool_call.id.to_string()),
                                 tool_calls: Vec::new(),
                                 metadata: serde_json::json!({
                                     "engine": "rig_0_42",
                                     "skipped": true,
-                                    "reason": "tool_execution_policy"
+                                    "reason": "tool_execution_policy",
+                                    "untrusted_context": "mcp_tool_result",
+                                    "tool_policy_evidence": definition
+                                        .map(|tool| self.tool_policy.evidence(tool)),
                                 }),
                             });
                             traces.push(ToolTrace {
                                 tool_name: name.clone(),
-                                input_payload: arguments,
-                                output_payload: Some(serde_json::json!({"reason": reason})),
+                                input_payload: redacted_json_evidence(&arguments),
+                                output_payload: Some(redacted_text_evidence(&reason)),
                                 status: "skipped".to_string(),
                                 duration_ms: started.elapsed().as_millis() as i64,
-                                sensitive: false,
+                                sensitive: definition.is_some_and(|tool| tool.sensitive),
                                 error_message: None,
                                 created_at: Utc::now(),
                             });
                             results.push(UserContent::tool_result(
                                 call.tool_call.id.clone(),
                                 name,
-                                vec![reason.into()],
+                                vec![content.into()],
                             ));
+                            continue;
+                        }
+                        let definition = definition.ok_or_else(|| {
+                            AiError::Runtime(
+                                "validated tool inventory lost the selected definition".to_string(),
+                            )
+                        })?;
+                        if definition.sensitive {
+                            pending_approvals.push(PendingApproval {
+                                tool_name: name,
+                                tool_call_id: call.tool_call.id.to_string(),
+                                input_payload: arguments,
+                                reason: format!(
+                                    "Tool `{}` requires operator approval before execution",
+                                    call.tool_call.function.name
+                                ),
+                                policy_evidence: self.tool_policy.evidence(definition),
+                            });
                             continue;
                         }
                         match self.mcp_client.call_tool(&name, arguments.clone()).await {
                             Ok(result) => {
+                                let content = bounded_tool_result(&result.content);
+                                let output_evidence = redacted_tool_execution_evidence(
+                                    &name,
+                                    &result.raw_payload,
+                                    &result.source_lineage,
+                                )?;
                                 let tool_message = ChatMessage {
                                     role: ChatMessageRole::Tool,
-                                    content: Some(result.content.clone()),
+                                    content: Some(content.clone()),
                                     name: Some(name.clone()),
                                     tool_call_id: Some(call.tool_call.id.to_string()),
                                     tool_calls: Vec::new(),
                                     metadata: serde_json::json!({
-                                        "raw_payload": result.raw_payload,
-                                        "engine": "rig_0_42"
+                                        "tool_output_evidence": output_evidence.clone(),
+                                        "engine": "rig_0_42",
+                                        "untrusted_context": "mcp_tool_result",
+                                        "tool_policy_evidence": self
+                                            .tool_policy
+                                            .evidence(definition),
                                     }),
                                 };
                                 appended_messages.push(tool_message);
                                 traces.push(ToolTrace {
                                     tool_name: name.clone(),
-                                    input_payload: arguments,
-                                    output_payload: Some(result.raw_payload),
+                                    input_payload: redacted_json_evidence(&arguments),
+                                    output_payload: Some(output_evidence),
                                     status: "completed".to_string(),
                                     duration_ms: started.elapsed().as_millis() as i64,
-                                    sensitive: false,
+                                    sensitive: definition.sensitive,
                                     error_message: None,
                                     created_at: Utc::now(),
                                 });
                                 results.push(UserContent::tool_result(
                                     call.tool_call.id.clone(),
                                     name,
-                                    vec![result.content.into()],
+                                    vec![content.into()],
                                 ));
                             }
-                            Err(error) => {
+                            Err(_error) => {
+                                let error_message = redacted_tool_failure_message();
                                 traces.push(ToolTrace {
                                     tool_name: name,
-                                    input_payload: arguments,
+                                    input_payload: redacted_json_evidence(&arguments),
                                     output_payload: None,
                                     status: "failed".to_string(),
                                     duration_ms: started.elapsed().as_millis() as i64,
-                                    sensitive: false,
-                                    error_message: Some(error.to_string()),
+                                    sensitive: definition.sensitive,
+                                    error_message: Some(error_message.clone()),
                                     created_at: Utc::now(),
                                 });
                                 return Ok(RuntimeOutcome::Failed {
                                     appended_messages,
                                     traces,
-                                    error_message: error.to_string(),
+                                    error_message,
+                                    usage,
                                 });
                             }
                         }
@@ -296,6 +367,7 @@ impl RigAgentDriver {
                             appended_messages,
                             traces,
                             pending_approvals,
+                            usage,
                         });
                     }
                     run.tool_results(results)
@@ -305,42 +377,12 @@ impl RigAgentDriver {
                     return Ok(RuntimeOutcome::Completed {
                         appended_messages,
                         traces,
+                        usage,
                     });
                 }
             }
         }
     }
-}
-
-fn localized_messages(request: &RuntimeRequest) -> Vec<ChatMessage> {
-    let mut messages = request.messages.clone();
-    let system_prompt = match (&request.system_prompt, &request.locale) {
-        (Some(prompt), Some(locale)) => Some(format!(
-            "{prompt}\n\nRespond in locale `{locale}` unless the task explicitly requires another language."
-        )),
-        (Some(prompt), None) => Some(prompt.clone()),
-        (None, Some(locale)) => Some(format!(
-            "Respond in locale `{locale}` unless the task explicitly requires another language."
-        )),
-        (None, None) => None,
-    };
-    if let Some(content) = system_prompt {
-        messages.insert(
-            0,
-            ChatMessage {
-                role: ChatMessageRole::System,
-                content: Some(content),
-                name: None,
-                tool_call_id: None,
-                tool_calls: Vec::new(),
-                metadata: serde_json::json!({
-                    "system_prompt": true,
-                    "locale": request.locale,
-                }),
-            },
-        );
-    }
-    messages
 }
 
 #[cfg(test)]
@@ -356,9 +398,9 @@ mod tests {
 
     use super::RigAgentDriver;
     use crate::{
-        AiResult, ProviderSlug, ToolExecutionPolicy,
+        AiResult, ProviderSlug, ToolExecutionPolicy, ToolOperationClass,
         engine::InferenceEngine,
-        mcp::{McpClientAdapter, ToolExecutionResult},
+        mcp::{McpClientAdapter, ToolExecutionResult, ToolSourceLineage},
         model::{
             AiProviderConfig, ChatMessage, ChatMessageRole, ExecutionMode, ProviderChatRequest,
             ProviderChatResponse, ProviderStructuredRequest, ProviderTestResult, RuntimeOutcome,
@@ -412,9 +454,20 @@ mod tests {
     #[derive(Default)]
     struct RecordingMcp {
         calls: Mutex<Vec<String>>,
+        source_lineage: Vec<ToolSourceLineage>,
     }
 
     struct FailingMcp;
+
+    #[derive(Default)]
+    struct StrictSchemaMcp {
+        calls: Mutex<Vec<String>>,
+    }
+
+    #[derive(Default)]
+    struct ConsequentialMcp {
+        calls: Mutex<Vec<String>>,
+    }
 
     #[async_trait]
     impl McpClientAdapter for RecordingMcp {
@@ -424,12 +477,14 @@ mod tests {
                     name: "publish".to_string(),
                     description: "Publish a draft".to_string(),
                     input_schema: serde_json::json!({"type": "object"}),
+                    operation_class: ToolOperationClass::ReadOnly,
                     sensitive: false,
                 },
                 ToolDefinition {
                     name: "notify".to_string(),
                     description: "Notify an operator".to_string(),
                     input_schema: serde_json::json!({"type": "object"}),
+                    operation_class: ToolOperationClass::ReadOnly,
                     sensitive: false,
                 },
             ])
@@ -444,6 +499,7 @@ mod tests {
             Ok(ToolExecutionResult {
                 content: "published".to_string(),
                 raw_payload: serde_json::json!({"published": true}),
+                source_lineage: self.source_lineage.clone(),
             })
         }
     }
@@ -455,6 +511,7 @@ mod tests {
                 name: "publish".to_string(),
                 description: "Publish a draft".to_string(),
                 input_schema: serde_json::json!({"type": "object"}),
+                operation_class: ToolOperationClass::ReadOnly,
                 sensitive: false,
             }])
         }
@@ -465,6 +522,63 @@ mod tests {
             _arguments: serde_json::Value,
         ) -> AiResult<ToolExecutionResult> {
             Err(crate::AiError::Mcp("tool backend unavailable".to_string()))
+        }
+    }
+
+    #[async_trait]
+    impl McpClientAdapter for StrictSchemaMcp {
+        async fn list_tools(&self) -> AiResult<Vec<ToolDefinition>> {
+            Ok(vec![ToolDefinition {
+                name: "publish".to_string(),
+                description: "Publish a reviewed draft".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": { "revision": { "type": "integer", "minimum": 1 } },
+                    "required": ["revision"],
+                    "additionalProperties": false,
+                }),
+                operation_class: ToolOperationClass::ReadOnly,
+                sensitive: false,
+            }])
+        }
+
+        async fn call_tool(
+            &self,
+            name: &str,
+            _arguments: serde_json::Value,
+        ) -> AiResult<ToolExecutionResult> {
+            self.calls.lock().await.push(name.to_string());
+            Ok(ToolExecutionResult {
+                content: "published".to_string(),
+                raw_payload: serde_json::json!({ "published": true }),
+                source_lineage: Vec::new(),
+            })
+        }
+    }
+
+    #[async_trait]
+    impl McpClientAdapter for ConsequentialMcp {
+        async fn list_tools(&self) -> AiResult<Vec<ToolDefinition>> {
+            Ok(vec![ToolDefinition {
+                name: "workspace_apply".to_string(),
+                description: "Apply reviewed workspace changes".to_string(),
+                input_schema: serde_json::json!({"type": "object"}),
+                operation_class: ToolOperationClass::WorkspaceMutation,
+                sensitive: false,
+            }])
+        }
+
+        async fn call_tool(
+            &self,
+            name: &str,
+            _arguments: serde_json::Value,
+        ) -> AiResult<ToolExecutionResult> {
+            self.calls.lock().await.push(name.to_string());
+            Ok(ToolExecutionResult {
+                content: "applied".to_string(),
+                raw_payload: serde_json::json!({"applied": true}),
+                source_lineage: Vec::new(),
+            })
         }
     }
 
@@ -539,6 +653,53 @@ mod tests {
         };
         assert_eq!(pending_approvals.len(), 1);
         assert_eq!(pending_approvals[0].tool_name, "publish");
+        assert!(mcp.calls.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn owner_classified_workspace_mutation_requires_approval_without_profile_override() {
+        let engine = Arc::new(ScriptedEngine {
+            responses: Mutex::new(VecDeque::from([ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: None,
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: vec![ToolCall {
+                        id: "workspace-apply-1".to_string(),
+                        name: "workspace_apply".to_string(),
+                        arguments: serde_json::json!({}),
+                    }],
+                    metadata: serde_json::Value::Null,
+                },
+                finish_reason: Some("tool_calls".to_string()),
+                raw_payload: serde_json::Value::Null,
+            }])),
+        });
+        let mcp = Arc::new(ConsequentialMcp::default());
+        let driver = RigAgentDriver::new(
+            engine,
+            mcp.clone(),
+            ToolExecutionPolicy::new(None, Vec::new(), Vec::new()),
+        );
+
+        let outcome = driver.run(&config(), request(), None, None).await.unwrap();
+        let RuntimeOutcome::WaitingApproval {
+            pending_approvals, ..
+        } = outcome
+        else {
+            panic!("owner-classified workspace mutation must await approval")
+        };
+        assert_eq!(pending_approvals.len(), 1);
+        assert_eq!(
+            pending_approvals[0].policy_evidence.operation_class,
+            ToolOperationClass::WorkspaceMutation
+        );
+        assert!(
+            pending_approvals[0]
+                .policy_evidence
+                .requires_operator_approval
+        );
         assert!(mcp.calls.lock().await.is_empty());
     }
 
@@ -689,6 +850,7 @@ mod tests {
         let RuntimeOutcome::Completed {
             appended_messages,
             traces,
+            ..
         } = outcome
         else {
             panic!("unknown tool should recover without an MCP call")
@@ -698,6 +860,182 @@ mod tests {
                 && message.metadata["reason"] == "unknown_or_denied_tool"
         }));
         assert!(traces.iter().any(|trace| trace.status == "skipped"));
+        assert!(mcp.calls.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn completed_tool_trace_keeps_typed_owner_source_lineage() {
+        let engine = Arc::new(ScriptedEngine {
+            responses: Mutex::new(VecDeque::from([
+                ProviderChatResponse {
+                    assistant_message: ChatMessage {
+                        role: ChatMessageRole::Assistant,
+                        content: None,
+                        name: None,
+                        tool_call_id: None,
+                        tool_calls: vec![ToolCall {
+                            id: "scaffold-1".to_string(),
+                            name: "publish".to_string(),
+                            arguments: serde_json::json!({"id": "draft-1"}),
+                        }],
+                        metadata: serde_json::Value::Null,
+                    },
+                    finish_reason: Some("tool_calls".to_string()),
+                    raw_payload: serde_json::Value::Null,
+                },
+                ProviderChatResponse {
+                    assistant_message: ChatMessage {
+                        role: ChatMessageRole::Assistant,
+                        content: Some("The draft is ready.".to_string()),
+                        name: None,
+                        tool_call_id: None,
+                        tool_calls: Vec::new(),
+                        metadata: serde_json::Value::Null,
+                    },
+                    finish_reason: Some("stop".to_string()),
+                    raw_payload: serde_json::Value::Null,
+                },
+            ])),
+        });
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let mcp = Arc::new(RecordingMcp {
+            calls: Mutex::new(Vec::new()),
+            source_lineage: vec![ToolSourceLineage {
+                owner: "rustok-mcp".to_string(),
+                tool_name: "publish".to_string(),
+                source_id: Uuid::nil().to_string(),
+                source_digest: digest.clone(),
+            }],
+        });
+        let driver = RigAgentDriver::new(
+            engine,
+            mcp,
+            ToolExecutionPolicy::new(None, Vec::new(), Vec::new()),
+        );
+
+        let outcome = driver.run(&config(), request(), None, None).await.unwrap();
+        let RuntimeOutcome::Completed { traces, .. } = outcome else {
+            panic!("the allowed tool call should complete")
+        };
+        let output = traces[0]
+            .output_payload
+            .as_ref()
+            .expect("completed trace output evidence");
+        assert_eq!(
+            output["response"]["redacted"],
+            serde_json::Value::Bool(true)
+        );
+        assert_eq!(output["owner_source_lineage"][0]["source_digest"], digest);
+    }
+
+    #[tokio::test]
+    async fn schema_invalid_tool_arguments_are_never_sent_to_mcp() {
+        let engine = Arc::new(ScriptedEngine {
+            responses: Mutex::new(VecDeque::from([
+                ProviderChatResponse {
+                    assistant_message: ChatMessage {
+                        role: ChatMessageRole::Assistant,
+                        content: None,
+                        name: None,
+                        tool_call_id: None,
+                        tool_calls: vec![ToolCall {
+                            id: "publish-invalid".to_string(),
+                            name: "publish".to_string(),
+                            arguments: serde_json::json!({
+                                "revision": "not-an-integer",
+                                "secret": "do-not-send-this-to-mcp",
+                            }),
+                        }],
+                        metadata: serde_json::Value::Null,
+                    },
+                    finish_reason: Some("tool_calls".to_string()),
+                    raw_payload: serde_json::Value::Null,
+                },
+                ProviderChatResponse {
+                    assistant_message: ChatMessage {
+                        role: ChatMessageRole::Assistant,
+                        content: Some("I cannot execute that tool call.".to_string()),
+                        name: None,
+                        tool_call_id: None,
+                        tool_calls: Vec::new(),
+                        metadata: serde_json::Value::Null,
+                    },
+                    finish_reason: Some("stop".to_string()),
+                    raw_payload: serde_json::Value::Null,
+                },
+            ])),
+        });
+        let mcp = Arc::new(StrictSchemaMcp::default());
+        let driver = RigAgentDriver::new(
+            engine,
+            mcp.clone(),
+            ToolExecutionPolicy::new(None, Vec::new(), Vec::new()),
+        );
+
+        let outcome = driver.run(&config(), request(), None, None).await.unwrap();
+        let RuntimeOutcome::Completed {
+            appended_messages,
+            traces,
+            ..
+        } = outcome
+        else {
+            panic!("schema rejection must let the model complete the turn")
+        };
+        assert!(mcp.calls.lock().await.is_empty());
+        assert_eq!(traces.len(), 1);
+        assert_eq!(traces[0].status, "skipped");
+        assert_eq!(
+            traces[0].input_payload["redacted"],
+            serde_json::Value::Bool(true)
+        );
+        assert!(
+            !traces[0]
+                .input_payload
+                .to_string()
+                .contains("do-not-send-this-to-mcp")
+        );
+        assert!(appended_messages.iter().any(|message| {
+            message.role == ChatMessageRole::Tool
+                && message.content.as_deref().is_some_and(|content| {
+                    content.contains("<<<UNTRUSTED_MCP_TOOL_RESULT_BEGIN>>>")
+                })
+        }));
+    }
+
+    #[tokio::test]
+    async fn excessive_tool_turn_is_rejected_before_any_mcp_execution() {
+        let engine = Arc::new(ScriptedEngine {
+            responses: Mutex::new(VecDeque::from([ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: None,
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: (0..5)
+                        .map(|index| ToolCall {
+                            id: format!("publish-{index}"),
+                            name: "publish".to_string(),
+                            arguments: serde_json::json!({ "id": "draft-1" }),
+                        })
+                        .collect(),
+                    metadata: serde_json::Value::Null,
+                },
+                finish_reason: Some("tool_calls".to_string()),
+                raw_payload: serde_json::Value::Null,
+            }])),
+        });
+        let mcp = Arc::new(RecordingMcp::default());
+        let driver = RigAgentDriver::new(
+            engine,
+            mcp.clone(),
+            ToolExecutionPolicy::new(None, Vec::new(), Vec::new()),
+        );
+
+        let error = driver
+            .run(&config(), request(), None, None)
+            .await
+            .expect_err("an excessive tool turn must fail closed");
+        assert!(error.to_string().contains("per-turn execution limit"));
         assert!(mcp.calls.lock().await.is_empty());
     }
 
@@ -754,8 +1092,83 @@ mod tests {
             panic!("allowed multi-tool turn should complete")
         };
         assert_eq!(traces.len(), 2);
+        assert_eq!(
+            traces[0].input_payload["redacted"],
+            serde_json::Value::Bool(true)
+        );
+        assert_eq!(
+            traces[0].output_payload.as_ref().unwrap()["redacted"],
+            serde_json::Value::Bool(true)
+        );
+        assert!(
+            !traces[0]
+                .output_payload
+                .as_ref()
+                .unwrap()
+                .to_string()
+                .contains("published")
+        );
         let calls = mcp.calls.lock().await.clone();
         assert_eq!(calls, vec!["publish".to_string(), "notify".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn provider_usage_is_aggregated_without_treating_missing_usage_as_zero() {
+        let engine = Arc::new(ScriptedEngine {
+            responses: Mutex::new(VecDeque::from([
+                ProviderChatResponse {
+                    assistant_message: ChatMessage {
+                        role: ChatMessageRole::Assistant,
+                        content: None,
+                        name: None,
+                        tool_call_id: None,
+                        tool_calls: vec![ToolCall {
+                            id: "publish-usage-1".to_string(),
+                            name: "publish".to_string(),
+                            arguments: serde_json::json!({ "id": "draft-1" }),
+                        }],
+                        metadata: serde_json::Value::Null,
+                    },
+                    finish_reason: Some("tool_calls".to_string()),
+                    raw_payload: serde_json::json!({
+                        "usage": {
+                            "prompt_tokens": 3,
+                            "completion_tokens": 5,
+                            "total_tokens": 8,
+                        }
+                    }),
+                },
+                ProviderChatResponse {
+                    assistant_message: ChatMessage {
+                        role: ChatMessageRole::Assistant,
+                        content: Some("The draft was published.".to_string()),
+                        name: None,
+                        tool_call_id: None,
+                        tool_calls: Vec::new(),
+                        metadata: serde_json::Value::Null,
+                    },
+                    finish_reason: Some("stop".to_string()),
+                    raw_payload: serde_json::Value::Null,
+                },
+            ])),
+        });
+        let driver = RigAgentDriver::new(
+            engine,
+            Arc::new(RecordingMcp::default()),
+            ToolExecutionPolicy::new(None, Vec::new(), Vec::new()),
+        );
+
+        let outcome = driver.run(&config(), request(), None, None).await.unwrap();
+        let RuntimeOutcome::Completed { usage, .. } = outcome else {
+            panic!("agent run should complete");
+        };
+        assert_eq!(usage.provider_turns, 2);
+        assert_eq!(usage.provider_reported_turns, 1);
+        assert_eq!(usage.unavailable_provider_usage_turns, 1);
+        assert_eq!(usage.invalid_provider_usage_turns, 0);
+        assert_eq!(usage.input_tokens, 3);
+        assert_eq!(usage.output_tokens, 5);
+        assert_eq!(usage.total_tokens, 8);
     }
 
     #[tokio::test]
@@ -799,9 +1212,51 @@ mod tests {
             traces[0]
                 .error_message
                 .as_deref()
-                .is_some_and(|message| message.contains("unavailable"))
+                .is_some_and(|message| message.contains("details are redacted"))
         );
-        assert!(error_message.contains("unavailable"));
+        assert!(error_message.contains("details are redacted"));
+    }
+
+    #[tokio::test]
+    async fn runtime_context_limit_stops_before_a_second_provider_call() {
+        let engine = Arc::new(ScriptedEngine {
+            responses: Mutex::new(VecDeque::from([ProviderChatResponse {
+                assistant_message: ChatMessage {
+                    role: ChatMessageRole::Assistant,
+                    content: None,
+                    name: None,
+                    tool_call_id: None,
+                    tool_calls: vec![ToolCall {
+                        id: "publish-1".to_string(),
+                        name: "publish".to_string(),
+                        arguments: serde_json::json!({ "id": "draft-1" }),
+                    }],
+                    metadata: serde_json::Value::Null,
+                },
+                finish_reason: Some("tool_calls".to_string()),
+                raw_payload: serde_json::Value::Null,
+            }])),
+        });
+        let mcp = Arc::new(RecordingMcp::default());
+        let driver = RigAgentDriver::new(
+            engine.clone(),
+            mcp.clone(),
+            ToolExecutionPolicy::new(None, Vec::new(), Vec::new()),
+        );
+        let mut saturated_request = request();
+        saturated_request.messages[0].content =
+            Some("a".repeat(crate::agent_safety::MAX_AGENT_UNTRUSTED_CONTEXT_BYTES * 2));
+
+        let outcome = driver
+            .run(&config(), saturated_request, None, None)
+            .await
+            .expect("context growth must become a failed runtime outcome");
+        let RuntimeOutcome::Failed { error_message, .. } = outcome else {
+            panic!("context growth must stop before a second provider call")
+        };
+        assert!(error_message.contains("context exceeds"));
+        assert_eq!(mcp.calls.lock().await.as_slice(), ["publish"]);
+        assert!(engine.responses.lock().await.is_empty());
     }
 
     #[tokio::test]

@@ -641,7 +641,8 @@ impl AlloyAuthoringError {
             | ScriptError::Review(_)
             | ScriptError::TestRun(_)
             | ScriptError::ComponentCandidate(_)
-            | ScriptError::ComponentCandidateBuild(_) => Self::Invalid,
+            | ScriptError::ComponentCandidateBuild(_)
+            | ScriptError::ComponentCandidateExecution(_) => Self::Invalid,
             ScriptError::Runtime(_)
             | ScriptError::Aborted(_)
             | ScriptError::Timeout { .. }

@@ -139,9 +139,44 @@ impl ProviderUsage {
     }
 }
 
+/// Aggregated provider usage for one agent run. The host records whether each
+/// provider turn supplied a consistent usage payload instead of treating an
+/// absent or malformed payload as zero-cost evidence.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentUsageEvidence {
+    pub provider_turns: u32,
+    pub provider_reported_turns: u32,
+    pub unavailable_provider_usage_turns: u32,
+    pub invalid_provider_usage_turns: u32,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_tokens: u64,
+}
+
+impl AgentUsageEvidence {
+    pub fn record_provider_turn(&mut self, usage: Option<&ProviderUsage>) {
+        self.provider_turns = self.provider_turns.saturating_add(1);
+        let Some(usage) = usage else {
+            self.unavailable_provider_usage_turns =
+                self.unavailable_provider_usage_turns.saturating_add(1);
+            return;
+        };
+        if usage.total_tokens != usage.input_tokens.saturating_add(usage.output_tokens) {
+            self.invalid_provider_usage_turns = self.invalid_provider_usage_turns.saturating_add(1);
+            return;
+        }
+        self.provider_reported_turns = self.provider_reported_turns.saturating_add(1);
+        self.input_tokens = self.input_tokens.saturating_add(usage.input_tokens);
+        self.output_tokens = self.output_tokens.saturating_add(usage.output_tokens);
+        self.total_tokens = self.total_tokens.saturating_add(usage.total_tokens);
+    }
+}
+
 #[cfg(test)]
 mod provider_usage_tests {
-    use super::{ProviderCapability, ProviderUsage, default_provider_capabilities};
+    use super::{
+        AgentUsageEvidence, ProviderCapability, ProviderUsage, default_provider_capabilities,
+    };
     use crate::ProviderSlug;
 
     #[test]
@@ -152,6 +187,22 @@ mod provider_usage_tests {
             u64::MAX
         );
         assert_eq!(ProviderUsage::normalized(3, 5, Some(9)).total_tokens, 9);
+    }
+
+    #[test]
+    fn agent_usage_never_relabels_missing_or_invalid_usage_as_zero_cost() {
+        let mut evidence = AgentUsageEvidence::default();
+        evidence.record_provider_turn(Some(&ProviderUsage::normalized(3, 5, None)));
+        evidence.record_provider_turn(None);
+        evidence.record_provider_turn(Some(&ProviderUsage::normalized(2, 3, Some(9))));
+
+        assert_eq!(evidence.provider_turns, 3);
+        assert_eq!(evidence.provider_reported_turns, 1);
+        assert_eq!(evidence.unavailable_provider_usage_turns, 1);
+        assert_eq!(evidence.invalid_provider_usage_turns, 1);
+        assert_eq!(evidence.input_tokens, 3);
+        assert_eq!(evidence.output_tokens, 5);
+        assert_eq!(evidence.total_tokens, 8);
     }
 
     #[test]
@@ -187,7 +238,51 @@ pub struct ToolDefinition {
     pub description: String,
     #[serde(default)]
     pub input_schema: serde_json::Value,
+    /// Owner-declared consequence class. Missing data from a remote or older
+    /// adapter is treated as externally consequential and therefore requires
+    /// an operator decision before it can execute.
+    #[serde(default)]
+    pub operation_class: ToolOperationClass,
     pub sensitive: bool,
+}
+
+/// The owner-controlled consequence of invoking a typed tool.
+///
+/// This is deliberately independent of the model-visible description and of a
+/// tenant tool profile. A profile may add an approval boundary, but it cannot
+/// downgrade an owner-declared consequential operation to an automatic call.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolOperationClass {
+    ReadOnly,
+    DraftMutation,
+    WorkspaceMutation,
+    Publish,
+    DestructiveDataChange,
+    TrustPolicyChange,
+    StaticPromotion,
+    #[default]
+    ExternalSideEffect,
+}
+
+impl ToolOperationClass {
+    pub const fn requires_operator_approval(self) -> bool {
+        !matches!(self, Self::ReadOnly | Self::DraftMutation)
+    }
+}
+
+/// Immutable policy facts attached to an approval request.
+///
+/// The service recomputes this evidence from the current owner inventory and
+/// tool profile immediately before a new approved external call. Any changed
+/// schema, consequence class, or profile policy fails closed rather than
+/// reusing an approval for a different operation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ToolPolicyEvidence {
+    pub operation_class: ToolOperationClass,
+    pub requires_operator_approval: bool,
+    pub definition_digest: String,
+    pub policy_digest: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -304,6 +399,7 @@ pub struct PendingApproval {
     pub tool_call_id: String,
     pub input_payload: serde_json::Value,
     pub reason: String,
+    pub policy_evidence: ToolPolicyEvidence,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -369,6 +465,7 @@ impl DirectExecutionTarget {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct AiRunDecisionTrace {
     pub task_profile_id: Option<Uuid>,
     pub task_profile_slug: Option<String>,
@@ -380,8 +477,20 @@ pub struct AiRunDecisionTrace {
     pub requested_locale: Option<String>,
     pub resolved_locale: Option<String>,
     #[serde(default)]
+    pub prompt_template: Option<AgentPromptTemplateEvidence>,
+    #[serde(default)]
+    pub agent_usage: Option<AgentUsageEvidence>,
+    #[serde(default)]
     pub reasons: Vec<String>,
     pub used_override: bool,
+}
+
+/// Content-free revision evidence for the exact trusted system prompt rendered
+/// by the agent host. User, RAG, and MCP payloads are deliberately excluded.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentPromptTemplateEvidence {
+    pub template_digest: String,
+    pub owner_task_policy_digest: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -401,16 +510,19 @@ pub enum RuntimeOutcome {
     Completed {
         appended_messages: Vec<ChatMessage>,
         traces: Vec<ToolTrace>,
+        usage: AgentUsageEvidence,
     },
     WaitingApproval {
         appended_messages: Vec<ChatMessage>,
         traces: Vec<ToolTrace>,
         pending_approvals: Vec<PendingApproval>,
+        usage: AgentUsageEvidence,
     },
     Failed {
         appended_messages: Vec<ChatMessage>,
         traces: Vec<ToolTrace>,
         error_message: String,
+        usage: AgentUsageEvidence,
     },
 }
 

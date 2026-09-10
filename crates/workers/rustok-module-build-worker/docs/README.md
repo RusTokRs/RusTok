@@ -231,12 +231,16 @@ rehash-verified component digest into the validated source declaration and
 creates `RUSTOK_MODULE_BUILD_OUTPUT_DIR/module-artifact-descriptor.json`
 exactly once. The runner cannot provide or replace that final descriptor: an
 existing output path is a terminal `artifact_descriptor_invalid` result. The
-worker then publishes the fixed descriptor, component, SBOM, and provenance
-through the configured scoped OCI destination and uses fixed Cosign with the
-configured KMS reference to sign the digest-pinned artifact.
-The returned result then carries only digest-pinned artifact/SBOM/provenance/
-signature-manifest references and marks that signature as `build_service`; the
-owner rejects any successful result that lacks those publication facts. An
+worker then publishes the fixed descriptor/component package through the
+configured scoped OCI destination. The shared fixed Cosign/KMS boundary signs
+the digest-pinned OCI manifest and emits the verified SBOM and provenance as
+current CycloneDX and SLSA v1 signed attestations. It validates the original
+payload-bound SLSA statement, then supplies only its predicate to Cosign; the
+Cosign-created in-toto envelope is manifest-bound.
+The returned result carries only digest-pinned artifact/signature-manifest
+references and marks that signature as `build_service`; the independent
+verifier later records typed digests for its actual verified evidence output.
+The owner rejects any successful result that lacks those publication facts. An
 author signature and marketplace approval are separate governance evidence and
 cannot be claimed by the build worker.
 
@@ -253,8 +257,8 @@ slug/version, runtime ABI, build attempt, and exact ordered validation-profile
 identities and outcomes. A successful JSON result must report every requested
 profile as `passed`; `validation_failed` must identify an ordered requested
 profile with outcome `failed`. This checks production evidence before the
-worker publishes OCI referrers and signs the artifact; admission trust policy
-remains a separate stage.
+worker creates signed Cosign attestations; admission trust policy remains a
+separate stage.
 
 The current source reference must exactly be `cas://sha256:<hex>` and its matching
 `<hex>.tar` file must exist in `RUSTOK_MODULE_BUILD_SOURCE_ROOT`. The worker

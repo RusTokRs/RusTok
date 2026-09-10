@@ -51,8 +51,8 @@ pub use rhai_scope::{
 pub use rhai_workspace::{
     MAX_RHAI_WORKSPACE_BYTES, MAX_RHAI_WORKSPACE_FILE_BYTES, MAX_RHAI_WORKSPACE_FILES,
     MAX_RHAI_WORKSPACE_IMPORT_DEPTH, MAX_RHAI_WORKSPACE_PATH_BYTES, RHAI_WORKSPACE_MEDIA_TYPE,
-    RHAI_WORKSPACE_SCHEMA_VERSION, RhaiWorkspace, RhaiWorkspaceError, RhaiWorkspaceFile,
-    RhaiWorkspaceFileKind,
+    RHAI_WORKSPACE_SCHEMA_VERSION, RhaiWorkspace, RhaiWorkspaceCapabilityError, RhaiWorkspaceError,
+    RhaiWorkspaceFile, RhaiWorkspaceFileKind,
 };
 pub use runtime::{ExecutionObserver, NoopExecutionObserver, SandboxRuntime};
 pub use types::{

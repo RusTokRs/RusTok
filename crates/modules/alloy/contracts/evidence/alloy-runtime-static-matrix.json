@@ -141,6 +141,10 @@
         "release_stage_binds_source_revision_and_review_evidence",
         "release_stage_binds_redacted_publication_smoke_evidence",
         "release_stage_requires_artifact_digest_to_equal_reviewed_source_digest",
+        "release_stage_finalizes_descriptor_from_canonical_workspace_source_manifest",
+        "owner_stage_receipt_persists_descriptor_and_canonical_descriptor_digest",
+        "validation_lease_carries_receipted_descriptor_without_alloy_reread",
+        "platform_admission_requires_exact_receipted_descriptor",
         "release_stage_uses_owner_idempotency_without_marketplace_writes",
         "alloy_authored_origin_has_a_distinct_owner_stage",
         "alloy_authored_final_promotion_requires_platform_admission",
@@ -149,12 +153,36 @@
       ]
     },
     {
+      "name": "component_candidate_execution_contract",
+      "assertions": [
+        "completed_result_is_loaded_only_through_the_module_owner_read_port",
+        "candidate_build_receipt_is_rebound_before_execution_evidence_is_persisted",
+        "tenant_source_scenario_manifest_and_parent_are_exactly_matched",
+        "execution_evidence_is_redacted_idempotent_and_retention_collected",
+        "hardened_oci_job_deployment_proof_is_not_inferred"
+      ]
+    },
+    {
       "name": "release_capability_declaration_contract",
       "assertions": [
         "executable_source_helpers_are_observed_before_staging_and_packaging",
+        "capability_observer_is_owned_by_the_neutral_sandbox_workspace_contract",
         "generic_capability_names_must_be_literal_and_valid",
         "descriptor_capabilities_match_the_observed_source_set_exactly",
+        "isolated_delivery_revalidates_descriptor_capabilities_against_canonical_workspace",
         "dynamic_names_and_reserved_helper_shadowing_are_rejected"
+      ]
+    },
+    {
+      "name": "release_oci_publication_and_admission_contract",
+      "assertions": [
+        "owner_receipted_workspace_is_recanonicalized_before_oci_publication",
+        "oci_manifest_and_cosign_attested_sbom_slsa_provenance_are_deterministic_and_digest_pinned",
+        "slsa_provenance_binds_exact_owner_request_review_descriptor_and_workspace_facts",
+        "registry_validation_worker_signs_and_attests_with_cosign_and_resolves_a_digest_pinned_signature_manifest",
+        "isolated_verifier_requires_the_exact_alloy_owner_binding",
+        "alloy_publication_records_only_platform_admission_without_a_build_service_attestation",
+        "owner_source_reloads_and_revalidates_the_receipted_descriptor_before_publication"
       ]
     }
   ]

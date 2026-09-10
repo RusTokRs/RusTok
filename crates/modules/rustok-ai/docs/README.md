@@ -31,8 +31,21 @@ and MCP tool surface, without extending `rustok-mcp` to the role of model host.
 
 - `ProviderSlug` / `ProviderFeature` registry with typed setting and credential schemas;
 - `InferenceEngine` backed by Rig 0.39;
-- `RigAgentDriver` with persisted canonical history, tool policy, and approval boundaries;
-- `ToolExecutionPolicy` with sensitive tool calls and approval boundary.
+- `RigAgentDriver` with persisted canonical history, host-side trust boundary,
+  tool policy, and approval boundaries. Only owner task policy is emitted as a
+  system message; user, RAG, and MCP-result context is size-bounded and
+  explicitly marked as untrusted before it reaches a provider. Every agent
+  run persists a content-free SHA-256 revision of that rendered trusted prompt
+  before provider egress and aggregates provider-reported token usage in its
+  decision trace; absent or inconsistent provider usage remains explicit
+  evidence rather than being relabeled as zero;
+- `ToolExecutionPolicy` with sensitive tool calls and approval boundary. Every
+  model-originated call is checked against the current allowed inventory and
+  typed JSON Schema before it can reach MCP; the agent has fixed turn, tool-call,
+  response-token, inventory, argument, and tool-output limits. Owner-declared
+  operation classes make workspace mutation, publication, destructive-data,
+  trust-policy, static-promotion, and unknown external operations approval-gated
+  even if an operator profile does not list them as sensitive;
 - `AiRouter` and direct-dispatch layer for first-party verticals without mandatory MCP hop.
 - `AgentPrincipal` and `AgentCatalog` enforce the initiating-subject/agent
   permission intersection; owner modules contribute their agent descriptors.
@@ -44,6 +57,15 @@ and MCP tool surface, without extending `rustok-mcp` to the role of model host.
 - `McpClientAdapter` as a separate layer on top of the RusToK MCP tool surface;
 - current MVP wiring uses `rustok-mcp` and does not extend `rustok-mcp` with provider-specific responsibilities;
 - Alloy/MCP tool traces and approval-gated execution are already part of the persisted chat flow.
+  Trace input/output evidence is redacted to size and SHA-256 facts rather than
+  retaining raw MCP payloads. On a new approved execution, the service reloads
+  the actor/tenant-scoped MCP inventory and validates the persisted input against
+  the current schema before it claims the approval lease; an already durable
+  execution outcome is replayed without a second external invocation. Alloy
+  scaffold stage/review/apply results additionally retain a typed owner-issued
+  source-lineage receipt (`owner`, tool, draft UUID, and source digest); the
+  receipt is validated at the adapter boundary and is never inferred from model
+  or raw MCP text.
 
 ### Persisted Control Plane and Host Composition
 

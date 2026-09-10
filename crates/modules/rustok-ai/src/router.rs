@@ -199,6 +199,8 @@ impl AiRouter {
                 execution_target: None,
                 requested_locale: None,
                 resolved_locale: None,
+                prompt_template: None,
+                agent_usage: None,
                 reasons,
                 used_override,
             },

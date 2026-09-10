@@ -10,16 +10,15 @@ use std::{
 
 use async_trait::async_trait;
 use rustok_build_publication::{
-    CommandRegistryCredentialBroker, CosignArtifactSigner, CosignSigningError,
-    RegistryCredentialBroker, RegistryCredentialError, validate_fixed_program,
+    CommandRegistryCredentialBroker, CosignArtifactSigner, RegistryCredentialBroker,
+    SignedOciArtifactPublicationError, publish_signed_oci_artifact, validate_fixed_program,
 };
 use rustok_modules::{
     ArtifactAdmissionLimits, ModuleBuildDiagnostic, ModuleBuildEvidence, ModuleBuildFailureCode,
     ModuleBuildMetrics, ModuleBuildNextAction, ModuleBuildOutcome, ModuleBuildProtocolError,
     ModuleBuildPublicationReceipt, ModuleBuildRequest, ModuleBuildResult, ModuleBuildScenario,
     ModuleBuildSignatureAuthority, ModuleBuildWorker, ModuleBuildWorkerReadiness,
-    OciArtifactPublicationError, OciArtifactPublicationTarget, OciArtifactPublisher,
-    OciDistributionArtifactPublisher,
+    OciArtifactPublicationTarget,
 };
 use rustok_sandbox::LocalSandboxScenario;
 use serde::Deserialize;
@@ -778,7 +777,6 @@ impl ModuleBuildWorker for OciJobBuildWorker {
                     ModuleBuildFailureCode::ResourceLimitExceeded,
                 ));
             }
-            let publication_deadline = Instant::now() + publication_timeout;
             let publication_limits = ArtifactAdmissionLimits {
                 max_descriptor_bytes: ArtifactAdmissionLimits::default().max_descriptor_bytes,
                 max_payload_bytes: request
@@ -787,163 +785,38 @@ impl ModuleBuildWorker for OciJobBuildWorker {
                     .min(request.limits.memory_bytes / 4)
                     .min(64 * 1024 * 1024),
             };
-            let credentials = match timeout(
+            let receipt = match publish_signed_oci_artifact(
+                self.registry_credentials.as_ref(),
+                &self.signer,
+                &self.publication_target,
+                publication_bundle,
+                publication_limits,
                 publication_timeout,
-                self.registry_credentials.acquire(
-                    &self.publication_target,
-                    publication_timeout + CREDENTIAL_LEASE_SAFETY_MARGIN,
-                ),
+                CREDENTIAL_LEASE_SAFETY_MARGIN,
             )
             .await
             {
-                Ok(Ok(credentials)) => credentials,
-                Ok(Err(RegistryCredentialError::Rejected)) => {
+                Ok(receipt) => receipt,
+                Err(SignedOciArtifactPublicationError::Rejected) => {
                     return Ok(failed_result(
                         &request,
                         ModuleBuildFailureCode::PublicationFailed,
                     ));
                 }
-                Ok(Err(RegistryCredentialError::TimedOut)) | Err(_) => {
-                    return Err(ModuleBuildProtocolError::Transport(
-                        "module registry credential broker timed out".to_string(),
-                    ));
-                }
-                Ok(Err(RegistryCredentialError::Unavailable(error))) => {
-                    return Err(ModuleBuildProtocolError::Transport(format!(
-                        "module registry credential broker unavailable: {error}"
-                    )));
-                }
-            };
-            if credentials.ensure_valid().is_err() {
-                return Ok(failed_result(
-                    &request,
-                    ModuleBuildFailureCode::PublicationFailed,
-                ));
-            }
-            let publisher =
-                OciDistributionArtifactPublisher::strict(credentials.registry_auth())
-                    .map_err(|error| ModuleBuildProtocolError::Transport(error.to_string()))?;
-            let Some(remaining_publication_timeout) = remaining_timeout(publication_deadline)
-            else {
-                return Ok(failed_result(
-                    &request,
-                    ModuleBuildFailureCode::ResourceLimitExceeded,
-                ));
-            };
-            let receipt = match timeout(
-                remaining_publication_timeout,
-                publisher.publish(
-                    self.publication_target.clone(),
-                    publication_bundle,
-                    publication_limits,
-                ),
-            )
-            .await
-            {
-                Ok(Ok(receipt)) => receipt,
-                Ok(Err(OciArtifactPublicationError::InvalidTarget(_)))
-                | Ok(Err(OciArtifactPublicationError::InvalidBundle(_)))
-                | Ok(Err(OciArtifactPublicationError::ManifestDigestMismatch { .. })) => {
-                    return Ok(failed_result(
-                        &request,
-                        ModuleBuildFailureCode::PublicationFailed,
-                    ));
-                }
-                Ok(Err(OciArtifactPublicationError::Registry(error))) => {
-                    return Err(ModuleBuildProtocolError::Transport(format!(
-                        "module artifact publication failed: {error}"
-                    )));
-                }
-                Err(_) => {
+                Err(SignedOciArtifactPublicationError::TimedOut) => {
                     return Err(ModuleBuildProtocolError::Transport(
                         "module artifact publication timed out".to_string(),
                     ));
                 }
-            };
-            let Some(signature_timeout) = remaining_timeout(publication_deadline) else {
-                return Ok(failed_result(
-                    &request,
-                    ModuleBuildFailureCode::ResourceLimitExceeded,
-                ));
-            };
-            match self
-                .signer
-                .sign(&receipt.artifact, &credentials, signature_timeout)
-                .await
-            {
-                Ok(()) => {}
-                Err(CosignSigningError::Rejected) => {
-                    return Ok(failed_result(
-                        &request,
-                        ModuleBuildFailureCode::PublicationFailed,
-                    ));
-                }
-                Err(CosignSigningError::TimedOut) => {
-                    return Err(ModuleBuildProtocolError::Transport(
-                        "module artifact signature publication timed out".to_string(),
-                    ));
-                }
-                Err(CosignSigningError::Unavailable(error)) => {
+                Err(SignedOciArtifactPublicationError::Unavailable(error)) => {
                     return Err(ModuleBuildProtocolError::Transport(format!(
-                        "module artifact signature publication unavailable: {error}"
+                        "module artifact publication infrastructure unavailable: {error}"
                     )));
-                }
-                Err(CosignSigningError::Credential(RegistryCredentialError::Rejected)) => {
-                    return Ok(failed_result(
-                        &request,
-                        ModuleBuildFailureCode::PublicationFailed,
-                    ));
-                }
-                Err(CosignSigningError::Credential(RegistryCredentialError::TimedOut)) => {
-                    return Err(ModuleBuildProtocolError::Transport(
-                        "module artifact signature credential lease expired".to_string(),
-                    ));
-                }
-                Err(CosignSigningError::Credential(RegistryCredentialError::Unavailable(
-                    error,
-                ))) => {
-                    return Err(ModuleBuildProtocolError::Transport(format!(
-                        "module artifact signature credential unavailable: {error}"
-                    )));
-                }
-            }
-            let Some(signature_resolution_timeout) = remaining_timeout(publication_deadline) else {
-                return Ok(failed_result(
-                    &request,
-                    ModuleBuildFailureCode::ResourceLimitExceeded,
-                ));
-            };
-            let signature_manifest = match timeout(
-                signature_resolution_timeout,
-                publisher.resolve_cosign_signature(&self.publication_target, &receipt.artifact),
-            )
-            .await
-            {
-                Ok(Ok(signature_manifest)) => signature_manifest,
-                Ok(Err(OciArtifactPublicationError::InvalidTarget(_)))
-                | Ok(Err(OciArtifactPublicationError::InvalidBundle(_)))
-                | Ok(Err(OciArtifactPublicationError::ManifestDigestMismatch { .. })) => {
-                    return Ok(failed_result(
-                        &request,
-                        ModuleBuildFailureCode::PublicationFailed,
-                    ));
-                }
-                Ok(Err(OciArtifactPublicationError::Registry(error))) => {
-                    return Err(ModuleBuildProtocolError::Transport(format!(
-                        "module artifact signature manifest resolution failed: {error}"
-                    )));
-                }
-                Err(_) => {
-                    return Err(ModuleBuildProtocolError::Transport(
-                        "module artifact signature manifest resolution timed out".to_string(),
-                    ));
                 }
             };
             result.publication = Some(ModuleBuildPublicationReceipt {
                 artifact: receipt.artifact,
-                sbom_referrer: receipt.sbom_referrer,
-                provenance_referrer: receipt.provenance_referrer,
-                signature_manifest,
+                signature_manifest: receipt.signature_manifest,
                 signature_authority: ModuleBuildSignatureAuthority::BuildService,
             });
             result.validate_against(&request)?;

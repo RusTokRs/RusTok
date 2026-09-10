@@ -95,6 +95,7 @@ pub async fn alloy_scaffold_module(
     }
 
     let preview = crate::alloy_scaffold::generate_module_scaffold(&request)?;
+    let source_digest = crate::alloy_scaffold::scaffold_source_digest(&preview)?;
     let draft_id = uuid::Uuid::new_v4();
     let draft = StagedModuleScaffold {
         draft_id: draft_id.to_string(),
@@ -112,6 +113,7 @@ pub async fn alloy_scaffold_module(
     Ok(StageModuleScaffoldResponse {
         draft_id: draft_id.to_string(),
         preview,
+        source_digest,
         status: ModuleScaffoldDraftStatus::Staged,
         review_required: true,
         apply_tool: TOOL_ALLOY_APPLY_MODULE_SCAFFOLD.to_string(),
@@ -153,7 +155,11 @@ pub async fn alloy_review_module_scaffold(
         .cloned()
         .ok_or_else(|| format!("Unknown scaffold draft: {}", request.draft_id))?;
 
-    Ok(ReviewModuleScaffoldResponse { draft })
+    let source_digest = crate::alloy_scaffold::scaffold_source_digest(&draft.preview)?;
+    Ok(ReviewModuleScaffoldResponse {
+        draft,
+        source_digest,
+    })
 }
 
 pub async fn alloy_apply_module_scaffold(
@@ -374,6 +380,11 @@ mod tests {
         .expect("stage should succeed");
 
         assert_eq!(staged.status, ModuleScaffoldDraftStatus::Staged);
+        assert_eq!(
+            staged.source_digest,
+            crate::alloy_scaffold::scaffold_source_digest(&staged.preview)
+                .expect("staged source digest")
+        );
 
         let reviewed = alloy_review_module_scaffold(
             &state,
@@ -387,6 +398,7 @@ mod tests {
 
         assert_eq!(reviewed.draft.draft_id, staged.draft_id);
         assert_eq!(reviewed.draft.status, ModuleScaffoldDraftStatus::Staged);
+        assert_eq!(reviewed.source_digest, staged.source_digest);
     }
 
     #[tokio::test]
@@ -437,10 +449,13 @@ mod tests {
             request: ScaffoldModuleRequest,
         ) -> AnyhowResult<StageModuleScaffoldResponse> {
             self.stage_calls.fetch_add(1, Ordering::SeqCst);
+            let preview = crate::alloy_scaffold::generate_module_scaffold(&request)
+                .map_err(anyhow::Error::msg)?;
             Ok(StageModuleScaffoldResponse {
                 draft_id: "persisted-draft".to_string(),
-                preview: crate::alloy_scaffold::generate_module_scaffold(&request)
+                source_digest: crate::alloy_scaffold::scaffold_source_digest(&preview)
                     .map_err(anyhow::Error::msg)?,
+                preview,
                 status: ModuleScaffoldDraftStatus::Staged,
                 review_required: true,
                 apply_tool: TOOL_ALLOY_APPLY_MODULE_SCAFFOLD.to_string(),
@@ -454,6 +469,12 @@ mod tests {
             request: ReviewModuleScaffoldRequest,
         ) -> AnyhowResult<ReviewModuleScaffoldResponse> {
             self.review_calls.fetch_add(1, Ordering::SeqCst);
+            let preview = ScaffoldModulePreview {
+                crate_name: "rustok-newsletter".to_string(),
+                crate_path: "crates/modules/rustok-newsletter".to_string(),
+                files: Vec::new(),
+                next_steps: vec!["persisted".to_string()],
+            };
             Ok(ReviewModuleScaffoldResponse {
                 draft: StagedModuleScaffold {
                     draft_id: request.draft_id,
@@ -466,14 +487,11 @@ mod tests {
                         with_rest: true,
                         write_files: false,
                     },
-                    preview: ScaffoldModulePreview {
-                        crate_name: "rustok-newsletter".to_string(),
-                        crate_path: "crates/modules/rustok-newsletter".to_string(),
-                        files: Vec::new(),
-                        next_steps: vec!["persisted".to_string()],
-                    },
+                    preview: preview.clone(),
                     status: ModuleScaffoldDraftStatus::Staged,
                 },
+                source_digest: crate::alloy_scaffold::scaffold_source_digest(&preview)
+                    .map_err(anyhow::Error::msg)?,
             })
         }
 
@@ -483,10 +501,18 @@ mod tests {
             request: ApplyModuleScaffoldRequest,
         ) -> AnyhowResult<ApplyModuleScaffoldResponse> {
             self.apply_calls.fetch_add(1, Ordering::SeqCst);
+            let preview = ScaffoldModulePreview {
+                crate_name: "rustok-newsletter".to_string(),
+                crate_path: "crates/modules/rustok-newsletter".to_string(),
+                files: Vec::new(),
+                next_steps: vec!["persisted".to_string()],
+            };
             Ok(ApplyModuleScaffoldResponse {
                 draft_id: request.draft_id,
                 crate_name: "rustok-newsletter".to_string(),
                 crate_path: "crates/modules/rustok-newsletter".to_string(),
+                source_digest: crate::alloy_scaffold::scaffold_source_digest(&preview)
+                    .map_err(anyhow::Error::msg)?,
                 wrote_files: true,
                 status: ModuleScaffoldDraftStatus::Applied,
                 next_steps: vec!["persisted".to_string()],

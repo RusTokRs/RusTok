@@ -136,12 +136,30 @@ claim, the adapter discovers its own expired AI leases and requeues them through
 the tenant-scoped service, so stale stages do not require a host-specific
 recovery loop.
 
-Rig agent recovery never executes unknown or policy-denied tool calls. It
-persists a synthetic skipped result and lets the model finish the turn. A
-sensitive model turn is represented as one approval batch: non-sensitive
-allowed results are persisted immediately, each sensitive call is independently
-approved or rejected, and the run is restored only when the batch is complete.
-The final policy check occurs immediately before an approved MCP invocation.
+Rig agent recovery never executes unknown, policy-denied, or schema-invalid tool
+calls. It persists a synthetic skipped result and lets the model finish the
+turn. The host creates the only system message from the owner task policy;
+user, RAG, tool-definition description, and MCP-result data is bounded and
+explicitly marked as untrusted before provider execution. A sensitive model turn
+is represented as one approval batch: non-sensitive allowed results are
+persisted immediately, each sensitive call is independently approved or
+rejected, and the run is restored only when the batch is complete. The final
+policy check reloads the actor/tenant-scoped MCP inventory and validates the
+persisted input against the current typed schema before an approved new MCP
+invocation. Durable outcomes are replayed without a second external call.
+The owner declares every tool's operation class, so a profile cannot downgrade
+workspace mutation, publication, destructive-data, trust-policy, static-
+promotion, or an unknown external operation below the approval boundary. The
+approval snapshot records digests of both the typed tool definition and the
+effective policy and is revalidated before a new approved invocation. Before
+provider egress, the run records a content-free SHA-256 revision of the exact
+trusted system prompt. Provider-reported usage is aggregated into the durable
+decision trace while missing and inconsistent usage are retained as explicit
+evidence, never silently treated as zero cost. Financial price/budget settlement
+for interactive agent runs remains unfinished. Alloy scaffold stage/review/apply
+now retain typed owner-issued source lineage separately from redacted tool
+output; complete build/release lineage remains unfinished. The structured-task
+ledger is not repurposed as an unsafe parallel accounting path.
 
 ## Remaining implementation plan
 
@@ -197,7 +215,8 @@ The next RAG slice is planned as two deployment profiles behind one
   provides lexical candidates and metadata filters, while optional Rig
   reranking improves the result set. A task profile enables the path through
   `metadata.rag.enabled`; the host registers `SharedAiRagRetrievalPort`, and
-  retrieved evidence is injected into the model as a data-only system block.
+  retrieved evidence is injected as explicitly delimited untrusted context,
+  never as a system instruction.
 - **Semantic RAG** is reserved for Rig embeddings and an Athanor vector-index
   adapter. Athanor currently exposes the `EmbeddingProvider` and `VectorIndex`
   core ports, but its concrete vector implementation is still a planned Phase
@@ -239,6 +258,7 @@ providers must be added behind the same retrieval contract.
 - `cargo test -p rustok-ai --features server migrations::m20260712_000001_provider_targets::tests -- --nocapture`
 - `cargo test -p rustok-ai --features server engine::catalog::tests -- --nocapture`
 - `cargo test -p rustok-ai --features server engine::agent_driver::tests -- --nocapture`
+- `cargo test -p rustok-ai --features server agent_safety::tests -- --nocapture`
 - `cargo test -p rustok-ai --features server engine::inference::usage_tests -- --nocapture`
 - `cargo test -p rustok-ai --features server engine::inference::live_connectivity_tests -- --ignored probes_each_declared_live_provider_target`
 - `cargo test -p rustok-ai --features server -- --ignored executes_declared_live_provider_through_durable_structured_runtime`

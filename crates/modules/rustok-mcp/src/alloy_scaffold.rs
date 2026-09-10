@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use rustok_api::manifest_hash::hash_manifest;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -69,6 +70,8 @@ pub struct StagedModuleScaffold {
 pub struct StageModuleScaffoldResponse {
     pub draft_id: String,
     pub preview: ScaffoldModulePreview,
+    /// Canonical SHA-256 digest of the generated source files and logical crate root.
+    pub source_digest: String,
     pub status: ModuleScaffoldDraftStatus,
     pub review_required: bool,
     pub apply_tool: String,
@@ -83,6 +86,8 @@ pub struct ReviewModuleScaffoldRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ReviewModuleScaffoldResponse {
     pub draft: StagedModuleScaffold,
+    /// Canonical SHA-256 digest of the reviewed source files and logical crate root.
+    pub source_digest: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -99,6 +104,8 @@ pub struct ApplyModuleScaffoldResponse {
     pub draft_id: String,
     pub crate_name: String,
     pub crate_path: String,
+    /// Canonical SHA-256 digest of the exact source files written by this operation.
+    pub source_digest: String,
     pub wrote_files: bool,
     pub status: ModuleScaffoldDraftStatus,
     pub next_steps: Vec<String>,
@@ -138,10 +145,25 @@ pub fn generate_module_scaffold(
     })
 }
 
+/// Returns the canonical identity of a generated scaffold's source content.
+///
+/// Operational guidance is deliberately excluded: the digest binds only the
+/// logical crate root and the exact generated files that can be applied.
+pub fn scaffold_source_digest(preview: &ScaffoldModulePreview) -> Result<String, String> {
+    let digest = hash_manifest(&ScaffoldSourceSnapshot {
+        crate_name: &preview.crate_name,
+        crate_path: &preview.crate_path,
+        files: &preview.files,
+    })
+    .map_err(|_| "Failed to canonicalize scaffold source digest".to_string())?;
+    Ok(format!("sha256:{digest}"))
+}
+
 pub fn apply_staged_scaffold(
     draft: &StagedModuleScaffold,
     workspace_root: &str,
 ) -> Result<ApplyModuleScaffoldResponse, String> {
+    let source_digest = scaffold_source_digest(&draft.preview)?;
     let target_root = PathBuf::from(workspace_root).join(&draft.preview.crate_path);
     let file_map = draft
         .preview
@@ -155,10 +177,18 @@ pub fn apply_staged_scaffold(
         draft_id: draft.draft_id.clone(),
         crate_name: draft.preview.crate_name.clone(),
         crate_path: draft.preview.crate_path.clone(),
+        source_digest,
         wrote_files: true,
         status: ModuleScaffoldDraftStatus::Applied,
         next_steps: preview_next_steps(),
     })
+}
+
+#[derive(Serialize)]
+struct ScaffoldSourceSnapshot<'a> {
+    crate_name: &'a str,
+    crate_path: &'a str,
+    files: &'a [ScaffoldModuleFile],
 }
 
 fn preview_next_steps() -> Vec<String> {
@@ -216,6 +246,7 @@ fn write_scaffold_files(root: &Path, file_map: &BTreeMap<String, String>) -> Res
 
     let workspace_root = root
         .parent()
+        .and_then(Path::parent)
         .and_then(Path::parent)
         .ok_or_else(|| "Failed to resolve workspace root from target path".to_string())?;
     if !workspace_root.join("Cargo.toml").exists() {
@@ -472,6 +503,38 @@ mod tests {
     }
 
     #[test]
+    fn source_digest_binds_only_the_logical_source_snapshot() {
+        let preview = generate_module_scaffold(&request(false, false))
+            .expect("design scaffold should be generated");
+        let digest = scaffold_source_digest(&preview).expect("source digest should be generated");
+        assert!(digest.starts_with("sha256:"));
+        assert_eq!(digest.len(), "sha256:".len() + 64);
+
+        let mut guidance_changed = preview.clone();
+        guidance_changed
+            .next_steps
+            .push("operator-only guidance".to_string());
+        assert_eq!(
+            scaffold_source_digest(&guidance_changed).expect("guidance digest"),
+            digest,
+            "operational guidance must not alter source provenance"
+        );
+
+        let mut source_changed = preview;
+        source_changed
+            .files
+            .first_mut()
+            .expect("scaffold file")
+            .content
+            .push_str("\n# changed");
+        assert_ne!(
+            scaffold_source_digest(&source_changed).expect("changed source digest"),
+            digest,
+            "source provenance must change with generated file bytes"
+        );
+    }
+
+    #[test]
     fn apply_writes_reviewed_design_files_to_disk() {
         let workspace_root = std::env::temp_dir().join(format!("rustok-mcp-{}", Uuid::new_v4()));
         fs::create_dir_all(workspace_root.join("crates")).expect("workspace crates directory");
@@ -489,6 +552,10 @@ mod tests {
 
         let response = apply_staged_scaffold(&draft, &workspace_root.to_string_lossy())
             .expect("apply should write the reviewed scaffold");
+        assert_eq!(
+            response.source_digest,
+            scaffold_source_digest(&preview).expect("expected source digest")
+        );
         let crate_root = workspace_root.join(response.crate_path);
         assert!(crate_root.join("Cargo.toml").exists());
         assert!(crate_root.join("README.md").exists());

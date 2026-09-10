@@ -201,6 +201,8 @@ pub enum ModuleArtifactSourceManifestError {
     Descriptor(#[source] ModuleArtifactError),
     #[error("module artifact source manifest does not match the immutable build request")]
     BuildIdentityMismatch,
+    #[error("module artifact source manifest does not match the immutable Rhai release")]
+    RhaiReleaseIdentityMismatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1135,6 +1137,39 @@ impl ModuleArtifactSourceManifest {
             || self.descriptor.entrypoint != "run"
         {
             return Err(ModuleArtifactSourceManifestError::BuildIdentityMismatch);
+        }
+        Ok(())
+    }
+
+    /// Validates the author declaration before an Alloy-reviewed Rhai
+    /// workspace becomes a marketplace release. The descriptor remains
+    /// source-controlled except for its payload digest, which is finalized
+    /// from the exact canonical workspace bytes after this check succeeds.
+    pub fn validate_rhai_release(
+        &self,
+        slug: &str,
+        version: &str,
+        entrypoint: &str,
+    ) -> Result<(), ModuleArtifactSourceManifestError> {
+        self.validate_rhai_declaration(entrypoint)?;
+        if self.descriptor.slug != slug || self.descriptor.version != version {
+            return Err(ModuleArtifactSourceManifestError::RhaiReleaseIdentityMismatch);
+        }
+        Ok(())
+    }
+
+    /// Validates the Rhai-specific descriptor shape before the registry owner
+    /// compares its slug and version to the selected publish request.
+    pub fn validate_rhai_declaration(
+        &self,
+        entrypoint: &str,
+    ) -> Result<(), ModuleArtifactSourceManifestError> {
+        if self.descriptor.payload_kind != ArtifactPayloadKind::Rhai
+            || self.descriptor.module_kind != ArtifactModuleKind::Optional
+            || self.descriptor.runtime_abi != rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI
+            || self.descriptor.entrypoint != entrypoint
+        {
+            return Err(ModuleArtifactSourceManifestError::RhaiReleaseIdentityMismatch);
         }
         Ok(())
     }

@@ -14,19 +14,18 @@ use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 use crate::{
-    ArtifactAdmissionLimits, ArtifactPayloadSource, ArtifactRegistry, ControlPlaneInfrastructure,
-    ModuleArtifactDescriptor, ModuleArtifactPackage, ModuleBuildOutcome, ModuleBuildRequest,
-    ModuleBuildResult, ModuleInstallationError, OciArtifactReference,
+    ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE, ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID,
+    ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF, ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI,
+    ArtifactAdmissionLimits, ArtifactModuleKind, ArtifactPayloadKind, ArtifactPayloadSource,
+    ArtifactRegistry, ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleArtifactPackage,
+    ModuleBuildOutcome, ModuleBuildRequest, ModuleBuildResult, ModuleInstallationError,
+    OciArtifactReference,
     oci_transport::{Blob, OciRegistryTransport, RegistryReference},
 };
 
 /// Stable OCI config media type for a serialized immutable module descriptor.
 pub const MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE: &str =
     "application/vnd.rustok.module.descriptor.v1+json";
-/// Stable OCI referrer media type for CycloneDX JSON evidence.
-pub const MODULE_ARTIFACT_SBOM_MEDIA_TYPE: &str = "application/vnd.cyclonedx+json";
-/// Stable OCI referrer media type for in-toto provenance evidence.
-pub const MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE: &str = "application/vnd.in-toto+json";
 /// Stable OCI referrer media type for bounded machine-readable test evidence.
 pub const MODULE_ARTIFACT_TEST_EVIDENCE_MEDIA_TYPE: &str =
     "application/vnd.rustok.module.test-evidence.v1+json";
@@ -142,26 +141,6 @@ fn strict_oci_registry_transport() -> Result<OciRegistryTransport, String> {
     OciRegistryTransport::with_policy(OciRegistryTransportPolicy::strict())
 }
 
-/// Referrer evidence classes admitted by the publication and trust pipelines.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OciArtifactEvidenceKind {
-    Sbom,
-    Provenance,
-    TestEvidence,
-    ReleaseLineage,
-}
-
-impl OciArtifactEvidenceKind {
-    pub const fn media_type(self) -> &'static str {
-        match self {
-            Self::Sbom => MODULE_ARTIFACT_SBOM_MEDIA_TYPE,
-            Self::Provenance => MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE,
-            Self::TestEvidence => MODULE_ARTIFACT_TEST_EVIDENCE_MEDIA_TYPE,
-            Self::ReleaseLineage => MODULE_ARTIFACT_RELEASE_LINEAGE_MEDIA_TYPE,
-        }
-    }
-}
-
 /// Deployment-owned destination for an OCI publication. The publisher derives
 /// deterministic write tags, but callers receive only digest-pinned identity.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -195,11 +174,50 @@ impl OciArtifactPublicationTarget {
     }
 }
 
-/// Verified evidence bytes for a fixed OCI referrer class.
+/// Digest-verified predicate bytes for a fixed Cosign attestation class.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OciArtifactEvidence {
     pub digest: String,
     pub bytes: Vec<u8>,
+}
+
+/// Immutable owner facts carried into the signed provenance for one Rhai
+/// workspace package. The publication worker derives this value exclusively
+/// from the registry owner's Alloy stage receipt; it never accepts it from an
+/// artifact upload or a mutable Alloy record.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OciRhaiWorkspacePublicationProvenance {
+    pub request_id: String,
+    pub alloy_tenant_id: Uuid,
+    pub alloy_script_id: Uuid,
+    pub source_revision: u32,
+    pub source_digest: String,
+    pub review_digest: String,
+    pub descriptor_digest: String,
+}
+
+impl OciRhaiWorkspacePublicationProvenance {
+    fn validate_against(
+        &self,
+        descriptor: &ModuleArtifactDescriptor,
+    ) -> Result<(), OciArtifactPublicationError> {
+        if self.request_id.trim().is_empty()
+            || self.request_id.len() > 256
+            || self.request_id.chars().any(char::is_control)
+            || self.alloy_tenant_id.is_nil()
+            || self.alloy_script_id.is_nil()
+            || self.source_revision == 0
+            || self.source_digest != descriptor.artifact_digest
+            || !is_sha256_digest(&self.source_digest)
+            || !is_sha256_digest(&self.review_digest)
+            || self.descriptor_digest != crate::canonical_artifact_descriptor_digest(descriptor)
+        {
+            return Err(OciArtifactPublicationError::InvalidBundle(
+                "Alloy workspace provenance does not match the immutable owner receipt".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Complete, immutable publication input. A build worker or publication host
@@ -207,6 +225,10 @@ pub struct OciArtifactEvidence {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OciArtifactPublicationBundle {
     pub descriptor: ModuleArtifactDescriptor,
+    /// Exact OCI layer media type for `payload`. A Rhai descriptor may use the
+    /// canonical workspace representation instead of the legacy single-source
+    /// layer type, so callers must not infer it from payload kind alone.
+    pub payload_media_type: String,
     pub payload: Vec<u8>,
     pub sbom: OciArtifactEvidence,
     pub provenance: OciArtifactEvidence,
@@ -242,6 +264,7 @@ impl OciArtifactPublicationBundle {
             ));
         }
         let bundle = Self {
+            payload_media_type: descriptor.payload_kind.oci_layer_media_type().to_string(),
             descriptor,
             payload,
             sbom,
@@ -251,10 +274,94 @@ impl OciArtifactPublicationBundle {
         Ok(bundle)
     }
 
+    /// Builds the only OCI publication input accepted for an Alloy-authored
+    /// Rhai release. It re-parses and canonicalizes the upload, binds its
+    /// descriptor and capability declaration, and derives the two signed
+    /// evidence documents from owner-receipted metadata rather than caller
+    /// supplied files.
+    pub fn from_verified_rhai_workspace(
+        descriptor: ModuleArtifactDescriptor,
+        payload: Vec<u8>,
+        license: &str,
+        provenance: OciRhaiWorkspacePublicationProvenance,
+        limits: ArtifactAdmissionLimits,
+    ) -> Result<Self, OciArtifactPublicationError> {
+        if descriptor.payload_kind != ArtifactPayloadKind::Rhai
+            || descriptor.module_kind != ArtifactModuleKind::Optional
+            || descriptor.runtime_abi != rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI
+            || !descriptor
+                .payload_kind
+                .supports_media_type(rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE)
+            || license.trim().is_empty()
+            || license.len() > 256
+            || license.chars().any(char::is_control)
+        {
+            return Err(OciArtifactPublicationError::InvalidBundle(
+                "Rhai workspace publication input has an invalid descriptor or license".to_string(),
+            ));
+        }
+        let workspace: rustok_sandbox::RhaiWorkspace =
+            serde_json::from_slice(&payload).map_err(|_| {
+                OciArtifactPublicationError::InvalidBundle(
+                    "Rhai workspace publication payload is not valid JSON".to_string(),
+                )
+            })?;
+        let canonical_payload = workspace.canonical_bytes().map_err(|_| {
+            OciArtifactPublicationError::InvalidBundle(
+                "Rhai workspace publication payload is not canonical".to_string(),
+            )
+        })?;
+        if canonical_payload != payload
+            || workspace.digest().map_err(|_| {
+                OciArtifactPublicationError::InvalidBundle(
+                    "Rhai workspace publication payload digest is invalid".to_string(),
+                )
+            })? != descriptor.artifact_digest
+            || workspace.entrypoint != descriptor.entrypoint
+            || workspace
+                .validate_declared_capabilities(&descriptor.capabilities)
+                .is_err()
+        {
+            return Err(OciArtifactPublicationError::InvalidBundle(
+                "Rhai workspace publication payload does not match its descriptor".to_string(),
+            ));
+        }
+        provenance.validate_against(&descriptor)?;
+        let sbom_bytes = canonical_alloy_workspace_sbom(&descriptor, license)?;
+        let provenance_bytes = canonical_alloy_workspace_provenance(&descriptor, &provenance)?;
+        let bundle = Self {
+            descriptor,
+            payload_media_type: rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE.to_string(),
+            payload,
+            sbom: OciArtifactEvidence {
+                digest: sha256_digest(&sbom_bytes),
+                bytes: sbom_bytes,
+            },
+            provenance: OciArtifactEvidence {
+                digest: sha256_digest(&provenance_bytes),
+                bytes: provenance_bytes,
+            },
+        };
+        bundle.validate(limits)?;
+        Ok(bundle)
+    }
+
     fn validate(&self, limits: ArtifactAdmissionLimits) -> Result<(), OciArtifactPublicationError> {
         self.descriptor
             .validate()
             .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
+        if self.payload_media_type.trim().is_empty()
+            || self.payload_media_type.len() > 255
+            || self.payload_media_type.chars().any(char::is_control)
+            || !self
+                .descriptor
+                .payload_kind
+                .supports_media_type(&self.payload_media_type)
+        {
+            return Err(OciArtifactPublicationError::InvalidBundle(
+                "payload media type is not valid for the immutable descriptor".to_string(),
+            ));
+        }
         let descriptor_bytes = serde_json::to_vec(&self.descriptor)
             .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
         limits
@@ -277,17 +384,10 @@ impl OciArtifactPublicationBundle {
             &self.provenance.bytes,
             &self.provenance.digest,
             limits.max_payload_bytes,
-        )
+        )?;
+        validate_cyclonedx_predicate(&self.sbom.bytes)?;
+        validate_slsa_statement(&self.provenance.bytes, &self.descriptor.artifact_digest)
     }
-}
-
-/// Digest-pinned OCI identities emitted after publishing the artifact and its
-/// two required OCI 1.1 evidence referrers.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OciArtifactPublicationReceipt {
-    pub artifact: OciArtifactReference,
-    pub sbom_referrer: OciArtifactReference,
-    pub provenance_referrer: OciArtifactReference,
 }
 
 /// One bounded digest-verified blob used by the generic build-publication
@@ -307,8 +407,9 @@ pub struct OciBuildPublicationArtifact {
     pub layer: OciBuildPublicationBlob,
 }
 
-/// Publication port. Implementations must never return write tags as artifact
-/// identity; consumers resolve only the receipt's digest references.
+/// Publication port for the descriptor-configured executable package. Evidence
+/// is signed as Cosign attestations by the credential-owning publication
+/// boundary after this port has returned the digest-pinned subject.
 #[async_trait]
 pub trait OciArtifactPublisher: Send + Sync {
     async fn publish(
@@ -316,7 +417,7 @@ pub trait OciArtifactPublisher: Send + Sync {
         target: OciArtifactPublicationTarget,
         bundle: OciArtifactPublicationBundle,
         limits: ArtifactAdmissionLimits,
-    ) -> Result<OciArtifactPublicationReceipt, OciArtifactPublicationError>;
+    ) -> Result<OciArtifactReference, OciArtifactPublicationError>;
 }
 
 /// Terminal publication error for immutable module artifacts and evidence.
@@ -333,8 +434,9 @@ pub enum OciArtifactPublicationError {
 }
 
 /// OCI Distribution publisher for immutable module packages. It uploads one
-/// descriptor-configured executable layer, then OCI 1.1 SBOM and provenance
-/// referrers with an exact subject descriptor.
+/// descriptor-configured executable layer. The shared signed-publication
+/// boundary subsequently creates the SBOM and provenance attestations through
+/// Cosign for this exact digest-pinned subject.
 #[derive(Clone)]
 pub struct OciDistributionArtifactPublisher {
     client: OciRegistryTransport,
@@ -359,7 +461,7 @@ impl OciArtifactPublisher for OciDistributionArtifactPublisher {
         target: OciArtifactPublicationTarget,
         bundle: OciArtifactPublicationBundle,
         limits: ArtifactAdmissionLimits,
-    ) -> Result<OciArtifactPublicationReceipt, OciArtifactPublicationError> {
+    ) -> Result<OciArtifactReference, OciArtifactPublicationError> {
         let publication = async {
             target.validate()?;
             bundle.validate(limits)?;
@@ -369,7 +471,7 @@ impl OciArtifactPublisher for OciDistributionArtifactPublisher {
             let primary_write_reference = target.tag_reference(primary_tag)?;
             let descriptor_digest = sha256_digest(&descriptor_bytes);
             let layers = [Blob {
-                media_type: bundle.descriptor.payload_kind.oci_layer_media_type(),
+                media_type: &bundle.payload_media_type,
                 digest: &bundle.descriptor.artifact_digest,
                 bytes: &bundle.payload,
             }];
@@ -383,34 +485,14 @@ impl OciArtifactPublisher for OciDistributionArtifactPublisher {
                         bytes: &descriptor_bytes,
                     },
                     &layers,
-                    bundle.descriptor.payload_kind.oci_layer_media_type(),
+                    &bundle.payload_media_type,
                 )
                 .await
                 .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
             let artifact = self
                 .resolve_published_reference(&target, &primary_write_reference)
                 .await?;
-            let sbom_referrer = self
-                .publish_referrer(
-                    &target,
-                    &artifact,
-                    OciArtifactEvidenceKind::Sbom,
-                    bundle.sbom,
-                )
-                .await?;
-            let provenance_referrer = self
-                .publish_referrer(
-                    &target,
-                    &artifact,
-                    OciArtifactEvidenceKind::Provenance,
-                    bundle.provenance,
-                )
-                .await?;
-            Ok(OciArtifactPublicationReceipt {
-                artifact,
-                sbom_referrer,
-                provenance_referrer,
-            })
+            Ok(artifact)
         };
         tokio::time::timeout(OCI_REGISTRY_PUBLICATION_TIMEOUT, publication)
             .await
@@ -569,72 +651,6 @@ impl OciDistributionArtifactPublisher {
             .await
     }
 
-    async fn publish_referrer(
-        &self,
-        target: &OciArtifactPublicationTarget,
-        subject: &OciArtifactReference,
-        kind: OciArtifactEvidenceKind,
-        evidence: OciArtifactEvidence,
-    ) -> Result<OciArtifactReference, OciArtifactPublicationError> {
-        let write_reference = target.tag_reference(derived_tag(
-            "referrer",
-            &[&subject.digest, kind.media_type(), &evidence.digest],
-        ))?;
-        let empty_config_digest = sha256_digest(OCI_EMPTY_CONFIG_BYTES);
-        self.client
-            .push_blob(
-                &write_reference,
-                &self.auth,
-                OCI_EMPTY_CONFIG_BYTES,
-                &empty_config_digest,
-            )
-            .await
-            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
-        self.client
-            .push_blob(
-                &write_reference,
-                &self.auth,
-                &evidence.bytes,
-                &evidence.digest,
-            )
-            .await
-            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
-        let manifest = OciReferrerManifest {
-            schema_version: 2,
-            media_type: OCI_IMAGE_MEDIA_TYPE.to_string(),
-            artifact_type: kind.media_type().to_string(),
-            config: OciDescriptor {
-                media_type: OCI_EMPTY_CONFIG_MEDIA_TYPE.to_string(),
-                digest: empty_config_digest,
-                size: OCI_EMPTY_CONFIG_BYTES.len() as i64,
-                urls: None,
-                annotations: None,
-            },
-            layers: vec![OciDescriptor {
-                media_type: kind.media_type().to_string(),
-                digest: evidence.digest,
-                size: evidence.bytes.len() as i64,
-                urls: None,
-                annotations: None,
-            }],
-            subject: OciDescriptor {
-                media_type: OCI_IMAGE_MEDIA_TYPE.to_string(),
-                digest: subject.digest.clone(),
-                size: self.published_manifest_size(subject).await?,
-                urls: None,
-                annotations: None,
-            },
-        };
-        let body = serde_json::to_vec(&manifest)
-            .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
-        self.client
-            .push_manifest(&write_reference, &self.auth, body, OCI_IMAGE_MEDIA_TYPE)
-            .await
-            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
-        self.resolve_published_reference(target, &write_reference)
-            .await
-    }
-
     async fn published_manifest_size(
         &self,
         reference: &OciArtifactReference,
@@ -717,6 +733,170 @@ fn validate_publication_bytes(
     Ok(())
 }
 
+/// Validates the source-side CycloneDX document before the credential-owning
+/// Cosign boundary uses it as an attestation predicate. Detailed license and
+/// vulnerability policy checks remain the isolated verifier's responsibility.
+fn validate_cyclonedx_predicate(bytes: &[u8]) -> Result<(), OciArtifactPublicationError> {
+    let document: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| {
+        OciArtifactPublicationError::InvalidBundle(
+            "SBOM evidence is not a CycloneDX JSON document".to_string(),
+        )
+    })?;
+    if document
+        .get("bomFormat")
+        .and_then(serde_json::Value::as_str)
+        != Some("CycloneDX")
+        || document
+            .get("specVersion")
+            .and_then(serde_json::Value::as_str)
+            .is_none_or(str::is_empty)
+        || document
+            .pointer("/metadata/component")
+            .and_then(serde_json::Value::as_object)
+            .is_none()
+    {
+        return Err(OciArtifactPublicationError::InvalidBundle(
+            "SBOM evidence is not a bounded CycloneDX predicate".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// The pre-publication SLSA document records the source builder's payload
+/// subject. Cosign later signs only its predicate and creates a new envelope
+/// whose subject is the immutable OCI manifest. Requiring this original
+/// payload binding here prevents a build from smuggling unrelated provenance
+/// into that final manifest-bound attestation.
+fn validate_slsa_statement(
+    bytes: &[u8],
+    expected_payload_digest: &str,
+) -> Result<(), OciArtifactPublicationError> {
+    let document: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| {
+        OciArtifactPublicationError::InvalidBundle(
+            "provenance evidence is not an in-toto SLSA statement".to_string(),
+        )
+    })?;
+    let expected_digest = expected_payload_digest
+        .strip_prefix("sha256:")
+        .ok_or_else(|| {
+            OciArtifactPublicationError::InvalidBundle(
+                "descriptor payload digest is not sha256".to_string(),
+            )
+        })?;
+    let subject_matches = document
+        .get("subject")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|subjects| {
+            subjects.iter().any(|subject| {
+                subject
+                    .pointer("/digest/sha256")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(expected_digest)
+            })
+        });
+    if document.get("_type").and_then(serde_json::Value::as_str)
+        != Some("https://in-toto.io/Statement/v1")
+        || document
+            .get("predicateType")
+            .and_then(serde_json::Value::as_str)
+            != Some("https://slsa.dev/provenance/v1")
+        || document
+            .get("predicate")
+            .filter(|value| value.is_object())
+            .is_none()
+        || !subject_matches
+    {
+        return Err(OciArtifactPublicationError::InvalidBundle(
+            "provenance evidence is not a payload-bound SLSA v1 statement".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn canonical_alloy_workspace_sbom(
+    descriptor: &ModuleArtifactDescriptor,
+    license: &str,
+) -> Result<Vec<u8>, OciArtifactPublicationError> {
+    serde_json::to_vec(&serde_json::json!({
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.6",
+        "version": 1,
+        "metadata": {
+            "component": {
+                "type": "file",
+                "name": descriptor.slug.as_str(),
+                "version": descriptor.version.as_str(),
+                "hashes": [{
+                    "alg": "SHA-256",
+                    "content": descriptor.artifact_digest.strip_prefix("sha256:").expect("validated descriptor digest")
+                }],
+                "licenses": [{ "license": { "id": license } }],
+                "properties": [{
+                    "name": "rustok:payload-media-type",
+                    "value": rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE
+                }]
+            }
+        }
+    }))
+    .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))
+}
+
+fn canonical_alloy_workspace_provenance(
+    descriptor: &ModuleArtifactDescriptor,
+    provenance: &OciRhaiWorkspacePublicationProvenance,
+) -> Result<Vec<u8>, OciArtifactPublicationError> {
+    serde_json::to_vec(&serde_json::json!({
+        "_type": "https://in-toto.io/Statement/v1",
+        "subject": [{
+            "name": format!("{}@{}", descriptor.slug, descriptor.version),
+            "digest": {
+                "sha256": descriptor.artifact_digest.strip_prefix("sha256:").expect("validated descriptor digest")
+            }
+        }],
+        "predicateType": "https://slsa.dev/provenance/v1",
+        "predicate": {
+            "buildDefinition": {
+                "buildType": ALLOY_WORKSPACE_PUBLICATION_BUILD_TYPE,
+                "externalParameters": {
+                    "source": {
+                        "uri": ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI,
+                        "ref": ALLOY_WORKSPACE_PUBLICATION_SOURCE_REF
+                    },
+                    "rustok": {
+                        "artifactOrigin": "alloy_authored",
+                        "requestId": provenance.request_id.as_str(),
+                        "alloyTenantId": provenance.alloy_tenant_id,
+                        "alloyScriptId": provenance.alloy_script_id,
+                        "sourceRevision": provenance.source_revision,
+                        "sourceDigest": provenance.source_digest.as_str(),
+                        "reviewDigest": provenance.review_digest.as_str(),
+                        "descriptorDigest": provenance.descriptor_digest.as_str(),
+                        "workspaceEntrypoint": descriptor.entrypoint.as_str()
+                    }
+                },
+                "internalParameters": {},
+                "resolvedDependencies": []
+            },
+            "runDetails": {
+                "builder": { "id": ALLOY_WORKSPACE_PUBLICATION_BUILDER_ID },
+                "metadata": {
+                    "invocationId": provenance.descriptor_digest.as_str()
+                }
+            }
+        }
+    }))
+    .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))
+}
+
+fn is_sha256_digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
+}
+
 fn validate_build_blob(
     kind: &str,
     blob: &OciBuildPublicationBlob,
@@ -762,9 +942,13 @@ fn derived_current_tag(kind: &str, fields: &[&str]) -> String {
 }
 
 fn cosign_signature_tag(digest: &str) -> Result<String, OciArtifactPublicationError> {
+    Ok(format!("sha256-{}.sig", cosign_subject_digest_hex(digest)?))
+}
+
+fn cosign_subject_digest_hex(digest: &str) -> Result<&str, OciArtifactPublicationError> {
     let hex = digest.strip_prefix("sha256:").ok_or_else(|| {
         OciArtifactPublicationError::InvalidBundle(
-            "Cosign signature subject must use a sha256 digest".to_string(),
+            "Cosign subject must use a sha256 digest".to_string(),
         )
     })?;
     if hex.len() != 64
@@ -773,10 +957,10 @@ fn cosign_signature_tag(digest: &str) -> Result<String, OciArtifactPublicationEr
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
         return Err(OciArtifactPublicationError::InvalidBundle(
-            "Cosign signature subject must use a valid sha256 digest".to_string(),
+            "Cosign subject must use a valid sha256 digest".to_string(),
         ));
     }
-    Ok(format!("sha256-{hex}.sig"))
+    Ok(hex)
 }
 
 /// Resolves a module artifact from an OCI Distribution registry.
@@ -881,18 +1065,16 @@ impl ArtifactRegistry for OciDistributionArtifactRegistry {
                         "OCI artifact config is not a module descriptor: {error}"
                     ))
                 })?;
-            let expected_media_type = descriptor.payload_kind.oci_layer_media_type();
             let layers = manifest
                 .layers
                 .iter()
                 .filter(|layer| {
-                    layer.digest == descriptor.artifact_digest
-                        && layer.media_type == expected_media_type
+                    descriptor_payload_layer_matches(&descriptor, &layer.digest, &layer.media_type)
                 })
                 .collect::<Vec<_>>();
             let [layer] = layers.as_slice() else {
                 return Err(ModuleInstallationError::Registry(format!(
-                    "OCI artifact must contain exactly one `{expected_media_type}` layer with digest `{}`",
+                    "OCI artifact must contain exactly one descriptor-valid payload layer with digest `{}`",
                     descriptor.artifact_digest
                 )));
             };
@@ -925,6 +1107,23 @@ impl ArtifactRegistry for OciDistributionArtifactRegistry {
                 )
             })?
     }
+}
+
+/// An OCI manifest retains the exact payload media type, while a Rhai
+/// descriptor deliberately permits both its single-source and canonical
+/// workspace representations. Admission accepts only one layer that matches
+/// the descriptor payload digest and one of that kind's approved media types;
+/// the selected type is preserved in the resulting package for runtime
+/// resolution.
+fn descriptor_payload_layer_matches(
+    descriptor: &ModuleArtifactDescriptor,
+    layer_digest: &str,
+    layer_media_type: &str,
+) -> bool {
+    layer_digest == descriptor.artifact_digest
+        && descriptor
+            .payload_kind
+            .supports_media_type(layer_media_type)
 }
 
 impl OciDistributionArtifactRegistry {
@@ -1054,15 +1253,58 @@ impl OciDistributionArtifactRegistry {
 #[cfg(test)]
 mod tests {
     use crate::{
-        ArtifactPayloadKind, MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE, OciArtifactReference,
+        ArtifactAdmissionLimits, ArtifactModuleKind, ArtifactPayloadKind,
+        MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
+        ModuleArtifactDescriptor, OciArtifactReference,
     };
 
     use uuid::Uuid;
 
     use super::{
-        ArtifactStagingFile, MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE, OciArtifactEvidenceKind,
-        OciDistributionArtifactRegistry, OciRegistryTransportPolicy, cosign_signature_tag,
+        ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI, ArtifactStagingFile, OciArtifactPublicationBundle,
+        OciDistributionArtifactRegistry, OciRegistryTransportPolicy,
+        OciRhaiWorkspacePublicationProvenance, canonical_alloy_workspace_provenance,
+        cosign_signature_tag, descriptor_payload_layer_matches,
     };
+
+    fn rhai_descriptor(workspace: &rustok_sandbox::RhaiWorkspace) -> ModuleArtifactDescriptor {
+        ModuleArtifactDescriptor {
+            schema_version: MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+            slug: "sample_module".to_string(),
+            version: "1.0.0".to_string(),
+            payload_kind: ArtifactPayloadKind::Rhai,
+            module_kind: ArtifactModuleKind::Optional,
+            runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.to_string(),
+            platform_compatibility: "^0.1".to_string(),
+            required_features: Vec::new(),
+            artifact_digest: workspace.digest().expect("workspace digest"),
+            entrypoint: workspace.entrypoint.clone(),
+            capabilities: Vec::new(),
+            bindings: Vec::new(),
+            dependencies: Vec::new(),
+            permissions: Vec::new(),
+            schema_documents: Vec::new(),
+            settings_schema_digest: None,
+            data_schema_digest: None,
+            localization_catalogs: Vec::new(),
+            ui_contributions: Vec::new(),
+            persistence_contract: None,
+        }
+    }
+
+    fn rhai_provenance(
+        descriptor: &ModuleArtifactDescriptor,
+    ) -> OciRhaiWorkspacePublicationProvenance {
+        OciRhaiWorkspacePublicationProvenance {
+            request_id: "request-1".to_string(),
+            alloy_tenant_id: Uuid::new_v4(),
+            alloy_script_id: Uuid::new_v4(),
+            source_revision: 7,
+            source_digest: descriptor.artifact_digest.clone(),
+            review_digest: format!("sha256:{}", "b".repeat(64)),
+            descriptor_digest: crate::canonical_artifact_descriptor_digest(descriptor),
+        }
+    }
 
     #[test]
     fn staging_file_is_deleted_when_a_download_is_cancelled_or_fails() {
@@ -1102,15 +1344,33 @@ mod tests {
     }
 
     #[test]
-    fn payload_and_referrer_media_types_are_frozen_by_contract() {
+    fn payload_media_type_is_frozen_by_contract() {
         assert_eq!(
             ArtifactPayloadKind::WasmComponent.oci_layer_media_type(),
             MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE
         );
-        assert_eq!(
-            OciArtifactEvidenceKind::Provenance.media_type(),
-            MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE
-        );
+    }
+
+    #[test]
+    fn descriptor_payload_selection_retains_the_canonical_rhai_workspace_media_type() {
+        let workspace = rustok_sandbox::RhaiWorkspace::single_source("40 + 2");
+        let descriptor = rhai_descriptor(&workspace);
+
+        assert!(descriptor_payload_layer_matches(
+            &descriptor,
+            &descriptor.artifact_digest,
+            rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE,
+        ));
+        assert!(!descriptor_payload_layer_matches(
+            &descriptor,
+            &format!("sha256:{}", "f".repeat(64)),
+            rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE,
+        ));
+        assert!(!descriptor_payload_layer_matches(
+            &descriptor,
+            &descriptor.artifact_digest,
+            MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
+        ));
     }
 
     #[test]
@@ -1134,5 +1394,58 @@ mod tests {
         policy = OciRegistryTransportPolicy::strict();
         policy.max_decompressed_bytes = policy.max_transfer_bytes + 1;
         assert!(policy.validate().is_err());
+    }
+
+    #[test]
+    fn rhai_workspace_publication_is_canonical_receipt_bound_and_workspace_typed() {
+        let workspace = rustok_sandbox::RhaiWorkspace::single_source("40 + 2");
+        let descriptor = rhai_descriptor(&workspace);
+        let provenance = rhai_provenance(&descriptor);
+        let payload = workspace.canonical_bytes().expect("canonical workspace");
+        let bundle = OciArtifactPublicationBundle::from_verified_rhai_workspace(
+            descriptor.clone(),
+            payload.clone(),
+            "MIT",
+            provenance.clone(),
+            ArtifactAdmissionLimits::default(),
+        )
+        .expect("receipt-bound Rhai OCI bundle");
+
+        assert_eq!(
+            bundle.payload_media_type,
+            rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE
+        );
+        assert_eq!(bundle.payload, payload);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&bundle.sbom.bytes)
+                .expect("CycloneDX JSON")["metadata"]["component"]["licenses"][0]["license"]["id"],
+            "MIT"
+        );
+        let statement: serde_json::Value = serde_json::from_slice(
+            &canonical_alloy_workspace_provenance(&descriptor, &provenance)
+                .expect("provenance JSON"),
+        )
+        .expect("SLSA JSON");
+        assert_eq!(
+            statement["predicate"]["buildDefinition"]["externalParameters"]["source"]["uri"],
+            ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI
+        );
+        assert_eq!(
+            statement["predicate"]["buildDefinition"]["externalParameters"]["rustok"]["descriptorDigest"],
+            provenance.descriptor_digest
+        );
+
+        let mut non_canonical = payload;
+        non_canonical.push(b' ');
+        assert!(
+            OciArtifactPublicationBundle::from_verified_rhai_workspace(
+                descriptor,
+                non_canonical,
+                "MIT",
+                provenance,
+                ArtifactAdmissionLimits::default(),
+            )
+            .is_err()
+        );
     }
 }

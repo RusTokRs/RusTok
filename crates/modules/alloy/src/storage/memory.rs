@@ -9,12 +9,14 @@ use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
     AlloyImportedDraftCommand, AlloyImportedDraftResult, ReviewCommand, ReviewDecision,
     ReviewStatus, RustComponentCandidate, RustComponentCandidateBuild,
-    RustComponentCandidateBuildError, RustComponentCandidateCommand, RustComponentCandidateError,
-    RustComponentCandidateReview, RustComponentCandidateReviewCommand, Script,
-    ScriptDeletionCommand, ScriptDeletionError, ScriptEvidenceRetentionCommand,
-    ScriptEvidenceRetentionError, ScriptEvidenceRetentionState, ScriptId, ScriptSourceRevision,
-    ScriptStatus, ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion,
-    TestRunLease, TestRunStatus, validate_candidate_parent_release, validate_transition,
+    RustComponentCandidateBuildError, RustComponentCandidateBuildExecution,
+    RustComponentCandidateCommand, RustComponentCandidateError,
+    RustComponentCandidateExecutionError, RustComponentCandidateReview,
+    RustComponentCandidateReviewCommand, Script, ScriptDeletionCommand, ScriptDeletionError,
+    ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionError, ScriptEvidenceRetentionState,
+    ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestCommand, TestRun,
+    TestRunClaim, TestRunCompletion, TestRunLease, TestRunStatus,
+    validate_candidate_parent_release, validate_transition,
 };
 
 #[derive(Clone)]
@@ -76,6 +78,8 @@ pub struct InMemoryStorage {
         Arc<RwLock<HashMap<uuid::Uuid, Vec<RustComponentCandidateReview>>>>,
     component_candidate_builds:
         Arc<RwLock<HashMap<(uuid::Uuid, uuid::Uuid), RustComponentCandidateBuild>>>,
+    component_candidate_build_executions:
+        Arc<RwLock<HashMap<uuid::Uuid, RustComponentCandidateBuildExecution>>>,
     reviews: Arc<RwLock<HashMap<(ScriptId, u32), Vec<ReviewDecision>>>>,
     test_runs: Arc<RwLock<HashMap<(ScriptId, u32, uuid::Uuid), TestRun>>>,
     test_leases: Arc<RwLock<HashMap<uuid::Uuid, (uuid::Uuid, chrono::DateTime<chrono::Utc>)>>>,
@@ -96,6 +100,7 @@ impl InMemoryStorage {
             component_candidate_receipts: Arc::new(RwLock::new(HashMap::new())),
             component_candidate_reviews: Arc::new(RwLock::new(HashMap::new())),
             component_candidate_builds: Arc::new(RwLock::new(HashMap::new())),
+            component_candidate_build_executions: Arc::new(RwLock::new(HashMap::new())),
             reviews: Arc::new(RwLock::new(HashMap::new())),
             test_runs: Arc::new(RwLock::new(HashMap::new())),
             test_leases: Arc::new(RwLock::new(HashMap::new())),
@@ -839,6 +844,73 @@ impl ScriptRegistry for InMemoryStorage {
             .cloned())
     }
 
+    async fn get_component_candidate_build_by_request(
+        &self,
+        candidate_id: uuid::Uuid,
+        build_request_id: uuid::Uuid,
+    ) -> ScriptResult<Option<RustComponentCandidateBuild>> {
+        let candidate = self.get_component_candidate(candidate_id).await?;
+        Ok(self
+            .component_candidate_builds
+            .read()
+            .await
+            .values()
+            .find(|build| {
+                build.candidate_id == candidate.id
+                    && build.tenant_id == candidate.tenant_id
+                    && build.build_request_id == build_request_id
+            })
+            .cloned())
+    }
+
+    async fn record_component_candidate_build_execution(
+        &self,
+        execution: RustComponentCandidateBuildExecution,
+    ) -> ScriptResult<RustComponentCandidateBuildExecution> {
+        let candidate = self.get_component_candidate(execution.candidate_id).await?;
+        let build = self
+            .get_component_candidate_build_by_request(candidate.id, execution.build_request_id)
+            .await?
+            .ok_or_else(|| ScriptError::NotFound {
+                name: execution.build_request_id.to_string(),
+            })?;
+        execution.validate_against(&candidate, &build)?;
+        let mut executions = self.component_candidate_build_executions.write().await;
+        if let Some(existing) = executions.get(&build.id) {
+            return if existing.matches_evidence(&execution) {
+                Ok(existing.clone())
+            } else {
+                Err(RustComponentCandidateExecutionError::EvidenceConflict.into())
+            };
+        }
+        executions.insert(build.id, execution.clone());
+        Ok(execution)
+    }
+
+    async fn get_component_candidate_build_execution(
+        &self,
+        candidate_id: uuid::Uuid,
+        build_request_id: uuid::Uuid,
+    ) -> ScriptResult<Option<RustComponentCandidateBuildExecution>> {
+        let candidate = self.get_component_candidate(candidate_id).await?;
+        let Some(build) = self
+            .get_component_candidate_build_by_request(candidate.id, build_request_id)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let execution = self
+            .component_candidate_build_executions
+            .read()
+            .await
+            .get(&build.id)
+            .cloned();
+        if let Some(execution) = &execution {
+            execution.validate_against(&candidate, &build)?;
+        }
+        Ok(execution)
+    }
+
     async fn save(&self, mut script: Script) -> ScriptResult<Script> {
         script.workspace.validate().map_err(ScriptError::from)?;
         script
@@ -1049,6 +1121,8 @@ impl ScriptRegistry for InMemoryStorage {
         let mut component_candidate_receipts = self.component_candidate_receipts.write().await;
         let mut component_candidate_reviews = self.component_candidate_reviews.write().await;
         let mut component_candidate_builds = self.component_candidate_builds.write().await;
+        let mut component_candidate_build_executions =
+            self.component_candidate_build_executions.write().await;
         #[cfg(test)]
         let mut test_leases = self.test_leases.write().await;
         #[cfg(test)]
@@ -1108,6 +1182,9 @@ impl ScriptRegistry for InMemoryStorage {
                 .retain(|candidate_id, _| !purged_component_candidate_ids.contains(candidate_id));
             component_candidate_builds.retain(|(candidate_id, _), _| {
                 !purged_component_candidate_ids.contains(candidate_id)
+            });
+            component_candidate_build_executions.retain(|_, execution| {
+                !purged_component_candidate_ids.contains(&execution.candidate_id)
             });
 
             #[cfg(test)]

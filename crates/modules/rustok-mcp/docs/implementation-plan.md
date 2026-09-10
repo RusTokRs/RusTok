@@ -26,6 +26,11 @@ because the generic adapter cannot construct the owner-scoped Alloy runtime
 that binds a tenant and actor. Canonical script authoring is composed only by
 the host over Alloy HTTP, GraphQL, and authenticated remote MCP.
 
+Every staged, reviewed, and applied Alloy scaffold response includes an
+owner-issued `sha256:` source digest. The digest is computed from the canonical
+logical crate root and generated source files, excluding operational guidance;
+the AI host retains that typed receipt separately from redacted tool output.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -38,6 +43,8 @@ the host over Alloy HTTP, GraphQL, and authenticated remote MCP.
 - Evidence: `scripts/verify/verify-mcp-admin-boundary.mjs`,
   `scripts/verify/verify-api-surface-contract.mjs`, and ADR
   [MCP management owner boundary](../../../DECISIONS/2026-07-10-mcp-management-owner-boundary.md).
+- Source-lineage evidence: `cargo test -p rustok-mcp --lib` covers stable
+  source-digest computation and its propagation through stage/review/apply.
 
 ## Next results
 

@@ -10,10 +10,11 @@ use std::collections::BTreeSet;
 use chrono::{DateTime, Utc};
 use rustok_build_source::{ArchiveLimits, SourceTreeFile, SourceTreeMaterializer};
 use rustok_modules::{
-    ArtifactReleaseRef, MODULE_ARTIFACT_SOURCE_MANIFEST_FILE, ModuleArtifactSourceManifest,
-    ModuleAuthoringBuildSubmission, ModuleCommandContext,
+    ArtifactReleaseRef, MODULE_ARTIFACT_SOURCE_MANIFEST_FILE, MODULE_BUILD_SANDBOX_SCENARIO_PATH,
+    ModuleArtifactSourceManifest, ModuleAuthoringBuildSubmission, ModuleBuildCompletedResult,
+    ModuleBuildOutcome, ModuleBuildPublicationReceipt, ModuleCommandContext,
 };
-use rustok_sandbox::LocalSandboxScenario;
+use rustok_sandbox::{LocalSandboxScenario, LocalSandboxScenarioComparison};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -284,6 +285,181 @@ impl RustComponentCandidateBuild {
     }
 }
 
+/// Immutable Alloy-owned evidence that the module-build owner completed one
+/// approved Component candidate. It mirrors only redacted, request-bound
+/// facts; source bytes, worker logs, and deployment credentials remain with
+/// their respective owners.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RustComponentCandidateBuildExecution {
+    pub candidate_id: Uuid,
+    pub candidate_build_id: Uuid,
+    pub tenant_id: Uuid,
+    pub candidate_source_digest: String,
+    pub scenario_digest: String,
+    pub archive_source_digest: String,
+    pub build_request_id: Uuid,
+    pub source_reference: String,
+    pub build_result_revision: u64,
+    pub component_digest: String,
+    pub sbom_digest: String,
+    pub provenance_digest: String,
+    pub publication: ModuleBuildPublicationReceipt,
+    pub scenario_comparison: LocalSandboxScenarioComparison,
+    pub created_at: DateTime<Utc>,
+}
+
+impl RustComponentCandidateBuildExecution {
+    /// Derives durable Alloy evidence exclusively from the module owner's
+    /// completed immutable pair. The caller cannot supply a result, payload,
+    /// publication identity, or scenario comparison independently.
+    pub fn from_completed_build(
+        candidate: &RustComponentCandidate,
+        candidate_build: &RustComponentCandidateBuild,
+        completed: &ModuleBuildCompletedResult,
+    ) -> Result<Self, RustComponentCandidateExecutionError> {
+        candidate_build
+            .validate_against(candidate)
+            .map_err(|_| RustComponentCandidateExecutionError::InvalidEvidence)?;
+        completed
+            .request
+            .validate()
+            .map_err(|_| RustComponentCandidateExecutionError::InvalidEvidence)?;
+        completed
+            .result
+            .validate_against(&completed.request)
+            .map_err(|_| RustComponentCandidateExecutionError::InvalidEvidence)?;
+        let manifest = candidate
+            .workspace
+            .source_manifest()
+            .map_err(|_| RustComponentCandidateExecutionError::InvalidEvidence)?;
+        if completed.revision == 0
+            || completed.request.request_id != candidate_build.build_request_id
+            || completed.request.context.tenant_id != Some(candidate.tenant_id)
+            || completed.request.source.digest != candidate_build.archive_source_digest
+            || completed.request.source.reference != candidate_build.source_reference
+            || completed.request.scenario.source_path != MODULE_BUILD_SANDBOX_SCENARIO_PATH
+            || completed.request.scenario.digest != candidate.scenario_digest
+            || completed.request.expected_module_slug != manifest.slug()
+            || completed.request.expected_version != manifest.version()
+            || completed.request.parent_release.as_ref() != Some(&candidate.parent_release)
+        {
+            return Err(RustComponentCandidateExecutionError::InvalidEvidence);
+        }
+        if !matches!(&completed.result.outcome, ModuleBuildOutcome::Succeeded) {
+            return Err(RustComponentCandidateExecutionError::BuildNotSucceeded);
+        }
+        let component_digest = completed
+            .result
+            .component_digest
+            .clone()
+            .ok_or(RustComponentCandidateExecutionError::InvalidEvidence)?;
+        let sbom_digest = completed
+            .result
+            .sbom_digest
+            .clone()
+            .ok_or(RustComponentCandidateExecutionError::InvalidEvidence)?;
+        let provenance_digest = completed
+            .result
+            .provenance_digest
+            .clone()
+            .ok_or(RustComponentCandidateExecutionError::InvalidEvidence)?;
+        let publication = completed
+            .result
+            .publication
+            .clone()
+            .ok_or(RustComponentCandidateExecutionError::InvalidEvidence)?;
+        let scenario_comparison = completed
+            .result
+            .evidence
+            .scenario_comparison
+            .clone()
+            .filter(|comparison| comparison.scenario_digest == candidate.scenario_digest)
+            .ok_or(RustComponentCandidateExecutionError::InvalidEvidence)?;
+        let execution = Self {
+            candidate_id: candidate.id,
+            candidate_build_id: candidate_build.id,
+            tenant_id: candidate.tenant_id,
+            candidate_source_digest: candidate.source_digest.clone(),
+            scenario_digest: candidate.scenario_digest.clone(),
+            archive_source_digest: candidate_build.archive_source_digest.clone(),
+            build_request_id: candidate_build.build_request_id,
+            source_reference: candidate_build.source_reference.clone(),
+            build_result_revision: completed.revision,
+            component_digest,
+            sbom_digest,
+            provenance_digest,
+            publication,
+            scenario_comparison,
+            created_at: Utc::now(),
+        };
+        execution.validate_against(candidate, candidate_build)?;
+        Ok(execution)
+    }
+
+    /// Rechecks a stored evidence row against its immutable candidate and
+    /// owner-build receipt before the row crosses an Alloy storage boundary.
+    pub fn validate_against(
+        &self,
+        candidate: &RustComponentCandidate,
+        candidate_build: &RustComponentCandidateBuild,
+    ) -> Result<(), RustComponentCandidateExecutionError> {
+        candidate_build
+            .validate_against(candidate)
+            .map_err(|_| RustComponentCandidateExecutionError::InvalidEvidence)?;
+        if self.candidate_id != candidate.id
+            || self.candidate_build_id != candidate_build.id
+            || self.tenant_id != candidate.tenant_id
+            || self.candidate_source_digest != candidate.source_digest
+            || self.scenario_digest != candidate.scenario_digest
+            || self.archive_source_digest != candidate_build.archive_source_digest
+            || self.build_request_id != candidate_build.build_request_id
+            || self.source_reference != candidate_build.source_reference
+            || self.build_result_revision == 0
+            || !valid_digest(&self.candidate_source_digest)
+            || !valid_digest(&self.scenario_digest)
+            || !valid_digest(&self.archive_source_digest)
+            || !valid_digest(&self.component_digest)
+            || !valid_digest(&self.sbom_digest)
+            || !valid_digest(&self.provenance_digest)
+            || self.scenario_comparison.scenario_digest != self.scenario_digest
+        {
+            return Err(RustComponentCandidateExecutionError::InvalidEvidence);
+        }
+        for reference in [
+            &self.publication.artifact,
+            &self.publication.signature_manifest,
+        ] {
+            reference
+                .validate()
+                .map_err(|_| RustComponentCandidateExecutionError::InvalidEvidence)?;
+        }
+        if self.publication.artifact.registry != self.publication.signature_manifest.registry
+            || self.publication.artifact.repository
+                != self.publication.signature_manifest.repository
+        {
+            return Err(RustComponentCandidateExecutionError::InvalidEvidence);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn matches_evidence(&self, other: &Self) -> bool {
+        self.candidate_id == other.candidate_id
+            && self.candidate_build_id == other.candidate_build_id
+            && self.tenant_id == other.tenant_id
+            && self.candidate_source_digest == other.candidate_source_digest
+            && self.scenario_digest == other.scenario_digest
+            && self.archive_source_digest == other.archive_source_digest
+            && self.build_request_id == other.build_request_id
+            && self.source_reference == other.source_reference
+            && self.build_result_revision == other.build_result_revision
+            && self.component_digest == other.component_digest
+            && self.sbom_digest == other.sbom_digest
+            && self.provenance_digest == other.provenance_digest
+            && self.publication == other.publication
+            && self.scenario_comparison == other.scenario_comparison
+    }
+}
+
 impl RustComponentWorkspace {
     /// Validates source shape without materializing it or evaluating author
     /// code. The same shared materializer validates path safety before any
@@ -453,6 +629,16 @@ pub enum RustComponentCandidateBuildError {
     IdempotencyConflict,
     #[error("Rust Component candidate must be approved before it can be dispatched")]
     CandidateNotApproved,
+}
+
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+pub enum RustComponentCandidateExecutionError {
+    #[error("Rust Component build execution evidence is invalid")]
+    InvalidEvidence,
+    #[error("Rust Component build has not completed successfully")]
+    BuildNotSucceeded,
+    #[error("Rust Component build execution evidence conflicts with the durable receipt")]
+    EvidenceConflict,
 }
 
 pub fn validate_candidate_parent_release(

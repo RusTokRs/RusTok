@@ -17,6 +17,10 @@ use uuid::Uuid;
 use rustok_api::Permission;
 use rustok_api::TenantRbacCatalog;
 
+use crate::agent_safety::{
+    agent_prompt_template_evidence, bounded_tool_result, redacted_json_evidence,
+    redacted_tool_execution_evidence, validate_tool_arguments, validate_tool_inventory,
+};
 use crate::direct::{DirectExecutionRegistry, DirectExecutionRequest};
 use crate::engine::RigAgentDriver;
 use crate::engine::{InferenceEngine, inference_for_slug};
@@ -28,8 +32,9 @@ use crate::entities::{
 };
 use crate::metrics::{self as ai_metrics, AiRuntimeMetricsSnapshot};
 use crate::model::{
-    ChatMessage, ChatMessageRole, ExecutionMode, ExecutionOverride, ProviderStreamEmitter,
-    ProviderTestResult, RuntimeOutcome, ToolTrace,
+    AgentPromptTemplateEvidence, AgentUsageEvidence, AiRunDecisionTrace, ChatMessage,
+    ChatMessageRole, ExecutionMode, ExecutionOverride, ProviderStreamEmitter, ProviderTestResult,
+    RuntimeOutcome, ToolTrace,
 };
 use crate::router::AiRouter;
 use crate::streaming::{AiRunStreamEvent, ai_run_stream_hub};
@@ -52,6 +57,24 @@ enum TaskJobExecutionAuthority {
 }
 
 const MAX_RAG_CONTEXT_ATOMS: usize = 32;
+
+fn decision_trace_with_prompt_template(
+    current: serde_json::Value,
+    prompt_template: AgentPromptTemplateEvidence,
+) -> AiResult<serde_json::Value> {
+    let mut trace: AiRunDecisionTrace = serde_json::from_value(current).map_err(AiError::Json)?;
+    trace.prompt_template = Some(prompt_template);
+    serde_json::to_value(trace).map_err(AiError::Json)
+}
+
+fn decision_trace_with_agent_usage(
+    current: serde_json::Value,
+    usage: AgentUsageEvidence,
+) -> AiResult<serde_json::Value> {
+    let mut trace: AiRunDecisionTrace = serde_json::from_value(current).map_err(AiError::Json)?;
+    trace.agent_usage = Some(usage);
+    serde_json::to_value(trace).map_err(AiError::Json)
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -124,7 +147,7 @@ async fn apply_rag_context(
     messages.insert(
         0,
         context
-            .to_system_message()
+            .to_untrusted_message()
             .map_err(|error| AiError::Runtime(error.to_string()))?,
     );
     Ok(messages)
@@ -1578,8 +1601,37 @@ impl AiManagementService {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ApprovalExecutionOutcome {
     content: String,
-    raw_payload: serde_json::Value,
+    output_evidence: serde_json::Value,
     duration_ms: i64,
+}
+
+fn approval_policy_evidence(
+    metadata: &serde_json::Value,
+) -> AiResult<Option<crate::model::ToolPolicyEvidence>> {
+    metadata
+        .get("tool_policy_evidence")
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(json_err)
+}
+
+fn validate_approval_policy_evidence(
+    expected: &crate::model::ToolPolicyEvidence,
+    current: crate::model::ToolPolicyEvidence,
+) -> AiResult<()> {
+    if current != *expected {
+        return Err(AiError::Validation(
+            "approved tool policy or typed contract changed; request a new approval".to_string(),
+        ));
+    }
+    if !current.requires_operator_approval {
+        return Err(AiError::Validation(
+            "approved tool no longer has an operator-approval boundary; request a new run"
+                .to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn approval_execution_outcome(
@@ -1704,9 +1756,15 @@ fn validate_approval_resolution_policy(
 
 #[cfg(test)]
 mod approval_outcome_tests {
-    use super::{ApprovalExecutionOutcome, approval_execution_outcome};
+    use super::{
+        ApprovalExecutionOutcome, approval_execution_outcome, decision_trace_with_agent_usage,
+        decision_trace_with_prompt_template, validate_approval_policy_evidence,
+    };
     use crate::entities::{ai_approval_requests, ai_chat_runs, ai_tool_traces};
-    use crate::model::ToolTrace;
+    use crate::{
+        AgentPromptTemplateEvidence, AgentUsageEvidence, AiRunDecisionTrace, ToolDefinition,
+        ToolExecutionPolicy, ToolOperationClass, model::ToolTrace,
+    };
     use chrono::Utc;
     use sea_orm::{
         ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbBackend,
@@ -1792,7 +1850,7 @@ mod approval_outcome_tests {
     fn decodes_only_a_complete_durable_execution_outcome() {
         let outcome = ApprovalExecutionOutcome {
             content: "done".to_string(),
-            raw_payload: serde_json::json!({ "record": "42" }),
+            output_evidence: serde_json::json!({ "record": "42" }),
             duration_ms: 12,
         };
         let metadata = serde_json::json!({ "execution_outcome": outcome });
@@ -1814,6 +1872,16 @@ mod approval_outcome_tests {
             }))
             .is_err()
         );
+        assert!(
+            approval_execution_outcome(&serde_json::json!({
+                "execution_outcome": {
+                    "content": "old raw payload must not decode",
+                    "raw_payload": { "secret": "do-not-retain" },
+                    "duration_ms": 1
+                }
+            }))
+            .is_err()
+        );
     }
 
     #[test]
@@ -1826,6 +1894,86 @@ mod approval_outcome_tests {
             .expect("staged external outcome may be finalized after a policy change");
         assert!(
             super::validate_approval_resolution_policy("executed", false, false, "catalog.write",)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn decision_trace_persists_prompt_revision_and_provider_usage_evidence() {
+        let trace = decision_trace_with_prompt_template(
+            serde_json::json!({}),
+            AgentPromptTemplateEvidence {
+                template_digest: "sha256:template".to_string(),
+                owner_task_policy_digest: Some("sha256:owner-policy".to_string()),
+            },
+        )
+        .expect("prompt trace");
+        let trace = decision_trace_with_agent_usage(
+            trace,
+            AgentUsageEvidence {
+                provider_turns: 2,
+                provider_reported_turns: 1,
+                unavailable_provider_usage_turns: 1,
+                invalid_provider_usage_turns: 0,
+                input_tokens: 3,
+                output_tokens: 5,
+                total_tokens: 8,
+            },
+        )
+        .expect("usage trace");
+
+        let trace: AiRunDecisionTrace = serde_json::from_value(trace).expect("stored trace");
+        assert_eq!(
+            trace
+                .prompt_template
+                .as_ref()
+                .map(|value| value.template_digest.as_str()),
+            Some("sha256:template")
+        );
+        assert_eq!(
+            trace.agent_usage.as_ref().map(|value| value.total_tokens),
+            Some(8)
+        );
+    }
+
+    #[test]
+    fn approval_evidence_rejects_a_changed_schema_or_operation_class() {
+        let policy = ToolExecutionPolicy::new(None, Vec::new(), Vec::new());
+        let original = ToolDefinition {
+            name: "workspace_apply".to_string(),
+            description: "Apply reviewed workspace changes".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": { "review_id": { "type": "string" } },
+                "required": ["review_id"],
+                "additionalProperties": false,
+            }),
+            operation_class: ToolOperationClass::WorkspaceMutation,
+            sensitive: false,
+        };
+        let expected = policy.evidence(&original);
+        validate_approval_policy_evidence(&expected, policy.evidence(&original))
+            .expect("unchanged approval policy evidence");
+
+        let changed_schema = ToolDefinition {
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": { "review_id": { "type": "string", "minLength": 1 } },
+                "required": ["review_id"],
+                "additionalProperties": false,
+            }),
+            ..original.clone()
+        };
+        assert!(
+            validate_approval_policy_evidence(&expected, policy.evidence(&changed_schema)).is_err()
+        );
+
+        let changed_operation = ToolDefinition {
+            operation_class: ToolOperationClass::TrustPolicyChange,
+            ..original
+        };
+        assert!(
+            validate_approval_policy_evidence(&expected, policy.evidence(&changed_operation))
                 .is_err()
         );
     }
@@ -1859,7 +2007,7 @@ mod approval_outcome_tests {
             &approval,
             &ApprovalExecutionOutcome {
                 content: "tool response".to_string(),
-                raw_payload: serde_json::json!({ "record": "42" }),
+                output_evidence: serde_json::json!({ "record": "42" }),
                 duration_ms: 21,
             },
         )
@@ -3221,12 +3369,20 @@ impl AiManagementService {
             },
             &operator.role_slugs,
         )?;
-        let decision_trace = enrich_decision_trace(
+        let mut decision_trace = enrich_decision_trace(
             execution_plan.decision_trace,
             execution_plan.execution_mode,
             input.locale.clone(),
             resolved_locale.clone(),
         );
+        if execution_plan.execution_mode == ExecutionMode::McpTooling {
+            decision_trace.prompt_template = Some(agent_prompt_template_evidence(
+                task_profile
+                    .as_ref()
+                    .and_then(|profile| profile.system_prompt.as_deref()),
+                Some(resolved_locale.as_str()),
+            ));
+        }
         ai_metrics::observe_locale_resolution(input.locale.as_deref(), resolved_locale.as_str());
         ai_metrics::observe_router_resolution("start_chat_session", &decision_trace);
 
@@ -3371,12 +3527,18 @@ impl AiManagementService {
             },
             &operator.role_slugs,
         )?;
-        let decision_trace = enrich_decision_trace(
+        let mut decision_trace = enrich_decision_trace(
             execution_plan.decision_trace,
             execution_plan.execution_mode,
             input.locale.clone(),
             resolved_locale.clone(),
         );
+        if execution_plan.execution_mode == ExecutionMode::McpTooling {
+            decision_trace.prompt_template = Some(agent_prompt_template_evidence(
+                task_profile.system_prompt.as_deref(),
+                Some(resolved_locale.as_str()),
+            ));
+        }
         ai_metrics::observe_locale_resolution(input.locale.as_deref(), resolved_locale.as_str());
         ai_metrics::observe_router_resolution("run_task_job", &decision_trace);
 
@@ -3696,6 +3858,39 @@ impl AiManagementService {
             .await?
             .unwrap_or_else(|| operator.clone());
 
+        // A previously staged outcome is the only case where we may replay a
+        // result without revalidating and invoking the external tool. For a
+        // new execution, bind the approval to the current actor-scoped MCP
+        // inventory and its current typed schema before claiming the approval.
+        // A revoked capability or changed schema must leave the approval
+        // pending instead of turning it into an execution lease.
+        let persisted_outcome = approval_execution_outcome(&approval.metadata)?;
+        let expected_policy_evidence = approval_policy_evidence(&approval.metadata)?;
+        let prevalidated_adapter = if input.approved && persisted_outcome.is_none() {
+            let expected_policy_evidence = expected_policy_evidence.as_ref().ok_or_else(|| {
+                AiError::Validation(
+                    "approval request lacks immutable tool policy evidence; request a new approval"
+                        .to_string(),
+                )
+            })?;
+            let adapter = InProcessMcpAdapter::new(
+                runtime,
+                access_context_for_operator(&execution_operator),
+            )?;
+            let inventory = validate_tool_inventory(adapter.list_tools().await?)?;
+            let definition = inventory.definition(&approval.tool_name).ok_or_else(|| {
+                AiError::Validation(
+                    "approved tool is no longer available to the execution identity".to_string(),
+                )
+            })?;
+            validate_tool_arguments(definition, &approval.tool_input)?;
+            let current_policy_evidence = tool_policy.evidence(definition);
+            validate_approval_policy_evidence(expected_policy_evidence, current_policy_evidence)?;
+            Some(adapter)
+        } else {
+            None
+        };
+
         if !claim_approval_resolution(db, operator.tenant_id, approval.id, &approval.status).await?
         {
             return Err(AiError::Validation(
@@ -3703,33 +3898,41 @@ impl AiManagementService {
             ));
         }
 
-        let access_context = access_context_for_operator(&execution_operator);
         let (tool_content, tool_metadata, trace) = if input.approved {
-            let outcome = match approval_execution_outcome(&approval.metadata)? {
+            let outcome = match persisted_outcome {
                 Some(outcome) => outcome,
                 None => {
-                    let adapter = InProcessMcpAdapter::new(runtime, access_context)?;
+                    let adapter = prevalidated_adapter.ok_or_else(|| {
+                        AiError::Runtime(
+                            "approved MCP tool was not prepared for execution".to_string(),
+                        )
+                    })?;
                     let started = std::time::Instant::now();
                     let tool_result = match adapter
                         .call_tool(&approval.tool_name, approval.tool_input.clone())
                         .await
                     {
                         Ok(value) => value,
-                        Err(error) => {
+                        Err(_error) => {
                             let mut retryable: ai_approval_requests::ActiveModel =
                                 approval.clone().into();
                             retryable.status = Set("pending".to_string());
-                            retryable.reason = Set(Some(format!(
-                                "tool execution failed and may be retried: {error}"
-                            )));
+                            retryable.reason =
+                                Set(Some("tool execution failed and may be retried".to_string()));
                             retryable.updated_at = Set(Utc::now().into());
                             retryable.update(db).await.map_err(db_err)?;
-                            return Err(error);
+                            return Err(AiError::Mcp(
+                                "approved MCP tool execution failed".to_string(),
+                            ));
                         }
                     };
                     let outcome = ApprovalExecutionOutcome {
-                        content: tool_result.content,
-                        raw_payload: tool_result.raw_payload,
+                        content: bounded_tool_result(&tool_result.content),
+                        output_evidence: redacted_tool_execution_evidence(
+                            &approval.tool_name,
+                            &tool_result.raw_payload,
+                            &tool_result.source_lineage,
+                        )?,
                         duration_ms: started.elapsed().as_millis() as i64,
                     };
                     let _persisted =
@@ -3739,32 +3942,51 @@ impl AiManagementService {
             };
             let trace = ToolTrace {
                 tool_name: approval.tool_name.clone(),
-                input_payload: approval.tool_input.clone(),
-                output_payload: Some(outcome.raw_payload.clone()),
+                input_payload: redacted_json_evidence(&approval.tool_input),
+                output_payload: Some(outcome.output_evidence.clone()),
                 status: "completed".to_string(),
                 duration_ms: outcome.duration_ms,
-                sensitive: tool_policy.is_tool_sensitive(&approval.tool_name),
+                sensitive: expected_policy_evidence
+                    .as_ref()
+                    .is_some_and(|evidence| evidence.requires_operator_approval),
                 error_message: None,
                 created_at: Utc::now(),
             };
             (
                 outcome.content,
-                json!({ "raw_payload": outcome.raw_payload, "approval_approved": true }),
+                json!({
+                    "tool_output_evidence": outcome.output_evidence,
+                    "approval_approved": true,
+                    "untrusted_context": "mcp_tool_result",
+                    "tool_policy_evidence": expected_policy_evidence,
+                }),
                 trace,
             )
         } else {
-            let content = "Tool execution was rejected by the operator.".to_string();
+            let content = bounded_tool_result("Tool execution was rejected by the operator.");
             let trace = ToolTrace {
                 tool_name: approval.tool_name.clone(),
-                input_payload: approval.tool_input.clone(),
-                output_payload: Some(json!({ "reason": "approval_rejected" })),
+                input_payload: redacted_json_evidence(&approval.tool_input),
+                output_payload: Some(redacted_json_evidence(&json!({
+                    "reason": "approval_rejected"
+                }))),
                 status: "rejected".to_string(),
                 duration_ms: 0,
-                sensitive: tool_policy.is_tool_sensitive(&approval.tool_name),
+                sensitive: expected_policy_evidence
+                    .as_ref()
+                    .is_some_and(|evidence| evidence.requires_operator_approval),
                 error_message: None,
                 created_at: Utc::now(),
             };
-            (content, json!({ "approval_rejected": true }), trace)
+            (
+                content,
+                json!({
+                    "approval_rejected": true,
+                    "untrusted_context": "mcp_tool_result",
+                    "tool_policy_evidence": expected_policy_evidence,
+                }),
+                trace,
+            )
         };
 
         // The external effect has already been durably staged above. Finalize all
@@ -4307,22 +4529,36 @@ impl AiManagementService {
             let stream_buffer = Arc::clone(&stream_buffer);
             move |event| publish_provider_stream_event(session_id, run_id, &stream_buffer, event)
         });
+        let runtime_request = crate::model::RuntimeRequest {
+            model: provider_profile.model.clone(),
+            messages,
+            temperature: provider_profile.temperature,
+            max_tokens: provider_profile.max_tokens.map(|value| value.max(0) as u32),
+            max_turns: 4,
+            execution_mode,
+            system_prompt: task_profile
+                .as_ref()
+                .and_then(|value| value.system_prompt.clone()),
+            locale: Some(resolved_locale.clone()),
+        };
+        let prompt_template = agent_prompt_template_evidence(
+            runtime_request.system_prompt.as_deref(),
+            runtime_request.locale.as_deref(),
+        );
+        let run_before_provider_egress = require_run(db, operator.tenant_id, run_id).await?;
+        let prompt_trace = decision_trace_with_prompt_template(
+            run_before_provider_egress.decision_trace.clone(),
+            prompt_template,
+        )?;
+        let mut active: ai_chat_runs::ActiveModel = run_before_provider_egress.into();
+        active.decision_trace = Set(prompt_trace);
+        active.updated_at = Set(Utc::now().into());
+        active.update(db).await.map_err(db_err)?;
         let cancellation = runtime.register_run_cancellation(run_id);
         let outcome = match agent_driver
             .run(
                 &provider_config,
-                crate::model::RuntimeRequest {
-                    model: provider_profile.model.clone(),
-                    messages,
-                    temperature: provider_profile.temperature,
-                    max_tokens: provider_profile.max_tokens.map(|value| value.max(0) as u32),
-                    max_turns: 4,
-                    execution_mode,
-                    system_prompt: task_profile
-                        .as_ref()
-                        .and_then(|value| value.system_prompt.clone()),
-                    locale: Some(resolved_locale.clone()),
-                },
+                runtime_request,
                 Some(stream_emitter),
                 Some(cancellation),
             )
@@ -4362,6 +4598,7 @@ impl AiManagementService {
             RuntimeOutcome::Completed {
                 appended_messages,
                 traces,
+                usage,
             } => {
                 persist_runtime_outputs(
                     db,
@@ -4372,10 +4609,13 @@ impl AiManagementService {
                     traces,
                 )
                 .await?;
+                let decision_trace =
+                    decision_trace_with_agent_usage(run.decision_trace.clone(), usage)?;
                 let mut active: ai_chat_runs::ActiveModel = run.into();
                 active.status = Set("completed".to_string());
                 active.completed_at = Set(Some(Utc::now().into()));
                 active.updated_at = Set(Utc::now().into());
+                active.decision_trace = Set(decision_trace);
                 run = active.update(db).await.map_err(db_err)?;
                 ai_metrics::observe_run_outcome(
                     execution_mode,
@@ -4399,6 +4639,7 @@ impl AiManagementService {
                 appended_messages,
                 traces,
                 error_message,
+                usage,
             } => {
                 persist_runtime_outputs(
                     db,
@@ -4409,11 +4650,14 @@ impl AiManagementService {
                     traces,
                 )
                 .await?;
+                let decision_trace =
+                    decision_trace_with_agent_usage(run.decision_trace.clone(), usage)?;
                 let mut active: ai_chat_runs::ActiveModel = run.into();
                 active.status = Set("failed".to_string());
                 active.error_message = Set(Some(error_message));
                 active.completed_at = Set(Some(Utc::now().into()));
                 active.updated_at = Set(Utc::now().into());
+                active.decision_trace = Set(decision_trace);
                 run = active.update(db).await.map_err(db_err)?;
                 ai_metrics::observe_run_outcome(
                     execution_mode,
@@ -4437,6 +4681,7 @@ impl AiManagementService {
                 appended_messages,
                 traces,
                 pending_approvals,
+                usage,
             } => {
                 persist_runtime_outputs(
                     db,
@@ -4465,10 +4710,13 @@ impl AiManagementService {
                 let first_approval = approvals.first().ok_or_else(|| {
                     AiError::Runtime("waiting approval outcome has no pending calls".to_string())
                 })?;
+                let decision_trace =
+                    decision_trace_with_agent_usage(run.decision_trace.clone(), usage)?;
                 let mut active: ai_chat_runs::ActiveModel = run.into();
                 active.status = Set("waiting_approval".to_string());
                 active.pending_approval_id = Set(Some(first_approval.id));
                 active.updated_at = Set(Utc::now().into());
+                active.decision_trace = Set(decision_trace);
                 run = active.update(db).await.map_err(db_err)?;
                 ai_metrics::observe_run_outcome(
                     execution_mode,

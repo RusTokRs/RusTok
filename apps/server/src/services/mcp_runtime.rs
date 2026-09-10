@@ -21,7 +21,7 @@ use rustok_mcp::{
     McpScaffoldDraftRuntimeContext, McpScaffoldDraftStore, McpServerConfig, McpSessionContext,
     McpToolCallAuditEvent, McpToolCallOutcome, ReviewModuleScaffoldRequest,
     ReviewModuleScaffoldResponse, ScaffoldModuleRequest, StageModuleScaffoldResponse,
-    TOOL_MCP_WHOAMI,
+    TOOL_MCP_WHOAMI, scaffold_source_digest,
 };
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -241,10 +241,12 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
         let preview = draft
             .preview()
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        let source_digest = scaffold_source_digest(&preview).map_err(anyhow::Error::msg)?;
 
         Ok(StageModuleScaffoldResponse {
             draft_id: draft.id.to_string(),
             preview,
+            source_digest,
             status: draft.status_value(),
             review_required: true,
             apply_tool: rustok_mcp::TOOL_ALLOY_APPLY_MODULE_SCAFFOLD.to_string(),
@@ -274,10 +276,13 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
             .map_err(|error| anyhow::anyhow!(error.to_string()))?
             .ok_or_else(|| anyhow::anyhow!("Unknown scaffold draft: {}", request.draft_id))?;
 
+        let draft = draft
+            .to_staged_draft()
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        let source_digest = scaffold_source_digest(&draft.preview).map_err(anyhow::Error::msg)?;
         Ok(ReviewModuleScaffoldResponse {
-            draft: draft
-                .to_staged_draft()
-                .map_err(|error| anyhow::anyhow!(error.to_string()))?,
+            draft,
+            source_digest,
         })
     }
 

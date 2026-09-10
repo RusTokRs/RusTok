@@ -151,6 +151,19 @@ verifies the active predecessor plus monotonic version before persisting direct
 lineage beside the final artifact contract. Existing installations are never
 modified by publication.
 
+Completed Rust Component candidate builds cross back into Alloy only through
+the read-only `rustok-modules::ModuleBuildResultReader` owner port.
+`AlloyEvolutionExecutionService` re-loads the durable candidate-build receipt,
+then accepts only the owner's completed immutable request/result pair with the
+same tenant, source-CAS reference and digest, source-local scenario path and
+digest, manifest identity, and exact Rhai parent release. It stores a separate
+immutable redacted execution-evidence row with the build-result revision,
+component/SBOM/provenance digests, digest-pinned publication identities, and
+scenario comparison. It never accepts a worker callback payload, source bytes,
+logs, filesystem path, or registry credential. This owner-completion evidence
+is intentionally not a claim that a hardened OCI job deployment has been
+proven; that operational proof remains a separate release gate.
+
 ## Runbook for Scheduler and Hook Debugging
 
 1. Check `execution_id`, `script.id`, `script.name` and `execution.phase` in

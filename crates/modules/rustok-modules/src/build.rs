@@ -50,6 +50,10 @@ pub const MODULE_BUILD_WIT_VERSION: &str = "1.0.0";
 pub const MODULE_BUILD_RUNTIME_ABI: &str = "rustok:module/runtime@1";
 /// Rust component target supported by the fixed worker toolchain.
 pub const MODULE_BUILD_COMPONENT_TARGET: &str = "wasm32-wasip2";
+/// Canonical source-tree-relative scenario used by reviewed Rust Component
+/// evolution candidates. The bytes remain in the source archive; the owner
+/// carries this path and the scenario's canonical digest to the worker.
+pub const MODULE_BUILD_SANDBOX_SCENARIO_PATH: &str = "tests/sandbox-scenario.json";
 
 /// Immutable request submitted by the control plane to an isolated worker.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -333,33 +337,24 @@ pub enum ModuleBuildSignatureAuthority {
 }
 
 /// Digest-pinned OCI identities emitted only after publication of the verified
-/// payload, SBOM/provenance referrers, and its Cosign signature manifest.
+/// payload and its Cosign signature manifest. The independent verification
+/// receipt persists digests of signed SBOM/provenance evidence after it verifies
+/// the publication through the registry's active Cosign layout.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleBuildPublicationReceipt {
     pub artifact: OciArtifactReference,
-    pub sbom_referrer: OciArtifactReference,
-    pub provenance_referrer: OciArtifactReference,
     pub signature_manifest: OciArtifactReference,
     pub signature_authority: ModuleBuildSignatureAuthority,
 }
 
 impl ModuleBuildPublicationReceipt {
     fn validate(&self) -> Result<(), ModuleBuildProtocolError> {
-        for reference in [
-            &self.artifact,
-            &self.sbom_referrer,
-            &self.provenance_referrer,
-            &self.signature_manifest,
-        ] {
+        for reference in [&self.artifact, &self.signature_manifest] {
             reference
                 .validate()
                 .map_err(|_| ModuleBuildProtocolError::InvalidResult)?;
         }
-        if self.sbom_referrer.registry != self.artifact.registry
-            || self.sbom_referrer.repository != self.artifact.repository
-            || self.provenance_referrer.registry != self.artifact.registry
-            || self.provenance_referrer.repository != self.artifact.repository
-            || self.signature_manifest.registry != self.artifact.registry
+        if self.signature_manifest.registry != self.artifact.registry
             || self.signature_manifest.repository != self.artifact.repository
         {
             return Err(ModuleBuildProtocolError::InvalidResult);
@@ -394,6 +389,18 @@ pub trait ModuleBuildWorker: Send + Sync {
         &self,
         request: ModuleBuildRequest,
     ) -> Result<ModuleBuildResult, ModuleBuildProtocolError>;
+}
+
+/// Read-only owner port for one completed immutable module build. Another
+/// module consumes this port instead of accepting a caller-supplied
+/// request/result pair or reading the build-owner database directly.
+#[async_trait]
+pub trait ModuleBuildResultReader: Send + Sync {
+    async fn load_completed(
+        &self,
+        tenant_id: Uuid,
+        request_id: Uuid,
+    ) -> Result<ModuleBuildCompletedResult, ModuleBuildProtocolError>;
 }
 
 /// Runtime health evidence for a separately deployed module build worker.
@@ -867,6 +874,17 @@ impl SeaOrmModuleBuildService {
             self.claim_queued(tenant_id, request_id).await?;
         let result = worker.execute_build(request).await?;
         self.record_result(&claim, result).await
+    }
+}
+
+#[async_trait]
+impl ModuleBuildResultReader for SeaOrmModuleBuildService {
+    async fn load_completed(
+        &self,
+        tenant_id: Uuid,
+        request_id: Uuid,
+    ) -> Result<ModuleBuildCompletedResult, ModuleBuildProtocolError> {
+        SeaOrmModuleBuildService::load_completed(self, tenant_id, request_id).await
     }
 }
 
@@ -1921,8 +1939,6 @@ mod tests {
         };
         let mut receipt = ModuleBuildPublicationReceipt {
             artifact: reference('a'),
-            sbom_referrer: reference('b'),
-            provenance_referrer: reference('c'),
             signature_manifest: reference('d'),
             signature_authority: ModuleBuildSignatureAuthority::BuildService,
         };

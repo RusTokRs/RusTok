@@ -19,9 +19,10 @@ pub use evolution::{
     MAX_RUST_COMPONENT_SOURCE_FILE_BYTES, MAX_RUST_COMPONENT_SOURCE_FILES,
     MAX_RUST_COMPONENT_SOURCE_PATH_BYTES, RustComponentCandidate, RustComponentCandidateBuild,
     RustComponentCandidateBuildCommand, RustComponentCandidateBuildError,
-    RustComponentCandidateCommand, RustComponentCandidateError, RustComponentCandidateReview,
-    RustComponentCandidateReviewCommand, RustComponentSourceFile, RustComponentWorkspace,
-    RustComponentWorkspaceError, validate_candidate_parent_release,
+    RustComponentCandidateBuildExecution, RustComponentCandidateCommand,
+    RustComponentCandidateError, RustComponentCandidateExecutionError,
+    RustComponentCandidateReview, RustComponentCandidateReviewCommand, RustComponentSourceFile,
+    RustComponentWorkspace, RustComponentWorkspaceError, validate_candidate_parent_release,
 };
 pub use import::{
     AlloyImportError, AlloyImportedDraftCommand, AlloyImportedDraftResult,

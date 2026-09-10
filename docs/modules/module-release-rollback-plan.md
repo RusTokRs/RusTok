@@ -729,7 +729,8 @@ For a dynamic WASM or Rhai artifact:
    payload.
 3. A publisher creates one digest-pinned OCI package containing the finalized
    strict descriptor and exactly one executable payload layer, plus required
-   signature and evidence referrers. Mutable tags are discovery hints only.
+   Cosign signature and signed evidence attestations. Mutable tags are
+   discovery hints only.
 4. The independent validation path pulls the exact manifest digest, verifies
    descriptor/payload/media-type identity, trust, policy, SBOM, provenance,
    signature, schemas, bindings, capabilities, and executor ABI.
@@ -2141,8 +2142,11 @@ backend preflight.
   authority. The active Alloy HTTP/GraphQL path selects an exact reviewed
   revision and delegates the `alloy_authored` stage to `rustok-modules`; its
   artifact attachment and validation remain on the same canonical
-  publish-request aggregate. Finish deterministic packaging and release
-  publication through the Phase 6 owner flow without restoring a second path.
+  publish-request aggregate. The Phase 6 owner flow now performs deterministic
+  workspace OCI publication, Cosign signing, exact SLSA owner-binding
+  verification, and platform admission without restoring a second path. The
+  remaining work in this item is the broader canonical authoring surface, not a
+  parallel publication implementation.
 - [x] Compose digest-pinned OCI validation/admission into streamed platform-CAS
   publication; runtime and recovery read CAS only and never fall back to OCI.
   Verified by `m20260904_000051_admitted_oci_releases.rs`, `oci_admission.rs`,

@@ -36,8 +36,9 @@
 - `graphql::AlloyMutation`
 - `controllers::axum_router`
 - `PhaseCapabilities`
-- `stage_rhai_module_release`
-- `fork_rhai_module_release`
+- `RevisionedReleaseStager`
+- `AlloyReleaseImporter`
+- `AlloyReleaseGovernance`
 
 ## Runtime guarantees
 
@@ -106,6 +107,18 @@ from every executable `src/*.rhai` file. The neutral `http_*` helpers require
 capability name. The declared descriptor set must match exactly, so missing or
 unused grants, dynamic capability selection, and attempts to shadow a reserved
 helper fail before owner admission.
+
+For an `alloy_authored` release, the registry-validation worker reloads the
+owner-receipted stage, re-canonicalizes the bounded Rhai workspace, and produces
+the only OCI package form: one workspace-media-type payload layer, a
+receipt-derived CycloneDX inventory, and SLSA v1 provenance. The package is
+Cosign-signed, with both evidence documents emitted as signed Cosign
+attestations, and re-fetched by digest for isolated verification. The verifier
+requires both the configured builder/source policy and exact owner-bound request,
+tenant/script, source revision/digest, review digest, descriptor digest, and
+entrypoint facts. The owner then records platform admission only; Alloy never
+receives registry credentials, signing keys, trust roots, or a build-service
+attestation path.
 
 The server imports a published Rhai release only through the module owner's
 active publication projection and verified, digest-pinned CAS workspace. The
