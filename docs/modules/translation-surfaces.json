@@ -285,12 +285,18 @@
         "crates/modules/flex/src/attached_translation_progress_target.rs",
         "crates/modules/flex/src/attached_translation_changes.rs",
         "crates/modules/flex/src/attached_translation_storage.rs",
+        "crates/modules/flex/src/attached_field_policy.rs",
+        "crates/modules/flex/src/attached_translation_policy_target.rs",
+        "crates/modules/flex/src/graphql/query.rs",
+        "crates/modules/flex/src/graphql/mutation.rs",
+        "crates/modules/flex/src/graphql/types.rs",
         "crates/modules/flex/src/migrations/m20260909_000003_add_attached_translation_change_journal.rs",
+        "crates/modules/flex/src/migrations/m20260910_000004_add_attached_field_policies.rs",
         "apps/server/src/services/flex_attached_translation_owner.rs",
         "apps/server/src/services/flex_attached_translation_progress_owner.rs",
         "apps/server/src/services/mod.rs"
       ],
-      "blockers": ["The registered taxonomy.category donor exposes only active localized text/textarea leaves. Collect retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress stability, schema-fan-out, hard-delete tombstone, and change-cursor recovery evidence before pilot promotion."]
+      "blockers": ["The registered taxonomy.category donor exposes only active localized text/textarea leaves. The Flex-owned policy plane and RBAC-guarded GraphQL set/reset control surface are source-complete: missing/reset policy is fail-closed, explicit safe policy may admit AI export, and secret/immutable_transaction policy cannot enable export. Retain PostgreSQL migration and concurrent CAS/idempotent replay, aggregate-progress stability, schema-fan-out, hard-delete tombstone, change-cursor recovery, policy/RBAC/unknown-field validation, and policy-without-revision/change evidence before pilot promotion."]
     },
     {
       "id": "seo_overrides",
