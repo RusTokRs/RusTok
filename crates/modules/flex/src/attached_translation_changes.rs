@@ -277,7 +277,7 @@ pub async fn record_flex_attached_translation_deleted_in_tx(
     }
 
     let state = txn
-        .query_one(&Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             format!(
                 "SELECT revision FROM {FLEX_ATTACHED_TRANSLATION_RESOURCE_STATE_TABLE} WHERE tenant_id = $1 AND entity_type = $2 AND entity_id = $3 FOR UPDATE"
