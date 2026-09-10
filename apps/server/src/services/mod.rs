@@ -200,6 +200,38 @@ pub mod module_event_dispatcher {
                 ))
             })?;
 
+            let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
+                rustok_outbox::OutboxTransport::new(db.clone()),
+            ));
+            let standalone_owner = Arc::new(
+                super::flex_standalone_translation_owner::ServerFlexStandaloneTranslationOwner::new(
+                    db.clone(),
+                    event_bus,
+                ),
+            );
+            let standalone_changes = Arc::new(flex::FlexStandaloneTranslationChangeReader::new(
+                db.clone(),
+            ));
+            let standalone_provider = flex::FlexStandaloneTranslationProgressTargetProvider::new(
+                standalone_owner.clone(),
+                standalone_owner,
+                standalone_changes,
+            )
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Flex standalone Translation provider composition failed: {error}"
+                ))
+            })?;
+            rustok_translation_targets::register_translation_target_provider(
+                &mut extensions,
+                standalone_provider,
+            )
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Flex standalone Translation provider registration failed: {error}"
+                ))
+            })?;
+
             #[cfg(feature = "mod-taxonomy")]
             {
                 let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
@@ -476,6 +508,7 @@ pub mod flex_attached_translation_progress_owner;
 pub mod flex_attached_values;
 pub mod flex_schema_translation_owner;
 pub mod flex_schema_translation_progress_owner;
+pub mod flex_standalone_translation_owner;
 #[path = "flex_standalone_service_journaled.rs"]
 pub mod flex_standalone_service;
 #[path = "flex_standalone_service.rs"]
