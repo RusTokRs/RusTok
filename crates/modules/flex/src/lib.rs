@@ -37,6 +37,10 @@ pub mod schema_translation_fields;
 pub mod schema_translation_progress_target;
 pub mod schema_translation_target;
 pub mod standalone;
+pub mod standalone_translation;
+pub mod standalone_translation_changes;
+pub mod standalone_translation_progress_target;
+pub mod standalone_translation_target;
 
 pub struct FlexModule;
 
@@ -155,6 +159,27 @@ pub use standalone::{
     validate_optional_standalone_uuid, validate_standalone_uuid, validate_update_entry_command,
     validate_update_schema_command,
 };
+pub use standalone_translation::{
+    FlexStandaloneTranslationError, FlexStandaloneTranslationExactLocaleApply,
+    FlexStandaloneTranslationExactLocaleApplyReceipt,
+    FlexStandaloneTranslationExactLocaleSnapshot, FlexStandaloneTranslationExactProgress,
+    FlexStandaloneTranslationLeaf, FlexStandaloneTranslationLeafSnapshot,
+    FlexStandaloneTranslationOperationContext, FlexStandaloneTranslationOwnerPort,
+    FlexStandaloneTranslationProgressOwnerPort, FlexStandaloneTranslationResourcePage,
+    FlexStandaloneTranslationResult, FlexStandaloneTranslationTargetValue,
+    MAX_FLEX_STANDALONE_TRANSLATION_RESOURCE_PAGE, flex_standalone_translation_field_eligible,
+    validate_flex_standalone_translation_locale_pair,
+    validate_flex_standalone_translation_resource_page,
+};
+pub use standalone_translation_changes::{
+    FLEX_STANDALONE_TRANSLATION_CHANGE_JOURNAL_TABLE,
+    FLEX_STANDALONE_TRANSLATION_RESOURCE_STATE_TABLE, FlexStandaloneTranslationChangeLifecycle,
+    FlexStandaloneTranslationChangeOwnerPort, FlexStandaloneTranslationChangeReader,
+    FlexStandaloneTranslationChangeRecord, MAX_FLEX_STANDALONE_TRANSLATION_CHANGE_PAGE,
+    validate_page as validate_flex_standalone_translation_change_page,
+};
+pub use standalone_translation_progress_target::FlexStandaloneTranslationProgressTargetProvider;
+pub use standalone_translation_target::FlexStandaloneTranslationTargetProvider;
 
 pub use events::{
     flex_entry_created_event, flex_entry_deleted_event, flex_entry_updated_event,
@@ -185,6 +210,11 @@ impl MigrationSource for FlexModule {
             ),
             MigrationSafetyMetadata::new(
                 "m20260910_000004_add_attached_field_policies",
+                MigrationSafetyClass::ExpandContract,
+                MigrationPhaseConstraint::PreActivation,
+            ),
+            MigrationSafetyMetadata::new(
+                "m20260910_000005_add_standalone_translation_change_journal",
                 MigrationSafetyClass::ExpandContract,
                 MigrationPhaseConstraint::PreActivation,
             ),
