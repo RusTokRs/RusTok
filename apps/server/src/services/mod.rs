@@ -199,6 +199,64 @@ pub mod module_event_dispatcher {
                     "Flex schema-copy translation target provider registration failed: {error}"
                 ))
             })?;
+
+            #[cfg(feature = "mod-taxonomy")]
+            {
+                let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
+                    rustok_outbox::OutboxTransport::new(db.clone()),
+                ));
+                let owner = Arc::new(
+                    super::flex_attached_translation_owner::ServerFlexTaxonomyCategoryTranslationOwner::new(
+                        db.clone(),
+                        event_bus,
+                    ),
+                );
+                let progress = Arc::new(
+                    super::flex_attached_translation_progress_owner::ServerFlexTaxonomyCategoryTranslationProgressOwner::new(
+                        db.clone(),
+                    ),
+                );
+                let changes = Arc::new(
+                    flex::FlexAttachedTranslationChangeReader::new(
+                        db.clone(),
+                        flex::TAXONOMY_CATEGORY_ENTITY_TYPE,
+                    )
+                    .map_err(|error| {
+                        Error::Message(format!(
+                            "Flex attached Translation change reader composition failed: {error}"
+                        ))
+                    })?,
+                );
+                let provider = flex::FlexAttachedTranslationProgressTargetProvider::new(
+                    owner,
+                    progress,
+                    changes,
+                )
+                .map_err(|error| {
+                    Error::Message(format!(
+                        "Flex taxonomy.category attached Translation provider composition failed: {error}"
+                    ))
+                })?;
+                let provider = flex::FlexAttachedTranslationPolicyTargetProvider::new(
+                    provider,
+                    flex::TAXONOMY_CATEGORY_ENTITY_TYPE,
+                    Arc::new(flex::FlexAttachedFieldPolicyStore::new(db.clone())),
+                )
+                .map_err(|error| {
+                    Error::Message(format!(
+                        "Flex taxonomy.category attached Translation policy composition failed: {error}"
+                    ))
+                })?;
+                rustok_translation_targets::register_translation_target_provider(
+                    &mut extensions,
+                    provider,
+                )
+                .map_err(|error| {
+                    Error::Message(format!(
+                        "Flex taxonomy.category attached Translation provider registration failed: {error}"
+                    ))
+                })?;
+            }
         }
 
         rustok_index::materialize_postgres_index_query_runtime(&mut extensions, db.clone())

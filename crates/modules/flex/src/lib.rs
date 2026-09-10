@@ -12,11 +12,15 @@ use sea_orm_migration::MigrationTrait;
 
 pub mod attached;
 pub mod attached_definitions;
+pub mod attached_field_policy;
 pub mod attached_storage;
 pub mod attached_translation;
 pub mod attached_translation_changes;
 pub mod attached_translation_guard;
+pub mod attached_translation_policy_target;
+pub mod attached_translation_progress_target;
 pub mod attached_translation_storage;
+pub mod attached_translation_target;
 pub mod cache_generation;
 pub mod entity_type;
 pub mod errors;
@@ -44,6 +48,13 @@ pub use attached::{
 pub use attached_definitions::{
     GENERIC_ATTACHED_FIELD_DEFINITIONS_TABLE, GenericAttachedFieldDefinitionService,
     MAX_GENERIC_ATTACHED_FIELDS_PER_TENANT,
+};
+pub use attached_field_policy::{
+    FLEX_ATTACHED_FIELD_POLICIES_TABLE, FlexAttachedFieldPolicy, FlexAttachedFieldPolicyError,
+    FlexAttachedFieldPolicyResolution, FlexAttachedFieldPolicyResolver, FlexAttachedFieldPolicyResult,
+    FlexAttachedFieldPolicyStore, FlexDataClassification, delete_attached_field_policy,
+    resolve_attached_field_policies, resolve_attached_field_policy_resolutions,
+    upsert_attached_field_policy,
 };
 pub use attached_storage::{
     GENERIC_ATTACHED_VALUES_TABLE, delete_generic_attached_values,
@@ -74,11 +85,14 @@ pub use attached_translation_guard::{
     FlexAttachedTranslationSchemaLease, load_attached_translation_schema_in,
     lock_attached_translation_schema_in_tx,
 };
+pub use attached_translation_policy_target::FlexAttachedTranslationPolicyTargetProvider;
+pub use attached_translation_progress_target::FlexAttachedTranslationProgressTargetProvider;
 pub use attached_translation_storage::{
     FlexAttachedLocalizedValuesByEntity, FlexAttachedTranslationResourceRevisionsByEntity,
     MAX_ATTACHED_TRANSLATION_STORAGE_BATCH, load_attached_translation_localized_values,
     load_attached_translation_resource_revisions,
 };
+pub use attached_translation_target::FlexAttachedTranslationTargetProvider;
 pub use entity_type::{
     MAX_FLEX_ENTITY_TYPE_BYTES, TAXONOMY_CATEGORY_ENTITY_TYPE, is_valid_flex_entity_type,
     normalize_flex_entity_type,
@@ -163,11 +177,18 @@ impl MigrationSource for FlexModule {
     }
 
     fn migration_safety_metadata(&self) -> Vec<MigrationSafetyMetadata> {
-        vec![MigrationSafetyMetadata::new(
-            "m20260909_000003_add_attached_translation_change_journal",
-            MigrationSafetyClass::ExpandContract,
-            MigrationPhaseConstraint::PreActivation,
-        )]
+        vec![
+            MigrationSafetyMetadata::new(
+                "m20260909_000003_add_attached_translation_change_journal",
+                MigrationSafetyClass::ExpandContract,
+                MigrationPhaseConstraint::PreActivation,
+            ),
+            MigrationSafetyMetadata::new(
+                "m20260910_000004_add_attached_field_policies",
+                MigrationSafetyClass::ExpandContract,
+                MigrationPhaseConstraint::PreActivation,
+            ),
+        ]
     }
 }
 
