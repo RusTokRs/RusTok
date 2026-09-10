@@ -112,6 +112,24 @@ impl FlexAttachedFieldPolicy {
     }
 }
 
+/// Effective attached-field policy together with provenance.
+///
+/// `explicit=false` means no policy row exists and the returned policy is the fail-closed default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FlexAttachedFieldPolicyResolution {
+    pub policy: FlexAttachedFieldPolicy,
+    pub explicit: bool,
+}
+
+impl Default for FlexAttachedFieldPolicyResolution {
+    fn default() -> Self {
+        Self {
+            policy: FlexAttachedFieldPolicy::default(),
+            explicit: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FlexAttachedFieldPolicyError {
     Invalid(String),
@@ -177,16 +195,17 @@ fn validate_field_key(field_key: &str) -> FlexAttachedFieldPolicyResult<()> {
     Ok(())
 }
 
-/// Resolve policy for a bounded attached-field set in one caller-owned database snapshot.
+/// Resolve policy plus provenance for a bounded attached-field set in one caller-owned database
+/// snapshot.
 ///
 /// Every requested field is returned. A missing row resolves to `TenantPrivate` with AI export
-/// disabled; explicit rows are validated before they can influence a consumer.
-pub async fn resolve_attached_field_policies<C>(
+/// disabled and `explicit=false`; explicit rows are validated before they can influence a consumer.
+pub async fn resolve_attached_field_policy_resolutions<C>(
     db: &C,
     tenant_id: Uuid,
     entity_type: &str,
     field_keys: &[String],
-) -> FlexAttachedFieldPolicyResult<BTreeMap<String, FlexAttachedFieldPolicy>>
+) -> FlexAttachedFieldPolicyResult<BTreeMap<String, FlexAttachedFieldPolicyResolution>>
 where
     C: ConnectionTrait,
 {
@@ -203,7 +222,7 @@ where
     let mut resolved = unique
         .iter()
         .cloned()
-        .map(|field_key| (field_key, FlexAttachedFieldPolicy::default()))
+        .map(|field_key| (field_key, FlexAttachedFieldPolicyResolution::default()))
         .collect::<BTreeMap<_, _>>();
     let rows = policy_entity::Entity::find()
         .filter(policy_entity::Column::TenantId.eq(tenant_id))
@@ -218,9 +237,34 @@ where
             ai_export_allowed: row.ai_export_allowed,
         };
         policy.validate()?;
-        resolved.insert(row.field_key, policy);
+        resolved.insert(
+            row.field_key,
+            FlexAttachedFieldPolicyResolution {
+                policy,
+                explicit: true,
+            },
+        );
     }
     Ok(resolved)
+}
+
+/// Resolve effective policy for a bounded attached-field set in one caller-owned database snapshot.
+pub async fn resolve_attached_field_policies<C>(
+    db: &C,
+    tenant_id: Uuid,
+    entity_type: &str,
+    field_keys: &[String],
+) -> FlexAttachedFieldPolicyResult<BTreeMap<String, FlexAttachedFieldPolicy>>
+where
+    C: ConnectionTrait,
+{
+    Ok(
+        resolve_attached_field_policy_resolutions(db, tenant_id, entity_type, field_keys)
+            .await?
+            .into_iter()
+            .map(|(field_key, resolution)| (field_key, resolution.policy))
+            .collect(),
+    )
 }
 
 /// Atomically create or replace one explicit policy row.
