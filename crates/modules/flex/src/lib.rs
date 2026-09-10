@@ -192,13 +192,22 @@ impl MigrationSource for FlexModule {
     }
 
     fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
-        vec![MigrationDependencyDescriptor::new(
-            "m20260909_000003_add_attached_translation_change_journal",
-            vec![
-                "m20260405_000004_create_flex_attached_localized_values",
-                "m20260822_000001_create_generic_attached_donor_storage",
-            ],
-        )]
+        vec![
+            MigrationDependencyDescriptor::new(
+                "m20260909_000003_add_attached_translation_change_journal",
+                vec![
+                    "m20260405_000004_create_flex_attached_localized_values",
+                    "m20260822_000001_create_generic_attached_donor_storage",
+                ],
+            ),
+            MigrationDependencyDescriptor::new(
+                "m20260910_000005_add_standalone_translation_change_journal",
+                vec![
+                    "m20260317_000001_create_flex_standalone_tables",
+                    "m20260407_000001_split_flex_entry_localized_values",
+                ],
+            ),
+        ]
     }
 
     fn migration_safety_metadata(&self) -> Vec<MigrationSafetyMetadata> {
