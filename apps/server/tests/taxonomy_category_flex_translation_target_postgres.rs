@@ -2,13 +2,15 @@
 
 use std::{collections::HashMap, error::Error, io, sync::Arc, time::Duration};
 
+use flex::graphql::AttachedValuesGraphqlPort;
 use flex::{
     CreateFieldDefinitionCommand, FieldDefinitionService, FlexModule,
     GenericAttachedFieldDefinitionService, TAXONOMY_CATEGORY_ENTITY_TYPE,
 };
-use flex::graphql::AttachedValuesGraphqlPort;
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
-use rustok_core::{MigrationSource, ModuleRegistry, SecurityContext, UserRole, field_schema::FieldType};
+use rustok_core::{
+    MigrationSource, ModuleRegistry, SecurityContext, UserRole, field_schema::FieldType,
+};
 use rustok_migrations::Migrator;
 use rustok_server::{
     auth::AuthConfig,
@@ -52,9 +54,11 @@ async fn taxonomy_category_flex_registered_translation_provider_multi_replica_ev
 
     let database_name = unique_postgres_database_name("rustok_flex_attached_translation_evidence");
     let database_url = postgres_database_url(&admin_url, &database_name);
-    let admin = connect_postgres(&admin_url)
-        .await
-        .map_err(|error| test_error(format!("PostgreSQL admin database must be reachable: {error}")))?;
+    let admin = connect_postgres(&admin_url).await.map_err(|error| {
+        test_error(format!(
+            "PostgreSQL admin database must be reachable: {error}"
+        ))
+    })?;
     drop_postgres_database_if_exists(&admin, &database_name).await?;
     create_postgres_database(&admin, &database_name).await?;
 
@@ -92,7 +96,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .await?
         .ok_or_else(|| test_error("source attached values were not persisted"))?;
     if source != json!({"tagline": "Launch category"}) {
-        return Err(test_error(format!("unexpected source attached values: {source}" )).into());
+        return Err(test_error(format!("unexpected source attached values: {source}")).into());
     }
 
     let seed_provider = registered_provider(seed_connection.clone())?;
@@ -136,7 +140,9 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     if source_changes.changes.is_empty() {
-        return Err(test_error("source attached write did not reach Translation ChangeCursor").into());
+        return Err(
+            test_error("source attached write did not reach Translation ChangeCursor").into(),
+        );
     }
     let source_cursor = source_changes
         .next_cursor
@@ -283,7 +289,9 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         )
         .await?;
     if replay != receipt {
-        return Err(test_error("fresh registered provider did not replay the exact owner receipt").into());
+        return Err(
+            test_error("fresh registered provider did not replay the exact owner receipt").into(),
+        );
     }
 
     let resumed = recovery_provider
@@ -333,7 +341,9 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
 }
 
 fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn TranslationTargetProvider>> {
-    let registry = ModuleRegistry::new().register(FlexModule).register(TaxonomyModule);
+    let registry = ModuleRegistry::new()
+        .register(FlexModule)
+        .register(TaxonomyModule);
     let settings = RustokSettings::default();
     let runtime_ctx = ServerRuntimeContext::new(db, settings.clone());
     let extensions = build_shared_runtime_extensions_with_host_providers(
