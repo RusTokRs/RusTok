@@ -15,6 +15,7 @@ pub const MAX_FLEX_STANDALONE_TRANSLATION_CHANGE_PAGE: u16 = 200;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlexStandaloneTranslationChangeLifecycle {
     Active,
+    Archived,
     Deleted,
 }
 
@@ -22,6 +23,7 @@ impl FlexStandaloneTranslationChangeLifecycle {
     pub fn parse(value: &str) -> FlexStandaloneTranslationResult<Self> {
         match value {
             "active" => Ok(Self::Active),
+            "archived" => Ok(Self::Archived),
             "deleted" => Ok(Self::Deleted),
             other => Err(FlexStandaloneTranslationError::OwnerInvariant(format!(
                 "standalone Translation change journal contains invalid lifecycle `{other}`"
