@@ -34,7 +34,7 @@ use rustok_translation_targets::{
     TranslationTargetProvider, provider_support::field_hash, translation_target_registry,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
-use sea_orm_migration::{MigratorTrait, SchemaManager};
+use sea_orm_migration::MigratorTrait;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -291,11 +291,8 @@ async fn attached_translation_registered_provider_retains_owner_revision_cas_pro
                 )
                 .await?;
 
-            let (changes, terminal_cursor) = drain_changes_one_at_a_time(
-                recovered_provider.as_ref(),
-                tenant_id,
-            )
-            .await?;
+            let (changes, terminal_cursor) =
+                drain_changes_one_at_a_time(recovered_provider.as_ref(), tenant_id).await?;
             if changes.len() != 3
                 || changes[0].resource_revision.as_str() != "attached:2"
                 || changes[0].lifecycle != TranslationResourceLifecycle::Active
@@ -427,19 +424,13 @@ async fn seed_localized_definition_and_source(
         TAXONOMY_CATEGORY_ENTITY_TYPE,
         category_id,
         "en",
-        &json!({FIELD_KEY: "Hello"}),
+        &json!({"headline": "Hello"}),
     )
     .await?;
     Ok(())
 }
 
 async fn apply_journal_migration(database: &DatabaseConnection) -> TestResult<()> {
-    let journal_position = Migrator::migrations()
-        .iter()
-        .position(|migration| migration.name() == JOURNAL_MIGRATION)
-        .ok_or("Flex attached Translation journal migration is missing from the canonical migrator")?;
-    let steps = u32::try_from(journal_position)?;
-    Migrator::up(database, Some(steps)).await?;
     Migrator::up(database, Some(1)).await?;
     Ok(())
 }
@@ -482,7 +473,10 @@ fn registered_provider(database: DatabaseConnection) -> TestResult<Arc<dyn Trans
     let targets = translation_target_registry(&extensions)
         .ok_or("host composition did not publish TranslationTargetRegistry")?;
     targets
-        .get(&OwnerSlug::new("flex")?, &ResourceKind::new("attached_localized_value")?)
+        .get(
+            &OwnerSlug::new("flex")?,
+            &ResourceKind::new("attached_localized_value")?,
+        )
         .ok_or_else(|| "registered flex/attached_localized_value provider is missing".into())
 }
 
@@ -648,13 +642,11 @@ where
 
     let test_result = async {
         let replica_a = connect_postgres(&target_url).await?;
-        let manager = SchemaManager::new(&replica_a);
         let journal_position = Migrator::migrations()
             .iter()
             .position(|migration| migration.name() == JOURNAL_MIGRATION)
             .ok_or("Flex attached Translation journal migration is missing")?;
         Migrator::up(&replica_a, Some(u32::try_from(journal_position)?)).await?;
-        drop(manager);
 
         let replica_b = connect_postgres(&target_url).await?;
         let recovery = connect_postgres(&target_url).await?;
