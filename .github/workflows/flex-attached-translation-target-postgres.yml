@@ -15,8 +15,10 @@ on:
       - "crates/modules/rustok-taxonomy/src/owner_category_revision.rs"
       - "crates/modules/rustok-taxonomy/src/lib.rs"
       - "crates/modules/rustok-translation-targets/**"
-      - "crates/platform/rustok-outbox/**"
-      - "crates/platform/rustok-migrations/**"
+      - "crates/modules/rustok-outbox/**"
+      - "crates/utils/rustok-migrations/**"
+      - "docs/modules/translation-implementation-plan.md"
+      - "crates/modules/rustok-translation/docs/implementation-plan.md"
       - ".github/workflows/flex-attached-translation-target-postgres.yml"
   push:
     branches:
@@ -34,8 +36,10 @@ on:
       - "crates/modules/rustok-taxonomy/src/owner_category_revision.rs"
       - "crates/modules/rustok-taxonomy/src/lib.rs"
       - "crates/modules/rustok-translation-targets/**"
-      - "crates/platform/rustok-outbox/**"
-      - "crates/platform/rustok-migrations/**"
+      - "crates/modules/rustok-outbox/**"
+      - "crates/utils/rustok-migrations/**"
+      - "docs/modules/translation-implementation-plan.md"
+      - "crates/modules/rustok-translation/docs/implementation-plan.md"
       - ".github/workflows/flex-attached-translation-target-postgres.yml"
   workflow_dispatch:
 
