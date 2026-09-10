@@ -73,11 +73,11 @@ async fn flex_attached_provider_multi_replica_cas_replay_progress_and_cursor_rec
                     TAXONOMY_CATEGORY_ENTITY_TYPE,
                     category_id,
                     "en",
-                    Some(json!({FIELD_KEY: "Welcome"})),
+                    Some(json!({"tagline": "Welcome"})),
                 )
                 .await?
                 .ok_or("English attached source values were not persisted")?;
-            if authored != json!({FIELD_KEY: "Welcome"}) {
+            if authored != json!({"tagline": "Welcome"}) {
                 return Err(format!("unexpected authored attached source: {authored}").into());
             }
 
@@ -102,7 +102,8 @@ async fn flex_attached_provider_multi_replica_cas_replay_progress_and_cursor_rec
                 return Err(format!("unexpected attached provider inventory: {listed:?}").into());
             }
             let identity = listed.resources[0].identity.clone();
-            if identity.resource_id.as_str() != category_id.to_string()
+            let expected_resource_id = category_id.to_string();
+            if identity.resource_id.as_str() != expected_resource_id
                 || identity.subresource_id.as_ref().map(|value| value.as_str())
                     != Some(TAXONOMY_CATEGORY_ENTITY_TYPE)
             {
