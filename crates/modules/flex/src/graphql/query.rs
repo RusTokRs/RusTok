@@ -3,8 +3,9 @@ use rustok_api::{Permission, graphql::PaginationInput};
 use uuid::Uuid;
 
 use super::{
-    AttachedValuesObject, FieldDefinitionObject, FlexEntryObject, FlexSchemaObject, map_flex_error,
-    require_access, resolve_entity_type, runtime::runtime,
+    AttachedFieldPolicyObject, AttachedValuesObject, FieldDefinitionObject, FlexEntryObject,
+    FlexSchemaObject, map_attached_field_policy_error, map_flex_error, require_access,
+    resolve_entity_type, runtime::runtime,
 };
 use crate::FieldDefinitionView;
 
@@ -58,6 +59,52 @@ impl FlexQuery {
         .await
         .map(|row| row.map(FieldDefinitionObject::from))
         .map_err(map_flex_error)
+    }
+
+    /// List effective classification / AI-export policy for the current donor field definitions.
+    ///
+    /// `explicit=false` means no policy row exists and the fail-closed default is in force.
+    async fn attached_field_policies(
+        &self,
+        ctx: &Context<'_>,
+        entity_type: Option<String>,
+    ) -> Result<Vec<AttachedFieldPolicyObject>> {
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST)?;
+        let runtime = runtime(ctx)?;
+        let entity_type = resolve_entity_type(entity_type)?;
+        let definitions = crate::list_field_definitions_with_cache(
+            runtime.field_registry(),
+            runtime.db(),
+            runtime.field_definition_cache(),
+            tenant.id,
+            &entity_type,
+        )
+        .await
+        .map_err(map_flex_error)?;
+        let field_keys = definitions
+            .into_iter()
+            .map(|definition| definition.field_key)
+            .collect::<Vec<_>>();
+        let mut resolutions = crate::resolve_attached_field_policy_resolutions(
+            runtime.db(),
+            tenant.id,
+            &entity_type,
+            &field_keys,
+        )
+        .await
+        .map_err(map_attached_field_policy_error)?;
+
+        Ok(field_keys
+            .into_iter()
+            .map(|field_key| {
+                let resolution = resolutions.remove(&field_key).unwrap_or_default();
+                AttachedFieldPolicyObject::from_resolution(
+                    entity_type.clone(),
+                    field_key,
+                    resolution,
+                )
+            })
+            .collect())
     }
 
     /// Resolve attached custom-field values for one real donor instance.

@@ -1,8 +1,11 @@
-use async_graphql::{InputObject, SimpleObject};
+use async_graphql::{Enum, InputObject, SimpleObject};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use crate::{FieldDefinitionView, FlexEntryView, FlexSchemaView};
+use crate::{
+    FieldDefinitionView, FlexAttachedFieldPolicyResolution, FlexDataClassification, FlexEntryView,
+    FlexSchemaView,
+};
 
 #[derive(Debug, Clone, SimpleObject)]
 pub struct FieldDefinitionObject {
@@ -39,6 +42,82 @@ impl From<FieldDefinitionView> for FieldDefinitionObject {
             updated_at: view.updated_at,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AttachedFieldDataClassification {
+    Public,
+    TenantPrivate,
+    Personal,
+    Sensitive,
+    Secret,
+    ImmutableTransaction,
+}
+
+impl From<FlexDataClassification> for AttachedFieldDataClassification {
+    fn from(value: FlexDataClassification) -> Self {
+        match value {
+            FlexDataClassification::Public => Self::Public,
+            FlexDataClassification::TenantPrivate => Self::TenantPrivate,
+            FlexDataClassification::Personal => Self::Personal,
+            FlexDataClassification::Sensitive => Self::Sensitive,
+            FlexDataClassification::Secret => Self::Secret,
+            FlexDataClassification::ImmutableTransaction => Self::ImmutableTransaction,
+        }
+    }
+}
+
+impl From<AttachedFieldDataClassification> for FlexDataClassification {
+    fn from(value: AttachedFieldDataClassification) -> Self {
+        match value {
+            AttachedFieldDataClassification::Public => Self::Public,
+            AttachedFieldDataClassification::TenantPrivate => Self::TenantPrivate,
+            AttachedFieldDataClassification::Personal => Self::Personal,
+            AttachedFieldDataClassification::Sensitive => Self::Sensitive,
+            AttachedFieldDataClassification::Secret => Self::Secret,
+            AttachedFieldDataClassification::ImmutableTransaction => Self::ImmutableTransaction,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct AttachedFieldPolicyObject {
+    pub entity_type: String,
+    pub field_key: String,
+    pub classification: AttachedFieldDataClassification,
+    pub ai_export_allowed: bool,
+    /// False means the effective fail-closed default is in force and no policy row exists.
+    pub explicit: bool,
+}
+
+impl AttachedFieldPolicyObject {
+    pub(crate) fn from_resolution(
+        entity_type: String,
+        field_key: String,
+        resolution: FlexAttachedFieldPolicyResolution,
+    ) -> Self {
+        Self {
+            entity_type,
+            field_key,
+            classification: resolution.policy.classification.into(),
+            ai_export_allowed: resolution.policy.ai_export_allowed,
+            explicit: resolution.explicit,
+        }
+    }
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct SetAttachedFieldPolicyInput {
+    pub entity_type: Option<String>,
+    pub field_key: String,
+    pub classification: AttachedFieldDataClassification,
+    pub ai_export_allowed: bool,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct ResetAttachedFieldPolicyInput {
+    pub entity_type: Option<String>,
+    pub field_key: String,
 }
 
 #[derive(Debug, Clone, SimpleObject)]

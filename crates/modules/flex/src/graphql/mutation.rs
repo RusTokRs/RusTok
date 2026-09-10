@@ -6,15 +6,17 @@ use rustok_events::EventEnvelope;
 use uuid::Uuid;
 
 use super::{
-    AttachedValuesObject, CreateFieldDefinitionInput, CreateFlexEntryInput, CreateFlexSchemaInput,
-    DeleteFieldDefinitionPayload, DeleteFlexPayload, FieldDefinitionObject, FlexEntryObject,
-    FlexSchemaObject, UpdateAttachedValuesInput, UpdateFieldDefinitionInput, UpdateFlexEntryInput,
-    UpdateFlexSchemaInput, bad_user_input, map_flex_error, require_access, resolve_entity_type,
-    runtime::runtime,
+    AttachedFieldPolicyObject, AttachedValuesObject, CreateFieldDefinitionInput,
+    CreateFlexEntryInput, CreateFlexSchemaInput, DeleteFieldDefinitionPayload, DeleteFlexPayload,
+    FieldDefinitionObject, FlexEntryObject, FlexSchemaObject, ResetAttachedFieldPolicyInput,
+    SetAttachedFieldPolicyInput, UpdateAttachedValuesInput, UpdateFieldDefinitionInput,
+    UpdateFlexEntryInput, UpdateFlexSchemaInput, bad_user_input, map_attached_field_policy_error,
+    map_flex_error, require_access, resolve_entity_type, runtime::runtime,
 };
 use crate::{
     CreateFieldDefinitionCommand, CreateFlexEntryCommand, CreateFlexSchemaCommand,
-    UpdateFieldDefinitionCommand, UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
+    FlexAttachedFieldPolicy, FlexAttachedFieldPolicyResolution, UpdateFieldDefinitionCommand,
+    UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
 };
 
 #[derive(Default)]
@@ -196,6 +198,70 @@ impl FlexMutation {
         invalidate_field_def_cache(runtime, tenant.id, &entity_type).await;
 
         Ok(rows.into_iter().map(FieldDefinitionObject::from).collect())
+    }
+
+    /// Create or replace explicit classification / AI-export policy for one attached field.
+    async fn set_attached_field_policy(
+        &self,
+        ctx: &Context<'_>,
+        input: SetAttachedFieldPolicyInput,
+    ) -> Result<AttachedFieldPolicyObject> {
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE)?;
+        let runtime = runtime(ctx)?;
+        let entity_type = resolve_entity_type(input.entity_type)?;
+        ensure_attached_policy_field_exists(runtime, tenant.id, &entity_type, &input.field_key)
+            .await?;
+
+        let policy = FlexAttachedFieldPolicy {
+            classification: input.classification.into(),
+            ai_export_allowed: input.ai_export_allowed,
+        };
+        crate::upsert_attached_field_policy(
+            runtime.db(),
+            tenant.id,
+            &entity_type,
+            &input.field_key,
+            policy,
+        )
+        .await
+        .map_err(map_attached_field_policy_error)?;
+
+        Ok(AttachedFieldPolicyObject::from_resolution(
+            entity_type,
+            input.field_key,
+            FlexAttachedFieldPolicyResolution {
+                policy,
+                explicit: true,
+            },
+        ))
+    }
+
+    /// Remove explicit policy for one attached field and restore the fail-closed default.
+    async fn reset_attached_field_policy(
+        &self,
+        ctx: &Context<'_>,
+        input: ResetAttachedFieldPolicyInput,
+    ) -> Result<AttachedFieldPolicyObject> {
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE)?;
+        let runtime = runtime(ctx)?;
+        let entity_type = resolve_entity_type(input.entity_type)?;
+        ensure_attached_policy_field_exists(runtime, tenant.id, &entity_type, &input.field_key)
+            .await?;
+
+        crate::delete_attached_field_policy(
+            runtime.db(),
+            tenant.id,
+            &entity_type,
+            &input.field_key,
+        )
+        .await
+        .map_err(map_attached_field_policy_error)?;
+
+        Ok(AttachedFieldPolicyObject::from_resolution(
+            entity_type,
+            input.field_key,
+            FlexAttachedFieldPolicyResolution::default(),
+        ))
     }
 
     /// Validate and persist attached custom-field values for one real donor instance.
@@ -399,6 +465,33 @@ impl FlexMutation {
         publish_event(ctx, event);
         Ok(DeleteFlexPayload { success: true })
     }
+}
+
+async fn ensure_attached_policy_field_exists(
+    runtime: &super::runtime::FlexGraphqlRuntime,
+    tenant_id: Uuid,
+    entity_type: &str,
+    field_key: &str,
+) -> Result<()> {
+    let definitions = crate::list_field_definitions_with_cache(
+        runtime.field_registry(),
+        runtime.db(),
+        runtime.field_definition_cache(),
+        tenant_id,
+        entity_type,
+    )
+    .await
+    .map_err(map_flex_error)?;
+    if definitions
+        .iter()
+        .any(|definition| definition.field_key == field_key)
+    {
+        return Ok(());
+    }
+
+    Err(bad_user_input(format!(
+        "field_key `{field_key}` is not registered for attached donor `{entity_type}`"
+    )))
 }
 
 async fn invalidate_field_def_cache(

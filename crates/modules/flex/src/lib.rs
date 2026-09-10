@@ -51,8 +51,9 @@ pub use attached_definitions::{
 };
 pub use attached_field_policy::{
     FLEX_ATTACHED_FIELD_POLICIES_TABLE, FlexAttachedFieldPolicy, FlexAttachedFieldPolicyError,
-    FlexAttachedFieldPolicyResolver, FlexAttachedFieldPolicyResult, FlexAttachedFieldPolicyStore,
-    FlexDataClassification, delete_attached_field_policy, resolve_attached_field_policies,
+    FlexAttachedFieldPolicyResolution, FlexAttachedFieldPolicyResolver, FlexAttachedFieldPolicyResult,
+    FlexAttachedFieldPolicyStore, FlexDataClassification, delete_attached_field_policy,
+    resolve_attached_field_policies, resolve_attached_field_policy_resolutions,
     upsert_attached_field_policy,
 };
 pub use attached_storage::{

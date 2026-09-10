@@ -53,6 +53,17 @@ fn map_flex_error(error: rustok_core::field_schema::FlexError) -> FieldError {
     }
 }
 
+fn map_attached_field_policy_error(error: crate::FlexAttachedFieldPolicyError) -> FieldError {
+    match error {
+        crate::FlexAttachedFieldPolicyError::Invalid(message) => {
+            <FieldError as GraphQLError>::bad_user_input(&message)
+        }
+        crate::FlexAttachedFieldPolicyError::Storage(_) => {
+            <FieldError as GraphQLError>::internal_error("Flex attached field policy storage failed")
+        }
+    }
+}
+
 fn bad_user_input(message: impl AsRef<str>) -> FieldError {
     <FieldError as GraphQLError>::bad_user_input(message.as_ref())
 }

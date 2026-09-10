@@ -29,8 +29,9 @@ Attached dynamic fields now have a separate Flex-owned classification / AI-expor
 by `(tenant_id, entity_type, field_key)`. Translation enriches live field descriptors through that
 policy without changing content revisions or ChangeCursor semantics. Missing policy remains
 `tenant_private + ai_export_allowed=false`, and secret/immutable-transaction fields cannot be made
-AI-exportable. Production/pilot promotion remains an evidence gate, not another provider or revision
-implementation step.
+AI-exportable. The owner-owned GraphQL surface exposes effective policy plus explicit/default
+provenance and RBAC-guarded set/reset mutations through the same Flex policy API. Production/pilot
+promotion remains an evidence gate, not another provider or revision implementation step.
 
 Owner-owned contracts live in `flex::graphql`, `flex::registry`, `flex::rest` and
 `flex::standalone`. The server composes `FlexGraphqlRuntime`, SeaORM, registry/cache adapters and
@@ -107,8 +108,13 @@ translated content:
   `tenant_private` with AI export denied;
 - explicit `ai_export_allowed=true` is rejected for `secret` and `immutable_transaction`;
 - reads validate explicit policy before it can influence a Translation descriptor;
-- the database-backed store exposes bounded resolve/upsert/delete APIs so future owner/admin adapters
-  do not bypass the policy contract with direct SQL;
+- the database-backed store exposes bounded resolve/upsert/delete APIs so owner/admin adapters do not
+  bypass the policy contract with direct SQL;
+- effective policy resolution carries explicit/default provenance so admin tooling can distinguish a
+  reviewed row from the fail-closed fallback;
+- the owner-owned GraphQL query lists policy only for field keys supplied by the registered donor
+  definition service, while set/reset mutations require `flex_schemas:update` and validate the target
+  field against that same registry before changing policy;
 - the registered attached Translation provider is decorated at host composition with the policy
   resolver; list/progress/change and donor apply semantics remain delegated to the existing provider;
 - policy changes do not manufacture content revisions or ChangeCursor entries. Consumers must treat
@@ -162,14 +168,17 @@ cache workflow passes its compiled and PostgreSQL jobs on one revision.
    provider status is `registered`.
 
 2. **Verify the reusable attached-field classification/export policy before enabling machine translation.**
-   Source implementation is present: typed Flex policy, fail-closed resolution, safe mutation API,
-   persistence migration and live Translation descriptor decoration are wired without donor-specific
-   hard-coding. No permissive policy is seeded.
-   **Depends on:** review/compile/database evidence for the reusable Flex policy rather than a
-   donor-specific field-definition change.
+   Source implementation is present: typed Flex policy, fail-closed resolution with provenance, safe
+   persistence mutation API, owner-owned RBAC GraphQL query/set/reset surface, persistence migration,
+   and live Translation descriptor decoration are wired without donor-specific hard-coding. No
+   permissive policy is seeded.
+   **Depends on:** review/compile/database and GraphQL RBAC evidence for the reusable Flex policy rather
+   than a donor-specific field-definition change.
    **Done when:** retained evidence proves an explicit safe policy can admit AI export, forbidden
-   classifications cannot, missing policy remains fail-closed, and `taxonomy.category` composition
-   reads the same policy plane without changing content revision/ChangeCursor behavior.
+   classifications cannot, missing/reset policy remains fail-closed and visibly non-explicit,
+   unauthorized policy mutation is rejected, unknown donor field keys cannot be configured, and
+   `taxonomy.category` composition reads the same policy plane without changing content
+   revision/ChangeCursor behavior.
 
 3. **Reduce remaining donor onboarding plumbing using `taxonomy.category` as the reference.** Existing
    Topic and older donor adapters should converge on the generic attached definition/value contract
