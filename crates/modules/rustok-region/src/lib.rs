@@ -13,7 +13,12 @@ pub mod services;
 pub use dto::*;
 pub use error::{RegionError, RegionResult};
 pub use ports::*;
-pub use services::RegionService;
+pub use services::{
+    RegionService, RegionTranslationExactLocaleApply, RegionTranslationExactLocaleApplyReceipt,
+    RegionTranslationExactLocaleError, RegionTranslationExactLocaleRecord,
+    RegionTranslationExactLocaleResult, RegionTranslationExactLocaleSnapshot,
+    RegionTranslationService,
+};
 
 pub struct RegionModule;
 
