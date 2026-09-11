@@ -73,7 +73,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q '^name = "rsa"$' Cargo.lock
           grep -q '^name = "atomic-polyfill"$' Cargo.lock
 
           check_empty_tree() {
@@ -89,7 +88,6 @@ jobs:
             fi
           }
 
-          check_empty_tree rsa all
           for target in \
             all \
             thumbv6m-none-eabi \

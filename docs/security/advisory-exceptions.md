@@ -29,24 +29,6 @@ waiver must also fail the gate.
 
 ## Active Exceptions
 
-### RUSTSEC-2023-0071 — `rsa` timing side channel
-
-| Field | Value |
-|---|---|
-| Severity | MEDIUM, CVSS 5.9 |
-| Risk | Network-observable RSA private-key operations could leak timing information if the affected private-key implementation became runtime reachable |
-| Patched version | No patched `rsa 0.9.x` release is available |
-| Repository policy location | `.cargo/audit.toml` |
-| Accountable owner | Platform security / dependency maintainers |
-| Dependency path | Lockfile-only optional SQLx MySQL path: `sqlx-mysql 0.8.6` → `rsa 0.9.10`; workspace SeaORM/SQLx policy selects PostgreSQL and SQLite only |
-| Reachability | `cargo tree --locked --workspace --all-features --target all -i rsa` has empty stdout; no workspace package or supported target selects this path |
-| Compensating controls | Feature-hygiene verification forbids SeaORM/SQLx MySQL, `sqlx-all`, migration CLI and native-TLS drift; supported database backends remain PostgreSQL and SQLite |
-| Remediation | Remove the waiver when upstream Cargo/SQLx metadata no longer retains the optional path, or a patched upstream release becomes available; never delete lockfile blocks manually |
-| Approved | 2026-08-13, lockfile-only reachability exception |
-| Expires | 2026-09-13 |
-| Evidence required | Empty locked all-feature/all-target inverse tree, feature-hygiene verification, and `cargo audit` output |
-| Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2023-0071.html> |
-
 ### RUSTSEC-2026-0235 — `rkyv` insufficient archive validation
 
 | Field | Value |
@@ -66,6 +48,20 @@ waiver must also fail the gate.
 | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0235.html> |
 
 ## Closed Exceptions
+
+### RUSTSEC-2023-0071 — `rsa` timing side channel
+
+| Field | Value |
+|---|---|
+| Original risk | Network-observable RSA private-key operations could leak timing information if the affected private-key implementation became runtime reachable |
+| Patched version | No patched `rsa 0.9.x` release is available |
+| Resolved version | Removed from `Cargo.lock` following `sqlx-mysql 0.9.0` dependency modernization |
+| Opened | 2026-08-13 |
+| Closed | 2026-09-11 |
+| Closure reason | `sqlx-mysql 0.9.0` dropped `rsa`; the package is no longer present in `Cargo.lock` |
+| Policy cleanup | Removed from `.cargo/audit.toml` |
+| Verification | Run `node scripts/verify/verify-advisory-exceptions.mjs` and `cargo audit` |
+| Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2023-0071.html> |
 
 ### RUSTSEC-2026-0098 — `rustls-webpki` URI name constraints
 
