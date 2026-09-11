@@ -50,7 +50,8 @@ async fn flex_standalone_registered_translation_provider_multi_replica_evidence_
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
 
-    let database_name = unique_postgres_database_name("rustok_flex_standalone_translation_evidence");
+    let database_name =
+        unique_postgres_database_name("rustok_flex_standalone_translation_evidence");
     let database_url = postgres_database_url(&admin_url, &database_name);
     let admin = connect_postgres(&admin_url).await.map_err(|error| {
         test_error(format!(
@@ -125,8 +126,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     if identity.owner_slug.as_str() != OWNER_SLUG
         || identity.resource_kind.as_str() != RESOURCE_KIND
         || identity.resource_id.as_str() != entry_id.as_str()
-        || identity.subresource_id.as_ref().map(|value| value.as_str())
-            != Some(schema_id.as_str())
+        || identity.subresource_id.as_ref().map(|value| value.as_str()) != Some(schema_id.as_str())
     {
         return Err(test_error(format!(
             "registered Flex standalone provider returned unexpected identity: {identity:?}"
@@ -476,12 +476,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     }
 
     standalone
-        .delete_entry(
-            tenant_id,
-            Some(Uuid::new_v4()),
-            schema.id,
-            entry.id,
-        )
+        .delete_entry(tenant_id, Some(Uuid::new_v4()), schema.id, entry.id)
         .await?;
 
     drop(recovery_provider);
