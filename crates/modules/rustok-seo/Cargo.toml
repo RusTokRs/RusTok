@@ -19,6 +19,7 @@ server = [
   "dep:rustok-media",
   "dep:rustok-outbox",
   "dep:rustok-tenant",
+  "dep:rustok-translation-targets",
   "dep:reqwest",
   "rustok-seo-targets/server",
   "dep:sea-orm",
@@ -55,6 +56,7 @@ rustok-media = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-seo-targets = { path = "../rustok-seo-targets", default-features = false }
 rustok-tenant = { workspace = true, optional = true }
+rustok-translation-targets = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 
 [dev-dependencies]
