@@ -1,15 +1,17 @@
-//! Journaled canonical host adapter for standalone Flex schema ownership.
+//! Journaled canonical host adapter for standalone Flex ownership.
 //!
-//! The historical adapter remains a private delegate for read paths and standalone-entry
-//! CRUD. Schema create/update/delete are owned here so parent/translation persistence and
-//! Translation change evidence share one transaction and one parent serialization law.
+//! The historical adapter remains a private delegate for read paths. Schema and entry writes are
+//! owned here so parent/localized persistence and Translation change evidence share one database
+//! transaction and one serialization law.
+
+use std::collections::HashSet;
 
 use async_trait::async_trait;
 use flex::{
     FlexSchemaTranslationChangeLifecycle, FlexSchemaTranslationError,
     flex_schema_translation_deleted_revision, record_flex_schema_translation_change_in_tx,
-    validate_create_schema_command, validate_optional_standalone_uuid, validate_standalone_uuid,
-    validate_update_schema_command,
+    validate_create_entry_command, validate_create_schema_command, validate_optional_standalone_uuid,
+    validate_standalone_uuid, validate_update_entry_command, validate_update_schema_command,
 };
 use rustok_api::{
     PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match, normalize_locale_tag,
@@ -19,15 +21,24 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
     EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
+use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use crate::models::{flex_schema_translations, flex_schemas, tenants};
+use crate::models::{
+    flex_entries, flex_entry_localized_values, flex_schema_translations, flex_schemas, tenants,
+};
 use crate::services::flex_schema_translation_owner::resource_revision;
 use crate::services::flex_standalone_service_legacy;
 
 pub struct FlexStandaloneSeaOrmService {
     db: DatabaseConnection,
     legacy: flex_standalone_service_legacy::FlexStandaloneSeaOrmService,
+}
+
+struct PreparedStandaloneEntryWrite {
+    shared_data: JsonValue,
+    localized_data: Option<JsonValue>,
+    localized_keys: HashSet<String>,
 }
 
 impl FlexStandaloneSeaOrmService {
@@ -264,7 +275,60 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         actor_id: Option<Uuid>,
         input: flex::CreateFlexEntryCommand,
     ) -> Result<flex::FlexEntryView, FlexError> {
-        flex::FlexStandaloneService::create_entry(&self.legacy, tenant_id, actor_id, input).await
+        validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_optional_standalone_uuid(actor_id, "actor_id")?;
+        validate_create_entry_command(&input)?;
+
+        let txn = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
+        let locale = tenant_default_locale_on(&txn, tenant_id).await?;
+        let schema = flex_schemas::Entity::find_by_id(input.schema_id)
+            .filter(flex_schemas::Column::TenantId.eq(tenant_id))
+            .lock_exclusive()
+            .one(&txn)
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?
+            .ok_or(FlexError::NotFound(input.schema_id))?;
+        let PreparedStandaloneEntryWrite {
+            shared_data,
+            localized_data,
+            localized_keys,
+        } = prepare_entry_write(&schema, input.data)?;
+
+        let row = flex_entries::ActiveModel {
+            id: Set(rustok_core::generate_id()),
+            tenant_id: Set(tenant_id),
+            schema_id: Set(input.schema_id),
+            entity_type: Set(input.entity_type),
+            entity_id: Set(input.entity_id),
+            data: Set(shared_data),
+            status: Set(input.status.unwrap_or_else(|| "draft".to_string())),
+            created_at: sea_orm::ActiveValue::NotSet,
+            updated_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(&txn)
+        .await
+        .map_err(|error| FlexError::Database(error.to_string()))?;
+        let localized_data = upsert_entry_localization_on(
+            &txn,
+            row.id,
+            tenant_id,
+            &locale,
+            localized_data,
+        )
+        .await?;
+        txn.commit()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
+
+        Ok(flex::standalone_entry_view_from_source(
+            &row,
+            localized_data.as_ref(),
+            &localized_keys,
+        ))
     }
 
     async fn update_entry(
@@ -275,15 +339,96 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         entry_id: Uuid,
         input: flex::UpdateFlexEntryCommand,
     ) -> Result<flex::FlexEntryView, FlexError> {
-        flex::FlexStandaloneService::update_entry(
-            &self.legacy,
-            tenant_id,
-            actor_id,
-            schema_id,
-            entry_id,
-            input,
-        )
-        .await
+        validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_optional_standalone_uuid(actor_id, "actor_id")?;
+        validate_standalone_uuid(schema_id, "schema_id")?;
+        validate_standalone_uuid(entry_id, "entry_id")?;
+        validate_update_entry_command(&input)?;
+
+        let txn = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
+        let locale = tenant_default_locale_on(&txn, tenant_id).await?;
+        let schema = flex_schemas::Entity::find_by_id(schema_id)
+            .filter(flex_schemas::Column::TenantId.eq(tenant_id))
+            .lock_exclusive()
+            .one(&txn)
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?
+            .ok_or(FlexError::NotFound(schema_id))?;
+        let row = flex_entries::Entity::find_by_id(entry_id)
+            .filter(flex_entries::Column::TenantId.eq(tenant_id))
+            .filter(flex_entries::Column::SchemaId.eq(schema_id))
+            .lock_exclusive()
+            .one(&txn)
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?
+            .ok_or(FlexError::NotFound(entry_id))?;
+
+        let existing_row = row.clone();
+        let mut model: flex_entries::ActiveModel = row.into();
+        let localized_keys = flex::standalone_localized_field_keys(&schema.build_custom_fields_schema()?);
+        let mut resolved_localized_data: Option<JsonValue> = None;
+
+        if let Some(data) = input.data {
+            let existing_localized = load_exact_entry_localization_on(
+                &txn,
+                tenant_id,
+                entry_id,
+                &locale,
+            )
+            .await?;
+            let merged_data = flex::merge_standalone_entry_patch(
+                &existing_row.data,
+                existing_localized.as_ref().map(|row| &row.data),
+                &localized_keys,
+                data,
+            );
+            let PreparedStandaloneEntryWrite {
+                shared_data,
+                localized_data,
+                ..
+            } = prepare_entry_write(&schema, merged_data)?;
+            model.data = Set(shared_data);
+            resolved_localized_data = upsert_entry_localization_on(
+                &txn,
+                entry_id,
+                tenant_id,
+                &locale,
+                localized_data,
+            )
+            .await?;
+        }
+
+        if let Some(status) = input.status {
+            model.status = Set(status);
+        }
+
+        let updated = model
+            .update(&txn)
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
+        if resolved_localized_data.is_none() {
+            resolved_localized_data = load_exact_entry_localization_on(
+                &txn,
+                tenant_id,
+                updated.id,
+                &locale,
+            )
+            .await?
+            .map(|row| row.data);
+        }
+        txn.commit()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
+
+        Ok(flex::standalone_entry_view_from_source(
+            &updated,
+            resolved_localized_data.as_ref(),
+            &localized_keys,
+        ))
     }
 
     async fn delete_entry(
@@ -293,14 +438,40 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         schema_id: Uuid,
         entry_id: Uuid,
     ) -> Result<(), FlexError> {
-        flex::FlexStandaloneService::delete_entry(
-            &self.legacy,
-            tenant_id,
-            actor_id,
-            schema_id,
-            entry_id,
-        )
-        .await
+        validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_optional_standalone_uuid(actor_id, "actor_id")?;
+        validate_standalone_uuid(schema_id, "schema_id")?;
+        validate_standalone_uuid(entry_id, "entry_id")?;
+
+        let txn = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
+        flex_schemas::Entity::find_by_id(schema_id)
+            .filter(flex_schemas::Column::TenantId.eq(tenant_id))
+            .lock_exclusive()
+            .one(&txn)
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?
+            .ok_or(FlexError::NotFound(schema_id))?;
+        let row = flex_entries::Entity::find_by_id(entry_id)
+            .filter(flex_entries::Column::TenantId.eq(tenant_id))
+            .filter(flex_entries::Column::SchemaId.eq(schema_id))
+            .lock_exclusive()
+            .one(&txn)
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?
+            .ok_or(FlexError::NotFound(entry_id))?;
+
+        flex_entries::Entity::delete_by_id(row.id)
+            .exec(&txn)
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
+        txn.commit()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
+        Ok(())
     }
 }
 
@@ -379,6 +550,107 @@ where
         .await
         .map_err(|error| FlexError::Database(error.to_string())),
     }
+}
+
+async fn load_exact_entry_localization_on<C>(
+    db: &C,
+    tenant_id: Uuid,
+    entry_id: Uuid,
+    locale: &str,
+) -> Result<Option<flex_entry_localized_values::Model>, FlexError>
+where
+    C: ConnectionTrait,
+{
+    let locale = normalize_locale_tag(locale)
+        .ok_or_else(|| FlexError::InvalidLocale(locale.to_string()))?;
+    flex_entry_localized_values::Entity::find()
+        .filter(flex_entry_localized_values::Column::EntryId.eq(entry_id))
+        .filter(flex_entry_localized_values::Column::TenantId.eq(tenant_id))
+        .filter(flex_entry_localized_values::Column::Locale.eq(locale))
+        .one(db)
+        .await
+        .map_err(|error| FlexError::Database(error.to_string()))
+}
+
+async fn upsert_entry_localization_on<C>(
+    db: &C,
+    entry_id: Uuid,
+    tenant_id: Uuid,
+    locale: &str,
+    data: Option<JsonValue>,
+) -> Result<Option<JsonValue>, FlexError>
+where
+    C: ConnectionTrait,
+{
+    let locale = normalize_locale_tag(locale)
+        .ok_or_else(|| FlexError::InvalidLocale(locale.to_string()))?;
+    let existing = flex_entry_localized_values::Entity::find()
+        .filter(flex_entry_localized_values::Column::EntryId.eq(entry_id))
+        .filter(flex_entry_localized_values::Column::TenantId.eq(tenant_id))
+        .filter(flex_entry_localized_values::Column::Locale.eq(locale.as_str()))
+        .one(db)
+        .await
+        .map_err(|error| FlexError::Database(error.to_string()))?;
+
+    let Some(data) = data.filter(|value| !is_empty_object(value)) else {
+        if let Some(row) = existing {
+            let model: flex_entry_localized_values::ActiveModel = row.into();
+            model
+                .delete(db)
+                .await
+                .map_err(|error| FlexError::Database(error.to_string()))?;
+        }
+        return Ok(None);
+    };
+
+    match existing {
+        Some(row) => {
+            let mut model: flex_entry_localized_values::ActiveModel = row.into();
+            model.data = Set(data.clone());
+            model.tenant_id = Set(tenant_id);
+            model
+                .update(db)
+                .await
+                .map_err(|error| FlexError::Database(error.to_string()))?;
+        }
+        None => {
+            flex_entry_localized_values::ActiveModel {
+                entry_id: Set(entry_id),
+                locale: Set(locale),
+                tenant_id: Set(tenant_id),
+                data: Set(data.clone()),
+                created_at: sea_orm::ActiveValue::NotSet,
+                updated_at: sea_orm::ActiveValue::NotSet,
+            }
+            .insert(db)
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
+        }
+    }
+    Ok(Some(data))
+}
+
+fn prepare_entry_write(
+    schema: &flex_schemas::Model,
+    data: JsonValue,
+) -> Result<PreparedStandaloneEntryWrite, FlexError> {
+    let custom_fields_schema = schema.build_custom_fields_schema()?;
+    let localized_keys = flex::standalone_localized_field_keys(&custom_fields_schema);
+    let normalized = flex::normalize_and_validate_standalone_entry(&custom_fields_schema, data)?;
+    let (shared, localized) = flex::split_standalone_entry_data(&normalized, &localized_keys);
+    Ok(PreparedStandaloneEntryWrite {
+        shared_data: JsonValue::Object(shared),
+        localized_data: if localized.is_empty() {
+            None
+        } else {
+            Some(JsonValue::Object(localized))
+        },
+        localized_keys,
+    })
+}
+
+fn is_empty_object(value: &JsonValue) -> bool {
+    value.as_object().is_none_or(|object| object.is_empty())
 }
 
 fn select_schema_translation<'a>(
