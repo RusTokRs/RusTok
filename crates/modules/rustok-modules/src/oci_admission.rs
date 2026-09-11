@@ -14,7 +14,6 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -23,7 +22,7 @@ use crate::{
     DurableArtifactBlobStore, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor,
     ModuleCommandContext, ModuleInstallationScope, OciArtifactReference,
     ReleaseAdmissionIntentJournal, ReleaseAdmissionJournalError, TrustVerificationRequest,
-    TrustVerifier,
+    TrustVerifier, promotion::digest_json,
 };
 
 /// Error conditions during OCI release admission.
@@ -59,12 +58,16 @@ pub enum OciReleaseAdmissionError {
     #[error("Idempotency conflict for key `{0}`: {1}")]
     IdempotencyConflict(Uuid, String),
 
+    #[error("OCI release admission command context is invalid for its requested scope")]
+    InvalidCommandContext,
+
     #[error("Serialization error: {0}")]
     Serialization(String),
 }
 
 /// Command requesting immutable release admission for a digest-pinned OCI artifact.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OciReleaseAdmissionCommand {
     pub reference: OciArtifactReference,
     pub scope: ModuleInstallationScope,
@@ -159,7 +162,14 @@ impl OciReleaseAdmissionService {
         &self,
         command: OciReleaseAdmissionCommand,
     ) -> Result<OciAdmissionReceipt, OciReleaseAdmissionError> {
-        // 1. Validate digest-pinned reference
+        // 1. Validate the complete owner command before any registry, CAS, or
+        // database action. The context must identify exactly the scope it can
+        // mutate.
+        if !command.scope.matches_command_context(&command.context) {
+            return Err(OciReleaseAdmissionError::InvalidCommandContext);
+        }
+
+        // 2. Validate digest-pinned reference
         command
             .reference
             .validate()
@@ -177,21 +187,54 @@ impl OciReleaseAdmissionService {
             ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
         };
 
-        // 2. Derive request digest for intent and idempotency tracking
-        let request_digest = format!(
-            "sha256:{}",
-            hex::encode(Sha256::digest(
-                format!(
-                    "{}:{}:{}",
-                    command.reference.canonical(),
-                    command.context.actor_id,
-                    command.context.idempotency_key
-                )
-                .as_bytes()
-            ))
-        );
+        // 3. Bind every mutable command fact, including complete context, into
+        // one durable replay fingerprint.
+        let request_digest = digest_json(&command)
+            .map_err(|error| OciReleaseAdmissionError::Serialization(error.to_string()))?;
 
-        // 3. Check if release already admitted under this release digest
+        // 4. Reject a reused owner idempotency key before the global immutable
+        // release lookup can make a changed command appear successful.
+        let existing_by_key = self
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT release_digest, request_digest FROM module_admitted_oci_releases \
+                     WHERE scope_kind = {} AND scope_tenant_key = {} \
+                       AND actor_id = {} AND idempotency_key = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                ),
+                vec![
+                    scope_kind.into(),
+                    scope_tenant_key.clone().into(),
+                    uuid_value(command.context.actor_id, backend),
+                    uuid_value(command.context.idempotency_key, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| OciReleaseAdmissionError::Database(error.to_string()))?;
+
+        if let Some(row) = existing_by_key {
+            let stored_digest: String = row
+                .try_get("", "release_digest")
+                .map_err(|error| OciReleaseAdmissionError::Database(error.to_string()))?;
+            let stored_request_digest: String = row
+                .try_get("", "request_digest")
+                .map_err(|error| OciReleaseAdmissionError::Database(error.to_string()))?;
+            if stored_request_digest != request_digest {
+                return Err(OciReleaseAdmissionError::IdempotencyConflict(
+                    command.context.idempotency_key,
+                    format!(
+                        "Idempotency key was already used to admit release `{stored_digest}` with different command evidence"
+                    ),
+                ));
+            }
+        }
+
+        // 5. Check if release already admitted under this release digest.
         let existing_by_digest = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
@@ -248,46 +291,7 @@ impl OciReleaseAdmissionService {
             });
         }
 
-        // 4. Check idempotency conflict under (scope_kind, scope_tenant_key, actor_id, idempotency_key)
-        let existing_by_key = self
-            .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT release_digest FROM module_admitted_oci_releases \
-                     WHERE scope_kind = {} AND scope_tenant_key = {} \
-                       AND actor_id = {} AND idempotency_key = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                ),
-                vec![
-                    scope_kind.into(),
-                    scope_tenant_key.clone().into(),
-                    uuid_value(command.context.actor_id, backend),
-                    uuid_value(command.context.idempotency_key, backend),
-                ],
-            ))
-            .await
-            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
-
-        if let Some(row) = existing_by_key {
-            let stored_digest: String = row
-                .try_get("", "release_digest")
-                .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
-            if stored_digest != command.reference.digest {
-                return Err(OciReleaseAdmissionError::IdempotencyConflict(
-                    command.context.idempotency_key,
-                    format!(
-                        "Idempotency key was already used to admit release `{stored_digest}`, cannot reuse for `{}`",
-                        command.reference.digest
-                    ),
-                ));
-            }
-        }
-
-        // 5. Reserve staging intent in admission journal before CAS mutation
+        // 6. Reserve staging intent in admission journal before CAS mutation.
         ReleaseAdmissionIntentJournal::record_staging_intent(
             &self.db,
             &command.scope,
@@ -302,7 +306,7 @@ impl OciReleaseAdmissionService {
             other => OciReleaseAdmissionError::Database(other.to_string()),
         })?;
 
-        // 6. Fetch and validate OCI package via registry adapter
+        // 7. Fetch and validate OCI package via registry adapter
         let package = self
             .registry
             .fetch(&command.reference, self.limits)
@@ -424,8 +428,9 @@ impl OciReleaseAdmissionService {
                     "INSERT INTO module_admitted_oci_releases (\
                         release_digest, scope_kind, scope_tenant_key, registry, repository, \
                         slug, version, payload_digest, payload_media_type, payload_size_bytes, \
-                        descriptor_json, actor_id, idempotency_key, trace_id, correlation_id, admitted_at\
-                    ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) \
+                        descriptor_json, actor_id, idempotency_key, trace_id, correlation_id, \
+                        request_digest, admitted_at\
+                    ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) \
                     ON CONFLICT (release_digest) DO NOTHING",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -443,6 +448,7 @@ impl OciReleaseAdmissionService {
                     placeholder(backend, 14),
                     placeholder(backend, 15),
                     placeholder(backend, 16),
+                    placeholder(backend, 17),
                 ),
                 vec![
                     command.reference.digest.clone().into(),
@@ -460,6 +466,7 @@ impl OciReleaseAdmissionService {
                     uuid_value(command.context.idempotency_key, backend),
                     command.context.trace_id.into(),
                     uuid_value(command.context.correlation_id, backend),
+                    request_digest.into(),
                     match backend {
                         DbBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
                         _ => now.to_rfc3339().into(),

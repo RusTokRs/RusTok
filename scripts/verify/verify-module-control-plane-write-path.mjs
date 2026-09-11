@@ -671,6 +671,15 @@ try {
     !operationsToolOwner.includes("ON CONFLICT DO NOTHING") ||
     !operationsToolOwner.includes("find_active_maintenance_operation(") ||
     !operationsToolOwner.includes("status = 'rolling_back'") ||
+    !operationsToolOwner.includes("OperationsToolSupervisorObservationStatus") ||
+    !operationsToolOwner.includes("expected_desired_digest") ||
+    !operationsToolOwner.includes("validate_supervisor_report(&report)?") ||
+    !operationsToolOwner.includes("SupervisorReportStale") ||
+    !operationsToolOwner.includes("SupervisorReportDigestMismatch") ||
+    !operationsToolOwner.includes("status = 'recovery_required'") ||
+    !operationsToolOwner.includes(
+      "status IN ('in_progress', 'rolling_back', 'recovery_required')",
+    ) ||
     !operationsToolOwner.includes("context.tenant_id.is_none()") ||
     !operationsToolMigration.includes(
       "request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$')",
@@ -680,10 +689,13 @@ try {
     ) ||
     !operationsToolMigration.includes(
       "CREATE UNIQUE INDEX uq_operations_tool_active_fleet_maintenance",
+    ) ||
+    !operationsToolMigration.includes(
+      "status IN ('in_progress', 'rolling_back', 'recovery_required')",
     )
   ) {
     fail(
-      "operations-tool start and predecessor-recovery commands must use platform-scoped ModuleCommandContext evidence, exact durable replay, atomic assignment staging, and one active fleet maintenance fence while supervisor reports remain an agent protocol",
+      "operations-tool start and predecessor-recovery commands must use platform-scoped ModuleCommandContext evidence, exact durable replay, atomic assignment staging, and one active fleet maintenance fence; separately authenticated supervisor reports must bind the current desired digest, fail closed on stale or divergent evidence, and retain the fence through recovery_required",
     );
   }
 

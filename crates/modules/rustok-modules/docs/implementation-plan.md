@@ -146,16 +146,16 @@ On 2026-09-04, Separately Signed Operations-Tool Release and Maintenance Operati
 - `crates/modules/rustok-modules/src/migrations/m20260904_000053_module_operations_tool.rs` created persistent tables:
   - `module_operations_tool_releases`: Ed25519-signed release metadata (`package_digest`, `controller_digest`, `reconciler_digest`, `agent_digest`, `protocol_revision`, `signer_key_digest`).
   - `module_operations_tool_maintenance_operations`: canonical operation ledger with bounded predecessor recovery (`recovery_attempts <= 1`), a canonical digest plus complete platform command context for both mutable commands, and a durable one-active-operation fleet fence.
-  - `module_operations_tool_assignments`: per-host desired/observed component assignments with idempotent status convergence.
+  - `module_operations_tool_assignments`: per-host desired/observed component assignments with typed, idempotent supervisor outcomes.
 - `crates/modules/rustok-modules/src/operations_tool.rs` implemented `OperationsToolService`, `OperationsToolRelease`, `OperationsToolProtocolMatrix`, `VerifiedOperationsToolRelease`:
   - Strict Ed25519 signature verification over canonical JSON bytes.
   - Signer public key digest pinning and expiration interval checks.
   - Protocol matrix compatibility verification against control-plane protocol.
   - `start_maintenance` accepts only a platform-scoped `ModuleCommandContext`, rejects changed idempotency evidence, reserves the fleet fence, and atomically writes the ledger plus all host component assignments (`controller`, `reconciler`, `agent`).
-  - Idempotent supervisor reports from host executors with automatic operation convergence.
-  - `authorize_predecessor_recovery` accepts its own platform-scoped `ModuleCommandContext`, exactly replays its durable authorization evidence, verifies predecessor release preflight, atomically re-points desired digests, and retains the fleet fence until rollback assignments converge.
+  - Every supervisor report echoes the exact current desired digest and has a typed `converged` or `failed` outcome. Divergent convergence, stale desired generations, and changes after a terminal assignment are rejected; exact repeats are idempotent. A failed observation moves the operation to `recovery_required` and preserves the fleet fence.
+  - `authorize_predecessor_recovery` accepts its own platform-scoped `ModuleCommandContext`, exactly replays its durable authorization evidence, verifies predecessor release preflight, is admitted only from `recovery_required`, atomically re-points desired digests while clearing prior observed evidence, and retains the fleet fence until target or predecessor assignments converge.
 - Verified by:
-  - `cargo test --locked -p rustok-modules --test operations_tool_tests` (5 passed, 0 warnings).
+  - `cargo test --locked -p rustok-modules --test operations_tool_tests` (5 passed).
 
 On 2026-09-04, Media-Neutral `SourceObjectStore` and CAS Cutover were delivered per Section 1 (Item 1804–1811) of the Rollback Plan:
 - `crates/modules/rustok-modules/src/migrations/m20260904_000052_module_source_objects.rs` created tables `module_source_object_receipts` (with RLS tenant isolation) and `module_source_object_retention_holds`.

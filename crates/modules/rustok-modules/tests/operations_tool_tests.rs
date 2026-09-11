@@ -10,7 +10,8 @@ use rustok_modules::{
     ConflictFenceSet, ModuleCommandContext, ModulesModule, OPERATIONS_TOOL_RELEASE_CONTRACT,
     OperationsToolComponent, OperationsToolError, OperationsToolProtocolMatrix,
     OperationsToolRelease, OperationsToolReleasePayload, OperationsToolService,
-    OperationsToolSupervisorReport, StartOperationsToolMaintenanceCommand,
+    OperationsToolSupervisorObservationStatus, OperationsToolSupervisorReport,
+    StartOperationsToolMaintenanceCommand,
 };
 use sea_orm::Database;
 use sea_orm_migration::{MigrationTrait, SchemaManager};
@@ -347,6 +348,41 @@ async fn test_supervisor_reports_and_automatic_convergence() {
     };
     service.start_maintenance(command, now).await.unwrap();
 
+    let unknown_report_field = serde_json::json!({
+        "operation_id": op_id,
+        "host_id": "host-1",
+        "component": "controller",
+        "expected_desired_digest": verified_target.payload().controller_digest,
+        "observed_digest": verified_target.payload().controller_digest,
+        "status": "converged",
+        "untrusted_extra": true,
+    });
+    assert!(
+        serde_json::from_value::<OperationsToolSupervisorReport>(unknown_report_field).is_err()
+    );
+
+    let divergent_convergence = OperationsToolSupervisorReport {
+        operation_id: op_id,
+        host_id: "host-1".to_string(),
+        component: OperationsToolComponent::Controller,
+        expected_desired_digest: verified_target.payload().controller_digest.clone(),
+        observed_digest: sha256_digest(b"unexpected-controller-digest"),
+        status: OperationsToolSupervisorObservationStatus::Converged,
+    };
+    assert_eq!(
+        service
+            .report_supervisor_observation(divergent_convergence, now)
+            .await
+            .unwrap_err(),
+        OperationsToolError::SupervisorReportDigestMismatch
+    );
+    let still_staged = service
+        .get_assignment(op_id, "host-1", OperationsToolComponent::Controller)
+        .await
+        .unwrap();
+    assert_eq!(still_staged.status, "staged");
+    assert!(still_staged.observed_digest.is_none());
+
     let components = [
         (
             OperationsToolComponent::Controller,
@@ -374,8 +410,9 @@ async fn test_supervisor_reports_and_automatic_convergence() {
                         operation_id: op_id,
                         host_id: host.clone(),
                         component: *comp,
+                        expected_desired_digest: (*digest).clone(),
                         observed_digest: (*digest).clone(),
-                        status: "converged".to_string(),
+                        status: OperationsToolSupervisorObservationStatus::Converged,
                     },
                     now,
                 )
@@ -395,8 +432,9 @@ async fn test_supervisor_reports_and_automatic_convergence() {
                 operation_id: op_id,
                 host_id: "host-2".to_string(),
                 component: OperationsToolComponent::Agent,
+                expected_desired_digest: verified_target.payload().agent_digest.clone(),
                 observed_digest: verified_target.payload().agent_digest.clone(),
-                status: "converged".to_string(),
+                status: OperationsToolSupervisorObservationStatus::Converged,
             },
             now,
         )
@@ -406,6 +444,22 @@ async fn test_supervisor_reports_and_automatic_convergence() {
     // All assignments converged -> operation converges automatically
     let op_converged = service.get_operation(op_id).await.unwrap();
     assert_eq!(op_converged.status, "converged");
+
+    let terminal_mutation = OperationsToolSupervisorReport {
+        operation_id: op_id,
+        host_id: "host-2".to_string(),
+        component: OperationsToolComponent::Agent,
+        expected_desired_digest: verified_target.payload().agent_digest.clone(),
+        observed_digest: sha256_digest(b"late-failure-observation"),
+        status: OperationsToolSupervisorObservationStatus::Failed,
+    };
+    assert_eq!(
+        service
+            .report_supervisor_observation(terminal_mutation, now)
+            .await
+            .unwrap_err(),
+        OperationsToolError::SupervisorReportConflict
+    );
 }
 
 #[tokio::test]
@@ -437,7 +491,7 @@ async fn test_predecessor_recovery_authorization_and_single_attempt_exhaustion()
         CURRENT_OPERATIONS_TOOL_PROTOCOL,
         "target-v1.1",
     );
-    service.publish_release(target_release, now).await.unwrap();
+    let verified_target = service.publish_release(target_release, now).await.unwrap();
 
     // 3. Start maintenance with predecessor configured
     let op_id = Uuid::new_v4();
@@ -450,7 +504,62 @@ async fn test_predecessor_recovery_authorization_and_single_attempt_exhaustion()
     };
     service.start_maintenance(command, now).await.unwrap();
 
-    // 4. Authorize predecessor recovery (Attempt 1)
+    assert_eq!(
+        service
+            .authorize_predecessor_recovery(
+                AuthorizeOperationsToolPredecessorRecoveryCommand {
+                    operation_id: op_id,
+                    context: platform_context("trace-recovery-premature", Uuid::new_v4()),
+                },
+                now
+            )
+            .await
+            .unwrap_err(),
+        OperationsToolError::OperationNotRecoverable {
+            operation_id: op_id,
+            status: "in_progress".to_string(),
+        }
+    );
+
+    let failed_target_report = OperationsToolSupervisorReport {
+        operation_id: op_id,
+        host_id: "node-1".to_string(),
+        component: OperationsToolComponent::Controller,
+        expected_desired_digest: verified_target.payload().controller_digest.clone(),
+        observed_digest: sha256_digest(b"target-controller-failed"),
+        status: OperationsToolSupervisorObservationStatus::Failed,
+    };
+    let failed_assignment = service
+        .report_supervisor_observation(failed_target_report.clone(), now)
+        .await
+        .expect("failure evidence is recorded");
+    assert_eq!(failed_assignment.status, "failed");
+    assert_eq!(
+        service.get_operation(op_id).await.unwrap().status,
+        "recovery_required"
+    );
+    let failure_replay = service
+        .report_supervisor_observation(failed_target_report.clone(), now)
+        .await
+        .expect("the exact failed observation replays");
+    assert_eq!(failure_replay, failed_assignment);
+
+    let fence_conflict = StartOperationsToolMaintenanceCommand {
+        operation_id: Uuid::new_v4(),
+        target_release_id: target_id,
+        predecessor_release_id: Some(pred_id),
+        host_ids: vec!["node-2".to_string()],
+        context: platform_context("trace-recovery-fence", Uuid::new_v4()),
+    };
+    assert_eq!(
+        service
+            .start_maintenance(fence_conflict, now)
+            .await
+            .unwrap_err(),
+        OperationsToolError::Conflict(rustok_modules::ConflictKey::fleet_operations_tool())
+    );
+
+    // 4. Authorize predecessor recovery after the fenced failure (Attempt 1)
     let recovery_command = AuthorizeOperationsToolPredecessorRecoveryCommand {
         operation_id: op_id,
         context: platform_context("trace-recovery-1", Uuid::new_v4()),
@@ -491,6 +600,8 @@ async fn test_predecessor_recovery_authorization_and_single_attempt_exhaustion()
         verified_pred.payload().controller_digest
     );
     assert_eq!(node1_ctrl.status, "staged");
+    assert!(node1_ctrl.observed_digest.is_none());
+    assert!(node1_ctrl.reported_at.is_none());
 
     let node1_rec = service
         .get_assignment(op_id, "node-1", OperationsToolComponent::Reconciler)
@@ -501,6 +612,14 @@ async fn test_predecessor_recovery_authorization_and_single_attempt_exhaustion()
         verified_pred.payload().reconciler_digest
     );
     assert_eq!(node1_rec.status, "staged");
+
+    assert_eq!(
+        service
+            .report_supervisor_observation(failed_target_report, now)
+            .await
+            .unwrap_err(),
+        OperationsToolError::SupervisorReportStale
+    );
 
     // 5. Attempting second recovery must fail with RecoveryExhausted (max 1 attempt)
     let second_err = service
@@ -535,8 +654,9 @@ async fn test_predecessor_recovery_authorization_and_single_attempt_exhaustion()
                     operation_id: op_id,
                     host_id: "node-1".to_string(),
                     component,
+                    expected_desired_digest: digest.clone(),
                     observed_digest: digest,
-                    status: "converged".to_string(),
+                    status: OperationsToolSupervisorObservationStatus::Converged,
                 },
                 now,
             )
@@ -561,6 +681,25 @@ async fn test_predecessor_recovery_authorization_and_single_attempt_exhaustion()
         .start_maintenance(no_pred_command, now)
         .await
         .unwrap();
+
+    service
+        .report_supervisor_observation(
+            OperationsToolSupervisorReport {
+                operation_id: no_pred_op_id,
+                host_id: "node-1".to_string(),
+                component: OperationsToolComponent::Controller,
+                expected_desired_digest: verified_target.payload().controller_digest.clone(),
+                observed_digest: sha256_digest(b"no-predecessor-failure"),
+                status: OperationsToolSupervisorObservationStatus::Failed,
+            },
+            now,
+        )
+        .await
+        .expect("failure without a predecessor is fenced before recovery authorization");
+    assert_eq!(
+        service.get_operation(no_pred_op_id).await.unwrap().status,
+        "recovery_required"
+    );
 
     let err_no_pred = service
         .authorize_predecessor_recovery(

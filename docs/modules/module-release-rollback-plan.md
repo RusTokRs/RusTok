@@ -465,12 +465,16 @@ module/platform transitions; its
 immutable request binds candidate/predecessor packages, sorted host/component
 assignments, owner/controller/agent protocol matrix, security evidence,
 deadline, and one recovery authorization. Desired/observed state, monotonic
-host reports, idempotency, and recovery consumption live in PostgreSQL. The
+host reports, idempotency, and recovery consumption live in PostgreSQL. Each
+supervisor report echoes the exact current desired digest, so stale assignment
+generations and divergent convergence claims cannot alter the ledger. The
 supervisor installs and health/protocol tests only exact assignments and keeps
-the predecessor locally startable. Acceptance requires fleet convergence;
-failure returns once to the predecessor package or becomes
-`recovery_required`. Only then is the fleet fence released. A role-bundle
-update requiring a newer protocol is denied until this prerequisite converges.
+the predecessor locally startable. A failed observation moves the operation to
+`recovery_required` while retaining the fleet fence; one owner-authorized
+predecessor recovery may then retarget all assignments after clearing prior
+observed evidence. The fence is released only after target convergence or
+predecessor rollback convergence. A role-bundle update requiring a newer
+protocol is denied until this prerequisite converges.
 This finite host bootstrap boundary avoids an unfenced self-update and keeps
 module rollback available while application code is broken.
 

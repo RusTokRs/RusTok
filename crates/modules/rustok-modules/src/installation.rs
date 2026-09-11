@@ -256,6 +256,18 @@ pub enum ModuleInstallationScope {
     Tenant { tenant_id: Uuid },
 }
 
+impl ModuleInstallationScope {
+    /// A mutable owner command must carry the same tenant boundary as the
+    /// installation/admission scope it is allowed to affect.
+    pub(crate) fn matches_command_context(&self, context: &ModuleCommandContext) -> bool {
+        let scope_tenant_id = match self {
+            Self::Platform => None,
+            Self::Tenant { tenant_id } => Some(*tenant_id),
+        };
+        context.tenant_id == scope_tenant_id && context.validate().is_ok()
+    }
+}
+
 /// Durable lifecycle state of an admitted installation. The initial admission
 /// transaction persists `Admitted` at revision one; later lifecycle services
 /// own the guarded transitions.

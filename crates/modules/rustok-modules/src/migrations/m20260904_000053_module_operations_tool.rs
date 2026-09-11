@@ -29,7 +29,7 @@ impl MigrationTrait for Migration {
                     operation_id UUID PRIMARY KEY,\
                     target_release_id UUID NOT NULL REFERENCES module_operations_tool_releases(release_id),\
                     predecessor_release_id UUID NULL REFERENCES module_operations_tool_releases(release_id),\
-                    status TEXT NOT NULL CHECK (status IN ('in_progress', 'rolling_back', 'converged', 'rolled_back', 'failed')),\
+                    status TEXT NOT NULL CHECK (status IN ('in_progress', 'rolling_back', 'recovery_required', 'converged', 'rolled_back')),\
                     recovery_attempts INTEGER NOT NULL DEFAULT 0 CHECK (recovery_attempts BETWEEN 0 AND 1),\
                     request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     actor_id UUID NOT NULL,\
@@ -45,7 +45,7 @@ impl MigrationTrait for Migration {
                     updated_at TIMESTAMPTZ NOT NULL,\
                     CHECK ((recovery_request_digest IS NULL AND recovery_actor_id IS NULL AND recovery_idempotency_key IS NULL AND recovery_trace_id IS NULL AND recovery_correlation_id IS NULL) OR (recovery_request_digest IS NOT NULL AND recovery_actor_id IS NOT NULL AND recovery_idempotency_key IS NOT NULL AND recovery_trace_id IS NOT NULL AND recovery_correlation_id IS NOT NULL))\
                 )",
-                "CREATE UNIQUE INDEX uq_operations_tool_active_fleet_maintenance ON module_operations_tool_maintenance_operations ((1)) WHERE status IN ('in_progress', 'rolling_back')",
+                "CREATE UNIQUE INDEX uq_operations_tool_active_fleet_maintenance ON module_operations_tool_maintenance_operations ((1)) WHERE status IN ('in_progress', 'rolling_back', 'recovery_required')",
                 "CREATE TABLE module_operations_tool_assignments (\
                     assignment_id UUID PRIMARY KEY,\
                     operation_id UUID NOT NULL REFERENCES module_operations_tool_maintenance_operations(operation_id) ON DELETE CASCADE,\
@@ -53,7 +53,7 @@ impl MigrationTrait for Migration {
                     component TEXT NOT NULL CHECK (component IN ('controller', 'reconciler', 'agent')),\
                     desired_digest TEXT NOT NULL CHECK (desired_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     observed_digest TEXT NULL CHECK (observed_digest IS NULL OR observed_digest ~ '^sha256:[0-9a-f]{64}$'),\
-                    status TEXT NOT NULL CHECK (status IN ('pending', 'staged', 'converged', 'failed', 'rolled_back')),\
+                    status TEXT NOT NULL CHECK (status IN ('staged', 'converged', 'failed')),\
                     reported_at TIMESTAMPTZ NULL,\
                     updated_at TIMESTAMPTZ NOT NULL,\
                     UNIQUE (operation_id, host_id, component)\
@@ -79,7 +79,7 @@ impl MigrationTrait for Migration {
                     operation_id TEXT PRIMARY KEY,\
                     target_release_id TEXT NOT NULL REFERENCES module_operations_tool_releases(release_id),\
                     predecessor_release_id TEXT NULL REFERENCES module_operations_tool_releases(release_id),\
-                    status TEXT NOT NULL CHECK (status IN ('in_progress', 'rolling_back', 'converged', 'rolled_back', 'failed')),\
+                    status TEXT NOT NULL CHECK (status IN ('in_progress', 'rolling_back', 'recovery_required', 'converged', 'rolled_back')),\
                     recovery_attempts INTEGER NOT NULL DEFAULT 0 CHECK (recovery_attempts BETWEEN 0 AND 1),\
                     request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     actor_id TEXT NOT NULL,\
@@ -95,7 +95,7 @@ impl MigrationTrait for Migration {
                     updated_at TEXT NOT NULL,\
                     CHECK ((recovery_request_digest IS NULL AND recovery_actor_id IS NULL AND recovery_idempotency_key IS NULL AND recovery_trace_id IS NULL AND recovery_correlation_id IS NULL) OR (recovery_request_digest IS NOT NULL AND recovery_actor_id IS NOT NULL AND recovery_idempotency_key IS NOT NULL AND recovery_trace_id IS NOT NULL AND recovery_correlation_id IS NOT NULL))\
                 )",
-                "CREATE UNIQUE INDEX uq_operations_tool_active_fleet_maintenance ON module_operations_tool_maintenance_operations ((1)) WHERE status IN ('in_progress', 'rolling_back')",
+                "CREATE UNIQUE INDEX uq_operations_tool_active_fleet_maintenance ON module_operations_tool_maintenance_operations ((1)) WHERE status IN ('in_progress', 'rolling_back', 'recovery_required')",
                 "CREATE TABLE module_operations_tool_assignments (\
                     assignment_id TEXT PRIMARY KEY,\
                     operation_id TEXT NOT NULL REFERENCES module_operations_tool_maintenance_operations(operation_id) ON DELETE CASCADE,\
@@ -103,7 +103,7 @@ impl MigrationTrait for Migration {
                     component TEXT NOT NULL CHECK (component IN ('controller', 'reconciler', 'agent')),\
                     desired_digest TEXT NOT NULL CHECK (length(desired_digest) = 71 AND substr(desired_digest, 1, 7) = 'sha256:' AND substr(desired_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     observed_digest TEXT NULL CHECK (observed_digest IS NULL OR (length(observed_digest) = 71 AND substr(observed_digest, 1, 7) = 'sha256:' AND substr(observed_digest, 8) NOT GLOB '*[^0-9a-f]*')),\
-                    status TEXT NOT NULL CHECK (status IN ('pending', 'staged', 'converged', 'failed', 'rolled_back')),\
+                    status TEXT NOT NULL CHECK (status IN ('staged', 'converged', 'failed')),\
                     reported_at TEXT NULL,\
                     updated_at TEXT NOT NULL,\
                     UNIQUE (operation_id, host_id, component)\

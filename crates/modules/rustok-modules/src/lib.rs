@@ -149,8 +149,8 @@ pub use operations_tool::{
     OPERATIONS_TOOL_RELEASE_CONTRACT, OperationsToolAssignment, OperationsToolComponent,
     OperationsToolError, OperationsToolMaintenanceOperation, OperationsToolProtocolMatrix,
     OperationsToolRelease, OperationsToolReleasePayload, OperationsToolService,
-    OperationsToolSupervisorReport, StartOperationsToolMaintenanceCommand,
-    VerifiedOperationsToolRelease,
+    OperationsToolSupervisorObservationStatus, OperationsToolSupervisorReport,
+    StartOperationsToolMaintenanceCommand, VerifiedOperationsToolRelease,
 };
 pub use operator::{
     CanonicalPresentationState, ContainmentOutcome, ModuleBlastRadius, ModuleOperatorError,

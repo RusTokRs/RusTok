@@ -39,6 +39,28 @@ pub enum OperationsToolComponent {
     Agent,
 }
 
+/// Terminal observation a separately authenticated host supervisor can report
+/// for one exact desired component assignment.
+///
+/// This is deliberately distinct from an operator command context: the
+/// supervisor's transport must authenticate the reporting host, while the
+/// report itself proves only the fenced desired/observed assignment outcome.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationsToolSupervisorObservationStatus {
+    Converged,
+    Failed,
+}
+
+impl OperationsToolSupervisorObservationStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Converged => "converged",
+            Self::Failed => "failed",
+        }
+    }
+}
+
 impl OperationsToolComponent {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -139,6 +161,22 @@ pub enum OperationsToolError {
     OperationConflict(Uuid),
     #[error("Maintenance operation `{operation_id}` cannot recover from status `{status}`")]
     OperationNotRecoverable { operation_id: Uuid, status: String },
+    #[error("Operations-tool supervisor report is invalid")]
+    InvalidSupervisorReport,
+    #[error(
+        "Operations-tool assignment `{operation_id}` / `{host_id}` / `{component:?}` was not found"
+    )]
+    AssignmentNotFound {
+        operation_id: Uuid,
+        host_id: String,
+        component: OperationsToolComponent,
+    },
+    #[error("Operations-tool supervisor report is stale for the current desired assignment")]
+    SupervisorReportStale,
+    #[error("Operations-tool supervisor report conflicts with a terminal or prior observation")]
+    SupervisorReportConflict,
+    #[error("A converged supervisor report must observe the exact desired digest")]
+    SupervisorReportDigestMismatch,
 }
 
 fn decode_fixed<const N: usize>(encoded: &str) -> Result<[u8; N], OperationsToolError> {
@@ -266,13 +304,18 @@ pub struct AuthorizeOperationsToolPredecessorRecoveryCommand {
     pub context: ModuleCommandContext,
 }
 
-#[derive(Clone, Debug)]
+/// Narrow executor evidence for one host/component assignment. A supervisor
+/// must echo the owner-issued desired digest so a late report from a prior
+/// maintenance or recovery generation cannot mutate the current assignment.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OperationsToolSupervisorReport {
     pub operation_id: Uuid,
     pub host_id: String,
     pub component: OperationsToolComponent,
+    pub expected_desired_digest: String,
     pub observed_digest: String,
-    pub status: String,
+    pub status: OperationsToolSupervisorObservationStatus,
 }
 
 #[derive(Clone)]
@@ -583,48 +626,137 @@ impl OperationsToolService {
         Ok(operation)
     }
 
-    /// Host supervisor reports observed component execution status idempotently.
+    /// Records one authenticated supervisor observation against the exact current
+    /// desired digest. A stale desired generation, a divergent claimed
+    /// convergence, or a mutation after terminal completion fails closed.
     pub async fn report_supervisor_observation(
         &self,
         report: OperationsToolSupervisorReport,
         now: DateTime<Utc>,
     ) -> Result<OperationsToolAssignment, OperationsToolError> {
-        let backend = self.db.get_database_backend();
-
-        let update_sql = format!(
-            "UPDATE module_operations_tool_assignments \
-             SET observed_digest = {}, status = {}, reported_at = {}, updated_at = {} \
-             WHERE operation_id = {} AND host_id = {} AND component = {}",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3),
-            placeholder(backend, 4),
-            placeholder(backend, 5),
-            placeholder(backend, 6),
-            placeholder(backend, 7),
-        );
-
-        let values = vec![
-            report.observed_digest.clone().into(),
-            report.status.clone().into(),
-            now.to_rfc3339().into(),
-            now.to_rfc3339().into(),
-            uuid_value(report.operation_id, backend),
-            report.host_id.clone().into(),
-            report.component.as_str().into(),
-        ];
-
-        self.db
-            .execute_raw(Statement::from_sql_and_values(backend, update_sql, values))
+        validate_supervisor_report(&report)?;
+        let transaction = self
+            .db
+            .begin()
             .await
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        let operation = self
+            .find_operation_by_id_for_update(&transaction, report.operation_id)
+            .await?
+            .ok_or(OperationsToolError::OperationNotFound(report.operation_id))?;
+        let assignment = self
+            .find_assignment(
+                &transaction,
+                report.operation_id,
+                &report.host_id,
+                report.component,
+            )
+            .await?
+            .ok_or_else(|| OperationsToolError::AssignmentNotFound {
+                operation_id: report.operation_id,
+                host_id: report.host_id.clone(),
+                component: report.component,
+            })?;
 
-        // If all assignments converged, mark operation converged
-        self.check_and_converge_operation(report.operation_id, now)
-            .await?;
+        if assignment.desired_digest != report.expected_desired_digest {
+            return Err(OperationsToolError::SupervisorReportStale);
+        }
 
-        self.get_assignment(report.operation_id, &report.host_id, report.component)
+        let report_status = report.status.as_str();
+        let exact_replay = assignment.status == report_status
+            && assignment.observed_digest.as_deref() == Some(report.observed_digest.as_str());
+        if exact_replay {
+            transaction
+                .commit()
+                .await
+                .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+            return Ok(assignment);
+        }
+
+        if !active_maintenance_status(&operation.status)
+            || !staged_assignment_status(&assignment.status)
+        {
+            return Err(OperationsToolError::SupervisorReportConflict);
+        }
+
+        let backend = transaction.get_database_backend();
+        let updated = transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE module_operations_tool_assignments \
+                     SET observed_digest = {}, status = {}, reported_at = {}, updated_at = {} \
+                     WHERE assignment_id = {} AND desired_digest = {} \
+                       AND status = 'staged'",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                    placeholder(backend, 6),
+                ),
+                vec![
+                    report.observed_digest.clone().into(),
+                    report_status.into(),
+                    now.to_rfc3339().into(),
+                    now.to_rfc3339().into(),
+                    uuid_value(assignment.assignment_id, backend),
+                    report.expected_desired_digest.clone().into(),
+                ],
+            ))
             .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        if updated.rows_affected() != 1 {
+            return Err(OperationsToolError::SupervisorReportConflict);
+        }
+
+        match report.status {
+            OperationsToolSupervisorObservationStatus::Converged => {
+                self.check_and_converge_operation_in(&transaction, report.operation_id, now)
+                    .await?;
+            }
+            OperationsToolSupervisorObservationStatus::Failed => {
+                let transitioned = transaction
+                    .execute_raw(Statement::from_sql_and_values(
+                        backend,
+                        format!(
+                            "UPDATE module_operations_tool_maintenance_operations \
+                             SET status = 'recovery_required', updated_at = {} \
+                             WHERE operation_id = {} AND status IN ('in_progress', 'rolling_back')",
+                            placeholder(backend, 1),
+                            placeholder(backend, 2),
+                        ),
+                        vec![
+                            now.to_rfc3339().into(),
+                            uuid_value(report.operation_id, backend),
+                        ],
+                    ))
+                    .await
+                    .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+                if transitioned.rows_affected() != 1 {
+                    return Err(OperationsToolError::SupervisorReportConflict);
+                }
+            }
+        }
+
+        let assignment = self
+            .find_assignment(
+                &transaction,
+                report.operation_id,
+                &report.host_id,
+                report.component,
+            )
+            .await?
+            .ok_or_else(|| OperationsToolError::AssignmentNotFound {
+                operation_id: report.operation_id,
+                host_id: report.host_id.clone(),
+                component: report.component,
+            })?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        Ok(assignment)
     }
 
     /// Authorizes exactly one predecessor recovery attempt for an operations-tool maintenance operation.
@@ -652,13 +784,23 @@ impl OperationsToolService {
             return Ok(replay);
         }
         let op = self
-            .find_operation_by_id(&transaction, command.operation_id)
+            .find_operation_by_id_for_update(&transaction, command.operation_id)
             .await?
             .ok_or(OperationsToolError::OperationNotFound(command.operation_id))?;
+        if let Some(replay) = self
+            .load_recovery_replay(&transaction, &command, &request_digest)
+            .await?
+        {
+            transaction
+                .commit()
+                .await
+                .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+            return Ok(replay);
+        }
         if op.recovery_attempts >= 1 {
             return Err(OperationsToolError::RecoveryExhausted(command.operation_id));
         }
-        if op.status != "in_progress" {
+        if op.status != "recovery_required" {
             return Err(OperationsToolError::OperationNotRecoverable {
                 operation_id: command.operation_id,
                 status: op.status,
@@ -681,7 +823,7 @@ impl OperationsToolService {
              SET recovery_attempts = 1, status = 'rolling_back', recovery_request_digest = {}, \
                  recovery_actor_id = {}, recovery_idempotency_key = {}, recovery_trace_id = {}, \
                  recovery_correlation_id = {}, updated_at = {} \
-             WHERE operation_id = {} AND status = 'in_progress' AND recovery_attempts = 0 \
+             WHERE operation_id = {} AND status = 'recovery_required' AND recovery_attempts = 0 \
                AND recovery_idempotency_key IS NULL",
             placeholder(backend, 1),
             placeholder(backend, 2),
@@ -737,7 +879,8 @@ impl OperationsToolService {
 
         let update_assignment_sql = format!(
             "UPDATE module_operations_tool_assignments \
-             SET desired_digest = {}, status = 'staged', updated_at = {} \
+             SET desired_digest = {}, observed_digest = NULL, status = 'staged', \
+                 reported_at = NULL, updated_at = {} \
              WHERE operation_id = {} AND component = {}",
             placeholder(backend, 1),
             placeholder(backend, 2),
@@ -781,12 +924,13 @@ impl OperationsToolService {
         Ok(operation)
     }
 
-    async fn check_and_converge_operation(
+    async fn check_and_converge_operation_in<C: ConnectionTrait>(
         &self,
+        connection: &C,
         operation_id: Uuid,
         now: DateTime<Utc>,
     ) -> Result<(), OperationsToolError> {
-        let backend = self.db.get_database_backend();
+        let backend = connection.get_database_backend();
         let update_sql = format!(
             "UPDATE module_operations_tool_maintenance_operations \
              SET status = CASE status \
@@ -803,7 +947,7 @@ impl OperationsToolService {
             placeholder(backend, 2),
             placeholder(backend, 3),
         );
-        self.db
+        connection
             .execute_raw(Statement::from_sql_and_values(
                 backend,
                 update_sql,
@@ -832,7 +976,31 @@ impl OperationsToolService {
         connection: &C,
         operation_id: Uuid,
     ) -> Result<Option<OperationsToolMaintenanceOperation>, OperationsToolError> {
+        self.find_operation_by_id_with_lock(connection, operation_id, false)
+            .await
+    }
+
+    async fn find_operation_by_id_for_update<C: ConnectionTrait>(
+        &self,
+        connection: &C,
+        operation_id: Uuid,
+    ) -> Result<Option<OperationsToolMaintenanceOperation>, OperationsToolError> {
+        self.find_operation_by_id_with_lock(connection, operation_id, true)
+            .await
+    }
+
+    async fn find_operation_by_id_with_lock<C: ConnectionTrait>(
+        &self,
+        connection: &C,
+        operation_id: Uuid,
+        lock_for_update: bool,
+    ) -> Result<Option<OperationsToolMaintenanceOperation>, OperationsToolError> {
         let backend = connection.get_database_backend();
+        let lock_clause = if lock_for_update && backend == DbBackend::Postgres {
+            " FOR UPDATE"
+        } else {
+            ""
+        };
         let row = connection
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
@@ -841,8 +1009,10 @@ impl OperationsToolService {
                             recovery_attempts, actor_id, idempotency_key, trace_id, correlation_id, \
                             recovery_actor_id, recovery_idempotency_key, recovery_trace_id, \
                             recovery_correlation_id, created_at, updated_at \
-                     FROM module_operations_tool_maintenance_operations WHERE operation_id = {}",
+                     FROM module_operations_tool_maintenance_operations \
+                     WHERE operation_id = {}{}",
                     placeholder(backend, 1),
+                    lock_clause,
                 ),
                 vec![uuid_value(operation_id, backend)],
             ))
@@ -861,7 +1031,7 @@ impl OperationsToolService {
             .query_one_raw(Statement::from_string(
                 backend,
                 "SELECT operation_id FROM module_operations_tool_maintenance_operations \
-                 WHERE status IN ('in_progress', 'rolling_back') LIMIT 1"
+                 WHERE status IN ('in_progress', 'rolling_back', 'recovery_required') LIMIT 1"
                     .to_string(),
             ))
             .await
@@ -954,7 +1124,23 @@ impl OperationsToolService {
         host_id: &str,
         component: OperationsToolComponent,
     ) -> Result<OperationsToolAssignment, OperationsToolError> {
-        let backend = self.db.get_database_backend();
+        self.find_assignment(&self.db, operation_id, host_id, component)
+            .await?
+            .ok_or_else(|| OperationsToolError::AssignmentNotFound {
+                operation_id,
+                host_id: host_id.to_string(),
+                component,
+            })
+    }
+
+    async fn find_assignment<C: ConnectionTrait>(
+        &self,
+        connection: &C,
+        operation_id: Uuid,
+        host_id: &str,
+        component: OperationsToolComponent,
+    ) -> Result<Option<OperationsToolAssignment>, OperationsToolError> {
+        let backend = connection.get_database_backend();
         let query_sql = format!(
             "SELECT assignment_id, operation_id, host_id, component, desired_digest, \
                     observed_digest, status, reported_at, updated_at \
@@ -965,8 +1151,7 @@ impl OperationsToolService {
             placeholder(backend, 3),
         );
 
-        let row = self
-            .db
+        let row = connection
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 query_sql,
@@ -977,36 +1162,64 @@ impl OperationsToolService {
                 ],
             ))
             .await
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?
-            .ok_or_else(|| OperationsToolError::Storage("Assignment not found".to_string()))?;
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
 
-        let assignment_id: Uuid = self.get_uuid_from_row(&row, "assignment_id", backend)?;
-        let op_id: Uuid = self.get_uuid_from_row(&row, "operation_id", backend)?;
-        let h_id: String = row
+        row.map(|row| self.parse_assignment_row(row, backend))
+            .transpose()
+    }
+
+    fn parse_assignment_row(
+        &self,
+        row: sea_orm::QueryResult,
+        backend: DbBackend,
+    ) -> Result<OperationsToolAssignment, OperationsToolError> {
+        let assignment_id = self.get_uuid_from_row(&row, "assignment_id", backend)?;
+        let operation_id = self.get_uuid_from_row(&row, "operation_id", backend)?;
+        let host_id: String = row
             .try_get("", "host_id")
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let comp_str: String = row
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        let component: String = row
             .try_get("", "component")
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let comp = OperationsToolComponent::parse(&comp_str).expect("valid component");
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        let component = OperationsToolComponent::parse(&component).ok_or_else(|| {
+            OperationsToolError::Storage(
+                "operations-tool assignment contains an invalid component".to_string(),
+            )
+        })?;
         let desired_digest: String = row
             .try_get("", "desired_digest")
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
         let observed_digest: Option<String> = row
             .try_get("", "observed_digest")
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
         let status: String = row
             .try_get("", "status")
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let reported_at: Option<DateTime<Utc>> =
-            self.get_optional_datetime_from_row(&row, "reported_at", backend)?;
-        let updated_at: DateTime<Utc> = self.get_datetime_from_row(&row, "updated_at", backend)?;
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        let reported_at = self.get_optional_datetime_from_row(&row, "reported_at", backend)?;
+        let updated_at = self.get_datetime_from_row(&row, "updated_at", backend)?;
+
+        if !valid_host_id(&host_id)
+            || !valid_digest(&desired_digest)
+            || observed_digest
+                .as_deref()
+                .is_some_and(|digest| !valid_digest(digest))
+            || !valid_assignment_status(&status)
+            || !valid_assignment_observation(
+                &status,
+                observed_digest.as_deref(),
+                reported_at.as_ref(),
+            )
+        {
+            return Err(OperationsToolError::Storage(
+                "operations-tool assignment contains invalid state".to_string(),
+            ));
+        }
 
         Ok(OperationsToolAssignment {
             assignment_id,
-            operation_id: op_id,
-            host_id: h_id,
-            component: comp,
+            operation_id,
+            host_id,
+            component,
             desired_digest,
             observed_digest,
             status,
@@ -1082,6 +1295,14 @@ impl OperationsToolService {
                     "maintenance operation recovery_attempts is invalid".to_string(),
                 )
             })?;
+        let status: String = row
+            .try_get("", "status")
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        if !valid_maintenance_status(&status) {
+            return Err(OperationsToolError::Storage(
+                "maintenance operation contains an invalid status".to_string(),
+            ));
+        }
         let context = ModuleCommandContext {
             actor_id: self.get_uuid_from_row(&row, "actor_id", backend)?,
             tenant_id: None,
@@ -1126,6 +1347,12 @@ impl OperationsToolService {
                 ));
             }
         };
+        if !valid_maintenance_recovery_state(&status, recovery_attempts, recovery_context.is_some())
+        {
+            return Err(OperationsToolError::Storage(
+                "maintenance operation contains inconsistent recovery state".to_string(),
+            ));
+        }
 
         Ok(OperationsToolMaintenanceOperation {
             operation_id: self.get_uuid_from_row(&row, "operation_id", backend)?,
@@ -1135,9 +1362,7 @@ impl OperationsToolService {
                 "predecessor_release_id",
                 backend,
             )?,
-            status: row
-                .try_get("", "status")
-                .map_err(|error| OperationsToolError::Storage(error.to_string()))?,
+            status,
             recovery_attempts,
             context,
             recovery_context,
@@ -1271,6 +1496,24 @@ fn validate_recovery_command(
     Ok(())
 }
 
+fn validate_supervisor_report(
+    report: &OperationsToolSupervisorReport,
+) -> Result<(), OperationsToolError> {
+    if report.operation_id.is_nil()
+        || !valid_host_id(&report.host_id)
+        || !valid_digest(&report.expected_desired_digest)
+        || !valid_digest(&report.observed_digest)
+    {
+        return Err(OperationsToolError::InvalidSupervisorReport);
+    }
+    if report.status == OperationsToolSupervisorObservationStatus::Converged
+        && report.expected_desired_digest != report.observed_digest
+    {
+        return Err(OperationsToolError::SupervisorReportDigestMismatch);
+    }
+    Ok(())
+}
+
 fn valid_platform_context(context: &ModuleCommandContext) -> bool {
     context.tenant_id.is_none() && context.validate().is_ok()
 }
@@ -1290,6 +1533,53 @@ fn valid_host_id(value: &str) -> bool {
         && value.trim() == value
         && value.len() <= MAX_HOST_ID_BYTES
         && !value.chars().any(char::is_control)
+}
+
+fn active_maintenance_status(status: &str) -> bool {
+    matches!(status, "in_progress" | "rolling_back")
+}
+
+fn valid_maintenance_status(status: &str) -> bool {
+    matches!(
+        status,
+        "in_progress" | "rolling_back" | "recovery_required" | "converged" | "rolled_back"
+    )
+}
+
+fn valid_maintenance_recovery_state(
+    status: &str,
+    recovery_attempts: u32,
+    has_recovery_context: bool,
+) -> bool {
+    matches!(
+        (recovery_attempts, has_recovery_context, status),
+        (0, false, "in_progress" | "converged" | "recovery_required")
+            | (
+                1,
+                true,
+                "rolling_back" | "rolled_back" | "recovery_required"
+            )
+    )
+}
+
+fn staged_assignment_status(status: &str) -> bool {
+    status == "staged"
+}
+
+fn valid_assignment_status(status: &str) -> bool {
+    matches!(status, "staged" | "converged" | "failed")
+}
+
+fn valid_assignment_observation(
+    status: &str,
+    observed_digest: Option<&str>,
+    reported_at: Option<&DateTime<Utc>>,
+) -> bool {
+    match status {
+        "staged" => observed_digest.is_none() && reported_at.is_none(),
+        "converged" | "failed" => observed_digest.is_some() && reported_at.is_some(),
+        _ => false,
+    }
 }
 
 fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> Value {

@@ -14,7 +14,6 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -24,6 +23,7 @@ use crate::{
     MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor, ModuleCommandContext,
     ModuleInstallationScope, OciArtifactReference, ReleaseAdmissionIntentJournal,
     ReleaseAdmissionJournalError, TrustVerificationRequest, TrustVerifier,
+    promotion::digest_json,
 };
 
 /// Verified publisher/ownership evidence for an external prebuilt artifact.
@@ -367,6 +367,9 @@ pub enum ExternalPrebuiltIngressError {
     #[error("Idempotency conflict for key `{0}`: {1}")]
     IdempotencyConflict(Uuid, String),
 
+    #[error("External prebuilt ingress command context is invalid for its requested scope")]
+    InvalidCommandContext,
+
     #[error("Serialization error: {0}")]
     Serialization(String),
 
@@ -375,7 +378,8 @@ pub enum ExternalPrebuiltIngressError {
 }
 
 /// Command requesting admission of an external prebuilt package with independently verified evidence.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExternalPrebuiltIngressCommand {
     pub reference: OciArtifactReference,
     pub scope: ModuleInstallationScope,
@@ -478,7 +482,14 @@ impl ExternalPrebuiltIngressService {
         &self,
         command: ExternalPrebuiltIngressCommand,
     ) -> Result<ExternalPrebuiltIngressReceipt, ExternalPrebuiltIngressError> {
-        // 1. Validate digest-pinned reference
+        // 1. Validate the complete owner command before any registry, CAS, or
+        // database action. The context must identify exactly the scope it can
+        // mutate.
+        if !command.scope.matches_command_context(&command.context) {
+            return Err(ExternalPrebuiltIngressError::InvalidCommandContext);
+        }
+
+        // 2. Validate digest-pinned reference
         command
             .reference
             .validate()
@@ -490,7 +501,7 @@ impl ExternalPrebuiltIngressService {
             ));
         }
 
-        // 2. Independently verify all evidence dimensions before CAS or DB mutations
+        // 3. Independently verify all evidence dimensions before CAS or DB mutations
         // Note: failure here rejects admission immediately without mutating quarantine state.
         command.evidence.validate()?;
 
@@ -500,21 +511,54 @@ impl ExternalPrebuiltIngressService {
             ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
         };
 
-        // 3. Derive request digest for intent and idempotency tracking
-        let request_digest = format!(
-            "sha256:{}",
-            hex::encode(Sha256::digest(
-                format!(
-                    "external_prebuilt:{}:{}:{}",
-                    command.reference.canonical(),
-                    command.context.actor_id,
-                    command.context.idempotency_key
-                )
-                .as_bytes()
-            ))
-        );
+        // 4. Bind every mutable command fact, including complete context and
+        // independently verified evidence, into one durable replay fingerprint.
+        let request_digest = digest_json(&command)
+            .map_err(|error| ExternalPrebuiltIngressError::Serialization(error.to_string()))?;
 
-        // 4. Check if release already admitted under this release digest
+        // 5. Reject a reused owner idempotency key before the global immutable
+        // release lookup can make a changed command appear successful.
+        let existing_by_key = self
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT release_digest, request_digest FROM module_admitted_oci_releases \
+                     WHERE scope_kind = {} AND scope_tenant_key = {} \
+                       AND actor_id = {} AND idempotency_key = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                ),
+                vec![
+                    scope_kind.into(),
+                    scope_tenant_key.clone().into(),
+                    uuid_value(command.context.actor_id, backend),
+                    uuid_value(command.context.idempotency_key, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ExternalPrebuiltIngressError::Database(error.to_string()))?;
+
+        if let Some(row) = existing_by_key {
+            let stored_digest: String = row
+                .try_get("", "release_digest")
+                .map_err(|error| ExternalPrebuiltIngressError::Database(error.to_string()))?;
+            let stored_request_digest: String = row
+                .try_get("", "request_digest")
+                .map_err(|error| ExternalPrebuiltIngressError::Database(error.to_string()))?;
+            if stored_request_digest != request_digest {
+                return Err(ExternalPrebuiltIngressError::IdempotencyConflict(
+                    command.context.idempotency_key,
+                    format!(
+                        "Idempotency key was already used to admit release `{stored_digest}` with different command evidence"
+                    ),
+                ));
+            }
+        }
+
+        // 6. Check if release already admitted under this release digest.
         let existing_by_digest = self
             .db
             .query_one_raw(Statement::from_sql_and_values(
@@ -578,46 +622,7 @@ impl ExternalPrebuiltIngressService {
             });
         }
 
-        // 5. Check idempotency conflict under (scope_kind, scope_tenant_key, actor_id, idempotency_key)
-        let existing_by_key = self
-            .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT release_digest FROM module_admitted_oci_releases \
-                     WHERE scope_kind = {} AND scope_tenant_key = {} \
-                       AND actor_id = {} AND idempotency_key = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                ),
-                vec![
-                    scope_kind.into(),
-                    scope_tenant_key.clone().into(),
-                    uuid_value(command.context.actor_id, backend),
-                    uuid_value(command.context.idempotency_key, backend),
-                ],
-            ))
-            .await
-            .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
-
-        if let Some(row) = existing_by_key {
-            let stored_digest: String = row
-                .try_get("", "release_digest")
-                .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
-            if stored_digest != command.reference.digest {
-                return Err(ExternalPrebuiltIngressError::IdempotencyConflict(
-                    command.context.idempotency_key,
-                    format!(
-                        "Idempotency key was already used to admit release `{stored_digest}`, cannot reuse for `{}`",
-                        command.reference.digest
-                    ),
-                ));
-            }
-        }
-
-        // 6. Record staging intent in journal before CAS mutation
+        // 7. Record staging intent in journal before CAS mutation.
         ReleaseAdmissionIntentJournal::record_staging_intent(
             &self.db,
             &command.scope,
@@ -632,7 +637,7 @@ impl ExternalPrebuiltIngressService {
             other => ExternalPrebuiltIngressError::Database(other.to_string()),
         })?;
 
-        // 7. Fetch OCI package from registry and validate against descriptor and evidence
+        // 8. Fetch OCI package from registry and validate against descriptor and evidence
         let package = self
             .registry
             .fetch(&command.reference, self.limits)

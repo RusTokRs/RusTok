@@ -515,8 +515,11 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   a changed snapshot or context on idempotency reuse fails closed. Operations-tool
   start and predecessor-recovery authorization each use platform-scoped context,
   durable canonical request digests, exact replay checks, and one active fleet
-  maintenance fence; supervisor observations remain separately authenticated
-  agent evidence. Each receipt rejects an idempotency reuse with different
+  maintenance fence. Supervisor observations remain separately authenticated
+  agent evidence, but must echo the exact current desired digest; a failed
+  observation moves the maintenance operation to `recovery_required` and
+  retains the fleet fence until one explicitly authorized predecessor recovery
+  converges. Each receipt rejects an idempotency reuse with different
   context evidence. GraphQL and REST
   adapters carry the context where those surfaces are exposed.
   The remaining mutable owner families still require atomic caller cutover to
