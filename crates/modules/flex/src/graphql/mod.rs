@@ -81,9 +81,11 @@ fn resolve_entity_type(entity_type: Option<String>) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use async_graphql::ErrorExtensions;
+    use async_graphql::{EmptySubscription, ErrorExtensions, Request, Response, Schema};
+    use rustok_api::{AuthContext, Permission, TenantContext};
+    use uuid::Uuid;
 
-    use super::resolve_entity_type;
+    use super::{FlexMutation, FlexQuery, resolve_entity_type};
 
     fn error_code(error: &async_graphql::Error) -> Option<String> {
         error
@@ -93,6 +95,79 @@ mod tests {
             .cloned()
             .and_then(|value| value.into_json().ok())
             .and_then(|value| value.as_str().map(ToOwned::to_owned))
+    }
+
+    fn response_error_code(response: &Response) -> Option<String> {
+        response
+            .errors
+            .first()
+            .and_then(|error| error.extensions.as_ref())
+            .and_then(|extensions| extensions.get("code"))
+            .cloned()
+            .and_then(|value| value.into_json().ok())
+            .and_then(|value| value.as_str().map(ToOwned::to_owned))
+    }
+
+    fn tenant_context(tenant_id: Uuid) -> TenantContext {
+        TenantContext {
+            id: tenant_id,
+            name: "Flex policy test".to_string(),
+            slug: "flex-policy-test".to_string(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        }
+    }
+
+    fn auth_context(tenant_id: Uuid, permissions: Vec<Permission>) -> AuthContext {
+        AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions,
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        }
+    }
+
+    async fn execute_policy_request(
+        tenant_id: Uuid,
+        permissions: Vec<Permission>,
+        document: &str,
+    ) -> Response {
+        Schema::build(
+            FlexQuery::default(),
+            FlexMutation::default(),
+            EmptySubscription,
+        )
+        .finish()
+        .execute(
+            Request::new(document)
+                .data(tenant_context(tenant_id))
+                .data(auth_context(tenant_id, permissions)),
+        )
+        .await
+    }
+
+    fn assert_single_response_error(
+        response: &Response,
+        expected_code: &str,
+        expected_message_fragment: &str,
+    ) {
+        assert_eq!(response.errors.len(), 1, "unexpected response: {response:?}");
+        assert_eq!(
+            response_error_code(response).as_deref(),
+            Some(expected_code),
+            "unexpected GraphQL error code: {response:?}"
+        );
+        assert!(
+            response.errors[0]
+                .message
+                .contains(expected_message_fragment),
+            "unexpected GraphQL error message: {response:?}"
+        );
     }
 
     #[test]
@@ -120,5 +195,53 @@ mod tests {
                 .extend();
             assert_eq!(error_code(&gql).as_deref(), Some("BAD_USER_INPUT"));
         }
+    }
+
+    #[tokio::test]
+    async fn attached_field_policy_graphql_requires_schema_list_and_update_permissions() {
+        let tenant_id = Uuid::new_v4();
+        let query =
+            "{ attachedFieldPolicies(entityType: \"taxonomy.category\") { fieldKey } }";
+
+        let denied_query = execute_policy_request(
+            tenant_id,
+            vec![Permission::FLEX_SCHEMAS_READ],
+            query,
+        )
+        .await;
+        assert_single_response_error(&denied_query, "PERMISSION_DENIED", "required");
+
+        let allowed_query = execute_policy_request(
+            tenant_id,
+            vec![Permission::FLEX_SCHEMAS_LIST],
+            query,
+        )
+        .await;
+        assert_single_response_error(
+            &allowed_query,
+            "INTERNAL_ERROR",
+            "FlexGraphqlRuntime is not registered",
+        );
+
+        let mutation = "mutation { resetAttachedFieldPolicy(input: { entityType: \"taxonomy.category\", fieldKey: \"tagline\" }) { fieldKey } }";
+        let denied_mutation = execute_policy_request(
+            tenant_id,
+            vec![Permission::FLEX_SCHEMAS_LIST],
+            mutation,
+        )
+        .await;
+        assert_single_response_error(&denied_mutation, "PERMISSION_DENIED", "required");
+
+        let allowed_mutation = execute_policy_request(
+            tenant_id,
+            vec![Permission::FLEX_SCHEMAS_UPDATE],
+            mutation,
+        )
+        .await;
+        assert_single_response_error(
+            &allowed_mutation,
+            "INTERNAL_ERROR",
+            "FlexGraphqlRuntime is not registered",
+        );
     }
 }
