@@ -569,25 +569,24 @@ async fn create_localized_definition(
     database: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> TestResult<Uuid> {
-    let (definition, _) =
-        GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)
-            .create(
-                database,
-                tenant_id,
-                Some(Uuid::new_v4()),
-                CreateFieldDefinitionCommand {
-                    field_key: "tagline".to_string(),
-                    field_type: FieldType::Text,
-                    label: HashMap::from([("en".to_string(), "Tagline".to_string())]),
-                    description: None,
-                    is_localized: true,
-                    is_required: true,
-                    default_value: None,
-                    validation: None,
-                    position: None,
-                },
-            )
-            .await?;
+    let (definition, _) = GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)
+        .create(
+            database,
+            tenant_id,
+            Some(Uuid::new_v4()),
+            CreateFieldDefinitionCommand {
+                field_key: "tagline".to_string(),
+                field_type: FieldType::Text,
+                label: HashMap::from([("en".to_string(), "Tagline".to_string())]),
+                description: None,
+                is_localized: true,
+                is_required: true,
+                default_value: None,
+                validation: None,
+                position: None,
+            },
+        )
+        .await?;
     Ok(definition.id)
 }
 
