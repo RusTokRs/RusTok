@@ -6,6 +6,7 @@ use flex::graphql::AttachedValuesGraphqlPort;
 use flex::{
     CreateFieldDefinitionCommand, FieldDefinitionService, FlexModule,
     GenericAttachedFieldDefinitionService, TAXONOMY_CATEGORY_ENTITY_TYPE,
+    UpdateFieldDefinitionCommand,
 };
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
 use rustok_core::{ModuleRegistry, SecurityContext, UserRole, field_schema::FieldType};
@@ -14,7 +15,9 @@ use rustok_server::{
     auth::AuthConfig,
     common::settings::RustokSettings,
     services::{
-        flex_attached_values::FlexAttachedValuesGraphqlAdapter,
+        flex_attached_values::{
+            FlexAttachedValuesGraphqlAdapter, FlexTaxonomyCategoryDeleteCleanup,
+        },
         module_event_dispatcher::build_shared_runtime_extensions_with_host_providers,
         server_runtime_context::ServerRuntimeContext,
     },
@@ -28,8 +31,9 @@ use rustok_test_utils::{
 };
 use rustok_translation_targets::{
     ListTranslationResourcesRequest, OwnerSlug, ReadTranslationResourceRequest, ResourceKind,
-    TranslationFieldPatch, TranslationPatchRequest, TranslationTargetChangesRequest,
-    TranslationTargetProgressRequest, TranslationTargetProvider, translation_target_registry,
+    TranslationFieldPatch, TranslationPatchRequest, TranslationResourceLifecycle,
+    TranslationTargetChangesRequest, TranslationTargetProgressRequest, TranslationTargetProvider,
+    translation_target_registry,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
@@ -73,7 +77,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     seed_tenant(&seed_connection, tenant_id).await?;
     let category_id = create_category(&seed_connection, tenant_id).await?;
-    create_localized_definition(&seed_connection, tenant_id).await?;
+    let field_definition_id = create_localized_definition(&seed_connection, tenant_id).await?;
 
     let values = FlexAttachedValuesGraphqlAdapter::new(seed_connection.clone());
     let source = values
@@ -235,9 +239,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .first()
         .ok_or_else(|| test_error("winning Flex attached patch has no field"))?
         .value
-        .as_str();
+        .as_str()
+        .to_string();
     if applied.fields.len() != 1
-        || applied.fields[0].exact_target_value.as_deref() != Some(expected_value)
+        || applied.fields[0].exact_target_value.as_deref() != Some(expected_value.as_str())
         || applied.summary.resource_revision != receipt.resource_revision
         || applied.target_revision.as_ref() != Some(&receipt.target_revision)
     {
@@ -259,6 +264,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     if target_changes.changes.len() != 1
         || target_changes.changes[0].identity != identity
         || target_changes.changes[0].resource_revision != receipt.resource_revision
+        || target_changes.changes[0].lifecycle != TranslationResourceLifecycle::Active
     {
         return Err(test_error(format!(
             "unexpected bounded Flex attached target change page: {target_changes:?}"
@@ -324,8 +330,179 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .into());
     }
 
+    GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)
+        .update(
+            &seed_connection,
+            tenant_id,
+            Some(Uuid::new_v4()),
+            field_definition_id,
+            UpdateFieldDefinitionCommand {
+                is_required: Some(false),
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let schema_changes = recovery_provider
+        .read_changes(
+            read_context(tenant_id, "schema-fanout-cursor"),
+            TranslationTargetChangesRequest {
+                after: Some(target_cursor),
+                limit: 10,
+            },
+        )
+        .await?;
+    if schema_changes.changes.len() != 1
+        || schema_changes.changes[0].identity != identity
+        || schema_changes.changes[0].lifecycle != TranslationResourceLifecycle::Active
+        || schema_changes.changes[0].resource_revision == receipt.resource_revision
+    {
+        return Err(test_error(format!(
+            "translation-relevant Flex schema update did not fan out one active resource change: {schema_changes:?}"
+        ))
+        .into());
+    }
+    let schema_revision = schema_changes.changes[0].resource_revision.clone();
+    let schema_cursor = schema_changes
+        .next_cursor
+        .ok_or_else(|| test_error("schema fan-out Flex attached change cursor is missing"))?;
+
+    let schema_snapshot = recovery_provider
+        .read_resource(
+            read_context(tenant_id, "schema-fanout-read"),
+            read_request.clone(),
+        )
+        .await?;
+    if schema_snapshot.summary.resource_revision != schema_revision
+        || schema_snapshot.fields.len() != 1
+        || schema_snapshot.fields[0].exact_target_value.as_deref() != Some(expected_value.as_str())
+    {
+        return Err(test_error(format!(
+            "schema fan-out did not preserve exact values under the new aggregate revision: {schema_snapshot:?}"
+        ))
+        .into());
+    }
+
+    let schema_progress = recovery_provider
+        .read_progress(
+            read_context(tenant_id, "schema-fanout-progress"),
+            TranslationTargetProgressRequest {
+                source_locale: TenantLocale::new("en")?,
+                target_locale: TenantLocale::new("fr")?,
+            },
+        )
+        .await?;
+    if schema_progress.resources != 1
+        || schema_progress.complete_resources != 1
+        || schema_progress.required_units != 0
+        || schema_progress.exact_required_units != 0
+        || schema_progress.optional_units != 1
+        || schema_progress.exact_optional_units != 1
+        || schema_progress.owner_change_cursor.as_ref() != Some(&schema_cursor)
+    {
+        return Err(test_error(format!(
+            "schema fan-out did not recompute Flex attached progress from the live definition: {schema_progress:?}"
+        ))
+        .into());
+    }
+
+    TaxonomyService::new(seed_connection.clone())
+        .delete_category_with_cleanup(
+            tenant_id,
+            category_id,
+            admin(),
+            &FlexTaxonomyCategoryDeleteCleanup,
+        )
+        .await?;
+
     drop(recovery_provider);
     recovery_connection.close().await?;
+
+    let deletion_connection = connect_postgres(database_url).await?;
+    let deletion_provider = registered_provider(deletion_connection.clone())?;
+    let deletion_changes = deletion_provider
+        .read_changes(
+            read_context(tenant_id, "deletion-cursor"),
+            TranslationTargetChangesRequest {
+                after: Some(schema_cursor),
+                limit: 10,
+            },
+        )
+        .await?;
+    let expected_deleted_revision =
+        format!("deleted:{TAXONOMY_CATEGORY_ENTITY_TYPE}:{category_id}");
+    if deletion_changes.changes.len() != 1
+        || deletion_changes.changes[0].identity != identity
+        || deletion_changes.changes[0].lifecycle != TranslationResourceLifecycle::Deleted
+        || deletion_changes.changes[0].resource_revision.as_str()
+            != expected_deleted_revision.as_str()
+    {
+        return Err(test_error(format!(
+            "Category hard delete did not retain the final Flex attached tombstone: {deletion_changes:?}"
+        ))
+        .into());
+    }
+    let deletion_cursor = deletion_changes
+        .next_cursor
+        .ok_or_else(|| test_error("deleted Flex attached change cursor is missing"))?;
+
+    let deleted_read = deletion_provider
+        .read_resource(
+            read_context(tenant_id, "deletion-read"),
+            read_request.clone(),
+        )
+        .await
+        .expect_err("hard-deleted Category must not remain readable through Flex Translation");
+    if deleted_read.kind != PortErrorKind::NotFound {
+        return Err(test_error(format!(
+            "hard-deleted Flex attached resource returned unexpected read error: {deleted_read:?}"
+        ))
+        .into());
+    }
+
+    let deleted_list = deletion_provider
+        .list_resources(
+            read_context(tenant_id, "deletion-list"),
+            ListTranslationResourcesRequest {
+                source_locale: TenantLocale::new("en")?,
+                target_locale: TenantLocale::new("fr")?,
+                cursor: None,
+                limit: 10,
+            },
+        )
+        .await?;
+    if !deleted_list.resources.is_empty() {
+        return Err(test_error(format!(
+            "hard-deleted Category remained in Flex attached Translation inventory: {deleted_list:?}"
+        ))
+        .into());
+    }
+
+    let deleted_progress = deletion_provider
+        .read_progress(
+            read_context(tenant_id, "deletion-progress"),
+            TranslationTargetProgressRequest {
+                source_locale: TenantLocale::new("en")?,
+                target_locale: TenantLocale::new("fr")?,
+            },
+        )
+        .await?;
+    if deleted_progress.resources != 0
+        || deleted_progress.complete_resources != 0
+        || deleted_progress.required_units != 0
+        || deleted_progress.exact_required_units != 0
+        || deleted_progress.optional_units != 0
+        || deleted_progress.exact_optional_units != 0
+        || deleted_progress.owner_change_cursor.as_ref() != Some(&deletion_cursor)
+    {
+        return Err(test_error(format!(
+            "hard-deleted Flex attached resource remained in aggregate progress: {deleted_progress:?}"
+        ))
+        .into());
+    }
+
+    drop(deletion_provider);
+    deletion_connection.close().await?;
     seed_connection.close().await?;
     tokio::time::sleep(Duration::from_millis(200)).await;
     Ok(())
@@ -391,26 +568,27 @@ async fn create_category(database: &DatabaseConnection, tenant_id: Uuid) -> Test
 async fn create_localized_definition(
     database: &DatabaseConnection,
     tenant_id: Uuid,
-) -> TestResult<()> {
-    GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)
-        .create(
-            database,
-            tenant_id,
-            Some(Uuid::new_v4()),
-            CreateFieldDefinitionCommand {
-                field_key: "tagline".to_string(),
-                field_type: FieldType::Text,
-                label: HashMap::from([("en".to_string(), "Tagline".to_string())]),
-                description: None,
-                is_localized: true,
-                is_required: true,
-                default_value: None,
-                validation: None,
-                position: None,
-            },
-        )
-        .await?;
-    Ok(())
+) -> TestResult<Uuid> {
+    let (definition, _) =
+        GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)
+            .create(
+                database,
+                tenant_id,
+                Some(Uuid::new_v4()),
+                CreateFieldDefinitionCommand {
+                    field_key: "tagline".to_string(),
+                    field_type: FieldType::Text,
+                    label: HashMap::from([("en".to_string(), "Tagline".to_string())]),
+                    description: None,
+                    is_localized: true,
+                    is_required: true,
+                    default_value: None,
+                    validation: None,
+                    position: None,
+                },
+            )
+            .await?;
+    Ok(definition.id)
 }
 
 fn patch_from_snapshot(
