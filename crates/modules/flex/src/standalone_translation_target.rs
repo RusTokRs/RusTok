@@ -25,8 +25,7 @@ use crate::{
     FlexStandaloneTranslationError, FlexStandaloneTranslationExactLocaleApply,
     FlexStandaloneTranslationExactLocaleApplyReceipt, FlexStandaloneTranslationExactLocaleSnapshot,
     FlexStandaloneTranslationLeaf, FlexStandaloneTranslationOperationContext,
-    FlexStandaloneTranslationOwnerPort, FlexStandaloneTranslationResult,
-    FlexStandaloneTranslationTargetValue,
+    FlexStandaloneTranslationOwnerPort, FlexStandaloneTranslationTargetValue,
 };
 
 const TRANSLATION_OWNER_SLUG: &str = "flex";
@@ -127,10 +126,7 @@ impl TranslationTargetProvider for FlexStandaloneTranslationTargetProvider {
             .into_iter()
             .map(summary_from_owner)
             .collect::<Result<Vec<_>, _>>()?;
-        let next_cursor = page
-            .next_after
-            .map(standalone_cursor)
-            .transpose()?;
+        let next_cursor = page.next_after.map(standalone_cursor).transpose()?;
         Ok(TranslationResourcePage {
             resources,
             next_cursor,
@@ -217,7 +213,10 @@ impl TranslationTargetProvider for FlexStandaloneTranslationTargetProvider {
                     source_locale: request.source_locale.as_str().to_string(),
                     target_locale: request.target_locale.as_str().to_string(),
                     target_values,
-                    expected_resource_revision: request.expected_resource_revision.as_str().to_string(),
+                    expected_resource_revision: request
+                        .expected_resource_revision
+                        .as_str()
+                        .to_string(),
                     expected_source_revision: request.expected_source_revision.as_str().to_string(),
                     expected_target_revision: request
                         .expected_target_revision
@@ -298,7 +297,10 @@ fn neutralize_snapshot(
             error.to_string(),
         )
     })?;
-    Ok(NeutralizedSnapshot { snapshot, leaf_by_key })
+    Ok(NeutralizedSnapshot {
+        snapshot,
+        leaf_by_key,
+    })
 }
 
 fn field_snapshot(
@@ -366,7 +368,10 @@ fn merge_target_values(
     Ok(target_values)
 }
 
-fn normalize_target_value(required: bool, value: Option<String>) -> Result<Option<String>, PortError> {
+fn normalize_target_value(
+    required: bool,
+    value: Option<String>,
+) -> Result<Option<String>, PortError> {
     if required {
         return required_target_value(value, "Flex standalone field").map(Some);
     }
@@ -390,7 +395,11 @@ fn neutral_request_fingerprint(request: &TranslationPatchRequest) -> String {
     hash_component(&mut hasher, request.identity.resource_id.as_str());
     hash_optional_component(
         &mut hasher,
-        request.identity.subresource_id.as_ref().map(|value| value.as_str()),
+        request
+            .identity
+            .subresource_id
+            .as_ref()
+            .map(|value| value.as_str()),
     );
     hash_component(&mut hasher, request.source_locale.as_str());
     hash_component(&mut hasher, request.target_locale.as_str());
@@ -398,7 +407,10 @@ fn neutral_request_fingerprint(request: &TranslationPatchRequest) -> String {
     hash_component(&mut hasher, request.expected_source_revision.as_str());
     hash_optional_component(
         &mut hasher,
-        request.expected_target_revision.as_ref().map(|revision| revision.as_str()),
+        request
+            .expected_target_revision
+            .as_ref()
+            .map(|revision| revision.as_str()),
     );
     hash_component(&mut hasher, &request.proposal_id);
     hash_component(&mut hasher, &request.approval_receipt_id);
@@ -410,7 +422,10 @@ fn neutral_request_fingerprint(request: &TranslationPatchRequest) -> String {
         hash_component(&mut hasher, &field.value);
         hash_component(&mut hasher, &field.expected_source_hash);
     }
-    format!("flex-standalone-neutral-patch-v1:{}", hex::encode(hasher.finalize()))
+    format!(
+        "flex-standalone-neutral-patch-v1:{}",
+        hex::encode(hasher.finalize())
+    )
 }
 
 fn hash_optional_component(hasher: &mut Sha256, value: Option<&str>) {
@@ -456,7 +471,11 @@ fn application_receipt(
         provider_receipt_id: format!("flex-standalone:{}", owner.operation_id),
         resource_revision: opaque_revision(owner.resource_revision.clone(), "resource_revision")?,
         target_revision: opaque_revision(owner.target_revision.clone(), "target_revision")?,
-        applied_field_keys: request.fields.iter().map(|field| field.key.clone()).collect(),
+        applied_field_keys: request
+            .fields
+            .iter()
+            .map(|field| field.key.clone())
+            .collect(),
     })
 }
 
@@ -477,13 +496,12 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<(Uuid, Uuid)
             "Flex standalone translation identity must address flex/standalone_localized_value",
         ));
     }
-    let schema_id = identity
-        .subresource_id
-        .as_ref()
-        .ok_or_else(|| PortError::validation(
+    let schema_id = identity.subresource_id.as_ref().ok_or_else(|| {
+        PortError::validation(
             "flex.standalone_translation_schema_id_missing",
             "Flex standalone translation identity requires schema_id as subresource_id",
-        ))?;
+        )
+    })?;
     Ok((
         parse_non_nil_uuid(
             schema_id.as_str(),

@@ -17,9 +17,9 @@ use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition};
 use rustok_events::DomainEvent;
 use rustok_outbox::{TransactionalEventBus, idempotency};
 use sea_orm::{
-    AccessMode, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
-    DatabaseBackend, DatabaseConnection, EntityTrait, FromQueryResult, IsolationLevel, QueryFilter,
-    QueryOrder, QuerySelect, Statement, TransactionTrait,
+    AccessMode, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, EntityTrait, FromQueryResult, IsolationLevel, QueryFilter, QueryOrder,
+    QuerySelect, Statement, TransactionTrait,
 };
 use serde::Serialize;
 use serde_json::{Map, Value as JsonValue};
@@ -140,7 +140,10 @@ impl ServerFlexStandaloneTranslationOwner {
             .one(&txn)
             .await
             .map_err(database_error)?
-            .ok_or(FlexStandaloneTranslationError::EntryNotFound { schema_id, entry_id })?;
+            .ok_or(FlexStandaloneTranslationError::EntryNotFound {
+                schema_id,
+                entry_id,
+            })?;
         let definitions = eligible_definitions(schema.fields_config.clone())?;
         validate_requested_targets(&definitions, &requested)?;
 
@@ -491,13 +494,19 @@ async fn build_snapshot_in<C: ConnectionTrait>(
         .one(db)
         .await
         .map_err(database_error)?
-        .ok_or(FlexStandaloneTranslationError::EntryNotFound { schema_id, entry_id })?;
+        .ok_or(FlexStandaloneTranslationError::EntryNotFound {
+            schema_id,
+            entry_id,
+        })?;
     let schema = flex_schemas::Entity::find_by_id(schema_id)
         .filter(flex_schemas::Column::TenantId.eq(tenant_id))
         .one(db)
         .await
         .map_err(database_error)?
-        .ok_or(FlexStandaloneTranslationError::EntryNotFound { schema_id, entry_id })?;
+        .ok_or(FlexStandaloneTranslationError::EntryNotFound {
+            schema_id,
+            entry_id,
+        })?;
     let definitions = eligible_definitions(schema.fields_config.clone())?;
     if definitions.is_empty() {
         return Err(FlexStandaloneTranslationError::SourceLocaleNotFound {
@@ -513,11 +522,8 @@ async fn build_snapshot_in<C: ConnectionTrait>(
         .await
         .map_err(database_error)?;
     let source_row = localized.iter().find(|row| row.locale == source_locale);
-    let source_values = exact_values_for_locale(
-        &definitions,
-        source_row.map(|row| &row.data),
-        source_locale,
-    )?;
+    let source_values =
+        exact_values_for_locale(&definitions, source_row.map(|row| &row.data), source_locale)?;
     if source_values.is_empty() {
         return Err(FlexStandaloneTranslationError::SourceLocaleNotFound {
             schema_id,
@@ -526,11 +532,8 @@ async fn build_snapshot_in<C: ConnectionTrait>(
         });
     }
     let target_row = localized.iter().find(|row| row.locale == target_locale);
-    let target_values = exact_values_for_locale(
-        &definitions,
-        target_row.map(|row| &row.data),
-        target_locale,
-    )?;
+    let target_values =
+        exact_values_for_locale(&definitions, target_row.map(|row| &row.data), target_locale)?;
     let revision = RevisionRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "SELECT revision FROM flex_standalone_translation_resource_state WHERE tenant_id = $1 AND entry_id = $2",
@@ -556,12 +559,14 @@ async fn build_snapshot_in<C: ConnectionTrait>(
         .collect::<BTreeMap<_, _>>();
     let leaves = source_values
         .iter()
-        .map(|(leaf, source_value)| FlexStandaloneTranslationLeafSnapshot {
-            leaf: leaf.clone(),
-            required: *required.get(leaf.field_key.as_str()).unwrap_or(&false),
-            source_value: source_value.clone(),
-            target_value: target_values.get(leaf).cloned(),
-        })
+        .map(
+            |(leaf, source_value)| FlexStandaloneTranslationLeafSnapshot {
+                leaf: leaf.clone(),
+                required: *required.get(leaf.field_key.as_str()).unwrap_or(&false),
+                source_value: source_value.clone(),
+                target_value: target_values.get(leaf).cloned(),
+            },
+        )
         .collect::<Vec<_>>();
     let mut exact_locales = Vec::new();
     for row in &localized {
@@ -713,7 +718,10 @@ fn locale_revision(
         hash_str(&mut hasher, &leaf.field_key);
         hash_str(&mut hasher, value);
     }
-    format!("flex-standalone-locale-v1:{}", hex::encode(hasher.finalize()))
+    format!(
+        "flex-standalone-locale-v1:{}",
+        hex::encode(hasher.finalize())
+    )
 }
 
 fn hash_str(hasher: &mut Sha256, value: &str) {
@@ -777,10 +785,7 @@ fn observe_snapshot(
     Ok(())
 }
 
-fn checked_increment(
-    value: &mut u64,
-    label: &str,
-) -> FlexStandaloneTranslationResult<()> {
+fn checked_increment(value: &mut u64, label: &str) -> FlexStandaloneTranslationResult<()> {
     *value = value.checked_add(1).ok_or_else(|| {
         FlexStandaloneTranslationError::OwnerInvariant(format!(
             "standalone Translation progress `{label}` overflowed u64"
@@ -796,11 +801,11 @@ fn decode_receipt(
 ) -> FlexStandaloneTranslationResult<FlexStandaloneTranslationExactLocaleApplyReceipt> {
     let receipt: FlexStandaloneTranslationExactLocaleApplyReceipt = serde_json::from_value(value)
         .map_err(|error| {
-            FlexStandaloneTranslationError::Operation(PortError::invariant_violation(
-                "outbox.operation_receipt_corrupt",
-                error.to_string(),
-            ))
-        })?;
+        FlexStandaloneTranslationError::Operation(PortError::invariant_violation(
+            "outbox.operation_receipt_corrupt",
+            error.to_string(),
+        ))
+    })?;
     if receipt.schema_id != expected_schema_id
         || receipt.entry_id != expected_entry_id
         || receipt.operation_id.is_nil()

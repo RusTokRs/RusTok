@@ -9,7 +9,7 @@ fn main() {
     }
 
     let dist = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"))
-        .join("../../packages/richtext/dist");
+        .join("../../../packages/richtext/dist");
     let manifest_path = dist.join("asset-manifest.json");
     println!("cargo:rerun-if-changed={}", manifest_path.display());
     let manifest: serde_json::Value =

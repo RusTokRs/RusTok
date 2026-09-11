@@ -28,7 +28,7 @@ extend-ignore-re = [
   "\\b[Pp]rodukt\\b",
   "\\bOT\\b",
   "(?:FORUM-20BA|forum[-_]20ba|ba1de73)",
-  "\\b(?:RTO|JOD|intoto|categorie|Systemes|systemes|Titel|Suche|Hel)\\b",
+  "\\b(?:RTO|JOD|intoto|[Cc]ategorie|[Cc]opie|Systemes|systemes|Titel|Suche|Hel)\\b",
   "\\bAuThOrIzEd\\b",
   "\\bsitemap_enabeld\\b",
 ]

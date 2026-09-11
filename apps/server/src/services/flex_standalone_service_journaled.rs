@@ -10,8 +10,9 @@ use async_trait::async_trait;
 use flex::{
     FlexSchemaTranslationChangeLifecycle, FlexSchemaTranslationError,
     flex_schema_translation_deleted_revision, record_flex_schema_translation_change_in_tx,
-    validate_create_entry_command, validate_create_schema_command, validate_optional_standalone_uuid,
-    validate_standalone_uuid, validate_update_entry_command, validate_update_schema_command,
+    validate_create_entry_command, validate_create_schema_command,
+    validate_optional_standalone_uuid, validate_standalone_uuid, validate_update_entry_command,
+    validate_update_schema_command,
 };
 use rustok_api::{
     PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match, normalize_locale_tag,
@@ -312,14 +313,8 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         .insert(&txn)
         .await
         .map_err(|error| FlexError::Database(error.to_string()))?;
-        let localized_data = upsert_entry_localization_on(
-            &txn,
-            row.id,
-            tenant_id,
-            &locale,
-            localized_data,
-        )
-        .await?;
+        let localized_data =
+            upsert_entry_localization_on(&txn, row.id, tenant_id, &locale, localized_data).await?;
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
@@ -369,17 +364,13 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
 
         let existing_row = row.clone();
         let mut model: flex_entries::ActiveModel = row.into();
-        let localized_keys = flex::standalone_localized_field_keys(&schema.build_custom_fields_schema()?);
+        let localized_keys =
+            flex::standalone_localized_field_keys(&schema.build_custom_fields_schema()?);
         let mut resolved_localized_data: Option<JsonValue> = None;
 
         if let Some(data) = input.data {
-            let existing_localized = load_exact_entry_localization_on(
-                &txn,
-                tenant_id,
-                entry_id,
-                &locale,
-            )
-            .await?;
+            let existing_localized =
+                load_exact_entry_localization_on(&txn, tenant_id, entry_id, &locale).await?;
             let merged_data = flex::merge_standalone_entry_patch(
                 &existing_row.data,
                 existing_localized.as_ref().map(|row| &row.data),
@@ -392,14 +383,9 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
                 ..
             } = prepare_entry_write(&schema, merged_data)?;
             model.data = Set(shared_data);
-            resolved_localized_data = upsert_entry_localization_on(
-                &txn,
-                entry_id,
-                tenant_id,
-                &locale,
-                localized_data,
-            )
-            .await?;
+            resolved_localized_data =
+                upsert_entry_localization_on(&txn, entry_id, tenant_id, &locale, localized_data)
+                    .await?;
         }
 
         if let Some(status) = input.status {
@@ -411,14 +397,10 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
         if resolved_localized_data.is_none() {
-            resolved_localized_data = load_exact_entry_localization_on(
-                &txn,
-                tenant_id,
-                updated.id,
-                &locale,
-            )
-            .await?
-            .map(|row| row.data);
+            resolved_localized_data =
+                load_exact_entry_localization_on(&txn, tenant_id, updated.id, &locale)
+                    .await?
+                    .map(|row| row.data);
         }
         txn.commit()
             .await
@@ -561,8 +543,8 @@ async fn load_exact_entry_localization_on<C>(
 where
     C: ConnectionTrait,
 {
-    let locale = normalize_locale_tag(locale)
-        .ok_or_else(|| FlexError::InvalidLocale(locale.to_string()))?;
+    let locale =
+        normalize_locale_tag(locale).ok_or_else(|| FlexError::InvalidLocale(locale.to_string()))?;
     flex_entry_localized_values::Entity::find()
         .filter(flex_entry_localized_values::Column::EntryId.eq(entry_id))
         .filter(flex_entry_localized_values::Column::TenantId.eq(tenant_id))
@@ -582,8 +564,8 @@ async fn upsert_entry_localization_on<C>(
 where
     C: ConnectionTrait,
 {
-    let locale = normalize_locale_tag(locale)
-        .ok_or_else(|| FlexError::InvalidLocale(locale.to_string()))?;
+    let locale =
+        normalize_locale_tag(locale).ok_or_else(|| FlexError::InvalidLocale(locale.to_string()))?;
     let existing = flex_entry_localized_values::Entity::find()
         .filter(flex_entry_localized_values::Column::EntryId.eq(entry_id))
         .filter(flex_entry_localized_values::Column::TenantId.eq(tenant_id))

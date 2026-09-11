@@ -8,9 +8,10 @@ use rustok_translation_targets::{
     TranslationApplicationReceipt, TranslationPatchRequest, TranslationPatchValidation,
     TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
     TranslationTargetCapability, TranslationTargetChange, TranslationTargetChangePage,
-    TranslationTargetChangesRequest, TranslationTargetProgressFacts, TranslationTargetProgressRequest,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor,
-    provider_support::contract_validation_error, validate_translation_read_context,
+    TranslationTargetChangesRequest, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, provider_support::contract_validation_error,
+    validate_translation_read_context,
 };
 use uuid::Uuid;
 
@@ -38,7 +39,9 @@ impl FlexStandaloneTranslationProgressTargetProvider {
         changes: Arc<dyn FlexStandaloneTranslationChangeOwnerPort>,
     ) -> FlexStandaloneTranslationResult<Self> {
         Ok(Self {
-            inner: standalone_translation_target::FlexStandaloneTranslationTargetProvider::new(owner),
+            inner: standalone_translation_target::FlexStandaloneTranslationTargetProvider::new(
+                owner,
+            ),
             progress,
             changes,
         })
@@ -125,7 +128,9 @@ impl TranslationTargetProvider for FlexStandaloneTranslationProgressTargetProvid
             if before != after {
                 continue;
             }
-            owner.validate().map_err(progress_owner_error_to_port_error)?;
+            owner
+                .validate()
+                .map_err(progress_owner_error_to_port_error)?;
             let facts = TranslationTargetProgressFacts {
                 required_units: owner.required_units,
                 exact_required_units: owner.exact_required_units,
@@ -163,7 +168,11 @@ impl TranslationTargetProvider for FlexStandaloneTranslationProgressTargetProvid
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
-        let parsed = request.after.as_ref().map(parse_change_cursor).transpose()?;
+        let parsed = request
+            .after
+            .as_ref()
+            .map(parse_change_cursor)
+            .transpose()?;
         let (through, after) = match parsed {
             Some((through, after)) if through == after => {
                 let current = self

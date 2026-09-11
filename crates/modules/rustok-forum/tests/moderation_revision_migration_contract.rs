@@ -245,7 +245,7 @@ async fn exercise_revision_triggers(db: &DatabaseConnection, seed: ForumSeed) ->
     let backend = db.get_database_backend();
     let tid = sql_uuid(backend, seed.tenant_id);
     let topid = sql_uuid(backend, seed.topic_id);
-    let repid = sql_uuid(backend, seed.reply_id);
+    let reply_sql_id = sql_uuid(backend, seed.reply_id);
 
     db.execute_unprepared(&format!(
         "UPDATE forum_topics SET metadata = '{{\"clock\":true}}' WHERE tenant_id = {tid} AND id = {topid}"
@@ -291,7 +291,7 @@ async fn exercise_revision_triggers(db: &DatabaseConnection, seed: ForumSeed) ->
     assert_eq!(topic_revision(db, seed.tenant_id, seed.topic_id).await?, 6);
 
     db.execute_unprepared(&format!(
-        "UPDATE forum_replies SET status = 'hidden' WHERE tenant_id = {tid} AND id = {repid}"
+        "UPDATE forum_replies SET status = 'hidden' WHERE tenant_id = {tid} AND id = {reply_sql_id}"
     ))
     .await?;
     assert_eq!(reply_revision(db, seed.tenant_id, seed.reply_id).await?, 2);
@@ -303,7 +303,7 @@ async fn exercise_revision_triggers(db: &DatabaseConnection, seed: ForumSeed) ->
         INSERT INTO forum_reply_bodies
             (id, tenant_id, reply_id, locale, body)
         VALUES
-            ({bid}, {tid}, {repid}, 'en', 'Clock reply body')
+            ({bid}, {tid}, {reply_sql_id}, 'en', 'Clock reply body')
         "#
     ))
     .await?;
@@ -322,7 +322,7 @@ async fn exercise_revision_triggers(db: &DatabaseConnection, seed: ForumSeed) ->
     assert_eq!(reply_revision(db, seed.tenant_id, seed.reply_id).await?, 5);
 
     db.execute_unprepared(&format!(
-        "UPDATE forum_replies SET updated_at = updated_at WHERE tenant_id = {tid} AND id = {repid}"
+        "UPDATE forum_replies SET updated_at = updated_at WHERE tenant_id = {tid} AND id = {reply_sql_id}"
     ))
     .await?;
     assert_eq!(reply_revision(db, seed.tenant_id, seed.reply_id).await?, 5);
@@ -337,7 +337,7 @@ async fn assert_new_subject_initialization(
     let new_reply = Uuid::new_v4();
     let backend = db.get_database_backend();
     let ntopid = sql_uuid(backend, new_topic);
-    let nrepid = sql_uuid(backend, new_reply);
+    let new_reply_sql_id = sql_uuid(backend, new_reply);
     let tid = sql_uuid(backend, seed.tenant_id);
     let cid = sql_uuid(backend, seed.category_id);
     db.execute_unprepared(&format!(
@@ -349,7 +349,7 @@ async fn assert_new_subject_initialization(
         INSERT INTO forum_replies
             (id, tenant_id, topic_id, status, position)
         VALUES
-            ({nrepid}, {tid}, {ntopid}, 'approved', 2);
+            ({new_reply_sql_id}, {tid}, {ntopid}, 'approved', 2);
         "#
     ))
     .await?;
@@ -363,7 +363,7 @@ async fn assert_new_subject_revisions(
 ) -> TestResult<()> {
     let backend = db.get_database_backend();
     let topid = sql_uuid(backend, topic_id);
-    let repid = sql_uuid(backend, reply_id);
+    let reply_sql_id = sql_uuid(backend, reply_id);
     let topic = scalar_i64(
         db,
         &format!(
@@ -374,7 +374,7 @@ async fn assert_new_subject_revisions(
     let reply = scalar_i64(
         db,
         &format!(
-            "SELECT revision AS value FROM forum_reply_moderation_subject_revisions WHERE reply_id = {repid}"
+            "SELECT revision AS value FROM forum_reply_moderation_subject_revisions WHERE reply_id = {reply_sql_id}"
         ),
     )
     .await?;
@@ -407,11 +407,11 @@ async fn reply_revision(
 ) -> TestResult<i64> {
     let backend = db.get_database_backend();
     let tid = sql_uuid(backend, tenant_id);
-    let repid = sql_uuid(backend, reply_id);
+    let reply_sql_id = sql_uuid(backend, reply_id);
     scalar_i64(
         db,
         &format!(
-            "SELECT revision AS value FROM forum_reply_moderation_subject_revisions WHERE tenant_id = {tid} AND reply_id = {repid}"
+            "SELECT revision AS value FROM forum_reply_moderation_subject_revisions WHERE tenant_id = {tid} AND reply_id = {reply_sql_id}"
         ),
     )
     .await

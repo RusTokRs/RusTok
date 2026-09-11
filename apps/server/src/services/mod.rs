@@ -209,9 +209,8 @@ pub mod module_event_dispatcher {
                     event_bus,
                 ),
             );
-            let standalone_changes = Arc::new(flex::FlexStandaloneTranslationChangeReader::new(
-                db.clone(),
-            ));
+            let standalone_changes =
+                Arc::new(flex::FlexStandaloneTranslationChangeReader::new(db.clone()));
             let standalone_provider = flex::FlexStandaloneTranslationProgressTargetProvider::new(
                 standalone_owner.clone(),
                 standalone_owner,
@@ -508,8 +507,8 @@ pub mod flex_attached_translation_progress_owner;
 pub mod flex_attached_values;
 pub mod flex_schema_translation_owner;
 pub mod flex_schema_translation_progress_owner;
-pub mod flex_standalone_translation_owner;
 #[path = "flex_standalone_service_journaled.rs"]
 pub mod flex_standalone_service;
 #[path = "flex_standalone_service.rs"]
 mod flex_standalone_service_legacy;
+pub mod flex_standalone_translation_owner;

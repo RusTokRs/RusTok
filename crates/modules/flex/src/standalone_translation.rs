@@ -177,7 +177,10 @@ impl FlexStandaloneTranslationExactLocaleApply {
     pub fn validate_admission(&self) -> FlexStandaloneTranslationResult<()> {
         self.operation.validate()?;
         validate_flex_standalone_translation_locale_pair(&self.source_locale, &self.target_locale)?;
-        validate_nonblank(&self.expected_resource_revision, "expected_resource_revision")?;
+        validate_nonblank(
+            &self.expected_resource_revision,
+            "expected_resource_revision",
+        )?;
         validate_nonblank(&self.expected_source_revision, "expected_source_revision")?;
         if let Some(revision) = &self.expected_target_revision {
             validate_nonblank(revision, "expected_target_revision")?;
@@ -229,9 +232,18 @@ pub struct FlexStandaloneTranslationExactLocaleApplyReceipt {
 #[derive(Debug)]
 pub enum FlexStandaloneTranslationError {
     Invalid(String),
-    EntryNotFound { schema_id: Uuid, entry_id: Uuid },
-    SourceLocaleNotFound { schema_id: Uuid, entry_id: Uuid, locale: String },
-    RevisionConflict { revision: &'static str },
+    EntryNotFound {
+        schema_id: Uuid,
+        entry_id: Uuid,
+    },
+    SourceLocaleNotFound {
+        schema_id: Uuid,
+        entry_id: Uuid,
+        locale: String,
+    },
+    RevisionConflict {
+        revision: &'static str,
+    },
     Operation(PortError),
     Storage(String),
     OwnerInvariant(String),
@@ -241,10 +253,20 @@ impl fmt::Display for FlexStandaloneTranslationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Invalid(message) => formatter.write_str(message),
-            Self::EntryNotFound { schema_id, entry_id } => {
-                write!(formatter, "Flex standalone entry not found: {schema_id}/{entry_id}")
+            Self::EntryNotFound {
+                schema_id,
+                entry_id,
+            } => {
+                write!(
+                    formatter,
+                    "Flex standalone entry not found: {schema_id}/{entry_id}"
+                )
             }
-            Self::SourceLocaleNotFound { schema_id, entry_id, locale } => write!(
+            Self::SourceLocaleNotFound {
+                schema_id,
+                entry_id,
+                locale,
+            } => write!(
                 formatter,
                 "Flex standalone source locale not found: {locale} for {schema_id}/{entry_id}"
             ),
@@ -257,7 +279,10 @@ impl fmt::Display for FlexStandaloneTranslationError {
                 "Flex standalone translation operation failed: {error}"
             ),
             Self::Storage(message) => {
-                write!(formatter, "Flex standalone translation storage error: {message}")
+                write!(
+                    formatter,
+                    "Flex standalone translation storage error: {message}"
+                )
             }
             Self::OwnerInvariant(message) => write!(
                 formatter,
@@ -296,10 +321,7 @@ pub fn validate_flex_standalone_translation_locale_pair(
     Ok(())
 }
 
-fn validate_authoring_locale(
-    locale: &str,
-    field: &str,
-) -> FlexStandaloneTranslationResult<()> {
+fn validate_authoring_locale(locale: &str, field: &str) -> FlexStandaloneTranslationResult<()> {
     if locale == LEGACY_UNDETERMINED_LOCALE
         || normalize_locale_tag(locale).as_deref() != Some(locale)
     {

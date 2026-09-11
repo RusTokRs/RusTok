@@ -1,7 +1,5 @@
 use async_trait::async_trait;
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement,
-};
+use sea_orm::{DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use uuid::Uuid;
 
 use crate::{FlexStandaloneTranslationError, FlexStandaloneTranslationResult};
@@ -154,8 +152,12 @@ LIMIT $4
             ),
             vec![
                 tenant_id.into(),
-                i64::try_from(after_seq).map_err(|_| invalid_sequence("after"))?.into(),
-                i64::try_from(through_seq).map_err(|_| invalid_sequence("through"))?.into(),
+                i64::try_from(after_seq)
+                    .map_err(|_| invalid_sequence("after"))?
+                    .into(),
+                i64::try_from(through_seq)
+                    .map_err(|_| invalid_sequence("through"))?
+                    .into(),
                 i64::from(limit).into(),
             ],
         ))
