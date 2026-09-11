@@ -294,6 +294,23 @@ pub mod module_event_dispatcher {
             }
         }
 
+        #[cfg(feature = "mod-seo")]
+        {
+            let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
+                rustok_outbox::OutboxTransport::new(db.clone()),
+            ));
+            rustok_seo::register_seo_translation_target_provider(
+                &mut extensions,
+                db.clone(),
+                event_bus,
+            )
+            .map_err(|error| {
+                Error::Message(format!(
+                    "SEO Translation target provider registration failed: {error}"
+                ))
+            })?;
+        }
+
         rustok_index::materialize_postgres_index_query_runtime(&mut extensions, db.clone())
             .map_err(|error| {
                 Error::Message(format!("Index query runtime composition failed: {error}"))
