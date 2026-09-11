@@ -42,7 +42,7 @@ const sources = Object.fromEntries(
 );
 
 for (const marker of [
-  'rustok-server = { path = "../../apps/server", default-features = false }',
+  'rustok-server = { path = "../../../apps/server", default-features = false }',
   "rustok-migrations.workspace = true",
   "rustok-telemetry.workspace = true",
   "rustok-test-utils.workspace = true",

@@ -1418,6 +1418,7 @@ impl ScriptRegistry for SeaOrmStorage {
         // Acquire the current script row through the same revision-CAS predicate
         // before reading review state. The no-op update serializes concurrent
         // review decisions and workspace saves without changing the revision.
+        #[allow(clippy::useless_conversion)]
         let mut assert_current = Entity::update_many()
             .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt).into())
             .filter(Column::Id.eq(command.script_id))
@@ -1568,6 +1569,7 @@ impl ScriptRegistry for SeaOrmStorage {
 
         // Serialize an idempotent replay with deletion and source saves before
         // any stored test evidence is read back to the caller.
+        #[allow(clippy::useless_conversion)]
         let mut assert_current = Entity::update_many()
             .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt).into())
             .filter(Column::Id.eq(command.script_id))
