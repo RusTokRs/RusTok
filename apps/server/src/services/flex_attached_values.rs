@@ -85,6 +85,91 @@ impl FlexAttachedValuesService {
         )
         .await
     }
+    /// Legacy split prepare boundary retained for server callers that still stage writes.
+    /// Canonical registered donor mutations should use [`Self::update_registered_generic_values`]
+    /// so preparation and persistence observe one schema/owner transaction.
+    #[deprecated(note = "use update_registered_generic_values for registered donors")]
+    pub async fn prepare_registered_generic_update(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        entity_type: &str,
+        entity_id: Uuid,
+        locale: &str,
+        payload: Option<Value>,
+    ) -> ServerResult<PreparedAttachedValuesWrite> {
+        ensure_registered_owner_exists(db, tenant_id, entity_type, entity_id).await?;
+        let schema = load_schema(db, tenant_id, entity_type)
+            .await
+            .map_err(map_flex_host_error)?;
+        prepare_generic_attached_values_update(
+            db,
+            attached_ref(tenant_id, entity_type, entity_id),
+            schema,
+            locale,
+            payload,
+        )
+        .await
+        .map_err(map_flex_host_error)
+    }
+
+    /// Compatibility persistence boundary for an already-prepared registered donor write.
+    /// It still shares the schema/owner locks and advances the donor revision, so a staged
+    /// legacy write can never mutate attached values invisibly to Translation CAS.
+    #[deprecated(note = "use update_registered_generic_values for registered donors")]
+    pub async fn persist_registered_generic_values(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        entity_type: &str,
+        entity_id: Uuid,
+        prepared: &PreparedAttachedValuesWrite,
+    ) -> ServerResult<()> {
+        match entity_type {
+            #[cfg(feature = "mod-taxonomy")]
+            TAXONOMY_CATEGORY_ENTITY_TYPE => {
+                let txn = db.begin().await?;
+                let _schema = lock_attached_translation_schema_in_tx(&txn, tenant_id, entity_type)
+                    .await
+                    .map_err(map_flex_host_error)?;
+                let owner =
+                    rustok_taxonomy::lock_category_owner_revision_in_tx(&txn, tenant_id, entity_id)
+                        .await
+                        .map_err(map_taxonomy_owner_error)?;
+                let entity = attached_ref(tenant_id, entity_type, entity_id);
+                let before_shared = load_generic_attached_shared_values(&txn, entity.clone())
+                    .await
+                    .map_err(map_flex_host_error)?;
+                let before_localized = match prepared.locale.as_deref() {
+                    Some(locale) if prepared.localized_values.is_some() => {
+                        load_exact_locale_values(&txn, tenant_id, entity_type, entity_id, locale)
+                            .await
+                            .map_err(map_flex_host_error)?
+                    }
+                    _ => None,
+                };
+                let changed =
+                    prepared_write_changed(&before_shared, before_localized.as_ref(), prepared);
+                if changed {
+                    persist_prepared_generic_attached_values(&txn, entity, prepared)
+                        .await
+                        .map_err(map_flex_host_error)?;
+                    rustok_taxonomy::advance_category_owner_revision_in_tx(
+                        &txn,
+                        tenant_id,
+                        entity_id,
+                        owner.revision,
+                    )
+                    .await
+                    .map_err(map_taxonomy_owner_error)?;
+                }
+                txn.commit().await?;
+                Ok(())
+            }
+            other => Err(Error::BadRequest(format!(
+                "generic Flex owner adapter is not registered for {other}"
+            ))),
+        }
+    }
+
     /// Canonical exact-locale mutation for a registered generic donor.
     ///
     /// Lock order is Flex schema generation -> donor owner. The write is prepared from
