@@ -103,6 +103,11 @@ impl SharedClientRedisCacheBackend {
         Ok(manager)
     }
 
+    async fn reset_connection_manager(&self) {
+        let mut state = self.manager.lock().await;
+        *state = None;
+    }
+
     fn redis_key(&self, key: &str) -> String {
         if self.prefix.is_empty() {
             key.to_string()
@@ -119,7 +124,7 @@ impl CacheBackend for SharedClientRedisCacheBackend {
         let timeout = self.operation_timeout;
         self.circuit_breaker
             .call(|| async move {
-                shared_redis_timeout(timeout, async move {
+                let outcome = shared_redis_timeout(timeout, async move {
                     let mut manager = self.connection_manager().await?;
                     let pong = redis::cmd("PING")
                         .query_async::<String>(&mut manager)
@@ -133,7 +138,11 @@ impl CacheBackend for SharedClientRedisCacheBackend {
                         )))
                     }
                 })
-                .await
+                .await;
+                if outcome.is_err() {
+                    self.reset_connection_manager().await;
+                }
+                outcome
             })
             .await
             .map_err(shared_circuit_error)
@@ -144,7 +153,7 @@ impl CacheBackend for SharedClientRedisCacheBackend {
         let timeout = self.operation_timeout;
         self.circuit_breaker
             .call(|| async move {
-                shared_redis_timeout(timeout, async move {
+                let outcome = shared_redis_timeout(timeout, async move {
                     let mut manager = self.connection_manager().await?;
                     redis::cmd("GET")
                         .arg(redis_key)
@@ -152,7 +161,11 @@ impl CacheBackend for SharedClientRedisCacheBackend {
                         .await
                         .map_err(|error| rustok_core::Error::Cache(error.to_string()))
                 })
-                .await
+                .await;
+                if outcome.is_err() {
+                    self.reset_connection_manager().await;
+                }
+                outcome
             })
             .await
             .map_err(shared_circuit_error)
@@ -175,7 +188,7 @@ impl CacheBackend for SharedClientRedisCacheBackend {
         let timeout = self.operation_timeout;
         self.circuit_breaker
             .call(|| async move {
-                shared_redis_timeout(timeout, async move {
+                let outcome = shared_redis_timeout(timeout, async move {
                     let mut manager = self.connection_manager().await?;
                     redis::cmd("SET")
                         .arg(redis_key)
@@ -186,7 +199,11 @@ impl CacheBackend for SharedClientRedisCacheBackend {
                         .await
                         .map_err(|error| rustok_core::Error::Cache(error.to_string()))
                 })
-                .await
+                .await;
+                if outcome.is_err() {
+                    self.reset_connection_manager().await;
+                }
+                outcome
             })
             .await
             .map_err(shared_circuit_error)
@@ -205,7 +222,7 @@ impl CacheBackend for SharedClientRedisCacheBackend {
         let timeout = self.operation_timeout;
         self.circuit_breaker
             .call(|| async move {
-                shared_redis_timeout(timeout, async move {
+                let outcome = shared_redis_timeout(timeout, async move {
                     let mut manager = self.connection_manager().await?;
                     let applied = redis::cmd("EVAL")
                         .arg(SHARED_REDIS_COMPARE_AND_SET_SCRIPT)
@@ -225,7 +242,11 @@ impl CacheBackend for SharedClientRedisCacheBackend {
                         ))),
                     }
                 })
-                .await
+                .await;
+                if outcome.is_err() {
+                    self.reset_connection_manager().await;
+                }
+                outcome
             })
             .await
             .map_err(shared_circuit_error)
@@ -236,7 +257,7 @@ impl CacheBackend for SharedClientRedisCacheBackend {
         let timeout = self.operation_timeout;
         self.circuit_breaker
             .call(|| async move {
-                shared_redis_timeout(timeout, async move {
+                let outcome = shared_redis_timeout(timeout, async move {
                     let mut manager = self.connection_manager().await?;
                     redis::cmd("DEL")
                         .arg(redis_key)
@@ -244,7 +265,11 @@ impl CacheBackend for SharedClientRedisCacheBackend {
                         .await
                         .map_err(|error| rustok_core::Error::Cache(error.to_string()))
                 })
-                .await
+                .await;
+                if outcome.is_err() {
+                    self.reset_connection_manager().await;
+                }
+                outcome
             })
             .await
             .map_err(shared_circuit_error)

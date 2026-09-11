@@ -343,6 +343,7 @@ async fn install_mysql_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr> 
 
 #[derive(Iden)]
 enum MarketplaceReversalAdaptationFailure {
+    #[iden = "marketplace_reversal_adaptation_failures"]
     Table,
     Id,
     TenantId,

@@ -1,5 +1,6 @@
 use rustok_cache::{CacheInvalidationMessage, CacheService};
 
+#[cfg(feature = "redis-cache")]
 #[tokio::test]
 async fn unavailable_redis_counts_one_publish_failure_without_losing_local_delivery() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")
