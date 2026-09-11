@@ -66,7 +66,7 @@ const success = {
 
 async function mountOrderContract(page: Page) {
   const adapterSource = await readFile(adapterPath, 'utf8');
-  await page.goto('/auth/sign-in');
+  await page.goto('/auth/sign-in', { waitUntil: 'networkidle' });
   await page.evaluate(
     (html) => {
       document.body.innerHTML = html;

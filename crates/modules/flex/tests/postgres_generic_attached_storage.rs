@@ -72,7 +72,39 @@ async fn postgres_generic_category_donor_roundtrips_and_advances_definition_gene
         .await
         .expect("PostgreSQL Flex fixture should connect");
     db.execute_unprepared(
-        "CREATE TABLE IF NOT EXISTS flex_attached_localized_values (\
+        "CREATE TABLE IF NOT EXISTS flex_schemas (\
+            id UUID PRIMARY KEY, \
+            tenant_id UUID NOT NULL, \
+            slug VARCHAR(64) NOT NULL DEFAULT 'default', \
+            name VARCHAR(255) NOT NULL DEFAULT 'schema', \
+            description TEXT, \
+            fields_config JSONB NOT NULL DEFAULT '[]', \
+            settings JSONB NOT NULL DEFAULT '{}', \
+            is_active BOOLEAN NOT NULL DEFAULT true, \
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP\
+        ); \
+        CREATE TABLE IF NOT EXISTS flex_entries (\
+            id UUID PRIMARY KEY, \
+            tenant_id UUID NOT NULL, \
+            schema_id UUID NOT NULL, \
+            entity_type VARCHAR(64), \
+            entity_id UUID, \
+            data JSONB NOT NULL DEFAULT '{}', \
+            status VARCHAR(32) NOT NULL DEFAULT 'draft', \
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP\
+        ); \
+        CREATE TABLE IF NOT EXISTS flex_entry_localized_values (\
+            entry_id UUID NOT NULL, \
+            locale VARCHAR(32) NOT NULL, \
+            tenant_id UUID NOT NULL, \
+            data JSONB NOT NULL DEFAULT '{}', \
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+            PRIMARY KEY (entry_id, locale)\
+        ); \
+        CREATE TABLE IF NOT EXISTS flex_attached_localized_values (\
             id UUID PRIMARY KEY, \
             tenant_id UUID NOT NULL, \
             entity_type VARCHAR(64) NOT NULL, \
@@ -86,7 +118,7 @@ async fn postgres_generic_category_donor_roundtrips_and_advances_definition_gene
         )",
     )
     .await
-    .expect("localized attached storage should exist");
+    .expect("prerequisite Flex storage should exist");
     let manager = SchemaManager::new(&db);
     for migration in FlexModule.migrations() {
         migration

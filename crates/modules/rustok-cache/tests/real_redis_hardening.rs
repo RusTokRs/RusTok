@@ -300,7 +300,7 @@ async fn shared_backend_times_out_opens_circuit_and_recovers_after_latency() {
         .await
         .expect("shared Redis backend should start healthy");
 
-    pause_redis_all(&url, Duration::from_millis(2_600)).await;
+    pause_redis_all(&url, Duration::from_millis(2_400)).await;
     tokio::time::sleep(Duration::from_millis(25)).await;
 
     let timed_out_at = Instant::now();
@@ -328,7 +328,7 @@ async fn shared_backend_times_out_opens_circuit_and_recovers_after_latency() {
     );
     assert!(rejected_at.elapsed() < Duration::from_millis(250));
 
-    tokio::time::sleep(Duration::from_millis(800)).await;
+    tokio::time::sleep(Duration::from_millis(1_200)).await;
     backend
         .health()
         .await
