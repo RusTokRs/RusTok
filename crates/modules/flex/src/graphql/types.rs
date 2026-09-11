@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::{
     FieldDefinitionView, FlexAttachedFieldPolicyResolution, FlexDataClassification, FlexEntryView,
-    FlexSchemaView,
+    FlexSchemaView, FlexStandaloneFieldPolicyResolution,
 };
 
 #[derive(Debug, Clone, SimpleObject)]
@@ -117,6 +117,82 @@ pub struct SetAttachedFieldPolicyInput {
 #[derive(Debug, Clone, InputObject)]
 pub struct ResetAttachedFieldPolicyInput {
     pub entity_type: Option<String>,
+    pub field_key: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum StandaloneFieldDataClassification {
+    Public,
+    TenantPrivate,
+    Personal,
+    Sensitive,
+    Secret,
+    ImmutableTransaction,
+}
+
+impl From<FlexDataClassification> for StandaloneFieldDataClassification {
+    fn from(value: FlexDataClassification) -> Self {
+        match value {
+            FlexDataClassification::Public => Self::Public,
+            FlexDataClassification::TenantPrivate => Self::TenantPrivate,
+            FlexDataClassification::Personal => Self::Personal,
+            FlexDataClassification::Sensitive => Self::Sensitive,
+            FlexDataClassification::Secret => Self::Secret,
+            FlexDataClassification::ImmutableTransaction => Self::ImmutableTransaction,
+        }
+    }
+}
+
+impl From<StandaloneFieldDataClassification> for FlexDataClassification {
+    fn from(value: StandaloneFieldDataClassification) -> Self {
+        match value {
+            StandaloneFieldDataClassification::Public => Self::Public,
+            StandaloneFieldDataClassification::TenantPrivate => Self::TenantPrivate,
+            StandaloneFieldDataClassification::Personal => Self::Personal,
+            StandaloneFieldDataClassification::Sensitive => Self::Sensitive,
+            StandaloneFieldDataClassification::Secret => Self::Secret,
+            StandaloneFieldDataClassification::ImmutableTransaction => Self::ImmutableTransaction,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct StandaloneFieldPolicyObject {
+    pub schema_id: Uuid,
+    pub field_key: String,
+    pub classification: StandaloneFieldDataClassification,
+    pub ai_export_allowed: bool,
+    /// False means the effective fail-closed default is in force and no policy row exists.
+    pub explicit: bool,
+}
+
+impl StandaloneFieldPolicyObject {
+    pub(crate) fn from_resolution(
+        schema_id: Uuid,
+        field_key: String,
+        resolution: FlexStandaloneFieldPolicyResolution,
+    ) -> Self {
+        Self {
+            schema_id,
+            field_key,
+            classification: resolution.policy.classification.into(),
+            ai_export_allowed: resolution.policy.ai_export_allowed,
+            explicit: resolution.explicit,
+        }
+    }
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct SetStandaloneFieldPolicyInput {
+    pub schema_id: Uuid,
+    pub field_key: String,
+    pub classification: StandaloneFieldDataClassification,
+    pub ai_export_allowed: bool,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct ResetStandaloneFieldPolicyInput {
+    pub schema_id: Uuid,
     pub field_key: String,
 }
 

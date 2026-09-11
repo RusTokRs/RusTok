@@ -221,6 +221,10 @@ pub mod module_event_dispatcher {
                     "Flex standalone Translation provider composition failed: {error}"
                 ))
             })?;
+            let standalone_provider = flex::FlexStandaloneTranslationPolicyTargetProvider::new(
+                standalone_provider,
+                Arc::new(flex::FlexStandaloneFieldPolicyStore::new(db.clone())),
+            );
             rustok_translation_targets::register_translation_target_provider(
                 &mut extensions,
                 standalone_provider,

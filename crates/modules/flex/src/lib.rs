@@ -37,8 +37,10 @@ pub mod schema_translation_fields;
 pub mod schema_translation_progress_target;
 pub mod schema_translation_target;
 pub mod standalone;
+pub mod standalone_field_policy;
 pub mod standalone_translation;
 pub mod standalone_translation_changes;
+pub mod standalone_translation_policy_target;
 pub mod standalone_translation_progress_target;
 pub mod standalone_translation_target;
 
@@ -159,6 +161,14 @@ pub use standalone::{
     validate_optional_standalone_uuid, validate_standalone_uuid, validate_update_entry_command,
     validate_update_schema_command,
 };
+pub use standalone_field_policy::{
+    FLEX_STANDALONE_FIELD_POLICIES_TABLE, FlexStandaloneFieldPolicy,
+    FlexStandaloneFieldPolicyError, FlexStandaloneFieldPolicyResolution,
+    FlexStandaloneFieldPolicyResolver, FlexStandaloneFieldPolicyResult,
+    FlexStandaloneFieldPolicyStore, delete_standalone_field_policy,
+    resolve_standalone_field_policies, resolve_standalone_field_policy_resolutions,
+    upsert_standalone_field_policy,
+};
 pub use standalone_translation::{
     FlexStandaloneTranslationError, FlexStandaloneTranslationExactLocaleApply,
     FlexStandaloneTranslationExactLocaleApplyReceipt, FlexStandaloneTranslationExactLocaleSnapshot,
@@ -177,6 +187,7 @@ pub use standalone_translation_changes::{
     FlexStandaloneTranslationChangeRecord, MAX_FLEX_STANDALONE_TRANSLATION_CHANGE_PAGE,
     validate_page as validate_flex_standalone_translation_change_page,
 };
+pub use standalone_translation_policy_target::FlexStandaloneTranslationPolicyTargetProvider;
 pub use standalone_translation_progress_target::FlexStandaloneTranslationProgressTargetProvider;
 pub use standalone_translation_target::FlexStandaloneTranslationTargetProvider;
 
@@ -206,6 +217,10 @@ impl MigrationSource for FlexModule {
                     "m20260407_000001_split_flex_entry_localized_values",
                 ],
             ),
+            MigrationDependencyDescriptor::new(
+                "m20260911_000006_add_standalone_field_policies",
+                vec!["m20260317_000001_create_flex_standalone_tables"],
+            ),
         ]
     }
 
@@ -223,6 +238,11 @@ impl MigrationSource for FlexModule {
             ),
             MigrationSafetyMetadata::new(
                 "m20260910_000005_add_standalone_translation_change_journal",
+                MigrationSafetyClass::ExpandContract,
+                MigrationPhaseConstraint::PreActivation,
+            ),
+            MigrationSafetyMetadata::new(
+                "m20260911_000006_add_standalone_field_policies",
                 MigrationSafetyClass::ExpandContract,
                 MigrationPhaseConstraint::PreActivation,
             ),
