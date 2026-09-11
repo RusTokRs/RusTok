@@ -36,7 +36,7 @@ operations, not request-locale selection.
 
 ## Planning status
 
-This is the active cross-cutting implementation plan. As of 2026-09-10:
+This is the active cross-cutting implementation plan. As of 2026-09-11:
 
 - the dependency boundary for machine translation now exists:
   `rustok-translation` owns `MachineTranslationPort`, `rustok-ai` owns
@@ -191,49 +191,57 @@ This is the active cross-cutting implementation plan. As of 2026-09-10:
   `flex_schemas:list` for reads and `flex_schemas:update` for mutations, and
   validates field keys through the existing donor definition registry. Policy
   is live governance metadata and does not manufacture `attached:N` revisions
-  or ChangeCursor rows. Provider status is registered while readiness remains
-  blocked pending retained PostgreSQL migration, concurrency, schema fan-out,
-  hard-delete tombstone, aggregate-progress, idempotent replay, cursor-recovery,
-  and policy/RBAC evidence. Media's exact-locale CAS apply, stable receipt,
-  append-only tenant cursor, and content-free owner event are transactional;
-  every other Media translation write emits the same repair evidence. Its
-  aggregate progress counts only exact target-row values for source-eligible
-  active assets inside a stable cursor window. Translated-asset deletion and
-  failure emit deleted/unavailable cursor evidence, so lifecycle changes cannot
-  leave projection freshness falsely current. Taxonomy's `taxonomy/term`
-  provider exposes exact `name`, review-only `slug`, and optional `description`,
-  applies target-locale resource/source/target CAS, uses the shared owner receipt
-  ledger, and records an append-only owner change cursor. Taxonomy does not claim
-  a global owner-event contract. Blog Category copy follows that canonical
-  Taxonomy provider through the same-ID Blog-to-Taxonomy Category binding. Forum
-  Category copy also follows the canonical Taxonomy provider through the same-ID
-  Forum-to-Taxonomy Category binding. The former `blog/category` provider, Blog
-  change cursor/journal, and Blog-local Category translation storage were
-  retired by TAXONOMY-CAT-8..12; the duplicate Forum `forum/category` provider,
-  change cursor/progress runtime, and donor translation storage are retired
-  after the verified CAT-5 cutover. Those consumer-local provider/storage paths
-  remain historical migration evidence only. Navigation's `navigation/menu`
-  provider applies an exact locale aggregate containing the menu name and every
-  item title through `MenuService`, with resource/source/target CAS, the shared
-  receipt ledger, and a content-free owner cursor; it does not claim a generic
-  menu event. Pages' `pages/page_metadata` provider exposes exact `title`,
-  review-only `slug`, optional `meta_title`, and optional `meta_description`. It
-  applies through `PageService` with page resource/source/target CAS, the shared
-  receipt ledger, a content-free owner cursor, and the existing `NodeUpdated`
-  owner event. Settings registers `modules/static_settings` through the
-  server-owned provider, exposes only owner-admitted localized package fields,
-  reads exact source/target snapshots, progress, and bounded changes through
-  public Settings owner services, and applies deterministic CAS-guarded owner
-  commands with provider-level replay safety. Translation neither reads Settings
-  persistence nor parses manifest storage as a second owner. Fly/GrapesJS bodies
-  remain outside this pilot. Taxonomy-owned tags and Blog posts remain outside
-  this pilot. Focused evidence includes Translation Memory retention run
+  or ChangeCursor rows. The attached `taxonomy.category` surface is now a
+  repository-hosted pilot candidate: exact-head lifecycle run `34594653702`
+  verifies PostgreSQL migrations, multi-replica CAS/conflict, idempotent replay,
+  aggregate-progress stability, translation-relevant schema fan-out,
+  same-transaction hard-delete tombstones, and ChangeCursor recovery; exact-head
+  policy/RBAC run `34592656347` verifies fail-closed defaults, explicit safe
+  admission, forbidden-class rejection, RBAC, unknown-field validation, and
+  policy-only changes without content revision/change evidence. Production
+  enablement remains an operator/live-rollout decision, and standalone Flex
+  localized-value parity remains a separate readiness track. Media's exact-locale
+  CAS apply, stable receipt, append-only tenant cursor, and content-free owner
+  event are transactional; every other Media translation write emits the same
+  repair evidence. Its aggregate progress counts only exact target-row values
+  for source-eligible active assets inside a stable cursor window.
+  Translated-asset deletion and failure emit deleted/unavailable cursor evidence,
+  so lifecycle changes cannot leave projection freshness falsely current.
+  Taxonomy's `taxonomy/term` provider exposes exact `name`, review-only `slug`,
+  and optional `description`, applies target-locale resource/source/target CAS,
+  uses the shared owner receipt ledger, and records an append-only owner change
+  cursor. Taxonomy does not claim a global owner-event contract. Blog Category
+  copy follows that canonical Taxonomy provider through the same-ID Blog-to-
+  Taxonomy Category binding. Forum Category copy also follows the canonical
+  Taxonomy provider through the same-ID Forum-to-Taxonomy Category binding. The
+  former `blog/category` provider, Blog change cursor/journal, and Blog-local
+  Category translation storage were retired by TAXONOMY-CAT-8..12; the
+  duplicate Forum `forum/category` provider, change cursor/progress runtime,
+  and donor translation storage are retired after the verified CAT-5 cutover.
+  Those consumer-local provider/storage paths remain historical migration
+  evidence only. Navigation's `navigation/menu` provider applies an exact locale
+  aggregate containing the menu name and every item title through `MenuService`,
+  with resource/source/target CAS, the shared receipt ledger, and a content-free
+  owner cursor; it does not claim a generic menu event. Pages'
+  `pages/page_metadata` provider exposes exact `title`, review-only `slug`,
+  optional `meta_title`, and optional `meta_description`. It applies through
+  `PageService` with page resource/source/target CAS, the shared receipt ledger,
+  a content-free owner cursor, and the existing `NodeUpdated` owner event.
+  Settings registers `modules/static_settings` through the server-owned provider,
+  exposes only owner-admitted localized package fields, reads exact source/target
+  snapshots, progress, and bounded changes through public Settings owner
+  services, and applies deterministic CAS-guarded owner commands with
+  provider-level replay safety. Translation neither reads Settings persistence
+  nor parses manifest storage as a second owner. Fly/GrapesJS bodies remain
+  outside this pilot. Taxonomy-owned tags and Blog posts remain outside this
+  pilot. Focused evidence includes Translation Memory retention run
   `33539223647`, Pages `page_metadata` run `33545157694`, Navigation
   `navigation/menu` run `33549035590`, Forum Category/Taxonomy cutover run
   `33431200532`, Media `media/asset` PostgreSQL exact-head run `33623651814`
-  plus post-merge `main` run `33635199181`, and Settings
-  `modules/static_settings` runtime composition `33952057144` plus migration
-  approval `33952055814`; no retained Flex attached provider run is claimed yet;
+  plus post-merge `main` run `33635199181`, Settings `modules/static_settings`
+  runtime composition `33952057144` plus migration approval `33952055814`, Flex
+  attached lifecycle `34594653702`, and Flex attached policy/RBAC
+  `34592656347`;
 - module-owned Leptos and Next admin workbenches expose six parity tabs for
   policy, target, inventory, progress, reviewed workflow, versioned glossaries,
   and Translation Memory. Both use URL-owned `glossary_id` and
@@ -362,7 +370,7 @@ Four related planes must remain distinct:
 | Settings | Completed for the onboarded tenant-module static-settings path: stable localized field IDs, sensitivity metadata, owner-local exact-locale storage and source provenance, revisions, bounded changes/progress, replay-safe apply, and registered `modules/static_settings` provider are source/runtime proven | Keep arbitrary config, secrets, URLs, enums, IDs, provider identifiers, executable templates, and untyped JSON excluded; any different settings owner must repeat the same typed owner cutover rather than scan JSON |
 | Richtext | Blog, Forum, and Comments use canonical owner profiles, while UI parity and obsolete shared-helper/migration cleanup remain open | Translate only validated canonical document segments; do not wait for editor-host parity or reintroduce a format/version branch |
 | Page Builder | Fly translation state is project-local and not a platform target provider | Add a Page Builder owner adapter with lossless segment identity and revision checks |
-| Flex exact-locale behavior | Attached `taxonomy.category` exact list/read, revision-safe/idempotent apply, aggregate progress, bounded changes, and reusable attached-field classification/AI-export policy are source-complete and registered; standalone localized-value Translation parity remains open | Collect retained PostgreSQL/concurrency/recovery plus policy/RBAC evidence for the attached provider, preserve fail-closed missing/reset policy and live export-policy reads, and add equivalent durable exact-owner/change semantics before standalone localized-value provider activation |
+| Flex exact-locale behavior | Attached `taxonomy.category` is registered and repository-hosted pilot-candidate evidence now covers exact list/read, concurrent revision-safe/idempotent apply, aggregate progress, bounded changes, schema fan-out, hard-delete tombstones, ChangeCursor recovery, and reusable attached-field classification/AI-export policy; standalone localized-value Translation parity remains open | Preserve fail-closed missing/reset policy and live export-policy reads, retain operator/live rollout evidence separately, and add equivalent durable exact-owner/revision/progress/change semantics before standalone localized-value provider activation |
 | Static catalogs | `rustok-core` match tables and compiled UI bundles are separate systems | Finish the Fluent/catalog ownership track before claiming all platform copy is editable |
 | AI task contract | `AiStructuredTaskPort` defines bounded non-billable estimate plus execute/health/status/cancel and typed attempt/usage/cost evidence. A private canonical implementation binds the exact task descriptor to tenant routing, durable accounting, ordered structured inference/fallback, cancellation, deadlines, and encrypted TTL-bound result replay. Tenant accounting policies have permission-checked GraphQL/native provisioning, the keyring remains deployment-owned, the AI scheduler performs recovery and expiry cleanup, and the production distribution bridge publishes the Translation-owned lazy runtime factory. | Collect live external-provider outage/degradation/restart evidence without routing machine translation through chat sessions |
 | AI task ownership | Completed at contract level: the hard-coded `"translation"` free-locale alias is removed and `rustok-ai-translation` owns `machine_translation` | Keep registration and policy ownership in the support adapter |
@@ -380,7 +388,7 @@ surfaces; it does not replace the storage audit.
 ### Current P0 cleanup ledger
 
 The following repository facts were confirmed during the 2026-07-26 planning
-audit and updated for the 2026-09-10 Translation evidence reconciliation. They
+audit and updated for the 2026-09-11 Translation evidence reconciliation. They
 are explicit preparation work, not implementation details to defer until after
 the module exists.
 
@@ -392,7 +400,7 @@ the module exists.
 | Remove locale DTO drift | Media now converts translation writes to canonical `TenantLocale`; Content, Product, Shipping, and other candidate owners still apply different length/case rules | Every translatable owner accepts the canonical locale type instead of package-local five- or ten-character validators or whole-tag lowercasing |
 | Resolve owner/schema drift | Blog Category/Taxonomy is completed through TAXONOMY-CAT-12: same-ID Taxonomy Category owns canonical localized copy, the separate `blog/category` provider is retired, and Blog donor translation storage/journal are removed. Forum Category/Taxonomy is completed through the verified CAT-5 cutover: same-ID Taxonomy Category owns canonical localized copy, routes, hierarchy and presentation; the duplicate `forum/category` provider and donor translation storage are retired. Product/Commerce Foundation, Pages/Navigation, and Content/SEO still have separate drift to resolve | Keep the Blog and Forum Category ownership guards green; for remaining surfaces, registry/docs/migrations/entities identify one physical and semantic owner and superseded internal paths are deleted atomically |
 | Make owner writes safe | Media, Taxonomy, Navigation menu, Pages metadata, Settings static fields, Flex schema copy, and attached `taxonomy.category` have registered exact-locale providers. They use owner CAS/durable revisions and replay evidence; registered owners expose the documented transactional event or bounded change-cursor repair contract rather than an invented universal event. Attached Flex Category uses one durable `attached:N` resource revision and the Flex-owned bounded ChangeCursor. Settings applies deterministic per-field owner commands behind provider-level replay protection and exposes bounded owner changes/progress without direct Translation SQL. Blog and Forum Category copy are handled through the Taxonomy provider and neither consumer has a duplicate Category provider. Product, Shipping, and other candidates still have full-set or unguarded writes | Each remaining onboarded owner provides atomic one-locale/field apply with source and target revisions, idempotency conflict detection, owner validation, durable owner change evidence, and bounded repair |
-| Correct Flex exact semantics | Attached and standalone authoring reject invalid locales and prepare from an exact target-locale row; presentation fallback remains isolated to explicit read resolution. Attached `taxonomy.category` additionally has provider-facing exact source/target APIs, durable `attached:N` revision-safe/idempotent apply, aggregate progress and bounded ChangeCursor registration. Attached field governance is now Flex-owned through a reusable tenant/entity/field policy plane with fail-closed defaults, forbidden-class validation, and RBAC-guarded GraphQL set/reset over the donor registry | Collect retained attached PostgreSQL/concurrency/recovery and policy/RBAC evidence; preserve fail-closed/live-policy export admission without changing content revisions; complete equivalent exact owner revision/progress/change semantics for standalone localized values |
+| Correct Flex exact semantics | Attached and standalone authoring reject invalid locales and prepare from an exact target-locale row; presentation fallback remains isolated to explicit read resolution. Attached `taxonomy.category` additionally has provider-facing exact source/target APIs, durable `attached:N` revision-safe/idempotent apply, aggregate progress and bounded ChangeCursor registration. Attached field governance is Flex-owned through a reusable tenant/entity/field policy plane with fail-closed defaults, forbidden-class validation, and RBAC-guarded GraphQL set/reset over the donor registry. Retained exact-head PostgreSQL lifecycle `34594653702` and policy/RBAC `34592656347` evidence closes the attached repository-readiness gate | Preserve fail-closed/live-policy export admission without changing content revisions; keep operator/live rollout evidence separate; complete equivalent exact owner revision/progress/change semantics for standalone localized values |
 | Type localized settings | Completed for Modules static settings: stable localized field IDs/string-leaf eligibility and sensitivity fences, owner-local exact-locale rows and reads, shared plus per-field CAS with replay-safe exact apply, source-locale provenance, bounded change/progress reads, neutral identity/descriptors/revisions, and the registered `modules/static_settings` runtime provider are implemented | Keep owner metadata/storage/CAS/change contracts and provider composition evidence green; onboard any different settings owner only through equivalent typed owner gates |
 | Finish semantic string classification | Product image alt text has base/translation drift; Search linguistic dictionaries, channel policy names, and transactional tax/order prose need explicit classification | Every candidate is classified as identifier, technical, secret, code-owned message, tenant-localized copy, immutable snapshot, search-linguistic data, or excluded with owner/reason |
 | Prepare structured AI execution | The cross-module port and content-free execution/attempt/accounting schema exist. Registration is request-hash idempotent; execution leases, cancellation receipts, tenant budget reservation/concurrency, immutable provider price/concurrency policy, exact task descriptors, durable provider slots, actual per-attempt token/cost evidence, atomic queued/terminal settlement, and accounting-aware expired-lease recovery are implemented. AES-256-GCM transient-result storage keeps content out of the generic ledger; successful attempt, encrypted handoff, slot release, budget settlement, and terminal execution commit together. Tenant-scoped replay authenticates identity/digests/size, supports retained-key rotation, records replay counts, and expires without reopening or re-billing execution. Tenant operators can provision accounting policies through GraphQL/native contracts, the result keyring is deployment-owned, and the AI scheduler reconciles cancellations/leases and removes expired handoffs before claims. The private executor validates exact policy/schema identity, selects preferred then deterministic eligible providers, performs real structured inference/fallback, records typed content-free failures, enforces deadlines, and observes durable cancellation. The production distribution bridge publishes the owner-neutral lazy runtime factory, and the separate chat task service is not used. | Collect live external-provider accounting, outage, restart, fallback, cancellation, and expiry evidence; retain production-database multi-replica evidence separately |
@@ -421,7 +429,7 @@ and exclusion reason.
 | Taxonomy | term name/slug/description, including canonical Category copy consumed by Blog and Forum | Registered `taxonomy/term` pilot with exact-locale snapshots, resource/source/target CAS, shared durable receipts, and an append-only owner cursor. Aliases remain curated search/SEO semantics rather than automatic MT by default; Blog and Forum Category do not add a second provider or evidence gate |
 | Media | title/alt/caption | Provider registered for bounded exact discovery/read/validate/apply and tenant-scoped cursor repair with resource/source/target revisions, atomic receipt, and neutral owner event. Direct owner edits publish identical repair evidence. Repository-hosted PostgreSQL projection replay and multi-replica checkpoint evidence is retained as exact-head run `33623651814` and post-merge run `33635199181`; isolated/live deployment remains a separate provider-owned gate |
 | SEO | title/description/keywords/Open Graph copy | Decide precedence between owner-embedded SEO and explicit SEO override before registration; media identifiers are preserved |
-| Flex | schema copy and attached/standalone localized values | `flex/schema_copy` is registered. `flex/attached_localized_value` is registered for the `taxonomy.category` donor with exact list/read, validate/apply, aggregate progress, bounded ChangeCursor and one durable `attached:N` resource revision; readiness remains blocked until retained PostgreSQL/concurrency/recovery and policy/RBAC evidence. Only active localized text/textarea leaves are exposed and arbitrary payload JSON is never traversed. Attached-field classification/AI-export policy is Flex-owned and keyed by tenant/entity/field: missing/reset remains fail-closed, explicit safe policy may admit export, forbidden classes cannot, and policy-only changes do not advance Translation revisions. Standalone localized-value Translation parity remains open |
+| Flex | schema copy and attached/standalone localized values | `flex/schema_copy` is registered. `flex/attached_localized_value` for `taxonomy.category` is a repository-hosted pilot candidate with retained exact-head lifecycle `34594653702` and policy/RBAC `34592656347` evidence covering concurrent CAS/replay, progress, schema fan-out, hard-delete tombstones, cursor recovery and fail-closed governance. Only active localized text/textarea leaves are exposed and arbitrary payload JSON is never traversed. Attached-field classification/AI-export policy is Flex-owned and keyed by tenant/entity/field: missing/reset remains fail-closed, explicit safe policy may admit export, forbidden classes cannot, and policy-only changes do not advance Translation revisions. Production enablement remains an operator/live-rollout decision; standalone localized-value Translation parity remains open |
 | Profiles/Comments/Groups | display copy, bios, comments, group title/summary/body | Treat personal/UGC fields as opt-in and policy-sensitive; preserve names by default and never rewrite immutable revisions |
 | Shipping/Region/Inventory/Fulfillment/Pricing | presentation names and descriptions | Commerce-support wave after each owner has transactional per-locale apply; identifiers and calculations are preserved |
 | Cart/Order/Payment/Ledger | locale-attributed transaction snapshots | Never retroactively mutate transaction facts; use an optional derived presentation projection if a business case is approved |
@@ -1478,18 +1486,22 @@ target:
    policy plane and its GraphQL set/reset control surface are source-complete:
    missing/reset policy is fail-closed, explicit safe policy may admit export,
    `secret`/`immutable_transaction` cannot enable it, and policy-only changes do
-   not create Translation content revision/change evidence. Readiness remains
-   blocked until retained PostgreSQL migration, concurrent CAS/replay, progress
-   stability, schema fan-out, delete-tombstone, cursor-recovery and policy/RBAC
-   evidence is collected.
+   not create Translation content revision/change evidence. Repository-hosted
+   readiness evidence is retained: lifecycle exact-head `34594653702` covers
+   concurrent CAS/conflict, replay, progress, schema fan-out, delete tombstones
+   and cursor recovery; policy/RBAC exact-head `34592656347` covers the
+   governance plane. The attached surface is therefore a `pilot_candidate`;
+   production enablement remains an operator/live-rollout decision, while
+   standalone localized-value Translation parity stays open.
 
 Focused retained evidence currently includes Translation Memory retention
 `33539223647`, Pages `page_metadata` `33545157694`, Navigation
 `navigation/menu` `33549035590`, Forum Category/Taxonomy cutover
 `33431200532`, Media `media/asset` PostgreSQL exact-head `33623651814` plus
-post-merge `main` `33635199181`, and Settings `modules/static_settings` runtime
-composition `33952057144` plus migration approval `33952055814`. No retained
-Flex attached provider execution is claimed yet.
+post-merge `main` `33635199181`, Settings `modules/static_settings` runtime
+composition `33952057144` plus migration approval `33952055814`, Flex attached
+lifecycle exact-head `34594653702`, and Flex attached policy/RBAC exact-head
+`34592656347`.
 
 The conformance suite still contains non-production reference fixtures for
 long/structured content and Product/commerce so the contract is not biased
@@ -1698,7 +1710,7 @@ Baseline repository gates:
 - FFA/FBA and module-specific provider conformance verifiers;
 - `git diff --check`.
 
-Focused retained evidence as of 2026-09-10:
+Focused retained evidence as of 2026-09-11:
 
 - Translation Memory retention: `33539223647`;
 - Pages `pages/page_metadata`: `33545157694`;
@@ -1713,8 +1725,10 @@ Focused retained evidence as of 2026-09-10:
 - Translation runtime composition exact PR head: `33608857569`;
 - Translation runtime composition post-merge `main@b16da9a8babe147b7ce75f871913b4bc4c34c506`:
   `33609559524`;
-- Flex attached `taxonomy.category`: provider and attached-field policy/control
-  plane are source-complete, but no retained execution is claimed yet.
+- Flex attached `taxonomy.category` lifecycle PostgreSQL exact head:
+  `34594653702` on `e605355a04674524db527e1bafa68aee8f884635`;
+- Flex attached `taxonomy.category` policy/RBAC PostgreSQL exact head:
+  `34592656347` on `8c0a32de51662087fe71cc32af3d39af70d17408`.
 
 New verifier names are added only with their executable implementation; this
 plan does not reserve decorative scripts.
