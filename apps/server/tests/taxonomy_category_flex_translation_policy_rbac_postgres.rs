@@ -5,7 +5,7 @@ use std::{collections::HashMap, error::Error, io, sync::Arc, time::Duration};
 
 use async_graphql::{EmptySubscription, Request, Response, Schema};
 use async_trait::async_trait;
-use flex::graphql::{FlexGraphqlRuntime, FlexMutation, FlexQuery};
+use flex::graphql::{AttachedValuesGraphqlPort, FlexGraphqlRuntime, FlexMutation, FlexQuery};
 use flex::{
     CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionCachePort,
     FieldDefinitionService, FieldDefinitionView, FlexModule, GenericAttachedFieldDefinitionService,
@@ -34,9 +34,9 @@ use rustok_test_utils::{
     drop_postgres_database_if_exists, postgres_database_url, unique_postgres_database_name,
 };
 use rustok_translation_targets::{
-    ListTranslationResourcesRequest, OwnerSlug, ReadTranslationResourceRequest, ResourceKind,
-    TranslationDataClassification, TranslationResourceSnapshot, TranslationTargetChangesRequest,
-    TranslationTargetProvider, translation_target_registry,
+    ListTranslationResourcesRequest, OpaqueRevision, OwnerSlug, ReadTranslationResourceRequest,
+    ResourceKind, TranslationDataClassification, TranslationResourceSnapshot,
+    TranslationTargetChangesRequest, TranslationTargetProvider, translation_target_registry,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
@@ -115,7 +115,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             TAXONOMY_CATEGORY_ENTITY_TYPE,
             category_id,
             "en",
-            Some(json!({FIELD_KEY: "Governed category"})),
+            Some(json!({"tagline": "Governed category"})),
         )
         .await?
         .ok_or_else(|| test_error("source attached values were not persisted"))?;
@@ -549,9 +549,9 @@ fn assert_provider_policy(
 
 fn assert_content_revisions_unchanged(
     snapshot: &TranslationResourceSnapshot,
-    resource_revision: &rustok_translation_targets::ResourceRevision,
-    source_revision: &rustok_translation_targets::TranslationSourceRevision,
-    target_revision: &Option<rustok_translation_targets::TranslationTargetRevision>,
+    resource_revision: &OpaqueRevision,
+    source_revision: &OpaqueRevision,
+    target_revision: &Option<OpaqueRevision>,
 ) -> TestResult<()> {
     if &snapshot.summary.resource_revision != resource_revision
         || &snapshot.source_revision != source_revision
@@ -602,10 +602,11 @@ async fn provider_identity(
             },
         )
         .await?;
+    let category_id = category_id.to_string();
     let resource = page
         .resources
         .into_iter()
-        .find(|resource| resource.identity.resource_id.as_str() == category_id.to_string())
+        .find(|resource| resource.identity.resource_id.as_str() == category_id)
         .ok_or_else(|| test_error("registered provider did not list the seeded category"))?;
     Ok(resource.identity)
 }
