@@ -66,6 +66,19 @@ fn map_attached_field_policy_error(error: crate::FlexAttachedFieldPolicyError) -
     }
 }
 
+fn map_standalone_field_policy_error(error: crate::FlexStandaloneFieldPolicyError) -> FieldError {
+    match error {
+        crate::FlexStandaloneFieldPolicyError::Invalid(message) => {
+            <FieldError as GraphQLError>::bad_user_input(&message)
+        }
+        crate::FlexStandaloneFieldPolicyError::Storage(_) => {
+            <FieldError as GraphQLError>::internal_error(
+                "Flex standalone field policy storage failed",
+            )
+        }
+    }
+}
+
 fn bad_user_input(message: impl AsRef<str>) -> FieldError {
     <FieldError as GraphQLError>::bad_user_input(message.as_ref())
 }

@@ -4,8 +4,9 @@ use uuid::Uuid;
 
 use super::{
     AttachedFieldPolicyObject, AttachedValuesObject, FieldDefinitionObject, FlexEntryObject,
-    FlexSchemaObject, map_attached_field_policy_error, map_flex_error, require_access,
-    resolve_entity_type, runtime::runtime,
+    FlexSchemaObject, StandaloneFieldPolicyObject, bad_user_input,
+    map_attached_field_policy_error, map_flex_error, map_standalone_field_policy_error,
+    require_access, resolve_entity_type, runtime::runtime,
 };
 use crate::FieldDefinitionView;
 
@@ -157,6 +158,44 @@ impl FlexQuery {
             .await
             .map(|row| row.map(FlexSchemaObject::from))
             .map_err(map_flex_error)
+    }
+
+    /// List effective classification / AI-export policy for localized fields in one standalone schema.
+    ///
+    /// `explicit=false` means no policy row exists and the fail-closed default is in force.
+    async fn standalone_field_policies(
+        &self,
+        ctx: &Context<'_>,
+        schema_id: Uuid,
+    ) -> Result<Vec<StandaloneFieldPolicyObject>> {
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST)?;
+        let runtime = runtime(ctx)?;
+        let schema = crate::find_schema(runtime.standalone_service().as_ref(), tenant.id, schema_id)
+            .await
+            .map_err(map_flex_error)?
+            .ok_or_else(|| bad_user_input(format!("standalone Flex schema `{schema_id}` was not found")))?;
+        let field_keys = schema
+            .fields_config
+            .iter()
+            .filter(|definition| crate::flex_standalone_translation_field_eligible(definition))
+            .map(|definition| definition.field_key.clone())
+            .collect::<Vec<_>>();
+        let mut resolutions = crate::resolve_standalone_field_policy_resolutions(
+            runtime.db(),
+            tenant.id,
+            schema_id,
+            &field_keys,
+        )
+        .await
+        .map_err(map_standalone_field_policy_error)?;
+
+        Ok(field_keys
+            .into_iter()
+            .map(|field_key| {
+                let resolution = resolutions.remove(&field_key).unwrap_or_default();
+                StandaloneFieldPolicyObject::from_resolution(schema_id, field_key, resolution)
+            })
+            .collect())
     }
 
     /// List entries for a standalone Flex schema.
