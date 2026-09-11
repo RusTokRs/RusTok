@@ -1762,7 +1762,7 @@ The translation platform is complete when:
 When Phase 1 creates the path module, the same change must:
 
 - add `translation` to `modules.toml`;
-- create `crates/modules/rustok-translation/{README.md,docs/README.md,docs/implementation-plan.md,rustok-module.toml`;
+- create `crates/modules/rustok-translation/{README.md,docs/README.md,docs/implementation-plan.md,rustok-module.toml}`;
 - add the local plan to `docs/modules/implementation-plans-registry.md`;
 - add the module and owner map to `docs/modules/registry.md`;
 - keep FFA/FBA readiness synchronized as the admin UI and transports appear;
