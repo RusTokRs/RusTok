@@ -71,13 +71,6 @@ async fn postgres_generic_category_donor_roundtrips_and_advances_definition_gene
     let db = Database::connect(url)
         .await
         .expect("PostgreSQL Flex fixture should connect");
-    let manager = SchemaManager::new(&db);
-    for migration in FlexModule.migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("Flex migration should apply on PostgreSQL");
-    }
     db.execute_unprepared(
         "CREATE TABLE IF NOT EXISTS flex_attached_localized_values (\
             id UUID PRIMARY KEY, \
@@ -94,6 +87,13 @@ async fn postgres_generic_category_donor_roundtrips_and_advances_definition_gene
     )
     .await
     .expect("localized attached storage should exist");
+    let manager = SchemaManager::new(&db);
+    for migration in FlexModule.migrations() {
+        migration
+            .up(&manager)
+            .await
+            .expect("Flex migration should apply on PostgreSQL");
+    }
 
     let tenant_id = Uuid::new_v4();
     let entity_id = Uuid::new_v4();
