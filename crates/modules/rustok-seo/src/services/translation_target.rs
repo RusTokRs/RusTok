@@ -344,7 +344,7 @@ impl TranslationTargetProvider for SeoTranslationTargetProvider {
         context: PortContext,
         request: TranslationPatchRequest,
     ) -> Result<TranslationPatchValidation, PortError> {
-        validate_translation_apply_context(&context)?;
+        validate_translation_read_context(&context)?;
         authorize(&context, Action::Update)?;
         request
             .validate()
@@ -1475,7 +1475,7 @@ fn request_fingerprint(request: &TranslationPatchRequest) -> Result<String, Port
             error.to_string(),
         )
     })?;
-    let digest = sha256_digest(&payload);
+    let digest = sha256_digest(&[payload.as_slice()]);
     Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
