@@ -105,7 +105,7 @@ try {
   );
   expectFailure(
     root,
-    /crates\/rustok-blog\/src\/services\/tag\.rs/,
+    /rustok-blog\/src\/services\/tag\.rs/,
     /Taxonomy persistence/,
     'runtime persistence bypass must fail',
   );

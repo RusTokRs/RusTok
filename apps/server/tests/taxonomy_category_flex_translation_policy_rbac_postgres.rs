@@ -355,13 +355,9 @@ fn graphql_schema(db: DatabaseConnection) -> FlexPolicySchema {
         Arc::new(FlexAttachedValuesGraphqlAdapter::new(db)),
     );
 
-    Schema::build(
-        FlexQuery::default(),
-        FlexMutation::default(),
-        EmptySubscription,
-    )
-    .data(runtime)
-    .finish()
+    Schema::build(FlexQuery, FlexMutation, EmptySubscription)
+        .data(runtime)
+        .finish()
 }
 
 async fn execute_graphql(

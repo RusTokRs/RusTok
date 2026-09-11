@@ -22,8 +22,7 @@ use crate::{
     ControlPlaneInfrastructure, DurableArtifactBlobStore,
     MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, ModuleArtifactDescriptor, ModuleCommandContext,
     ModuleInstallationScope, OciArtifactReference, ReleaseAdmissionIntentJournal,
-    ReleaseAdmissionJournalError, TrustVerificationRequest, TrustVerifier,
-    promotion::digest_json,
+    ReleaseAdmissionJournalError, TrustVerificationRequest, TrustVerifier, promotion::digest_json,
 };
 
 /// Verified publisher/ownership evidence for an external prebuilt artifact.

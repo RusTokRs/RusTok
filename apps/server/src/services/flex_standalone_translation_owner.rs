@@ -77,11 +77,7 @@ impl ServerFlexStandaloneTranslationOwner {
         // Standalone source/schema changes advance the durable resource state from triggers. A
         // serializable transaction makes that state row the CAS serialization point without
         // introducing a lock-order cycle against concurrent localized-row writers.
-        let txn = self
-            .db
-            .begin_with_config(Some(IsolationLevel::Serializable), None)
-            .await
-            .map_err(database_error)?;
+        let txn = self.db.begin().await.map_err(database_error)?;
 
         txn.query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -872,5 +868,14 @@ fn owner_error_to_port_error(error: &FlexStandaloneTranslationError) -> PortErro
 }
 
 fn database_error(error: sea_orm::DbErr) -> FlexStandaloneTranslationError {
-    FlexStandaloneTranslationError::Storage(error.to_string())
+    let message = error.to_string();
+    if message.contains("40001")
+        || message.contains("could not serialize access")
+        || message.contains("duplicate key")
+    {
+        return FlexStandaloneTranslationError::RevisionConflict {
+            revision: "resource",
+        };
+    }
+    FlexStandaloneTranslationError::Storage(message)
 }
