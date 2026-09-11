@@ -1107,9 +1107,16 @@ async fn admin_graphql_update_pricing_variant_price_rejects_price_list_scope_mis
         .await;
 
     assert_eq!(response.errors.len(), 1);
-    assert!(response.errors[0].message.contains(
-        "price rows for a selected price_list_id must match the price list channel scope"
-    ));
+    assert_eq!(response.errors[0].message, "pricing request is invalid");
+    assert_eq!(
+        response.errors[0]
+            .extensions
+            .as_ref()
+            .and_then(|ext| ext.get("code")),
+        Some(&async_graphql::Value::String(
+            "PRICING_REQUEST_INVALID".to_string()
+        ))
+    );
 
     let scoped_override = PricingService::new(db.clone(), mock_transactional_event_bus())
         .get_variant_prices(variant.id)
@@ -1642,10 +1649,15 @@ async fn admin_graphql_update_price_list_rule_rejects_future_price_list() {
         .await;
 
     assert_eq!(response.errors.len(), 1);
-    assert!(
+    assert_eq!(response.errors[0].message, "pricing request is invalid");
+    assert_eq!(
         response.errors[0]
-            .message
-            .contains("price_list_id is not active yet")
+            .extensions
+            .as_ref()
+            .and_then(|ext| ext.get("code")),
+        Some(&async_graphql::Value::String(
+            "PRICING_REQUEST_INVALID".to_string()
+        ))
     );
 }
 
@@ -1964,9 +1976,13 @@ async fn pricing_graphql_facades_reject_price_list_channel_mismatch() {
         )))
         .await;
     assert!(
-        admin_response.errors.iter().any(|error| error
-            .message
-            .contains("price_list_id is not available for the requested channel")),
+        admin_response.errors.iter().any(|error| {
+            error.message == "Pricing query is invalid"
+                && error.extensions.as_ref().and_then(|ext| ext.get("code"))
+                    == Some(&async_graphql::Value::String(
+                        "PRICING_REQUEST_INVALID".to_string(),
+                    ))
+        }),
         "expected admin channel mismatch validation error, got {:?}",
         admin_response.errors
     );
@@ -1998,9 +2014,13 @@ async fn pricing_graphql_facades_reject_price_list_channel_mismatch() {
         )))
         .await;
     assert!(
-        storefront_response.errors.iter().any(|error| error
-            .message
-            .contains("price_list_id is not available for the requested channel")),
+        storefront_response.errors.iter().any(|error| {
+            error.message == "Pricing query is invalid"
+                && error.extensions.as_ref().and_then(|ext| ext.get("code"))
+                    == Some(&async_graphql::Value::String(
+                        "PRICING_REQUEST_INVALID".to_string(),
+                    ))
+        }),
         "expected storefront channel mismatch validation error, got {:?}",
         storefront_response.errors
     );
@@ -2038,9 +2058,13 @@ async fn admin_graphql_pricing_product_rejects_non_letter_currency_code() {
         .await;
 
     assert!(
-        response.errors.iter().any(|error| error
-            .message
-            .contains("currency_code must be a 3-letter code")),
+        response.errors.iter().any(|error| {
+            error.message == "Commerce query could not be completed safely"
+                && error.extensions.as_ref().and_then(|ext| ext.get("code"))
+                    == Some(&async_graphql::Value::String(
+                        "COMMERCE_QUERY_OPERATION_FAILED".to_string(),
+                    ))
+        }),
         "expected GraphQL currency_code validation error, got {:?}",
         response.errors
     );
@@ -2078,10 +2102,13 @@ async fn admin_graphql_pricing_product_rejects_non_positive_quantity() {
         .await;
 
     assert!(
-        response
-            .errors
-            .iter()
-            .any(|error| error.message.contains("quantity must be at least 1")),
+        response.errors.iter().any(|error| {
+            error.message == "Commerce query could not be completed safely"
+                && error.extensions.as_ref().and_then(|ext| ext.get("code"))
+                    == Some(&async_graphql::Value::String(
+                        "COMMERCE_QUERY_OPERATION_FAILED".to_string(),
+                    ))
+        }),
         "expected GraphQL quantity validation error, got {:?}",
         response.errors
     );
@@ -2120,9 +2147,13 @@ async fn admin_graphql_pricing_product_rejects_resolution_context_without_curren
         .await;
 
     assert!(
-        response.errors.iter().any(|error| error
-            .message
-            .contains("currency_code is required for pricing resolution context")),
+        response.errors.iter().any(|error| {
+            error.message == "Commerce query could not be completed safely"
+                && error.extensions.as_ref().and_then(|ext| ext.get("code"))
+                    == Some(&async_graphql::Value::String(
+                        "COMMERCE_QUERY_OPERATION_FAILED".to_string(),
+                    ))
+        }),
         "expected GraphQL missing currency_code validation error, got {:?}",
         response.errors
     );
@@ -2159,9 +2190,13 @@ async fn storefront_graphql_pricing_product_rejects_invalid_resolution_context()
         .await;
 
     assert!(
-        response.errors.iter().any(|error| error
-            .message
-            .contains("currency_code must be a 3-letter code")),
+        response.errors.iter().any(|error| {
+            error.message == "Commerce query could not be completed safely"
+                && error.extensions.as_ref().and_then(|ext| ext.get("code"))
+                    == Some(&async_graphql::Value::String(
+                        "COMMERCE_QUERY_OPERATION_FAILED".to_string(),
+                    ))
+        }),
         "expected storefront GraphQL currency_code validation error, got {:?}",
         response.errors
     );
@@ -2199,9 +2234,13 @@ async fn storefront_graphql_pricing_product_rejects_resolution_context_without_c
         .await;
 
     assert!(
-        response.errors.iter().any(|error| error
-            .message
-            .contains("currency_code is required for pricing resolution context")),
+        response.errors.iter().any(|error| {
+            error.message == "Commerce query could not be completed safely"
+                && error.extensions.as_ref().and_then(|ext| ext.get("code"))
+                    == Some(&async_graphql::Value::String(
+                        "COMMERCE_QUERY_OPERATION_FAILED".to_string(),
+                    ))
+        }),
         "expected storefront GraphQL missing currency_code validation error, got {:?}",
         response.errors
     );

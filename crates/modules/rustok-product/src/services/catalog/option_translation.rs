@@ -785,15 +785,16 @@ fn complete_option_locales(
 
     let mut complete = Vec::with_capacity(locales.len());
     for locale in locales {
-        match exact_option_locale_record(
+        if exact_option_locale_record(
             option_id,
             &locale,
             values,
             option_translations,
             value_translations,
-        )? {
-            Some(_) => complete.push(locale),
-            None => {}
+        )?
+        .is_some()
+        {
+            complete.push(locale);
         }
     }
     Ok(complete)

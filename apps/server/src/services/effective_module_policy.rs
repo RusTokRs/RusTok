@@ -126,12 +126,11 @@ impl StaticModuleLifecycleReader for ServerStaticModuleLifecycleReader {
             StaticModuleLifecycleReaderError::Unavailable
         })?;
 
-        project_static_lifecycle_revisions(snapshots).map_err(|error| {
+        project_static_lifecycle_revisions(snapshots).inspect_err(|_error| {
             tracing::error!(
                 tenant_id = %tenant_id,
                 "static module lifecycle revision is outside the browser-safe range"
             );
-            error
         })
     }
 }

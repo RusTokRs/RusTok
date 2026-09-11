@@ -615,19 +615,6 @@ where
         .one(conn)
         .await?
         .ok_or(CartError::CartNotFound(cart_id))?;
-    let backtrace = std::backtrace::Backtrace::capture();
-    let bt_str = format!("{backtrace}");
-    let caller = bt_str
-        .lines()
-        .find(|l| l.contains("rustok_"))
-        .unwrap_or("unknown");
-    eprintln!(
-        "DEBUG LOAD_CART_IN_TX: id={}, country_code={:?}, status={}, caller={}",
-        cart.id,
-        cart.country_code,
-        cart.status,
-        caller.trim()
-    );
     Ok(cart)
 }
 

@@ -8,9 +8,10 @@ use rustok_translation_targets::{
     TranslationApplicationReceipt, TranslationPatchRequest, TranslationPatchValidation,
     TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
     TranslationTargetCapability, TranslationTargetChange, TranslationTargetChangePage,
-    TranslationTargetChangesRequest, TranslationTargetProgressFacts, TranslationTargetProgressRequest,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor,
-    provider_support::contract_validation_error, validate_translation_read_context,
+    TranslationTargetChangesRequest, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, provider_support::contract_validation_error,
+    validate_translation_read_context,
 };
 use uuid::Uuid;
 
@@ -176,7 +177,11 @@ impl TranslationTargetProvider for FlexAttachedTranslationProgressTargetProvider
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
-        let parsed = request.after.as_ref().map(parse_change_cursor).transpose()?;
+        let parsed = request
+            .after
+            .as_ref()
+            .map(parse_change_cursor)
+            .transpose()?;
         let (through, after) = match parsed {
             Some((through, after)) if through == after => {
                 let current = self

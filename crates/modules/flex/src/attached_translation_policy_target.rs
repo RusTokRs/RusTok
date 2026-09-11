@@ -215,10 +215,9 @@ fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
 
 fn policy_error_to_port_error(error: FlexAttachedFieldPolicyError) -> PortError {
     match error {
-        FlexAttachedFieldPolicyError::Invalid(message) => PortError::invariant_violation(
-            "flex.attached_field_policy_invalid",
-            message,
-        ),
+        FlexAttachedFieldPolicyError::Invalid(message) => {
+            PortError::invariant_violation("flex.attached_field_policy_invalid", message)
+        }
         FlexAttachedFieldPolicyError::Storage(_) => PortError::unavailable(
             "flex.attached_field_policy_unavailable",
             "Flex attached field policy storage is temporarily unavailable",

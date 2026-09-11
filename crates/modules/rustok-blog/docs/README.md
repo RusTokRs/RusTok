@@ -23,7 +23,7 @@ when later bounded migrations retire an earlier design.
   ownership drift;
 - expose distinct `blog_posts:*` and `blog_categories:*` authority resources.
 
-## Scope
+## Responsibility Zone
 
 - `PostService`, `CommentService`, `CategoryService`, `TagService`, and the Blog
   state machine;
@@ -115,7 +115,7 @@ and post `blog_posts:*` permissions do not grant Blog Category access.
 - `rustok-blog/admin` embeds the owner-side post SEO panel through the shared
   `rustok-seo` capability contract.
 
-## Contract tests
+## Verification
 
 Current focused contracts cover, among other Blog behavior:
 
@@ -136,7 +136,10 @@ The retired Blog Category Translation provider PostgreSQL harness is not a live
 verification target and must not be recreated merely to satisfy historical
 slice text.
 
-## Related documents
+- `cargo xtask module validate blog`
+- `cargo xtask module test blog`
+
+## Related Documentation
 
 - [README crate](../README.md)
 - [Current Implementation Cursor](./implementation-plan-current.md)

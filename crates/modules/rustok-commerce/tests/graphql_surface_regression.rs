@@ -68,9 +68,12 @@ fn storefront_graphql_transports_keep_owner_handoff_stable() {
         ),
         (
             order_source,
-            "mutation CompleteStorefrontCheckout($input: CompleteStorefrontCheckoutInput!)",
+            "mutation CompleteStorefrontCheckout($idempotencyKey: String!, $input: CompleteStorefrontCheckoutInput!)",
         ),
-        (order_source, "completeStorefrontCheckout(input: $input)"),
+        (
+            order_source,
+            "completeStorefrontCheckout(idempotencyKey: $idempotencyKey, input: $input)",
+        ),
         (
             fulfillment_source,
             "mutation SelectStorefrontShippingOption($cartId: UUID!, $input: UpdateStorefrontCartContextInput!)",
@@ -109,12 +112,13 @@ fn storefront_graphql_transports_keep_owner_handoff_stable() {
 fn commerce_graphql_module_keeps_expected_root_fields() {
     let query_source = include_str!("../src/graphql/query.rs");
     let mutation_source = format!(
-        "{}\\n{}\\n{}\\n{}\\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}",
         include_str!("../src/graphql/mutations/cart.rs"),
         include_str!("../src/graphql/mutations/catalog.rs"),
         include_str!("../src/graphql/mutations/checkout.rs"),
         include_str!("../src/graphql/mutations/fulfillment.rs"),
         include_str!("../src/graphql/mutations/pricing.rs"),
+        include_str!("../src/graphql/mutations/provider_operations.rs"),
     );
 
     for required in [

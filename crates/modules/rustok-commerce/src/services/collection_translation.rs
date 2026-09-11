@@ -6,7 +6,7 @@ use rustok_events::DomainEvent;
 use rustok_outbox::{TransactionalEventBus, idempotency};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set, TransactionTrait,
+    QuerySelect, Set, TransactionTrait, sea_query::ExprTrait,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

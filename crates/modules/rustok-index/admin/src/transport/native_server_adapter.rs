@@ -139,7 +139,7 @@ pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnErr
 
         let db = leptos::prelude::use_context::<rustok_api::HostRuntimeContext>()
             .map(|ctx| ctx.db_clone())
-            .or_else(|| leptos::prelude::use_context::<sea_orm::DatabaseConnection>());
+            .or_else(leptos::prelude::use_context::<sea_orm::DatabaseConnection>);
 
         let mut inbox_metrics = IndexInboxMetricsSnapshot::default();
         let mut job_metrics = IndexJobMetricsSnapshot::default();
@@ -200,11 +200,11 @@ pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnErr
                 ))
                 .await
             {
-                if let Ok(Some(lag)) = row.try_get::<Option<i64>>("", "lag") {
-                    if lag >= 0 {
-                        inbox_metrics.oldest_pending_age_seconds = Some(lag as u64);
-                    }
-                }
+                inbox_metrics.oldest_pending_age_seconds = row
+                    .try_get::<Option<i64>>("", "lag")
+                    .ok()
+                    .flatten()
+                    .and_then(|lag| u64::try_from(lag).ok());
             }
 
             let jobs_query = match backend {
@@ -258,9 +258,8 @@ pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnErr
                 ))
                 .await
             {
-                if let Ok(cnt) = row.try_get::<i64>("", "cnt") {
-                    job_metrics.retry_recovery_count = cnt.max(0) as u64;
-                }
+                let cnt = row.try_get::<i64>("", "cnt").unwrap_or(0);
+                job_metrics.retry_recovery_count = u64::try_from(cnt.max(0)).unwrap_or_default();
             }
         }
 
@@ -510,7 +509,7 @@ pub async fn retry_job_native(input: RetryJobInput) -> Result<RetryActionResult,
 
         let db = leptos::prelude::use_context::<HostRuntimeContext>()
             .map(|ctx| ctx.db_clone())
-            .or_else(|| leptos::prelude::use_context::<sea_orm::DatabaseConnection>())
+            .or_else(leptos::prelude::use_context::<sea_orm::DatabaseConnection>)
             .ok_or_else(|| {
                 ServerFnError::new("Database connection is not available in host context")
             })?;

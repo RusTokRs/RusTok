@@ -179,7 +179,7 @@ LIMIT 1
         }
     }
 
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
 INSERT INTO commerce_collection_translation_change_journal (

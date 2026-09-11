@@ -59,7 +59,9 @@ fn map_attached_field_policy_error(error: crate::FlexAttachedFieldPolicyError) -
             <FieldError as GraphQLError>::bad_user_input(&message)
         }
         crate::FlexAttachedFieldPolicyError::Storage(_) => {
-            <FieldError as GraphQLError>::internal_error("Flex attached field policy storage failed")
+            <FieldError as GraphQLError>::internal_error(
+                "Flex attached field policy storage failed",
+            )
         }
     }
 }

@@ -121,10 +121,10 @@ impl ModerationSubjectCommandPort for GroupsModerationSubjectAdapter {
         let result = self
             .execute_apply(tenant_id, group_id, provenance, lease, &context, &command)
             .await;
-        if let Err(error) = &result {
-            if !error.retryable {
-                let _ = idempotency::fail(&self.db, lease, error).await;
-            }
+        if let Err(error) = &result
+            && !error.retryable
+        {
+            let _ = idempotency::fail(&self.db, lease, error).await;
         }
         result
     }
@@ -173,9 +173,7 @@ async fn apply_inside_transaction(
     command: &ApplyModerationDecisionCommand,
 ) -> Result<ModerationDecisionApplication, PortError> {
     let effective_until = match &command.effect.action {
-        ModerationDecisionEffectAction::SuspendSubject { effective_until } => {
-            effective_until.clone()
-        }
+        ModerationDecisionEffectAction::SuspendSubject { effective_until } => *effective_until,
         _ => {
             return Err(PortError::validation(
                 "groups.moderation_effect_unsupported",

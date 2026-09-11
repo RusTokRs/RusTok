@@ -115,13 +115,12 @@ impl StaticModuleRegistryReader for ServerStaticModuleRegistryReader {
                 let lifecycle_revision = browser_safe_lifecycle_revision(
                     lifecycle_snapshot.revision,
                 )
-                .map_err(|error| {
+                .inspect_err(|_error| {
                     tracing::error!(
                         tenant_id = %query.tenant_id,
                         module_slug = module.slug(),
                         "static module lifecycle revision is outside the browser-safe range"
                     );
-                    error
                 })?;
                 let catalog_entry = catalog_by_slug.get(module.slug());
 

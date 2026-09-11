@@ -310,7 +310,8 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
     let tenant_id = Uuid::new_v4();
-    let actor_id = Uuid::new_v4();
+    let auth = admin_order_auth_context(tenant_id);
+    let actor_id = auth.user_id;
     let customer_id = Uuid::new_v4();
     seed_tenant_context(&db, tenant_id).await;
 
@@ -391,7 +392,7 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
         &db,
         tenant_context(tenant_id),
         request_context(tenant_id, "en"),
-        Some(admin_order_auth_context(tenant_id)),
+        Some(auth),
     );
 
     let mutation = schema
@@ -1238,12 +1239,19 @@ async fn admin_graphql_refunds_filter_normalizes_status_and_rejects_unknown_valu
         !invalid_response.errors.is_empty(),
         "invalid refunds status should return GraphQL error"
     );
-    assert!(
-        invalid_response.errors[0]
-            .message
-            .contains("invalid refund status filter"),
+    assert_eq!(
+        invalid_response.errors[0].message, "Payment query is invalid",
         "unexpected invalid refunds status error: {}",
         invalid_response.errors[0].message
+    );
+    assert_eq!(
+        invalid_response.errors[0]
+            .extensions
+            .as_ref()
+            .and_then(|ext| ext.get("code")),
+        Some(&async_graphql::Value::String(
+            "PAYMENT_REQUEST_INVALID".to_string()
+        ))
     );
 }
 
@@ -3187,12 +3195,19 @@ async fn storefront_graphql_refunds_query_normalizes_status_and_rejects_unknown_
         )))
         .await;
     assert_eq!(invalid.errors.len(), 1, "invalid status should fail");
-    assert!(
-        invalid.errors[0]
-            .message
-            .contains("invalid refund status filter"),
+    assert_eq!(
+        invalid.errors[0].message, "Payment query is invalid",
         "unexpected invalid-status error: {}",
         invalid.errors[0].message
+    );
+    assert_eq!(
+        invalid.errors[0]
+            .extensions
+            .as_ref()
+            .and_then(|ext| ext.get("code")),
+        Some(&async_graphql::Value::String(
+            "PAYMENT_REQUEST_INVALID".to_string()
+        ))
     );
 }
 
@@ -3781,6 +3796,7 @@ async fn storefront_graphql_checkout_preserves_typed_adjustments_and_net_payment
     assert_eq!(cart_adjustment_metadata["rule_code"], Value::from("spring"));
     assert!(cart_adjustment_metadata.get("display_label").is_none());
 
+    let checkout_idempotency_key = Uuid::new_v4();
     let checkout_response = schema
         .execute(Request::new(format!(
             r#"
@@ -3798,6 +3814,7 @@ async fn storefront_graphql_checkout_preserves_typed_adjustments_and_net_payment
               }}
               completeStorefrontCheckout(
                 tenantId: "{tenant_id}",
+                idempotencyKey: "{checkout_idempotency_key}",
                 input: {{
                   cartId: "{cart_id}"
                   createFulfillment: true
@@ -4087,6 +4104,7 @@ async fn storefront_graphql_checkout_preserves_shipping_total_and_shipping_promo
     );
     assert!(cart_adjustment_metadata.get("display_label").is_none());
 
+    let checkout_idempotency_key = Uuid::new_v4();
     let checkout_response = schema
         .execute(Request::new(format!(
             r#"
@@ -4102,6 +4120,7 @@ async fn storefront_graphql_checkout_preserves_shipping_total_and_shipping_promo
               }}
               completeStorefrontCheckout(
                 tenantId: "{tenant_id}",
+                idempotencyKey: "{checkout_idempotency_key}",
                 input: {{
                   cartId: "{cart_id}"
                   createFulfillment: true

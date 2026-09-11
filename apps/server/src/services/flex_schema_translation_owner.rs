@@ -17,7 +17,7 @@ use rustok_events::DomainEvent;
 use rustok_outbox::{TransactionalEventBus, idempotency};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait, sea_query::ExprTrait,
 };
 use serde::Serialize;
 use serde_json::Value as JsonValue;

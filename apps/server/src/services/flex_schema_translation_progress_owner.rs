@@ -14,7 +14,7 @@ use flex::{
 use sea_orm::{
     AccessMode, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
     FromQueryResult, IsolationLevel, QueryFilter, QueryOrder, QuerySelect, Statement,
-    TransactionTrait,
+    TransactionTrait, sea_query::ExprTrait,
 };
 use uuid::Uuid;
 

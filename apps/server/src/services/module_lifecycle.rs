@@ -149,14 +149,13 @@ impl ModuleLifecycleService {
             .active_checkpoint_for_module(module_slug, Some(tenant_id))
             .await
             .map_err(|error| ToggleModuleError::Policy(error.to_string()))?
+            && !checkpoint.state.is_terminal()
         {
-            if !checkpoint.state.is_terminal() {
-                return Err(ToggleModuleError::Policy(format!(
-                    "Module '{module_slug}' has an active release transition in progress (operation_id: {}, state: {}). Enable/disable changes are locked until the transition converges or recovers.",
-                    checkpoint.operation_id,
-                    checkpoint.state.name(),
-                )));
-            }
+            return Err(ToggleModuleError::Policy(format!(
+                "Module '{module_slug}' has an active release transition in progress (operation_id: {}, state: {}). Enable/disable changes are locked until the transition converges or recovers.",
+                checkpoint.operation_id,
+                checkpoint.state.name(),
+            )));
         }
 
         let manifest = PlatformCompositionService::active_manifest(db)
@@ -337,24 +336,23 @@ impl ModuleLifecycleService {
             .active_observing_checkpoint_for_module(module_slug, Some(tenant_id))
             .await
             .map_err(|error| UpdateModuleSettingsError::Policy(error.to_string()))?
+            && let Some(ref pred_digest) = checkpoint.predecessor_digest
         {
-            if let Some(ref pred_digest) = checkpoint.predecessor_digest {
-                let guard = SettingsCompatibilityGuard::from_observing_checkpoint(
-                    &checkpoint,
-                    pred_digest.clone(),
-                    checkpoint.candidate_digest.clone(),
-                );
-                if let Some(guard) = guard {
-                    if let Err(err) = guard.validate_and_normalize_write(
-                        &settings_schema,
-                        &settings_schema,
-                        settings.clone(),
-                    ) {
-                        return Err(UpdateModuleSettingsError::Validation(format!(
-                            "Settings update rejected by N/N+1 Settings Compatibility Guard during open rollout window: {err}"
-                        )));
-                    }
-                }
+            let guard = SettingsCompatibilityGuard::from_observing_checkpoint(
+                &checkpoint,
+                pred_digest.clone(),
+                checkpoint.candidate_digest.clone(),
+            );
+            if let Some(guard) = guard
+                && let Err(err) = guard.validate_and_normalize_write(
+                    &settings_schema,
+                    &settings_schema,
+                    settings.clone(),
+                )
+            {
+                return Err(UpdateModuleSettingsError::Validation(format!(
+                    "Settings update rejected by N/N+1 Settings Compatibility Guard during open rollout window: {err}"
+                )));
             }
         }
 

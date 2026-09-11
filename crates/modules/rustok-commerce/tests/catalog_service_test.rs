@@ -664,7 +664,6 @@ async fn test_get_product_reads_image_translation_groups() {
         product_id: sea_orm::Set(product.id),
         media_id: sea_orm::Set(media_id),
         position: sea_orm::Set(0),
-        alt_text: sea_orm::Set(Some("Default image".to_string())),
     }
     .insert(&db)
     .await

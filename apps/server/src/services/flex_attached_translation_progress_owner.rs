@@ -6,10 +6,7 @@ use flex::{
     load_attached_translation_resource_revisions, load_attached_translation_schema_in,
     validate_flex_attached_translation_locale_pair,
 };
-use sea_orm::{
-    AccessMode, ConnectionTrait, DatabaseBackend, DatabaseConnection, IsolationLevel,
-    TransactionTrait,
-};
+use sea_orm::{AccessMode, DatabaseBackend, DatabaseConnection, IsolationLevel, TransactionTrait};
 use uuid::Uuid;
 
 use super::flex_attached_translation_owner::build_snapshot_from_batch;

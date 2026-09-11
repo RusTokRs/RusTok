@@ -14,6 +14,7 @@ fn module_metadata() {
     assert_eq!(
         module.dependencies(),
         [
+            "tenant",
             "cart",
             "customer",
             "product",

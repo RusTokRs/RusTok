@@ -566,7 +566,12 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                     oli.quantity,
                     oli.id,
                     'Order inventory reservation',
-                    'oli:' || CAST(oli.id AS TEXT),
+                    CASE
+                        WHEN typeof(oli.id) = 'blob' THEN
+                            'oli:' || lower(hex(substr(oli.id, 1, 4))) || '-' || lower(hex(substr(oli.id, 5, 2))) || '-' || lower(hex(substr(oli.id, 7, 2))) || '-' || lower(hex(substr(oli.id, 9, 2))) || '-' || lower(hex(substr(oli.id, 11, 6)))
+                        ELSE
+                            'oli:' || CAST(oli.id AS TEXT)
+                    END,
                     '{"source":"order_confirmation"}',
                     CURRENT_TIMESTAMP,
                     CURRENT_TIMESTAMP,

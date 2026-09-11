@@ -4,7 +4,8 @@ use rustok_cart::entities::{
 };
 use rustok_channel::entities::{channel, channel_module_binding};
 use rustok_commerce::entities::{
-    checkout_inventory_reservation, checkout_operation, checkout_order_plan, shipping_profile,
+    checkout_inventory_reservation, checkout_operation, checkout_order_plan,
+    return_completion_command, return_completion_operation, shipping_profile,
     shipping_profile_translation,
 };
 use rustok_customer::entities::customer;
@@ -322,6 +323,18 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(order_return_item::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(return_completion_operation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(return_completion_command::Entity),
     )
     .await;
     create_entity_table(

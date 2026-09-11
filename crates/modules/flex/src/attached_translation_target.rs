@@ -199,7 +199,8 @@ impl TranslationTargetProvider for FlexAttachedTranslationTargetProvider {
         let request_fingerprint = neutral_request_fingerprint(&request);
         let read_request = read_request_from_patch(&request);
         let owner_snapshot = self.load_owner_snapshot(tenant_id, &read_request).await?;
-        let neutral = neutralize_snapshot(owner_snapshot.clone(), &read_request, &self.entity_type)?;
+        let neutral =
+            neutralize_snapshot(owner_snapshot.clone(), &read_request, &self.entity_type)?;
         let source_revision_matches =
             request.expected_source_revision == neutral.snapshot.source_revision;
 
@@ -207,10 +208,7 @@ impl TranslationTargetProvider for FlexAttachedTranslationTargetProvider {
         // current, reject unsupported fields/source hashes before opening the durable owner lease.
         // With a stale source, the owner distinguishes an idempotent replay from a new stale write.
         let validation = if source_revision_matches {
-            only_field_issues(validate_patch_against_snapshot(
-                &request,
-                &neutral.snapshot,
-            ))
+            only_field_issues(validate_patch_against_snapshot(&request, &neutral.snapshot))
         } else {
             accepted_validation()
         };
@@ -399,7 +397,10 @@ fn merge_target_values(
     Ok(target_values)
 }
 
-fn normalize_target_value(required: bool, value: Option<String>) -> Result<Option<String>, PortError> {
+fn normalize_target_value(
+    required: bool,
+    value: Option<String>,
+) -> Result<Option<String>, PortError> {
     if required {
         return required_target_value(value, "Flex attached field").map(Some);
     }
@@ -423,7 +424,11 @@ fn neutral_request_fingerprint(request: &TranslationPatchRequest) -> String {
     hash_component(&mut hasher, request.identity.resource_id.as_str());
     hash_optional_component(
         &mut hasher,
-        request.identity.subresource_id.as_ref().map(|value| value.as_str()),
+        request
+            .identity
+            .subresource_id
+            .as_ref()
+            .map(|value| value.as_str()),
     );
     hash_component(&mut hasher, request.source_locale.as_str());
     hash_component(&mut hasher, request.target_locale.as_str());
@@ -447,7 +452,10 @@ fn neutral_request_fingerprint(request: &TranslationPatchRequest) -> String {
         hash_component(&mut hasher, &field.value);
         hash_component(&mut hasher, &field.expected_source_hash);
     }
-    format!("flex-attached-neutral-patch-v1:{}", hex::encode(hasher.finalize()))
+    format!(
+        "flex-attached-neutral-patch-v1:{}",
+        hex::encode(hasher.finalize())
+    )
 }
 
 fn hash_optional_component(hasher: &mut Sha256, value: Option<&str>) {

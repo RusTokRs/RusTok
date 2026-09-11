@@ -1250,6 +1250,7 @@ fn storefront_customer_order_query(tenant_id: Uuid, order_id: Uuid) -> String {
 }
 
 fn storefront_checkout_mutation(tenant_id: Uuid, cart_id: Uuid) -> String {
+    let idempotency_key = Uuid::new_v4();
     format!(
         r#"
         mutation {{
@@ -1266,6 +1267,7 @@ fn storefront_checkout_mutation(tenant_id: Uuid, cart_id: Uuid) -> String {
           }}
           completeStorefrontCheckout(
             tenantId: "{tenant_id}",
+            idempotencyKey: "{idempotency_key}",
             input: {{
               cartId: "{cart_id}"
               createFulfillment: true

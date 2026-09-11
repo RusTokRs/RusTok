@@ -115,19 +115,10 @@ impl FlexAttachedFieldPolicy {
 /// Effective attached-field policy together with provenance.
 ///
 /// `explicit=false` means no policy row exists and the returned policy is the fail-closed default.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FlexAttachedFieldPolicyResolution {
     pub policy: FlexAttachedFieldPolicy,
     pub explicit: bool,
-}
-
-impl Default for FlexAttachedFieldPolicyResolution {
-    fn default() -> Self {
-        Self {
-            policy: FlexAttachedFieldPolicy::default(),
-            explicit: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
