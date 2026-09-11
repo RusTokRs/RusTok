@@ -274,7 +274,7 @@
       "id": "flex_attached_values",
       "owner_slug": "flex",
       "resource_kind": "attached_localized_value",
-      "readiness": "blocked",
+      "readiness": "pilot_candidate",
       "provider_status": "registered",
       "field_profiles": ["plain_text", "localized_scalar"],
       "data_classification": ["tenant_private", "personal"],
@@ -294,9 +294,13 @@
         "crates/modules/flex/src/migrations/m20260910_000004_add_attached_field_policies.rs",
         "apps/server/src/services/flex_attached_translation_owner.rs",
         "apps/server/src/services/flex_attached_translation_progress_owner.rs",
+        "apps/server/tests/taxonomy_category_flex_translation_target_postgres.rs",
+        "apps/server/tests/taxonomy_category_flex_translation_policy_rbac_postgres.rs",
+        ".github/workflows/flex-attached-translation-target-postgres.yml",
+        ".github/workflows/flex-attached-translation-policy-rbac-postgres.yml",
         "apps/server/src/services/mod.rs"
       ],
-      "blockers": ["The registered taxonomy.category donor exposes only active localized text/textarea leaves. The Flex-owned policy plane and RBAC-guarded GraphQL set/reset control surface are source-complete: missing/reset policy is fail-closed, explicit safe policy may admit AI export, and secret/immutable_transaction policy cannot enable export. Retain PostgreSQL migration and concurrent CAS/idempotent replay, aggregate-progress stability, schema-fan-out, hard-delete tombstone, change-cursor recovery, policy/RBAC/unknown-field validation, and policy-without-revision/change evidence before pilot promotion."]
+      "blockers": ["Production enablement remains an operator rollout decision. Retained repository-hosted exact-head PostgreSQL evidence covers concurrent CAS/idempotent replay, aggregate-progress stability, schema fan-out, hard-delete tombstones, ChangeCursor recovery, policy/RBAC/unknown-field validation, and policy-only changes without content revision/change evidence: lifecycle run 34594653702 and policy/RBAC run 34592656347. Standalone Flex localized-value Translation parity remains a separate readiness track."]
     },
     {
       "id": "seo_overrides",
