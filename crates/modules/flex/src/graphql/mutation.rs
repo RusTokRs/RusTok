@@ -9,14 +9,17 @@ use super::{
     AttachedFieldPolicyObject, AttachedValuesObject, CreateFieldDefinitionInput,
     CreateFlexEntryInput, CreateFlexSchemaInput, DeleteFieldDefinitionPayload, DeleteFlexPayload,
     FieldDefinitionObject, FlexEntryObject, FlexSchemaObject, ResetAttachedFieldPolicyInput,
-    SetAttachedFieldPolicyInput, UpdateAttachedValuesInput, UpdateFieldDefinitionInput,
+    ResetStandaloneFieldPolicyInput, SetAttachedFieldPolicyInput, SetStandaloneFieldPolicyInput,
+    StandaloneFieldPolicyObject, UpdateAttachedValuesInput, UpdateFieldDefinitionInput,
     UpdateFlexEntryInput, UpdateFlexSchemaInput, bad_user_input, map_attached_field_policy_error,
-    map_flex_error, require_access, resolve_entity_type, runtime::runtime,
+    map_flex_error, map_standalone_field_policy_error, require_access, resolve_entity_type,
+    runtime::runtime,
 };
 use crate::{
     CreateFieldDefinitionCommand, CreateFlexEntryCommand, CreateFlexSchemaCommand,
-    FlexAttachedFieldPolicy, FlexAttachedFieldPolicyResolution, UpdateFieldDefinitionCommand,
-    UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
+    FlexAttachedFieldPolicy, FlexAttachedFieldPolicyResolution, FlexStandaloneFieldPolicy,
+    FlexStandaloneFieldPolicyResolution, UpdateFieldDefinitionCommand, UpdateFlexEntryCommand,
+    UpdateFlexSchemaCommand,
 };
 
 #[derive(Default)]
@@ -264,6 +267,78 @@ impl FlexMutation {
         ))
     }
 
+    /// Create or replace explicit classification / AI-export policy for one standalone field.
+    async fn set_standalone_field_policy(
+        &self,
+        ctx: &Context<'_>,
+        input: SetStandaloneFieldPolicyInput,
+    ) -> Result<StandaloneFieldPolicyObject> {
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE)?;
+        let runtime = runtime(ctx)?;
+        ensure_standalone_policy_field_exists(
+            runtime,
+            tenant.id,
+            input.schema_id,
+            &input.field_key,
+        )
+        .await?;
+
+        let policy = FlexStandaloneFieldPolicy {
+            classification: input.classification.into(),
+            ai_export_allowed: input.ai_export_allowed,
+        };
+        crate::upsert_standalone_field_policy(
+            runtime.db(),
+            tenant.id,
+            input.schema_id,
+            &input.field_key,
+            policy,
+        )
+        .await
+        .map_err(map_standalone_field_policy_error)?;
+
+        Ok(StandaloneFieldPolicyObject::from_resolution(
+            input.schema_id,
+            input.field_key,
+            FlexStandaloneFieldPolicyResolution {
+                policy,
+                explicit: true,
+            },
+        ))
+    }
+
+    /// Remove explicit policy for one standalone field and restore the fail-closed default.
+    async fn reset_standalone_field_policy(
+        &self,
+        ctx: &Context<'_>,
+        input: ResetStandaloneFieldPolicyInput,
+    ) -> Result<StandaloneFieldPolicyObject> {
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE)?;
+        let runtime = runtime(ctx)?;
+        ensure_standalone_policy_field_exists(
+            runtime,
+            tenant.id,
+            input.schema_id,
+            &input.field_key,
+        )
+        .await?;
+
+        crate::delete_standalone_field_policy(
+            runtime.db(),
+            tenant.id,
+            input.schema_id,
+            &input.field_key,
+        )
+        .await
+        .map_err(map_standalone_field_policy_error)?;
+
+        Ok(StandaloneFieldPolicyObject::from_resolution(
+            input.schema_id,
+            input.field_key,
+            FlexStandaloneFieldPolicyResolution::default(),
+        ))
+    }
+
     /// Validate and persist attached custom-field values for one real donor instance.
     async fn update_attached_values(
         &self,
@@ -491,6 +566,28 @@ async fn ensure_attached_policy_field_exists(
 
     Err(bad_user_input(format!(
         "field_key `{field_key}` is not registered for attached donor `{entity_type}`"
+    )))
+}
+
+async fn ensure_standalone_policy_field_exists(
+    runtime: &super::runtime::FlexGraphqlRuntime,
+    tenant_id: Uuid,
+    schema_id: Uuid,
+    field_key: &str,
+) -> Result<()> {
+    let schema = crate::find_schema(runtime.standalone_service().as_ref(), tenant_id, schema_id)
+        .await
+        .map_err(map_flex_error)?
+        .ok_or_else(|| bad_user_input(format!("standalone Flex schema `{schema_id}` was not found")))?;
+    if schema.fields_config.iter().any(|definition| {
+        definition.field_key == field_key
+            && crate::flex_standalone_translation_field_eligible(definition)
+    }) {
+        return Ok(());
+    }
+
+    Err(bad_user_input(format!(
+        "field_key `{field_key}` is not an active localized Translation field in standalone schema `{schema_id}`"
     )))
 }
 
