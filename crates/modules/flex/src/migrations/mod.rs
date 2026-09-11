@@ -6,6 +6,7 @@ mod m20260910_000004_add_attached_field_policies;
 mod m20260910_000005_add_standalone_translation_change_journal;
 mod m20260911_000006_add_standalone_field_policies;
 mod m20260911_000007_prune_standalone_field_policies;
+mod m20260911_000008_enforce_standalone_field_policy_integrity;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -19,5 +20,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260910_000005_add_standalone_translation_change_journal::Migration),
         Box::new(m20260911_000006_add_standalone_field_policies::Migration),
         Box::new(m20260911_000007_prune_standalone_field_policies::Migration),
+        Box::new(m20260911_000008_enforce_standalone_field_policy_integrity::Migration),
     ]
 }
