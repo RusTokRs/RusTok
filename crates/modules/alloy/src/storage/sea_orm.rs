@@ -1419,7 +1419,7 @@ impl ScriptRegistry for SeaOrmStorage {
         // before reading review state. The no-op update serializes concurrent
         // review decisions and workspace saves without changing the revision.
         let mut assert_current = Entity::update_many()
-            .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt))
+            .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt).into())
             .filter(Column::Id.eq(command.script_id))
             .filter(Column::Version.eq(revision));
         if let Some(tenant_id) = self.tenant_id {
@@ -1569,7 +1569,7 @@ impl ScriptRegistry for SeaOrmStorage {
         // Serialize an idempotent replay with deletion and source saves before
         // any stored test evidence is read back to the caller.
         let mut assert_current = Entity::update_many()
-            .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt))
+            .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt).into())
             .filter(Column::Id.eq(command.script_id))
             .filter(Column::Version.eq(revision));
         if let Some(tenant_id) = self.tenant_id {
