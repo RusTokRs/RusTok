@@ -74,7 +74,14 @@ impl ServerFlexStandaloneTranslationOwner {
         request: FlexStandaloneTranslationExactLocaleApply,
         lease: idempotency::Lease,
     ) -> FlexStandaloneTranslationResult<FlexStandaloneTranslationExactLocaleApplyReceipt> {
-        let txn = self.db.begin().await.map_err(database_error)?;
+        // Standalone source/schema changes advance the durable resource state from triggers. A
+        // serializable transaction makes that state row the CAS serialization point without
+        // introducing a lock-order cycle against concurrent localized-row writers.
+        let txn = self
+            .db
+            .begin_with_config(Some(IsolationLevel::Serializable), None)
+            .await
+            .map_err(database_error)?;
 
         txn.query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
