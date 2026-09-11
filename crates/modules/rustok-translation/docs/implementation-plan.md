@@ -3,7 +3,7 @@ id: doc://crates/modules/rustok-translation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress
-last_reviewed: 2026-09-05
+last_reviewed: 2026-09-11
 ---
 
 # Translation implementation plan
@@ -84,31 +84,40 @@ selection.
   workload groups nonterminal work by current assignee, including unassigned
   work. Both reads fail closed on inconsistent workflow evidence and enforce
   explicit queue and workload bounds.
-- Media, Taxonomy, Navigation menu, Pages metadata, and Settings static fields
-  are registered owner providers with durable change-cursor repair and
-  exact-locale aggregate coverage. Taxonomy applies term `name`, review-only
-  `slug`, and optional `description` through owner CAS and the shared Outbox
-  receipt ledger. Blog Category canonical copy is consumed through the same-ID
-  Blog-to-Taxonomy Category binding and the `taxonomy/term` provider. Forum
-  Category canonical copy is consumed through the same-ID Forum-to-Taxonomy
-  Category binding and the same `taxonomy/term` provider. The former
-  `blog/category` provider, Blog Category change journal, and Blog-local
-  Category translation storage are retired and must not be recreated. The
-  duplicate `forum/category` provider, Forum Category change/progress runtime,
-  and Forum-local donor translation storage are retired and must not be
-  recreated. Forum topic/reply Translation remains a separate opt-in UGC
-  onboarding track. Navigation applies its menu name and every item title as
-  one CAS-guarded locale aggregate through `MenuService`, using a content-free
-  cursor journal without claiming a generic menu event. Pages applies exact
-  title, review-only slug, and optional SEO metadata through `PageService`,
-  keeping Fly/GrapesJS bodies outside this pilot. Settings registers
-  `modules/static_settings` through the server-owned provider, resolves only
-  owner-admitted localized package fields, reads exact source/target snapshots,
-  progress and bounded changes through public Settings services, and applies
-  deterministic CAS-guarded owner commands with provider-level replay safety;
-  Translation does not read Settings persistence or manifest storage directly.
-  Translation validates provider facts and reports tenant-scoped projection
-  freshness as `current`, `behind`, or `unknown` by opaque cursor equality.
+- Media, Taxonomy, Navigation menu, Pages metadata, Settings static fields, and
+  Flex attached `taxonomy.category` fields are registered owner providers with
+  durable change-cursor repair and exact-locale aggregate coverage. Taxonomy
+  applies term `name`, review-only `slug`, and optional `description` through
+  owner CAS and the shared Outbox receipt ledger. Blog Category canonical copy
+  is consumed through the same-ID Blog-to-Taxonomy Category binding and the
+  `taxonomy/term` provider. Forum Category canonical copy is consumed through
+  the same-ID Forum-to-Taxonomy Category binding and the same `taxonomy/term`
+  provider. The former `blog/category` provider, Blog Category change journal,
+  and Blog-local Category translation storage are retired and must not be
+  recreated. The duplicate `forum/category` provider, Forum Category
+  change/progress runtime, and Forum-local donor translation storage are retired
+  and must not be recreated. Forum topic/reply Translation remains a separate
+  opt-in UGC onboarding track. Navigation applies its menu name and every item
+  title as one CAS-guarded locale aggregate through `MenuService`, using a
+  content-free cursor journal without claiming a generic menu event. Pages
+  applies exact title, review-only slug, and optional SEO metadata through
+  `PageService`, keeping Fly/GrapesJS bodies outside this pilot. Settings
+  registers `modules/static_settings` through the server-owned provider,
+  resolves only owner-admitted localized package fields, reads exact
+  source/target snapshots, progress and bounded changes through public Settings
+  services, and applies deterministic CAS-guarded owner commands with
+  provider-level replay safety; Translation does not read Settings persistence
+  or manifest storage directly. Flex `flex/attached_localized_value` is now a
+  retained repository-hosted pilot candidate for the `taxonomy.category` donor:
+  lifecycle exact-head run `34594653702` verifies multi-replica CAS/conflict,
+  idempotent replay, aggregate progress, schema fan-out, canonical hard-delete
+  tombstones and ChangeCursor recovery, while policy/RBAC exact-head run
+  `34592656347` verifies fail-closed defaults, safe explicit policy, forbidden
+  classifications, permission floors, unknown-field validation and policy-only
+  changes without content revision/change evidence. Standalone Flex localized
+  values remain a separate readiness track. Translation validates provider
+  facts and reports tenant-scoped projection freshness as `current`, `behind`,
+  or `unknown` by opaque cursor equality.
 - `TranslationPolicyService` owns a revisioned, tenant-scoped required-target
   locale subset. It validates through `TenantLocalePolicyPort`, rejects
   disabled/duplicate locales, stores the Tenant policy revision, and uses
@@ -400,9 +409,11 @@ selection.
     `33549035590`, Forum Category/Taxonomy cutover `33431200532`, Media
     `media/asset` PostgreSQL exact-head `33623651814` and post-merge `main`
     `33635199181`, Settings `modules/static_settings` runtime composition
-    `33952057144` and migration approval `33952055814`, application router
-    exact-head `33608857569`, and post-merge `main` `33609559524`.
-- Last verified at (UTC): 2026-09-05
+    `33952057144` and migration approval `33952055814`, Flex attached
+    `taxonomy.category` lifecycle `34594653702` and policy/RBAC `34592656347`,
+    application router exact-head `33608857569`, and post-merge `main`
+    `33609559524`.
+- Last verified at (UTC): 2026-09-11
 - Owner: Translation module maintainers
 
 ## Milestones
@@ -460,6 +471,13 @@ selection.
    crash after proposal save, while proving one canonical proposal, stable
    proposal identity, one audit receipt, atomic memory-pin release, and replay
    without another provider call.
+9. Repository-hosted retained evidence is complete for the registered Flex
+   attached `taxonomy.category` provider: exact-head lifecycle run `34594653702`
+   covers concurrent CAS/conflict, idempotent replay, progress, schema fan-out,
+   hard-delete tombstones and cursor recovery; policy/RBAC run `34592656347`
+   covers the fail-closed governance plane and confirms policy-only changes do
+   not manufacture content revisions. Production enablement remains an operator
+   rollout decision, and standalone Flex localized-value parity remains open.
 
 ## Verification
 
