@@ -15,7 +15,9 @@ use rustok_server::{
     auth::AuthConfig,
     common::settings::RustokSettings,
     services::{
-        flex_attached_values::{FlexAttachedValuesGraphqlAdapter, FlexTaxonomyCategoryDeleteCleanup},
+        flex_attached_values::{
+            FlexAttachedValuesGraphqlAdapter, FlexTaxonomyCategoryDeleteCleanup,
+        },
         module_event_dispatcher::build_shared_runtime_extensions_with_host_providers,
         server_runtime_context::ServerRuntimeContext,
     },
@@ -448,10 +450,7 @@ async fn create_category(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult
     Ok(category)
 }
 
-async fn create_localized_definition(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<Uuid> {
+async fn create_localized_definition(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<Uuid> {
     let (definition, _) = GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)
         .create(
             db,
