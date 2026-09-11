@@ -11,9 +11,7 @@ use flex::{
     FieldDefinitionService, FieldDefinitionView, FlexModule, GenericAttachedFieldDefinitionService,
     TAXONOMY_CATEGORY_ENTITY_TYPE,
 };
-use rustok_api::{
-    AuthContext, Permission, PortActor, PortContext, TenantContext, TenantLocale,
-};
+use rustok_api::{AuthContext, Permission, PortActor, PortContext, TenantContext, TenantLocale};
 use rustok_core::{ModuleRegistry, SecurityContext, UserRole, field_schema::FieldType};
 use rustok_migrations::Migrator;
 use rustok_server::{
@@ -56,21 +54,11 @@ struct UncachedFieldDefinitions;
 
 #[async_trait]
 impl FieldDefinitionCachePort for UncachedFieldDefinitions {
-    async fn get(
-        &self,
-        _tenant_id: Uuid,
-        _entity_type: &str,
-    ) -> Option<Vec<FieldDefinitionView>> {
+    async fn get(&self, _tenant_id: Uuid, _entity_type: &str) -> Option<Vec<FieldDefinitionView>> {
         None
     }
 
-    async fn set(
-        &self,
-        _tenant_id: Uuid,
-        _entity_type: &str,
-        _rows: Vec<FieldDefinitionView>,
-    ) {
-    }
+    async fn set(&self, _tenant_id: Uuid, _entity_type: &str, _rows: Vec<FieldDefinitionView>) {}
 
     async fn invalidate(&self, _tenant_id: Uuid, _entity_type: &str) {}
 }
@@ -216,12 +204,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .await,
         "set public policy mutation",
     )?;
-    assert_policy_object(
-        &set_public["setAttachedFieldPolicy"],
-        "PUBLIC",
-        true,
-        true,
-    )?;
+    assert_policy_object(&set_public["setAttachedFieldPolicy"], "PUBLIC", true, true)?;
 
     let explicit_query = successful_graphql(
         execute_graphql(
@@ -247,7 +230,11 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             read_request.clone(),
         )
         .await?;
-    assert_provider_policy(&public_snapshot, TranslationDataClassification::Public, true)?;
+    assert_provider_policy(
+        &public_snapshot,
+        TranslationDataClassification::Public,
+        true,
+    )?;
     assert_content_revisions_unchanged(
         &public_snapshot,
         &content_revision,
@@ -319,10 +306,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     )?;
 
     let reset_snapshot = provider
-        .read_resource(
-            read_context(tenant_id, "reset-provider-read"),
-            read_request,
-        )
+        .read_resource(read_context(tenant_id, "reset-provider-read"), read_request)
         .await?;
     assert_provider_policy(
         &reset_snapshot,
@@ -481,7 +465,11 @@ fn successful_graphql(response: Response, operation: &str) -> TestResult<Value> 
     response
         .data
         .into_json()
-        .map_err(|error| test_error(format!("{operation} response did not convert to JSON: {error}")))
+        .map_err(|error| {
+            test_error(format!(
+                "{operation} response did not convert to JSON: {error}"
+            ))
+        })
         .map_err(Into::into)
 }
 
