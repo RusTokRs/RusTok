@@ -57,7 +57,7 @@ pub use rustok_seo_targets::{
 pub use services::{
     SeoApplicationServices, SeoBulkService, SeoMediaAssetReadProvider, SeoMetadataService,
     SeoOperationsService, SeoRedirectService, SeoRoutingService, SeoSettingsService,
-    SeoSitemapService,
+    SeoSitemapService, SeoTranslationTargetProvider, register_seo_translation_target_provider,
 };
 
 #[cfg(feature = "server")]

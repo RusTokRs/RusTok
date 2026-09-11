@@ -1,4 +1,9 @@
 mod bulk_read_model;
+mod translation_target;
+
+pub use translation_target::{
+    SeoTranslationTargetProvider, register_seo_translation_target_provider,
+};
 
 include!("services_base.rs");
 
