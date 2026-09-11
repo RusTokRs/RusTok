@@ -8,16 +8,21 @@ on:
       - "apps/server/src/services/flex_attached_values.rs"
       - "apps/server/src/services/mod.rs"
       - "apps/server/tests/taxonomy_category_flex_translation_target_postgres.rs"
+      - "apps/server/tests/taxonomy_category_flex_translation_lifecycle_postgres.rs"
+      - "crates/modules/flex/src/attached_definitions.rs"
       - "crates/modules/flex/src/attached_translation_*.rs"
       - "crates/modules/flex/src/attached_field_policy.rs"
       - "crates/modules/flex/src/migrations/**"
       - "crates/modules/flex/src/lib.rs"
+      - "crates/modules/rustok-taxonomy/src/category_delete.rs"
       - "crates/modules/rustok-taxonomy/src/owner_category_revision.rs"
+      - "crates/modules/rustok-taxonomy/src/services.rs"
       - "crates/modules/rustok-taxonomy/src/lib.rs"
       - "crates/modules/rustok-translation-targets/**"
       - "crates/modules/rustok-outbox/**"
       - "crates/utils/rustok-migrations/**"
       - "docs/modules/translation-implementation-plan.md"
+      - "docs/modules/translation-surfaces.json"
       - "crates/modules/rustok-translation/docs/implementation-plan.md"
       - ".github/workflows/flex-attached-translation-target-postgres.yml"
   push:
@@ -29,16 +34,21 @@ on:
       - "apps/server/src/services/flex_attached_values.rs"
       - "apps/server/src/services/mod.rs"
       - "apps/server/tests/taxonomy_category_flex_translation_target_postgres.rs"
+      - "apps/server/tests/taxonomy_category_flex_translation_lifecycle_postgres.rs"
+      - "crates/modules/flex/src/attached_definitions.rs"
       - "crates/modules/flex/src/attached_translation_*.rs"
       - "crates/modules/flex/src/attached_field_policy.rs"
       - "crates/modules/flex/src/migrations/**"
       - "crates/modules/flex/src/lib.rs"
+      - "crates/modules/rustok-taxonomy/src/category_delete.rs"
       - "crates/modules/rustok-taxonomy/src/owner_category_revision.rs"
+      - "crates/modules/rustok-taxonomy/src/services.rs"
       - "crates/modules/rustok-taxonomy/src/lib.rs"
       - "crates/modules/rustok-translation-targets/**"
       - "crates/modules/rustok-outbox/**"
       - "crates/utils/rustok-migrations/**"
       - "docs/modules/translation-implementation-plan.md"
+      - "docs/modules/translation-surfaces.json"
       - "crates/modules/rustok-translation/docs/implementation-plan.md"
       - ".github/workflows/flex-attached-translation-target-postgres.yml"
   workflow_dispatch:
@@ -94,7 +104,8 @@ jobs:
         shell: bash
         run: |
           rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check \
-            apps/server/tests/taxonomy_category_flex_translation_target_postgres.rs
+            apps/server/tests/taxonomy_category_flex_translation_target_postgres.rs \
+            apps/server/tests/taxonomy_category_flex_translation_lifecycle_postgres.rs
       - name: Compile Flex attached registered provider PostgreSQL evidence
         run: >-
           cargo test --locked -p rustok-server --no-default-features
@@ -106,4 +117,16 @@ jobs:
           cargo test --locked -p rustok-server --no-default-features
           --features mod-taxonomy,mod-flex
           --test taxonomy_category_flex_translation_target_postgres
+          -- --ignored --nocapture
+      - name: Compile Flex attached lifecycle PostgreSQL evidence
+        run: >-
+          cargo test --locked -p rustok-server --no-default-features
+          --features mod-taxonomy,mod-flex
+          --test taxonomy_category_flex_translation_lifecycle_postgres
+          --no-run
+      - name: Run Flex attached lifecycle PostgreSQL evidence
+        run: >-
+          cargo test --locked -p rustok-server --no-default-features
+          --features mod-taxonomy,mod-flex
+          --test taxonomy_category_flex_translation_lifecycle_postgres
           -- --ignored --nocapture
