@@ -17101,6 +17101,7 @@ dependencies = [
  "rustok-seo-targets",
  "rustok-taxonomy",
  "rustok-tenant",
+ "rustok-translation-targets",
  "sea-orm",
  "sea-orm-migration",
  "serde",
