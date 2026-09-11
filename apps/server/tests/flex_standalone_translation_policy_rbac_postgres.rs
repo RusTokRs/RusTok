@@ -261,7 +261,11 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             read_request.clone(),
         )
         .await?;
-    assert_provider_policy(&public_snapshot, TranslationDataClassification::Public, true)?;
+    assert_provider_policy(
+        &public_snapshot,
+        TranslationDataClassification::Public,
+        true,
+    )?;
     assert_content_revisions_unchanged(
         &public_snapshot,
         &content_revision,
@@ -299,7 +303,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         ))
         .await
         .expect_err("cross-tenant direct policy write must fail at the PostgreSQL boundary");
-    if !cross_tenant_error.to_string().contains("does not belong to tenant") {
+    if !cross_tenant_error
+        .to_string()
+        .contains("does not belong to tenant")
+    {
         return Err(test_error(format!(
             "cross-tenant direct policy write failed for the wrong reason: {cross_tenant_error}"
         ))
@@ -336,7 +343,10 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             Some(actor_id),
             schema.id,
             UpdateFlexSchemaCommand {
-                fields_config: Some(vec![ineligible_tagline_definition(), ineligible_definition()]),
+                fields_config: Some(vec![
+                    ineligible_tagline_definition(),
+                    ineligible_definition(),
+                ]),
                 ..Default::default()
             },
         )
@@ -625,7 +635,9 @@ async fn provider_identity(
         .resources
         .into_iter()
         .find(|resource| resource.identity.resource_id.as_str() == entry_id)
-        .ok_or_else(|| test_error("registered standalone provider did not list the seeded entry"))?;
+        .ok_or_else(|| {
+            test_error("registered standalone provider did not list the seeded entry")
+        })?;
     Ok(resource.identity)
 }
 
