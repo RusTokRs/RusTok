@@ -59,6 +59,7 @@ impl SeoService {
                 state,
                 explicit,
                 requested_locale,
+                &settings,
             ))),
             (Some(explicit), None) => Ok(Some(self.meta_record_from_explicit_only(
                 tenant.default_locale.as_str(),
@@ -400,6 +401,7 @@ impl SeoService {
         state: TargetState,
         explicit: LoadedMeta,
         requested_locale: Option<String>,
+        settings: &crate::dto::SeoModuleSettings,
     ) -> SeoMetaRecord {
         let resolved = resolve_by_locale_with_fallback(
             explicit.translations.as_slice(),
@@ -407,82 +409,108 @@ impl SeoService {
             Some(tenant.default_locale.as_str()),
             |item| item.locale.as_str(),
         );
-        let translation = resolved.item.cloned();
-        let title_present = translation
+        let explicit_translation = resolved.item.cloned();
+        let explicit_effective_locale = resolved.effective_locale.clone();
+        let explicit_title = explicit_translation
             .as_ref()
-            .and_then(|item| trimmed_option(item.title.clone()))
-            .is_some();
-        let description_present = translation
+            .and_then(|item| trimmed_option(item.title.clone()));
+        let explicit_description = explicit_translation
             .as_ref()
-            .and_then(|item| trimmed_option(item.description.clone()))
-            .is_some();
-        let keywords_present = translation
+            .and_then(|item| trimmed_option(item.description.clone()));
+        let explicit_keywords = explicit_translation
             .as_ref()
-            .and_then(|item| trimmed_option(item.keywords.clone()))
-            .is_some();
-        let canonical_present = explicit
+            .and_then(|item| trimmed_option(item.keywords.clone()));
+        let explicit_og_title = explicit_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.og_title.clone()));
+        let explicit_og_description = explicit_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.og_description.clone()));
+        let explicit_og_image = explicit_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.og_image.clone()));
+        let explicit_translation_present = explicit_title.is_some()
+            || explicit_description.is_some()
+            || explicit_keywords.is_some()
+            || explicit_og_title.is_some()
+            || explicit_og_description.is_some()
+            || explicit_og_image.is_some();
+        let explicit_canonical = explicit
             .meta
             .canonical_url
-            .as_deref()
-            .is_some_and(|value| !value.trim().is_empty());
-        let structured_data_present = explicit.meta.structured_data.is_some();
-        SeoMetaRecord {
-            target_kind: state.target_kind,
-            target_id: state.target_id,
+            .clone()
+            .filter(|value| !value.trim().is_empty());
+        let explicit_structured_data = explicit.meta.structured_data.clone();
+
+        // Build the canonical generated/domain fallback result first, then overlay only fields that
+        // are actually present in the explicit SEO record. This keeps precedence field-local:
+        // explicit override -> generated template -> owner/domain fallback.
+        let mut record = self.meta_record_from_generated_or_fallback(
+            tenant,
+            state,
             requested_locale,
-            effective_locale: resolved.effective_locale.clone(),
-            available_locales: explicit
+            settings,
+        );
+
+        record.noindex = explicit.meta.no_index;
+        record.nofollow = explicit.meta.no_follow;
+        record.effective_state.robots = field_state(SeoFieldSource::Explicit, true);
+
+        if let Some(value) = explicit_canonical {
+            record.canonical_url = Some(value);
+            record.effective_state.canonical_url = field_state(SeoFieldSource::Explicit, true);
+        }
+        if let Some(value) = explicit_structured_data {
+            record.structured_data = Some(async_graphql::Json(value));
+            record.effective_state.structured_data = field_state(SeoFieldSource::Explicit, true);
+        }
+        if let Some(value) = explicit_title {
+            record.translation.title = Some(value);
+            record.effective_state.title = field_state(SeoFieldSource::Explicit, true);
+        }
+        if let Some(value) = explicit_description {
+            record.translation.description = Some(value);
+            record.effective_state.description = field_state(SeoFieldSource::Explicit, true);
+        }
+        if let Some(value) = explicit_keywords {
+            record.translation.keywords = Some(value);
+            record.effective_state.keywords = field_state(SeoFieldSource::Explicit, true);
+        }
+
+        let explicit_open_graph_present = explicit_og_title.is_some()
+            || explicit_og_description.is_some()
+            || explicit_og_image.is_some();
+        if let Some(value) = explicit_og_title {
+            record.translation.og_title = Some(value);
+        }
+        if let Some(value) = explicit_og_description {
+            record.translation.og_description = Some(value);
+        }
+        if let Some(value) = explicit_og_image {
+            record.translation.og_image = Some(value);
+        }
+        if explicit_open_graph_present {
+            record.effective_state.open_graph = field_state(SeoFieldSource::Explicit, true);
+        }
+
+        if explicit_translation_present {
+            record.effective_locale = explicit_effective_locale.clone();
+            record.translation.locale = explicit_translation
+                .as_ref()
+                .map(|item| item.locale.clone())
+                .unwrap_or(explicit_effective_locale);
+        }
+
+        record.available_locales.extend(
+            explicit
                 .translations
                 .iter()
-                .map(|item| item.locale.clone())
-                .collect(),
-            noindex: explicit.meta.no_index,
-            nofollow: explicit.meta.no_follow,
-            canonical_url: explicit.meta.canonical_url.clone(),
-            translation: crate::dto::SeoMetaTranslationRecord {
-                locale: translation
-                    .as_ref()
-                    .map(|item| item.locale.clone())
-                    .unwrap_or(resolved.effective_locale),
-                title: translation
-                    .as_ref()
-                    .and_then(|item| trimmed_option(item.title.clone()))
-                    .or(Some(state.title)),
-                description: translation
-                    .as_ref()
-                    .and_then(|item| trimmed_option(item.description.clone()))
-                    .or(state.description),
-                keywords: translation
-                    .as_ref()
-                    .and_then(|item| trimmed_option(item.keywords.clone())),
-                og_title: translation
-                    .as_ref()
-                    .and_then(|item| trimmed_option(item.og_title.clone())),
-                og_description: translation
-                    .as_ref()
-                    .and_then(|item| trimmed_option(item.og_description.clone())),
-                og_image: translation
-                    .as_ref()
-                    .and_then(|item| trimmed_option(item.og_image.clone())),
-            },
-            source: "explicit".to_string(),
-            open_graph: Some(state.open_graph),
-            structured_data: explicit
-                .meta
-                .structured_data
-                .clone()
-                .map(async_graphql::Json),
-            effective_state: SeoDocumentEffectiveState {
-                title: field_state(SeoFieldSource::Explicit, title_present),
-                description: field_state(SeoFieldSource::Explicit, description_present),
-                canonical_url: field_state(SeoFieldSource::Explicit, canonical_present),
-                keywords: field_state(SeoFieldSource::Explicit, keywords_present),
-                robots: field_state(SeoFieldSource::Explicit, true),
-                open_graph: field_state(SeoFieldSource::Explicit, true),
-                twitter: field_state(SeoFieldSource::Explicit, true),
-                structured_data: field_state(SeoFieldSource::Explicit, structured_data_present),
-            },
-        }
+                .map(|translation| translation.locale.clone()),
+        );
+        record.available_locales.sort();
+        record.available_locales.dedup();
+        record.source = "explicit".to_string();
+        record
     }
 
     fn meta_record_from_explicit_only(
@@ -607,6 +635,45 @@ impl SeoService {
         } else {
             SeoFieldSource::Fallback
         };
+        let title_source = if generated.title.is_some() {
+            SeoFieldSource::Generated
+        } else {
+            SeoFieldSource::Fallback
+        };
+        let description_source = if generated.description.is_some() {
+            SeoFieldSource::Generated
+        } else {
+            SeoFieldSource::Fallback
+        };
+        let canonical_source = if generated.canonical_url.is_some() {
+            SeoFieldSource::Generated
+        } else {
+            SeoFieldSource::Fallback
+        };
+        let keywords_source = if generated.keywords.is_some() {
+            SeoFieldSource::Generated
+        } else {
+            SeoFieldSource::Fallback
+        };
+        let robots_source = if generated.robots.is_some() {
+            SeoFieldSource::Generated
+        } else {
+            SeoFieldSource::Fallback
+        };
+        let open_graph_source = if generated.og_title.is_some()
+            || generated.og_description.is_some()
+        {
+            SeoFieldSource::Generated
+        } else {
+            SeoFieldSource::Fallback
+        };
+        let twitter_source = if generated.twitter_title.is_some()
+            || generated.twitter_description.is_some()
+        {
+            SeoFieldSource::Generated
+        } else {
+            SeoFieldSource::Fallback
+        };
         let title = generated
             .title
             .clone()
@@ -623,6 +690,7 @@ impl SeoService {
             .og_description
             .clone()
             .or_else(|| state.open_graph.description.clone());
+        let og_image = first_open_graph_image_url(&state.open_graph);
         let canonical_url = generated.canonical_url.clone();
         let mut translation = if source == SeoFieldSource::Generated {
             generated_translation(&generated, state.effective_locale.clone())
@@ -634,7 +702,7 @@ impl SeoService {
         translation.description = description.clone();
         translation.og_title = og_title.clone();
         translation.og_description = og_description.clone();
-        translation.og_image = first_open_graph_image_url(&state.open_graph);
+        translation.og_image = og_image.clone();
 
         SeoMetaRecord {
             target_kind: state.target_kind,
@@ -654,14 +722,17 @@ impl SeoService {
             open_graph: Some(state.open_graph),
             structured_data: Some(async_graphql::Json(state.structured_data)),
             effective_state: SeoDocumentEffectiveState {
-                title: field_state(source, true),
-                description: field_state(source, description.is_some()),
-                canonical_url: field_state(source, canonical_url.is_some()),
-                keywords: field_state(source, generated.keywords.is_some()),
-                robots: field_state(source, generated.robots.is_some()),
-                open_graph: field_state(source, og_title.is_some() || og_description.is_some()),
+                title: field_state(title_source, true),
+                description: field_state(description_source, description.is_some()),
+                canonical_url: field_state(canonical_source, canonical_url.is_some()),
+                keywords: field_state(keywords_source, generated.keywords.is_some()),
+                robots: field_state(robots_source, generated.robots.is_some()),
+                open_graph: field_state(
+                    open_graph_source,
+                    og_title.is_some() || og_description.is_some() || og_image.is_some(),
+                ),
                 twitter: field_state(
-                    source,
+                    twitter_source,
                     generated.twitter_title.is_some() || generated.twitter_description.is_some(),
                 ),
                 structured_data: field_state(SeoFieldSource::Fallback, true),
