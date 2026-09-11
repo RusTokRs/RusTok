@@ -6,10 +6,11 @@ use chrono::{Duration, Utc};
 use ed25519_dalek::{Signer, SigningKey};
 use rustok_core::MigrationSource;
 use rustok_modules::{
-    CURRENT_OPERATIONS_TOOL_PROTOCOL, ConflictFenceSet, ModulesModule,
-    OPERATIONS_TOOL_RELEASE_CONTRACT, OperationsToolComponent, OperationsToolError,
-    OperationsToolProtocolMatrix, OperationsToolRelease, OperationsToolReleasePayload,
-    OperationsToolService, OperationsToolSupervisorReport, StartOperationsToolMaintenanceCommand,
+    AuthorizeOperationsToolPredecessorRecoveryCommand, CURRENT_OPERATIONS_TOOL_PROTOCOL,
+    ConflictFenceSet, ModuleCommandContext, ModulesModule, OPERATIONS_TOOL_RELEASE_CONTRACT,
+    OperationsToolComponent, OperationsToolError, OperationsToolProtocolMatrix,
+    OperationsToolRelease, OperationsToolReleasePayload, OperationsToolService,
+    OperationsToolSupervisorReport, StartOperationsToolMaintenanceCommand,
 };
 use sea_orm::Database;
 use sea_orm_migration::{MigrationTrait, SchemaManager};
@@ -18,6 +19,16 @@ use uuid::Uuid;
 
 fn sha256_digest(bytes: &[u8]) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
+}
+
+fn platform_context(trace_id: &str, idempotency_key: Uuid) -> ModuleCommandContext {
+    ModuleCommandContext {
+        actor_id: Uuid::new_v4(),
+        tenant_id: None,
+        trace_id: trace_id.to_string(),
+        correlation_id: Uuid::new_v4(),
+        idempotency_key,
+    }
 }
 
 async fn setup_test_db() -> sea_orm::DatabaseConnection {
@@ -225,20 +236,71 @@ async fn test_fleet_exclusion_fence_and_maintenance_start() {
         target_release_id: target_id,
         predecessor_release_id: None,
         host_ids: vec!["host-alpha".to_string(), "host-beta".to_string()],
-        actor_id: Uuid::new_v4(),
-        idempotency_key: Uuid::new_v4(),
-        trace_id: "trace-op-1".to_string(),
-        correlation_id: Uuid::new_v4(),
+        context: platform_context("trace-op-1", Uuid::new_v4()),
     };
 
+    let mut tenant_scoped = command.clone();
+    tenant_scoped.operation_id = Uuid::new_v4();
+    tenant_scoped.context.idempotency_key = Uuid::new_v4();
+    tenant_scoped.context.tenant_id = Some(Uuid::new_v4());
+    assert_eq!(
+        service
+            .start_maintenance(tenant_scoped, now)
+            .await
+            .unwrap_err(),
+        OperationsToolError::InvalidCommand
+    );
+    let mut duplicate_host = command.clone();
+    duplicate_host.operation_id = Uuid::new_v4();
+    duplicate_host.context.idempotency_key = Uuid::new_v4();
+    duplicate_host.host_ids = vec!["host-alpha".to_string(), "host-alpha".to_string()];
+    assert_eq!(
+        service
+            .start_maintenance(duplicate_host, now)
+            .await
+            .unwrap_err(),
+        OperationsToolError::InvalidCommand
+    );
+
     let op = service
-        .start_maintenance(command, now)
+        .start_maintenance(command.clone(), now)
         .await
         .expect("start maintenance succeeds");
 
     assert_eq!(op.operation_id, op_id);
     assert_eq!(op.status, "in_progress");
     assert_eq!(op.recovery_attempts, 0);
+    assert_eq!(op.context, command.context);
+
+    let replay = service
+        .start_maintenance(command.clone(), now)
+        .await
+        .expect("the exact command replays");
+    assert_eq!(replay.operation_id, op_id);
+    let mut changed_trace = command.clone();
+    changed_trace.context.trace_id = "trace-op-1-changed".to_string();
+    assert_eq!(
+        service
+            .start_maintenance(changed_trace, now)
+            .await
+            .unwrap_err(),
+        OperationsToolError::IdempotencyConflict
+    );
+
+    let fence_conflict = StartOperationsToolMaintenanceCommand {
+        operation_id: Uuid::new_v4(),
+        target_release_id: target_id,
+        predecessor_release_id: None,
+        host_ids: vec!["host-gamma".to_string()],
+        context: platform_context("trace-op-fence", Uuid::new_v4()),
+    };
+    assert_eq!(
+        service
+            .start_maintenance(fence_conflict, now)
+            .await
+            .unwrap_err(),
+        OperationsToolError::Conflict(rustok_modules::ConflictKey::fleet_operations_tool())
+    );
 
     // Verify 6 assignments (2 hosts * 3 components) created in staged status
     let alpha_ctrl = service
@@ -281,10 +343,7 @@ async fn test_supervisor_reports_and_automatic_convergence() {
         target_release_id: target_id,
         predecessor_release_id: None,
         host_ids: hosts.clone(),
-        actor_id: Uuid::new_v4(),
-        idempotency_key: Uuid::new_v4(),
-        trace_id: "trace-op-2".to_string(),
-        correlation_id: Uuid::new_v4(),
+        context: platform_context("trace-op-2", Uuid::new_v4()),
     };
     service.start_maintenance(command, now).await.unwrap();
 
@@ -387,21 +446,40 @@ async fn test_predecessor_recovery_authorization_and_single_attempt_exhaustion()
         target_release_id: target_id,
         predecessor_release_id: Some(pred_id),
         host_ids: vec!["node-1".to_string()],
-        actor_id: Uuid::new_v4(),
-        idempotency_key: Uuid::new_v4(),
-        trace_id: "trace-rec-1".to_string(),
-        correlation_id: Uuid::new_v4(),
+        context: platform_context("trace-rec-1", Uuid::new_v4()),
     };
     service.start_maintenance(command, now).await.unwrap();
 
     // 4. Authorize predecessor recovery (Attempt 1)
+    let recovery_command = AuthorizeOperationsToolPredecessorRecoveryCommand {
+        operation_id: op_id,
+        context: platform_context("trace-recovery-1", Uuid::new_v4()),
+    };
     let recovered_op = service
-        .authorize_predecessor_recovery(op_id, now)
+        .authorize_predecessor_recovery(recovery_command.clone(), now)
         .await
         .expect("predecessor recovery attempt 1 succeeds");
 
     assert_eq!(recovered_op.recovery_attempts, 1);
-    assert_eq!(recovered_op.status, "rolled_back");
+    assert_eq!(recovered_op.status, "rolling_back");
+    assert_eq!(
+        recovered_op.recovery_context,
+        Some(recovery_command.context.clone())
+    );
+    let recovery_replay = service
+        .authorize_predecessor_recovery(recovery_command.clone(), now)
+        .await
+        .expect("the exact recovery authorization replays");
+    assert_eq!(recovery_replay.operation_id, op_id);
+    let mut changed_recovery_trace = recovery_command.clone();
+    changed_recovery_trace.context.trace_id = "trace-recovery-1-changed".to_string();
+    assert_eq!(
+        service
+            .authorize_predecessor_recovery(changed_recovery_trace, now)
+            .await
+            .unwrap_err(),
+        OperationsToolError::IdempotencyConflict
+    );
 
     // Desired digests on node-1 should now point to predecessor digests
     let node1_ctrl = service
@@ -426,10 +504,49 @@ async fn test_predecessor_recovery_authorization_and_single_attempt_exhaustion()
 
     // 5. Attempting second recovery must fail with RecoveryExhausted (max 1 attempt)
     let second_err = service
-        .authorize_predecessor_recovery(op_id, now)
+        .authorize_predecessor_recovery(
+            AuthorizeOperationsToolPredecessorRecoveryCommand {
+                operation_id: op_id,
+                context: platform_context("trace-recovery-2", Uuid::new_v4()),
+            },
+            now,
+        )
         .await
         .unwrap_err();
     assert_eq!(second_err, OperationsToolError::RecoveryExhausted(op_id));
+
+    for (component, digest) in [
+        (
+            OperationsToolComponent::Controller,
+            verified_pred.payload().controller_digest.clone(),
+        ),
+        (
+            OperationsToolComponent::Reconciler,
+            verified_pred.payload().reconciler_digest.clone(),
+        ),
+        (
+            OperationsToolComponent::Agent,
+            verified_pred.payload().agent_digest.clone(),
+        ),
+    ] {
+        service
+            .report_supervisor_observation(
+                OperationsToolSupervisorReport {
+                    operation_id: op_id,
+                    host_id: "node-1".to_string(),
+                    component,
+                    observed_digest: digest,
+                    status: "converged".to_string(),
+                },
+                now,
+            )
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        service.get_operation(op_id).await.unwrap().status,
+        "rolled_back"
+    );
 
     // 6. Operation without predecessor cannot recover
     let no_pred_op_id = Uuid::new_v4();
@@ -438,10 +555,7 @@ async fn test_predecessor_recovery_authorization_and_single_attempt_exhaustion()
         target_release_id: target_id,
         predecessor_release_id: None,
         host_ids: vec!["node-1".to_string()],
-        actor_id: Uuid::new_v4(),
-        idempotency_key: Uuid::new_v4(),
-        trace_id: "trace-no-pred".to_string(),
-        correlation_id: Uuid::new_v4(),
+        context: platform_context("trace-no-pred", Uuid::new_v4()),
     };
     service
         .start_maintenance(no_pred_command, now)
@@ -449,7 +563,13 @@ async fn test_predecessor_recovery_authorization_and_single_attempt_exhaustion()
         .unwrap();
 
     let err_no_pred = service
-        .authorize_predecessor_recovery(no_pred_op_id, now)
+        .authorize_predecessor_recovery(
+            AuthorizeOperationsToolPredecessorRecoveryCommand {
+                operation_id: no_pred_op_id,
+                context: platform_context("trace-no-pred-recovery", Uuid::new_v4()),
+            },
+            now,
+        )
         .await
         .unwrap_err();
     assert_eq!(

@@ -660,7 +660,7 @@ fn validate_artifact_data_index_query(
     Ok(value)
 }
 
-fn valid_module_slug(value: &str) -> bool {
+pub(crate) fn valid_module_slug(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 48
         && !value.starts_with('_')

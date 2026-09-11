@@ -5,8 +5,8 @@ use std::time::Duration;
 use chrono::Utc;
 use rustok_core::MigrationSource;
 use rustok_modules::{
-    ArtifactDataPostPurgeRecoveryService, ArtifactDataSnapshotIntentService, ModulesModule,
-    PostPurgeRecoveryError, PrepareRecoveryRequest, SnapshotCopyKind,
+    ArtifactDataPostPurgeRecoveryService, ArtifactDataSnapshotIntentService, ModuleCommandContext,
+    ModulesModule, PostPurgeRecoveryError, PrepareRecoveryRequest, SnapshotCopyKind,
 };
 use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
@@ -286,14 +286,17 @@ async fn test_post_purge_recovery_staging_and_cas_cutover() {
         module_slug: module_slug.to_string(),
         data_contract_revision,
         source_snapshot_id: snapshot_id,
-        actor_id: Uuid::new_v4(),
-        trace_id: "trace-recovery-1".to_string(),
-        correlation_id: Uuid::new_v4(),
-        idempotency_key: Uuid::new_v4(),
+        context: ModuleCommandContext {
+            actor_id: Uuid::new_v4(),
+            tenant_id: Some(tenant_id),
+            trace_id: "trace-recovery-1".to_string(),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        },
     };
 
     let staged_receipt = recovery_service
-        .prepare_recovery(prep_req)
+        .prepare_recovery(prep_req.clone())
         .await
         .expect("prepare recovery succeeds");
 
@@ -302,6 +305,74 @@ async fn test_post_purge_recovery_staging_and_cas_cutover() {
     assert_eq!(staged_receipt.target_namespace_revision, 4);
     assert_eq!(staged_receipt.records_restored, 50);
     assert_eq!(staged_receipt.objects_restored, 4);
+
+    let recovery_evidence = database
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT request_digest, actor_id, trace_id, correlation_id \
+             FROM module_artifact_data_namespace_recovery_operations \
+             WHERE recovery_id = ?1",
+            vec![staged_receipt.recovery_id.to_string().into()],
+        ))
+        .await
+        .expect("query recovery evidence")
+        .expect("recovery evidence");
+    let request_digest: String = recovery_evidence
+        .try_get("", "request_digest")
+        .expect("request digest");
+    let actor_id: String = recovery_evidence.try_get("", "actor_id").expect("actor ID");
+    let trace_id: String = recovery_evidence.try_get("", "trace_id").expect("trace ID");
+    let correlation_id: String = recovery_evidence
+        .try_get("", "correlation_id")
+        .expect("correlation ID");
+    assert!(request_digest.starts_with("sha256:"));
+    assert_eq!(actor_id, prep_req.context.actor_id.to_string());
+    assert_eq!(trace_id, prep_req.context.trace_id);
+    assert_eq!(correlation_id, prep_req.context.correlation_id.to_string());
+    let replay = recovery_service
+        .prepare_recovery(prep_req.clone())
+        .await
+        .expect("exact recovery replay");
+    assert_eq!(replay.recovery_id, staged_receipt.recovery_id);
+    let mut changed_context = prep_req.clone();
+    changed_context.context.trace_id = "trace-recovery-changed".to_string();
+    assert!(matches!(
+        recovery_service.prepare_recovery(changed_context).await,
+        Err(PostPurgeRecoveryError::IdempotencyConflict)
+    ));
+    let mut changed_snapshot = prep_req.clone();
+    changed_snapshot.source_snapshot_id = Uuid::new_v4();
+    assert!(matches!(
+        recovery_service.prepare_recovery(changed_snapshot).await,
+        Err(PostPurgeRecoveryError::IdempotencyConflict)
+    ));
+    let mut foreign_context = prep_req.clone();
+    foreign_context.context.tenant_id = Some(Uuid::new_v4());
+    foreign_context.context.idempotency_key = Uuid::new_v4();
+    assert!(matches!(
+        recovery_service.prepare_recovery(foreign_context).await,
+        Err(PostPurgeRecoveryError::InvalidCommand)
+    ));
+
+    let foreign_tenant_id = Uuid::new_v4();
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_data_snapshots SET tenant_id = ?1 WHERE snapshot_id = ?2",
+            vec![
+                foreign_tenant_id.to_string().into(),
+                snapshot_id.to_string().into(),
+            ],
+        ))
+        .await
+        .expect("move snapshot outside recovery tenant");
+    let mut foreign_snapshot = prep_req.clone();
+    foreign_snapshot.context.idempotency_key = Uuid::new_v4();
+    foreign_snapshot.context.correlation_id = Uuid::new_v4();
+    assert!(matches!(
+        recovery_service.prepare_recovery(foreign_snapshot).await,
+        Err(PostPurgeRecoveryError::SnapshotNotReady(id)) if id == snapshot_id
+    ));
 
     // 4. Step B: Premature cutover before verification must fail
     let premature_cutover_err = recovery_service
@@ -380,10 +451,13 @@ async fn test_post_purge_recovery_staging_and_cas_cutover() {
         module_slug: module_slug.to_string(),
         data_contract_revision,
         source_snapshot_id: snapshot_id,
-        actor_id: Uuid::new_v4(),
-        trace_id: "trace-bad".to_string(),
-        correlation_id: Uuid::new_v4(),
-        idempotency_key: Uuid::new_v4(),
+        context: ModuleCommandContext {
+            actor_id: Uuid::new_v4(),
+            tenant_id: Some(tenant_id),
+            trace_id: "trace-bad".to_string(),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        },
     };
     let err = recovery_service
         .prepare_recovery(bad_prep)

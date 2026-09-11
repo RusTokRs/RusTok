@@ -14,7 +14,11 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::data::{placeholder, revision_value, uuid_value};
+use crate::{
+    ModuleCommandContext,
+    data::{placeholder, revision_value, uuid_from_row, uuid_value, valid_module_slug},
+    promotion::digest_json,
+};
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum PostPurgeRecoveryError {
@@ -38,18 +42,20 @@ pub enum PostPurgeRecoveryError {
         "CAS cutover conflict: namespace was modified concurrently or tombstone revision changed"
     )]
     CasCutoverConflict,
+    #[error("Post-purge recovery command is invalid")]
+    InvalidCommand,
+    #[error("Post-purge recovery idempotency key was reused for a different command")]
+    IdempotencyConflict,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PrepareRecoveryRequest {
     pub tenant_id: Uuid,
     pub module_slug: String,
     pub data_contract_revision: u64,
     pub source_snapshot_id: Uuid,
-    pub actor_id: Uuid,
-    pub trace_id: String,
-    pub correlation_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,76 +102,24 @@ impl ArtifactDataPostPurgeRecoveryService {
         &self,
         request: PrepareRecoveryRequest,
     ) -> Result<StagedRecoveryReceipt, PostPurgeRecoveryError> {
-        let backend = self.db.get_database_backend();
-
-        // 1. Check idempotency
-        if let Some(row) = self
+        validate_prepare_recovery_request(&request)?;
+        let request_digest = digest_json(&request)
+            .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?;
+        let transaction = self
             .db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT recovery_id, tombstone_namespace_revision, target_namespace_revision, \
-                            records_restored, objects_restored, manifest_digest, status \
-                     FROM module_artifact_data_namespace_recovery_operations \
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} \
-                       AND idempotency_key = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                ),
-                vec![
-                    uuid_value(request.tenant_id, backend),
-                    request.module_slug.clone().into(),
-                    revision_value(request.data_contract_revision)
-                        .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?,
-                    uuid_value(request.idempotency_key, backend),
-                ],
-            ))
+            .begin()
             .await
-            .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?
-        {
-            let recovery_id_str: String = row
-                .try_get("", "recovery_id")
-                .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
-            let recovery_id = Uuid::parse_str(&recovery_id_str)
-                .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
-            let tombstone_rev: i64 = row
-                .try_get("", "tombstone_namespace_revision")
-                .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
-            let target_rev: i64 = row
-                .try_get("", "target_namespace_revision")
-                .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
-            let records_restored: i64 = row
-                .try_get("", "records_restored")
-                .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
-            let objects_restored: i64 = row
-                .try_get("", "objects_restored")
-                .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
-            let manifest_digest: String = row
-                .try_get("", "manifest_digest")
-                .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
-            let status: String = row
-                .try_get("", "status")
-                .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
-
-            return Ok(StagedRecoveryReceipt {
-                recovery_id,
-                tenant_id: request.tenant_id,
-                module_slug: request.module_slug,
-                data_contract_revision: request.data_contract_revision,
-                tombstone_namespace_revision: tombstone_rev as u64,
-                target_namespace_revision: target_rev as u64,
-                records_restored: records_restored as u64,
-                objects_restored: objects_restored as u64,
-                manifest_digest,
-                status,
-            });
+            .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?;
+        if let Some(receipt) = load_replay_receipt(&transaction, &request, &request_digest).await? {
+            transaction
+                .commit()
+                .await
+                .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?;
+            return Ok(receipt);
         }
 
-        // 2. Verify namespace exists and is in purged state
-        let ns_row = self
-            .db
+        let backend = transaction.get_database_backend();
+        let namespace_row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
@@ -180,76 +134,77 @@ impl ArtifactDataPostPurgeRecoveryService {
                     uuid_value(request.tenant_id, backend),
                     request.module_slug.clone().into(),
                     revision_value(request.data_contract_revision)
-                        .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?,
+                        .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?,
                 ],
             ))
             .await
-            .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?
+            .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?
             .ok_or_else(|| PostPurgeRecoveryError::NamespaceNotPurged {
                 module_slug: request.module_slug.clone(),
                 revision: request.data_contract_revision,
             })?;
-
-        let purged_at_opt: Option<DateTime<Utc>> = ns_row
+        let purged_at: Option<DateTime<Utc>> = namespace_row
             .try_get("", "purged_at")
-            .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
-
-        if purged_at_opt.is_none() {
+            .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?;
+        if purged_at.is_none() {
             return Err(PostPurgeRecoveryError::NamespaceNotPurged {
                 module_slug: request.module_slug.clone(),
                 revision: request.data_contract_revision,
             });
         }
+        let tombstone_namespace_revision =
+            positive_revision_from_row(&namespace_row, "namespace_revision")?;
+        let target_namespace_revision = tombstone_namespace_revision
+            .checked_add(1)
+            .ok_or(PostPurgeRecoveryError::InvalidCommand)?;
 
-        let tombstone_rev: i64 = ns_row
-            .try_get("", "namespace_revision")
-            .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
-        let target_namespace_revision = (tombstone_rev as u64) + 1;
-
-        // 3. Verify snapshot is ready
-        let snap_row = self
-            .db
+        let snapshot_row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "SELECT manifest_digest, structured_record_count, object_count \
                      FROM module_artifact_data_snapshots \
-                     WHERE snapshot_id = {} AND status = 'ready'",
+                     WHERE snapshot_id = {} AND tenant_id = {} AND module_slug = {} \
+                       AND data_contract_revision = {} AND status = 'ready'",
                     placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
                 ),
-                vec![uuid_value(request.source_snapshot_id, backend)],
+                vec![
+                    uuid_value(request.source_snapshot_id, backend),
+                    uuid_value(request.tenant_id, backend),
+                    request.module_slug.clone().into(),
+                    revision_value(request.data_contract_revision)
+                        .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?,
+                ],
             ))
             .await
-            .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?
+            .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?
             .ok_or(PostPurgeRecoveryError::SnapshotNotReady(
                 request.source_snapshot_id,
             ))?;
-
-        let manifest_digest: String = snap_row
+        let manifest_digest: String = snapshot_row
             .try_get("", "manifest_digest")
-            .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
-        let structured_record_count: i64 = snap_row
-            .try_get("", "structured_record_count")
-            .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
-        let object_count: i64 = snap_row
-            .try_get("", "object_count")
-            .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
+            .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?;
+        let records_restored =
+            non_negative_value_from_row(&snapshot_row, "structured_record_count")?;
+        let objects_restored = non_negative_value_from_row(&snapshot_row, "object_count")?;
 
         let recovery_id = Uuid::new_v4();
         let now = Utc::now();
-
-        // 4. Insert staging recovery operation
-        self.db
+        let inserted = transaction
             .execute_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_namespace_recovery_operations (\
                         recovery_id, tenant_id, module_slug, data_contract_revision, \
                         source_snapshot_id, tombstone_namespace_revision, target_namespace_revision, \
-                        status, records_restored, objects_restored, manifest_digest, \
+                        status, records_restored, objects_restored, manifest_digest, request_digest, \
                         actor_id, trace_id, correlation_id, idempotency_key, \
                         created_at, verified_at, cutover_at\
-                    ) VALUES ({}, {}, {}, {}, {}, {}, {}, 'staging', {}, {}, {}, {}, {}, {}, {}, {}, NULL, NULL)",
+                    ) VALUES ({}, {}, {}, {}, {}, {}, {}, 'staging', {}, {}, {}, {}, {}, {}, {}, {}, {}, NULL, NULL) \
+                    ON CONFLICT (tenant_id, module_slug, data_contract_revision, idempotency_key) DO NOTHING",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -265,42 +220,62 @@ impl ArtifactDataPostPurgeRecoveryService {
                     placeholder(backend, 13),
                     placeholder(backend, 14),
                     placeholder(backend, 15),
+                    placeholder(backend, 16),
                 ),
                 vec![
                     uuid_value(recovery_id, backend),
                     uuid_value(request.tenant_id, backend),
                     request.module_slug.clone().into(),
                     revision_value(request.data_contract_revision)
-                        .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?,
+                        .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?,
                     uuid_value(request.source_snapshot_id, backend),
-                    revision_value(tombstone_rev as u64)
-                        .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?,
+                    revision_value(tombstone_namespace_revision)
+                        .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?,
                     revision_value(target_namespace_revision)
-                        .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?,
-                    revision_value(structured_record_count as u64)
-                        .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?,
-                    revision_value(object_count as u64)
-                        .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?,
+                        .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?,
+                    revision_value(records_restored)
+                        .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?,
+                    revision_value(objects_restored)
+                        .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?,
                     manifest_digest.clone().into(),
-                    uuid_value(request.actor_id, backend),
-                    request.trace_id.into(),
-                    uuid_value(request.correlation_id, backend),
-                    uuid_value(request.idempotency_key, backend),
+                    request_digest.clone().into(),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                     now.into(),
                 ],
             ))
             .await
-            .map_err(|e| PostPurgeRecoveryError::Storage(e.to_string()))?;
+            .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?;
+        if inserted.rows_affected() != 1 {
+            let receipt = load_replay_receipt(&transaction, &request, &request_digest)
+                .await?
+                .ok_or_else(|| {
+                    PostPurgeRecoveryError::Storage(
+                        "recovery idempotency receipt disappeared during reservation".to_string(),
+                    )
+                })?;
+            transaction
+                .commit()
+                .await
+                .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?;
+            return Ok(receipt);
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?;
 
         Ok(StagedRecoveryReceipt {
             recovery_id,
             tenant_id: request.tenant_id,
             module_slug: request.module_slug,
             data_contract_revision: request.data_contract_revision,
-            tombstone_namespace_revision: tombstone_rev as u64,
+            tombstone_namespace_revision,
             target_namespace_revision,
-            records_restored: structured_record_count as u64,
-            objects_restored: object_count as u64,
+            records_restored,
+            objects_restored,
             manifest_digest,
             status: "staging".to_string(),
         })
@@ -549,4 +524,119 @@ impl ArtifactDataPostPurgeRecoveryService {
             cutover_at: now,
         })
     }
+}
+
+fn validate_prepare_recovery_request(
+    request: &PrepareRecoveryRequest,
+) -> Result<(), PostPurgeRecoveryError> {
+    if request.tenant_id.is_nil()
+        || request.source_snapshot_id.is_nil()
+        || request.data_contract_revision == 0
+        || !valid_module_slug(&request.module_slug)
+        || request.context.tenant_id != Some(request.tenant_id)
+        || request.context.validate().is_err()
+    {
+        return Err(PostPurgeRecoveryError::InvalidCommand);
+    }
+    Ok(())
+}
+
+fn non_negative_value_from_row(
+    row: &sea_orm::QueryResult,
+    column: &str,
+) -> Result<u64, PostPurgeRecoveryError> {
+    let value: i64 = row
+        .try_get("", column)
+        .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?;
+    u64::try_from(value).map_err(|_| {
+        PostPurgeRecoveryError::Storage(format!(
+            "post-purge recovery row contains a negative `{column}`"
+        ))
+    })
+}
+
+fn positive_revision_from_row(
+    row: &sea_orm::QueryResult,
+    column: &str,
+) -> Result<u64, PostPurgeRecoveryError> {
+    let value = non_negative_value_from_row(row, column)?;
+    if value == 0 {
+        return Err(PostPurgeRecoveryError::Storage(format!(
+            "post-purge recovery row contains a zero `{column}`"
+        )));
+    }
+    Ok(value)
+}
+
+async fn load_replay_receipt<C: ConnectionTrait>(
+    connection: &C,
+    request: &PrepareRecoveryRequest,
+    request_digest: &str,
+) -> Result<Option<StagedRecoveryReceipt>, PostPurgeRecoveryError> {
+    let backend = connection.get_database_backend();
+    let Some(row) = connection
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT recovery_id, tombstone_namespace_revision, target_namespace_revision, \
+                        records_restored, objects_restored, manifest_digest, status, request_digest, \
+                        actor_id, trace_id, correlation_id \
+                 FROM module_artifact_data_namespace_recovery_operations \
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} \
+                   AND idempotency_key = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+            ),
+            vec![
+                uuid_value(request.tenant_id, backend),
+                request.module_slug.clone().into(),
+                revision_value(request.data_contract_revision)
+                    .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?,
+                uuid_value(request.context.idempotency_key, backend),
+            ],
+        ))
+        .await
+        .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?
+    else {
+        return Ok(None);
+    };
+    let stored_request_digest: String = row
+        .try_get("", "request_digest")
+        .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?;
+    let stored_actor_id = uuid_from_row(&row, "actor_id", backend)
+        .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?;
+    let stored_trace_id: String = row
+        .try_get("", "trace_id")
+        .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?;
+    let stored_correlation_id = uuid_from_row(&row, "correlation_id", backend)
+        .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?;
+    if stored_request_digest != request_digest
+        || stored_actor_id != request.context.actor_id
+        || stored_trace_id != request.context.trace_id
+        || stored_correlation_id != request.context.correlation_id
+    {
+        return Err(PostPurgeRecoveryError::IdempotencyConflict);
+    }
+    Ok(Some(StagedRecoveryReceipt {
+        recovery_id: uuid_from_row(&row, "recovery_id", backend)
+            .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?,
+        tenant_id: request.tenant_id,
+        module_slug: request.module_slug.clone(),
+        data_contract_revision: request.data_contract_revision,
+        tombstone_namespace_revision: positive_revision_from_row(
+            &row,
+            "tombstone_namespace_revision",
+        )?,
+        target_namespace_revision: positive_revision_from_row(&row, "target_namespace_revision")?,
+        records_restored: non_negative_value_from_row(&row, "records_restored")?,
+        objects_restored: non_negative_value_from_row(&row, "objects_restored")?,
+        manifest_digest: row
+            .try_get("", "manifest_digest")
+            .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?,
+        status: row
+            .try_get("", "status")
+            .map_err(|error| PostPurgeRecoveryError::Storage(error.to_string()))?,
+    }))
 }

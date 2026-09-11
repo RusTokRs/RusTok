@@ -145,10 +145,11 @@ pub use migration_preflight::{
     MigrationPreflightInput, MigrationPreflightReceipt, UpdateMode, evaluate_migration_preflight,
 };
 pub use operations_tool::{
-    CURRENT_OPERATIONS_TOOL_PROTOCOL, OPERATIONS_TOOL_RELEASE_CONTRACT, OperationsToolAssignment,
-    OperationsToolComponent, OperationsToolError, OperationsToolMaintenanceOperation,
-    OperationsToolProtocolMatrix, OperationsToolRelease, OperationsToolReleasePayload,
-    OperationsToolService, OperationsToolSupervisorReport, StartOperationsToolMaintenanceCommand,
+    AuthorizeOperationsToolPredecessorRecoveryCommand, CURRENT_OPERATIONS_TOOL_PROTOCOL,
+    OPERATIONS_TOOL_RELEASE_CONTRACT, OperationsToolAssignment, OperationsToolComponent,
+    OperationsToolError, OperationsToolMaintenanceOperation, OperationsToolProtocolMatrix,
+    OperationsToolRelease, OperationsToolReleasePayload, OperationsToolService,
+    OperationsToolSupervisorReport, StartOperationsToolMaintenanceCommand,
     VerifiedOperationsToolRelease,
 };
 pub use operator::{

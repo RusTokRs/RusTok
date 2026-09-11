@@ -85,6 +85,14 @@ const artifactDataSnapshotOwnerPath = path.join(
   root,
   "crates/modules/rustok-modules/src/data_snapshot.rs",
 );
+const postPurgeRecoveryOwnerPath = path.join(
+  root,
+  "crates/modules/rustok-modules/src/data_post_purge_recovery.rs",
+);
+const postPurgeRecoveryMigrationPath = path.join(
+  root,
+  "crates/modules/rustok-modules/src/migrations/m20260903_000049_artifact_data_snapshot_and_recovery_operations.rs",
+);
 const artifactSecretOwnerPath = path.join(
   root,
   "crates/modules/rustok-modules/src/secrets.rs",
@@ -116,6 +124,14 @@ const staticDistributionOwnerPath = path.join(
 const artifactNodeReconciliationOwnerPath = path.join(
   root,
   "crates/modules/rustok-modules/src/artifact_node_reconciliation.rs",
+);
+const operationsToolOwnerPath = path.join(
+  root,
+  "crates/modules/rustok-modules/src/operations_tool.rs",
+);
+const operationsToolMigrationPath = path.join(
+  root,
+  "crates/modules/rustok-modules/src/migrations/m20260904_000053_module_operations_tool.rs",
 );
 const runtimeManifestPath = path.join(
   root,
@@ -381,6 +397,14 @@ try {
     artifactDataSnapshotOwnerPath,
     "utf8",
   );
+  const postPurgeRecoveryOwner = fs.readFileSync(
+    postPurgeRecoveryOwnerPath,
+    "utf8",
+  );
+  const postPurgeRecoveryMigration = fs.readFileSync(
+    postPurgeRecoveryMigrationPath,
+    "utf8",
+  );
   const artifactSecretOwner = fs.readFileSync(artifactSecretOwnerPath, "utf8");
   const artifactSecurityStateOwner = fs.readFileSync(
     artifactSecurityStateOwnerPath,
@@ -408,6 +432,11 @@ try {
   );
   const artifactNodeReconciliationOwner = fs.readFileSync(
     artifactNodeReconciliationOwnerPath,
+    "utf8",
+  );
+  const operationsToolOwner = fs.readFileSync(operationsToolOwnerPath, "utf8");
+  const operationsToolMigration = fs.readFileSync(
+    operationsToolMigrationPath,
     "utf8",
   );
   const lifecycleExecutor = fs.readFileSync(lifecycleExecutorPath, "utf8");
@@ -616,6 +645,45 @@ try {
   ) {
     fail(
       "artifact-node reconciliation requests must retain a platform-scoped ModuleCommandContext in durable receipts and owner-created outbox events while agent reports keep their bounded mTLS evidence path",
+    );
+  }
+
+  const operationsToolStartCommand = operationsToolOwner.match(
+    /pub struct StartOperationsToolMaintenanceCommand\s*\{(?<fields>[\s\S]*?)\n\}/,
+  );
+  const operationsToolRecoveryCommand = operationsToolOwner.match(
+    /pub struct AuthorizeOperationsToolPredecessorRecoveryCommand\s*\{(?<fields>[\s\S]*?)\n\}/,
+  );
+  if (
+    !operationsToolStartCommand?.groups?.fields.includes(
+      "pub context: ModuleCommandContext,",
+    ) ||
+    !operationsToolRecoveryCommand?.groups?.fields.includes(
+      "pub context: ModuleCommandContext,",
+    ) ||
+    operationsToolStartCommand.groups.fields.includes("pub actor_id:") ||
+    operationsToolStartCommand.groups.fields.includes("pub idempotency_key:") ||
+    !operationsToolOwner.includes("validate_start_maintenance_command(&command)?") ||
+    !operationsToolOwner.includes("validate_recovery_command(&command)?") ||
+    !operationsToolOwner.includes("let request_digest = digest_json(&command)") ||
+    !operationsToolOwner.includes("load_start_replay(") ||
+    !operationsToolOwner.includes("load_recovery_replay(") ||
+    !operationsToolOwner.includes("ON CONFLICT DO NOTHING") ||
+    !operationsToolOwner.includes("find_active_maintenance_operation(") ||
+    !operationsToolOwner.includes("status = 'rolling_back'") ||
+    !operationsToolOwner.includes("context.tenant_id.is_none()") ||
+    !operationsToolMigration.includes(
+      "request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$')",
+    ) ||
+    !operationsToolMigration.includes(
+      "request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:'",
+    ) ||
+    !operationsToolMigration.includes(
+      "CREATE UNIQUE INDEX uq_operations_tool_active_fleet_maintenance",
+    )
+  ) {
+    fail(
+      "operations-tool start and predecessor-recovery commands must use platform-scoped ModuleCommandContext evidence, exact durable replay, atomic assignment staging, and one active fleet maintenance fence while supervisor reports remain an agent protocol",
     );
   }
 
@@ -828,6 +896,30 @@ try {
   ) {
     fail(
       "artifact data snapshot commands must preserve tenant-matched ModuleCommandContext evidence across staging, receipts, and resumable collection work",
+    );
+  }
+
+  if (
+    !postPurgeRecoveryOwner.includes("pub context: ModuleCommandContext,") ||
+    !postPurgeRecoveryOwner.includes(
+      "request.context.tenant_id != Some(request.tenant_id)",
+    ) ||
+    !postPurgeRecoveryOwner.includes("let request_digest = digest_json(&request)") ||
+    !postPurgeRecoveryOwner.includes(
+      "stored_request_digest != request_digest",
+    ) ||
+    !postPurgeRecoveryOwner.includes(
+      "snapshot_id = {} AND tenant_id = {} AND module_slug = {}",
+    ) ||
+    !postPurgeRecoveryMigration.includes(
+      "request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$')",
+    ) ||
+    !postPurgeRecoveryMigration.includes(
+      "request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:'",
+    )
+  ) {
+    fail(
+      "post-purge recovery must use a tenant-matched ModuleCommandContext, bind exact replay evidence, and reject a ready snapshot outside the requested namespace scope",
     );
   }
 

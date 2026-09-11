@@ -29,15 +29,23 @@ impl MigrationTrait for Migration {
                     operation_id UUID PRIMARY KEY,\
                     target_release_id UUID NOT NULL REFERENCES module_operations_tool_releases(release_id),\
                     predecessor_release_id UUID NULL REFERENCES module_operations_tool_releases(release_id),\
-                    status TEXT NOT NULL CHECK (status IN ('in_progress', 'converged', 'rolled_back', 'failed')),\
+                    status TEXT NOT NULL CHECK (status IN ('in_progress', 'rolling_back', 'converged', 'rolled_back', 'failed')),\
                     recovery_attempts INTEGER NOT NULL DEFAULT 0 CHECK (recovery_attempts BETWEEN 0 AND 1),\
+                    request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     actor_id UUID NOT NULL,\
                     idempotency_key UUID NOT NULL UNIQUE,\
                     trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0),\
                     correlation_id UUID NOT NULL,\
+                    recovery_request_digest TEXT NULL CHECK (recovery_request_digest IS NULL OR recovery_request_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    recovery_actor_id UUID NULL,\
+                    recovery_idempotency_key UUID NULL UNIQUE,\
+                    recovery_trace_id TEXT NULL CHECK (recovery_trace_id IS NULL OR length(trim(recovery_trace_id)) > 0),\
+                    recovery_correlation_id UUID NULL,\
                     created_at TIMESTAMPTZ NOT NULL,\
-                    updated_at TIMESTAMPTZ NOT NULL\
+                    updated_at TIMESTAMPTZ NOT NULL,\
+                    CHECK ((recovery_request_digest IS NULL AND recovery_actor_id IS NULL AND recovery_idempotency_key IS NULL AND recovery_trace_id IS NULL AND recovery_correlation_id IS NULL) OR (recovery_request_digest IS NOT NULL AND recovery_actor_id IS NOT NULL AND recovery_idempotency_key IS NOT NULL AND recovery_trace_id IS NOT NULL AND recovery_correlation_id IS NOT NULL))\
                 )",
+                "CREATE UNIQUE INDEX uq_operations_tool_active_fleet_maintenance ON module_operations_tool_maintenance_operations ((1)) WHERE status IN ('in_progress', 'rolling_back')",
                 "CREATE TABLE module_operations_tool_assignments (\
                     assignment_id UUID PRIMARY KEY,\
                     operation_id UUID NOT NULL REFERENCES module_operations_tool_maintenance_operations(operation_id) ON DELETE CASCADE,\
@@ -71,15 +79,23 @@ impl MigrationTrait for Migration {
                     operation_id TEXT PRIMARY KEY,\
                     target_release_id TEXT NOT NULL REFERENCES module_operations_tool_releases(release_id),\
                     predecessor_release_id TEXT NULL REFERENCES module_operations_tool_releases(release_id),\
-                    status TEXT NOT NULL CHECK (status IN ('in_progress', 'converged', 'rolled_back', 'failed')),\
+                    status TEXT NOT NULL CHECK (status IN ('in_progress', 'rolling_back', 'converged', 'rolled_back', 'failed')),\
                     recovery_attempts INTEGER NOT NULL DEFAULT 0 CHECK (recovery_attempts BETWEEN 0 AND 1),\
+                    request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     actor_id TEXT NOT NULL,\
                     idempotency_key TEXT NOT NULL UNIQUE,\
                     trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0),\
                     correlation_id TEXT NOT NULL,\
+                    recovery_request_digest TEXT NULL CHECK (recovery_request_digest IS NULL OR (length(recovery_request_digest) = 71 AND substr(recovery_request_digest, 1, 7) = 'sha256:' AND substr(recovery_request_digest, 8) NOT GLOB '*[^0-9a-f]*')),\
+                    recovery_actor_id TEXT NULL,\
+                    recovery_idempotency_key TEXT NULL UNIQUE,\
+                    recovery_trace_id TEXT NULL CHECK (recovery_trace_id IS NULL OR length(trim(recovery_trace_id)) > 0),\
+                    recovery_correlation_id TEXT NULL,\
                     created_at TEXT NOT NULL,\
-                    updated_at TEXT NOT NULL\
+                    updated_at TEXT NOT NULL,\
+                    CHECK ((recovery_request_digest IS NULL AND recovery_actor_id IS NULL AND recovery_idempotency_key IS NULL AND recovery_trace_id IS NULL AND recovery_correlation_id IS NULL) OR (recovery_request_digest IS NOT NULL AND recovery_actor_id IS NOT NULL AND recovery_idempotency_key IS NOT NULL AND recovery_trace_id IS NOT NULL AND recovery_correlation_id IS NOT NULL))\
                 )",
+                "CREATE UNIQUE INDEX uq_operations_tool_active_fleet_maintenance ON module_operations_tool_maintenance_operations ((1)) WHERE status IN ('in_progress', 'rolling_back')",
                 "CREATE TABLE module_operations_tool_assignments (\
                     assignment_id TEXT PRIMARY KEY,\
                     operation_id TEXT NOT NULL REFERENCES module_operations_tool_maintenance_operations(operation_id) ON DELETE CASCADE,\

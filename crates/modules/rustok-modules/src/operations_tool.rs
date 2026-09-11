@@ -12,19 +12,24 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, VerifyingKey};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
+    ModuleCommandContext,
     conflict_fences::ConflictKey,
     data::{placeholder, uuid_value},
     installation::{sha256_digest, valid_digest},
+    promotion::digest_json,
 };
 
 pub const OPERATIONS_TOOL_RELEASE_CONTRACT: &str = "rustok.operations_tool_release";
 pub const CURRENT_OPERATIONS_TOOL_PROTOCOL: u32 = 1;
+const MAX_MAINTENANCE_HOSTS: usize = 1024;
+const MAX_HOST_ID_BYTES: usize = 128;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -126,6 +131,14 @@ pub enum OperationsToolError {
     Serialization(String),
     #[error("Fleet conflict fence `{0:?}` is currently held")]
     Conflict(ConflictKey),
+    #[error("Operations-tool maintenance command is invalid")]
+    InvalidCommand,
+    #[error("Operations-tool maintenance idempotency key was reused for a different command")]
+    IdempotencyConflict,
+    #[error("Maintenance operation `{0}` already represents a different command")]
+    OperationConflict(Uuid),
+    #[error("Maintenance operation `{operation_id}` cannot recover from status `{status}`")]
+    OperationNotRecoverable { operation_id: Uuid, status: String },
 }
 
 fn decode_fixed<const N: usize>(encoded: &str) -> Result<[u8; N], OperationsToolError> {
@@ -216,10 +229,8 @@ pub struct OperationsToolMaintenanceOperation {
     pub predecessor_release_id: Option<Uuid>,
     pub status: String,
     pub recovery_attempts: u32,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
-    pub trace_id: String,
-    pub correlation_id: Uuid,
+    pub context: ModuleCommandContext,
+    pub recovery_context: Option<ModuleCommandContext>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -237,16 +248,22 @@ pub struct OperationsToolAssignment {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StartOperationsToolMaintenanceCommand {
     pub operation_id: Uuid,
     pub target_release_id: Uuid,
     pub predecessor_release_id: Option<Uuid>,
     pub host_ids: Vec<String>,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
-    pub trace_id: String,
-    pub correlation_id: Uuid,
+    pub context: ModuleCommandContext,
+}
+
+/// Operator command that authorizes the one bounded predecessor recovery attempt.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuthorizeOperationsToolPredecessorRecoveryCommand {
+    pub operation_id: Uuid,
+    pub context: ModuleCommandContext,
 }
 
 #[derive(Clone, Debug)]
@@ -335,7 +352,18 @@ impl OperationsToolService {
         current_protocol: u32,
         now: DateTime<Utc>,
     ) -> Result<VerifiedOperationsToolRelease, OperationsToolError> {
-        let backend = self.db.get_database_backend();
+        self.verify_preflight_in(&self.db, target_release_id, current_protocol, now)
+            .await
+    }
+
+    async fn verify_preflight_in<C: ConnectionTrait>(
+        &self,
+        connection: &C,
+        target_release_id: Uuid,
+        current_protocol: u32,
+        now: DateTime<Utc>,
+    ) -> Result<VerifiedOperationsToolRelease, OperationsToolError> {
+        let backend = connection.get_database_backend();
         let query_sql = format!(
             "SELECT release_id, version, protocol_revision, package_digest, controller_digest, \
                     reconciler_digest, agent_digest, signer_key_digest, signature, issued_at, expires_at \
@@ -343,8 +371,7 @@ impl OperationsToolService {
             placeholder(backend, 1)
         );
 
-        let row = self
-            .db
+        let row = connection
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 query_sql,
@@ -375,29 +402,59 @@ impl OperationsToolService {
         command: StartOperationsToolMaintenanceCommand,
         now: DateTime<Utc>,
     ) -> Result<OperationsToolMaintenanceOperation, OperationsToolError> {
+        validate_start_maintenance_command(&command)?;
+        let request_digest = digest_json(&command)
+            .map_err(|error| OperationsToolError::Serialization(error.to_string()))?;
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        if let Some(replay) = self
+            .load_start_replay(&transaction, &command, &request_digest)
+            .await?
+        {
+            transaction
+                .commit()
+                .await
+                .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+            return Ok(replay);
+        }
+        if self
+            .find_active_maintenance_operation(&transaction)
+            .await?
+            .is_some()
+        {
+            return Err(OperationsToolError::Conflict(
+                ConflictKey::fleet_operations_tool(),
+            ));
+        }
+
         let target_release = self
-            .verify_preflight(
+            .verify_preflight_in(
+                &transaction,
                 command.target_release_id,
                 CURRENT_OPERATIONS_TOOL_PROTOCOL,
                 now,
             )
             .await?;
-
-        if let Some(pred_id) = command.predecessor_release_id {
-            self.verify_preflight(pred_id, CURRENT_OPERATIONS_TOOL_PROTOCOL, now)
-                .await?;
+        if let Some(predecessor_release_id) = command.predecessor_release_id {
+            self.verify_preflight_in(
+                &transaction,
+                predecessor_release_id,
+                CURRENT_OPERATIONS_TOOL_PROTOCOL,
+                now,
+            )
+            .await?;
         }
 
-        let backend = self.db.get_database_backend();
-
-        // 1. Insert maintenance operation
+        let backend = transaction.get_database_backend();
         let op_sql = format!(
             "INSERT INTO module_operations_tool_maintenance_operations (\
-                operation_id, target_release_id, predecessor_release_id, status, \
-                recovery_attempts, actor_id, idempotency_key, trace_id, correlation_id, \
-                created_at, updated_at\
-             ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})\
-             ON CONFLICT (operation_id) DO NOTHING",
+                operation_id, target_release_id, predecessor_release_id, status, recovery_attempts, \
+                request_digest, actor_id, idempotency_key, trace_id, correlation_id, created_at, updated_at\
+             ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})\
+             ON CONFLICT DO NOTHING",
             placeholder(backend, 1),
             placeholder(backend, 2),
             placeholder(backend, 3),
@@ -409,33 +466,73 @@ impl OperationsToolService {
             placeholder(backend, 9),
             placeholder(backend, 10),
             placeholder(backend, 11),
+            placeholder(backend, 12),
         );
-
-        let pred_val = match command.predecessor_release_id {
-            Some(pid) => uuid_value(pid, backend),
-            None => Value::from(None::<String>),
-        };
-
-        let op_values = vec![
-            uuid_value(command.operation_id, backend),
-            uuid_value(command.target_release_id, backend),
-            pred_val,
-            "in_progress".into(),
-            0i32.into(),
-            uuid_value(command.actor_id, backend),
-            uuid_value(command.idempotency_key, backend),
-            command.trace_id.into(),
-            uuid_value(command.correlation_id, backend),
-            now.to_rfc3339().into(),
-            now.to_rfc3339().into(),
-        ];
-
-        self.db
-            .execute_raw(Statement::from_sql_and_values(backend, op_sql, op_values))
+        let inserted = transaction
+            .execute_raw(Statement::from_sql_and_values(
+                backend,
+                op_sql,
+                vec![
+                    uuid_value(command.operation_id, backend),
+                    uuid_value(command.target_release_id, backend),
+                    optional_uuid_value(command.predecessor_release_id, backend),
+                    "in_progress".into(),
+                    0i32.into(),
+                    request_digest.clone().into(),
+                    uuid_value(command.context.actor_id, backend),
+                    uuid_value(command.context.idempotency_key, backend),
+                    command.context.trace_id.clone().into(),
+                    uuid_value(command.context.correlation_id, backend),
+                    now.to_rfc3339().into(),
+                    now.to_rfc3339().into(),
+                ],
+            ))
             .await
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        if inserted.rows_affected() != 1 {
+            if let Some(replay) = self
+                .load_start_replay(&transaction, &command, &request_digest)
+                .await?
+            {
+                transaction
+                    .commit()
+                    .await
+                    .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+                return Ok(replay);
+            }
+            if self
+                .find_operation_by_id(&transaction, command.operation_id)
+                .await?
+                .is_some()
+            {
+                return Err(OperationsToolError::OperationConflict(command.operation_id));
+            }
+            if self
+                .find_active_maintenance_operation(&transaction)
+                .await?
+                .is_some()
+            {
+                return Err(OperationsToolError::Conflict(
+                    ConflictKey::fleet_operations_tool(),
+                ));
+            }
+            return Err(OperationsToolError::Storage(
+                "maintenance operation reservation disappeared during insert".to_string(),
+            ));
+        }
 
-        // 2. Pre-stage desired host component assignments
+        let assignment_sql = format!(
+            "INSERT INTO module_operations_tool_assignments (\
+                assignment_id, operation_id, host_id, component, desired_digest, status, updated_at\
+             ) VALUES ({}, {}, {}, {}, {}, {}, {})",
+            placeholder(backend, 1),
+            placeholder(backend, 2),
+            placeholder(backend, 3),
+            placeholder(backend, 4),
+            placeholder(backend, 5),
+            placeholder(backend, 6),
+            placeholder(backend, 7),
+        );
         let target_payload = target_release.payload();
         for host_id in &command.host_ids {
             for (component, digest) in [
@@ -449,44 +546,41 @@ impl OperationsToolService {
                 ),
                 (OperationsToolComponent::Agent, &target_payload.agent_digest),
             ] {
-                let assignment_id = Uuid::new_v4();
-                let assign_sql = format!(
-                    "INSERT INTO module_operations_tool_assignments (\
-                        assignment_id, operation_id, host_id, component, desired_digest, \
-                        status, updated_at\
-                     ) VALUES ({}, {}, {}, {}, {}, {}, {})\
-                     ON CONFLICT (operation_id, host_id, component) DO NOTHING",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                    placeholder(backend, 6),
-                    placeholder(backend, 7),
-                );
-
-                let assign_values = vec![
-                    uuid_value(assignment_id, backend),
-                    uuid_value(command.operation_id, backend),
-                    host_id.clone().into(),
-                    component.as_str().into(),
-                    digest.clone().into(),
-                    "staged".into(),
-                    now.to_rfc3339().into(),
-                ];
-
-                self.db
+                transaction
                     .execute_raw(Statement::from_sql_and_values(
                         backend,
-                        assign_sql,
-                        assign_values,
+                        assignment_sql.clone(),
+                        vec![
+                            uuid_value(Uuid::new_v4(), backend),
+                            uuid_value(command.operation_id, backend),
+                            host_id.clone().into(),
+                            component.as_str().into(),
+                            digest.clone().into(),
+                            "staged".into(),
+                            now.to_rfc3339().into(),
+                        ],
                     ))
                     .await
-                    .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+                    .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
             }
         }
 
-        self.get_operation(command.operation_id).await
+        let operation = OperationsToolMaintenanceOperation {
+            operation_id: command.operation_id,
+            target_release_id: command.target_release_id,
+            predecessor_release_id: command.predecessor_release_id,
+            status: "in_progress".to_string(),
+            recovery_attempts: 0,
+            context: command.context,
+            recovery_context: None,
+            created_at: now,
+            updated_at: now,
+        };
+        transaction
+            .commit()
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        Ok(operation)
     }
 
     /// Host supervisor reports observed component execution status idempotently.
@@ -536,44 +630,120 @@ impl OperationsToolService {
     /// Authorizes exactly one predecessor recovery attempt for an operations-tool maintenance operation.
     pub async fn authorize_predecessor_recovery(
         &self,
-        operation_id: Uuid,
+        command: AuthorizeOperationsToolPredecessorRecoveryCommand,
         now: DateTime<Utc>,
     ) -> Result<OperationsToolMaintenanceOperation, OperationsToolError> {
-        let op = self.get_operation(operation_id).await?;
+        validate_recovery_command(&command)?;
+        let request_digest = digest_json(&command)
+            .map_err(|error| OperationsToolError::Serialization(error.to_string()))?;
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        if let Some(replay) = self
+            .load_recovery_replay(&transaction, &command, &request_digest)
+            .await?
+        {
+            transaction
+                .commit()
+                .await
+                .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+            return Ok(replay);
+        }
+        let op = self
+            .find_operation_by_id(&transaction, command.operation_id)
+            .await?
+            .ok_or(OperationsToolError::OperationNotFound(command.operation_id))?;
         if op.recovery_attempts >= 1 {
-            return Err(OperationsToolError::RecoveryExhausted(operation_id));
+            return Err(OperationsToolError::RecoveryExhausted(command.operation_id));
+        }
+        if op.status != "in_progress" {
+            return Err(OperationsToolError::OperationNotRecoverable {
+                operation_id: command.operation_id,
+                status: op.status,
+            });
         }
 
         let pred_id = op
             .predecessor_release_id
-            .ok_or(OperationsToolError::NoPredecessor(operation_id))?;
+            .ok_or(OperationsToolError::NoPredecessor(command.operation_id))?;
 
         let pred_release = self
-            .verify_preflight(pred_id, CURRENT_OPERATIONS_TOOL_PROTOCOL, now)
+            .verify_preflight_in(&transaction, pred_id, CURRENT_OPERATIONS_TOOL_PROTOCOL, now)
             .await?;
         let pred_payload = pred_release.payload();
 
-        let backend = self.db.get_database_backend();
+        let backend = transaction.get_database_backend();
 
-        // 1. Advance recovery attempt and mark rolled_back
         let update_op_sql = format!(
             "UPDATE module_operations_tool_maintenance_operations \
-             SET recovery_attempts = recovery_attempts + 1, status = 'rolled_back', updated_at = {} \
-             WHERE operation_id = {}",
+             SET recovery_attempts = 1, status = 'rolling_back', recovery_request_digest = {}, \
+                 recovery_actor_id = {}, recovery_idempotency_key = {}, recovery_trace_id = {}, \
+                 recovery_correlation_id = {}, updated_at = {} \
+             WHERE operation_id = {} AND status = 'in_progress' AND recovery_attempts = 0 \
+               AND recovery_idempotency_key IS NULL",
             placeholder(backend, 1),
             placeholder(backend, 2),
+            placeholder(backend, 3),
+            placeholder(backend, 4),
+            placeholder(backend, 5),
+            placeholder(backend, 6),
+            placeholder(backend, 7),
         );
 
-        self.db
+        let updated = transaction
             .execute_raw(Statement::from_sql_and_values(
                 backend,
                 update_op_sql,
-                vec![now.to_rfc3339().into(), uuid_value(operation_id, backend)],
+                vec![
+                    request_digest.clone().into(),
+                    uuid_value(command.context.actor_id, backend),
+                    uuid_value(command.context.idempotency_key, backend),
+                    command.context.trace_id.clone().into(),
+                    uuid_value(command.context.correlation_id, backend),
+                    now.to_rfc3339().into(),
+                    uuid_value(command.operation_id, backend),
+                ],
             ))
             .await
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        if updated.rows_affected() != 1 {
+            if let Some(replay) = self
+                .load_recovery_replay(&transaction, &command, &request_digest)
+                .await?
+            {
+                transaction
+                    .commit()
+                    .await
+                    .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+                return Ok(replay);
+            }
+            let current = self
+                .find_operation_by_id(&transaction, command.operation_id)
+                .await?
+                .ok_or(OperationsToolError::OperationNotFound(command.operation_id))?;
+            if current.recovery_attempts >= 1 {
+                return Err(OperationsToolError::RecoveryExhausted(command.operation_id));
+            }
+            if current.predecessor_release_id.is_none() {
+                return Err(OperationsToolError::NoPredecessor(command.operation_id));
+            }
+            return Err(OperationsToolError::OperationNotRecoverable {
+                operation_id: command.operation_id,
+                status: current.status,
+            });
+        }
 
-        // 2. Re-point desired digests to predecessor component digests
+        let update_assignment_sql = format!(
+            "UPDATE module_operations_tool_assignments \
+             SET desired_digest = {}, status = 'staged', updated_at = {} \
+             WHERE operation_id = {} AND component = {}",
+            placeholder(backend, 1),
+            placeholder(backend, 2),
+            placeholder(backend, 3),
+            placeholder(backend, 4),
+        );
         for (comp, digest) in [
             (
                 OperationsToolComponent::Controller,
@@ -585,32 +755,30 @@ impl OperationsToolService {
             ),
             (OperationsToolComponent::Agent, &pred_payload.agent_digest),
         ] {
-            let update_assign_sql = format!(
-                "UPDATE module_operations_tool_assignments \
-                 SET desired_digest = {}, status = 'staged', updated_at = {} \
-                 WHERE operation_id = {} AND component = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-            );
-
-            self.db
+            transaction
                 .execute_raw(Statement::from_sql_and_values(
                     backend,
-                    update_assign_sql,
+                    update_assignment_sql.clone(),
                     vec![
                         digest.clone().into(),
                         now.to_rfc3339().into(),
-                        uuid_value(operation_id, backend),
+                        uuid_value(command.operation_id, backend),
                         comp.as_str().into(),
                     ],
                 ))
                 .await
-                .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
+                .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
         }
 
-        self.get_operation(operation_id).await
+        let operation = self
+            .find_operation_by_id(&transaction, command.operation_id)
+            .await?
+            .ok_or(OperationsToolError::OperationNotFound(command.operation_id))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        Ok(operation)
     }
 
     async fn check_and_converge_operation(
@@ -619,39 +787,34 @@ impl OperationsToolService {
         now: DateTime<Utc>,
     ) -> Result<(), OperationsToolError> {
         let backend = self.db.get_database_backend();
-        let query_sql = format!(
-            "SELECT 1 FROM module_operations_tool_assignments \
-             WHERE operation_id = {} AND status != 'converged' LIMIT 1",
-            placeholder(backend, 1)
+        let update_sql = format!(
+            "UPDATE module_operations_tool_maintenance_operations \
+             SET status = CASE status \
+                    WHEN 'in_progress' THEN 'converged' \
+                    WHEN 'rolling_back' THEN 'rolled_back' \
+                    ELSE status END, \
+                 updated_at = {} \
+             WHERE operation_id = {} AND status IN ('in_progress', 'rolling_back') \
+               AND NOT EXISTS (\
+                    SELECT 1 FROM module_operations_tool_assignments \
+                    WHERE operation_id = {} AND status != 'converged'\
+               )",
+            placeholder(backend, 1),
+            placeholder(backend, 2),
+            placeholder(backend, 3),
         );
-
-        let row = self
-            .db
-            .query_one_raw(Statement::from_sql_and_values(
+        self.db
+            .execute_raw(Statement::from_sql_and_values(
                 backend,
-                query_sql,
-                vec![uuid_value(operation_id, backend)],
+                update_sql,
+                vec![
+                    now.to_rfc3339().into(),
+                    uuid_value(operation_id, backend),
+                    uuid_value(operation_id, backend),
+                ],
             ))
             .await
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-
-        if row.is_none() {
-            let update_sql = format!(
-                "UPDATE module_operations_tool_maintenance_operations \
-                 SET status = 'converged', updated_at = {} \
-                 WHERE operation_id = {}",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-            );
-            self.db
-                .execute_raw(Statement::from_sql_and_values(
-                    backend,
-                    update_sql,
-                    vec![now.to_rfc3339().into(), uuid_value(operation_id, backend)],
-                ))
-                .await
-                .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        }
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
         Ok(())
     }
 
@@ -659,58 +822,130 @@ impl OperationsToolService {
         &self,
         operation_id: Uuid,
     ) -> Result<OperationsToolMaintenanceOperation, OperationsToolError> {
-        let backend = self.db.get_database_backend();
-        let query_sql = format!(
-            "SELECT operation_id, target_release_id, predecessor_release_id, status, \
-                    recovery_attempts, actor_id, idempotency_key, trace_id, correlation_id, \
-                    created_at, updated_at \
-             FROM module_operations_tool_maintenance_operations WHERE operation_id = {}",
-            placeholder(backend, 1)
-        );
+        self.find_operation_by_id(&self.db, operation_id)
+            .await?
+            .ok_or(OperationsToolError::OperationNotFound(operation_id))
+    }
 
-        let row = self
-            .db
+    async fn find_operation_by_id<C: ConnectionTrait>(
+        &self,
+        connection: &C,
+        operation_id: Uuid,
+    ) -> Result<Option<OperationsToolMaintenanceOperation>, OperationsToolError> {
+        let backend = connection.get_database_backend();
+        let row = connection
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
-                query_sql,
+                format!(
+                    "SELECT operation_id, target_release_id, predecessor_release_id, status, \
+                            recovery_attempts, actor_id, idempotency_key, trace_id, correlation_id, \
+                            recovery_actor_id, recovery_idempotency_key, recovery_trace_id, \
+                            recovery_correlation_id, created_at, updated_at \
+                     FROM module_operations_tool_maintenance_operations WHERE operation_id = {}",
+                    placeholder(backend, 1),
+                ),
                 vec![uuid_value(operation_id, backend)],
             ))
             .await
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?
-            .ok_or(OperationsToolError::OperationNotFound(operation_id))?;
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        row.map(|row| self.parse_operation_row(row, backend))
+            .transpose()
+    }
 
-        let op_id: Uuid = self.get_uuid_from_row(&row, "operation_id", backend)?;
-        let target_release_id: Uuid = self.get_uuid_from_row(&row, "target_release_id", backend)?;
-        let predecessor_release_id: Option<Uuid> =
-            self.get_optional_uuid_from_row(&row, "predecessor_release_id", backend)?;
-        let status: String = row
-            .try_get("", "status")
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let recovery_attempts: i32 = row
-            .try_get("", "recovery_attempts")
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let actor_id: Uuid = self.get_uuid_from_row(&row, "actor_id", backend)?;
-        let idempotency_key: Uuid = self.get_uuid_from_row(&row, "idempotency_key", backend)?;
-        let trace_id: String = row
-            .try_get("", "trace_id")
-            .map_err(|e| OperationsToolError::Storage(e.to_string()))?;
-        let correlation_id: Uuid = self.get_uuid_from_row(&row, "correlation_id", backend)?;
-        let created_at: DateTime<Utc> = self.get_datetime_from_row(&row, "created_at", backend)?;
-        let updated_at: DateTime<Utc> = self.get_datetime_from_row(&row, "updated_at", backend)?;
+    async fn find_active_maintenance_operation<C: ConnectionTrait>(
+        &self,
+        connection: &C,
+    ) -> Result<Option<Uuid>, OperationsToolError> {
+        let backend = connection.get_database_backend();
+        let row = connection
+            .query_one_raw(Statement::from_string(
+                backend,
+                "SELECT operation_id FROM module_operations_tool_maintenance_operations \
+                 WHERE status IN ('in_progress', 'rolling_back') LIMIT 1"
+                    .to_string(),
+            ))
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        row.map(|row| self.get_uuid_from_row(&row, "operation_id", backend))
+            .transpose()
+    }
 
-        Ok(OperationsToolMaintenanceOperation {
-            operation_id: op_id,
-            target_release_id,
-            predecessor_release_id,
-            status,
-            recovery_attempts: recovery_attempts as u32,
-            actor_id,
-            idempotency_key,
-            trace_id,
-            correlation_id,
-            created_at,
-            updated_at,
-        })
+    async fn load_start_replay<C: ConnectionTrait>(
+        &self,
+        connection: &C,
+        command: &StartOperationsToolMaintenanceCommand,
+        request_digest: &str,
+    ) -> Result<Option<OperationsToolMaintenanceOperation>, OperationsToolError> {
+        let backend = connection.get_database_backend();
+        let Some(row) = connection
+            .query_one_raw(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT request_digest, operation_id, target_release_id, predecessor_release_id, status, \
+                            recovery_attempts, actor_id, idempotency_key, trace_id, correlation_id, \
+                            recovery_actor_id, recovery_idempotency_key, recovery_trace_id, \
+                            recovery_correlation_id, created_at, updated_at \
+                     FROM module_operations_tool_maintenance_operations WHERE idempotency_key = {}",
+                    placeholder(backend, 1),
+                ),
+                vec![uuid_value(command.context.idempotency_key, backend)],
+            ))
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?
+        else {
+            return Ok(None);
+        };
+        let stored_request_digest: String = row
+            .try_get("", "request_digest")
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        let operation = self.parse_operation_row(row, backend)?;
+        if stored_request_digest != request_digest
+            || operation.operation_id != command.operation_id
+            || operation.context != command.context
+        {
+            return Err(OperationsToolError::IdempotencyConflict);
+        }
+        Ok(Some(operation))
+    }
+
+    async fn load_recovery_replay<C: ConnectionTrait>(
+        &self,
+        connection: &C,
+        command: &AuthorizeOperationsToolPredecessorRecoveryCommand,
+        request_digest: &str,
+    ) -> Result<Option<OperationsToolMaintenanceOperation>, OperationsToolError> {
+        let backend = connection.get_database_backend();
+        let Some(row) = connection
+            .query_one_raw(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT recovery_request_digest, operation_id, target_release_id, \
+                            predecessor_release_id, status, recovery_attempts, actor_id, \
+                            idempotency_key, trace_id, correlation_id, recovery_actor_id, \
+                            recovery_idempotency_key, recovery_trace_id, recovery_correlation_id, \
+                            created_at, updated_at \
+                     FROM module_operations_tool_maintenance_operations \
+                     WHERE recovery_idempotency_key = {}",
+                    placeholder(backend, 1),
+                ),
+                vec![uuid_value(command.context.idempotency_key, backend)],
+            ))
+            .await
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?
+        else {
+            return Ok(None);
+        };
+        let stored_request_digest: String = row
+            .try_get("", "recovery_request_digest")
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        let operation = self.parse_operation_row(row, backend)?;
+        if stored_request_digest != request_digest
+            || operation.operation_id != command.operation_id
+            || operation.recovery_context.as_ref() != Some(&command.context)
+        {
+            return Err(OperationsToolError::IdempotencyConflict);
+        }
+        Ok(Some(operation))
     }
 
     pub async fn get_assignment(
@@ -831,6 +1066,86 @@ impl OperationsToolService {
         })
     }
 
+    fn parse_operation_row(
+        &self,
+        row: sea_orm::QueryResult,
+        backend: DbBackend,
+    ) -> Result<OperationsToolMaintenanceOperation, OperationsToolError> {
+        let recovery_attempts: i32 = row
+            .try_get("", "recovery_attempts")
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        let recovery_attempts = u32::try_from(recovery_attempts)
+            .ok()
+            .filter(|value| *value <= 1)
+            .ok_or_else(|| {
+                OperationsToolError::Storage(
+                    "maintenance operation recovery_attempts is invalid".to_string(),
+                )
+            })?;
+        let context = ModuleCommandContext {
+            actor_id: self.get_uuid_from_row(&row, "actor_id", backend)?,
+            tenant_id: None,
+            trace_id: row
+                .try_get("", "trace_id")
+                .map_err(|error| OperationsToolError::Storage(error.to_string()))?,
+            correlation_id: self.get_uuid_from_row(&row, "correlation_id", backend)?,
+            idempotency_key: self.get_uuid_from_row(&row, "idempotency_key", backend)?,
+        };
+        validate_platform_context(&context)?;
+
+        let recovery_actor_id =
+            self.get_optional_uuid_from_row(&row, "recovery_actor_id", backend)?;
+        let recovery_idempotency_key =
+            self.get_optional_uuid_from_row(&row, "recovery_idempotency_key", backend)?;
+        let recovery_trace_id: Option<String> = row
+            .try_get("", "recovery_trace_id")
+            .map_err(|error| OperationsToolError::Storage(error.to_string()))?;
+        let recovery_correlation_id =
+            self.get_optional_uuid_from_row(&row, "recovery_correlation_id", backend)?;
+        let recovery_context = match (
+            recovery_actor_id,
+            recovery_trace_id,
+            recovery_correlation_id,
+            recovery_idempotency_key,
+        ) {
+            (None, None, None, None) => None,
+            (Some(actor_id), Some(trace_id), Some(correlation_id), Some(idempotency_key)) => {
+                let context = ModuleCommandContext {
+                    actor_id,
+                    tenant_id: None,
+                    trace_id,
+                    correlation_id,
+                    idempotency_key,
+                };
+                validate_platform_context(&context)?;
+                Some(context)
+            }
+            _ => {
+                return Err(OperationsToolError::Storage(
+                    "maintenance recovery evidence is incomplete".to_string(),
+                ));
+            }
+        };
+
+        Ok(OperationsToolMaintenanceOperation {
+            operation_id: self.get_uuid_from_row(&row, "operation_id", backend)?,
+            target_release_id: self.get_uuid_from_row(&row, "target_release_id", backend)?,
+            predecessor_release_id: self.get_optional_uuid_from_row(
+                &row,
+                "predecessor_release_id",
+                backend,
+            )?,
+            status: row
+                .try_get("", "status")
+                .map_err(|error| OperationsToolError::Storage(error.to_string()))?,
+            recovery_attempts,
+            context,
+            recovery_context,
+            created_at: self.get_datetime_from_row(&row, "created_at", backend)?,
+            updated_at: self.get_datetime_from_row(&row, "updated_at", backend)?,
+        })
+    }
+
     fn get_uuid_from_row(
         &self,
         row: &sea_orm::QueryResult,
@@ -917,5 +1232,69 @@ impl OperationsToolService {
                 .try_get("", col)
                 .map_err(|e| OperationsToolError::Storage(e.to_string())),
         }
+    }
+}
+
+fn validate_start_maintenance_command(
+    command: &StartOperationsToolMaintenanceCommand,
+) -> Result<(), OperationsToolError> {
+    if command.operation_id.is_nil()
+        || command.target_release_id.is_nil()
+        || command
+            .predecessor_release_id
+            .is_some_and(|release_id| release_id.is_nil())
+        || command.predecessor_release_id == Some(command.target_release_id)
+        || command.host_ids.is_empty()
+        || command.host_ids.len() > MAX_MAINTENANCE_HOSTS
+        || !valid_platform_context(&command.context)
+    {
+        return Err(OperationsToolError::InvalidCommand);
+    }
+
+    let mut host_ids = BTreeSet::new();
+    if command
+        .host_ids
+        .iter()
+        .any(|host_id| !valid_host_id(host_id) || !host_ids.insert(host_id.as_str()))
+    {
+        return Err(OperationsToolError::InvalidCommand);
+    }
+    Ok(())
+}
+
+fn validate_recovery_command(
+    command: &AuthorizeOperationsToolPredecessorRecoveryCommand,
+) -> Result<(), OperationsToolError> {
+    if command.operation_id.is_nil() || !valid_platform_context(&command.context) {
+        return Err(OperationsToolError::InvalidCommand);
+    }
+    Ok(())
+}
+
+fn valid_platform_context(context: &ModuleCommandContext) -> bool {
+    context.tenant_id.is_none() && context.validate().is_ok()
+}
+
+fn validate_platform_context(context: &ModuleCommandContext) -> Result<(), OperationsToolError> {
+    if valid_platform_context(context) {
+        Ok(())
+    } else {
+        Err(OperationsToolError::Storage(
+            "maintenance operation contains an invalid platform command context".to_string(),
+        ))
+    }
+}
+
+fn valid_host_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.trim() == value
+        && value.len() <= MAX_HOST_ID_BYTES
+        && !value.chars().any(char::is_control)
+}
+
+fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> Value {
+    match backend {
+        DbBackend::Postgres => Value::Uuid(value),
+        _ => Value::String(value.map(|value| value.to_string())),
     }
 }

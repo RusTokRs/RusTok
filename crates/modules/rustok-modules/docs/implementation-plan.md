@@ -145,15 +145,15 @@ Verified on the current tree by:
 On 2026-09-04, Separately Signed Operations-Tool Release and Maintenance Operation Ledger were delivered per Section 1 (Item 1782) of the Rollback Plan:
 - `crates/modules/rustok-modules/src/migrations/m20260904_000053_module_operations_tool.rs` created persistent tables:
   - `module_operations_tool_releases`: Ed25519-signed release metadata (`package_digest`, `controller_digest`, `reconciler_digest`, `agent_digest`, `protocol_revision`, `signer_key_digest`).
-  - `module_operations_tool_maintenance_operations`: canonical operation ledger with bounded predecessor recovery (`recovery_attempts <= 1`).
+  - `module_operations_tool_maintenance_operations`: canonical operation ledger with bounded predecessor recovery (`recovery_attempts <= 1`), a canonical digest plus complete platform command context for both mutable commands, and a durable one-active-operation fleet fence.
   - `module_operations_tool_assignments`: per-host desired/observed component assignments with idempotent status convergence.
 - `crates/modules/rustok-modules/src/operations_tool.rs` implemented `OperationsToolService`, `OperationsToolRelease`, `OperationsToolProtocolMatrix`, `VerifiedOperationsToolRelease`:
   - Strict Ed25519 signature verification over canonical JSON bytes.
   - Signer public key digest pinning and expiration interval checks.
   - Protocol matrix compatibility verification against control-plane protocol.
-  - `start_maintenance` acquiring fleet-level exclusion fence (`ConflictKey::fleet_operations_tool()`) and generating host component assignments (`controller`, `reconciler`, `agent`).
+  - `start_maintenance` accepts only a platform-scoped `ModuleCommandContext`, rejects changed idempotency evidence, reserves the fleet fence, and atomically writes the ledger plus all host component assignments (`controller`, `reconciler`, `agent`).
   - Idempotent supervisor reports from host executors with automatic operation convergence.
-  - `authorize_predecessor_recovery` verifying predecessor release preflight and atomically re-pointing desired digests to predecessor with bounded recovery enforcement (`recovery_attempts <= 1`).
+  - `authorize_predecessor_recovery` accepts its own platform-scoped `ModuleCommandContext`, exactly replays its durable authorization evidence, verifies predecessor release preflight, atomically re-points desired digests, and retains the fleet fence until rollback assignments converge.
 - Verified by:
   - `cargo test --locked -p rustok-modules --test operations_tool_tests` (5 passed, 0 warnings).
 
@@ -192,11 +192,13 @@ On 2026-09-03, Durable Snapshot/Restore Intents, Staging Receipts, and Post-Purg
   - `prepare_recovery`: verifies the existing purge tombstone (`purged_at IS NOT NULL`) and ready snapshot, creating an isolated staging recovery operation (`status = 'staging'`).
   - `verify_staged_recovery`: verifies full snapshot digests and restored counts, promoting to `status = 'verified'`.
   - `execute_cas_cutover`: executes an atomic CAS cutover advancing the active namespace revision (`tombstone_rev + 1`, `purged_at = NULL` for the new revision) while preserving the historical purge operation records in `module_artifact_data_purge_operations` completely intact ("never clear the old purge tombstone").
+  - `PrepareRecoveryRequest` now accepts one tenant-matched `ModuleCommandContext`; its durable staging receipt records a canonical request digest plus actor, trace, correlation, and idempotency facts. Exact replay returns the original receipt, while changed context or snapshot evidence fails closed. A ready snapshot is selected only from the same tenant, module, and data-contract revision.
 - `crates/modules/rustok-modules/src/control_plane.rs` exposed `artifact_data_snapshot_intents()` and `artifact_data_post_purge_recovery()` on `ModuleControlPlane`.
 - Verified by:
   - `cargo test --locked -p rustok-modules --test snapshot_intents_and_post_purge_recovery_tests` (2 passed, 0 warnings).
   - `cargo test --locked -p rustok-modules --test snapshot_readiness_and_recovery_evidence_tests` (2 passed, 0 warnings).
   - `cargo test --locked -p rustok-modules --test artifact_purge_and_recovery_tests` (1 passed, 0 warnings).
+  - `cargo test --locked -p rustok-modules --test snapshot_intents_and_post_purge_recovery_tests` (2 passed, 0 warnings) after the command-evidence cutover.
   - `cargo check -p rustok-server --test module_graphql_native_parity` (passed, 0 errors).
   - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
   - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).

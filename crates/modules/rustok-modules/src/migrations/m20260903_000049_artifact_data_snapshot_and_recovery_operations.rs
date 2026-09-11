@@ -46,6 +46,7 @@ impl MigrationTrait for Migration {
                     records_restored BIGINT NOT NULL CHECK (records_restored >= 0),\
                     objects_restored BIGINT NOT NULL CHECK (objects_restored >= 0),\
                     manifest_digest TEXT NOT NULL CHECK (manifest_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     actor_id UUID NOT NULL,\
                     trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) BETWEEN 1 AND 512),\
                     correlation_id UUID NOT NULL,\
@@ -94,6 +95,7 @@ impl MigrationTrait for Migration {
                     records_restored INTEGER NOT NULL CHECK (records_restored >= 0),\
                     objects_restored INTEGER NOT NULL CHECK (objects_restored >= 0),\
                     manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 71),\
+                    request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     actor_id TEXT NOT NULL,\
                     trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) BETWEEN 1 AND 512),\
                     correlation_id TEXT NOT NULL,\

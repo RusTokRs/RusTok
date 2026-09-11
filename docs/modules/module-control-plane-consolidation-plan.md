@@ -495,7 +495,9 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   artifact lifecycle family (activation, deactivation, tenant intent,
   uninstall, rollback, migration checkpoints, tenant data purge, admission
   reverification, and artifact admission),
-  settings recovery, data snapshots, owner-only artifact-data export, artifact secret binding, global
+  settings recovery, data snapshots and post-purge recovery preparation, and
+  operations-tool maintenance and predecessor-recovery authorization,
+  owner-only artifact-data export, artifact secret binding, global
   artifact-security transitions, static promotion, and static-distribution
   bootstrap/admission/revocation, and tenant-scoped registry platform-build
   staging now carry this one context through their owner validation, durable
@@ -508,9 +510,15 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   isolated tenant build requests bind the complete context into their immutable
   request/replay hash and use it for both queued and completed outbox envelopes;
   node-agent reports remain separately authenticated deployment observations.
-  Each receipt rejects an idempotency reuse with different context
-  evidence. GraphQL and REST adapters carry the context where those surfaces
-  are exposed.
+  Post-purge recovery binds the ready snapshot to the same tenant/module/data-
+  contract scope and records a canonical request digest beside the context, so
+  a changed snapshot or context on idempotency reuse fails closed. Operations-tool
+  start and predecessor-recovery authorization each use platform-scoped context,
+  durable canonical request digests, exact replay checks, and one active fleet
+  maintenance fence; supervisor observations remain separately authenticated
+  agent evidence. Each receipt rejects an idempotency reuse with different
+  context evidence. GraphQL and REST
+  adapters carry the context where those surfaces are exposed.
   The remaining mutable owner families still require atomic caller cutover to
   this contract. The accepted target is recorded in
   [ADR 2026-08-22](../../DECISIONS/2026-08-22-module-command-context-evidence.md).
