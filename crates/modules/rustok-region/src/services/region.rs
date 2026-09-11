@@ -1,6 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use std::collections::{HashMap, HashSet};
 use tracing::instrument;
@@ -44,6 +45,7 @@ impl RegionService {
         let now = Utc::now();
         let region_id = generate_id();
         let translations = normalize_translation_inputs(input.translations)?;
+        let txn = self.db.begin().await?;
 
         entities::region::ActiveModel {
             id: Set(region_id),
@@ -58,11 +60,12 @@ impl RegionService {
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
-        .insert(&self.db)
+        .insert(&txn)
         .await?;
 
-        insert_translations(&self.db, region_id, &translations).await?;
-        replace_country_tax_policies(&self.db, region_id, &country_tax_policies).await?;
+        insert_translations(&txn, region_id, &translations).await?;
+        replace_country_tax_policies(&txn, region_id, &country_tax_policies).await?;
+        txn.commit().await?;
 
         self.get_region(tenant_id, region_id, None, None).await
     }
@@ -121,9 +124,20 @@ impl RegionService {
             .validate()
             .map_err(|error| RegionError::Validation(error.to_string()))?;
 
+        let normalized_country_tax_policies = input
+            .country_tax_policies
+            .map(normalize_country_tax_policies)
+            .transpose()?;
+        let normalized_countries = input.countries.map(normalize_countries).transpose()?;
+        let normalized_translations = input
+            .translations
+            .map(normalize_translation_inputs)
+            .transpose()?;
+        let txn = self.db.begin().await?;
         let existing = entities::region::Entity::find_by_id(region_id)
             .filter(entities::region::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .lock_exclusive()
+            .one(&txn)
             .await?
             .ok_or(RegionError::RegionNotFound(region_id))?;
 
@@ -140,24 +154,23 @@ impl RegionService {
         if let Some(tax_included) = input.tax_included {
             active.tax_included = Set(tax_included);
         }
-        if let Some(country_tax_policies) = input.country_tax_policies {
-            let normalized = normalize_country_tax_policies(country_tax_policies)?;
-            replace_country_tax_policies(&self.db, region_id, &normalized).await?;
-        }
-        if let Some(countries) = input.countries {
-            active.countries = Set(serde_json::to_value(normalize_countries(countries)?)
+        if let Some(countries) = normalized_countries {
+            active.countries = Set(serde_json::to_value(countries)
                 .map_err(|error| RegionError::Validation(error.to_string()))?);
         }
         if let Some(metadata) = input.metadata {
             active.metadata = Set(metadata);
         }
         active.updated_at = Set(Utc::now().into());
-        active.update(&self.db).await?;
+        active.update(&txn).await?;
 
-        if let Some(translations) = input.translations {
-            let normalized = normalize_translation_inputs(translations)?;
-            replace_translations(&self.db, region_id, &normalized).await?;
+        if let Some(country_tax_policies) = normalized_country_tax_policies {
+            replace_country_tax_policies(&txn, region_id, &country_tax_policies).await?;
         }
+        if let Some(translations) = normalized_translations {
+            replace_translations(&txn, region_id, &translations).await?;
+        }
+        txn.commit().await?;
 
         self.get_region(tenant_id, region_id, None, None).await
     }
@@ -357,11 +370,14 @@ fn normalize_translation_inputs(
     Ok(normalized)
 }
 
-async fn insert_translations(
-    db: &DatabaseConnection,
+async fn insert_translations<C>(
+    db: &C,
     region_id: Uuid,
     translations: &[RegionTranslationInput],
-) -> RegionResult<()> {
+) -> RegionResult<()>
+where
+    C: ConnectionTrait,
+{
     for translation in translations {
         entities::region_translation::ActiveModel {
             id: Set(generate_id()),
@@ -375,11 +391,14 @@ async fn insert_translations(
     Ok(())
 }
 
-async fn replace_translations(
-    db: &DatabaseConnection,
+async fn replace_translations<C>(
+    db: &C,
     region_id: Uuid,
     translations: &[RegionTranslationInput],
-) -> RegionResult<()> {
+) -> RegionResult<()>
+where
+    C: ConnectionTrait,
+{
     entities::region_translation::Entity::delete_many()
         .filter(entities::region_translation::Column::RegionId.eq(region_id))
         .exec(db)
@@ -387,11 +406,14 @@ async fn replace_translations(
     insert_translations(db, region_id, translations).await
 }
 
-async fn replace_country_tax_policies(
-    db: &DatabaseConnection,
+async fn replace_country_tax_policies<C>(
+    db: &C,
     region_id: Uuid,
     policies: &[RegionCountryTaxPolicyInput],
-) -> RegionResult<()> {
+) -> RegionResult<()>
+where
+    C: ConnectionTrait,
+{
     entities::region_country_tax_policy::Entity::delete_many()
         .filter(entities::region_country_tax_policy::Column::RegionId.eq(region_id))
         .exec(db)
