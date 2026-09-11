@@ -397,7 +397,7 @@ fn auth_context(tenant_id: Uuid, user_id: Uuid, permissions: &[Permission]) -> A
         user_id,
         session_id: Uuid::new_v4(),
         tenant_id,
-        permissions: permissions.iter().map(ToString::to_string).collect(),
+        permissions: permissions.to_vec(),
         client_id: None,
         scopes: Vec::new(),
         grant_type: "direct".to_string(),
