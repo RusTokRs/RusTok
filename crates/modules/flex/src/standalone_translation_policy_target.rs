@@ -44,7 +44,7 @@ impl FlexStandaloneTranslationPolicyTargetProvider {
         tenant_id: Uuid,
         mut snapshot: TranslationResourceSnapshot,
     ) -> Result<TranslationResourceSnapshot, PortError> {
-        let schema_id = schema_id_from_identity(&snapshot.identity)?;
+        let schema_id = schema_id_from_identity(&snapshot.summary.identity)?;
         let field_keys = snapshot
             .fields
             .iter()
@@ -79,7 +79,7 @@ impl FlexStandaloneTranslationPolicyTargetProvider {
         // A page can contain entries from multiple standalone schemas. Resolve each resource
         // against its own schema-scoped policy plane rather than merging keys across schemas.
         for resource in &mut page.resources {
-            let schema_id = schema_id_from_identity(&resource.identity)?;
+            let schema_id = schema_id_from_identity(&resource.summary.identity)?;
             let field_keys = resource
                 .fields
                 .iter()
