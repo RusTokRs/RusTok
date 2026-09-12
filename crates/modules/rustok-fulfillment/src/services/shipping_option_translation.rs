@@ -4,7 +4,7 @@ use rustok_api::{TenantLocale, sha256_digest};
 use rustok_core::generate_id;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, Set, TransactionTrait,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
