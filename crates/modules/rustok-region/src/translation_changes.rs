@@ -1,6 +1,6 @@
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseTransaction, EntityTrait, FromQueryResult,
-    QueryFilter, QueryOrder, Statement,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseTransaction, EntityTrait,
+    FromQueryResult, QueryFilter, QueryOrder, Statement,
 };
 use uuid::Uuid;
 
@@ -186,6 +186,7 @@ pub(crate) async fn record_current_region_translation_change_in_tx(
     .await
 }
 
+#[allow(clippy::collapsible_if)]
 pub(crate) async fn record_region_translation_change_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -303,7 +304,9 @@ fn validate_identity(tenant_id: Uuid, region_id: Uuid, operation_id: Uuid) -> Re
 }
 
 fn optional_positive_sequence(value: Option<i64>, field: &str) -> RegionResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
 fn positive_sequence(value: i64, field: &str) -> RegionResult<u64> {

@@ -10,6 +10,7 @@ use crate::CacheService;
 
 #[cfg(feature = "redis-cache")]
 const REDIS_STATUS_TIMEOUT: Duration = Duration::from_secs(2);
+#[allow(dead_code)]
 const MAX_REDIS_STATUS_ERROR_BYTES: usize = 512;
 
 static REDIS_STATUS_COLLECTOR: OnceLock<Mutex<Option<RedisStatusCollector>>> = OnceLock::new();
@@ -251,6 +252,7 @@ fn degraded_status(error: String) -> RedisCacheStatus {
     }
 }
 
+#[allow(dead_code)]
 fn bounded_error(error: String) -> String {
     if error.len() <= MAX_REDIS_STATUS_ERROR_BYTES {
         return error;

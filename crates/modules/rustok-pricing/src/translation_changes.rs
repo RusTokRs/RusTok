@@ -1,6 +1,4 @@
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement};
 use uuid::Uuid;
 
 use crate::{
@@ -157,6 +155,7 @@ LIMIT ?
     }
 }
 
+#[allow(clippy::collapsible_if)]
 pub(crate) async fn record_price_list_translation_change_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -283,13 +282,12 @@ fn optional_positive_sequence(
     value: Option<i64>,
     field: &str,
 ) -> PriceListTranslationExactLocaleResult<Option<u64>> {
-    value.map(|value| positive_sequence(value, field)).transpose()
+    value
+        .map(|value| positive_sequence(value, field))
+        .transpose()
 }
 
-fn positive_sequence(
-    value: i64,
-    field: &str,
-) -> PriceListTranslationExactLocaleResult<u64> {
+fn positive_sequence(value: i64, field: &str) -> PriceListTranslationExactLocaleResult<u64> {
     let value = u64::try_from(value).map_err(|_| invalid_sequence(field))?;
     if value == 0 {
         return Err(invalid_sequence(field));
