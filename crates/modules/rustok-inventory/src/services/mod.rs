@@ -3,6 +3,7 @@ pub mod inventory;
 mod policy;
 pub mod public_channel;
 pub mod stock_location_translation;
+mod translation_progress;
 
 pub use bootstrap::{BootstrapService, InitialInventory};
 pub use inventory::{
