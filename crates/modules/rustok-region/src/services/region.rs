@@ -66,13 +66,8 @@ impl RegionService {
 
         insert_translations(&txn, region_id, &translations).await?;
         replace_country_tax_policies(&txn, region_id, &country_tax_policies).await?;
-        record_current_region_translation_change_in_tx(
-            &txn,
-            tenant_id,
-            region_id,
-            generate_id(),
-        )
-        .await?;
+        record_current_region_translation_change_in_tx(&txn, tenant_id, region_id, generate_id())
+            .await?;
         txn.commit().await?;
 
         self.get_region(tenant_id, region_id, None, None).await

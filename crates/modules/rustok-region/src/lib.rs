@@ -21,9 +21,7 @@ pub use services::{
     RegionTranslationExactLocaleResult, RegionTranslationExactLocaleSnapshot,
     RegionTranslationService,
 };
-pub use translation_changes::{
-    RegionTranslationChangeLifecycle, RegionTranslationChangeRecord,
-};
+pub use translation_changes::{RegionTranslationChangeLifecycle, RegionTranslationChangeRecord};
 pub use translation_target::{
     RegionTranslationTargetProvider, register_region_translation_target_provider,
 };

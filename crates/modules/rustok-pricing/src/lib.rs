@@ -35,7 +35,8 @@ pub use services::{
     PriceListTranslationExactLocaleResult, PriceListTranslationExactLocaleSnapshot,
     PriceListTranslationService, PriceResolutionContext, PricingService, ResolvedPrice,
     StorefrontPricingPrice, StorefrontPricingProductDetail, StorefrontPricingProductList,
-    StorefrontPricingProductListItem, StorefrontPricingProductTranslation, StorefrontPricingVariant,
+    StorefrontPricingProductListItem, StorefrontPricingProductTranslation,
+    StorefrontPricingVariant,
 };
 pub use translation_changes::{
     PriceListTranslationChangeLifecycle, PriceListTranslationChangeRecord,
