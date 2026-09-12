@@ -1,6 +1,7 @@
 pub mod fulfillment;
 pub mod provider_operation;
 pub mod provider_operation_recovery;
+pub mod shipping_option_translation;
 
 pub use fulfillment::FulfillmentService;
 pub use provider_operation::{
@@ -9,3 +10,9 @@ pub use provider_operation::{
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
 pub use provider_operation_recovery::FulfillmentProviderOperationRecovery;
+pub use shipping_option_translation::{
+    ShippingOptionTranslationExactLocaleApply, ShippingOptionTranslationExactLocaleApplyReceipt,
+    ShippingOptionTranslationExactLocaleError, ShippingOptionTranslationExactLocaleRecord,
+    ShippingOptionTranslationExactLocaleResult, ShippingOptionTranslationExactLocaleSnapshot,
+    ShippingOptionTranslationService,
+};
