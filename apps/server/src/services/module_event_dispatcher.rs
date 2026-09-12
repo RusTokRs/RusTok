@@ -331,6 +331,14 @@ pub fn build_shared_runtime_extensions_with_host_providers(
             })?;
     }
 
+    #[cfg(feature = "mod-region")]
+    rustok_region::register_region_translation_target_provider(&mut extensions, db.clone())
+        .map_err(|error| {
+            Error::Message(format!(
+                "Region translation target provider registration failed: {error}"
+            ))
+        })?;
+
     #[cfg(feature = "mod-translation")]
     {
         let provider =
