@@ -15434,6 +15434,7 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-pricing-persistence",
  "sea-orm",
  "sea-orm-migration",
  "serde",
