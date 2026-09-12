@@ -4,8 +4,8 @@ use chrono::Utc;
 use rustok_api::TenantLocale;
 use rustok_core::generate_id;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set, TransactionTrait,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
