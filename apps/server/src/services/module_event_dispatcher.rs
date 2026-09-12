@@ -339,6 +339,14 @@ pub fn build_shared_runtime_extensions_with_host_providers(
             ))
         })?;
 
+    #[cfg(feature = "mod-pricing")]
+    rustok_pricing::register_price_list_translation_target_provider(&mut extensions, db.clone())
+        .map_err(|error| {
+            Error::Message(format!(
+                "Pricing translation target provider registration failed: {error}"
+            ))
+        })?;
+
     #[cfg(feature = "mod-translation")]
     {
         let provider =
@@ -696,6 +704,14 @@ mod tests {
                 .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
                     descriptor.owner_slug.as_str() == "commerce"
                         && descriptor.resource_kind.as_str() == "collection_copy"
+                }))
+        );
+        #[cfg(feature = "mod-pricing")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "pricing"
+                        && descriptor.resource_kind.as_str() == "price_list_copy"
                 }))
         );
         #[cfg(feature = "mod-translation")]
