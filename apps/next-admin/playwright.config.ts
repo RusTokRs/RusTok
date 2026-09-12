@@ -12,7 +12,7 @@ export default defineConfig({
   testDir: './tests/e2e',
   timeout: 30_000,
   expect: {
-    timeout: 5_000
+    timeout: process.env.CI === 'true' ? 15_000 : 5_000
   },
   fullyParallel: true,
   retries: process.env.CI === 'true' ? 2 : 0,

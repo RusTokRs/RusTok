@@ -120,10 +120,8 @@ impl RegionTranslationService {
         target_locale: &str,
         after: Option<Uuid>,
         limit: u16,
-    ) -> RegionTranslationExactLocaleResult<(
-        Vec<RegionTranslationExactLocaleSnapshot>,
-        Option<Uuid>,
-    )> {
+    ) -> RegionTranslationExactLocaleResult<(Vec<RegionTranslationExactLocaleSnapshot>, Option<Uuid>)>
+    {
         if tenant_id.is_nil() {
             return Err(RegionError::Validation(
                 "Region translation tenant_id must not be nil".to_string(),

@@ -600,7 +600,10 @@ fn translation_change_lifecycle(
 
 fn change_cursor(through: u64, after: u64) -> Result<OpaqueCursor, PortError> {
     OpaqueCursor::new(format!("{CHANGE_CURSOR_VERSION}:{through}:{after}")).map_err(|error| {
-        PortError::invariant_violation("region.translation_change_cursor_invalid", error.to_string())
+        PortError::invariant_violation(
+            "region.translation_change_cursor_invalid",
+            error.to_string(),
+        )
     })
 }
 

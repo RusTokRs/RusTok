@@ -84,9 +84,7 @@ where
     .one(db)
     .await?
     .ok_or_else(|| {
-        RegionError::Validation(
-            "Region translation progress aggregate returned no row".to_string(),
-        )
+        RegionError::Validation("Region translation progress aggregate returned no row".to_string())
     })?;
 
     let facts = RegionTranslationExactProgressFacts {

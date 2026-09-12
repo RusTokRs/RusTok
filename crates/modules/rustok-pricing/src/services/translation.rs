@@ -23,7 +23,9 @@ pub enum PriceListTranslationExactLocaleError {
     #[error("Price list not found: {0}")]
     PriceListNotFound(Uuid),
 
-    #[error("Price list translation source locale not found: {locale} for price list {price_list_id}")]
+    #[error(
+        "Price list translation source locale not found: {locale} for price list {price_list_id}"
+    )]
     SourceLocaleNotFound { price_list_id: Uuid, locale: String },
 
     #[error(
@@ -44,8 +46,7 @@ pub enum PriceListTranslationExactLocaleError {
     Database(#[from] sea_orm::DbErr),
 }
 
-pub type PriceListTranslationExactLocaleResult<T> =
-    Result<T, PriceListTranslationExactLocaleError>;
+pub type PriceListTranslationExactLocaleResult<T> = Result<T, PriceListTranslationExactLocaleError>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PriceListTranslationExactLocaleRecord {
@@ -410,10 +411,12 @@ fn build_snapshot(
 ) -> PriceListTranslationExactLocaleResult<PriceListTranslationExactLocaleSnapshot> {
     let source = exact_locale_row(&translations, &source_locale)
         .cloned()
-        .ok_or_else(|| PriceListTranslationExactLocaleError::SourceLocaleNotFound {
-            price_list_id: price_list.id,
-            locale: source_locale.clone(),
-        })?;
+        .ok_or_else(
+            || PriceListTranslationExactLocaleError::SourceLocaleNotFound {
+                price_list_id: price_list.id,
+                locale: source_locale.clone(),
+            },
+        )?;
     let target = exact_locale_row(&translations, &target_locale).cloned();
     let resource_revision = resource_revision(&price_list, &translations);
     let source_revision = locale_revision(&source);

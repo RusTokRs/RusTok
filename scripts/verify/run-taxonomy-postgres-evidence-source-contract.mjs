@@ -26,7 +26,7 @@ const failures = (result.stderr ?? '')
   .map((line) => line.slice(2));
 
 const staleFingerprint = /runtime input .+ changed since recorded evidence; collect fresh PostgreSQL evidence$/;
-const legacyPlanMarker = /^crates\/rustok-taxonomy\/docs\/implementation-plan\.md: missing (?:route_registry_contention_postgres\.rs|translation_target_postgres\.rs|RUSTOK_TAXONOMY_TEST_DATABASE_URL|canonical server Migrator|two-writer route-key contention|translation apply CAS|Exactly one stale-revision candidate may commit|hard deletion|Final exact-head pull-request run `31847950553`|Post-merge main run `31857567129`|Result 4 is complete for the current runtime input fingerprints\.|runtime input fingerprints)$/;
+const legacyPlanMarker = /^crates\/(?:modules\/)?rustok-taxonomy\/docs\/implementation-plan\.md: missing (?:route_registry_contention_postgres\.rs|translation_target_postgres\.rs|RUSTOK_TAXONOMY_TEST_DATABASE_URL|canonical server Migrator|two-writer route-key contention|translation apply CAS|Exactly one stale-revision candidate may commit|hard deletion|Final exact-head pull-request run `31847950553`|Post-merge main run `31857567129`|Result 4 is complete for the current runtime input fingerprints\.|runtime input fingerprints)$/;
 
 const plan = fs.readFileSync('crates/modules/rustok-taxonomy/docs/implementation-plan.md', 'utf8');
 const normalizedPlan = plan.replace(/\s+/g, ' ');

@@ -1,8 +1,8 @@
 use std::fmt::Write as _;
 
-use rustok_api::{sha256_digest, TenantLocale};
-use rustok_core::generate_id;
+use rustok_api::{TenantLocale, sha256_digest};
 use rustok_commerce_foundation::entities::{stock_location, stock_location_translation};
+use rustok_core::generate_id;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait,
@@ -113,14 +113,14 @@ impl StockLocationTranslationService {
         stock_location_id: Uuid,
         source_locale: &str,
         target_locale: &str,
-    ) -> StockLocationTranslationExactLocaleResult<StockLocationTranslationExactLocaleSnapshot> {
+    ) -> StockLocationTranslationExactLocaleResult<StockLocationTranslationExactLocaleSnapshot>
+    {
         validate_tenant(tenant_id)?;
         let source_locale = canonical_locale(source_locale)?;
         let target_locale = canonical_locale(target_locale)?;
         validate_locale_pair(&source_locale, &target_locale)?;
 
-        let stock_location =
-            load_stock_location(&self.db, tenant_id, stock_location_id).await?;
+        let stock_location = load_stock_location(&self.db, tenant_id, stock_location_id).await?;
         let translations = load_translations(&self.db, stock_location_id).await?;
         build_snapshot(stock_location, translations, source_locale, target_locale)
     }
@@ -145,9 +145,9 @@ impl StockLocationTranslationService {
             .lock_exclusive()
             .one(&txn)
             .await?
-            .ok_or(StockLocationTranslationExactLocaleError::StockLocationNotFound(
-                stock_location_id,
-            ))?;
+            .ok_or(
+                StockLocationTranslationExactLocaleError::StockLocationNotFound(stock_location_id),
+            )?;
         let translations = load_translations(&txn, stock_location_id).await?;
         let source = exact_locale_row(&translations, &source_locale).ok_or_else(|| {
             StockLocationTranslationExactLocaleError::SourceLocaleNotFound {
@@ -195,12 +195,12 @@ impl StockLocationTranslationService {
         let translations_after = load_translations(&txn, stock_location_id).await?;
         let target_after = exact_locale_row(&translations_after, &target_locale)
             .cloned()
-            .ok_or_else(
-                || StockLocationTranslationExactLocaleError::TargetLocaleMissingAfterApply {
+            .ok_or_else(|| {
+                StockLocationTranslationExactLocaleError::TargetLocaleMissingAfterApply {
                     stock_location_id,
                     locale: target_locale.clone(),
-                },
-            )?;
+                }
+            })?;
         let receipt = StockLocationTranslationExactLocaleApplyReceipt {
             stock_location_id,
             resource_revision: resource_revision(&stock_location, &translations_after),
@@ -225,9 +225,7 @@ where
         .filter(stock_location::Column::DeletedAt.is_null())
         .one(db)
         .await?
-        .ok_or(StockLocationTranslationExactLocaleError::StockLocationNotFound(
-            stock_location_id,
-        ))
+        .ok_or(StockLocationTranslationExactLocaleError::StockLocationNotFound(stock_location_id))
 }
 
 async fn load_translations<C>(

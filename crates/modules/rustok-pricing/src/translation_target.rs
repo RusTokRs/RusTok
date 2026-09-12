@@ -15,9 +15,9 @@ use rustok_translation_targets::{
     TranslationTargetProgressFacts, TranslationTargetProgressRequest, TranslationTargetProvider,
     TranslationTargetProviderDescriptor, TranslationTargetRegistryError, TranslationValueProfile,
     provider_support::{
-        contract_validation_error, field_hash, merged_patch_values, normalize_optional_target_value,
-        read_request_from_patch, required_target_value, validate_patch_against_snapshot,
-        validation_to_port_error,
+        contract_validation_error, field_hash, merged_patch_values,
+        normalize_optional_target_value, read_request_from_patch, required_target_value,
+        validate_patch_against_snapshot, validation_to_port_error,
     },
     register_translation_target_provider, validate_translation_apply_context,
     validate_translation_read_context,
@@ -548,8 +548,8 @@ fn translation_fields(
         ),
     ]
     .into_iter()
-    .map(|(key, source_value, target_value, required, max_characters)| {
-        TranslationFieldSnapshot {
+    .map(
+        |(key, source_value, target_value, required, max_characters)| TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
                 key: FieldKey::new(key)
                     .expect("static Pricing field key must satisfy the target contract"),
@@ -565,8 +565,8 @@ fn translation_fields(
             exact_target_value: target_value.map(str::to_string),
             source_hash: field_hash(source_value),
             protected_tokens: Vec::new(),
-        }
-    })
+        },
+    )
     .collect()
 }
 
@@ -669,7 +669,9 @@ fn opaque_revision(value: String, field: &'static str) -> Result<OpaqueRevision,
     })
 }
 
-fn pricing_translation_error_to_port_error(error: PriceListTranslationExactLocaleError) -> PortError {
+fn pricing_translation_error_to_port_error(
+    error: PriceListTranslationExactLocaleError,
+) -> PortError {
     match error {
         PriceListTranslationExactLocaleError::SourceLocaleNotFound { .. } => PortError::not_found(
             "pricing.translation_source_not_found",

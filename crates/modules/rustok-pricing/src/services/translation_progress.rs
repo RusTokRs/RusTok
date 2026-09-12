@@ -115,10 +115,7 @@ fn canonical_locale(locale: &str) -> PriceListTranslationExactLocaleResult<Strin
         .map_err(|error| PriceListTranslationExactLocaleError::Validation(error.to_string()))
 }
 
-fn progress_count(
-    value: i64,
-    field: &'static str,
-) -> PriceListTranslationExactLocaleResult<u64> {
+fn progress_count(value: i64, field: &'static str) -> PriceListTranslationExactLocaleResult<u64> {
     u64::try_from(value).map_err(|_| {
         PriceListTranslationExactLocaleError::Validation(format!(
             "Pricing translation progress {field} must not be negative"
