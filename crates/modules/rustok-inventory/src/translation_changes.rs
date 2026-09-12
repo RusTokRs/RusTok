@@ -1,6 +1,4 @@
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 use uuid::Uuid;
 
 use crate::{
@@ -157,14 +155,17 @@ LIMIT ?
     }
 }
 
-pub(crate) async fn record_stock_location_translation_change_in_tx(
-    txn: &DatabaseTransaction,
+pub(crate) async fn record_stock_location_translation_change_in_tx<C>(
+    conn: &C,
     tenant_id: Uuid,
     stock_location_id: Uuid,
     operation_id: Uuid,
     resource_revision: &str,
     lifecycle: StockLocationTranslationChangeLifecycle,
-) -> StockLocationTranslationExactLocaleResult<()> {
+) -> StockLocationTranslationExactLocaleResult<()>
+where
+    C: ConnectionTrait,
+{
     validate_identity(tenant_id, stock_location_id, operation_id)?;
     if resource_revision.trim().is_empty() {
         return Err(StockLocationTranslationExactLocaleError::Validation(
@@ -172,7 +173,7 @@ pub(crate) async fn record_stock_location_translation_change_in_tx(
         ));
     }
 
-    let backend = txn.get_database_backend();
+    let backend = conn.get_database_backend();
     let previous_sql = match backend {
         DatabaseBackend::Postgres => {
             r#"
@@ -198,7 +199,7 @@ LIMIT 1
         previous_sql,
         vec![tenant_id.into(), stock_location_id.into()],
     ))
-    .one(txn)
+    .one(conn)
     .await?
     {
         if previous.resource_revision == resource_revision
@@ -224,7 +225,7 @@ INSERT INTO stock_location_translation_change_journal (
 "#
         }
     };
-    txn.execute_raw(Statement::from_sql_and_values(
+    conn.execute_raw(Statement::from_sql_and_values(
         backend,
         insert_sql,
         vec![

@@ -7,6 +7,12 @@ use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_commerce_foundation::entities;
 use rustok_core::generate_id;
 
+use crate::translation_changes::{
+    StockLocationTranslationChangeLifecycle, record_stock_location_translation_change_in_tx,
+};
+
+use super::stock_location_translation::resource_revision as stock_location_translation_resource_revision;
+
 /// Input for creating inventory state for a newly persisted product variant.
 #[derive(Debug, Clone)]
 pub struct InitialInventory {
@@ -59,7 +65,7 @@ impl BootstrapService {
         .insert(conn)
         .await?;
 
-        entities::stock_location_translation::ActiveModel {
+        let translation = entities::stock_location_translation::ActiveModel {
             id: Set(generate_id()),
             stock_location_id: Set(location.id),
             locale: Set(PLATFORM_FALLBACK_LOCALE.to_owned()),
@@ -67,6 +73,26 @@ impl BootstrapService {
         }
         .insert(conn)
         .await?;
+
+        let resource_revision = stock_location_translation_resource_revision(
+            &location,
+            std::slice::from_ref(&translation),
+        );
+        record_stock_location_translation_change_in_tx(
+            conn,
+            tenant_id,
+            location.id,
+            generate_id(),
+            &resource_revision,
+            StockLocationTranslationChangeLifecycle::Active,
+        )
+        .await
+        .map_err(|error| match error {
+            crate::StockLocationTranslationExactLocaleError::Database(error) => error,
+            other => sea_orm::DbErr::Custom(format!(
+                "Inventory bootstrap translation change journal write failed: {other}"
+            )),
+        })?;
 
         Ok(location)
     }
