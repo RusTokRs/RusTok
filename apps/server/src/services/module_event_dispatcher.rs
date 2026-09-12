@@ -339,6 +339,17 @@ pub fn build_shared_runtime_extensions_with_host_providers(
             ))
         })?;
 
+    #[cfg(feature = "mod-inventory")]
+    rustok_inventory::register_stock_location_translation_target_provider(
+        &mut extensions,
+        db.clone(),
+    )
+    .map_err(|error| {
+        Error::Message(format!(
+            "Inventory Stock Location translation target provider registration failed: {error}"
+        ))
+    })?;
+
     #[cfg(feature = "mod-pricing")]
     rustok_pricing::register_price_list_translation_target_provider(&mut extensions, db.clone())
         .map_err(|error| {
@@ -704,6 +715,14 @@ mod tests {
                 .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
                     descriptor.owner_slug.as_str() == "commerce"
                         && descriptor.resource_kind.as_str() == "collection_copy"
+                }))
+        );
+        #[cfg(feature = "mod-inventory")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "inventory"
+                        && descriptor.resource_kind.as_str() == "stock_location_copy"
                 }))
         );
         #[cfg(feature = "mod-pricing")]
