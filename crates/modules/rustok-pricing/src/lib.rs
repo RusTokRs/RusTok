@@ -11,6 +11,8 @@ pub mod migrations;
 pub mod ports;
 mod read_context;
 pub mod services;
+mod translation_changes;
+mod translation_target;
 mod write_context;
 
 pub use ports::{
@@ -34,6 +36,12 @@ pub use services::{
     PriceListTranslationService, PriceResolutionContext, PricingService, ResolvedPrice,
     StorefrontPricingPrice, StorefrontPricingProductDetail, StorefrontPricingProductList,
     StorefrontPricingProductListItem, StorefrontPricingProductTranslation, StorefrontPricingVariant,
+};
+pub use translation_changes::{
+    PriceListTranslationChangeLifecycle, PriceListTranslationChangeRecord,
+};
+pub use translation_target::{
+    PriceListTranslationTargetProvider, register_price_list_translation_target_provider,
 };
 
 pub struct PricingModule;

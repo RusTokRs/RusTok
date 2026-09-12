@@ -1,5 +1,6 @@
 pub mod pricing;
 pub mod translation;
+mod translation_progress;
 
 pub use pricing::{
     ActivePriceListOption, AdminPricingPrice, AdminPricingProductDetail, AdminPricingProductList,

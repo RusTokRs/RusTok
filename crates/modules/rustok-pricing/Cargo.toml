@@ -16,7 +16,9 @@ rustok-outbox.workspace = true
 rustok-commerce-foundation.workspace = true
 rustok-product.workspace = true
 rustok-pricing-persistence.workspace = true
+rustok-translation-targets.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 thiserror.workspace = true
@@ -24,5 +26,4 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
 tokio.workspace = true

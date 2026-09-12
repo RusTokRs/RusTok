@@ -1,15 +1,22 @@
-use std::fmt::Write as _;
+use std::{collections::HashMap, fmt::Write as _};
 
-use rustok_api::{TenantLocale, sha256_digest};
+use rustok_api::{PortError, TenantLocale, sha256_digest};
 use rustok_core::generate_id;
+use rustok_outbox::idempotency;
 use rustok_pricing_persistence::entities::{price_list, price_list_translation};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::ExprTrait,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
+
+use crate::translation_changes::{
+    PriceListTranslationChangeLifecycle, record_price_list_translation_change_in_tx,
+};
+
+pub const MAX_PRICE_LIST_TRANSLATION_RESOURCE_PAGE: u16 = 200;
 
 #[derive(Debug, Error)]
 pub enum PriceListTranslationExactLocaleError {
@@ -29,6 +36,9 @@ pub enum PriceListTranslationExactLocaleError {
 
     #[error("Price list translation validation failed: {0}")]
     Validation(String),
+
+    #[error("Price list translation owner receipt failed: {0}")]
+    OperationReceipt(PortError),
 
     #[error(transparent)]
     Database(#[from] sea_orm::DbErr),
@@ -80,6 +90,7 @@ pub struct PriceListTranslationExactLocaleApply {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PriceListTranslationExactLocaleApplyReceipt {
+    pub operation_id: Option<Uuid>,
     pub price_list_id: Uuid,
     pub resource_revision: String,
     pub target_revision: String,
@@ -100,6 +111,95 @@ pub struct PriceListTranslationService {
 impl PriceListTranslationService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
+    }
+
+    pub(crate) fn database(&self) -> &DatabaseConnection {
+        &self.db
+    }
+
+    pub async fn list_exact_resources(
+        &self,
+        tenant_id: Uuid,
+        source_locale: &str,
+        target_locale: &str,
+        after: Option<Uuid>,
+        limit: u16,
+    ) -> PriceListTranslationExactLocaleResult<(
+        Vec<PriceListTranslationExactLocaleSnapshot>,
+        Option<Uuid>,
+    )> {
+        validate_tenant(tenant_id)?;
+        let source_locale = canonical_locale(source_locale)?;
+        let target_locale = canonical_locale(target_locale)?;
+        validate_locale_pair(&source_locale, &target_locale)?;
+        if limit == 0 || limit > MAX_PRICE_LIST_TRANSLATION_RESOURCE_PAGE {
+            return Err(PriceListTranslationExactLocaleError::Validation(format!(
+                "Pricing translation resource page size must be between 1 and {MAX_PRICE_LIST_TRANSLATION_RESOURCE_PAGE}"
+            )));
+        }
+
+        let source_price_list_ids = sea_orm::sea_query::Query::select()
+            .column(price_list_translation::Column::PriceListId)
+            .from(price_list_translation::Entity)
+            .and_where(
+                sea_orm::sea_query::Expr::col(price_list_translation::Column::Locale)
+                    .eq(source_locale.clone()),
+            )
+            .to_owned();
+        let mut query = price_list::Entity::find()
+            .filter(price_list::Column::TenantId.eq(tenant_id))
+            .filter(price_list::Column::Id.in_subquery(source_price_list_ids))
+            .order_by_asc(price_list::Column::Id);
+        if let Some(after) = after {
+            query = query.filter(price_list::Column::Id.gt(after));
+        }
+
+        let mut price_lists = query.limit(u64::from(limit) + 1).all(&self.db).await?;
+        let has_more = price_lists.len() > usize::from(limit);
+        if has_more {
+            price_lists.truncate(usize::from(limit));
+        }
+        let next_after = has_more
+            .then(|| price_lists.last().map(|price_list| price_list.id))
+            .flatten();
+        if price_lists.is_empty() {
+            return Ok((Vec::new(), None));
+        }
+
+        let price_list_ids = price_lists
+            .iter()
+            .map(|price_list| price_list.id)
+            .collect::<Vec<_>>();
+        let mut translations = load_translations_for_price_lists(&self.db, &price_list_ids)
+            .await?
+            .into_iter()
+            .fold(
+                HashMap::<Uuid, Vec<price_list_translation::Model>>::new(),
+                |mut grouped, translation| {
+                    grouped
+                        .entry(translation.price_list_id)
+                        .or_default()
+                        .push(translation);
+                    grouped
+                },
+            );
+
+        let mut snapshots = Vec::with_capacity(price_lists.len());
+        for price_list in price_lists {
+            let exact = translations.remove(&price_list.id).ok_or_else(|| {
+                PriceListTranslationExactLocaleError::SourceLocaleNotFound {
+                    price_list_id: price_list.id,
+                    locale: source_locale.clone(),
+                }
+            })?;
+            snapshots.push(build_snapshot(
+                price_list,
+                exact,
+                source_locale.clone(),
+                target_locale.clone(),
+            )?);
+        }
+        Ok((snapshots, next_after))
     }
 
     pub async fn read_exact_locale(
@@ -124,6 +224,28 @@ impl PriceListTranslationService {
         tenant_id: Uuid,
         price_list_id: Uuid,
         request: PriceListTranslationExactLocaleApply,
+    ) -> PriceListTranslationExactLocaleResult<PriceListTranslationExactLocaleApplyReceipt> {
+        self.apply_exact_locale_inner(tenant_id, price_list_id, request, None)
+            .await
+    }
+
+    pub(crate) async fn apply_exact_locale_with_operation(
+        &self,
+        tenant_id: Uuid,
+        price_list_id: Uuid,
+        request: PriceListTranslationExactLocaleApply,
+        operation_lease: idempotency::Lease,
+    ) -> PriceListTranslationExactLocaleResult<PriceListTranslationExactLocaleApplyReceipt> {
+        self.apply_exact_locale_inner(tenant_id, price_list_id, request, Some(operation_lease))
+            .await
+    }
+
+    async fn apply_exact_locale_inner(
+        &self,
+        tenant_id: Uuid,
+        price_list_id: Uuid,
+        request: PriceListTranslationExactLocaleApply,
+        operation_lease: Option<idempotency::Lease>,
     ) -> PriceListTranslationExactLocaleResult<PriceListTranslationExactLocaleApplyReceipt> {
         validate_tenant(tenant_id)?;
         let source_locale = canonical_locale(&request.source_locale)?;
@@ -197,12 +319,35 @@ impl PriceListTranslationService {
                     locale: target_locale.clone(),
                 },
             )?;
+        let resource_revision = resource_revision(&price_list, &translations_after);
+        let operation_id = operation_lease
+            .map(|lease| lease.operation_id)
+            .or_else(|| (!unchanged).then(generate_id));
+
+        if !unchanged {
+            record_price_list_translation_change_in_tx(
+                &txn,
+                tenant_id,
+                price_list_id,
+                operation_id.expect("changed Pricing translation apply must have operation id"),
+                &resource_revision,
+                PriceListTranslationChangeLifecycle::Active,
+            )
+            .await?;
+        }
+
         let receipt = PriceListTranslationExactLocaleApplyReceipt {
+            operation_id,
             price_list_id,
-            resource_revision: resource_revision(&price_list, &translations_after),
+            resource_revision,
             target_revision: locale_revision(&target_after),
             target: PriceListTranslationExactLocaleRecord::from(target_after),
         };
+        if let Some(lease) = operation_lease {
+            idempotency::complete(&txn, lease, &receipt)
+                .await
+                .map_err(PriceListTranslationExactLocaleError::OperationReceipt)?;
+        }
         txn.commit().await?;
         Ok(receipt)
     }
@@ -234,6 +379,24 @@ where
 {
     Ok(price_list_translation::Entity::find()
         .filter(price_list_translation::Column::PriceListId.eq(price_list_id))
+        .order_by_asc(price_list_translation::Column::Locale)
+        .all(db)
+        .await?)
+}
+
+async fn load_translations_for_price_lists<C>(
+    db: &C,
+    price_list_ids: &[Uuid],
+) -> PriceListTranslationExactLocaleResult<Vec<price_list_translation::Model>>
+where
+    C: ConnectionTrait,
+{
+    if price_list_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(price_list_translation::Entity::find()
+        .filter(price_list_translation::Column::PriceListId.is_in(price_list_ids.to_vec()))
+        .order_by_asc(price_list_translation::Column::PriceListId)
         .order_by_asc(price_list_translation::Column::Locale)
         .all(db)
         .await?)
