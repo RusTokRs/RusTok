@@ -12,6 +12,9 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::entities::{shipping_option, shipping_option_translation};
+use crate::translation_changes::{
+    ShippingOptionTranslationChangeLifecycle, record_shipping_option_translation_change_in_tx,
+};
 
 pub const MAX_SHIPPING_OPTION_TRANSLATION_RESOURCE_PAGE: u16 = 200;
 
@@ -324,7 +327,20 @@ impl ShippingOptionTranslationService {
                 }
             })?;
         let resource_revision = resource_revision(&option, &translations_after);
-        let operation_id = operation_lease.map(|lease| lease.operation_id);
+        let operation_id = operation_lease
+            .map(|lease| lease.operation_id)
+            .or_else(|| (!unchanged).then(generate_id));
+        if !unchanged {
+            record_shipping_option_translation_change_in_tx(
+                &txn,
+                tenant_id,
+                shipping_option_id,
+                operation_id.expect("changed Fulfillment translation apply must have operation id"),
+                &resource_revision,
+                shipping_option_change_lifecycle(option.active),
+            )
+            .await?;
+        }
         let receipt = ShippingOptionTranslationExactLocaleApplyReceipt {
             operation_id,
             shipping_option_id,
@@ -340,6 +356,14 @@ impl ShippingOptionTranslationService {
 
         txn.commit().await?;
         Ok(receipt)
+    }
+}
+
+fn shipping_option_change_lifecycle(active: bool) -> ShippingOptionTranslationChangeLifecycle {
+    if active {
+        ShippingOptionTranslationChangeLifecycle::Active
+    } else {
+        ShippingOptionTranslationChangeLifecycle::Archived
     }
 }
 
