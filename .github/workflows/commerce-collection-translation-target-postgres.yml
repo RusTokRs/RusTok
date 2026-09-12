@@ -1,48 +1,20 @@
 name: Commerce Collection Translation PostgreSQL Evidence
 
 on:
-  pull_request:
-    paths:
-      - "apps/server/src/services/module_event_dispatcher.rs"
-      - "apps/server/tests/commerce_collection_translation_target_postgres.rs"
-      - "crates/modules/rustok-commerce/src/collection_translation_*.rs"
-      - "crates/modules/rustok-commerce/src/services/collection_owner.rs"
-      - "crates/modules/rustok-commerce/src/services/collection_translation.rs"
-      - "crates/modules/rustok-commerce/src/services/mod.rs"
-      - "crates/modules/rustok-commerce/src/migrations/**"
-      - "crates/modules/rustok-outbox/**"
-      - "crates/modules/rustok-translation-targets/**"
-      - "crates/utils/rustok-migrations/**"
-      - ".github/workflows/commerce-collection-translation-target-postgres.yml"
-  push:
-    branches:
-      - main
-    paths:
-      - "apps/server/src/services/module_event_dispatcher.rs"
-      - "apps/server/tests/commerce_collection_translation_target_postgres.rs"
-      - "crates/modules/rustok-commerce/src/collection_translation_*.rs"
-      - "crates/modules/rustok-commerce/src/services/collection_owner.rs"
-      - "crates/modules/rustok-commerce/src/services/collection_translation.rs"
-      - "crates/modules/rustok-commerce/src/services/mod.rs"
-      - "crates/modules/rustok-commerce/src/migrations/**"
-      - "crates/modules/rustok-outbox/**"
-      - "crates/modules/rustok-translation-targets/**"
-      - "crates/utils/rustok-migrations/**"
-      - ".github/workflows/commerce-collection-translation-target-postgres.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.ref_name }}
   cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUST_TOOLCHAIN: "1.96.0"
-  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  TARGET_SHA: ${{ github.sha }}
 
 jobs:
   postgres-evidence:
