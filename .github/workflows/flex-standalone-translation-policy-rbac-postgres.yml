@@ -94,7 +94,10 @@ jobs:
         shell: bash
         run: |
           rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check \
-            apps/server/tests/flex_standalone_translation_policy_rbac_postgres.rs
+            apps/server/src/services/flex_standalone_translation_owner.rs \
+            apps/server/tests/flex_standalone_translation_policy_rbac_postgres.rs \
+            crates/modules/flex/src/standalone_field_policy.rs \
+            crates/modules/flex/src/standalone_translation_target.rs
       - name: Compile Flex standalone policy and RBAC PostgreSQL evidence
         run: >-
           cargo test --locked -p rustok-server --no-default-features
