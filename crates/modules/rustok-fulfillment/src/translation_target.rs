@@ -11,6 +11,7 @@ use rustok_translation_targets::{
     TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
     TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
     TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
+    TranslationTargetChange, TranslationTargetChangePage, TranslationTargetChangesRequest,
     TranslationTargetProgressFacts, TranslationTargetProgressRequest, TranslationTargetProvider,
     TranslationTargetProviderDescriptor, TranslationTargetRegistryError, TranslationValueProfile,
     provider_support::{
@@ -24,14 +25,17 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ShippingOptionTranslationExactLocaleApply, ShippingOptionTranslationExactLocaleApplyReceipt,
-    ShippingOptionTranslationExactLocaleError, ShippingOptionTranslationExactLocaleRecord,
-    ShippingOptionTranslationExactLocaleSnapshot, ShippingOptionTranslationService,
+    ShippingOptionTranslationChangeLifecycle, ShippingOptionTranslationExactLocaleApply,
+    ShippingOptionTranslationExactLocaleApplyReceipt, ShippingOptionTranslationExactLocaleError,
+    ShippingOptionTranslationExactLocaleRecord, ShippingOptionTranslationExactLocaleSnapshot,
+    ShippingOptionTranslationService,
 };
 
 const TRANSLATION_OWNER_SLUG: &str = "fulfillment";
 const TRANSLATION_RESOURCE_KIND: &str = "shipping_option_copy";
 const OPERATION_APPLY_PATCH: &str = "translation_target_apply_shipping_option_copy_patch";
+const CHANGE_CURSOR_VERSION: &str = "v1";
+const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
 #[derive(Clone)]
 pub struct ShippingOptionTranslationTargetProvider {
@@ -56,6 +60,7 @@ impl ShippingOptionTranslationTargetProvider {
                 TranslationTargetCapability::AggregateProgress,
                 TranslationTargetCapability::ValidatePatch,
                 TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
             ]),
             read_permission_floor: BTreeSet::from(["fulfillments:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["fulfillments:update".to_string()]),
@@ -291,31 +296,129 @@ impl TranslationTargetProvider for ShippingOptionTranslationTargetProvider {
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
-        let owner = self
+
+        for _ in 0..PROGRESS_STABILITY_ATTEMPTS {
+            let before = self
+                .service
+                .shipping_option_translation_change_highwater(tenant_id)
+                .await
+                .map_err(fulfillment_translation_error_to_port_error)?;
+            let owner = self
+                .service
+                .read_exact_progress(
+                    tenant_id,
+                    request.source_locale.as_str(),
+                    request.target_locale.as_str(),
+                )
+                .await
+                .map_err(fulfillment_translation_error_to_port_error)?;
+            let after = self
+                .service
+                .shipping_option_translation_change_highwater(tenant_id)
+                .await
+                .map_err(fulfillment_translation_error_to_port_error)?;
+            if before != after {
+                continue;
+            }
+
+            let facts = TranslationTargetProgressFacts {
+                required_units: owner.resources,
+                exact_required_units: owner.exact_required_units,
+                optional_units: 0,
+                exact_optional_units: 0,
+                resources: owner.resources,
+                complete_resources: owner.complete_resources,
+                owner_change_cursor: after
+                    .map(|change_seq| change_cursor(change_seq, change_seq))
+                    .transpose()?,
+            };
+            facts.validate().map_err(|error| {
+                PortError::invariant_violation(
+                    "fulfillment.translation_progress_invalid",
+                    error.to_string(),
+                )
+            })?;
+            return Ok(facts);
+        }
+
+        Err(PortError::unavailable(
+            "fulfillment.translation_progress_unstable",
+            "Fulfillment translation progress changed while it was being aggregated",
+        ))
+    }
+
+    async fn read_changes(
+        &self,
+        context: PortContext,
+        request: TranslationTargetChangesRequest,
+    ) -> Result<TranslationTargetChangePage, PortError> {
+        validate_translation_read_context(&context)?;
+        authorize(&context, Action::Read)?;
+        request
+            .validate()
+            .map_err(|error| contract_validation_error(error.to_string()))?;
+        let tenant_id = parse_tenant_id(&context)?;
+        let parsed = request
+            .after
+            .as_ref()
+            .map(parse_change_cursor)
+            .transpose()?;
+        let (through, after) = match parsed {
+            Some((through, after)) if through == after => {
+                let current = self
+                    .service
+                    .shipping_option_translation_change_highwater(tenant_id)
+                    .await
+                    .map_err(fulfillment_translation_error_to_port_error)?
+                    .unwrap_or(after)
+                    .max(after);
+                (current, after)
+            }
+            Some(cursor) => cursor,
+            None => (
+                self.service
+                    .shipping_option_translation_change_highwater(tenant_id)
+                    .await
+                    .map_err(fulfillment_translation_error_to_port_error)?
+                    .unwrap_or(0),
+                0,
+            ),
+        };
+        if through == 0 {
+            return Ok(TranslationTargetChangePage {
+                changes: Vec::new(),
+                next_cursor: None,
+            });
+        }
+
+        let owner_changes = self
             .service
-            .read_exact_progress(
-                tenant_id,
-                request.source_locale.as_str(),
-                request.target_locale.as_str(),
-            )
+            .read_shipping_option_translation_changes(tenant_id, after, through, request.limit)
             .await
             .map_err(fulfillment_translation_error_to_port_error)?;
-        let facts = TranslationTargetProgressFacts {
-            required_units: owner.resources,
-            exact_required_units: owner.exact_required_units,
-            optional_units: 0,
-            exact_optional_units: 0,
-            resources: owner.resources,
-            complete_resources: owner.complete_resources,
-            owner_change_cursor: None,
-        };
-        facts.validate().map_err(|error| {
-            PortError::invariant_violation(
-                "fulfillment.translation_progress_invalid",
-                error.to_string(),
-            )
-        })?;
-        Ok(facts)
+        let last_seq = owner_changes.last().map(|change| change.change_seq);
+        let next_cursor = Some(match last_seq {
+            Some(last_seq) if last_seq < through => change_cursor(through, last_seq)?,
+            _ => change_cursor(through, through)?,
+        });
+        let changes = owner_changes
+            .into_iter()
+            .map(|change| {
+                Ok(TranslationTargetChange {
+                    identity: shipping_option_identity(change.shipping_option_id),
+                    resource_revision: opaque_revision(
+                        change.resource_revision,
+                        "resource_revision",
+                    )?,
+                    lifecycle: translation_change_lifecycle(change.lifecycle),
+                })
+            })
+            .collect::<Result<Vec<_>, PortError>>()?;
+
+        Ok(TranslationTargetChangePage {
+            changes,
+            next_cursor,
+        })
     }
 }
 
@@ -421,6 +524,17 @@ fn translation_lifecycle(active: bool) -> TranslationResourceLifecycle {
     }
 }
 
+fn translation_change_lifecycle(
+    lifecycle: ShippingOptionTranslationChangeLifecycle,
+) -> TranslationResourceLifecycle {
+    match lifecycle {
+        ShippingOptionTranslationChangeLifecycle::Active => TranslationResourceLifecycle::Active,
+        ShippingOptionTranslationChangeLifecycle::Archived => {
+            TranslationResourceLifecycle::Archived
+        }
+    }
+}
+
 fn exact_locales(locales: Vec<String>) -> Result<Vec<TenantLocale>, PortError> {
     locales
         .into_iter()
@@ -497,6 +611,41 @@ fn application_receipt(
             .map(|field| field.key.clone())
             .collect(),
     })
+}
+
+fn change_cursor(through: u64, after: u64) -> Result<OpaqueCursor, PortError> {
+    OpaqueCursor::new(format!("{CHANGE_CURSOR_VERSION}:{through}:{after}")).map_err(|error| {
+        PortError::invariant_violation(
+            "fulfillment.translation_change_cursor_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn parse_change_cursor(cursor: &OpaqueCursor) -> Result<(u64, u64), PortError> {
+    let mut parts = cursor.as_str().split(':');
+    let version = parts.next();
+    let through = parts.next().and_then(|value| value.parse::<u64>().ok());
+    let after = parts.next().and_then(|value| value.parse::<u64>().ok());
+    if version != Some(CHANGE_CURSOR_VERSION)
+        || parts.next().is_some()
+        || through.is_none()
+        || after.is_none()
+    {
+        return Err(PortError::validation(
+            "fulfillment.translation_change_cursor_invalid",
+            "Fulfillment translation change cursor is invalid",
+        ));
+    }
+    let through = through.unwrap_or_default();
+    let after = after.unwrap_or_default();
+    if through == 0 || after == 0 || after > through {
+        return Err(PortError::validation(
+            "fulfillment.translation_change_cursor_invalid",
+            "Fulfillment translation change cursor bounds are invalid",
+        ));
+    }
+    Ok((through, after))
 }
 
 fn opaque_revision(value: String, field: &'static str) -> Result<OpaqueRevision, PortError> {

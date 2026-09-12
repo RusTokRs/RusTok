@@ -1,8 +1,8 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -23,6 +23,14 @@ use crate::dto::{
 };
 use crate::entities;
 use crate::error::{FulfillmentError, FulfillmentResult};
+use crate::translation_changes::{
+    ShippingOptionTranslationChangeLifecycle, record_shipping_option_translation_change_in_tx,
+};
+
+use super::shipping_option_translation::{
+    ShippingOptionTranslationExactLocaleError,
+    resource_revision as shipping_option_translation_resource_revision,
+};
 
 const STATUS_PENDING: &str = "pending";
 const STATUS_SHIPPED: &str = "shipped";
@@ -76,8 +84,9 @@ impl FulfillmentService {
 
         let shipping_option_id = generate_id();
         let now = Utc::now();
+        let txn = self.db.begin().await?;
 
-        entities::shipping_option::ActiveModel {
+        let option = entities::shipping_option::ActiveModel {
             id: Set(shipping_option_id),
             tenant_id: Set(tenant_id),
             currency_code: Set(currency_code),
@@ -88,10 +97,24 @@ impl FulfillmentService {
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
-        .insert(&self.db)
+        .insert(&txn)
         .await?;
 
-        insert_translations(&self.db, shipping_option_id, &translations).await?;
+        insert_translations(&txn, shipping_option_id, &translations).await?;
+        let translation_rows = load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
+        let resource_revision =
+            shipping_option_translation_resource_revision(&option, &translation_rows);
+        record_shipping_option_translation_change_in_tx(
+            &txn,
+            tenant_id,
+            shipping_option_id,
+            generate_id(),
+            &resource_revision,
+            ShippingOptionTranslationChangeLifecycle::Active,
+        )
+        .await
+        .map_err(translation_change_error_to_fulfillment_error)?;
+        txn.commit().await?;
 
         self.get_shipping_option(tenant_id, shipping_option_id, None, None)
             .await
@@ -167,10 +190,15 @@ impl FulfillmentService {
                 "amount cannot be negative".to_string(),
             ));
         }
+        let translations = translations
+            .map(normalize_translation_inputs)
+            .transpose()?;
 
+        let txn = self.db.begin().await?;
         let shipping_option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .lock_exclusive()
+            .one(&txn)
             .await?
             .ok_or(FulfillmentError::ShippingOptionNotFound(shipping_option_id))?;
         let mut active: entities::shipping_option::ActiveModel = shipping_option.into();
@@ -201,12 +229,31 @@ impl FulfillmentService {
         }
 
         active.updated_at = Set(Utc::now().into());
-        active.update(&self.db).await?;
+        let option = active.update(&txn).await?;
 
-        if let Some(translations) = translations {
-            let normalized = normalize_translation_inputs(translations)?;
-            replace_translations(&self.db, shipping_option_id, &normalized).await?;
+        let localized_copy_changed = match translations.as_deref() {
+            Some(translations) => {
+                synchronize_translations(&txn, shipping_option_id, translations).await?
+            }
+            None => false,
+        };
+        if localized_copy_changed {
+            let translation_rows =
+                load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
+            let resource_revision =
+                shipping_option_translation_resource_revision(&option, &translation_rows);
+            record_shipping_option_translation_change_in_tx(
+                &txn,
+                tenant_id,
+                shipping_option_id,
+                generate_id(),
+                &resource_revision,
+                ShippingOptionTranslationChangeLifecycle::from(option.active),
+            )
+            .await
+            .map_err(translation_change_error_to_fulfillment_error)?;
         }
+        txn.commit().await?;
 
         self.get_shipping_option(tenant_id, shipping_option_id, None, None)
             .await
@@ -897,16 +944,35 @@ impl FulfillmentService {
         shipping_option_id: Uuid,
         active: bool,
     ) -> FulfillmentResult<ShippingOptionResponse> {
+        let txn = self.db.begin().await?;
         let shipping_option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .lock_exclusive()
+            .one(&txn)
             .await?
             .ok_or(FulfillmentError::ShippingOptionNotFound(shipping_option_id))?;
 
-        let mut option: entities::shipping_option::ActiveModel = shipping_option.into();
-        option.active = Set(active);
-        option.updated_at = Set(Utc::now().into());
-        option.update(&self.db).await?;
+        if shipping_option.active != active {
+            let mut option: entities::shipping_option::ActiveModel = shipping_option.into();
+            option.active = Set(active);
+            option.updated_at = Set(Utc::now().into());
+            let option = option.update(&txn).await?;
+            let translation_rows =
+                load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
+            let resource_revision =
+                shipping_option_translation_resource_revision(&option, &translation_rows);
+            record_shipping_option_translation_change_in_tx(
+                &txn,
+                tenant_id,
+                shipping_option_id,
+                generate_id(),
+                &resource_revision,
+                ShippingOptionTranslationChangeLifecycle::from(active),
+            )
+            .await
+            .map_err(translation_change_error_to_fulfillment_error)?;
+        }
+        txn.commit().await?;
 
         self.get_shipping_option(tenant_id, shipping_option_id, None, None)
             .await
@@ -1336,7 +1402,7 @@ fn normalize_translation_inputs(
 }
 
 async fn insert_translations(
-    db: &DatabaseConnection,
+    db: &DatabaseTransaction,
     shipping_option_id: Uuid,
     translations: &[ShippingOptionTranslationInput],
 ) -> FulfillmentResult<()> {
@@ -1353,18 +1419,76 @@ async fn insert_translations(
     Ok(())
 }
 
-async fn replace_translations(
-    db: &DatabaseConnection,
+async fn synchronize_translations(
+    db: &DatabaseTransaction,
     shipping_option_id: Uuid,
     translations: &[ShippingOptionTranslationInput],
-) -> FulfillmentResult<()> {
-    entities::shipping_option_translation::Entity::delete_many()
+) -> FulfillmentResult<bool> {
+    let existing = load_shipping_option_translation_rows(db, shipping_option_id).await?;
+    let mut desired = translations
+        .iter()
+        .map(|translation| (translation.locale.clone(), translation.name.clone()))
+        .collect::<HashMap<_, _>>();
+    let mut changed = false;
+
+    for current in existing {
+        match desired.remove(&current.locale) {
+            Some(name) if name == current.name => {}
+            Some(name) => {
+                let mut active: entities::shipping_option_translation::ActiveModel = current.into();
+                active.name = Set(name);
+                active.update(db).await?;
+                changed = true;
+            }
+            None => {
+                entities::shipping_option_translation::Entity::delete_by_id(current.id)
+                    .exec(db)
+                    .await?;
+                changed = true;
+            }
+        }
+    }
+
+    for (locale, name) in desired {
+        entities::shipping_option_translation::ActiveModel {
+            id: Set(generate_id()),
+            shipping_option_id: Set(shipping_option_id),
+            locale: Set(locale),
+            name: Set(name),
+        }
+        .insert(db)
+        .await?;
+        changed = true;
+    }
+
+    Ok(changed)
+}
+
+async fn load_shipping_option_translation_rows<C>(
+    db: &C,
+    shipping_option_id: Uuid,
+) -> FulfillmentResult<Vec<entities::shipping_option_translation::Model>>
+where
+    C: ConnectionTrait,
+{
+    Ok(entities::shipping_option_translation::Entity::find()
         .filter(
             entities::shipping_option_translation::Column::ShippingOptionId.eq(shipping_option_id),
         )
-        .exec(db)
-        .await?;
-    insert_translations(db, shipping_option_id, translations).await
+        .order_by_asc(entities::shipping_option_translation::Column::Locale)
+        .all(db)
+        .await?)
+}
+
+fn translation_change_error_to_fulfillment_error(
+    error: ShippingOptionTranslationExactLocaleError,
+) -> FulfillmentError {
+    match error {
+        ShippingOptionTranslationExactLocaleError::Database(error) => FulfillmentError::Database(error),
+        other => FulfillmentError::Validation(format!(
+            "Fulfillment translation change journal write failed: {other}"
+        )),
+    }
 }
 
 fn resolve_translation<'a>(
