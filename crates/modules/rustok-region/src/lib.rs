@@ -9,6 +9,8 @@ pub mod error;
 pub mod migrations;
 pub mod ports;
 pub mod services;
+pub mod translation_changes;
+pub mod translation_target;
 
 pub use dto::*;
 pub use error::{RegionError, RegionResult};
@@ -18,6 +20,12 @@ pub use services::{
     RegionTranslationExactLocaleError, RegionTranslationExactLocaleRecord,
     RegionTranslationExactLocaleResult, RegionTranslationExactLocaleSnapshot,
     RegionTranslationService,
+};
+pub use translation_changes::{
+    RegionTranslationChangeLifecycle, RegionTranslationChangeRecord,
+};
+pub use translation_target::{
+    RegionTranslationTargetProvider, register_region_translation_target_provider,
 };
 
 pub struct RegionModule;

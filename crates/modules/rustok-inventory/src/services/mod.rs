@@ -2,6 +2,7 @@ pub mod bootstrap;
 pub mod inventory;
 mod policy;
 pub mod public_channel;
+pub mod stock_location_translation;
 
 pub use bootstrap::{BootstrapService, InitialInventory};
 pub use inventory::{
@@ -17,4 +18,10 @@ pub use public_channel::{
     load_available_inventory_for_variant_in_public_channel,
     load_inventory_projection_by_variant_for_public_channel, normalize_public_channel_slug,
     public_channel_inventory_projection,
+};
+pub use stock_location_translation::{
+    StockLocationTranslationExactLocaleApply, StockLocationTranslationExactLocaleApplyReceipt,
+    StockLocationTranslationExactLocaleError, StockLocationTranslationExactLocaleRecord,
+    StockLocationTranslationExactLocaleResult, StockLocationTranslationExactLocaleSnapshot,
+    StockLocationTranslationService,
 };
