@@ -550,6 +550,7 @@ impl MarketplaceSellerService {
             ),
             CommandReceiptAdmission::New(receipt) => {
                 let result: MarketplaceSellerResult<MarketplaceSellerResponse> = async {
+                    let now = Utc::now().fixed_offset();
                     let update = seller::Entity::update_many()
                         .col_expr(
                             seller::Column::Status,
@@ -565,7 +566,7 @@ impl MarketplaceSellerService {
                         )
                         .col_expr(
                             seller::Column::UpdatedAt,
-                            sea_orm::sea_query::Expr::current_timestamp(),
+                            sea_orm::sea_query::Expr::value(now),
                         )
                         .filter(seller::Column::TenantId.eq(tenant_id))
                         .filter(seller::Column::Id.eq(seller_id))

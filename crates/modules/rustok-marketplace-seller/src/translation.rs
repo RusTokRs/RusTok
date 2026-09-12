@@ -144,9 +144,7 @@ impl MarketplaceSellerTranslationService {
             .lock_exclusive()
             .one(&txn)
             .await?
-            .ok_or(MarketplaceSellerTranslationExactLocaleError::SellerNotFound(
-                seller_id,
-            ))?;
+            .ok_or(MarketplaceSellerTranslationExactLocaleError::SellerNotFound(seller_id))?;
         let translations = load_translations(&txn, tenant_id, seller_id).await?;
         let source = exact_locale_row(&translations, &source_locale).ok_or_else(|| {
             MarketplaceSellerTranslationExactLocaleError::SourceLocaleNotFound {
@@ -229,9 +227,7 @@ where
         .filter(seller::Column::TenantId.eq(tenant_id))
         .one(db)
         .await?
-        .ok_or(MarketplaceSellerTranslationExactLocaleError::SellerNotFound(
-            seller_id,
-        ))
+        .ok_or(MarketplaceSellerTranslationExactLocaleError::SellerNotFound(seller_id))
 }
 
 async fn load_translations<C>(
@@ -255,15 +251,16 @@ fn build_snapshot(
     translations: Vec<seller_translation::Model>,
     source_locale: String,
     target_locale: String,
-) -> MarketplaceSellerTranslationExactLocaleResult<
-    MarketplaceSellerTranslationExactLocaleSnapshot,
-> {
+) -> MarketplaceSellerTranslationExactLocaleResult<MarketplaceSellerTranslationExactLocaleSnapshot>
+{
     let source = exact_locale_row(&translations, &source_locale)
         .cloned()
-        .ok_or_else(|| MarketplaceSellerTranslationExactLocaleError::SourceLocaleNotFound {
-            seller_id: seller.id,
-            locale: source_locale.clone(),
-        })?;
+        .ok_or_else(
+            || MarketplaceSellerTranslationExactLocaleError::SourceLocaleNotFound {
+                seller_id: seller.id,
+                locale: source_locale.clone(),
+            },
+        )?;
     let target = exact_locale_row(&translations, &target_locale).cloned();
     let resource_revision = resource_revision(&seller, &translations);
     let source_revision = locale_revision(&source);

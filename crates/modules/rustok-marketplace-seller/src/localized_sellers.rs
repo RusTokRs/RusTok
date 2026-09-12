@@ -193,7 +193,6 @@ fn map_seller(
             model.onboarding_status
         ))
     })?;
-    let row_updated_at = model.updated_at;
     let onboarding_event_matches = matches!(
         (prose.onboarding_kind, onboarding_status),
         (
@@ -223,16 +222,12 @@ fn map_seller(
             _
         )
     );
-    let onboarding_note = if prose.onboarding_at.is_some_and(|event_at| {
-        event_at > row_updated_at || (event_at == row_updated_at && onboarding_event_matches)
-    }) {
+    let onboarding_note = if onboarding_event_matches {
         prose.onboarding_note
     } else {
         None
     };
-    let suspension_reason = if prose.suspension_at.is_some_and(|event_at| {
-        event_at > row_updated_at || (event_at == row_updated_at && suspension_event_matches)
-    }) {
+    let suspension_reason = if suspension_event_matches {
         prose.suspension_reason
     } else {
         None
