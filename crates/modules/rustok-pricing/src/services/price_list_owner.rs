@@ -132,11 +132,8 @@ impl PriceListOwnerService {
         input: UpdatePriceListOwnerInput,
     ) -> CommerceResult<PriceListOwnerSnapshot> {
         validate_tenant(tenant_id)?;
-        if price_list_id.is_nil() {
-            return Err(CommerceError::Validation(
-                "price_list_id must not be nil".to_string(),
-            ));
-        }
+        validate_price_list_id(price_list_id)?;
+
         let normalized_translations = input
             .translations
             .map(normalize_translations)
@@ -153,12 +150,7 @@ impl PriceListOwnerService {
             .transpose()?;
 
         let txn = self.db.begin().await?;
-        let current = price_list::Entity::find_by_id(price_list_id)
-            .filter(price_list::Column::TenantId.eq(tenant_id))
-            .lock_exclusive()
-            .one(&txn)
-            .await?
-            .ok_or_else(|| CommerceError::Validation("price_list_id was not found".to_string()))?;
+        let current = load_locked_price_list(&txn, tenant_id, price_list_id).await?;
         let existing_translations = load_translations(&txn, price_list_id).await?;
 
         let next_starts_at = match &input.starts_at {
@@ -193,19 +185,16 @@ impl PriceListOwnerService {
         let copy_changed = normalized_translations
             .as_ref()
             .is_some_and(|next| !translations_semantically_equal(&existing_translations, next));
-        let persisted = if let Some(translations) = normalized_translations {
-            if copy_changed {
+        let persisted = match normalized_translations {
+            Some(translations) if copy_changed => {
                 price_list_translation::Entity::delete_many()
                     .filter(price_list_translation::Column::PriceListId.eq(price_list_id))
                     .exec(&txn)
                     .await?;
                 insert_translations(&txn, price_list_id, &translations).await?;
                 load_translations(&txn, price_list_id).await?
-            } else {
-                existing_translations
             }
-        } else {
-            existing_translations
+            _ => existing_translations,
         };
 
         if copy_changed {
@@ -232,26 +221,18 @@ impl PriceListOwnerService {
         price_list_id: Uuid,
     ) -> CommerceResult<()> {
         validate_tenant(tenant_id)?;
-        if price_list_id.is_nil() {
-            return Err(CommerceError::Validation(
-                "price_list_id must not be nil".to_string(),
-            ));
-        }
+        validate_price_list_id(price_list_id)?;
 
         let txn = self.db.begin().await?;
-        let model = price_list::Entity::find_by_id(price_list_id)
-            .filter(price_list::Column::TenantId.eq(tenant_id))
-            .lock_exclusive()
-            .one(&txn)
-            .await?
-            .ok_or_else(|| CommerceError::Validation("price_list_id was not found".to_string()))?;
-        let deleted_revision = format!("deleted:{}:{}", model.tenant_id, model.id);
+        let model = load_locked_price_list(&txn, tenant_id, price_list_id).await?;
+        let translations = load_translations(&txn, price_list_id).await?;
+        let revision = price_list_copy_revision(&model, &translations);
         record_price_list_translation_change_in_tx(
             &txn,
             tenant_id,
             price_list_id,
             generate_id(),
-            &deleted_revision,
+            &revision,
             PriceListTranslationChangeLifecycle::Deleted,
         )
         .await
@@ -266,6 +247,15 @@ fn validate_tenant(tenant_id: Uuid) -> CommerceResult<()> {
     if tenant_id.is_nil() {
         return Err(CommerceError::Validation(
             "tenant_id must not be nil".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_price_list_id(price_list_id: Uuid) -> CommerceResult<()> {
+    if price_list_id.is_nil() {
+        return Err(CommerceError::Validation(
+            "price_list_id must not be nil".to_string(),
         ));
     }
     Ok(())
@@ -296,6 +286,7 @@ fn normalize_translations(
             "at least one price-list translation is required".to_string(),
         ));
     }
+
     let mut normalized = BTreeMap::new();
     for translation in translations {
         let locale = TenantLocale::new(&translation.locale)
@@ -343,6 +334,22 @@ fn validate_window(
         ));
     }
     Ok(())
+}
+
+async fn load_locked_price_list<C>(
+    db: &C,
+    tenant_id: Uuid,
+    price_list_id: Uuid,
+) -> CommerceResult<price_list::Model>
+where
+    C: sea_orm::ConnectionTrait,
+{
+    price_list::Entity::find_by_id(price_list_id)
+        .filter(price_list::Column::TenantId.eq(tenant_id))
+        .lock_exclusive()
+        .one(db)
+        .await?
+        .ok_or_else(|| CommerceError::Validation("price_list_id was not found".to_string()))
 }
 
 async fn insert_translations<C>(
