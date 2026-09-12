@@ -5,8 +5,10 @@ use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use rustok_core::MigrationSource;
 use rustok_modules::{
-    ArtifactDataError, ArtifactDataPurgeAuthorizer, ArtifactDataPurgeRequest, ArtifactDataScope,
-    ArtifactModuleKind, ArtifactPayloadKind, ArtifactSchemaDocument, ArtifactSettingsPurgeRequest,
+    ArtifactDataError, ArtifactDataPurgeAuthorizationContext, ArtifactDataPurgeAuthorizer,
+    ArtifactDataPurgePreviewService, ArtifactDataPurgeRequest, ArtifactModuleKind,
+    ArtifactPayloadKind, ArtifactPersistenceContract, ArtifactSchemaDocument,
+    ArtifactSettingsPurgePreviewService, ArtifactSettingsPurgeRequest,
     ArtifactSettingsRecoveryAuthorizationContext, ArtifactSettingsRecoveryAuthorizer,
     ArtifactSettingsRecoveryBindRequest, ArtifactSettingsRecoveryCipher,
     ArtifactSettingsRecoveryCipherContext, ArtifactSettingsRecoveryCiphertext,
@@ -30,8 +32,9 @@ impl ArtifactDataPurgeAuthorizer for TestAuthorizer {
     async fn authorize_purge(
         &self,
         request: &ArtifactDataPurgeRequest,
+        context: &ArtifactDataPurgeAuthorizationContext,
     ) -> Result<(), ArtifactDataError> {
-        if request.reason.trim().is_empty() {
+        if request.reason.trim().is_empty() || context.installation_id != request.installation_id {
             return Err(ArtifactDataError::PurgePrecondition);
         }
         Ok(())
@@ -213,11 +216,15 @@ fn descriptor(
             digest: schema_digest.clone(),
             document: schema,
         }],
-        settings_schema_digest: Some(schema_digest),
-        data_schema_digest: None,
+        settings_schema_digest: Some(schema_digest.clone()),
+        data_schema_digest: Some(schema_digest.clone()),
         localization_catalogs: Vec::new(),
         ui_contributions: Vec::new(),
-        persistence_contract: None,
+        persistence_contract: Some(ArtifactPersistenceContract {
+            revision: 1,
+            schema_digest,
+            indexes: Vec::new(),
+        }),
     }
 }
 
@@ -312,6 +319,43 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         .await
         .expect("insert admission active");
 
+    // Owner data scope is derived from this admitted descriptor. The same
+    // namespace must be blocked while this installation is still serving.
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_data_namespaces (tenant_id, module_slug, data_contract_revision, namespace_revision, created_at, updated_at) VALUES (?1, ?2, 1, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
+            vec![
+                tenant_id.to_string().into(),
+                "theme_manager".to_string().into(),
+            ],
+        ))
+        .await
+        .expect("insert data namespace");
+    let data_purge_service = SeaOrmArtifactDataPurgeService::new(database.clone(), TestAuthorizer);
+    let data_purge_req = ArtifactDataPurgeRequest {
+        installation_id,
+        expected_namespace_revision: 1,
+        context: command_context(tenant_id, actor_id),
+        reason: "cleanup namespace".to_string(),
+    };
+    let data_preview_service = ArtifactDataPurgePreviewService::new(database.clone());
+    let active_data_preview = data_preview_service
+        .preview(tenant_id, installation_id)
+        .await
+        .expect("active data preview");
+    assert!(!active_data_preview.can_purge);
+    let settings_preview_service = ArtifactSettingsPurgePreviewService::new(database.clone());
+    let active_settings_preview = settings_preview_service
+        .preview(tenant_id, installation_id)
+        .await
+        .expect("active settings preview");
+    assert!(!active_settings_preview.can_purge);
+    assert!(matches!(
+        data_purge_service.purge(data_purge_req.clone()).await,
+        Err(ArtifactDataError::PurgePrecondition)
+    ));
+
     let recovery_service =
         SeaOrmArtifactSettingsRecoveryService::new(database.clone(), TestAuthorizer, TestCipher);
 
@@ -360,6 +404,79 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         .await
         .expect("insert uninstall evidence");
 
+    // The current physical namespace key is still slug/revision based. A
+    // differently owned active installation with the same slug must therefore
+    // block destructive access to this historical namespace until the broader
+    // data-owner storage cutover is complete.
+    let conflicting_installation_id = Uuid::new_v4();
+    let conflicting_descriptor = descriptor(
+        "theme_manager",
+        "1.0.1",
+        schema_digest.clone(),
+        schema.clone(),
+    );
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_installations (\
+                installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, slug, version, payload_kind, \
+                runtime_abi, payload_digest, entrypoint, descriptor, data_owner_id, settings_instance_id, dependency_graph_revision, \
+                dependency_graph_digest, dependency_lock, installed_at\
+             ) VALUES (?1, 'tenant', ?2, 'registry.example', 'modules/recovery', ?3, 'theme_manager', '1.0.1', 'rhai', \
+                'rustok:module/runtime@1', ?4, 'main', ?5, ?6, ?7, 1, ?8, '{}', '2026-08-13T00:00:00Z')",
+            vec![
+                conflicting_installation_id.to_string().into(),
+                tenant_id.to_string().into(),
+                format!("sha256:{}", "1".repeat(64)).into(),
+                conflicting_descriptor.artifact_digest.clone().into(),
+                sea_orm::Value::Json(Some(Box::new(
+                    serde_json::to_value(&conflicting_descriptor)
+                        .expect("conflicting descriptor JSON"),
+                ))),
+                Uuid::new_v4().to_string().into(),
+                Uuid::new_v4().to_string().into(),
+                format!("sha256:{}", "2".repeat(64)).into(),
+            ],
+        ))
+        .await
+        .expect("conflicting active installation");
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_admissions (stage_id, installation_id, payload_digest, media_type, size_bytes, verification_evidence, status, revision, committed_at) VALUES (?1, ?2, ?3, 'application/vnd.rustok.rhai', 1, '{}', 'active', 1, '2026-08-13T00:00:00Z')",
+            vec![
+                Uuid::new_v4().to_string().into(),
+                conflicting_installation_id.to_string().into(),
+                format!("sha256:{}", "3".repeat(64)).into(),
+            ],
+        ))
+        .await
+        .expect("conflicting active admission");
+    let conflicting_data_preview = data_preview_service
+        .preview(tenant_id, installation_id)
+        .await
+        .expect("conflicting data preview");
+    assert!(!conflicting_data_preview.can_purge);
+    assert!(matches!(
+        data_purge_service.purge(data_purge_req.clone()).await,
+        Err(ArtifactDataError::PurgePrecondition)
+    ));
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_admissions SET status = 'inactive' WHERE installation_id = ?1",
+            vec![conflicting_installation_id.to_string().into()],
+        ))
+        .await
+        .expect("retire conflicting installation");
+
+    let retired_data_preview = data_preview_service
+        .preview(tenant_id, installation_id)
+        .await
+        .expect("retired data preview");
+    assert!(retired_data_preview.can_purge);
+    assert_eq!(retired_data_preview.namespace_revision, 1);
+
     // 4. Now that installation is retired, creating recovery point succeeds!
     let recovery_pt = recovery_service
         .create_recovery_point(recovery_req)
@@ -367,6 +484,15 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         .expect("create recovery point");
 
     assert_eq!(recovery_pt.recovery_point_id, recovery_pt.recovery_point_id);
+    let eligible_settings_preview = settings_preview_service
+        .preview(tenant_id, installation_id)
+        .await
+        .expect("eligible settings preview");
+    assert!(eligible_settings_preview.can_purge);
+    assert_eq!(
+        eligible_settings_preview.recovery_point_id,
+        Some(recovery_pt.recovery_point_id)
+    );
 
     // 5. Purge now succeeds!
     let purge_req = ArtifactSettingsPurgeRequest {
@@ -400,36 +526,8 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         .expect("restore from recovery point succeeds");
     assert_ne!(restore_res.settings_instance_id, settings_instance_id);
 
-    // 6. Test separate data purge service
-    let data_scope = ArtifactDataScope {
-        tenant_id,
-        module_slug: "theme_manager".to_string(),
-        data_contract_revision: 1,
-        policy_revision: 1,
-    };
-
-    // Insert data namespace
-    database
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            "INSERT INTO module_artifact_data_namespaces (tenant_id, module_slug, data_contract_revision, namespace_revision, created_at, updated_at) VALUES (?1, ?2, 1, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
-            vec![
-                tenant_id.to_string().into(),
-                "theme_manager".to_string().into(),
-            ],
-        ))
-        .await
-        .expect("insert namespace");
-
-    let data_purge_service = SeaOrmArtifactDataPurgeService::new(database.clone(), TestAuthorizer);
-
-    let data_purge_req = ArtifactDataPurgeRequest {
-        scope: data_scope,
-        expected_namespace_revision: 1,
-        context: command_context(tenant_id, actor_id),
-        reason: "cleanup namespace".to_string(),
-    };
-
+    // 6. Data purge uses the same exact installation ID and succeeds only
+    // after the owner lifecycle fence has become retired.
     let data_purge_res = data_purge_service
         .purge(data_purge_req)
         .await

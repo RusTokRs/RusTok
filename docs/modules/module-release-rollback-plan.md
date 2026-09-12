@@ -1306,7 +1306,7 @@ checkpoints, and receipts independently of code selection.
 | maintenance before point-of-no-return | cancellation may leave an approved additive expansion, but serving compatibility is preserved and no irreversible effect has begun |
 | maintenance after point-of-no-return | no automatic code or data rollback; failure is `recovery_required` and follows only the recorded forward repair, compensation, or isolated restore/cutover |
 | compatibility finalization | after explicit rollback closure and every compatibility hold, delete only the previewed obsolete schema/index/binding/contract artifacts; owner domain data is not implicitly purged |
-| dynamic artifact-data purge | only after absent/retired state and terminal fences, separately privileged deletion of the exact previewed structured/index/object namespace after matching artifact-data recovery evidence and all holds; it is not dynamic artifact-settings purge, finalization, uninstall, or GC |
+| dynamic artifact-data purge | only after absent/retired state and terminal fences, separately privileged deletion of the exact previewed structured/index/object namespace after matching artifact-data recovery evidence and all holds; the current safe interim command accepts one exact retired installation and derives its namespace owner-side, then blocks if an active tenant-visible installation shares the slug until physical storage is rekeyed by stable data owner; it is not dynamic artifact-settings purge, finalization, uninstall, or GC |
 | dynamic artifact-settings purge | only after absent/retired state and terminal fences, separately privileged deletion of the exact previewed settings set after its own protected recovery evidence and all holds; grants and external secret bytes are out of scope, and it is not dynamic artifact-data purge, finalization, uninstall, or GC |
 | background GC | delete only exact source/artifact/cache/staging/object identities already proven physically unreferenced after tombstone, grace, and final owner recheck; no logical data or lifecycle state changes |
 | database restore | separately privileged recovery into an isolated/empty target followed by verification and authorized cutover; never an automatic overwrite of live production |
@@ -2112,11 +2112,14 @@ backend preflight.
   operations and reject combined apply; grants and external secret bytes are
   never implicit targets.
   Verified by `artifact_purge_and_recovery_tests.rs` and `apps/server/src/graphql/mutations.rs`.
-- [x] Permit either purge only after absent/retired installation state, no
+- [ ] Complete production terminal-fence evidence for either purge: no
   selected/desired/re-enable or attach/reinstall/restore operation, terminal
-  work, and proven traffic/job/write fences. Reject any attempt to use purge as
-  reset-while-installed authority.
-  Verified by `artifact_purge_and_recovery_tests.rs`.
+  work, and proven traffic/job/write fences. The current owner services enforce
+  the exact inactive-plus-uninstalled lifecycle precondition in both preview
+  and apply; structured-data purge additionally fails closed when an active
+  tenant-visible installation shares the slug. This prevents
+  reset-while-installed authority, but it does not yet prove the remaining
+  live traffic/job/write fence sources.
 - [x] Persist a monotonic settings-instance purge tombstone/revision instead of
   deleting its CAS authority. Restore only against that exact tombstone under a
   fence and create a new non-serving settings instance/revision. Bind only an
@@ -2129,12 +2132,13 @@ backend preflight.
   crash after object publication but before metadata commit resumes exactly or
   collects the proven orphan through tombstone/grace/final recheck.
   Verified by `m20260903_000049_artifact_data_snapshot_and_recovery_operations.rs`, `data_snapshot_intents.rs`, and `snapshot_intents_and_post_purge_recovery_tests.rs`.
-- [x] Implement post-purge artifact-data recovery into a new isolated empty
+- [ ] Complete post-purge artifact-data recovery into a new isolated empty
   namespace instance under the same stable data-owner identity. Verify the full
   snapshot before a separately authorized active-namespace CAS cutover, never
   clear the old purge tombstone, and reconcile crashes before/after cutover
-  without two active namespaces or slug-based attachment.
-  Verified by `data_post_purge_recovery.rs` and `snapshot_intents_and_post_purge_recovery_tests.rs`.
+  without two active namespaces or slug-based attachment. The existing
+  slug/revision-scoped recovery code is not evidence of this owner-keyed target
+  and must be replaced atomically with the storage cutover below.
 
 ### 5. Complete Dynamic Artifact Installation and Recovery
 
@@ -2153,12 +2157,17 @@ backend preflight.
   parallel publication implementation.
 - [x] Compose digest-pinned OCI validation/admission into streamed platform-CAS
   publication; runtime and recovery read CAS only and never fall back to OCI.
+  Admission validates a scope-matched `ModuleCommandContext` before I/O and
+  persists a complete-command request digest, so changed replay evidence cannot
+  be accepted merely because the immutable release already exists.
   Verified by `m20260904_000051_admitted_oci_releases.rs`, `oci_admission.rs`,
-  `OciReleaseAdmissionService`, and `oci_admission_tests.rs` (6 passed).
+  `OciReleaseAdmissionService`, and `oci_admission_tests.rs` (7 passed).
 - [x] Complete external-prebuilt ingress with independently verified ownership,
   lineage, signature, SBOM/provenance, ABI/capability and policy evidence; an
-  external prebuilt remains dynamic and cannot enter native promotion.
-  Verified by consolidated migration `m20260904_000051_admitted_oci_releases.rs` (`module_external_prebuilt_ingress` with foreign key to `module_admitted_oci_releases`), `external_prebuilt_ingress.rs` (`ExternalPrebuiltIngressService`), `promotion.rs` (`ExternalPrebuiltCannotBePromoted` denial), and `external_prebuilt_ingress_tests.rs` (7 passed).
+  external prebuilt remains dynamic and cannot enter native promotion. Its
+  scope-matched context and complete evidence packet are also part of the
+  durable replay digest.
+  Verified by consolidated migration `m20260904_000051_admitted_oci_releases.rs` (`module_external_prebuilt_ingress` with foreign key to `module_admitted_oci_releases`), `external_prebuilt_ingress.rs` (`ExternalPrebuiltIngressService`), `promotion.rs` (`ExternalPrebuiltCannotBePromoted` denial), and `external_prebuilt_ingress_tests.rs` (8 passed).
 - [x] Compose verified payload caching and authenticated prefetch/readiness for
   candidate and predecessor across every required executor pool/generation,
   including exact executor/engine binary digest, engine-config revision,
@@ -2208,16 +2217,19 @@ backend preflight.
   either path. Implemented in `execute_uninstall` with monotonic `work_generation += 1`
   and `retired = true` in `module_artifact_work_generations` with RLS; delayed enable
   and workers reject stale generation (`StaleWorkGeneration`, `DelayedWorkRejected`).
-- [x] Replace slug/revision-only artifact data scope with a stable opaque
+- [ ] Replace slug/revision-only artifact data scope with a stable opaque
   `(scope_id, data_owner_id, namespace/settings instance, revision)` boundary
   bound to verified ownership/publisher lineage. First install creates only
   declared mutable boundaries; update inherits them; uninstall retains them;
   reinstall explicitly attaches with continuity or starts empty; and owner
   transfer is separately privileged. Never let a foreign publisher inherit
-  retained settings/data/objects by reusing a slug. Implemented publisher
-  lineage verification via `module_external_prebuilt_ingress`, denying foreign
-  publishers with `PublisherContinuityViolation`; supporting `AttachRetained`
-  continuity and `StartEmpty` clean isolation.
+  retained settings/data/objects by reusing a slug. Current structured-data
+  storage remains tenant/slug/data-contract scoped. The implemented purge
+  boundary is deliberately conservative: it derives that scope from one exact
+  retired installation and rejects it while any active installation with the
+  same slug is visible. Publisher-lineage evidence must be connected to the
+  full owner-keyed data/objects/snapshots/recovery replacement, not treated as
+  a completed retained-data attach contract.
 - [x] Atomically cut dynamic artifact settings reads/writes and RLS from
   `(tenant,module_slug)` to the stable data owner plus exact
   installation-to-settings-instance binding/revision. Update snapshot, purge,

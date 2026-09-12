@@ -416,6 +416,43 @@ async fn test_external_prebuilt_admission_success() {
 }
 
 #[tokio::test]
+async fn test_external_prebuilt_context_must_match_requested_scope() {
+    let db = setup_db().await;
+    let service = ExternalPrebuiltIngressService::new(
+        db,
+        Arc::new(InMemoryArtifactBlobStore::default()),
+        Arc::new(SpyRegistry::new()),
+    );
+
+    let error = service
+        .admit_external_prebuilt(ExternalPrebuiltIngressCommand {
+            reference: OciArtifactReference {
+                registry: "ghcr.io".to_string(),
+                repository: "rustok/scope_mismatch".to_string(),
+                digest: sha256_digest(b"external-prebuilt-scope-mismatch"),
+            },
+            scope: ModuleInstallationScope::Platform,
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: Some(Uuid::new_v4()),
+                trace_id: "trace-external-invalid-scope".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            evidence: valid_evidence(),
+            trust_policy_revision: Some(1),
+            capability_policy_revision: Some(1),
+        })
+        .await
+        .expect_err("a platform ingress cannot carry tenant command context");
+
+    assert!(matches!(
+        error,
+        ExternalPrebuiltIngressError::InvalidCommandContext
+    ));
+}
+
+#[tokio::test]
 async fn test_external_prebuilt_rejection_does_not_mutate_quarantine_state() {
     let db = setup_db().await;
     let blobs = Arc::new(InMemoryArtifactBlobStore::default());
@@ -628,29 +665,14 @@ async fn test_external_prebuilt_idempotent_replay_and_conflict() {
     };
 
     let receipt1 = service
-        .admit_external_prebuilt(command1)
+        .admit_external_prebuilt(command1.clone())
         .await
         .expect("initial admission succeeds");
     assert!(receipt1.cas_published);
 
-    // Replay with exact same reference and idempotency key -> returns cached receipt
-    let command2 = ExternalPrebuiltIngressCommand {
-        reference: package.reference.clone(),
-        scope: ModuleInstallationScope::Platform,
-        context: ModuleCommandContext {
-            actor_id,
-            tenant_id: None,
-            trace_id: "trace-idem-2".to_string(),
-            correlation_id: Uuid::new_v4(),
-            idempotency_key,
-        },
-        evidence: valid_evidence(),
-        trust_policy_revision: Some(1),
-        capability_policy_revision: Some(1),
-    };
-
+    // Replay with the exact command returns the cached receipt.
     let receipt2 = service
-        .admit_external_prebuilt(command2)
+        .admit_external_prebuilt(command1.clone())
         .await
         .expect("replay succeeds");
     assert!(
@@ -659,19 +681,31 @@ async fn test_external_prebuilt_idempotent_replay_and_conflict() {
     );
     assert_eq!(receipt1.payload_digest, receipt2.payload_digest);
 
+    // Trace/correlation evidence is part of the command fingerprint, even if
+    // the same global release has already been admitted.
+    let mut changed_trace = command1.clone();
+    changed_trace.context.trace_id = "trace-idem-2".to_string();
+    assert!(matches!(
+        service.admit_external_prebuilt(changed_trace).await,
+        Err(ExternalPrebuiltIngressError::IdempotencyConflict(key, _)) if key == idempotency_key
+    ));
+
+    // Independently verified policy facts are part of the same immutable
+    // replay identity.
+    let mut changed_policy = command1.clone();
+    changed_policy.trust_policy_revision = Some(2);
+    assert!(matches!(
+        service.admit_external_prebuilt(changed_policy).await,
+        Err(ExternalPrebuiltIngressError::IdempotencyConflict(key, _)) if key == idempotency_key
+    ));
+
     // Replay with same idempotency key but different release digest -> returns IdempotencyConflict
     let wasm_bytes_alt = b"\x00asm\x01\x00\x00\x00-alt-different-payload";
     let (package_alt, _) = create_sample_package(wasm_bytes_alt, "idem_mod_alt", "2.0.0");
     let command_conflict = ExternalPrebuiltIngressCommand {
         reference: package_alt.reference.clone(),
         scope: ModuleInstallationScope::Platform,
-        context: ModuleCommandContext {
-            actor_id,
-            tenant_id: None,
-            trace_id: "trace-idem-3".to_string(),
-            correlation_id: Uuid::new_v4(),
-            idempotency_key,
-        },
+        context: command1.context.clone(),
         evidence: valid_evidence(),
         trust_policy_revision: Some(1),
         capability_policy_revision: Some(1),

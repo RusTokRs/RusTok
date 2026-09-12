@@ -7,14 +7,15 @@ use rustok_secrets::SecretResolverRegistry;
 use crate::{
     ArtifactBlobStore, ArtifactDataCrossRevisionCopier, ArtifactDataExportAuthorizer,
     ArtifactDataObjectMigrationService, ArtifactDataPostPurgeRecoveryService,
-    ArtifactDataPurgeAuthorizer, ArtifactDataQuotaPolicy, ArtifactDataRecoveryReadinessService,
-    ArtifactDataSnapshotAuthorizer, ArtifactDataSnapshotCollectionAuthorizer,
-    ArtifactDataSnapshotIntentService, ArtifactDataSnapshotRetentionAuthorizer,
-    ArtifactEventDeliveryConfig, ArtifactEventDeliveryError, ArtifactLifecycleExecutor,
-    ArtifactMcpCapabilityBrokerResolver, ArtifactMcpInvoker, ArtifactQueueDrainService,
-    ArtifactRegistry, ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError,
-    ArtifactSecretAuthorizer, ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer,
-    ArtifactSecretValueConsumer, ArtifactSettingsRecoveryAuthorizer,
+    ArtifactDataPurgeAuthorizer, ArtifactDataPurgePreviewService, ArtifactDataQuotaPolicy,
+    ArtifactDataRecoveryReadinessService, ArtifactDataSnapshotAuthorizer,
+    ArtifactDataSnapshotCollectionAuthorizer, ArtifactDataSnapshotIntentService,
+    ArtifactDataSnapshotRetentionAuthorizer, ArtifactEventDeliveryConfig,
+    ArtifactEventDeliveryError, ArtifactLifecycleExecutor, ArtifactMcpCapabilityBrokerResolver,
+    ArtifactMcpInvoker, ArtifactQueueDrainService, ArtifactRegistry,
+    ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError, ArtifactSecretAuthorizer,
+    ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer, ArtifactSecretValueConsumer,
+    ArtifactSettingsPurgePreviewService, ArtifactSettingsRecoveryAuthorizer,
     ArtifactSettingsRecoveryCipher, ControlPlaneInfrastructure, DurableArtifactBlobStore,
     DynamicLifecycleService, ExecutorReadinessService, ExternalPrebuiltIngressService,
     ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeTopologyResolver,
@@ -609,6 +610,13 @@ impl ModuleControlPlane {
         )
     }
 
+    /// Returns the owner-backed read projection for a destructive data-purge
+    /// preview. It derives the namespace from an exact installation and never
+    /// exposes a caller-selectable data scope.
+    pub fn artifact_data_purge_preview(&self) -> ArtifactDataPurgePreviewService {
+        ArtifactDataPurgePreviewService::new(self.db.clone())
+    }
+
     /// Returns the separately authorized, KMS-backed owner service for dynamic
     /// artifact-settings recovery, retention, rewrap, purge, restore,
     /// continuity binding, and collection. It has no guest path and cannot be
@@ -629,6 +637,13 @@ impl ModuleControlPlane {
             std::sync::Arc::new(crate::artifact_schema::ArtifactSchemaValidatorCache::default()),
             self.infrastructure.clone(),
         )
+    }
+
+    /// Returns the owner-backed read projection for a destructive settings
+    /// purge preview. The apply service independently repeats every lifecycle,
+    /// recovery, and retention condition inside its write transaction.
+    pub fn artifact_settings_purge_preview(&self) -> ArtifactSettingsPurgePreviewService {
+        ArtifactSettingsPurgePreviewService::new(self.db.clone())
     }
 
     /// Returns the owner-only durable namespace snapshot/restore service.

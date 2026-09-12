@@ -673,6 +673,12 @@ command's actor, trace, correlation, and idempotency identities;
   SHA-256; the post-verification storage boundary still buffers an accepted
   payload, so streaming sink and multipart CAS publication remain the next
   slice;
+- OCI release admission and external-prebuilt ingress validate a
+  scope-matched `ModuleCommandContext` before registry, CAS, or database work.
+  Their durable `module_admitted_oci_releases` receipt stores a canonical
+  fingerprint of the complete command, so a reused idempotency key with changed
+  trace, correlation, policy, evidence, scope, or target fails closed even when
+  the immutable release digest already exists.
 - the committed admission row now records the complete status vocabulary with
   initial `admitted` state and revision `1`. Every immutable admission begins
   with an owner-supplied actor and idempotency key: its canonical request digest

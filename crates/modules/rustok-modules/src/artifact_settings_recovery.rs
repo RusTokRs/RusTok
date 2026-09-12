@@ -385,6 +385,235 @@ pub trait ArtifactSettingsRecoveryAuthorizer: Send + Sync {
     ) -> Result<(), ArtifactSettingsRecoveryError>;
 }
 
+/// Redacted owner-issued readiness for a separate settings purge. It contains
+/// no ciphertext, retained settings, KMS material, or policy evidence and
+/// cannot be reused as destructive-command input.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactSettingsPurgePreview {
+    pub installation_id: Uuid,
+    pub data_owner_id: Uuid,
+    pub settings_instance_id: Uuid,
+    pub settings_revision: u64,
+    pub has_recovery_point: bool,
+    pub recovery_point_id: Option<Uuid>,
+    pub can_purge: bool,
+    pub reason: String,
+}
+
+/// Owner-owned read path for a settings-purge preview. The apply service
+/// repeats every mutable condition in its transaction; this projection only
+/// gives an operator an auditable, redacted readiness explanation.
+#[derive(Clone)]
+pub struct ArtifactSettingsPurgePreviewService {
+    db: DatabaseConnection,
+    validators: Arc<ArtifactSchemaValidatorCache>,
+}
+
+impl ArtifactSettingsPurgePreviewService {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self {
+            db,
+            validators: Arc::new(ArtifactSchemaValidatorCache::default()),
+        }
+    }
+
+    pub async fn preview(
+        &self,
+        tenant_id: Uuid,
+        installation_id: Uuid,
+    ) -> Result<ArtifactSettingsPurgePreview, ArtifactSettingsRecoveryError> {
+        if tenant_id.is_nil() || installation_id.is_nil() {
+            return Err(ArtifactSettingsRecoveryError::InvalidRequest);
+        }
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, tenant_id)
+            .await
+            .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
+        let installation =
+            load_installation(&transaction, tenant_id, installation_id, false).await?;
+
+        if installation.status != "inactive" || !installation.uninstalled {
+            return commit_settings_purge_preview(
+                transaction,
+                ArtifactSettingsPurgePreview {
+                    installation_id,
+                    data_owner_id: installation.data_owner_id,
+                    settings_instance_id: installation.settings_instance_id,
+                    settings_revision: 0,
+                    has_recovery_point: false,
+                    recovery_point_id: None,
+                    can_purge: false,
+                    reason: "Artifact installation must be inactive and uninstalled before settings purge."
+                        .to_string(),
+                },
+            )
+            .await;
+        }
+
+        let settings = match load_settings_instance(
+            &transaction,
+            tenant_id,
+            installation.data_owner_id,
+            installation.settings_instance_id,
+            false,
+        )
+        .await
+        {
+            Ok(settings) => settings,
+            Err(ArtifactSettingsRecoveryError::SettingsUnavailable) => {
+                return commit_settings_purge_preview(
+                    transaction,
+                    ArtifactSettingsPurgePreview {
+                        installation_id,
+                        data_owner_id: installation.data_owner_id,
+                        settings_instance_id: installation.settings_instance_id,
+                        settings_revision: 0,
+                        has_recovery_point: false,
+                        recovery_point_id: None,
+                        can_purge: false,
+                        reason: "No current settings instance exists for the retired artifact installation."
+                            .to_string(),
+                    },
+                )
+                .await;
+            }
+            Err(error) => return Err(error),
+        };
+        let preview_identity = ArtifactSettingsPurgePreview {
+            installation_id,
+            data_owner_id: installation.data_owner_id,
+            settings_instance_id: installation.settings_instance_id,
+            settings_revision: settings.revision,
+            has_recovery_point: false,
+            recovery_point_id: None,
+            can_purge: false,
+            reason: String::new(),
+        };
+        if settings.schema_digest != installation.schema_digest
+            || validate_settings_descriptor(
+                &self.validators,
+                &installation.descriptor,
+                &installation.schema_digest,
+                &settings.value,
+            )
+            .is_err()
+        {
+            return commit_settings_purge_preview(
+                transaction,
+                ArtifactSettingsPurgePreview {
+                    reason: "Current settings no longer satisfy the admitted settings contract."
+                        .to_string(),
+                    ..preview_identity
+                },
+            )
+            .await;
+        }
+        if let Err(error) =
+            ensure_no_active_owner_binding(&transaction, tenant_id, installation.data_owner_id)
+                .await
+        {
+            if matches!(error, ArtifactSettingsRecoveryError::PurgePrecondition) {
+                return commit_settings_purge_preview(
+                    transaction,
+                    ArtifactSettingsPurgePreview {
+                        reason: "The settings data owner still has an active installation in this tenant scope."
+                            .to_string(),
+                        ..preview_identity
+                    },
+                )
+                .await;
+            }
+            return Err(error);
+        }
+        let recovery = find_settings_purge_preview_recovery(
+            &transaction,
+            tenant_id,
+            installation_id,
+            installation.data_owner_id,
+            installation.settings_instance_id,
+            settings.revision,
+            &installation.schema_digest,
+            &installation.descriptor_digest,
+        )
+        .await?;
+        let Some(recovery) = recovery else {
+            return commit_settings_purge_preview(
+                transaction,
+                ArtifactSettingsPurgePreview {
+                    reason: "No protected recovery point matches the retired settings identity."
+                        .to_string(),
+                    ..preview_identity
+                },
+            )
+            .await;
+        };
+        let recovery_preview = ArtifactSettingsPurgePreview {
+            has_recovery_point: true,
+            recovery_point_id: Some(recovery.recovery_point_id),
+            ..preview_identity
+        };
+        if recovery.state != "ready" || recovery.restored_at.is_some() {
+            return commit_settings_purge_preview(
+                transaction,
+                ArtifactSettingsPurgePreview {
+                    reason:
+                        "The matching settings recovery point is no longer available for purge."
+                            .to_string(),
+                    ..recovery_preview
+                },
+            )
+            .await;
+        }
+        if recovery.retain_until <= Utc::now() {
+            return commit_settings_purge_preview(
+                transaction,
+                ArtifactSettingsPurgePreview {
+                    reason: "The matching settings recovery point has expired and cannot authorize purge."
+                        .to_string(),
+                    ..recovery_preview
+                },
+            )
+            .await;
+        }
+        if settings_purge_tombstone_exists(
+            &transaction,
+            tenant_id,
+            installation.data_owner_id,
+            installation.settings_instance_id,
+        )
+        .await?
+        {
+            return commit_settings_purge_preview(
+                transaction,
+                ArtifactSettingsPurgePreview {
+                    reason: "The settings instance already has a durable purge tombstone."
+                        .to_string(),
+                    ..recovery_preview
+                },
+            )
+            .await;
+        }
+        commit_settings_purge_preview(
+            transaction,
+            ArtifactSettingsPurgePreview {
+                can_purge: true,
+                reason: "Retired settings have a matching protected recovery point and are eligible for separately authorized purge."
+                    .to_string(),
+                ..recovery_preview
+            },
+        )
+        .await
+    }
+}
+
+async fn commit_settings_purge_preview(
+    transaction: sea_orm::DatabaseTransaction,
+    preview: ArtifactSettingsPurgePreview,
+) -> Result<ArtifactSettingsPurgePreview, ArtifactSettingsRecoveryError> {
+    transaction.commit().await.map_err(storage_error)?;
+    Ok(preview)
+}
+
 /// Durable owner service for settings recovery points and destructive
 /// lifecycle. It is intentionally not a sandbox capability and can only be
 /// constructed by host composition with explicit policy and encryption ports.
@@ -1300,6 +1529,7 @@ where
             request.tenant_id,
             locked.data_owner_id,
             settings_instance_id,
+            true,
         )
         .await?;
         if restored_settings.schema_digest != locked.schema_digest {
@@ -1997,6 +2227,7 @@ async fn load_retired_source_in<C: ConnectionTrait>(
         tenant_id,
         installation.data_owner_id,
         installation.settings_instance_id,
+        true,
     )
     .await?;
     if settings.revision != expected_settings_revision
@@ -2145,6 +2376,7 @@ async fn load_settings_instance<C: ConnectionTrait>(
     tenant_id: Uuid,
     data_owner_id: Uuid,
     settings_instance_id: Uuid,
+    lock: bool,
 ) -> Result<SettingsInstanceRow, ArtifactSettingsRecoveryError> {
     let backend = connection.get_database_backend();
     let row = connection
@@ -2155,7 +2387,7 @@ async fn load_settings_instance<C: ConnectionTrait>(
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
-                lock_clause(backend, true),
+                lock_clause(backend, lock),
             ),
             vec![
                 uuid_value(tenant_id, backend),
@@ -2263,6 +2495,94 @@ async fn ensure_no_active_owner_binding<C: ConnectionTrait>(
         return Err(ArtifactSettingsRecoveryError::PurgePrecondition);
     }
     Ok(())
+}
+
+#[derive(Clone, Debug)]
+struct SettingsPurgePreviewRecovery {
+    recovery_point_id: Uuid,
+    state: String,
+    restored_at: Option<DateTime<Utc>>,
+    retain_until: DateTime<Utc>,
+}
+
+async fn find_settings_purge_preview_recovery<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    installation_id: Uuid,
+    data_owner_id: Uuid,
+    settings_instance_id: Uuid,
+    settings_revision: u64,
+    schema_digest: &str,
+    descriptor_digest: &str,
+) -> Result<Option<SettingsPurgePreviewRecovery>, ArtifactSettingsRecoveryError> {
+    let backend = connection.get_database_backend();
+    let row = connection
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT recovery_point_id, state, restored_at, retain_until \
+                 FROM module_artifact_settings_recovery_points \
+                 WHERE tenant_id = {} AND installation_id = {} AND data_owner_id = {} \
+                   AND settings_instance_id = {} AND settings_revision = {} \
+                   AND schema_digest = {} AND descriptor_digest = {} \
+                 ORDER BY retention_revision DESC, created_at DESC LIMIT 1",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+                placeholder(backend, 5),
+                placeholder(backend, 6),
+                placeholder(backend, 7),
+            ),
+            vec![
+                uuid_value(tenant_id, backend),
+                uuid_value(installation_id, backend),
+                uuid_value(data_owner_id, backend),
+                uuid_value(settings_instance_id, backend),
+                revision_value(settings_revision)?,
+                schema_digest.to_string().into(),
+                descriptor_digest.to_string().into(),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    Ok(Some(SettingsPurgePreviewRecovery {
+        recovery_point_id: uuid_from_row(&row, "recovery_point_id", backend)?,
+        state: row.try_get("", "state").map_err(storage_error)?,
+        restored_at: optional_datetime_from_row(&row, "restored_at", backend)?,
+        retain_until: datetime_from_row(&row, "retain_until", backend)?,
+    }))
+}
+
+async fn settings_purge_tombstone_exists<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    data_owner_id: Uuid,
+    settings_instance_id: Uuid,
+) -> Result<bool, ArtifactSettingsRecoveryError> {
+    let backend = connection.get_database_backend();
+    let row = connection
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT 1 FROM module_artifact_settings_tombstones \
+                 WHERE tenant_id = {} AND data_owner_id = {} AND settings_instance_id = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+            ),
+            vec![
+                uuid_value(tenant_id, backend),
+                uuid_value(data_owner_id, backend),
+                uuid_value(settings_instance_id, backend),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    Ok(row.is_some())
 }
 
 async fn next_tombstone_revision<C: ConnectionTrait>(

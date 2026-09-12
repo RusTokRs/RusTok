@@ -57,6 +57,10 @@ const artifactDataOwnerPath = path.join(
   root,
   "crates/modules/rustok-modules/src/data.rs",
 );
+const artifactDataPurgeMigrationPath = path.join(
+  root,
+  "crates/modules/rustok-modules/src/migrations/m20260716_000011_artifact_data_namespace_lifecycle.rs",
+);
 const moduleBuildOwnerPath = path.join(
   root,
   "crates/modules/rustok-modules/src/build.rs",
@@ -80,6 +84,10 @@ const serverArtifactBindingPath = path.join(
 const artifactSettingsRecoveryOwnerPath = path.join(
   root,
   "crates/modules/rustok-modules/src/artifact_settings_recovery.rs",
+);
+const serverGraphqlQueriesPath = path.join(
+  root,
+  "apps/server/src/graphql/queries.rs",
 );
 const artifactDataSnapshotOwnerPath = path.join(
   root,
@@ -132,6 +140,18 @@ const operationsToolOwnerPath = path.join(
 const operationsToolMigrationPath = path.join(
   root,
   "crates/modules/rustok-modules/src/migrations/m20260904_000053_module_operations_tool.rs",
+);
+const ociAdmissionOwnerPath = path.join(
+  root,
+  "crates/modules/rustok-modules/src/oci_admission.rs",
+);
+const externalPrebuiltIngressOwnerPath = path.join(
+  root,
+  "crates/modules/rustok-modules/src/external_prebuilt_ingress.rs",
+);
+const admittedOciReleasesMigrationPath = path.join(
+  root,
+  "crates/modules/rustok-modules/src/migrations/m20260904_000051_admitted_oci_releases.rs",
 );
 const runtimeManifestPath = path.join(
   root,
@@ -372,6 +392,10 @@ try {
     "utf8",
   );
   const artifactDataOwner = fs.readFileSync(artifactDataOwnerPath, "utf8");
+  const artifactDataPurgeMigration = fs.readFileSync(
+    artifactDataPurgeMigrationPath,
+    "utf8",
+  );
   const moduleBuildOwner = fs.readFileSync(moduleBuildOwnerPath, "utf8");
   const artifactDataExportMigration = fs.readFileSync(
     artifactDataExportMigrationPath,
@@ -393,6 +417,7 @@ try {
     artifactSettingsRecoveryOwnerPath,
     "utf8",
   );
+  const serverGraphqlQueries = fs.readFileSync(serverGraphqlQueriesPath, "utf8");
   const artifactDataSnapshotOwner = fs.readFileSync(
     artifactDataSnapshotOwnerPath,
     "utf8",
@@ -437,6 +462,15 @@ try {
   const operationsToolOwner = fs.readFileSync(operationsToolOwnerPath, "utf8");
   const operationsToolMigration = fs.readFileSync(
     operationsToolMigrationPath,
+    "utf8",
+  );
+  const ociAdmissionOwner = fs.readFileSync(ociAdmissionOwnerPath, "utf8");
+  const externalPrebuiltIngressOwner = fs.readFileSync(
+    externalPrebuiltIngressOwnerPath,
+    "utf8",
+  );
+  const admittedOciReleasesMigration = fs.readFileSync(
+    admittedOciReleasesMigrationPath,
     "utf8",
   );
   const lifecycleExecutor = fs.readFileSync(lifecycleExecutorPath, "utf8");
@@ -699,6 +733,47 @@ try {
     );
   }
 
+  const ociAdmissionCommand = ociAdmissionOwner.match(
+    /pub struct OciReleaseAdmissionCommand\s*\{(?<fields>[\s\S]*?)\n\}/,
+  );
+  const externalPrebuiltIngressCommand = externalPrebuiltIngressOwner.match(
+    /pub struct ExternalPrebuiltIngressCommand\s*\{(?<fields>[\s\S]*?)\n\}/,
+  );
+  if (
+    !ociAdmissionCommand?.groups?.fields.includes(
+      "pub context: ModuleCommandContext,",
+    ) ||
+    !externalPrebuiltIngressCommand?.groups?.fields.includes(
+      "pub context: ModuleCommandContext,",
+    ) ||
+    !ociAdmissionOwner.includes("#[serde(deny_unknown_fields)]") ||
+    !externalPrebuiltIngressOwner.includes("#[serde(deny_unknown_fields)]") ||
+    !ociAdmissionOwner.includes(
+      "command.scope.matches_command_context(&command.context)",
+    ) ||
+    !externalPrebuiltIngressOwner.includes(
+      "command.scope.matches_command_context(&command.context)",
+    ) ||
+    !ociAdmissionOwner.includes("let request_digest = digest_json(&command)") ||
+    !externalPrebuiltIngressOwner.includes(
+      "let request_digest = digest_json(&command)",
+    ) ||
+    !ociAdmissionOwner.includes("SELECT release_digest, request_digest") ||
+    !externalPrebuiltIngressOwner.includes(
+      "SELECT release_digest, request_digest",
+    ) ||
+    !admittedOciReleasesMigration.includes(
+      "request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$')",
+    ) ||
+    !admittedOciReleasesMigration.includes(
+      "request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:'",
+    )
+  ) {
+    fail(
+      "OCI and external-prebuilt admission commands must validate scope-matched ModuleCommandContext, bind complete command facts into durable request digests, and reject changed idempotency evidence before returning an existing immutable release",
+    );
+  }
+
   const distributionBootstrapContextFields =
     staticDistributionBootstrapOwner.match(
       /pub context: ModuleCommandContext,/g,
@@ -804,14 +879,34 @@ try {
     !purgeRequest?.groups?.fields.includes(
       "pub context: ModuleCommandContext,",
     ) ||
+    !purgeRequest.groups.fields.includes("pub installation_id: Uuid,") ||
+    purgeRequest.groups.fields.includes("pub scope: ArtifactDataScope,") ||
+    !artifactDataOwner.includes("load_artifact_data_purge_target(") ||
     !artifactDataOwner.includes(
-      "request.context.tenant_id != Some(request.scope.tenant_id)",
+      "ensure_artifact_data_purge_target_is_retired",
     ) ||
-    !artifactDataOwner.includes("trace_id, correlation_id, reason") ||
+    !artifactDataOwner.includes("find_artifact_data_purge_operation(") ||
+    !artifactDataOwner.includes("installation_id, module_slug, data_contract_revision") ||
+    !artifactDataPurgeMigration.includes("installation_id UUID NOT NULL") ||
+    !artifactDataPurgeMigration.includes("installation_id TEXT NOT NULL") ||
+    !artifactDataPurgeMigration.includes(
+      "PRIMARY KEY (tenant_id, installation_id, idempotency_key)",
+    ) ||
+    !serverGraphqlQueries.includes(".artifact_data_purge_preview()") ||
+    !serverGraphqlQueries.includes(".artifact_settings_purge_preview()") ||
+    serverGraphqlQueries.includes("module_artifact_data_records") ||
+    serverGraphqlQueries.includes("FROM module_artifact_data_namespaces") ||
+    serverGraphqlQueries.includes(
+      "FROM module_artifact_settings_recovery_points",
+    ) ||
+    !artifactSettingsRecoveryOwner.includes(
+      "ArtifactSettingsPurgePreviewService",
+    ) ||
+    !artifactDataOwner.includes("ArtifactDataPurgePreviewService") ||
     !artifactDataOwner.includes("event_envelope_for_command(")
   ) {
     fail(
-      "dynamic artifact data purge must preserve a tenant-matched ModuleCommandContext in its durable receipt and owner-created outbox event",
+      "artifact purge previews must use owner read projections; data purge must derive its namespace from an exact retired installation, bind durable replay to that installation, and retain command-context outbox evidence",
     );
   }
 

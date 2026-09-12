@@ -346,7 +346,7 @@ impl OciReleaseAdmissionService {
             )));
         }
 
-        // 7. Optional trust policy verification
+        // 8. Optional trust policy verification
         if let Some(ref verifier) = self.verifier {
             let req = TrustVerificationRequest {
                 reference: package.reference.clone(),
@@ -367,7 +367,7 @@ impl OciReleaseAdmissionService {
             }
         }
 
-        // 8. Stream payload into platform CAS staging and publish create-if-absent
+        // 9. Stream payload into platform CAS staging and publish create-if-absent
         let (payload_size, cas_published) = match package.payload {
             ArtifactPayloadSource::Bytes(bytes) => {
                 let size = bytes.len() as u64;
@@ -410,7 +410,7 @@ impl OciReleaseAdmissionService {
             }
         };
 
-        // 9. Verify published payload in CAS
+        // 10. Verify published payload in CAS
         self.blobs
             .get_verified(&package.descriptor.artifact_digest)
             .await
@@ -420,7 +420,7 @@ impl OciReleaseAdmissionService {
             .map_err(|e| OciReleaseAdmissionError::Serialization(e.to_string()))?;
         let now = self.infrastructure.now();
 
-        // 10. Commit immutable admission record in database
+        // 11. Commit immutable admission record in database
         self.db
             .execute_raw(Statement::from_sql_and_values(
                 backend,

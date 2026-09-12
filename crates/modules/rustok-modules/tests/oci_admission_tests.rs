@@ -373,6 +373,43 @@ async fn test_rejection_of_unpinned_reference() {
 }
 
 #[tokio::test]
+async fn test_oci_admission_context_must_match_requested_scope() {
+    let db = setup_test_db().await;
+    let admission = OciReleaseAdmissionService::new(
+        db,
+        Arc::new(InMemoryArtifactBlobStore::default()),
+        Arc::new(SpyRegistry::new()),
+    );
+    let tenant_id = Uuid::new_v4();
+
+    let error = admission
+        .admit_release(OciReleaseAdmissionCommand {
+            reference: OciArtifactReference {
+                registry: "registry.example.com".to_string(),
+                repository: "rustok/orders-notifier".to_string(),
+                digest: sha256_digest(b"scope-context-mismatch"),
+            },
+            scope: ModuleInstallationScope::Platform,
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: Some(tenant_id),
+                trace_id: "trace-invalid-scope".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            trust_policy_revision: None,
+            capability_policy_revision: None,
+        })
+        .await
+        .expect_err("a platform admission cannot carry tenant command context");
+
+    assert!(matches!(
+        error,
+        OciReleaseAdmissionError::InvalidCommandContext
+    ));
+}
+
+#[tokio::test]
 async fn test_rejection_of_descriptor_layer_digest_mismatch() {
     let db = setup_test_db().await;
     let blobs = Arc::new(InMemoryArtifactBlobStore::default());
@@ -475,14 +512,32 @@ async fn test_idempotent_readmission_and_conflict_handling() {
 
     // Second attempt with exact same parameters returns existing receipt without re-publishing
     let receipt2 = admission
-        .admit_release(command1)
+        .admit_release(command1.clone())
         .await
         .expect("second attempt should be idempotent");
     assert!(!receipt2.cas_published);
     assert_eq!(receipt1.reference, receipt2.reference);
     assert_eq!(receipt1.payload_digest, receipt2.payload_digest);
 
-    // Third attempt with DIFFERENT reference under SAME idempotency key fails with conflict
+    // A changed trace is a changed owner command even when the global release
+    // is already admitted; it must not be silently treated as a replay.
+    let mut changed_trace = command1.clone();
+    changed_trace.context.trace_id = "trace-1-changed".to_string();
+    assert!(matches!(
+        admission.admit_release(changed_trace).await,
+        Err(OciReleaseAdmissionError::IdempotencyConflict(key, _)) if key == idempotency_key
+    ));
+
+    // Policy revisions are immutable command facts as well.
+    let mut changed_policy = command1.clone();
+    changed_policy.trust_policy_revision = Some(7);
+    assert!(matches!(
+        admission.admit_release(changed_policy).await,
+        Err(OciReleaseAdmissionError::IdempotencyConflict(key, _)) if key == idempotency_key
+    ));
+
+    // A different release under the same exact owner idempotency evidence also
+    // fails closed.
     let different_ref = OciArtifactReference {
         registry: "registry.example.com".to_string(),
         repository: "rustok/orders-notifier".to_string(),
@@ -492,13 +547,7 @@ async fn test_idempotent_readmission_and_conflict_handling() {
     let conflict_command = OciReleaseAdmissionCommand {
         reference: different_ref,
         scope: ModuleInstallationScope::Platform,
-        context: ModuleCommandContext {
-            actor_id,
-            tenant_id: None,
-            idempotency_key, // Reused idempotency key with different target
-            trace_id: "trace-conflict".to_string(),
-            correlation_id: Uuid::new_v4(),
-        },
+        context: command1.context.clone(),
         trust_policy_revision: None,
         capability_policy_revision: None,
     };

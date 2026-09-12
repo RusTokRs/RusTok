@@ -510,6 +510,11 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   isolated tenant build requests bind the complete context into their immutable
   request/replay hash and use it for both queued and completed outbox envelopes;
   node-agent reports remain separately authenticated deployment observations.
+  OCI release admission and external-prebuilt ingress validate that the command
+  context matches the requested admission scope before I/O, persist a canonical
+  digest of every command fact in the immutable admission receipt, and reject a
+  changed trace, correlation, policy, evidence, scope, or target on idempotency
+  reuse before an existing release lookup can return success.
   Post-purge recovery binds the ready snapshot to the same tenant/module/data-
   contract scope and records a canonical request digest beside the context, so
   a changed snapshot or context on idempotency reuse fails closed. Operations-tool
@@ -1873,15 +1878,21 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
   `enabledModules` tenant availability projection is also read-gated at both
   layers.
 - [x] The current structured artifact-data purge is a separate destructive
-  operation. Its generic command/tenant-module attach identity is an explicit
-  cutover gap; the target callable is `dynamic_artifact_data_purge`. It
-  is tenant/module/data-contract scoped, revision-guarded and idempotent,
-  serializes against data writes, carries a tenant-matched typed command
-  context, records actor/trace/correlation/reason and the deleted-record count
-  in its immutable receipt, emits a transactional-outbox fact with that same
-  command identity, and leaves a durable namespace tombstone. A host-owned
-  authorizer must approve lifecycle, retention, and legal-hold policy before
-  the operation begins.
+  operation whose request accepts only an exact `installation_id`, namespace
+  revision, and tenant-matched typed command context. The owner derives slug,
+  data-contract revision, and capability-policy revision from the admitted
+  installation; callers cannot choose a scope. Its immutable receipt key is
+  `(tenant_id, installation_id, idempotency_key)`, preserves
+  actor/trace/correlation/reason and the deleted-record count, emits a
+  transactional-outbox fact with that same command identity, and leaves a
+  durable namespace tombstone. Both preview and apply require an inactive,
+  uninstalled installation, and apply locks then revalidates the target before
+  deletion. Because physical namespace storage is still keyed by slug and
+  data-contract revision, an active tenant-visible installation with the same
+  slug makes the historical namespace ambiguous and blocks preview/apply. The
+  GraphQL previews call owner projections rather than rebuilding lifecycle
+  joins or record counts. This is a safe interim cutover; the full owner-keyed
+  structured-data storage and continuity model remains open below.
 - [x] Complete `dynamic_artifact_settings_purge` as the independently
   authorized settings-owner lifecycle. The implemented core has exact
   encrypted recovery points, immutable KMS key-version/schema/descriptor/value

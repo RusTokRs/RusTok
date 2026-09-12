@@ -27,6 +27,7 @@ impl MigrationTrait for Migration {
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
                 "CREATE TABLE module_artifact_data_purge_operations (\
                     tenant_id UUID NOT NULL,\
+                    installation_id UUID NOT NULL REFERENCES module_artifact_installations(installation_id),\
                     module_slug TEXT NOT NULL,\
                     data_contract_revision BIGINT NOT NULL CHECK (data_contract_revision > 0),\
                     policy_revision BIGINT NOT NULL CHECK (policy_revision > 0),\
@@ -39,7 +40,7 @@ impl MigrationTrait for Migration {
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     purged_records BIGINT NOT NULL CHECK (purged_records >= 0),\
                     completed_at TIMESTAMPTZ NOT NULL,\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key)\
+                    PRIMARY KEY (tenant_id, installation_id, idempotency_key)\
                 )",
                 "ALTER TABLE module_artifact_data_purge_operations ENABLE ROW LEVEL SECURITY",
                 "CREATE POLICY module_artifact_data_purge_operations_scope ON module_artifact_data_purge_operations \
@@ -59,6 +60,7 @@ impl MigrationTrait for Migration {
                 )",
                 "CREATE TABLE module_artifact_data_purge_operations (\
                     tenant_id TEXT NOT NULL,\
+                    installation_id TEXT NOT NULL REFERENCES module_artifact_installations(installation_id),\
                     module_slug TEXT NOT NULL,\
                     data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
                     policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),\
@@ -71,7 +73,7 @@ impl MigrationTrait for Migration {
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     purged_records INTEGER NOT NULL CHECK (purged_records >= 0),\
                     completed_at TEXT NOT NULL,\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key)\
+                    PRIMARY KEY (tenant_id, installation_id, idempotency_key)\
                 )",
             ],
             backend => {

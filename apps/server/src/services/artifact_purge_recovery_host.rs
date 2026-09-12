@@ -6,15 +6,15 @@ use sha2::{Digest, Sha256};
 
 use rustok_api::manifest_hash::canonical_json_bytes;
 use rustok_modules::{
-    ArtifactDataError, ArtifactDataPurgeAuthorizer, ArtifactDataPurgeRequest,
-    ArtifactSettingsPurgeRequest, ArtifactSettingsRecoveryAuthorizationContext,
-    ArtifactSettingsRecoveryAuthorizer, ArtifactSettingsRecoveryBindRequest,
-    ArtifactSettingsRecoveryCipher, ArtifactSettingsRecoveryCipherContext,
-    ArtifactSettingsRecoveryCiphertext, ArtifactSettingsRecoveryCollectionRequest,
-    ArtifactSettingsRecoveryError, ArtifactSettingsRecoveryPointCreateRequest,
-    ArtifactSettingsRecoveryRetention, ArtifactSettingsRecoveryRetentionUpdate,
-    ArtifactSettingsRecoveryRetentionUpdateRequest, ArtifactSettingsRecoveryRewrapRequest,
-    ArtifactSettingsRestoreRequest,
+    ArtifactDataError, ArtifactDataPurgeAuthorizationContext, ArtifactDataPurgeAuthorizer,
+    ArtifactDataPurgeRequest, ArtifactSettingsPurgeRequest,
+    ArtifactSettingsRecoveryAuthorizationContext, ArtifactSettingsRecoveryAuthorizer,
+    ArtifactSettingsRecoveryBindRequest, ArtifactSettingsRecoveryCipher,
+    ArtifactSettingsRecoveryCipherContext, ArtifactSettingsRecoveryCiphertext,
+    ArtifactSettingsRecoveryCollectionRequest, ArtifactSettingsRecoveryError,
+    ArtifactSettingsRecoveryPointCreateRequest, ArtifactSettingsRecoveryRetention,
+    ArtifactSettingsRecoveryRetentionUpdate, ArtifactSettingsRecoveryRetentionUpdateRequest,
+    ArtifactSettingsRecoveryRewrapRequest, ArtifactSettingsRestoreRequest,
 };
 
 /// Host authorization for artifact structured data purge.
@@ -26,6 +26,7 @@ impl ArtifactDataPurgeAuthorizer for ServerArtifactDataPurgeAuthorizer {
     async fn authorize_purge(
         &self,
         request: &ArtifactDataPurgeRequest,
+        _: &ArtifactDataPurgeAuthorizationContext,
     ) -> Result<(), ArtifactDataError> {
         if request.reason.trim().is_empty() {
             return Err(ArtifactDataError::PurgePrecondition);

@@ -58,7 +58,7 @@ use rustok_modules::{
     ModuleCommandContext, ModuleCompositionError, ModuleControlPlane, ModuleInstallationScope,
 };
 use rustok_modules::{
-    ArtifactDataError, ArtifactDataPurgeRequest, ArtifactDataScope, ArtifactSettingsPurgeRequest,
+    ArtifactDataError, ArtifactDataPurgeRequest, ArtifactSettingsPurgeRequest,
     ArtifactSettingsRecoveryError, ArtifactSettingsRecoveryPointCreateRequest,
     ArtifactSettingsRestoreRequest,
 };
@@ -1390,37 +1390,25 @@ impl RootMutation {
     async fn purge_tenant_artifact_data(
         &self,
         ctx: &Context<'_>,
-        module_slug: String,
-        data_contract_revision: i64,
-        policy_revision: i64,
+        installation_id: Uuid,
         expected_namespace_revision: i64,
         reason: String,
         idempotency_key: Uuid,
     ) -> Result<ArtifactDataPurgeReceipt> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
-        if idempotency_key.is_nil()
-            || expected_namespace_revision < 0
-            || data_contract_revision < 0
-            || policy_revision < 0
+        if installation_id.is_nil() || idempotency_key.is_nil() || expected_namespace_revision <= 0
         {
             return Err(<FieldError as GraphQLError>::bad_user_input(
-                "Data purge requires non-nil idempotency key and non-negative revisions",
+                "Data purge requires an installation ID, non-nil idempotency key, and a positive namespace revision",
             ));
         }
         let db = ctx.data::<DatabaseConnection>()?;
         let control_plane = ModuleControlPlane::new(db.clone());
         let service = control_plane.artifact_data_purge(ServerArtifactDataPurgeAuthorizer);
 
-        let scope = ArtifactDataScope {
-            tenant_id: tenant.id,
-            module_slug,
-            data_contract_revision: data_contract_revision as u64,
-            policy_revision: policy_revision as u64,
-        };
-
         let result = service
             .purge(ArtifactDataPurgeRequest {
-                scope,
+                installation_id,
                 expected_namespace_revision: expected_namespace_revision as u64,
                 context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
                 reason,

@@ -487,7 +487,15 @@ same retention-aware GC used by replacement and namespace purge. It never
 returns or deletes the physical storage key inline.
 
 The namespace purge covers structured records and private-object metadata/keys
-only; it is not artifact-settings-purge evidence. Dynamic artifact settings
+only; it is not artifact-settings-purge evidence. Its destructive request names
+only an exact installation; the owner derives the current namespace scope from
+that installation's admitted descriptor and capability grant, binds the
+durable receipt to `(tenant_id, installation_id, idempotency_key)`, and repeats
+the inactive-plus-uninstalled lifecycle fence inside its write transaction.
+The matching preview is an owner read projection, not a GraphQL-side database
+join. Until the physical structured-data namespace itself is rekeyed by stable
+data owner, an active tenant-visible installation with the same slug makes a
+historical namespace ambiguous and the preview/apply path fails closed. Dynamic artifact settings
 have a separate owner service for recovery-point creation, purge, and restore.
 It requires an inactive uninstalled source installation, exact
 scope/data-owner/settings-instance/revision/schema/descriptor/value identity,

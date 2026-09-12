@@ -29,6 +29,7 @@ impl MigrationTrait for Migration {
                     idempotency_key UUID NOT NULL,\
                     trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) BETWEEN 1 AND 512),\
                     correlation_id UUID NOT NULL,\
+                    request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     admitted_at TIMESTAMPTZ NOT NULL,\
                     UNIQUE (scope_kind, scope_tenant_key, actor_id, idempotency_key)\
                 )",
@@ -183,6 +184,7 @@ impl MigrationTrait for Migration {
                     idempotency_key TEXT NOT NULL,\
                     trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) BETWEEN 1 AND 512),\
                     correlation_id TEXT NOT NULL,\
+                    request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     admitted_at TEXT NOT NULL,\
                     UNIQUE (scope_kind, scope_tenant_key, actor_id, idempotency_key)\
                 )",

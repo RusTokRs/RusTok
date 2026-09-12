@@ -473,16 +473,46 @@ pub enum ArtifactDataAccess {
     ObjectList,
 }
 
-/// An explicit destructive command. The authorizer receives this exact request
-/// and is responsible for lifecycle, retention, legal-hold, and actor policy
-/// checks before the database transaction begins.
+/// An explicit destructive command for one exact retired installation.
+///
+/// The caller cannot choose a module slug, data-contract revision, or policy
+/// revision. The owner derives that namespace from the installation's admitted
+/// descriptor and current capability grant after it has proved that the
+/// installation is retired.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactDataPurgeRequest {
-    pub scope: ArtifactDataScope,
+    pub installation_id: Uuid,
     pub expected_namespace_revision: u64,
     /// Mandatory authenticated evidence for this destructive owner command.
-    /// The tenant identity must match the retained data namespace exactly.
+    /// The tenant identity must match the selected installation's visible data
+    /// namespace exactly.
     pub context: ModuleCommandContext,
+    pub reason: String,
+}
+
+/// Owner-derived authority facts for one artifact-data purge.
+///
+/// This is intentionally narrower than an installation projection: it gives
+/// the host policy port the exact namespace and stable data-owner identity
+/// without exposing descriptor, registry, or storage details.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataPurgeAuthorizationContext {
+    pub installation_id: Uuid,
+    pub data_owner_id: Uuid,
+    pub installation_revision: u64,
+    pub scope: ArtifactDataScope,
+}
+
+/// Redacted, non-authoritative preview for one artifact-data purge.
+///
+/// The apply path always reloads and locks the same owner facts; this view is
+/// advisory only and never supplies an executable namespace selector.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactDataPurgePreview {
+    pub installation_id: Uuid,
+    pub namespace_revision: u64,
+    pub records_to_purge: u64,
+    pub can_purge: bool,
     pub reason: String,
 }
 
@@ -1007,6 +1037,7 @@ pub trait ArtifactDataPurgeAuthorizer: Send + Sync {
     async fn authorize_purge(
         &self,
         request: &ArtifactDataPurgeRequest,
+        context: &ArtifactDataPurgeAuthorizationContext,
     ) -> Result<(), ArtifactDataError>;
 }
 
@@ -5233,64 +5264,65 @@ where
         request: ArtifactDataPurgeRequest,
     ) -> Result<ArtifactDataPurgeResult, ArtifactDataError> {
         validate_purge_request(&request)?;
-        self.authorizer.authorize_purge(&request).await?;
-        let transaction = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&transaction, request.scope.tenant_id).await?;
-        let backend = transaction.get_database_backend();
-        if let Some(row) = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                backend,
-                format!(
-                    "SELECT expected_namespace_revision, actor_id, trace_id, correlation_id, reason, namespace_revision, purged_records
-                     FROM module_artifact_data_purge_operations
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
-                     AND policy_revision = {} AND idempotency_key = {}",
-                    placeholder(backend, 1),
-                    placeholder(backend, 2),
-                    placeholder(backend, 3),
-                    placeholder(backend, 4),
-                    placeholder(backend, 5),
-                ),
-                vec![
-                    uuid_value(request.scope.tenant_id, backend),
-                    request.scope.module_slug.clone().into(),
-                    revision_value(request.scope.data_contract_revision)?,
-                    revision_value(request.scope.policy_revision)?,
-                    uuid_value(request.context.idempotency_key, backend),
-                ],
-            ))
-            .await
-            .map_err(storage_error)?
+        let tenant_id = request
+            .context
+            .tenant_id
+            .ok_or(ArtifactDataError::PurgePrecondition)?;
+
+        // An exact terminal receipt is replayable after a later lifecycle
+        // transition. Check it before requiring that the historical target is
+        // still purge-eligible.
+        let pre_authorization = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&pre_authorization, tenant_id).await?;
+        if let Some(existing) = find_artifact_data_purge_operation(
+            &pre_authorization,
+            tenant_id,
+            request.installation_id,
+            &request,
+        )
+        .await?
         {
-            let expected_revision: i64 = row
-                .try_get("", "expected_namespace_revision")
-                .map_err(storage_error)?;
-            let actor_id = uuid_from_row(&row, "actor_id", backend)?;
-            let trace_id: String = row.try_get("", "trace_id").map_err(storage_error)?;
-            let correlation_id = uuid_from_row(&row, "correlation_id", backend)?;
-            let reason: String = row.try_get("", "reason").map_err(storage_error)?;
-            if u64::try_from(expected_revision).ok() != Some(request.expected_namespace_revision)
-                || actor_id != request.context.actor_id
-                || trace_id != request.context.trace_id
-                || correlation_id != request.context.correlation_id
-                || reason != request.reason
-            {
-                return Err(ArtifactDataError::IdempotencyConflict);
-            }
-            let namespace_revision: i64 = row
-                .try_get("", "namespace_revision")
-                .map_err(storage_error)?;
-            let purged_records: i64 = row
-                .try_get("", "purged_records")
-                .map_err(storage_error)?;
-            transaction.commit().await.map_err(storage_error)?;
-            return Ok(ArtifactDataPurgeResult {
-                namespace_revision: u64::try_from(namespace_revision)
-                    .map_err(|_| ArtifactDataError::PurgePrecondition)?,
-                purged_records: u64::try_from(purged_records)
-                    .map_err(|_| ArtifactDataError::PurgePrecondition)?,
-            });
+            pre_authorization.commit().await.map_err(storage_error)?;
+            return Ok(existing);
         }
+        let authorized_target = load_artifact_data_purge_target(
+            &pre_authorization,
+            tenant_id,
+            request.installation_id,
+            false,
+        )
+        .await?;
+        ensure_artifact_data_purge_target_is_retired(&pre_authorization, &authorized_target)
+            .await?;
+        pre_authorization.commit().await.map_err(storage_error)?;
+
+        self.authorizer
+            .authorize_purge(&request, &authorized_target.authorization)
+            .await?;
+
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, tenant_id).await?;
+        let backend = transaction.get_database_backend();
+        if let Some(existing) = find_artifact_data_purge_operation(
+            &transaction,
+            tenant_id,
+            request.installation_id,
+            &request,
+        )
+        .await?
+        {
+            transaction.commit().await.map_err(storage_error)?;
+            return Ok(existing);
+        }
+
+        let locked_target =
+            load_artifact_data_purge_target(&transaction, tenant_id, request.installation_id, true)
+                .await?;
+        ensure_artifact_data_purge_target_is_retired(&transaction, &locked_target).await?;
+        if locked_target.authorization != authorized_target.authorization {
+            return Err(ArtifactDataError::PurgePrecondition);
+        }
+        let scope = &locked_target.authorization.scope;
 
         let namespace = transaction
             .query_one_raw(Statement::from_sql_and_values(
@@ -5304,7 +5336,7 @@ where
                     placeholder(backend, 3),
                     namespace_lock_clause(backend),
                 ),
-                namespace_values(&request.scope, backend)?,
+                namespace_values(scope, backend)?,
             ))
             .await
             .map_err(storage_error)?
@@ -5331,7 +5363,7 @@ where
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                 ),
-                namespace_values(&request.scope, backend)?,
+                namespace_values(scope, backend)?,
             ))
             .await
             .map_err(storage_error)?;
@@ -5345,7 +5377,7 @@ where
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                 ),
-                namespace_values(&request.scope, backend)?,
+                namespace_values(scope, backend)?,
             ))
             .await
             .map_err(storage_error)?;
@@ -5359,7 +5391,7 @@ where
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                 ),
-                namespace_values(&request.scope, backend)?,
+                namespace_values(scope, backend)?,
             ))
             .await
             .map_err(storage_error)?
@@ -5374,7 +5406,7 @@ where
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                 ),
-                namespace_values(&request.scope, backend)?,
+                namespace_values(scope, backend)?,
             ))
             .await
             .map_err(storage_error)?;
@@ -5388,7 +5420,7 @@ where
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                 ),
-                namespace_values(&request.scope, backend)?,
+                namespace_values(scope, backend)?,
             ))
             .await
             .map_err(storage_error)?;
@@ -5402,7 +5434,7 @@ where
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                 ),
-                namespace_values(&request.scope, backend)?,
+                namespace_values(scope, backend)?,
             ))
             .await
             .map_err(storage_error)?;
@@ -5411,7 +5443,7 @@ where
             queue_artifact_data_object_gc_candidate(
                 &transaction,
                 &self.infrastructure,
-                &request.scope,
+                scope,
                 &storage_key,
             )
             .await?;
@@ -5426,7 +5458,7 @@ where
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                 ),
-                namespace_values(&request.scope, backend)?,
+                namespace_values(scope, backend)?,
             ))
             .await
             .map_err(storage_error)?
@@ -5441,7 +5473,7 @@ where
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                 ),
-                namespace_values(&request.scope, backend)?,
+                namespace_values(scope, backend)?,
             ))
             .await
             .map_err(storage_error)?;
@@ -5455,7 +5487,7 @@ where
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                 ),
-                namespace_values(&request.scope, backend)?,
+                namespace_values(scope, backend)?,
             ))
             .await
             .map_err(storage_error)?;
@@ -5481,9 +5513,9 @@ where
                 ),
                 vec![
                     revision_value(next_revision)?,
-                    uuid_value(request.scope.tenant_id, backend),
-                    request.scope.module_slug.clone().into(),
-                    revision_value(request.scope.data_contract_revision)?,
+                    uuid_value(scope.tenant_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
                     revision_value(request.expected_namespace_revision)?,
                 ],
             ))
@@ -5501,9 +5533,9 @@ where
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_purge_operations
-                     (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key, expected_namespace_revision,
+                     (tenant_id, installation_id, module_slug, data_contract_revision, policy_revision, idempotency_key, expected_namespace_revision,
                       namespace_revision, actor_id, trace_id, correlation_id, reason, purged_records, completed_at)
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5516,13 +5548,15 @@ where
                     placeholder(backend, 10),
                     placeholder(backend, 11),
                     placeholder(backend, 12),
+                    placeholder(backend, 13),
                     now_expression(backend),
                 ),
                 vec![
-                    uuid_value(request.scope.tenant_id, backend),
-                    request.scope.module_slug.clone().into(),
-                    revision_value(request.scope.data_contract_revision)?,
-                    revision_value(request.scope.policy_revision)?,
+                    uuid_value(scope.tenant_id, backend),
+                    uuid_value(request.installation_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision)?,
+                    revision_value(scope.policy_revision)?,
                     uuid_value(request.context.idempotency_key, backend),
                     revision_value(request.expected_namespace_revision)?,
                     revision_value(next_revision)?,
@@ -5541,9 +5575,9 @@ where
                 self.infrastructure.event_envelope_for_command(
                     &request.context,
                     DomainEvent::ModuleArtifactDataPurged {
-                        tenant_id: request.scope.tenant_id,
-                        module_slug: request.scope.module_slug.clone(),
-                        data_contract_revision: request.scope.data_contract_revision,
+                        tenant_id: scope.tenant_id,
+                        module_slug: scope.module_slug.clone(),
+                        data_contract_revision: scope.data_contract_revision,
                         namespace_revision: next_revision,
                         purged_records: u64::try_from(purged_records)
                             .map_err(|_| ArtifactDataError::PurgePrecondition)?,
@@ -5559,6 +5593,403 @@ where
                 .map_err(|_| ArtifactDataError::PurgePrecondition)?,
         })
     }
+}
+
+/// Owner-owned read path for a data-purge preview. The preview intentionally
+/// exposes only redacted readiness facts and cannot be used as apply input.
+#[derive(Clone)]
+pub struct ArtifactDataPurgePreviewService {
+    db: DatabaseConnection,
+}
+
+impl ArtifactDataPurgePreviewService {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+
+    pub async fn preview(
+        &self,
+        tenant_id: Uuid,
+        installation_id: Uuid,
+    ) -> Result<ArtifactDataPurgePreview, ArtifactDataError> {
+        if tenant_id.is_nil() || installation_id.is_nil() {
+            return Err(ArtifactDataError::PurgePrecondition);
+        }
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, tenant_id).await?;
+        let target =
+            load_artifact_data_purge_target(&transaction, tenant_id, installation_id, false)
+                .await?;
+
+        if !target.is_retired() {
+            transaction.commit().await.map_err(storage_error)?;
+            return Ok(ArtifactDataPurgePreview {
+                installation_id,
+                namespace_revision: 0,
+                records_to_purge: 0,
+                can_purge: false,
+                reason: "Artifact installation must be inactive and uninstalled before data purge."
+                    .to_string(),
+            });
+        }
+        if let Err(error) =
+            ensure_no_active_artifact_data_scope_collision(&transaction, &target).await
+        {
+            if matches!(error, ArtifactDataError::PurgePrecondition) {
+                transaction.commit().await.map_err(storage_error)?;
+                return Ok(ArtifactDataPurgePreview {
+                    installation_id,
+                    namespace_revision: 0,
+                    records_to_purge: 0,
+                    can_purge: false,
+                    reason: "An active installation with the same artifact slug still exists in this tenant scope."
+                        .to_string(),
+                });
+            }
+            return Err(error);
+        }
+
+        let backend = transaction.get_database_backend();
+        let scope = &target.authorization.scope;
+        let namespace = transaction
+            .query_one_raw(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT namespace_revision, CASE WHEN purged_at IS NULL THEN 0 ELSE 1 END AS is_purged
+                     FROM module_artifact_data_namespaces
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                ),
+                namespace_values(scope, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
+        let Some(namespace) = namespace else {
+            transaction.commit().await.map_err(storage_error)?;
+            return Ok(ArtifactDataPurgePreview {
+                installation_id,
+                namespace_revision: 0,
+                records_to_purge: 0,
+                can_purge: false,
+                reason: "No artifact data namespace exists for the retired installation."
+                    .to_string(),
+            });
+        };
+        let namespace_revision = u64::try_from(
+            namespace
+                .try_get::<i64>("", "namespace_revision")
+                .map_err(storage_error)?,
+        )
+        .map_err(|_| ArtifactDataError::PurgePrecondition)?;
+        let already_purged = namespace
+            .try_get::<i64>("", "is_purged")
+            .map_err(storage_error)?
+            != 0;
+        if already_purged {
+            transaction.commit().await.map_err(storage_error)?;
+            return Ok(ArtifactDataPurgePreview {
+                installation_id,
+                namespace_revision,
+                records_to_purge: 0,
+                can_purge: false,
+                reason: "Artifact data namespace is already purged.".to_string(),
+            });
+        }
+        let records_to_purge =
+            count_artifact_data_purge_records(&transaction, scope, backend).await?;
+        transaction.commit().await.map_err(storage_error)?;
+        Ok(ArtifactDataPurgePreview {
+            installation_id,
+            namespace_revision,
+            records_to_purge,
+            can_purge: true,
+            reason:
+                "Retired artifact data namespace is eligible for a separately authorized purge."
+                    .to_string(),
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ArtifactDataPurgeTarget {
+    authorization: ArtifactDataPurgeAuthorizationContext,
+    installation_scope: ModuleInstallationScope,
+    admission_status: String,
+    uninstalled: bool,
+}
+
+impl ArtifactDataPurgeTarget {
+    fn is_retired(&self) -> bool {
+        self.admission_status == "inactive" && self.uninstalled
+    }
+}
+
+async fn find_artifact_data_purge_operation<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    installation_id: Uuid,
+    request: &ArtifactDataPurgeRequest,
+) -> Result<Option<ArtifactDataPurgeResult>, ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    let row = connection
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT expected_namespace_revision, actor_id, trace_id, correlation_id, reason, namespace_revision, purged_records
+                 FROM module_artifact_data_purge_operations
+                 WHERE tenant_id = {} AND installation_id = {} AND idempotency_key = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+            ),
+            vec![
+                uuid_value(tenant_id, backend),
+                uuid_value(installation_id, backend),
+                uuid_value(request.context.idempotency_key, backend),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let expected_revision: i64 = row
+        .try_get("", "expected_namespace_revision")
+        .map_err(storage_error)?;
+    let actor_id = uuid_from_row(&row, "actor_id", backend)?;
+    let trace_id: String = row.try_get("", "trace_id").map_err(storage_error)?;
+    let correlation_id = uuid_from_row(&row, "correlation_id", backend)?;
+    let reason: String = row.try_get("", "reason").map_err(storage_error)?;
+    if u64::try_from(expected_revision).ok() != Some(request.expected_namespace_revision)
+        || actor_id != request.context.actor_id
+        || trace_id != request.context.trace_id
+        || correlation_id != request.context.correlation_id
+        || reason != request.reason
+    {
+        return Err(ArtifactDataError::IdempotencyConflict);
+    }
+    let namespace_revision: i64 = row
+        .try_get("", "namespace_revision")
+        .map_err(storage_error)?;
+    let purged_records: i64 = row.try_get("", "purged_records").map_err(storage_error)?;
+    Ok(Some(ArtifactDataPurgeResult {
+        namespace_revision: u64::try_from(namespace_revision)
+            .map_err(|_| ArtifactDataError::PurgePrecondition)?,
+        purged_records: u64::try_from(purged_records)
+            .map_err(|_| ArtifactDataError::PurgePrecondition)?,
+    }))
+}
+
+async fn load_artifact_data_purge_target<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    installation_id: Uuid,
+    lock: bool,
+) -> Result<ArtifactDataPurgeTarget, ArtifactDataError> {
+    let target =
+        query_artifact_data_purge_target(connection, tenant_id, installation_id, false).await?;
+    if !lock {
+        return Ok(target);
+    }
+    crate::installation::acquire_artifact_activation_lock(
+        connection,
+        &target.installation_scope,
+        &target.authorization.scope.module_slug,
+    )
+    .await
+    .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
+    query_artifact_data_purge_target(connection, tenant_id, installation_id, true).await
+}
+
+async fn query_artifact_data_purge_target<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    installation_id: Uuid,
+    lock: bool,
+) -> Result<ArtifactDataPurgeTarget, ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    let row = connection
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT installation.scope_kind, installation.tenant_id, installation.slug, installation.data_owner_id, \
+                        installation.capability_grant_revision, admission.revision AS installation_revision, admission.status, \
+                        CAST(installation.descriptor AS TEXT) AS descriptor, \
+                        EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
+                                WHERE uninstall.installation_id = installation.installation_id) AS uninstalled \
+                 FROM module_artifact_installations installation \
+                 JOIN module_artifact_admissions admission \
+                   ON admission.installation_id = installation.installation_id \
+                 WHERE installation.installation_id = {} \
+                   AND ((installation.scope_kind = 'platform' AND installation.tenant_id IS NULL) \
+                        OR (installation.scope_kind = 'tenant' AND installation.tenant_id = {})){}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                if lock { namespace_lock_clause(backend) } else { "" },
+            ),
+            vec![
+                uuid_value(installation_id, backend),
+                uuid_value(tenant_id, backend),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?
+        .ok_or(ArtifactDataError::PurgePrecondition)?;
+    let installation_scope = match row
+        .try_get::<String>("", "scope_kind")
+        .map_err(storage_error)?
+        .as_str()
+    {
+        "platform" => ModuleInstallationScope::Platform,
+        "tenant" => ModuleInstallationScope::Tenant {
+            tenant_id: uuid_from_row(&row, "tenant_id", backend)?,
+        },
+        _ => return Err(ArtifactDataError::PurgePrecondition),
+    };
+    let descriptor: crate::ModuleArtifactDescriptor = serde_json::from_str(
+        &row.try_get::<String>("", "descriptor")
+            .map_err(storage_error)?,
+    )
+    .map_err(|_| ArtifactDataError::DataContractUnavailable)?;
+    descriptor
+        .validate()
+        .map_err(|_| ArtifactDataError::DataContractUnavailable)?;
+    let contract = descriptor
+        .persistence_contract
+        .as_ref()
+        .ok_or(ArtifactDataError::DataContractUnavailable)?;
+    let capability_grant_revision = u64::try_from(
+        row.try_get::<i64>("", "capability_grant_revision")
+            .map_err(storage_error)?,
+    )
+    .ok()
+    .filter(|revision| *revision > 0)
+    .ok_or(ArtifactDataError::PurgePrecondition)?;
+    let scope = ArtifactDataScope {
+        tenant_id,
+        module_slug: row.try_get("", "slug").map_err(storage_error)?,
+        data_contract_revision: contract.revision,
+        policy_revision: capability_grant_revision,
+    };
+    scope.validate()?;
+    let installation_revision = u64::try_from(
+        row.try_get::<i64>("", "installation_revision")
+            .map_err(storage_error)?,
+    )
+    .ok()
+    .filter(|revision| *revision > 0)
+    .ok_or(ArtifactDataError::PurgePrecondition)?;
+    let uninstalled = match backend {
+        DbBackend::Postgres => row.try_get("", "uninstalled").map_err(storage_error)?,
+        _ => {
+            row.try_get::<i64>("", "uninstalled")
+                .map_err(storage_error)?
+                != 0
+        }
+    };
+    Ok(ArtifactDataPurgeTarget {
+        authorization: ArtifactDataPurgeAuthorizationContext {
+            installation_id,
+            data_owner_id: uuid_from_row(&row, "data_owner_id", backend)?,
+            installation_revision,
+            scope,
+        },
+        installation_scope,
+        admission_status: row.try_get("", "status").map_err(storage_error)?,
+        uninstalled,
+    })
+}
+
+async fn ensure_artifact_data_purge_target_is_retired<C: ConnectionTrait>(
+    connection: &C,
+    target: &ArtifactDataPurgeTarget,
+) -> Result<(), ArtifactDataError> {
+    if !target.is_retired() {
+        return Err(ArtifactDataError::PurgePrecondition);
+    }
+    ensure_no_active_artifact_data_scope_collision(connection, target).await
+}
+
+/// The current namespace storage still keys data by slug and data-contract
+/// revision rather than the stable data-owner identity. Until that owner-keyed
+/// storage cutover lands, any active installation with the same slug makes a
+/// historical namespace purge ambiguous and therefore ineligible.
+async fn ensure_no_active_artifact_data_scope_collision<C: ConnectionTrait>(
+    connection: &C,
+    target: &ArtifactDataPurgeTarget,
+) -> Result<(), ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    let scope = &target.authorization.scope;
+    let active = connection
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT 1
+                 FROM module_artifact_installations installation
+                 JOIN module_artifact_admissions admission
+                   ON admission.installation_id = installation.installation_id
+                 WHERE installation.slug = {}
+                   AND admission.status = 'active'
+                   AND ((installation.scope_kind = 'platform' AND installation.tenant_id IS NULL)
+                        OR (installation.scope_kind = 'tenant' AND installation.tenant_id = {}))
+                 LIMIT 1",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+            ),
+            vec![
+                scope.module_slug.clone().into(),
+                uuid_value(scope.tenant_id, backend),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?;
+    active
+        .is_none()
+        .then_some(())
+        .ok_or(ArtifactDataError::PurgePrecondition)
+}
+
+async fn count_artifact_data_purge_records<C: ConnectionTrait>(
+    connection: &C,
+    scope: &ArtifactDataScope,
+    backend: DbBackend,
+) -> Result<u64, ArtifactDataError> {
+    let structured =
+        namespace_record_count(connection, "module_artifact_data", scope, backend).await?;
+    let objects =
+        namespace_record_count(connection, "module_artifact_data_objects", scope, backend).await?;
+    structured
+        .checked_add(objects)
+        .ok_or(ArtifactDataError::PurgePrecondition)
+}
+
+async fn namespace_record_count<C: ConnectionTrait>(
+    connection: &C,
+    table: &'static str,
+    scope: &ArtifactDataScope,
+    backend: DbBackend,
+) -> Result<u64, ArtifactDataError> {
+    let row = connection
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT COUNT(*) AS record_count FROM {table}
+                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+            ),
+            namespace_values(scope, backend)?,
+        ))
+        .await
+        .map_err(storage_error)?
+        .ok_or_else(|| {
+            ArtifactDataError::Storage("artifact data record count was unavailable".to_string())
+        })?;
+    let count: i64 = row.try_get("", "record_count").map_err(storage_error)?;
+    u64::try_from(count).map_err(|_| ArtifactDataError::PurgePrecondition)
 }
 
 pub(crate) async fn configure_tenant_scope<C: ConnectionTrait>(
@@ -5759,11 +6190,12 @@ async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
 }
 
 fn validate_purge_request(request: &ArtifactDataPurgeRequest) -> Result<(), ArtifactDataError> {
-    request.scope.validate()?;
-    if request.expected_namespace_revision == 0
-        || request.context.tenant_id != Some(request.scope.tenant_id)
+    if request.installation_id.is_nil()
+        || request.expected_namespace_revision == 0
+        || request.context.tenant_id.is_none()
         || request.context.validate().is_err()
         || request.reason.trim().is_empty()
+        || request.reason.trim() != request.reason
         || request.reason.len() > 2_000
     {
         return Err(ArtifactDataError::PurgePrecondition);
@@ -5987,7 +6419,11 @@ mod tests {
         },
     };
 
-    use crate::{ModuleBindingIdempotency, ModulesModule};
+    use crate::{
+        ArtifactModuleKind, ArtifactPayloadKind, ArtifactPersistenceContract,
+        ArtifactSchemaDocument, ModuleArtifactDescriptor, ModuleBindingIdempotency, ModulesModule,
+        canonical_schema_digest,
+    };
     use async_trait::async_trait;
     use rustok_core::MigrationSource;
     use rustok_sandbox::{
@@ -6121,9 +6557,115 @@ mod tests {
         async fn authorize_purge(
             &self,
             _: &ArtifactDataPurgeRequest,
+            _: &ArtifactDataPurgeAuthorizationContext,
         ) -> Result<(), ArtifactDataError> {
             Ok(())
         }
+    }
+
+    async fn seed_retired_data_purge_installation(
+        database: &DatabaseConnection,
+        scope: &ArtifactDataScope,
+    ) -> Uuid {
+        let installation_id = Uuid::new_v4();
+        let schema = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+        });
+        let schema_digest = canonical_schema_digest(&schema);
+        let descriptor = ModuleArtifactDescriptor {
+            schema_version: crate::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+            slug: scope.module_slug.clone(),
+            version: "1.0.0".to_string(),
+            payload_kind: ArtifactPayloadKind::Rhai,
+            module_kind: ArtifactModuleKind::Optional,
+            runtime_abi: "rustok:module/runtime@1".to_string(),
+            platform_compatibility: "^0.1".to_string(),
+            required_features: Vec::new(),
+            artifact_digest: format!("sha256:{}", "a".repeat(64)),
+            entrypoint: "main".to_string(),
+            capabilities: Vec::new(),
+            bindings: Vec::new(),
+            dependencies: Vec::new(),
+            permissions: Vec::new(),
+            schema_documents: vec![ArtifactSchemaDocument {
+                digest: schema_digest.clone(),
+                document: schema,
+            }],
+            settings_schema_digest: None,
+            data_schema_digest: Some(schema_digest.clone()),
+            localization_catalogs: Vec::new(),
+            ui_contributions: Vec::new(),
+            persistence_contract: Some(ArtifactPersistenceContract {
+                revision: scope.data_contract_revision,
+                schema_digest,
+                indexes: Vec::new(),
+            }),
+        };
+        descriptor.validate().expect("valid data purge descriptor");
+        let actor_id = Uuid::new_v4();
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_artifact_installations (\
+                    installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, slug, version, payload_kind, \
+                    runtime_abi, payload_digest, entrypoint, descriptor, data_owner_id, settings_instance_id, dependency_graph_revision, \
+                    dependency_graph_digest, dependency_lock, capability_grant_revision, installed_at\
+                 ) VALUES (?1, 'tenant', ?2, 'registry.example', 'modules/purge', ?3, ?4, '1.0.0', 'rhai', \
+                    'rustok:module/runtime@1', ?5, 'main', ?6, ?7, ?8, 1, ?9, '{}', ?10, '2026-09-01T00:00:00Z')"
+                    .to_string(),
+                vec![
+                    installation_id.to_string().into(),
+                    scope.tenant_id.to_string().into(),
+                    format!("sha256:{}", "b".repeat(64)).into(),
+                    scope.module_slug.clone().into(),
+                    descriptor.artifact_digest.clone().into(),
+                    sea_orm::Value::Json(Some(Box::new(
+                        serde_json::to_value(&descriptor).expect("descriptor value"),
+                    ))),
+                    Uuid::new_v4().to_string().into(),
+                    Uuid::new_v4().to_string().into(),
+                    format!("sha256:{}", "c".repeat(64)).into(),
+                    i64::try_from(scope.policy_revision)
+                        .expect("policy revision fits SQLite integer")
+                        .into(),
+                ],
+            ))
+            .await
+            .expect("retired data purge installation");
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_artifact_admissions (\
+                    stage_id, installation_id, payload_digest, media_type, size_bytes, verification_evidence, status, revision, committed_at\
+                 ) VALUES (?1, ?2, ?3, 'application/vnd.rustok.rhai', 1, '{}', 'inactive', 1, '2026-09-01T00:00:00Z')"
+                    .to_string(),
+                vec![
+                    Uuid::new_v4().to_string().into(),
+                    installation_id.to_string().into(),
+                    format!("sha256:{}", "d".repeat(64)).into(),
+                ],
+            ))
+            .await
+            .expect("retired data purge admission");
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_artifact_uninstall_operations \
+                 (operation_id, installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) \
+                 VALUES (?1, ?2, 1, ?3, 'test:artifact-data-purge', ?4, 'retired data purge fixture', ?5, '2026-09-01T00:00:00Z')"
+                    .to_string(),
+                vec![
+                    Uuid::new_v4().to_string().into(),
+                    installation_id.to_string().into(),
+                    actor_id.to_string().into(),
+                    Uuid::new_v4().to_string().into(),
+                    Uuid::new_v4().to_string().into(),
+                ],
+            ))
+            .await
+            .expect("retired data purge uninstall evidence");
+        installation_id
     }
 
     #[derive(Clone)]
@@ -6764,8 +7306,10 @@ mod tests {
             export_envelope.trace_id.as_deref(),
             Some(export_context.trace_id.as_str())
         );
+        let purge_installation_id =
+            seed_retired_data_purge_installation(&database, &next_scope).await;
         let purge_request = ArtifactDataPurgeRequest {
-            scope: next_scope.clone(),
+            installation_id: purge_installation_id,
             expected_namespace_revision: 1,
             context: ModuleCommandContext {
                 actor_id: Uuid::new_v4(),
@@ -6828,7 +7372,7 @@ mod tests {
         let purge_receipt = database
             .query_one_raw(Statement::from_string(
                 DbBackend::Sqlite,
-                "SELECT actor_id, trace_id, correlation_id \
+                "SELECT installation_id, actor_id, trace_id, correlation_id \
                  FROM module_artifact_data_purge_operations"
                     .to_string(),
             ))
@@ -6852,6 +7396,12 @@ mod tests {
                 .try_get::<String>("", "correlation_id")
                 .expect("purge receipt correlation"),
             purge_context.correlation_id.to_string()
+        );
+        assert_eq!(
+            purge_receipt
+                .try_get::<String>("", "installation_id")
+                .expect("purge receipt installation"),
+            purge_installation_id.to_string()
         );
         let purge_event = database
             .query_one_raw(Statement::from_string(

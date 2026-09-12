@@ -683,7 +683,7 @@ impl ExternalPrebuiltIngressService {
             )));
         }
 
-        // 8. Optional trust policy verification
+        // 9. Optional trust policy verification
         if let Some(ref verifier) = self.verifier {
             let req = TrustVerificationRequest {
                 reference: package.reference.clone(),
@@ -704,7 +704,7 @@ impl ExternalPrebuiltIngressService {
             }
         }
 
-        // 9. Stream payload into platform CAS staging and publish create-if-absent
+        // 10. Stream payload into platform CAS staging and publish create-if-absent
         let (payload_size, cas_published) = match package.payload {
             ArtifactPayloadSource::Bytes(bytes) => {
                 let size = bytes.len() as u64;
@@ -747,7 +747,7 @@ impl ExternalPrebuiltIngressService {
             }
         };
 
-        // 10. Verify published payload in CAS
+        // 11. Verify published payload in CAS
         self.blobs
             .get_verified(&package.descriptor.artifact_digest)
             .await
@@ -757,7 +757,7 @@ impl ExternalPrebuiltIngressService {
             .map_err(|e| ExternalPrebuiltIngressError::Serialization(e.to_string()))?;
         let now = self.infrastructure.now();
 
-        // 11. Atomically commit admission & external prebuilt evidence in transaction
+        // 12. Atomically commit admission & external prebuilt evidence in transaction
         let tx = self
             .db
             .begin()
@@ -770,8 +770,9 @@ impl ExternalPrebuiltIngressService {
                 "INSERT INTO module_admitted_oci_releases (\
                     release_digest, scope_kind, scope_tenant_key, registry, repository, \
                     slug, version, payload_digest, payload_media_type, payload_size_bytes, \
-                    descriptor_json, artifact_origin, actor_id, idempotency_key, trace_id, correlation_id, admitted_at\
-                ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'external_prebuilt', {}, {}, {}, {}, {}) \
+                    descriptor_json, artifact_origin, actor_id, idempotency_key, trace_id, correlation_id, \
+                    request_digest, admitted_at\
+                ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'external_prebuilt', {}, {}, {}, {}, {}, {}) \
                 ON CONFLICT (release_digest) DO NOTHING",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -789,6 +790,7 @@ impl ExternalPrebuiltIngressService {
                 placeholder(backend, 14),
                 placeholder(backend, 15),
                 placeholder(backend, 16),
+                placeholder(backend, 17),
             ),
             vec![
                 command.reference.digest.clone().into(),
@@ -806,6 +808,7 @@ impl ExternalPrebuiltIngressService {
                 uuid_value(command.context.idempotency_key, backend),
                 command.context.trace_id.into(),
                 uuid_value(command.context.correlation_id, backend),
+                request_digest.into(),
                 match backend {
                     DbBackend::Postgres => sea_orm::Value::ChronoDateTimeUtc(Some(now)),
                     _ => now.to_rfc3339().into(),
