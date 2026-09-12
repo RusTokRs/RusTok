@@ -886,7 +886,12 @@ mod tests {
             )
         );
         assert_eq!(topic_context.document.title, "Welcome thread");
-        assert!(topic_context.route.canonical_url.ends_with("/welcome-thread"));
+        assert!(
+            topic_context
+                .route
+                .canonical_url
+                .ends_with("/welcome-thread")
+        );
     }
 
     #[tokio::test]
