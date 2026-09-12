@@ -6,8 +6,8 @@ use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 use rustok_core::generate_id;
 use rustok_pricing_persistence::entities::{price_list, price_list_translation};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
