@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use rustok_commerce_foundation::entities;
 
-use crate::{RegionError, RegionResult, RegionTranslationExactLocaleResult, RegionTranslationService};
+use crate::{RegionError, RegionResult, RegionTranslationService};
 
 pub const MAX_REGION_TRANSLATION_CHANGE_PAGE: u16 = 200;
 
@@ -318,9 +318,4 @@ fn invalid_sequence(field: &str) -> RegionError {
     RegionError::Validation(format!(
         "Region translation change {field} sequence must be positive"
     ))
-}
-
-#[allow(dead_code)]
-fn _keep_exact_result_visible<T>(value: RegionTranslationExactLocaleResult<T>) -> RegionTranslationExactLocaleResult<T> {
-    value
 }
