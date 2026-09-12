@@ -1,7 +1,12 @@
+mod price_list_owner;
 pub mod pricing;
 pub mod translation;
 mod translation_progress;
 
+pub use price_list_owner::{
+    CreatePriceListOwnerInput, PriceListOwnerService, PriceListOwnerSnapshot,
+    PriceListOwnerTranslationInput, UpdatePriceListOwnerInput,
+};
 pub use pricing::{
     ActivePriceListOption, AdminPricingPrice, AdminPricingProductDetail, AdminPricingProductList,
     AdminPricingProductListItem, AdminPricingProductTranslation, AdminPricingVariant,
