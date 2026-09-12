@@ -1,4 +1,5 @@
 pub mod pricing;
+pub mod translation;
 
 pub use pricing::{
     ActivePriceListOption, AdminPricingPrice, AdminPricingProductDetail, AdminPricingProductList,
@@ -7,4 +8,10 @@ pub use pricing::{
     PriceResolutionContext, PricingService, ResolvedPrice, StorefrontPricingPrice,
     StorefrontPricingProductDetail, StorefrontPricingProductList, StorefrontPricingProductListItem,
     StorefrontPricingProductTranslation, StorefrontPricingVariant,
+};
+pub use translation::{
+    PriceListTranslationExactLocaleApply, PriceListTranslationExactLocaleApplyReceipt,
+    PriceListTranslationExactLocaleError, PriceListTranslationExactLocaleRecord,
+    PriceListTranslationExactLocaleResult, PriceListTranslationExactLocaleSnapshot,
+    PriceListTranslationService,
 };
