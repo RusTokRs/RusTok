@@ -3,7 +3,7 @@ id: doc://crates/modules/rustok-translation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress
-last_reviewed: 2026-09-11
+last_reviewed: 2026-09-12
 ---
 
 # Translation implementation plan
@@ -84,40 +84,52 @@ selection.
   workload groups nonterminal work by current assignee, including unassigned
   work. Both reads fail closed on inconsistent workflow evidence and enforce
   explicit queue and workload bounds.
-- Media, Taxonomy, Navigation menu, Pages metadata, Settings static fields, and
-  Flex attached `taxonomy.category` fields are registered owner providers with
-  durable change-cursor repair and exact-locale aggregate coverage. Taxonomy
-  applies term `name`, review-only `slug`, and optional `description` through
-  owner CAS and the shared Outbox receipt ledger. Blog Category canonical copy
-  is consumed through the same-ID Blog-to-Taxonomy Category binding and the
-  `taxonomy/term` provider. Forum Category canonical copy is consumed through
-  the same-ID Forum-to-Taxonomy Category binding and the same `taxonomy/term`
-  provider. The former `blog/category` provider, Blog Category change journal,
-  and Blog-local Category translation storage are retired and must not be
-  recreated. The duplicate `forum/category` provider, Forum Category
-  change/progress runtime, and Forum-local donor translation storage are retired
-  and must not be recreated. Forum topic/reply Translation remains a separate
-  opt-in UGC onboarding track. Navigation applies its menu name and every item
-  title as one CAS-guarded locale aggregate through `MenuService`, using a
-  content-free cursor journal without claiming a generic menu event. Pages
-  applies exact title, review-only slug, and optional SEO metadata through
-  `PageService`, keeping Fly/GrapesJS bodies outside this pilot. Settings
-  registers `modules/static_settings` through the server-owned provider,
-  resolves only owner-admitted localized package fields, reads exact
-  source/target snapshots, progress and bounded changes through public Settings
-  services, and applies deterministic CAS-guarded owner commands with
-  provider-level replay safety; Translation does not read Settings persistence
-  or manifest storage directly. Flex `flex/attached_localized_value` is now a
-  retained repository-hosted pilot candidate for the `taxonomy.category` donor:
-  lifecycle exact-head run `34594653702` verifies multi-replica CAS/conflict,
-  idempotent replay, aggregate progress, schema fan-out, canonical hard-delete
-  tombstones and ChangeCursor recovery, while policy/RBAC exact-head run
-  `34592656347` verifies fail-closed defaults, safe explicit policy, forbidden
+- Media, Taxonomy, Navigation menu, Pages metadata, Settings static fields,
+  Product `product`/`variant`/`option`/`image`, Commerce `collection_copy`, SEO
+  `seo_copy`, Region `region_copy`, Inventory `stock_location_copy`, Pricing
+  `price_list_copy`, Fulfillment `shipping_option_copy`, Flex schema copy, Flex
+  attached `taxonomy.category`, and Flex standalone localized values are
+  registered owner providers. Registration is not readiness: the newer
+  Product/Commerce/SEO/Region/Inventory/Pricing/Fulfillment targets remain
+  registry-blocked until their retained PostgreSQL lifecycle/CAS/replay,
+  aggregate-progress, and ChangeCursor evidence gates are green, while broad
+  Product catalog and broad Fulfillment presentation/template parity remain
+  separate blocked completeness surfaces. Taxonomy applies term `name`,
+  review-only `slug`, and optional `description` through owner CAS and the
+  shared Outbox receipt ledger. Blog Category canonical copy is consumed
+  through the same-ID Blog-to-Taxonomy Category binding and the `taxonomy/term`
+  provider. Forum Category canonical copy is consumed through the same-ID
+  Forum-to-Taxonomy Category binding and the same `taxonomy/term` provider. The
+  former `blog/category` provider, Blog Category change journal, and Blog-local
+  Category translation storage are retired and must not be recreated. The
+  duplicate `forum/category` provider, Forum Category change/progress runtime,
+  and Forum-local donor translation storage are retired and must not be
+  recreated. Forum topic/reply Translation remains a separate opt-in UGC
+  onboarding track. Navigation applies its menu name and every item title as
+  one CAS-guarded locale aggregate through `MenuService`, using a content-free
+  cursor journal without claiming a generic menu event. Pages applies exact
+  title, review-only slug, and optional SEO metadata through `PageService`,
+  keeping Fly/GrapesJS bodies outside this pilot. Settings registers
+  `modules/static_settings` through the server-owned provider, resolves only
+  owner-admitted localized package fields, reads exact source/target snapshots,
+  progress and bounded changes through public Settings services, and applies
+  deterministic CAS-guarded owner commands with provider-level replay safety;
+  Translation does not read Settings persistence or manifest storage directly.
+  Flex `flex/attached_localized_value` is a retained repository-hosted pilot
+  candidate for the `taxonomy.category` donor: lifecycle exact-head run
+  `34594653702` verifies multi-replica CAS/conflict, idempotent replay,
+  aggregate progress, schema fan-out, canonical hard-delete tombstones and
+  ChangeCursor recovery, while policy/RBAC exact-head run `34592656347`
+  verifies fail-closed defaults, safe explicit policy, forbidden
   classifications, permission floors, unknown-field validation and policy-only
-  changes without content revision/change evidence. Standalone Flex localized
-  values remain a separate readiness track. Translation validates provider
-  facts and reports tenant-scoped projection freshness as `current`, `behind`,
-  or `unknown` by opaque cursor equality.
+  changes without content revision/change evidence. Flex
+  `flex/standalone_localized_value` is also registered with durable exact-locale
+  revision/change semantics, aggregate progress, bounded ChangeCursor and a
+  fail-closed policy plane, but its current focused retained PostgreSQL
+  lifecycle/policy runs are not green; standalone readiness therefore remains
+  blocked until exact-head and post-merge evidence is repaired and retained.
+  Translation validates provider facts and reports tenant-scoped projection
+  freshness as `current`, `behind`, or `unknown` by opaque cursor equality.
 - `TranslationPolicyService` owns a revisioned, tenant-scoped required-target
   locale subset. It validates through `TenantLocalePolicyPort`, rejects
   disabled/duplicate locales, stores the Tenant policy revision, and uses
@@ -413,7 +425,7 @@ selection.
     `taxonomy.category` lifecycle `34594653702` and policy/RBAC `34592656347`,
     application router exact-head `33608857569`, and post-merge `main`
     `33609559524`.
-- Last verified at (UTC): 2026-09-11
+- Last verified at (UTC): 2026-09-12
 - Owner: Translation module maintainers
 
 ## Milestones
@@ -477,7 +489,18 @@ selection.
    hard-delete tombstones and cursor recovery; policy/RBAC run `34592656347`
    covers the fail-closed governance plane and confirms policy-only changes do
    not manufacture content revisions. Production enablement remains an operator
-   rollout decision, and standalone Flex localized-value parity remains open.
+   rollout decision. Flex standalone localized values are now registered too,
+   but remain blocked because their current focused retained lifecycle/policy
+   PostgreSQL evidence is not green; repair and retain exact-head/post-merge
+   evidence before any standalone readiness promotion.
+10. Production composition registration is current for Product `product`,
+    `variant`, `option`, `image`, SEO `seo_copy`, Region `region_copy`, Inventory
+    `stock_location_copy`, Pricing `price_list_copy`, and Fulfillment
+    `shipping_option_copy`. Keep these exact targets blocked until retained
+    PostgreSQL CAS/replay/progress/ChangeCursor evidence is green, and keep broad
+    Product catalog plus broad Fulfillment presentation/template completeness as
+    separate onboarding surfaces rather than treating narrow registration as
+    aggregate parity.
 
 ## Verification
 
