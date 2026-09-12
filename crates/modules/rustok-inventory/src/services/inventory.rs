@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -16,7 +16,15 @@ use rustok_commerce_foundation::dto::AdjustInventoryInput;
 use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 
+use crate::translation_changes::{
+    StockLocationTranslationChangeLifecycle, record_stock_location_translation_change_in_tx,
+};
+
 use super::policy::inventory_policy_allows_backorder;
+use super::stock_location_translation::{
+    StockLocationTranslationExactLocaleError,
+    resource_revision as stock_location_translation_resource_revision,
+};
 
 pub struct InventoryService {
     db: DatabaseConnection,
@@ -572,15 +580,12 @@ impl InventoryService {
             .ok_or(CommerceError::VariantNotFound(variant_id))
     }
 
-    async fn ensure_inventory_state<C>(
+    async fn ensure_inventory_state(
         &self,
-        conn: &C,
+        conn: &DatabaseTransaction,
         tenant_id: Uuid,
         variant: &entities::product_variant::Model,
-    ) -> CommerceResult<InventoryState>
-    where
-        C: sea_orm::ConnectionTrait,
-    {
+    ) -> CommerceResult<InventoryState> {
         let location = self.ensure_default_location(conn, tenant_id).await?;
         let inventory_item = self.ensure_inventory_item(conn, variant).await?;
         let level = self
@@ -594,14 +599,11 @@ impl InventoryService {
         })
     }
 
-    async fn ensure_default_location<C>(
+    async fn ensure_default_location(
         &self,
-        conn: &C,
+        conn: &DatabaseTransaction,
         tenant_id: Uuid,
-    ) -> CommerceResult<entities::stock_location::Model>
-    where
-        C: sea_orm::ConnectionTrait,
-    {
+    ) -> CommerceResult<entities::stock_location::Model> {
         if let Some(location) = entities::stock_location::Entity::find()
             .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
             .filter(entities::stock_location::Column::DeletedAt.is_null())
@@ -632,7 +634,7 @@ impl InventoryService {
         .await
         .map_err(CommerceError::from)?;
 
-        entities::stock_location_translation::ActiveModel {
+        let translation = entities::stock_location_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             stock_location_id: Set(location.id),
             locale: Set("en".to_string()),
@@ -641,6 +643,21 @@ impl InventoryService {
         .insert(conn)
         .await
         .map_err(CommerceError::from)?;
+
+        let resource_revision = stock_location_translation_resource_revision(
+            &location,
+            std::slice::from_ref(&translation),
+        );
+        record_stock_location_translation_change_in_tx(
+            conn,
+            tenant_id,
+            location.id,
+            Uuid::new_v4(),
+            &resource_revision,
+            StockLocationTranslationChangeLifecycle::Active,
+        )
+        .await
+        .map_err(translation_change_error_to_commerce_error)?;
 
         Ok(location)
     }
@@ -723,6 +740,17 @@ impl InventoryService {
             .into_iter()
             .map(|level| level.stocked_quantity - level.reserved_quantity)
             .sum())
+    }
+}
+
+fn translation_change_error_to_commerce_error(
+    error: StockLocationTranslationExactLocaleError,
+) -> CommerceError {
+    match error {
+        StockLocationTranslationExactLocaleError::Database(error) => CommerceError::Database(error),
+        other => CommerceError::Validation(format!(
+            "Inventory translation change journal write failed: {other}"
+        )),
     }
 }
 
