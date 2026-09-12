@@ -2,6 +2,7 @@ pub mod fulfillment;
 pub mod provider_operation;
 pub mod provider_operation_recovery;
 pub mod shipping_option_translation;
+mod translation_progress;
 
 pub use fulfillment::FulfillmentService;
 pub use provider_operation::{
