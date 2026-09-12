@@ -505,7 +505,7 @@ fn ensure_revision(
     Ok(())
 }
 
-fn resource_revision(
+pub(crate) fn resource_revision(
     price_list: &price_list::Model,
     translations: &[price_list_translation::Model],
 ) -> String {
