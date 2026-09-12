@@ -131,16 +131,38 @@ LIMIT $4
     }
 }
 
-/// Records the exact post-command Collection translation state under the same
-/// root outbox envelope and owner transaction that made the semantic change.
-/// Repeated envelopes or unrelated owner events are harmless: root/target
-/// uniqueness and semantic revision dedupe suppress duplicate evidence.
+/// Records an Active Collection translation change under the same owner
+/// transaction and root outbox envelope that made the semantic copy change.
 pub(crate) async fn record_collection_translation_change_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     collection_id: Uuid,
     root_event_id: Uuid,
     resource_revision: &str,
+) -> CommerceResult<()> {
+    record_collection_translation_lifecycle_change_in_tx(
+        txn,
+        tenant_id,
+        collection_id,
+        root_event_id,
+        resource_revision,
+        CollectionTranslationChangeLifecycle::Active,
+    )
+    .await
+}
+
+/// Records the exact post-command Collection translation lifecycle under the
+/// same root outbox envelope and owner transaction that made the semantic change.
+/// Semantic revision+lifecycle dedupe suppresses duplicate evidence while still
+/// allowing an Active resource to transition to Deleted without inventing a new
+/// revision format.
+pub(crate) async fn record_collection_translation_lifecycle_change_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    collection_id: Uuid,
+    root_event_id: Uuid,
+    resource_revision: &str,
+    lifecycle: CollectionTranslationChangeLifecycle,
 ) -> CommerceResult<()> {
     if txn.get_database_backend() != DatabaseBackend::Postgres {
         return Ok(());
@@ -171,9 +193,8 @@ LIMIT 1
     .one(txn)
     .await?
     {
-        let lifecycle = CollectionTranslationChangeLifecycle::parse(&previous.lifecycle)?;
         if previous.resource_revision == resource_revision
-            && lifecycle == CollectionTranslationChangeLifecycle::Active
+            && CollectionTranslationChangeLifecycle::parse(&previous.lifecycle)? == lifecycle
         {
             return Ok(());
         }
@@ -197,7 +218,7 @@ ON CONFLICT (root_event_id, collection_id) DO NOTHING
             tenant_id.into(),
             collection_id.into(),
             resource_revision.to_owned().into(),
-            CollectionTranslationChangeLifecycle::Active.as_str().into(),
+            lifecycle.as_str().into(),
         ],
     ))
     .await?;
