@@ -11,7 +11,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::entities::{shipping_option, shipping_option_translation};
+use crate::{
+    entities::{shipping_option, shipping_option_translation},
+    translation_changes::{
+        ShippingOptionTranslationChangeLifecycle,
+        record_shipping_option_translation_change_in_tx,
+    },
+};
 
 pub const MAX_SHIPPING_OPTION_TRANSLATION_RESOURCE_PAGE: u16 = 200;
 
@@ -325,6 +331,17 @@ impl ShippingOptionTranslationService {
             })?;
         let resource_revision = resource_revision(&option, &translations_after);
         let operation_id = operation_lease.map(|lease| lease.operation_id);
+        if !unchanged {
+            record_shipping_option_translation_change_in_tx(
+                &txn,
+                tenant_id,
+                shipping_option_id,
+                operation_id.unwrap_or_else(generate_id),
+                &resource_revision,
+                ShippingOptionTranslationChangeLifecycle::from(option.active),
+            )
+            .await?;
+        }
         let receipt = ShippingOptionTranslationExactLocaleApplyReceipt {
             operation_id,
             shipping_option_id,

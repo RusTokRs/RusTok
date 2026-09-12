@@ -11,6 +11,7 @@ mod m20260713_000114_defer_checkout_create_label_until_paid;
 mod m20260713_000115_cleanup_cancelled_checkout_labels;
 mod m20260713_000116_block_premature_label_operation_inserts;
 mod m20260713_000117_enforce_checkout_fulfillment_identity;
+mod m20260912_000118_add_shipping_option_translation_change_journal;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -30,6 +31,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000115_cleanup_cancelled_checkout_labels::Migration),
         Box::new(m20260713_000116_block_premature_label_operation_inserts::Migration),
         Box::new(m20260713_000117_enforce_checkout_fulfillment_identity::Migration),
+        Box::new(m20260912_000118_add_shipping_option_translation_change_journal::Migration),
     ]
 }
 
