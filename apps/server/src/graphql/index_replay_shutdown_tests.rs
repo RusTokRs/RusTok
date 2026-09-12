@@ -187,13 +187,19 @@ async fn graphql_replay_observes_shared_stop_and_fresh_runtime_resumes_pending_j
     // The real source is already inside scan, so the pre-scan safe point has passed. Stop is
     // published deterministically while scan is pending; once released, the pre-mutation safe point
     // must observe the same shared StopHandle and yield the job without applying the mutation.
-    gate.started.notified().await;
+    tokio::select! {
+        _ = gate.started.notified() => {},
+        _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {
+            panic!("timed out waiting for scan gate to start");
+        }
+    }
     first.stop_handle.stop().await;
     assert!(first.stop_handle.is_stopping());
     gate.release.notify_one();
 
-    let first_response = request_task
+    let first_response = tokio::time::timeout(std::time::Duration::from_secs(30), request_task)
         .await
+        .expect("timed out waiting for request_task to finish")
         .expect("GraphQL replay task should join without panic");
     assert!(
         first_response.errors.is_empty(),

@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn revision_conflict_maps_to_typed_conflict_without_capability_fields() {
+    fn revision_conflict_maps_to_conflict_without_capability_fields() {
         let error = PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Dispatch(
             BrowserIntentDispatchError::RevisionConflict {
                 expected: "rev-2".to_string(),

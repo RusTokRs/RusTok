@@ -341,6 +341,7 @@ impl CacheBackend for GenerationRecoveryHealthBackend {
 mod recovery_tests {
     use super::*;
 
+    #[cfg(feature = "redis-cache")]
     fn unique_prefix(name: &str) -> String {
         format!(
             "test:generation-recovery:{name}:{}",

@@ -74,7 +74,7 @@ pub(crate) fn AssetSection(runtime: AdminEditorRuntime) -> impl IntoView {
                     });
                     catalog.assets.into_iter().map(|asset| {
                         let use_runtime = list_runtime.clone();
-                        let use_disabled_runtime = list_runtime.clone();
+                        let use_action_runtime = list_runtime.clone();
                         let remove_runtime = list_runtime.clone();
                         let use_id = asset.id.clone();
                         let remove_id = asset.id.clone();
@@ -92,14 +92,12 @@ pub(crate) fn AssetSection(runtime: AdminEditorRuntime) -> impl IntoView {
                                         type="button"
                                         class="rounded border border-border px-2 py-1"
                                         aria-label=select_accessible_label
-                                        disabled=move || !use_disabled_runtime.capability_enabled(
-                                            EditorCapability::Properties,
-                                        )
+                                        disabled=move || !use_runtime.capability_enabled(EditorCapability::Properties)
                                         on:click=move |_| {
-                                            let intent = use_runtime.controller.with(|controller| {
+                                            let intent = use_action_runtime.controller.with(|controller| {
                                                 controller.apply_asset_to_selected_intent(&use_id, "src")
                                             });
-                                            use_runtime.dispatch_result(intent);
+                                            use_action_runtime.dispatch_result(intent);
                                         }
                                     >{select_label}</button>
                                     <button

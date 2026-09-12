@@ -20,9 +20,10 @@ use rustok_translation_targets::{
     TranslationResourcePage, TranslationResourceSnapshot, TranslationResourceSummary,
     TranslationStrategy, TranslationTargetCapability, TranslationTargetChange,
     TranslationTargetChangePage, TranslationTargetChangesRequest, TranslationTargetProgressFacts,
-    TranslationTargetProgressRequest, TranslationTargetProvider, TranslationTargetProviderDescriptor,
-    TranslationTargetRegistryError, TranslationValueProfile, register_translation_target_provider,
-    validate_translation_apply_context, validate_translation_read_context,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, TranslationTargetRegistryError, TranslationValueProfile,
+    register_translation_target_provider, validate_translation_apply_context,
+    validate_translation_read_context,
 };
 use sea_orm::{
     AccessMode, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -31,9 +32,9 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use crate::SeoError;
 use crate::entities as seo_meta;
 use crate::entities::meta_translation;
-use crate::SeoError;
 
 use super::events::SeoMetaUpsertedEventInput;
 use super::{SeoService, trimmed_option};
@@ -287,7 +288,11 @@ impl SeoTranslationTargetProvider {
             provider_receipt_id: operation_id.to_string(),
             resource_revision: after.summary.resource_revision,
             target_revision,
-            applied_field_keys: request.fields.iter().map(|field| field.key.clone()).collect(),
+            applied_field_keys: request
+                .fields
+                .iter()
+                .map(|field| field.key.clone())
+                .collect(),
         })
     }
 }
@@ -712,10 +717,7 @@ where
         .filter(|translation| SeoCopy::from_model(translation).has_any())
         .map(|translation| {
             TenantLocale::new(translation.locale.clone()).map_err(|error| {
-                PortError::invariant_violation(
-                    "seo.translation_locale_invalid",
-                    error.to_string(),
-                )
+                PortError::invariant_violation("seo.translation_locale_invalid", error.to_string())
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -942,10 +944,7 @@ where
         .filter(|row| SeoCopy::from_model(row).has_any())
         .map(|row| {
             TenantLocale::new(row.locale).map_err(|error| {
-                PortError::invariant_violation(
-                    "seo.translation_locale_invalid",
-                    error.to_string(),
-                )
+                PortError::invariant_violation("seo.translation_locale_invalid", error.to_string())
             })
         })
         .collect()
@@ -1044,11 +1043,7 @@ where
         .ok_or_else(resource_not_found)
 }
 
-async fn advisory_lock<C>(
-    db: &C,
-    tenant_id: Uuid,
-    idempotency_key: &str,
-) -> Result<(), PortError>
+async fn advisory_lock<C>(db: &C, tenant_id: Uuid, idempotency_key: &str) -> Result<(), PortError>
 where
     C: ConnectionTrait,
 {
@@ -1155,7 +1150,11 @@ fn receipt_to_application(
         provider_receipt_id: receipt.operation_id.to_string(),
         resource_revision,
         target_revision,
-        applied_field_keys: request.fields.iter().map(|field| field.key.clone()).collect(),
+        applied_field_keys: request
+            .fields
+            .iter()
+            .map(|field| field.key.clone())
+            .collect(),
     })
 }
 
@@ -1352,10 +1351,7 @@ fn verify_target_copy(
     Ok(())
 }
 
-fn take_optional(
-    values: &mut BTreeMap<String, Option<String>>,
-    key: &str,
-) -> Option<String> {
+fn take_optional(values: &mut BTreeMap<String, Option<String>>, key: &str) -> Option<String> {
     values
         .remove(key)
         .flatten()
@@ -1387,10 +1383,7 @@ fn resource_identity(
     target_id: Uuid,
 ) -> Result<TranslationResourceIdentity, PortError> {
     let target_kind = SeoTargetSlug::new(target_kind.to_string()).map_err(|error| {
-        PortError::invariant_violation(
-            "seo.translation_target_kind_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("seo.translation_target_kind_invalid", error.to_string())
     })?;
     Ok(TranslationResourceIdentity {
         owner_slug: OwnerSlug::new(OWNER_SLUG)
@@ -1495,10 +1488,7 @@ fn opaque_owner_revision(prefix: &str, revision: i64) -> Result<OpaqueRevision, 
         ));
     }
     OpaqueRevision::new(format!("{prefix}:{revision}")).map_err(|error| {
-        PortError::invariant_violation(
-            "seo.translation_revision_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("seo.translation_revision_invalid", error.to_string())
     })
 }
 
