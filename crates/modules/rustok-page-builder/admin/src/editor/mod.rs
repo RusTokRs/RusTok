@@ -91,8 +91,13 @@ pub(crate) use runtime_scenario_regression::RuntimeScenarioRegressionPanel;
 pub(crate) use runtime_scenarios::RuntimeScenarioPanel;
 pub(crate) use server_preview::ServerPreviewPanel;
 pub(crate) use shortcut_dispatch::dispatch_shortcut;
-pub(crate) use ssr_actions_forms::SsrActionsFormsPanel;
-pub(crate) use ssr_assets::SsrAssetPanel;
+pub use ssr_actions_forms::{
+    SsrActionsFormsPanel, SsrComponentActionRequest, SsrComponentFormRequest,
+    SsrNativeFormFieldRequest,
+};
+pub use ssr_assets::{
+    SsrAssetApplyRequest, SsrAssetPanel, SsrAssetRemoveRequest, SsrAssetUpsertRequest,
+};
 pub(crate) use ssr_drop::SsrDropRequest;
 pub(crate) use ssr_inspector::SsrInspectorPanel;
 pub(crate) use ssr_internal_link::{

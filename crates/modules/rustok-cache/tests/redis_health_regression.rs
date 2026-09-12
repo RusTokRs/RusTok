@@ -1,3 +1,5 @@
+#![cfg(feature = "redis-cache")]
+
 use rustok_cache::CacheService;
 
 #[cfg(feature = "redis-cache")]

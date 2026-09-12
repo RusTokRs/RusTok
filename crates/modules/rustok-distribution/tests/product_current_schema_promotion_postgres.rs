@@ -548,6 +548,14 @@ CREATE TABLE taxonomy_terms (
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     UNIQUE (tenant_id, id)
 );
+CREATE TABLE taxonomy_term_translations (
+    id UUID PRIMARY KEY,
+    term_id UUID NOT NULL,
+    tenant_id UUID NOT NULL,
+    locale TEXT NOT NULL,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL
+);
 CREATE TABLE oauth_apps (
     id UUID PRIMARY KEY
 );

@@ -122,7 +122,6 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-plan-base
         run: >-
           cargo run
-          --locked
           --manifest-path "$GITHUB_WORKSPACE/base/Cargo.toml"
           -p rustok-migrations
           --bin export_migration_plan

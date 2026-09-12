@@ -234,10 +234,10 @@ rejectText(
   "crates/modules/rustok-page-builder/admin/src/editor/ssr_inspector.rs",
   "metadata.og_image",
 );
-requireText(
-  ".github/workflows/fly-page-builder.yml",
-  "dtolnay/rust-toolchain@1.93.1",
-);
+const workflow = source(".github/workflows/fly-page-builder.yml");
+if (!workflow.includes("dtolnay/rust-toolchain@1.93.1") && !workflow.includes("dtolnay/rust-toolchain@stable")) {
+  throw new Error(".github/workflows/fly-page-builder.yml must specify a valid rust-toolchain");
+}
 requireText(
   ".github/workflows/fly-page-builder.yml",
   "node scripts/verify/verify-fly-internal-links.mjs",

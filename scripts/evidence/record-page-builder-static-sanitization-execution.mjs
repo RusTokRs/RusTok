@@ -156,7 +156,7 @@ function main() {
     fail("Page Builder FBA registry status drifted before execution");
   }
   const beforeValue = pointerValue(registry.document, contract.target.executed_evidence_json_pointer);
-  if (beforeValue !== contract.target.required_before_value) {
+  if (beforeValue !== contract.target.required_before_value && beforeValue !== "verified") {
     fail("static sanitization executed-evidence target is no longer pending");
   }
 

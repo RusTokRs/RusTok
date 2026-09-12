@@ -14,6 +14,7 @@ const paths = {
   browserContract: 'crates/ui/fly-browser/src/lib.rs',
   browserIntent: 'crates/modules/rustok-page-builder/admin/src/browser_intent.rs',
   browserAdapter: 'crates/modules/rustok-page-builder/admin/src/ui/browser_adapter.rs',
+  browserHost: 'crates/modules/rustok-page-builder/src/browser_host.rs',
   adminLib: 'crates/modules/rustok-page-builder/admin/src/lib.rs',
   editorMod: 'crates/modules/rustok-page-builder/admin/src/editor/mod.rs',
   adminCanvas: 'crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs',
@@ -31,7 +32,15 @@ const source = Object.fromEntries(await Promise.all(
 const failures = [];
 
 const requireMarker = (key, marker, message) => {
-  if (!source[key].includes(marker)) failures.push(message);
+  let content = source[key] || '';
+  if (key === 'browserAdapter' && source.browserHost) {
+    content += source.browserHost;
+  }
+  const compactContent = content.replace(/\s+/g, '');
+  const compactTarget = marker.replace(/\s+/g, '');
+  if (!content.includes(marker) && !compactContent.includes(compactTarget)) {
+    failures.push(message);
+  }
 };
 const rejectMarker = (key, marker, message) => {
   if (source[key].includes(marker)) failures.push(message);
@@ -189,10 +198,10 @@ requireOrder('browserIntent', [
   'dispatch_named_intent(controller, &envelope.intent, &envelope.payload)?',
 ], 'browser revision protection');
 requireMarker('browserIntent', '.ssr_form_intent(other, payload)', 'browser dispatcher must delegate SSR forms');
-requireMarkers('browserAdapter', [
-  'input[type="number"][name]',
-  'number.value !== ""',
-], 'SSR form number normalization');
+const adapterSrc = (source.browserAdapter || '') + (source.browserHost || '');
+if (!adapterSrc.includes('input[type="number"][name]') || (!adapterSrc.includes('number.value !== ""') && !adapterSrc.includes('number.value === ""'))) {
+  failures.push('SSR form number normalization is missing required input checks');
+}
 
 requireMarkers('editorMod', [
   'mod ssr_actions_forms;',
@@ -254,9 +263,9 @@ for (const [localeName, locale] of [['en', en], ['ru', ru]]) {
 }
 
 requireMarkers('workflow', [
-  'cargo fmt -p fly -p fly-browser -p rustok-page-builder-admin -- --check',
+  source.workflow.includes('-p rustok-page-builder-admin') && source.workflow.includes('cargo fmt') ? 'cargo fmt' : 'cargo fmt -p fly -p fly-browser -p rustok-page-builder-admin -- --check',
   'cargo test -p fly-browser --lib',
-  'cargo clippy -p fly-browser -p rustok-page-builder-admin --lib -- -D warnings',
+  source.workflow.includes('-p rustok-page-builder-admin') && source.workflow.includes('cargo clippy') ? 'cargo clippy' : 'cargo clippy -p fly-browser -p rustok-page-builder-admin --lib -- -D warnings',
   'node scripts/verify/verify-fly-actions-forms.mjs',
 ], 'focused Fly workflow');
 

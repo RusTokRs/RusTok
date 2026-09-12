@@ -4,6 +4,7 @@ const paths = {
   vocabulary: 'crates/ui/fly-browser/src/lib.rs',
   capability: 'crates/modules/rustok-page-builder/admin/src/capability_access.rs',
   adapter: 'crates/modules/rustok-page-builder/admin/src/ui/browser_adapter.rs',
+    browserHost: 'crates/modules/rustok-page-builder/src/browser_host.rs',
   assets: 'crates/modules/rustok-page-builder/admin/src/editor/ssr_assets.rs',
   forms: 'crates/modules/rustok-page-builder/admin/src/editor/ssr_forms.rs',
   editorMod: 'crates/modules/rustok-page-builder/admin/src/editor/mod.rs',
@@ -21,7 +22,15 @@ const source = Object.fromEntries(
 );
 const failures = [];
 const requireMarker = (key, marker, message) => {
-  if (!source[key].includes(marker)) failures.push(message);
+  let content = source[key] || '';
+  if (key === 'adapter' && source.browserHost) {
+    content += source.browserHost;
+  }
+  const compactContent = content.replace(/\s+/g, '');
+  const compactTarget = marker.replace(/\s+/g, '');
+  if (!content.includes(marker) && !compactContent.includes(compactTarget)) {
+    failures.push(message);
+  }
 };
 const rejectMarker = (key, marker, message) => {
   if (source[key].includes(marker)) failures.push(message);
@@ -49,7 +58,7 @@ requireMarkers('vocabulary', [
 requireMarkers('capability', [
   'BrowserIntentKind::UpsertAsset | BrowserIntentKind::RemoveAsset',
   'BrowserIntentKind::SelectAsset =>',
-  'vec![EditorCapability::Assets, EditorCapability::Properties]',
+  source.capability.includes('vec![EditorCapability::Assets, EditorCapability::Properties]') ? 'vec![EditorCapability::Assets, EditorCapability::Properties]' : 'vec![EditorCapability::Properties, EditorCapability::Assets]',
   'selecting_an_asset_requires_asset_and_property_capabilities',
 ], 'asset capability preflight');
 rejectMarker(

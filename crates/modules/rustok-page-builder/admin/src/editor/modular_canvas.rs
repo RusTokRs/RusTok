@@ -163,7 +163,7 @@ pub fn AdminCanvas(
     let ssr_translations_runtime = runtime.clone();
     let ssr_localized_metadata_runtime = runtime.clone();
     let ssr_internal_link_runtime = runtime.clone();
-    let ssr_actions_runtime = runtime.clone();
+    let ssr_actions_forms_runtime = runtime.clone();
     let ssr_assets_runtime = runtime.clone();
     let ssr_inspector_runtime = runtime.clone();
     let announcement_runtime = runtime.clone();
@@ -221,7 +221,7 @@ pub fn AdminCanvas(
                     <SsrTranslationsPanel runtime=ssr_translations_runtime />
                     <SsrLocalizedMetadataPanel runtime=ssr_localized_metadata_runtime />
                     <SsrInternalPageLinkPanel runtime=ssr_internal_link_runtime />
-                    <SsrActionsFormsPanel runtime=ssr_actions_runtime />
+                    <SsrActionsFormsPanel runtime=ssr_actions_forms_runtime />
                     <SsrAssetPanel runtime=ssr_assets_runtime />
                     <SsrInspectorPanel runtime=ssr_inspector_runtime />
                     <AuditPanel runtime=audit_runtime />
