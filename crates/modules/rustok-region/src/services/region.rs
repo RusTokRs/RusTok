@@ -17,6 +17,7 @@ use crate::dto::{
     RegionTranslationInput, RegionTranslationResponse, UpdateRegionInput,
 };
 use crate::error::{RegionError, RegionResult};
+use crate::translation_changes::record_current_region_translation_change_in_tx;
 
 pub struct RegionService {
     db: DatabaseConnection,
@@ -65,6 +66,13 @@ impl RegionService {
 
         insert_translations(&txn, region_id, &translations).await?;
         replace_country_tax_policies(&txn, region_id, &country_tax_policies).await?;
+        record_current_region_translation_change_in_tx(
+            &txn,
+            tenant_id,
+            region_id,
+            generate_id(),
+        )
+        .await?;
         txn.commit().await?;
 
         self.get_region(tenant_id, region_id, None, None).await
@@ -133,6 +141,7 @@ impl RegionService {
             .translations
             .map(normalize_translation_inputs)
             .transpose()?;
+        let translation_copy_changed = normalized_translations.is_some();
         let txn = self.db.begin().await?;
         let existing = entities::region::Entity::find_by_id(region_id)
             .filter(entities::region::Column::TenantId.eq(tenant_id))
@@ -169,6 +178,15 @@ impl RegionService {
         }
         if let Some(translations) = normalized_translations {
             replace_translations(&txn, region_id, &translations).await?;
+        }
+        if translation_copy_changed {
+            record_current_region_translation_change_in_tx(
+                &txn,
+                tenant_id,
+                region_id,
+                generate_id(),
+            )
+            .await?;
         }
         txn.commit().await?;
 
