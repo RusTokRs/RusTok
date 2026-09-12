@@ -5,6 +5,9 @@ use crate::{
     CommerceError, CommerceResult, services::collection_translation::CollectionTranslationService,
 };
 
+#[path = "services/collection_owner.rs"]
+mod collection_owner;
+
 pub const MAX_COLLECTION_TRANSLATION_CHANGE_PAGE: u16 = 200;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,7 +134,7 @@ LIMIT $4
     }
 }
 
-/// Records the exact post-command Collection translation state under the same
+/// Records the exact post-command active Collection translation state under the same
 /// root outbox envelope and owner transaction that made the semantic change.
 /// Repeated envelopes or unrelated owner events are harmless: root/target
 /// uniqueness and semantic revision dedupe suppress duplicate evidence.
@@ -141,6 +144,28 @@ pub(crate) async fn record_collection_translation_change_in_tx(
     collection_id: Uuid,
     root_event_id: Uuid,
     resource_revision: &str,
+) -> CommerceResult<()> {
+    record_collection_translation_lifecycle_change_in_tx(
+        txn,
+        tenant_id,
+        collection_id,
+        root_event_id,
+        resource_revision,
+        CollectionTranslationChangeLifecycle::Active,
+    )
+    .await
+}
+
+/// Records owner lifecycle evidence in the same transaction as the Collection mutation.
+/// Deleted rows deliberately retain the last active resource revision so bounded consumers can
+/// invalidate exactly the state they observed before the soft delete.
+pub(crate) async fn record_collection_translation_lifecycle_change_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    collection_id: Uuid,
+    root_event_id: Uuid,
+    resource_revision: &str,
+    lifecycle: CollectionTranslationChangeLifecycle,
 ) -> CommerceResult<()> {
     if txn.get_database_backend() != DatabaseBackend::Postgres {
         return Ok(());
@@ -171,10 +196,8 @@ LIMIT 1
     .one(txn)
     .await?
     {
-        let lifecycle = CollectionTranslationChangeLifecycle::parse(&previous.lifecycle)?;
-        if previous.resource_revision == resource_revision
-            && lifecycle == CollectionTranslationChangeLifecycle::Active
-        {
+        let previous_lifecycle = CollectionTranslationChangeLifecycle::parse(&previous.lifecycle)?;
+        if previous.resource_revision == resource_revision && previous_lifecycle == lifecycle {
             return Ok(());
         }
     }
@@ -197,7 +220,7 @@ ON CONFLICT (root_event_id, collection_id) DO NOTHING
             tenant_id.into(),
             collection_id.into(),
             resource_revision.to_owned().into(),
-            CollectionTranslationChangeLifecycle::Active.as_str().into(),
+            lifecycle.as_str().into(),
         ],
     ))
     .await?;
