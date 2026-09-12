@@ -4,7 +4,7 @@ use chrono::Utc;
 use rustok_api::normalize_locale_tag;
 use rustok_core::generate_id;
 use sea_orm::sea_query::{Alias, OnConflict, Query};
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QuerySelect};
 use uuid::Uuid;
 
 use crate::dto::{
@@ -113,6 +113,13 @@ pub(crate) async fn upsert_translation<C: ConnectionTrait>(
     display_name: String,
 ) -> MarketplaceSellerResult<seller_translation::Model> {
     let locale = normalize_seller_locale(locale)?;
+    seller::Entity::find_by_id(seller_id)
+        .filter(seller::Column::TenantId.eq(tenant_id))
+        .lock_exclusive()
+        .one(connection)
+        .await?
+        .ok_or(MarketplaceSellerError::SellerNotFound(seller_id))?;
+
     let now = Utc::now().fixed_offset();
     let mut insert = Query::insert();
     insert
