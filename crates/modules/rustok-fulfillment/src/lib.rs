@@ -18,6 +18,7 @@ pub mod services;
 mod shipping_option_admin_command;
 mod shipping_option_read;
 pub mod status;
+mod translation_target;
 
 pub use admin_command::{
     CancelAdminFulfillmentRequest, DeliverAdminFulfillmentRequest, FulfillmentAdminCommandPort,
@@ -60,6 +61,9 @@ pub use shipping_option_read::{
     in_process_shipping_option_admin_read_port, in_process_shipping_option_read_port,
 };
 pub use status::*;
+pub use translation_target::{
+    ShippingOptionTranslationTargetProvider, register_shipping_option_translation_target_provider,
+};
 
 pub use error::{FulfillmentError, FulfillmentResult};
 pub use services::{
