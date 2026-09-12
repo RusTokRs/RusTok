@@ -161,17 +161,18 @@ impl PriceListOwnerService {
             .ok_or_else(|| CommerceError::Validation("price_list_id was not found".to_string()))?;
         let existing_translations = load_translations(&txn, price_list_id).await?;
 
-        let next_starts_at = input
-            .starts_at
-            .as_ref()
-            .map(|value| value.as_ref())
-            .unwrap_or(current.starts_at.as_ref().map(|value| value.as_ref()));
-        let next_ends_at = input
-            .ends_at
-            .as_ref()
-            .map(|value| value.as_ref())
-            .unwrap_or(current.ends_at.as_ref().map(|value| value.as_ref()));
-        validate_window(next_starts_at, next_ends_at)?;
+        let next_starts_at = match &input.starts_at {
+            Some(value) => value.clone(),
+            None => current
+                .starts_at
+                .as_ref()
+                .map(|value| value.with_timezone(&Utc)),
+        };
+        let next_ends_at = match &input.ends_at {
+            Some(value) => value.clone(),
+            None => current.ends_at.as_ref().map(|value| value.with_timezone(&Utc)),
+        };
+        validate_window(next_starts_at.as_ref(), next_ends_at.as_ref())?;
 
         let mut active: price_list::ActiveModel = current.into();
         if let Some(list_type) = list_type {
@@ -405,8 +406,10 @@ fn snapshot(
         channel_slug: model.channel_slug,
         rule_kind: model.rule_kind,
         adjustment_percent: model.adjustment_percent,
-        starts_at: model.starts_at.map(Into::into),
-        ends_at: model.ends_at.map(Into::into),
+        starts_at: model
+            .starts_at
+            .map(|value| value.with_timezone(&Utc)),
+        ends_at: model.ends_at.map(|value| value.with_timezone(&Utc)),
         translations: translations
             .into_iter()
             .map(|translation| PriceListOwnerTranslationInput {
