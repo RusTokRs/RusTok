@@ -5,6 +5,9 @@ use crate::{
     CommerceError, CommerceResult, services::collection_translation::CollectionTranslationService,
 };
 
+#[path = "services/collection_owner.rs"]
+mod collection_owner;
+
 pub const MAX_COLLECTION_TRANSLATION_CHANGE_PAGE: u16 = 200;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
