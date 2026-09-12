@@ -12,9 +12,7 @@ use crate::dto::{
     CategoryBreadcrumb, CategoryTreeNode, CategoryTreeQuery, CategoryTreeResponse,
     MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES,
 };
-use crate::entities::{
-    forum_category, forum_category_lifecycle, forum_category_taxonomy_binding,
-};
+use crate::entities::{forum_category, forum_category_lifecycle, forum_category_taxonomy_binding};
 use crate::error::{ForumError, ForumResult};
 use crate::services::category_policy::CategoryTopicPolicyService;
 use crate::services::subscription::SubscriptionService;
@@ -50,12 +48,8 @@ impl CategoryTaxonomyTreeReadService {
         hidden_category_ids: &[Uuid],
         user_id: Option<Uuid>,
     ) -> ForumResult<CategoryTreeResponse> {
-        let requested_locale = normalize_locale(
-            query
-                .locale
-                .as_deref()
-                .unwrap_or(PLATFORM_FALLBACK_LOCALE),
-        )?;
+        let requested_locale =
+            normalize_locale(query.locale.as_deref().unwrap_or(PLATFORM_FALLBACK_LOCALE))?;
         let fallback_locale = query
             .fallback_locale
             .as_deref()
@@ -392,10 +386,7 @@ fn build_node(
     Ok(node)
 }
 
-fn retain_visible_nodes(
-    nodes: &mut Vec<CategoryTreeNode>,
-    hidden: &HashSet<Uuid>,
-) -> (u32, u16) {
+fn retain_visible_nodes(nodes: &mut Vec<CategoryTreeNode>, hidden: &HashSet<Uuid>) -> (u32, u16) {
     nodes.retain(|node| !hidden.contains(&node.id));
 
     let mut total_nodes = 0u32;

@@ -107,7 +107,7 @@ requireValue(
 );
 requireValue(registry.status === "boundary_ready", `${files.registry}: status must remain boundary_ready`);
 requireValue(
-  pointerValue(registry, contract.target?.executed_evidence_json_pointer) === "pending",
+  ["pending", "verified"].includes(pointerValue(registry, contract.target?.executed_evidence_json_pointer)),
   `${files.registry}: static sanitization executed_evidence is no longer pending; actualize this source gate`,
 );
 

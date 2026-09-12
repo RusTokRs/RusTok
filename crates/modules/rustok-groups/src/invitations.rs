@@ -193,12 +193,10 @@ impl GroupInvitationService {
             query = query
                 .filter(invitation::Column::RevokedAt.is_null())
                 .filter(invitation::Column::ExpiresAt.gt(now))
-                .filter(
-                    sea_orm::sea_query::ExprTrait::lt(
-                        Expr::col(invitation::Column::UseCount),
-                        Expr::col(invitation::Column::MaxUses),
-                    ),
-                );
+                .filter(sea_orm::sea_query::ExprTrait::lt(
+                    Expr::col(invitation::Column::UseCount),
+                    Expr::col(invitation::Column::MaxUses),
+                ));
         }
         let paginator = query
             .order_by_desc(invitation::Column::CreatedAt)
@@ -688,7 +686,7 @@ async fn find_group_for_update(
         DbBackend::Sqlite => query().one(transaction).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-}
+    }
     .ok_or(GroupsError::NotFound)
 }
 
@@ -706,7 +704,7 @@ async fn find_invitation_for_update(
         DbBackend::Sqlite => query().one(transaction).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-}
+    }
     .ok_or(GroupsError::NotFound)
 }
 
@@ -724,7 +722,7 @@ async fn find_invitation_by_token_for_update(
         DbBackend::Sqlite => query().one(transaction).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
         _ => unreachable!("unsupported SeaORM database backend"),
-}
+    }
     .ok_or_else(invalid_invitation_token)
 }
 

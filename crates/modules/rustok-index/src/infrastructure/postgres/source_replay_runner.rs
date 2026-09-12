@@ -592,7 +592,10 @@ async fn finish_success(
     values.push(lease.schema().module.as_str().to_owned().into());
     values.push(lease.schema().entity.as_str().to_owned().into());
     values.push(i64::from(lease.schema().version.get()).into());
-    let locale_value = lease.locale().map(|locale| locale.as_str().to_owned()).unwrap_or_default();
+    let locale_value = lease
+        .locale()
+        .map(|locale| locale.as_str().to_owned())
+        .unwrap_or_default();
     values.push(locale_value.into());
     let updated = db
         .execute_raw(Statement::from_sql_and_values(
@@ -696,7 +699,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexReplayRunErro
         backend => Err(IndexReplayRunError::Job(IndexReplayJobError::Storage(
             format!("Index replay runner does not support {backend:?}"),
         ))),
-}
+    }
 }
 
 fn placeholder_prefix(backend: DbBackend) -> &'static str {

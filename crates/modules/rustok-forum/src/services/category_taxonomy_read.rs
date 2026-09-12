@@ -10,9 +10,7 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::dto::{CategoryListItem, CategoryResponse};
-use crate::entities::{
-    forum_category, forum_category_lifecycle, forum_category_taxonomy_binding,
-};
+use crate::entities::{forum_category, forum_category_lifecycle, forum_category_taxonomy_binding};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;

@@ -98,7 +98,6 @@ fn build_seo_event_key(scope: &str, tenant_id: Uuid, parts: &[String]) -> String
     format!("{scope}:{:016x}", simple_hash(payload.as_str()))
 }
 
-
 #[derive(Debug, Clone)]
 struct SeoIndexReindexTrigger {
     target_type: String,
@@ -1027,7 +1026,6 @@ impl SeoService {
         })
     }
 
-
     async fn dispatch_index_reindex_for_event(
         &self,
         tenant_id: Uuid,
@@ -1478,7 +1476,6 @@ impl SeoService {
     }
 }
 
-
 fn limit_delivery_error_message(message: String) -> String {
     if message.len() <= MAX_DELIVERY_ERROR_LEN {
         return message;
@@ -1489,7 +1486,6 @@ fn limit_delivery_error_message(message: String) -> String {
         .take(MAX_DELIVERY_ERROR_LEN)
         .collect::<String>()
 }
-
 
 fn is_duplicate_index_delivery_insert_error(error: &DbErr) -> bool {
     let lowered = error.to_string().to_ascii_lowercase();

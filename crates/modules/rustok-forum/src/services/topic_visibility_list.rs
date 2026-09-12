@@ -105,14 +105,16 @@ fn apply_tenant_scoped_storefront_channel_filter(
     tenant_id: Uuid,
     channel_slug: Option<&str>,
 ) -> Select<forum_topic::Entity> {
-    let unrestricted = forum_topic::Column::Id
-        .not_in_subquery(tenant_topic_channel_access_subquery(tenant_id));
+    let unrestricted =
+        forum_topic::Column::Id.not_in_subquery(tenant_topic_channel_access_subquery(tenant_id));
     let condition = match normalize_public_channel_slug(channel_slug) {
-        Some(channel_slug) => Condition::any().add(unrestricted).add(
-            forum_topic::Column::Id.in_subquery(
-                matching_tenant_topic_channel_access_subquery(tenant_id, &channel_slug),
-            ),
-        ),
+        Some(channel_slug) => {
+            Condition::any()
+                .add(unrestricted)
+                .add(forum_topic::Column::Id.in_subquery(
+                    matching_tenant_topic_channel_access_subquery(tenant_id, &channel_slug),
+                ))
+        }
         None => Condition::all().add(unrestricted),
     };
 
@@ -145,4 +147,3 @@ fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
         .filter(|slug| !slug.is_empty())
         .map(|slug| slug.to_ascii_lowercase())
 }
-

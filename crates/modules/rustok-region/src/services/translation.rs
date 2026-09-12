@@ -21,7 +21,9 @@ pub enum RegionTranslationExactLocaleError {
     #[error("Region translation source locale not found: {locale} for region {region_id}")]
     SourceLocaleNotFound { region_id: Uuid, locale: String },
 
-    #[error("Region translation target locale missing after apply: {locale} for region {region_id}")]
+    #[error(
+        "Region translation target locale missing after apply: {locale} for region {region_id}"
+    )]
     TargetLocaleMissingAfterApply { region_id: Uuid, locale: String },
 
     #[error("Region translation {revision} revision conflict")]
@@ -153,9 +155,7 @@ impl RegionTranslationService {
             &current_source_revision,
         )?;
         if request.expected_target_revision != current_target_revision {
-            return Err(RegionTranslationExactLocaleError::RevisionConflict {
-                revision: "target",
-            });
+            return Err(RegionTranslationExactLocaleError::RevisionConflict { revision: "target" });
         }
 
         if let Some(existing) = target.cloned() {
@@ -178,12 +178,12 @@ impl RegionTranslationService {
         let translations_after = load_translations(&txn, region_id).await?;
         let target_after = exact_locale_row(&translations_after, &target_locale)
             .cloned()
-            .ok_or_else(|| {
-                RegionTranslationExactLocaleError::TargetLocaleMissingAfterApply {
+            .ok_or_else(
+                || RegionTranslationExactLocaleError::TargetLocaleMissingAfterApply {
                     region_id,
                     locale: target_locale.clone(),
-                }
-            })?;
+                },
+            )?;
         let receipt = RegionTranslationExactLocaleApplyReceipt {
             region_id,
             resource_revision: resource_revision(&region, &translations_after),
@@ -232,12 +232,10 @@ fn build_snapshot(
 ) -> RegionTranslationExactLocaleResult<RegionTranslationExactLocaleSnapshot> {
     let source = exact_locale_row(&translations, &source_locale)
         .cloned()
-        .ok_or_else(
-            || RegionTranslationExactLocaleError::SourceLocaleNotFound {
-                region_id: region.id,
-                locale: source_locale.clone(),
-            },
-        )?;
+        .ok_or_else(|| RegionTranslationExactLocaleError::SourceLocaleNotFound {
+            region_id: region.id,
+            locale: source_locale.clone(),
+        })?;
     let target = exact_locale_row(&translations, &target_locale).cloned();
     let resource_revision = resource_revision(&region, &translations);
     let source_revision = locale_revision(&source);

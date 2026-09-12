@@ -123,12 +123,7 @@ impl CategoryService {
             .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
             .await?;
         self.tree_read
-            .read_with_hidden_categories(
-                tenant_id,
-                query,
-                &hidden_category_ids,
-                security.user_id,
-            )
+            .read_with_hidden_categories(tenant_id, query, &hidden_category_ids, security.user_id)
             .await
     }
 

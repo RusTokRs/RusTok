@@ -32,7 +32,6 @@ impl ReplyService {
         Self { db, event_bus }
     }
 
-
     #[instrument(skip(self))]
     pub async fn get(
         &self,

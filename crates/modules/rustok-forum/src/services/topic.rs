@@ -68,7 +68,6 @@ impl TopicService {
         Self { db, event_bus }
     }
 
-
     #[instrument(skip(self))]
     pub async fn get(
         &self,
@@ -893,7 +892,6 @@ fn merge_reserved_topic_metadata(
 }
 
 impl TopicService {
-
     async fn prepare_topic_relation_body_for_update(
         &self,
         tenant_id: Uuid,
