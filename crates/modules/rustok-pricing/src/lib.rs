@@ -8,6 +8,7 @@ pub mod entities {
 }
 
 pub mod migrations;
+mod price_list_owner_port;
 pub mod ports;
 mod read_context;
 pub mod services;
@@ -15,6 +16,7 @@ mod translation_changes;
 mod translation_target;
 mod write_context;
 
+pub use price_list_owner_port::{PriceListOwnerPort, in_process_price_list_owner_port};
 pub use ports::{
     ActivePriceListProjectionRequest, ActivePriceListProjectionSnapshot,
     AdminProductPricingProjectionRequest, ApplyVariantDiscountRequest,
