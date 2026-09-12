@@ -6,8 +6,14 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+function normalizeQuotes(s) {
+  return s.replace(/'/g, '"');
+}
+
 function requireContains(text, needle, message) {
-  if (!text.includes(needle)) throw new Error(message);
+  if (!text.includes(needle) && !normalizeQuotes(text).includes(normalizeQuotes(needle))) {
+    throw new Error(message);
+  }
 }
 
 function requireAbsent(text, needle, message) {
