@@ -52,16 +52,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Check focused Rust formatting
         shell: bash
-        run: |
-          rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check \
-            apps/server/tests/commerce_collection_translation_target_postgres.rs \
-            crates/modules/rustok-commerce/src/collection_translation_changes.rs \
-            crates/modules/rustok-commerce/src/collection_translation_progress.rs \
-            crates/modules/rustok-commerce/src/collection_translation_progress_target.rs \
-            crates/modules/rustok-commerce/src/collection_translation_target.rs \
-            crates/modules/rustok-commerce/src/services/collection_owner.rs \
-            crates/modules/rustok-commerce/src/services/collection_translation.rs \
-            crates/modules/rustok-commerce/src/services/mod.rs
+        run: >-
+          rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check
+          apps/server/tests/commerce_collection_translation_target_postgres.rs
       - name: Compile Commerce Collection registered provider PostgreSQL evidence
         run: >-
           cargo test --locked -p rustok-server --no-default-features
