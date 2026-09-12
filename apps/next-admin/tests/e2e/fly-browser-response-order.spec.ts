@@ -116,7 +116,17 @@ async function mountOrderContract(page: Page) {
       );
     });
 
-    globalThis.fetch = async (_input, init = {}) => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init = {}) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof Request
+            ? input.url
+            : String(input);
+      if (!url.includes('/fly-intent')) {
+        return originalFetch(input, init);
+      }
       const signal = init.signal;
       if (!(signal instanceof AbortSignal)) {
         throw new Error('Intent request signal unavailable');
