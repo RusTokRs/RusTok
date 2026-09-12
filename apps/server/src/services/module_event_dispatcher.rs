@@ -374,6 +374,16 @@ pub fn build_shared_runtime_extensions_with_host_providers(
 
     #[cfg(feature = "mod-fulfillment")]
     {
+        rustok_fulfillment::register_shipping_option_translation_target_provider(
+            &mut extensions,
+            db.clone(),
+        )
+        .map_err(|error| {
+            Error::Message(format!(
+                "Fulfillment Shipping Option translation target provider registration failed: {error}"
+            ))
+        })?;
+
         let fulfillment_registry = runtime_ctx
             .shared_get::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
             .unwrap_or_else(|| {
@@ -776,6 +786,13 @@ mod tests {
         );
         #[cfg(feature = "mod-fulfillment")]
         {
+            assert!(
+                rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                    .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                        descriptor.owner_slug.as_str() == "fulfillment"
+                            && descriptor.resource_kind.as_str() == "shipping_option_copy"
+                    }))
+            );
             assert!(
                 extensions.contains::<rustok_fulfillment::providers::FulfillmentProviderRegistry>()
             );
