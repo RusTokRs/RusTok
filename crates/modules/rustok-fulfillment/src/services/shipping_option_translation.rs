@@ -1,16 +1,19 @@
-use std::fmt::Write as _;
+use std::{collections::HashMap, fmt::Write as _};
 
-use rustok_api::{TenantLocale, sha256_digest};
+use rustok_api::{PortError, TenantLocale, sha256_digest};
 use rustok_core::generate_id;
+use rustok_outbox::idempotency;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::ExprTrait,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::entities::{shipping_option, shipping_option_translation};
+
+pub const MAX_SHIPPING_OPTION_TRANSLATION_RESOURCE_PAGE: u16 = 200;
 
 #[derive(Debug, Error)]
 pub enum ShippingOptionTranslationExactLocaleError {
@@ -38,6 +41,9 @@ pub enum ShippingOptionTranslationExactLocaleError {
 
     #[error("Shipping option translation validation failed: {0}")]
     Validation(String),
+
+    #[error("Shipping option translation owner receipt failed: {0}")]
+    OperationReceipt(PortError),
 
     #[error(transparent)]
     Database(#[from] sea_orm::DbErr),
@@ -87,6 +93,7 @@ pub struct ShippingOptionTranslationExactLocaleApply {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShippingOptionTranslationExactLocaleApplyReceipt {
+    pub operation_id: Option<Uuid>,
     pub shipping_option_id: Uuid,
     pub resource_revision: String,
     pub target_revision: String,
@@ -108,8 +115,90 @@ impl ShippingOptionTranslationService {
         Self { db }
     }
 
-    pub fn database(&self) -> &DatabaseConnection {
+    pub(crate) fn database(&self) -> &DatabaseConnection {
         &self.db
+    }
+
+    pub async fn list_exact_resources(
+        &self,
+        tenant_id: Uuid,
+        source_locale: &str,
+        target_locale: &str,
+        after: Option<Uuid>,
+        limit: u16,
+    ) -> ShippingOptionTranslationExactLocaleResult<(
+        Vec<ShippingOptionTranslationExactLocaleSnapshot>,
+        Option<Uuid>,
+    )> {
+        validate_tenant(tenant_id)?;
+        let source_locale = canonical_locale(source_locale)?;
+        let target_locale = canonical_locale(target_locale)?;
+        validate_locale_pair(&source_locale, &target_locale)?;
+        if limit == 0 || limit > MAX_SHIPPING_OPTION_TRANSLATION_RESOURCE_PAGE {
+            return Err(ShippingOptionTranslationExactLocaleError::Validation(format!(
+                "Fulfillment translation resource page size must be between 1 and {MAX_SHIPPING_OPTION_TRANSLATION_RESOURCE_PAGE}"
+            )));
+        }
+
+        let source_shipping_option_ids = sea_orm::sea_query::Query::select()
+            .column(shipping_option_translation::Column::ShippingOptionId)
+            .from(shipping_option_translation::Entity)
+            .and_where(
+                sea_orm::sea_query::Expr::col(shipping_option_translation::Column::Locale)
+                    .eq(source_locale.clone()),
+            )
+            .to_owned();
+        let mut query = shipping_option::Entity::find()
+            .filter(shipping_option::Column::TenantId.eq(tenant_id))
+            .filter(shipping_option::Column::Id.in_subquery(source_shipping_option_ids))
+            .order_by_asc(shipping_option::Column::Id);
+        if let Some(after) = after {
+            query = query.filter(shipping_option::Column::Id.gt(after));
+        }
+
+        let mut options = query.limit(u64::from(limit) + 1).all(&self.db).await?;
+        let has_more = options.len() > usize::from(limit);
+        if has_more {
+            options.truncate(usize::from(limit));
+        }
+        let next_after = has_more
+            .then(|| options.last().map(|option| option.id))
+            .flatten();
+        if options.is_empty() {
+            return Ok((Vec::new(), None));
+        }
+
+        let option_ids = options.iter().map(|option| option.id).collect::<Vec<_>>();
+        let mut translations = load_translations_for_shipping_options(&self.db, &option_ids)
+            .await?
+            .into_iter()
+            .fold(
+                HashMap::<Uuid, Vec<shipping_option_translation::Model>>::new(),
+                |mut grouped, translation| {
+                    grouped
+                        .entry(translation.shipping_option_id)
+                        .or_default()
+                        .push(translation);
+                    grouped
+                },
+            );
+
+        let mut snapshots = Vec::with_capacity(options.len());
+        for option in options {
+            let exact = translations.remove(&option.id).ok_or_else(|| {
+                ShippingOptionTranslationExactLocaleError::SourceLocaleNotFound {
+                    shipping_option_id: option.id,
+                    locale: source_locale.clone(),
+                }
+            })?;
+            snapshots.push(build_snapshot(
+                option,
+                exact,
+                source_locale.clone(),
+                target_locale.clone(),
+            )?);
+        }
+        Ok((snapshots, next_after))
     }
 
     pub async fn read_exact_locale(
@@ -135,6 +224,35 @@ impl ShippingOptionTranslationService {
         tenant_id: Uuid,
         shipping_option_id: Uuid,
         request: ShippingOptionTranslationExactLocaleApply,
+    ) -> ShippingOptionTranslationExactLocaleResult<ShippingOptionTranslationExactLocaleApplyReceipt>
+    {
+        self.apply_exact_locale_inner(tenant_id, shipping_option_id, request, None)
+            .await
+    }
+
+    pub(crate) async fn apply_exact_locale_with_operation(
+        &self,
+        tenant_id: Uuid,
+        shipping_option_id: Uuid,
+        request: ShippingOptionTranslationExactLocaleApply,
+        operation_lease: idempotency::Lease,
+    ) -> ShippingOptionTranslationExactLocaleResult<ShippingOptionTranslationExactLocaleApplyReceipt>
+    {
+        self.apply_exact_locale_inner(
+            tenant_id,
+            shipping_option_id,
+            request,
+            Some(operation_lease),
+        )
+        .await
+    }
+
+    async fn apply_exact_locale_inner(
+        &self,
+        tenant_id: Uuid,
+        shipping_option_id: Uuid,
+        request: ShippingOptionTranslationExactLocaleApply,
+        operation_lease: Option<idempotency::Lease>,
     ) -> ShippingOptionTranslationExactLocaleResult<ShippingOptionTranslationExactLocaleApplyReceipt>
     {
         validate_tenant(tenant_id)?;
@@ -206,12 +324,19 @@ impl ShippingOptionTranslationService {
                 }
             })?;
         let resource_revision = resource_revision(&option, &translations_after);
+        let operation_id = operation_lease.map(|lease| lease.operation_id);
         let receipt = ShippingOptionTranslationExactLocaleApplyReceipt {
+            operation_id,
             shipping_option_id,
             resource_revision,
             target_revision: locale_revision(&target_after),
             target: ShippingOptionTranslationExactLocaleRecord::from(target_after),
         };
+        if let Some(lease) = operation_lease {
+            idempotency::complete(&txn, lease, &receipt)
+                .await
+                .map_err(ShippingOptionTranslationExactLocaleError::OperationReceipt)?;
+        }
 
         txn.commit().await?;
         Ok(receipt)
@@ -244,6 +369,27 @@ where
 {
     Ok(shipping_option_translation::Entity::find()
         .filter(shipping_option_translation::Column::ShippingOptionId.eq(shipping_option_id))
+        .order_by_asc(shipping_option_translation::Column::Locale)
+        .all(db)
+        .await?)
+}
+
+async fn load_translations_for_shipping_options<C>(
+    db: &C,
+    shipping_option_ids: &[Uuid],
+) -> ShippingOptionTranslationExactLocaleResult<Vec<shipping_option_translation::Model>>
+where
+    C: ConnectionTrait,
+{
+    if shipping_option_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(shipping_option_translation::Entity::find()
+        .filter(
+            shipping_option_translation::Column::ShippingOptionId
+                .is_in(shipping_option_ids.to_vec()),
+        )
+        .order_by_asc(shipping_option_translation::Column::ShippingOptionId)
         .order_by_asc(shipping_option_translation::Column::Locale)
         .all(db)
         .await?)
