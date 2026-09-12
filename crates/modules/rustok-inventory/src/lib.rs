@@ -15,6 +15,8 @@ pub mod ports;
 mod reservation_owner_context;
 mod reservation_port_context;
 pub mod services;
+mod translation_changes;
+mod translation_target;
 
 pub use ports::*;
 pub use reservation_owner_context::{
@@ -39,6 +41,12 @@ pub use services::{
     load_available_inventory_for_variant_in_public_channel,
     load_inventory_projection_by_variant_for_public_channel, normalize_public_channel_slug,
     public_channel_inventory_projection,
+};
+pub use translation_changes::{
+    StockLocationTranslationChangeLifecycle, StockLocationTranslationChangeRecord,
+};
+pub use translation_target::{
+    StockLocationTranslationTargetProvider, register_stock_location_translation_target_provider,
 };
 
 pub struct InventoryModule;
