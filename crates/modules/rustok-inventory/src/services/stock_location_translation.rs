@@ -517,7 +517,7 @@ fn ensure_revision(
     Ok(())
 }
 
-fn resource_revision(
+pub(crate) fn resource_revision(
     stock_location: &stock_location::Model,
     translations: &[stock_location_translation::Model],
 ) -> String {
