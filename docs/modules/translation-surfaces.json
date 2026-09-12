@@ -225,7 +225,70 @@
       "data_classification": ["public", "tenant_private"],
       "ai_export": "restricted",
       "evidence_paths": ["crates/modules/rustok-product/docs/implementation-plan.md"],
-      "blockers": ["Remove duplicated translation entities and base/translation image-alt drift; add per-locale CAS apply."]
+      "blockers": ["Broad Product catalog parity remains incomplete beyond the separately registered product/product, product/variant, product/option, and product/image targets; classify and onboard remaining attributes, category/schema labels, SEO/Flex integration, and other catalog presentation surfaces without collapsing them into this aggregate row."]
+    },
+    {
+      "id": "product_product_copy",
+      "owner_slug": "product",
+      "resource_kind": "product",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text", "seo_text", "slug"],
+      "data_classification": ["public", "tenant_private"],
+      "ai_export": "restricted",
+      "evidence_paths": [
+        "crates/modules/rustok-product/src/translation_target.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["Collect retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion; broader Product catalog parity remains tracked separately by product_catalog."]
+    },
+    {
+      "id": "product_variant_copy",
+      "owner_slug": "product",
+      "resource_kind": "variant",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text"],
+      "data_classification": ["public", "tenant_private"],
+      "ai_export": "restricted",
+      "evidence_paths": [
+        "crates/modules/rustok-product/src/variant_translation_target.rs",
+        "crates/modules/rustok-product/src/variant_translation_progress_target.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["Collect retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion."]
+    },
+    {
+      "id": "product_option_copy",
+      "owner_slug": "product",
+      "resource_kind": "option",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text"],
+      "data_classification": ["public", "tenant_private"],
+      "ai_export": "restricted",
+      "evidence_paths": [
+        "crates/modules/rustok-product/src/option_translation_target.rs",
+        "crates/modules/rustok-product/src/option_translation_progress_target.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["Collect retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion."]
+    },
+    {
+      "id": "product_image_copy",
+      "owner_slug": "product",
+      "resource_kind": "image",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text"],
+      "data_classification": ["public", "tenant_private"],
+      "ai_export": "restricted",
+      "evidence_paths": [
+        "crates/modules/rustok-product/src/image_translation_target.rs",
+        "crates/modules/rustok-product/src/image_translation_progress_target.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["Collect retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion; keep image identity and other non-copy metadata outside Translation."]
     },
     {
       "id": "commerce_collection_copy",
@@ -300,19 +363,42 @@
         ".github/workflows/flex-attached-translation-policy-rbac-postgres.yml",
         "apps/server/src/services/mod.rs"
       ],
-      "blockers": ["Production enablement remains an operator rollout decision. Retained repository-hosted exact-head PostgreSQL evidence covers concurrent CAS/idempotent replay, aggregate-progress stability, schema fan-out, hard-delete tombstones, ChangeCursor recovery, policy/RBAC/unknown-field validation, and policy-only changes without content revision/change evidence: lifecycle run 34594653702 and policy/RBAC run 34592656347. Standalone Flex localized-value Translation parity remains a separate readiness track."]
+      "blockers": ["Production enablement remains an operator rollout decision. Retained repository-hosted exact-head PostgreSQL evidence covers concurrent CAS/idempotent replay, aggregate-progress stability, schema fan-out, hard-delete tombstones, ChangeCursor recovery, policy/RBAC/unknown-field validation, and policy-only changes without content revision/change evidence: lifecycle run 34594653702 and policy/RBAC run 34592656347. Standalone Flex localized-value Translation is registered separately but remains blocked until its focused retained PostgreSQL lifecycle and policy evidence is green."]
+    },
+    {
+      "id": "flex_standalone_values",
+      "owner_slug": "flex",
+      "resource_kind": "standalone_localized_value",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text", "localized_scalar"],
+      "data_classification": ["tenant_private", "personal"],
+      "ai_export": "restricted",
+      "evidence_paths": [
+        "crates/modules/flex/src/standalone_translation.rs",
+        "crates/modules/flex/src/standalone_translation_target.rs",
+        "crates/modules/flex/src/standalone_translation_progress_target.rs",
+        "crates/modules/flex/src/standalone_translation_changes.rs",
+        "crates/modules/flex/src/standalone_field_policy.rs",
+        "crates/modules/flex/src/standalone_translation_policy_target.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["The standalone provider, durable revision/change path, progress/ChangeCursor contract, and fail-closed governance policy are registered, but the focused retained PostgreSQL lifecycle/policy evidence from the current readiness slice is not green. Repair and retain green exact-head and post-merge PostgreSQL evidence before pilot promotion."]
     },
     {
       "id": "seo_overrides",
       "owner_slug": "seo",
       "resource_kind": "seo_copy",
       "readiness": "blocked",
-      "provider_status": "not_registered",
+      "provider_status": "registered",
       "field_profiles": ["seo_text"],
       "data_classification": ["public"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/rustok-seo/docs/README.md"],
-      "blockers": ["Fix precedence between owner-embedded SEO and explicit SEO overrides."]
+      "evidence_paths": [
+        "crates/modules/rustok-seo/src/services/translation_target.rs",
+        "crates/modules/rustok-seo/src/lib.rs"
+      ],
+      "blockers": ["Owner/override precedence is resolved and seo/seo_copy is registered. Collect retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress stability, ChangeCursor recovery, and reindex/event evidence before pilot promotion; canonical/robots/structured data and media identifiers remain outside this copy target."]
     },
     {
       "id": "profile_copy",
@@ -355,12 +441,50 @@
       "owner_slug": "region",
       "resource_kind": "region_copy",
       "readiness": "blocked",
-      "provider_status": "not_registered",
+      "provider_status": "registered",
       "field_profiles": ["plain_text"],
       "data_classification": ["public"],
       "ai_export": "allowed",
-      "evidence_paths": ["crates/modules/rustok-region/README.md"],
-      "blockers": ["Add transactional one-locale apply and revision receipts."]
+      "evidence_paths": [
+        "crates/modules/rustok-region/src/translation_target.rs",
+        "crates/modules/rustok-region/src/translation_changes.rs",
+        "crates/modules/rustok-region/src/migrations/m20260912_000113_add_region_translation_change_journal.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["The region/region_copy provider is registered with transactional owner apply and bounded change repair. Collect retained PostgreSQL concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion."]
+    },
+    {
+      "id": "inventory_stock_location_copy",
+      "owner_slug": "inventory",
+      "resource_kind": "stock_location_copy",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text"],
+      "data_classification": ["tenant_private"],
+      "ai_export": "restricted",
+      "evidence_paths": [
+        "crates/modules/rustok-inventory/src/translation_target.rs",
+        "crates/modules/rustok-inventory/src/translation_changes.rs",
+        "crates/modules/rustok-inventory/src/migrations/m20260912_000023_add_stock_location_translation_change_journal.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["The inventory/stock_location_copy provider is registered. Collect retained PostgreSQL concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion; inventory identities and quantitative facts remain outside Translation."]
+    },
+    {
+      "id": "pricing_price_list_copy",
+      "owner_slug": "pricing",
+      "resource_kind": "price_list_copy",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text"],
+      "data_classification": ["tenant_private"],
+      "ai_export": "restricted",
+      "evidence_paths": [
+        "crates/modules/rustok-pricing/src/translation_target.rs",
+        "crates/modules/rustok-pricing/src/translation_changes.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["The pricing/price_list_copy provider is registered. Collect retained PostgreSQL concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion; prices, currencies, rules, and calculations remain non-translatable facts."]
     },
     {
       "id": "fulfillment_copy",
@@ -372,7 +496,24 @@
       "data_classification": ["tenant_private"],
       "ai_export": "restricted",
       "evidence_paths": ["crates/modules/rustok-fulfillment/README.md"],
-      "blockers": ["Classify presentation copy versus transactional facts and add localized owner storage."]
+      "blockers": ["Broad Fulfillment presentation/template parity remains incomplete beyond the separately registered fulfillment/shipping_option_copy target. Classify and onboard any remaining presentation copy explicitly while keeping identifiers, provider configuration, amounts, currencies, routing rules, metadata, and transactional facts outside Translation."]
+    },
+    {
+      "id": "fulfillment_shipping_option_copy",
+      "owner_slug": "fulfillment",
+      "resource_kind": "shipping_option_copy",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text"],
+      "data_classification": ["tenant_private"],
+      "ai_export": "restricted",
+      "evidence_paths": [
+        "crates/modules/rustok-fulfillment/src/translation_target.rs",
+        "crates/modules/rustok-fulfillment/src/translation_changes.rs",
+        "crates/modules/rustok-fulfillment/src/migrations/m20260912_000118_add_shipping_option_translation_change_journal.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["The fulfillment/shipping_option_copy provider is registered with atomic owner create/update/apply, copy-only revisions, stable aggregate high-water progress, and a durable bounded ChangeCursor. Collect retained PostgreSQL concurrent CAS/idempotent replay, lifecycle/progress stability, and cursor recovery evidence before pilot promotion; operational shipping facts remain outside Translation."]
     },
     {
       "id": "marketplace_seller_copy",
