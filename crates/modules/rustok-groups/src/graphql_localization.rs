@@ -19,6 +19,7 @@ use crate::{
 const PORT_DEADLINE: Duration = Duration::from_secs(5);
 
 #[derive(MergedObject, Default)]
+#[graphql(name = "GroupsLocalizationQueryRoot")]
 pub struct GroupsQueryRoot(GroupsQuery, GroupsLocalizationQuery);
 
 #[derive(Default)]
