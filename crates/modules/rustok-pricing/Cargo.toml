@@ -19,6 +19,7 @@ rustok-pricing-persistence.workspace = true
 serde.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 
