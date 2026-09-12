@@ -29,6 +29,7 @@ mod checkout_payment_stages;
 mod checkout_plan_builder;
 #[path = "checkout_stage_pipeline_owner_ports.rs"]
 mod checkout_stage_pipeline;
+mod collection_owner;
 pub mod collection_translation;
 pub mod context;
 mod fulfillment_create_label_recovery;
@@ -161,6 +162,10 @@ pub use checkout_payment_stages::{
 pub use checkout_plan_builder::CheckoutPlanBuilder;
 pub use checkout_stage_pipeline::{
     CheckoutStagePipeline, CheckoutStagePipelineError, CheckoutStagePipelineResult,
+};
+pub use collection_owner::{
+    CollectionOwnerService, CollectionOwnerSnapshot, CollectionOwnerTranslationInput,
+    CreateCollectionOwnerInput, UpdateCollectionOwnerInput,
 };
 pub use context::{StoreContextError, StoreContextResult, StoreContextService};
 pub use fulfillment_create_label_recovery::FulfillmentCreateLabelRecoveryService;
