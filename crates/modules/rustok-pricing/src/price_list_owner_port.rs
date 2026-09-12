@@ -11,8 +11,6 @@ use crate::{
     UpdatePriceListOwnerInput,
 };
 
-const OWNER_BOUNDARY: &str = "price_list_owner_port";
-
 #[async_trait]
 pub trait PriceListOwnerPort: Send + Sync {
     async fn create_price_list(
@@ -107,5 +105,4 @@ fn owner_error_to_port_error(error: CommerceError) -> PortError {
             "price list owner operation failed",
         ),
     }
-    .with_detail("boundary", OWNER_BOUNDARY)
 }
