@@ -1,9 +1,7 @@
 use std::time::Duration;
 
 use rustok_api::{PortActor, PortContext, PortErrorKind};
-use rustok_pricing::{
-    CreatePriceListOwnerInput, PriceListOwnerPort, in_process_price_list_owner_port,
-};
+use rustok_pricing::{CreatePriceListOwnerInput, in_process_price_list_owner_port};
 use sea_orm::Database;
 use uuid::Uuid;
 
