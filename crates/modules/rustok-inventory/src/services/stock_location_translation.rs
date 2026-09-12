@@ -1,15 +1,22 @@
-use std::fmt::Write as _;
+use std::{collections::HashMap, fmt::Write as _};
 
-use rustok_api::{sha256_digest, TenantLocale};
-use rustok_core::generate_id;
+use rustok_api::{PortError, TenantLocale, sha256_digest};
 use rustok_commerce_foundation::entities::{stock_location, stock_location_translation};
+use rustok_core::generate_id;
+use rustok_outbox::idempotency;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::ExprTrait,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
+
+use crate::translation_changes::{
+    StockLocationTranslationChangeLifecycle, record_stock_location_translation_change_in_tx,
+};
+
+pub const MAX_STOCK_LOCATION_TRANSLATION_RESOURCE_PAGE: u16 = 200;
 
 #[derive(Debug, Error)]
 pub enum StockLocationTranslationExactLocaleError {
@@ -37,6 +44,9 @@ pub enum StockLocationTranslationExactLocaleError {
 
     #[error("Stock location translation validation failed: {0}")]
     Validation(String),
+
+    #[error("Stock location translation owner receipt failed: {0}")]
+    OperationReceipt(PortError),
 
     #[error(transparent)]
     Database(#[from] sea_orm::DbErr),
@@ -85,6 +95,7 @@ pub struct StockLocationTranslationExactLocaleApply {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StockLocationTranslationExactLocaleApplyReceipt {
+    pub operation_id: Option<Uuid>,
     pub stock_location_id: Uuid,
     pub resource_revision: String,
     pub target_revision: String,
@@ -94,10 +105,10 @@ pub struct StockLocationTranslationExactLocaleApplyReceipt {
 /// Inventory-owned exact-locale mutation boundary for Stock Location presentation copy.
 ///
 /// The parent Stock Location row is locked for the complete compare-and-swap mutation so
-/// canonical owner writes and future Translation callers share one serialization boundary.
-/// Revisions intentionally cover only owner identity plus localized presentation copy; codes,
-/// addresses, contact data, inventory quantities, reservations, and other operational state are
-/// not Translation resource state.
+/// canonical owner writes and Translation callers share one serialization boundary. Revisions
+/// intentionally cover only owner identity plus localized presentation copy; codes, addresses,
+/// contact data, inventory quantities, reservations, and other operational state are not
+/// Translation resource state.
 pub struct StockLocationTranslationService {
     db: DatabaseConnection,
 }
@@ -105,6 +116,96 @@ pub struct StockLocationTranslationService {
 impl StockLocationTranslationService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
+    }
+
+    pub(crate) fn database(&self) -> &DatabaseConnection {
+        &self.db
+    }
+
+    pub async fn list_exact_resources(
+        &self,
+        tenant_id: Uuid,
+        source_locale: &str,
+        target_locale: &str,
+        after: Option<Uuid>,
+        limit: u16,
+    ) -> StockLocationTranslationExactLocaleResult<(
+        Vec<StockLocationTranslationExactLocaleSnapshot>,
+        Option<Uuid>,
+    )> {
+        validate_tenant(tenant_id)?;
+        let source_locale = canonical_locale(source_locale)?;
+        let target_locale = canonical_locale(target_locale)?;
+        validate_locale_pair(&source_locale, &target_locale)?;
+        if limit == 0 || limit > MAX_STOCK_LOCATION_TRANSLATION_RESOURCE_PAGE {
+            return Err(StockLocationTranslationExactLocaleError::Validation(format!(
+                "Inventory translation resource page size must be between 1 and {MAX_STOCK_LOCATION_TRANSLATION_RESOURCE_PAGE}"
+            )));
+        }
+
+        let source_stock_location_ids = sea_orm::sea_query::Query::select()
+            .column(stock_location_translation::Column::StockLocationId)
+            .from(stock_location_translation::Entity)
+            .and_where(
+                sea_orm::sea_query::Expr::col(stock_location_translation::Column::Locale)
+                    .eq(source_locale.clone()),
+            )
+            .to_owned();
+        let mut query = stock_location::Entity::find()
+            .filter(stock_location::Column::TenantId.eq(tenant_id))
+            .filter(stock_location::Column::DeletedAt.is_null())
+            .filter(stock_location::Column::Id.in_subquery(source_stock_location_ids))
+            .order_by_asc(stock_location::Column::Id);
+        if let Some(after) = after {
+            query = query.filter(stock_location::Column::Id.gt(after));
+        }
+
+        let mut stock_locations = query.limit(u64::from(limit) + 1).all(&self.db).await?;
+        let has_more = stock_locations.len() > usize::from(limit);
+        if has_more {
+            stock_locations.truncate(usize::from(limit));
+        }
+        let next_after = has_more
+            .then(|| stock_locations.last().map(|stock_location| stock_location.id))
+            .flatten();
+        if stock_locations.is_empty() {
+            return Ok((Vec::new(), None));
+        }
+
+        let stock_location_ids = stock_locations
+            .iter()
+            .map(|stock_location| stock_location.id)
+            .collect::<Vec<_>>();
+        let mut translations = load_translations_for_stock_locations(&self.db, &stock_location_ids)
+            .await?
+            .into_iter()
+            .fold(
+                HashMap::<Uuid, Vec<stock_location_translation::Model>>::new(),
+                |mut grouped, translation| {
+                    grouped
+                        .entry(translation.stock_location_id)
+                        .or_default()
+                        .push(translation);
+                    grouped
+                },
+            );
+
+        let mut snapshots = Vec::with_capacity(stock_locations.len());
+        for stock_location in stock_locations {
+            let exact = translations.remove(&stock_location.id).ok_or_else(|| {
+                StockLocationTranslationExactLocaleError::SourceLocaleNotFound {
+                    stock_location_id: stock_location.id,
+                    locale: source_locale.clone(),
+                }
+            })?;
+            snapshots.push(build_snapshot(
+                stock_location,
+                exact,
+                source_locale.clone(),
+                target_locale.clone(),
+            )?);
+        }
+        Ok((snapshots, next_after))
     }
 
     pub async fn read_exact_locale(
@@ -119,8 +220,7 @@ impl StockLocationTranslationService {
         let target_locale = canonical_locale(target_locale)?;
         validate_locale_pair(&source_locale, &target_locale)?;
 
-        let stock_location =
-            load_stock_location(&self.db, tenant_id, stock_location_id).await?;
+        let stock_location = load_stock_location(&self.db, tenant_id, stock_location_id).await?;
         let translations = load_translations(&self.db, stock_location_id).await?;
         build_snapshot(stock_location, translations, source_locale, target_locale)
     }
@@ -130,6 +230,35 @@ impl StockLocationTranslationService {
         tenant_id: Uuid,
         stock_location_id: Uuid,
         request: StockLocationTranslationExactLocaleApply,
+    ) -> StockLocationTranslationExactLocaleResult<StockLocationTranslationExactLocaleApplyReceipt>
+    {
+        self.apply_exact_locale_inner(tenant_id, stock_location_id, request, None)
+            .await
+    }
+
+    pub(crate) async fn apply_exact_locale_with_operation(
+        &self,
+        tenant_id: Uuid,
+        stock_location_id: Uuid,
+        request: StockLocationTranslationExactLocaleApply,
+        operation_lease: idempotency::Lease,
+    ) -> StockLocationTranslationExactLocaleResult<StockLocationTranslationExactLocaleApplyReceipt>
+    {
+        self.apply_exact_locale_inner(
+            tenant_id,
+            stock_location_id,
+            request,
+            Some(operation_lease),
+        )
+        .await
+    }
+
+    async fn apply_exact_locale_inner(
+        &self,
+        tenant_id: Uuid,
+        stock_location_id: Uuid,
+        request: StockLocationTranslationExactLocaleApply,
+        operation_lease: Option<idempotency::Lease>,
     ) -> StockLocationTranslationExactLocaleResult<StockLocationTranslationExactLocaleApplyReceipt>
     {
         validate_tenant(tenant_id)?;
@@ -201,12 +330,35 @@ impl StockLocationTranslationService {
                     locale: target_locale.clone(),
                 },
             )?;
+        let resource_revision = resource_revision(&stock_location, &translations_after);
+        let operation_id = operation_lease
+            .map(|lease| lease.operation_id)
+            .or_else(|| (!unchanged).then(generate_id));
+
+        if !unchanged {
+            record_stock_location_translation_change_in_tx(
+                &txn,
+                tenant_id,
+                stock_location_id,
+                operation_id.expect("changed Inventory translation apply must have operation id"),
+                &resource_revision,
+                StockLocationTranslationChangeLifecycle::Active,
+            )
+            .await?;
+        }
+
         let receipt = StockLocationTranslationExactLocaleApplyReceipt {
+            operation_id,
             stock_location_id,
-            resource_revision: resource_revision(&stock_location, &translations_after),
+            resource_revision,
             target_revision: locale_revision(&target_after),
             target: StockLocationTranslationExactLocaleRecord::from(target_after),
         };
+        if let Some(lease) = operation_lease {
+            idempotency::complete(&txn, lease, &receipt)
+                .await
+                .map_err(StockLocationTranslationExactLocaleError::OperationReceipt)?;
+        }
         txn.commit().await?;
         Ok(receipt)
     }
@@ -239,6 +391,24 @@ where
 {
     Ok(stock_location_translation::Entity::find()
         .filter(stock_location_translation::Column::StockLocationId.eq(stock_location_id))
+        .order_by_asc(stock_location_translation::Column::Locale)
+        .all(db)
+        .await?)
+}
+
+async fn load_translations_for_stock_locations<C>(
+    db: &C,
+    stock_location_ids: &[Uuid],
+) -> StockLocationTranslationExactLocaleResult<Vec<stock_location_translation::Model>>
+where
+    C: ConnectionTrait,
+{
+    if stock_location_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(stock_location_translation::Entity::find()
+        .filter(stock_location_translation::Column::StockLocationId.is_in(stock_location_ids.to_vec()))
+        .order_by_asc(stock_location_translation::Column::StockLocationId)
         .order_by_asc(stock_location_translation::Column::Locale)
         .all(db)
         .await?)
