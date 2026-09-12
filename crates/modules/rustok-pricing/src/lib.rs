@@ -28,9 +28,12 @@ pub use services::{
     ActivePriceListOption, AdminPricingPrice, AdminPricingProductDetail, AdminPricingProductList,
     AdminPricingProductListItem, AdminPricingProductTranslation, AdminPricingVariant,
     PriceAdjustmentKind, PriceAdjustmentPreview, PriceListRule, PriceListRuleKind,
-    PriceResolutionContext, PricingService, ResolvedPrice, StorefrontPricingPrice,
-    StorefrontPricingProductDetail, StorefrontPricingProductList, StorefrontPricingProductListItem,
-    StorefrontPricingProductTranslation, StorefrontPricingVariant,
+    PriceListTranslationExactLocaleApply, PriceListTranslationExactLocaleApplyReceipt,
+    PriceListTranslationExactLocaleError, PriceListTranslationExactLocaleRecord,
+    PriceListTranslationExactLocaleResult, PriceListTranslationExactLocaleSnapshot,
+    PriceListTranslationService, PriceResolutionContext, PricingService, ResolvedPrice,
+    StorefrontPricingPrice, StorefrontPricingProductDetail, StorefrontPricingProductList,
+    StorefrontPricingProductListItem, StorefrontPricingProductTranslation, StorefrontPricingVariant,
 };
 
 pub struct PricingModule;
