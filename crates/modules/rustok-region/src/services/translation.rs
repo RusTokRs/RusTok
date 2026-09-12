@@ -1,17 +1,24 @@
+use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use rustok_api::{TenantLocale, sha256_digest};
+use rustok_api::{PortError, TenantLocale, sha256_digest};
 use rustok_commerce_foundation::entities;
 use rustok_core::generate_id;
+use rustok_outbox::idempotency;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::ExprTrait,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::error::RegionError;
+use crate::translation_changes::{
+    RegionTranslationChangeLifecycle, record_region_translation_change_in_tx,
+};
+
+pub const MAX_REGION_TRANSLATION_RESOURCE_PAGE: u16 = 200;
 
 #[derive(Debug, Error)]
 pub enum RegionTranslationExactLocaleError {
@@ -28,6 +35,9 @@ pub enum RegionTranslationExactLocaleError {
 
     #[error("Region translation {revision} revision conflict")]
     RevisionConflict { revision: &'static str },
+
+    #[error("Region translation owner receipt failed: {0}")]
+    OperationReceipt(PortError),
 }
 
 impl From<sea_orm::DbErr> for RegionTranslationExactLocaleError {
@@ -78,6 +88,7 @@ pub struct RegionTranslationExactLocaleApply {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RegionTranslationExactLocaleApplyReceipt {
+    pub operation_id: Option<Uuid>,
     pub region_id: Uuid,
     pub resource_revision: String,
     pub target_revision: String,
@@ -96,6 +107,98 @@ pub struct RegionTranslationService {
 impl RegionTranslationService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
+    }
+
+    pub(crate) fn database(&self) -> &DatabaseConnection {
+        &self.db
+    }
+
+    pub async fn list_exact_resources(
+        &self,
+        tenant_id: Uuid,
+        source_locale: &str,
+        target_locale: &str,
+        after: Option<Uuid>,
+        limit: u16,
+    ) -> RegionTranslationExactLocaleResult<(
+        Vec<RegionTranslationExactLocaleSnapshot>,
+        Option<Uuid>,
+    )> {
+        if tenant_id.is_nil() {
+            return Err(RegionError::Validation(
+                "Region translation tenant_id must not be nil".to_string(),
+            )
+            .into());
+        }
+        let source_locale = canonical_locale(source_locale)?;
+        let target_locale = canonical_locale(target_locale)?;
+        validate_locale_pair(&source_locale, &target_locale)?;
+        if limit == 0 || limit > MAX_REGION_TRANSLATION_RESOURCE_PAGE {
+            return Err(RegionError::Validation(format!(
+                "Region translation resource page size must be between 1 and {MAX_REGION_TRANSLATION_RESOURCE_PAGE}"
+            ))
+            .into());
+        }
+
+        let source_region_ids = sea_orm::sea_query::Query::select()
+            .column(entities::region_translation::Column::RegionId)
+            .from(entities::region_translation::Entity)
+            .and_where(
+                sea_orm::sea_query::Expr::col(entities::region_translation::Column::Locale)
+                    .eq(source_locale.clone()),
+            )
+            .to_owned();
+        let mut query = entities::region::Entity::find()
+            .filter(entities::region::Column::TenantId.eq(tenant_id))
+            .filter(entities::region::Column::Id.in_subquery(source_region_ids))
+            .order_by_asc(entities::region::Column::Id);
+        if let Some(after) = after {
+            query = query.filter(entities::region::Column::Id.gt(after));
+        }
+
+        let mut regions = query.limit(u64::from(limit) + 1).all(&self.db).await?;
+        let has_more = regions.len() > usize::from(limit);
+        if has_more {
+            regions.truncate(usize::from(limit));
+        }
+        let next_after = has_more
+            .then(|| regions.last().map(|region| region.id))
+            .flatten();
+        if regions.is_empty() {
+            return Ok((Vec::new(), None));
+        }
+
+        let region_ids = regions.iter().map(|region| region.id).collect::<Vec<_>>();
+        let mut translations = load_translations_for_regions(&self.db, &region_ids)
+            .await?
+            .into_iter()
+            .fold(
+                HashMap::<Uuid, Vec<entities::region_translation::Model>>::new(),
+                |mut grouped, translation| {
+                    grouped
+                        .entry(translation.region_id)
+                        .or_default()
+                        .push(translation);
+                    grouped
+                },
+            );
+
+        let mut snapshots = Vec::with_capacity(regions.len());
+        for region in regions {
+            let exact = translations.remove(&region.id).ok_or_else(|| {
+                RegionTranslationExactLocaleError::SourceLocaleNotFound {
+                    region_id: region.id,
+                    locale: source_locale.clone(),
+                }
+            })?;
+            snapshots.push(build_snapshot(
+                region,
+                exact,
+                source_locale.clone(),
+                target_locale.clone(),
+            )?);
+        }
+        Ok((snapshots, next_after))
     }
 
     pub async fn read_exact_locale(
@@ -119,6 +222,28 @@ impl RegionTranslationService {
         tenant_id: Uuid,
         region_id: Uuid,
         request: RegionTranslationExactLocaleApply,
+    ) -> RegionTranslationExactLocaleResult<RegionTranslationExactLocaleApplyReceipt> {
+        self.apply_exact_locale_inner(tenant_id, region_id, request, None)
+            .await
+    }
+
+    pub(crate) async fn apply_exact_locale_with_operation(
+        &self,
+        tenant_id: Uuid,
+        region_id: Uuid,
+        request: RegionTranslationExactLocaleApply,
+        operation_lease: idempotency::Lease,
+    ) -> RegionTranslationExactLocaleResult<RegionTranslationExactLocaleApplyReceipt> {
+        self.apply_exact_locale_inner(tenant_id, region_id, request, Some(operation_lease))
+            .await
+    }
+
+    async fn apply_exact_locale_inner(
+        &self,
+        tenant_id: Uuid,
+        region_id: Uuid,
+        request: RegionTranslationExactLocaleApply,
+        operation_lease: Option<idempotency::Lease>,
     ) -> RegionTranslationExactLocaleResult<RegionTranslationExactLocaleApplyReceipt> {
         let source_locale = canonical_locale(&request.source_locale)?;
         let target_locale = canonical_locale(&request.target_locale)?;
@@ -158,21 +283,22 @@ impl RegionTranslationService {
             return Err(RegionTranslationExactLocaleError::RevisionConflict { revision: "target" });
         }
 
-        if let Some(existing) = target.cloned() {
-            if existing.name != target_name {
+        let unchanged = target.is_some_and(|existing| existing.name == target_name);
+        if !unchanged {
+            if let Some(existing) = target.cloned() {
                 let mut active: entities::region_translation::ActiveModel = existing.into();
                 active.name = Set(target_name);
                 active.update(&txn).await?;
+            } else {
+                entities::region_translation::ActiveModel {
+                    id: Set(generate_id()),
+                    region_id: Set(region_id),
+                    locale: Set(target_locale.clone()),
+                    name: Set(target_name),
+                }
+                .insert(&txn)
+                .await?;
             }
-        } else {
-            entities::region_translation::ActiveModel {
-                id: Set(generate_id()),
-                region_id: Set(region_id),
-                locale: Set(target_locale.clone()),
-                name: Set(target_name),
-            }
-            .insert(&txn)
-            .await?;
         }
 
         let translations_after = load_translations(&txn, region_id).await?;
@@ -184,12 +310,35 @@ impl RegionTranslationService {
                     locale: target_locale.clone(),
                 },
             )?;
+        let resource_revision = resource_revision(&region, &translations_after);
+        let operation_id = operation_lease
+            .map(|lease| lease.operation_id)
+            .or_else(|| (!unchanged).then(generate_id));
+
+        if !unchanged {
+            record_region_translation_change_in_tx(
+                &txn,
+                tenant_id,
+                region_id,
+                operation_id.expect("changed Region translation apply must have operation id"),
+                &resource_revision,
+                RegionTranslationChangeLifecycle::Active,
+            )
+            .await?;
+        }
+
         let receipt = RegionTranslationExactLocaleApplyReceipt {
+            operation_id,
             region_id,
-            resource_revision: resource_revision(&region, &translations_after),
+            resource_revision,
             target_revision: locale_revision(&target_after),
             target: RegionTranslationExactLocaleRecord::from(target_after),
         };
+        if let Some(lease) = operation_lease {
+            idempotency::complete(&txn, lease, &receipt)
+                .await
+                .map_err(RegionTranslationExactLocaleError::OperationReceipt)?;
+        }
         txn.commit().await?;
         Ok(receipt)
     }
@@ -219,6 +368,24 @@ where
 {
     Ok(entities::region_translation::Entity::find()
         .filter(entities::region_translation::Column::RegionId.eq(region_id))
+        .order_by_asc(entities::region_translation::Column::Locale)
+        .all(db)
+        .await?)
+}
+
+async fn load_translations_for_regions<C>(
+    db: &C,
+    region_ids: &[Uuid],
+) -> RegionTranslationExactLocaleResult<Vec<entities::region_translation::Model>>
+where
+    C: ConnectionTrait,
+{
+    if region_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(entities::region_translation::Entity::find()
+        .filter(entities::region_translation::Column::RegionId.is_in(region_ids.to_vec()))
+        .order_by_asc(entities::region_translation::Column::RegionId)
         .order_by_asc(entities::region_translation::Column::Locale)
         .all(db)
         .await?)
@@ -315,7 +482,7 @@ fn ensure_revision(
     Ok(())
 }
 
-fn resource_revision(
+pub(crate) fn resource_revision(
     region: &entities::region::Model,
     translations: &[entities::region_translation::Model],
 ) -> String {
