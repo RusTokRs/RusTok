@@ -17,6 +17,7 @@ use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm_migration::MigrationTrait;
 
+mod collection_owner_port;
 mod collection_translation_changes;
 mod collection_translation_progress;
 mod collection_translation_progress_target;
@@ -45,6 +46,7 @@ extern crate self as rustok_commerce;
 #[cfg(test)]
 mod state_machine_proptest;
 
+pub use collection_owner_port::{CollectionOwnerPort, in_process_collection_owner_port};
 pub use collection_translation_changes::{
     CollectionTranslationChangeLifecycle, CollectionTranslationChangeRecord,
     MAX_COLLECTION_TRANSLATION_CHANGE_PAGE,
@@ -73,13 +75,15 @@ pub use services::{
     CheckoutPaymentCapturedState, CheckoutPaymentReadyState, CheckoutPaymentStageError,
     CheckoutPaymentStageExecutor, CheckoutPaymentStageResult, CheckoutPlanBuilder, CheckoutResult,
     CheckoutService, CheckoutStagePipeline, CheckoutStagePipelineError,
-    CheckoutStagePipelineResult, CompleteReturnClaimInput, CompleteReturnExchangeInput,
-    CompleteReturnRefundInput, CompleteReturnResolutionInput, CreateReturnDecisionInput,
-    DEFAULT_CHECKOUT_LEASE_SECONDS, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
-    ExchangeDifferenceRefundInput, FulfillmentCreateLabelRecoveryService,
-    FulfillmentReconciliationService, JournaledCheckoutError, JournaledCheckoutResult,
-    JournaledCheckoutService, MAX_CHECKOUT_LEASE_SECONDS, MAX_RETURN_COMPLETION_LEASE_SECONDS,
-    OrderChangeOrchestrationError, OrderChangeOrchestrationResult, OrderChangeOrchestrationService,
+    CheckoutStagePipelineResult, CollectionOwnerService, CollectionOwnerSnapshot,
+    CollectionOwnerTranslationInput, CompleteReturnClaimInput, CompleteReturnExchangeInput,
+    CompleteReturnRefundInput, CompleteReturnResolutionInput, CreateCollectionOwnerInput,
+    CreateReturnDecisionInput, DEFAULT_CHECKOUT_LEASE_SECONDS,
+    DEFAULT_RETURN_COMPLETION_LEASE_SECONDS, ExchangeDifferenceRefundInput,
+    FulfillmentCreateLabelRecoveryService, FulfillmentReconciliationService, JournaledCheckoutError,
+    JournaledCheckoutResult, JournaledCheckoutService, MAX_CHECKOUT_LEASE_SECONDS,
+    MAX_RETURN_COMPLETION_LEASE_SECONDS, OrderChangeOrchestrationError,
+    OrderChangeOrchestrationResult, OrderChangeOrchestrationService,
     PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService, PaymentOrchestrationError,
     PaymentOrchestrationResult, PaymentOrchestrationService, PlanCheckoutInventoryReservation,
     PostOrderOrchestrationError, PostOrderOrchestrationService, RecoveringStagedCheckoutError,
@@ -92,6 +96,7 @@ pub use services::{
     ReturnDecisionOwnerOrchestrationService, ReturnDecisionResponse, ReturnExchangeDecisionInput,
     ReturnRefundDecisionInput, ShippingProfileService, StagedCheckoutError, StagedCheckoutResult,
     StagedCheckoutService, StoreContextError, StoreContextResult, StoreContextService,
+    UpdateCollectionOwnerInput,
 };
 #[cfg(feature = "marketplace-financial")]
 pub use services::{
