@@ -8,6 +8,7 @@ mod m20260713_000019_reserve_checkout_order_inventory;
 mod m20260713_000020_remove_duplicate_checkout_reservation;
 mod m20260713_000021_bound_reservation_metadata_and_inactive_locations;
 mod m20260713_000022_repair_oversized_reservation_metadata;
+mod m20260912_000023_add_stock_location_translation_change_journal;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -22,6 +23,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000020_remove_duplicate_checkout_reservation::Migration),
         Box::new(m20260713_000021_bound_reservation_metadata_and_inactive_locations::Migration),
         Box::new(m20260713_000022_repair_oversized_reservation_metadata::Migration),
+        Box::new(m20260912_000023_add_stock_location_translation_change_journal::Migration),
     ]
 }
 
