@@ -268,10 +268,6 @@ impl CollectionTranslationService {
         validate_locale_pair(&source_locale, &target_locale)?;
 
         let txn = self.db.begin().await?;
-
-        // Collection translations do not carry tenant_id. Lock every Collection
-        // parent for this tenant in deterministic UUID order so concurrent owner
-        // writes serialize before locale+handle collision checks.
         let tenant_collections = collection::Entity::find()
             .filter(collection::Column::TenantId.eq(tenant_id))
             .order_by_asc(collection::Column::Id)
@@ -408,7 +404,6 @@ impl CollectionTranslationService {
                 .await
                 .map_err(CollectionTranslationExactLocaleError::OperationReceipt)?;
         }
-
         txn.commit().await?;
         Ok(receipt)
     }
@@ -611,7 +606,7 @@ fn ensure_revision(
     Ok(())
 }
 
-fn resource_revision(
+pub(crate) fn resource_revision(
     collection: &collection::Model,
     translations: &[collection_translation::Model],
 ) -> String {
@@ -619,9 +614,6 @@ fn resource_revision(
     digest_text(&mut hasher, COLLECTION_COPY_RESOURCE_REVISION_NAMESPACE);
     digest_text(&mut hasher, &collection.id.to_string());
     digest_text(&mut hasher, &collection.tenant_id.to_string());
-    digest_text(&mut hasher, &collection.collection_type);
-    digest_optional_json(&mut hasher, collection.conditions.as_ref());
-    digest_json(&mut hasher, &collection.metadata);
 
     let mut exact = translations.iter().collect::<Vec<_>>();
     exact.sort_by(|left, right| left.locale.cmp(&right.locale));
@@ -644,22 +636,6 @@ fn digest_translation(hasher: &mut Sha256, translation: &collection_translation:
     digest_text(hasher, &translation.title);
     digest_text(hasher, &translation.handle);
     digest_optional_text(hasher, translation.description.as_deref());
-}
-
-fn digest_json(hasher: &mut Sha256, value: &serde_json::Value) {
-    let bytes = serde_json::to_vec(value).expect("serde_json::Value serialization is infallible");
-    hasher.update((bytes.len() as u64).to_be_bytes());
-    hasher.update(bytes);
-}
-
-fn digest_optional_json(hasher: &mut Sha256, value: Option<&serde_json::Value>) {
-    match value {
-        Some(value) => {
-            hasher.update([1]);
-            digest_json(hasher, value);
-        }
-        None => hasher.update([0]),
-    }
 }
 
 fn digest_text(hasher: &mut Sha256, value: &str) {
