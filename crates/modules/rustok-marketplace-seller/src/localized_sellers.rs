@@ -4,7 +4,7 @@ use chrono::Utc;
 use rustok_api::normalize_locale_tag;
 use rustok_core::generate_id;
 use sea_orm::sea_query::{Alias, OnConflict, Query};
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QuerySelect};
 use uuid::Uuid;
 
 use crate::dto::{
@@ -113,6 +113,13 @@ pub(crate) async fn upsert_translation<C: ConnectionTrait>(
     display_name: String,
 ) -> MarketplaceSellerResult<seller_translation::Model> {
     let locale = normalize_seller_locale(locale)?;
+    seller::Entity::find_by_id(seller_id)
+        .filter(seller::Column::TenantId.eq(tenant_id))
+        .lock_exclusive()
+        .one(connection)
+        .await?
+        .ok_or(MarketplaceSellerError::SellerNotFound(seller_id))?;
+
     let now = Utc::now().fixed_offset();
     let mut insert = Query::insert();
     insert
@@ -186,7 +193,6 @@ fn map_seller(
             model.onboarding_status
         ))
     })?;
-    let row_updated_at = model.updated_at;
     let onboarding_event_matches = matches!(
         (prose.onboarding_kind, onboarding_status),
         (
@@ -216,16 +222,12 @@ fn map_seller(
             _
         )
     );
-    let onboarding_note = if prose.onboarding_at.is_some_and(|event_at| {
-        event_at > row_updated_at || (event_at == row_updated_at && onboarding_event_matches)
-    }) {
+    let onboarding_note = if onboarding_event_matches {
         prose.onboarding_note
     } else {
         None
     };
-    let suspension_reason = if prose.suspension_at.is_some_and(|event_at| {
-        event_at > row_updated_at || (event_at == row_updated_at && suspension_event_matches)
-    }) {
+    let suspension_reason = if suspension_event_matches {
         prose.suspension_reason
     } else {
         None

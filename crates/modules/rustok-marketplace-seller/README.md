@@ -21,6 +21,8 @@ and seller-scoped memberships for the RusToK Marketplace Family.
 - Publish module-owned GraphQL query/mutation roots over the same typed ports.
 - Publish a module-owned admin FFA package with explicit native/GraphQL transport
   selection and no implicit fallback.
+- Provide an exact-locale CAS mutation boundary for public seller presentation
+  copy (`display_name`), serialized on the parent seller row.
 - Store only normalized verification facts; provider-specific KYC payloads belong
   behind a future SPI and must not be persisted here.
 
@@ -28,6 +30,7 @@ and seller-scoped memberships for the RusToK Marketplace Family.
 
 - `MarketplaceSellerModule`
 - `MarketplaceSellerService`
+- `MarketplaceSellerTranslationService`
 - `MarketplaceSellerReadPort`
 - `MarketplaceSellerCommandPort`
 - `graphql::MarketplaceSellerQuery` with the `graphql` feature

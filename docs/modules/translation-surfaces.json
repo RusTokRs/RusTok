@@ -322,7 +322,6 @@
       "evidence_paths": [
         "crates/modules/flex/src/schema_translation.rs",
         "crates/modules/flex/src/schema_translation_target.rs",
-        "crates/modules/flex/src/schema_translation_progress.rs",
         "crates/modules/flex/src/schema_translation_progress_target.rs",
         "crates/modules/flex/src/schema_translation_changes.rs",
         "crates/modules/flex/src/migrations/m20260909_000002_add_schema_translation_change_journal.rs",
@@ -524,8 +523,12 @@
       "field_profiles": ["plain_text", "seo_text"],
       "data_classification": ["public", "personal"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/rustok-marketplace-seller/README.md"],
-      "blockers": ["Separate legal identity from translatable seller presentation and add owner CAS."]
+      "evidence_paths": [
+        "crates/modules/rustok-marketplace-seller/README.md",
+        "crates/modules/rustok-marketplace-seller/src/translation.rs",
+        "crates/modules/rustok-marketplace-seller/tests/marketplace_seller_translation_cas_test.rs"
+      ],
+      "blockers": ["Seller presentation copy is separated from legal identity and protected by owner CAS. Implement the TranslationTargetProvider adapter, change tracking, and retain PostgreSQL concurrent CAS/idempotent replay and lifecycle evidence before pilot promotion."]
     },
     {
       "id": "module_settings_copy",

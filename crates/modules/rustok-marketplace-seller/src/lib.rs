@@ -15,6 +15,7 @@ mod seller_member_events_tests;
 mod seller_prose;
 #[cfg(test)]
 mod seller_response_events_tests;
+mod translation;
 
 pub mod dto;
 pub mod entities;
@@ -34,6 +35,13 @@ pub use entities::*;
 pub use error::{MarketplaceSellerError, MarketplaceSellerResult};
 pub use ports::*;
 pub use service::MarketplaceSellerService;
+pub use translation::{
+    MarketplaceSellerTranslationExactLocaleApply,
+    MarketplaceSellerTranslationExactLocaleApplyReceipt,
+    MarketplaceSellerTranslationExactLocaleError, MarketplaceSellerTranslationExactLocaleRecord,
+    MarketplaceSellerTranslationExactLocaleResult, MarketplaceSellerTranslationExactLocaleSnapshot,
+    MarketplaceSellerTranslationService,
+};
 
 /// Seller identity, lifecycle, onboarding, and membership owner for the
 /// Marketplace Family.

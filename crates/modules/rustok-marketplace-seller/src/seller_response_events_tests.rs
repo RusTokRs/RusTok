@@ -1,5 +1,5 @@
 use sea_orm::{ColumnTrait, ConnectOptions, Database, EntityTrait, QueryFilter};
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 use crate::MarketplaceSellerService;
@@ -148,6 +148,10 @@ async fn setup_database() -> sea_orm::DatabaseConnection {
         .sqlx_logging(false);
     let db = Database::connect(options).await.unwrap();
     let manager = SchemaManager::new(&db);
+    rustok_outbox::SysEventsMigration
+        .up(&manager)
+        .await
+        .unwrap();
     for migration in crate::migrations::migrations() {
         migration.up(&manager).await.unwrap();
     }
