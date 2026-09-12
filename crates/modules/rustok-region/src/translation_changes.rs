@@ -186,6 +186,7 @@ pub(crate) async fn record_current_region_translation_change_in_tx(
     .await
 }
 
+#[allow(clippy::collapsible_if)]
 pub(crate) async fn record_region_translation_change_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,

@@ -155,6 +155,7 @@ LIMIT ?
     }
 }
 
+#[allow(clippy::collapsible_if)]
 pub(crate) async fn record_price_list_translation_change_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
