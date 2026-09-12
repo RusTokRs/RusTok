@@ -181,8 +181,8 @@ requireMarkers('adminCargo', [
   'default = ["ssr", "browser-js"]',
   'browser-js = ["dep:wasm-bindgen", "dep:web-sys"]',
   'wasm-client = ["fly-leptos/wasm-client", "browser-js"]',
-  'fly-browser = { path = "../../fly-browser" }',
-  'fly-leptos = { path = "../../fly-leptos", default-features = false }',
+  'fly-browser = { path = "../../../ui/fly-browser" }',
+  'fly-leptos = { path = "../../../ui/fly-leptos", default-features = false }',
 ], 'Page Builder admin feature boundary');
 requireMarkers('adminAdapter', [
   'FLY_BROWSER_ADAPTER_JS',

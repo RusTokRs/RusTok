@@ -312,7 +312,6 @@ jobs:
           RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
         run: >-
           cargo test
-          --locked
           --manifest-path "$GITHUB_WORKSPACE/base/Cargo.toml"
           -p rustok-migrations
           --test postgres_zero_migration_smoke

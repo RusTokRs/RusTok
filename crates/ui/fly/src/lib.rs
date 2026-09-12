@@ -57,7 +57,7 @@ pub use audit::*;
 pub use binding::*;
 pub use codec::*;
 pub use command::*;
-pub use component_visit::{visit_project_components, ComponentVisit};
+pub use component_visit::{ComponentVisit, visit_project_components};
 pub use context_contract::*;
 pub use context_dependency::*;
 pub use context_json_schema::*;

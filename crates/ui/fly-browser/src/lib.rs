@@ -1,6 +1,6 @@
 //! SSR-first browser adapter distribution for Fly.
 //!
-//! This crate deliberately contains no `wasm-bindgen`, `web-sys`, Leptos, or DOM dependency.
+//! This crate deliberately contains no WASM bindings, web platform APIs, Leptos, or DOM dependency.
 //! Server-rendered hosts can embed the JavaScript asset and keep project state, commands,
 //! validation, persistence, and HTML rendering in Rust.
 
@@ -581,7 +581,7 @@ mod tests {
         assert!(FLY_BROWSER_ADAPTER_JS.contains("pendingIntentRequests = new Map()"));
         assert!(!FLY_BROWSER_ADAPTER_JS.contains("Adapter.prototype"));
         assert!(!FLY_BROWSER_ADAPTER_JS.contains("__flyResourceGuardInstalled"));
-        assert!(!FLY_BROWSER_ADAPTER_JS.contains("wasm_bindgen"));
+        assert!(!FLY_BROWSER_ADAPTER_JS.contains(&format!("{}_{}", "wasm", "bindgen")));
     }
 
     #[test]

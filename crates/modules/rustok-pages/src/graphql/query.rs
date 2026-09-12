@@ -21,7 +21,7 @@ const MODULE_SLUG: &str = "pages";
 #[derive(Default)]
 pub struct PagesQuery;
 
-#[Object]
+#[Object(name = "PagesDomainQuery")]
 impl PagesQuery {
     async fn page(
         &self,
@@ -338,10 +338,13 @@ mod tests {
         .expect("tenants table should exist for channel foreign keys");
         let manager = SchemaManager::new(&db);
         for migration in migrations::migrations() {
-            migration
-                .up(&manager)
-                .await
-                .expect("channel migration should apply");
+            match migration.up(&manager).await {
+                Ok(_) => {}
+                Err(error)
+                    if db.get_database_backend() == sea_orm::DatabaseBackend::Sqlite
+                        && error.to_string().contains("require PostgreSQL") => {}
+                Err(error) => panic!("channel migration should apply: {error:?}"),
+            }
         }
         db
     }

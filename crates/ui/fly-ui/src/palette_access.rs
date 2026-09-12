@@ -108,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn current_surface_is_unrestricted() {
+    fn legacy_surface_is_unrestricted() {
         let access = PaletteBlockAccess::unrestricted();
         assert!(access.allows("text"));
         assert!(access.allows("fly.hero"));

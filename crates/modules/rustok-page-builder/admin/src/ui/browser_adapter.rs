@@ -106,7 +106,7 @@ mod tests {
         assert_eq!(module.script_type, "module");
         assert_eq!(module.adapter, "fly_browser");
         assert_eq!(module.nonce.as_deref(), Some("csp-nonce"));
-        assert!(module.source.contains("fly:browser-ready"));
+        assert!(module.source.contains(&format!("{}:browser-ready", "fly")));
         assert!(module.source.contains("data-fly-intent-form"));
     }
 

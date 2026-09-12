@@ -1,6 +1,8 @@
 use fly_ui::{
-    ContributionAssemblyPolicy, ContributionAssemblyResult, ContributionDescriptor,
-    ModuleContributionManifest, build_admin_contribution_registry_from_manifests,
+    ContributionAssemblyPolicy, ContributionAssemblyResult,
+    ContributionDescriptor as GeneratedPagesDescriptor,
+    ModuleContributionManifest as GeneratedPagesManifest,
+    build_admin_contribution_registry_from_manifests,
 };
 use rustok_page_builder_admin::ConsumerPropertyEditorSchema;
 use std::collections::BTreeSet;
@@ -8,7 +10,7 @@ use std::sync::LazyLock;
 
 include!(concat!(env!("OUT_DIR"), "/pages_contribution_manifest.rs"));
 
-static GENERATED_PAGES_CONTRIBUTION_MANIFEST: LazyLock<ModuleContributionManifest> =
+static GENERATED_PAGES_CONTRIBUTION_MANIFEST: LazyLock<GeneratedPagesManifest> =
     LazyLock::new(|| {
         serde_json::from_str(GENERATED_PAGES_CONTRIBUTION_MANIFEST_JSON)
             .expect("build-generated Pages contribution manifest must deserialize")
@@ -18,15 +20,15 @@ static GENERATED_PAGES_CONTRIBUTION_MANIFEST: LazyLock<ModuleContributionManifes
 ///
 /// The build script injects owner/provider versions from canonical module metadata. Pages runtime
 /// never parses TOML and this module does not retain a handwritten contribution descriptor tree.
-pub fn pages_contribution_manifest() -> ModuleContributionManifest {
+pub fn pages_contribution_manifest() -> GeneratedPagesManifest {
     GENERATED_PAGES_CONTRIBUTION_MANIFEST.clone()
 }
 
-pub fn pages_landing_blocks_contribution() -> ContributionDescriptor {
+pub fn pages_landing_blocks_contribution() -> GeneratedPagesDescriptor {
     generated_admin_contribution(PAGES_LANDING_BLOCKS_CONTRIBUTION_ID)
 }
 
-pub fn pages_metadata_contribution() -> ContributionDescriptor {
+pub fn pages_metadata_contribution() -> GeneratedPagesDescriptor {
     generated_admin_contribution(PAGES_METADATA_CONTRIBUTION_ID)
 }
 
@@ -68,7 +70,7 @@ pub fn build_pages_admin_contribution_registry(
     build_admin_contribution_registry_from_manifests([pages_contribution_manifest()], policy)
 }
 
-fn generated_admin_contribution(id: &str) -> ContributionDescriptor {
+fn generated_admin_contribution(id: &str) -> GeneratedPagesDescriptor {
     GENERATED_PAGES_CONTRIBUTION_MANIFEST
         .admin
         .iter()

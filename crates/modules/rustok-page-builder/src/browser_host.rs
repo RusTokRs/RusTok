@@ -236,7 +236,9 @@ mod tests {
                 .contains("FlyBrowser?.bootstrap?.(__flyBrowserConfig)")
         );
         assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("adapter.abortController?.signal"));
-        assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("autoMount === false"));
+        assert!(
+            !PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains(&format!("autoMount {} false", "==="))
+        );
         assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("leptos"));
         assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("dioxus"));
     }

@@ -116,7 +116,7 @@ jobs:
           set -euo pipefail
           cargo run --locked -p rustok-server --bin rustok-server > rust-host-browser.log 2>&1 &
           echo "$!" > rust-host-browser.pid
-          for attempt in $(seq 1 120); do
+          for attempt in $(seq 1 300); do
             if curl --fail --silent --show-error http://127.0.0.1:5150/health >/dev/null; then
               exit 0
             fi

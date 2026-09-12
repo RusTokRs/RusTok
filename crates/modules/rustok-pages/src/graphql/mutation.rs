@@ -29,7 +29,7 @@ const PAGE_CREATE_PUBLISH_REQUIRES_REVIEWED_COMMAND: &str =
 #[derive(Default)]
 pub struct PagesMutation;
 
-#[Object]
+#[Object(name = "PagesDomainMutation")]
 impl PagesMutation {
     async fn create_page(
         &self,
