@@ -1,11 +1,15 @@
 //! Business logic wrapper for OAuth apps
 
 use rustok_api::{Permission, normalize_locale_tag};
+use rustok_auth::{
+    OAuthAppTranslationLifecycle, oauth_app_translation_lifecycle,
+    oauth_app_translation_resource_revision,
+};
 use sea_orm::sea_query::{Alias, OnConflict, Query};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, Condition, ConnectionTrait, DatabaseConnection,
-    DatabaseTransaction, DbErr, EntityTrait, QueryFilter, Set, TransactionTrait,
-    entity::prelude::*,
+    ActiveModelTrait, ActiveValue, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, DbErr, EntityTrait, QueryFilter, QueryOrder, Set, Statement,
+    TransactionTrait, entity::prelude::*,
 };
 use std::{future::Future, str::FromStr};
 use uuid::Uuid;
@@ -119,6 +123,12 @@ impl ActiveModel {
             description.clone(),
         )
         .await?;
+        record_translation_change(
+            &transaction,
+            &model,
+            Some(rustok_core::generate_id()),
+        )
+        .await?;
         transaction.commit().await?;
         model.name = name;
         model.description = description;
@@ -144,6 +154,15 @@ impl ActiveModel {
         let app_id = active_value(&self.id)
             .ok_or_else(|| DbErr::Custom("OAuth app id is required".to_string()))?;
         let auto_created = active_value(&self.auto_created).unwrap_or(false);
+        let before = Entity::find_by_id(app_id)
+            .filter(Column::TenantId.eq(tenant_id))
+            .one(db)
+            .await?
+            .ok_or_else(|| DbErr::RecordNotFound(format!("OAuth app {app_id}")))?;
+        let desired_is_active = active_value(&self.is_active).unwrap_or(before.is_active);
+        let desired_revoked_at = active_value(&self.revoked_at).unwrap_or(before.revoked_at.clone());
+        let lifecycle_changed = translation_lifecycle(&before)
+            != oauth_app_translation_lifecycle(desired_is_active, desired_revoked_at.is_some());
 
         let localized_update = if name.is_some() || description_changed {
             let locale = copy_write_locale(auto_created)?;
@@ -159,26 +178,41 @@ impl ActiveModel {
             let resolved_description = if description_changed {
                 description.clone()
             } else {
-                existing.and_then(|row| row.description)
+                existing.as_ref().and_then(|row| row.description.clone())
             };
-            Some((locale, resolved_name, resolved_description))
+            let copy_changed = existing.as_ref().is_none_or(|row| {
+                row.name != resolved_name || row.description != resolved_description
+            });
+            Some((
+                locale,
+                resolved_name,
+                resolved_description,
+                copy_changed,
+            ))
         } else {
             None
         };
 
         let mut model = database_active(self).update(db).await?;
-        if let Some((locale, resolved_name, resolved_description)) = localized_update {
-            upsert_translation(
-                db,
-                tenant_id,
-                app_id,
-                locale.as_str(),
-                resolved_name.clone(),
-                resolved_description.clone(),
-            )
-            .await?;
+        let mut copy_changed = false;
+        if let Some((locale, resolved_name, resolved_description, changed)) = localized_update {
+            if changed {
+                upsert_translation(
+                    db,
+                    tenant_id,
+                    app_id,
+                    locale.as_str(),
+                    resolved_name.clone(),
+                    resolved_description.clone(),
+                )
+                .await?;
+            }
+            copy_changed = changed;
             model.name = resolved_name;
             model.description = resolved_description;
+        }
+        if copy_changed || lifecycle_changed {
+            record_translation_change(db, &model, Some(rustok_core::generate_id())).await?;
         }
         Ok(model)
     }
@@ -329,6 +363,82 @@ where
         .filter(oauth_app_translations::Column::Locale.eq(locale))
         .one(db)
         .await
+}
+
+pub async fn load_translations<C>(
+    db: &C,
+    tenant_id: Uuid,
+    app_id: Uuid,
+) -> Result<Vec<oauth_app_translations::Model>, DbErr>
+where
+    C: ConnectionTrait,
+{
+    oauth_app_translations::Entity::find()
+        .filter(oauth_app_translations::Column::TenantId.eq(tenant_id))
+        .filter(oauth_app_translations::Column::AppId.eq(app_id))
+        .order_by_asc(oauth_app_translations::Column::Locale)
+        .all(db)
+        .await
+}
+
+pub fn translation_lifecycle(app: &Model) -> OAuthAppTranslationLifecycle {
+    oauth_app_translation_lifecycle(app.is_active, app.revoked_at.is_some())
+}
+
+pub fn translation_resource_revision(
+    app: &Model,
+    translations: &[oauth_app_translations::Model],
+) -> String {
+    oauth_app_translation_resource_revision(
+        app.tenant_id,
+        app.id,
+        translations.iter().map(|translation| {
+            (
+                translation.locale.as_str(),
+                translation.name.as_str(),
+                translation.description.clone(),
+            )
+        }),
+    )
+}
+
+pub async fn record_translation_change<C>(
+    db: &C,
+    app: &Model,
+    operation_id: Option<Uuid>,
+) -> Result<(), DbErr>
+where
+    C: ConnectionTrait,
+{
+    let translations = load_translations(db, app.tenant_id, app.id).await?;
+    if translations.is_empty() {
+        return Ok(());
+    }
+    let revision = translation_resource_revision(app, &translations);
+    let lifecycle = translation_lifecycle(app);
+    let backend = db.get_database_backend();
+    let sql = match backend {
+        sea_orm::DatabaseBackend::Postgres => {
+            "INSERT INTO oauth_app_translation_change_journal (operation_id, tenant_id, app_id, resource_revision, lifecycle) VALUES ($1, $2, $3, $4, $5)"
+        }
+        sea_orm::DatabaseBackend::Sqlite | sea_orm::DatabaseBackend::MySql => {
+            "INSERT INTO oauth_app_translation_change_journal (operation_id, tenant_id, app_id, resource_revision, lifecycle) VALUES (?, ?, ?, ?, ?)"
+        }
+        _ => unreachable!("unsupported SeaORM database backend"),
+    };
+    db.execute_raw(Statement::from_sql_and_values(
+        backend,
+        sql,
+        vec![
+            operation_id.into(),
+            app.tenant_id.into(),
+            app.id.into(),
+            revision.into(),
+            lifecycle.as_str().into(),
+        ],
+    ))
+    .await?;
+    Ok(())
 }
 
 pub async fn hydrate_exact_translation<C>(
