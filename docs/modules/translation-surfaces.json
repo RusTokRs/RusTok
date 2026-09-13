@@ -659,16 +659,20 @@
       "owner_slug": "marketplace_seller",
       "resource_kind": "seller_presentation",
       "readiness": "blocked",
-      "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "seo_text"],
-      "data_classification": ["public", "personal"],
-      "ai_export": "restricted",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text"],
+      "data_classification": ["public"],
+      "ai_export": "allowed",
       "evidence_paths": [
         "crates/modules/rustok-marketplace-seller/README.md",
         "crates/modules/rustok-marketplace-seller/src/translation.rs",
-        "crates/modules/rustok-marketplace-seller/tests/marketplace_seller_translation_cas_test.rs"
+        "crates/modules/rustok-marketplace-seller/src/translation_changes.rs",
+        "crates/modules/rustok-marketplace-seller/src/translation_progress.rs",
+        "crates/modules/rustok-marketplace-seller/src/translation_target.rs",
+        "crates/modules/rustok-marketplace-seller/src/migrations/m20260913_000006_add_seller_translation_target.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
       ],
-      "blockers": ["Seller presentation copy is separated from legal identity and protected by owner CAS. Implement the TranslationTargetProvider adapter, change tracking, and retain PostgreSQL concurrent CAS/idempotent replay and lifecycle evidence before pilot promotion."]
+      "blockers": ["The marketplace_seller/seller_presentation provider is registered for public display_name only, with exact resource/source/target CAS, durable idempotent apply, canonical owner-event parity, aggregate progress, and a frozen durable ChangeCursor. Retain focused PostgreSQL migration, concurrent CAS, idempotent replay, lifecycle/progress, and cursor-recovery evidence before pilot promotion; legal identity, handle, metadata, onboarding/suspension prose, memberships, verification facts, and other operational seller state remain outside Translation."]
     },
     {
       "id": "module_settings_copy",

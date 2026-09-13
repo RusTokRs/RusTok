@@ -16,6 +16,7 @@ use crate::entities::seller_command_receipt;
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
 use crate::external_events::event_for_completed_command;
 use crate::seller_events::append_receipted_seller_event;
+use crate::translation_changes::record_current_seller_translation_change_in_tx;
 
 const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
 const RECEIPT_STATUS_PENDING: &str = "pending";
@@ -178,6 +179,29 @@ pub(crate) async fn complete_command<R: Serialize + Clone>(
     {
         receipt.transaction.rollback().await?;
         return Err(error);
+    }
+
+    if response_kind == "seller" {
+        let seller_id = response_json
+            .get("id")
+            .and_then(Value::as_str)
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .ok_or_else(|| {
+                MarketplaceSellerError::Validation(
+                    "marketplace seller command result is missing a valid seller id".to_string(),
+                )
+            })?;
+        if let Err(error) = record_current_seller_translation_change_in_tx(
+            &receipt.transaction,
+            receipt.tenant_id,
+            seller_id,
+            receipt.receipt_id,
+        )
+        .await
+        {
+            receipt.transaction.rollback().await?;
+            return Err(error);
+        }
     }
 
     let external_event = match event_for_completed_command(
