@@ -295,7 +295,6 @@ INNER JOIN product_attributes pa
    AND pa.tenant_id = pav.tenant_id
 WHERE pav.tenant_id = $1
   AND pav.id = $2
-  AND pa.archived_at IS NULL
   AND pa.is_localized = TRUE
   AND pa.value_type IN ('text', 'textarea', 'richtext')
 FOR UPDATE OF pav
@@ -424,7 +423,6 @@ LEFT JOIN product_attribute_value_translations target_translation
     ON target_translation.value_id = pav.id
    AND target_translation.locale = $3
 WHERE pav.tenant_id = $1
-  AND pa.archived_at IS NULL
   AND pa.is_localized = TRUE
   AND pa.value_type IN ('text', 'textarea', 'richtext')
   AND NULLIF(BTRIM(source_translation.value_text), '') IS NOT NULL
@@ -549,7 +547,6 @@ INNER JOIN product_attributes pa
    AND pa.tenant_id = pav.tenant_id
 WHERE pav.tenant_id = $1
   AND pav.product_id = $2
-  AND pa.archived_at IS NULL
   AND pa.is_localized = TRUE
   AND pa.value_type IN ('text', 'textarea', 'richtext')
   AND EXISTS (
@@ -1008,7 +1005,6 @@ FROM product_attribute_values pav
 INNER JOIN product_attributes pa
     ON pa.id = pav.attribute_id
    AND pa.tenant_id = pav.tenant_id
-   AND pa.archived_at IS NULL
    AND pa.is_localized = TRUE
    AND pa.value_type IN ('text', 'textarea', 'richtext')
 "#
@@ -1029,7 +1025,6 @@ WITH candidate AS (
         ON source_translation.value_id = pav.id
        AND source_translation.locale = $2
     WHERE pav.tenant_id = $1
-      AND pa.archived_at IS NULL
       AND pa.is_localized = TRUE
       AND pa.value_type IN ('text', 'textarea', 'richtext')
       AND NULLIF(BTRIM(source_translation.value_text), '') IS NOT NULL
