@@ -717,24 +717,38 @@
       "owner_slug": "auth",
       "resource_kind": "oauth_application_copy",
       "readiness": "blocked",
-      "provider_status": "not_registered",
+      "provider_status": "registered",
       "field_profiles": ["plain_text"],
       "data_classification": ["tenant_private", "sensitive"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/modules/rustok-auth/README.md"],
-      "blockers": ["Separate localizable presentation from client identity, redirect URIs, scopes, and credentials; add owner CAS."]
+      "evidence_paths": [
+        "crates/modules/rustok-auth/README.md",
+        "crates/modules/rustok-auth/src/oauth_app_translation.rs",
+        "crates/modules/rustok-auth/src/migrations/m20260913_000010_add_oauth_app_translation_target.rs",
+        "apps/server/src/services/oauth_app_translation.rs",
+        "apps/server/src/services/oauth_app_translation_target.rs",
+        "apps/server/src/services/mod.rs",
+        "apps/server/tests/oauth_app_translation_target_postgres.rs",
+        ".github/workflows/oauth-app-translation-target-postgres.yml"
+      ],
+      "blockers": ["The auth/oauth_application_copy provider is registered over localized name plus optional description only, with settings:manage read/apply floors, sensitive classification, AI export forbidden, copy-only revisions, aggregate progress, durable idempotent apply, frozen ChangeCursor, and canonical Active/Archived lifecycle. Retained repository-hosted PostgreSQL migration/backfill, tenant-isolation, canonical create/update/secret-rotation/revoke, multi-replica CAS, replay, progress, and cursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; client identity, slug, credentials, redirect URIs, scopes/grants, consent/token state, provenance, and other operational OAuth facts remain outside Translation."]
     },
     {
       "id": "registry_artifact_copy",
       "owner_slug": "modules",
       "resource_kind": "registry_artifact_copy",
-      "readiness": "blocked",
+      "readiness": "separate_track",
       "provider_status": "not_registered",
       "field_profiles": ["plain_text"],
-      "data_classification": ["public", "tenant_private"],
-      "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/rustok-modules/README.md"],
-      "blockers": ["Assign the final registry metadata write owner and expose exact provenance-aware revisions before provider registration."]
+      "data_classification": ["public"],
+      "ai_export": "forbidden",
+      "evidence_paths": [
+        "crates/modules/rustok-modules/README.md",
+        "crates/modules/rustok-modules/src/governance.rs",
+        "crates/libs/rustok-api/src/ports.rs",
+        "DECISIONS/2026-07-26-translation-control-plane-boundary.md"
+      ],
+      "exclusion_reason": "Registry publisher name/description localization is platform-global governance data, not tenant-owned Translation data. Mutable copy lives on the publish-request owner plane and is snapshotted into immutable release-localized rows at publication. The current Translation control plane and PortContext are tenant-scoped, so registering one global registry resource would either duplicate it across tenant workspaces or require a fake/sentinel tenant. Keep registry localization in its platform governance track until an explicit platform-scoped Translation provider/context contract exists; signed artifact localization catalogs and release provenance remain immutable and outside tenant Translation."
     },
     {
       "id": "alloy_control_copy",

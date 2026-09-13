@@ -19,6 +19,7 @@ pub mod graphql;
 pub mod jwt;
 pub mod lifecycle;
 pub mod migrations;
+pub mod oauth_app_translation;
 pub mod rest;
 
 // Re-exports for convenience
@@ -46,6 +47,10 @@ pub use lifecycle::{
     AcceptInviteRecord, AuthLifecycleContext, AuthLifecycleMutationError, AuthLifecyclePort,
     AuthLifecycleRuntime, AuthSessionRecord, AuthTokenRecord, AuthUserBackfillReadPort,
     AuthUserBackfillReadRequest, AuthUserBackfillRecord, AuthUserBackfillRuntime, AuthUserRecord,
+};
+pub use oauth_app_translation::{
+    OAuthAppTranslationLifecycle, oauth_app_translation_lifecycle,
+    oauth_app_translation_locale_revision, oauth_app_translation_resource_revision,
 };
 pub use rest::{
     AcceptInviteParams, AuthResponse, AuthorizeRequest, BrowserAuthorizeRequest,
