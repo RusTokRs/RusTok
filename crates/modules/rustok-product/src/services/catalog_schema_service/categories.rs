@@ -1,3 +1,4 @@
+mod seo_translation;
 mod translation;
 
 use std::collections::{HashMap, HashSet};

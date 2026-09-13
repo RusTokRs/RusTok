@@ -356,6 +356,16 @@ pub fn build_shared_runtime_extensions_with_host_providers(
                     "Product Attribute Value translation target provider registration failed: {error}"
                 ))
             })?;
+        let provider =
+            rustok_product::ProductCatalogSchemaService::category_seo_translation_target_provider(
+                schema_service.clone(),
+            );
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Category SEO translation target provider registration failed: {error}"
+                ))
+            })?;
         let provider = rustok_product::ProductCatalogSchemaService::variant_attribute_value_translation_target_provider(
             schema_service,
         );
@@ -821,6 +831,14 @@ mod tests {
                 .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
                     descriptor.owner_slug.as_str() == "product"
                         && descriptor.resource_kind.as_str() == "variant_attribute_value"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "category_seo"
                 }))
         );
         #[cfg(feature = "mod-commerce")]

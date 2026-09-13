@@ -178,6 +178,8 @@ impl ProductWriteTransaction {
             product_attribute_schema_translation_change_target(&event);
         let category_form_translation_change_target =
             product_category_form_translation_change_target(&event);
+        let category_seo_translation_change_target =
+            product_category_seo_translation_change_target(&event);
         let attribute_value_translation_change_target =
             product_attribute_value_translation_change_target(&event);
         let variant_attribute_value_translation_change_target =
@@ -271,6 +273,19 @@ impl ProductWriteTransaction {
             // name/slug/description remain Taxonomy-owned. Binding/schema-mode events pass this
             // boundary so semantic revision dedupe can prove they do not manufacture copy changes.
             ProductCatalogSchemaService::record_category_form_translation_change_in_tx(
+                &self.transaction,
+                tenant_id,
+                category_id,
+                root_event_id,
+            )
+            .await?;
+        }
+
+        if let Some(category_id) = category_seo_translation_change_target {
+            // Product Category SEO is a separate owner surface from Taxonomy canonical Category copy
+            // and from SEO-module overrides. Canonical Category lifecycle events capture the exact
+            // post-command SEO aggregate; semantic revision/lifecycle dedupe suppresses unrelated edits.
+            ProductCatalogSchemaService::record_category_seo_translation_change_in_tx(
                 &self.transaction,
                 tenant_id,
                 category_id,
@@ -434,6 +449,15 @@ fn product_category_form_translation_change_target(event: &DomainEvent) -> Optio
         | DomainEvent::CatalogCategoryDeleted { category_id }
         | DomainEvent::CatalogCategoryAttributesChanged { category_id }
         | DomainEvent::CatalogCategorySchemaModeChanged { category_id } => Some(*category_id),
+        _ => None,
+    }
+}
+
+fn product_category_seo_translation_change_target(event: &DomainEvent) -> Option<Uuid> {
+    match event {
+        DomainEvent::CatalogCategoryCreated { category_id }
+        | DomainEvent::CatalogCategoryUpdated { category_id }
+        | DomainEvent::CatalogCategoryDeleted { category_id } => Some(*category_id),
         _ => None,
     }
 }
