@@ -2,7 +2,7 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 use uuid::Uuid;
 
 use crate::{
-    MarketplaceSellerError, MarketplaceSellerTranslationExactLocaleResult,
+    MarketplaceSellerTranslationExactLocaleError, MarketplaceSellerTranslationExactLocaleResult,
     MarketplaceSellerTranslationService,
 };
 use crate::localized_sellers::normalize_seller_locale;
@@ -30,19 +30,17 @@ impl MarketplaceSellerTranslationService {
     ) -> MarketplaceSellerTranslationExactLocaleResult<MarketplaceSellerTranslationExactProgressFacts>
     {
         if tenant_id.is_nil() {
-            return Err(MarketplaceSellerError::Validation(
+            return Err(MarketplaceSellerTranslationExactLocaleError::Validation(
                 "marketplace seller Translation progress tenant_id must not be nil".to_string(),
-            )
-            .into());
+            ));
         }
         let source_locale = canonical_locale(source_locale)?;
         let target_locale = canonical_locale(target_locale)?;
         if source_locale == target_locale {
-            return Err(MarketplaceSellerError::Validation(
+            return Err(MarketplaceSellerTranslationExactLocaleError::Validation(
                 "marketplace seller Translation progress source and target locale must differ"
                     .to_string(),
-            )
-            .into());
+            ));
         }
 
         query_exact_progress(self.database(), tenant_id, &source_locale, &target_locale).await
@@ -83,7 +81,7 @@ where
     .one(db)
     .await?
     .ok_or_else(|| {
-        MarketplaceSellerError::Validation(
+        MarketplaceSellerTranslationExactLocaleError::Validation(
             "marketplace seller Translation progress aggregate returned no row".to_string(),
         )
     })?;
@@ -94,19 +92,18 @@ where
         complete_resources: progress_count(row.complete_resources, "complete resources")?,
     };
     if facts.exact_required_units > facts.resources || facts.complete_resources > facts.resources {
-        return Err(MarketplaceSellerError::Validation(
+        return Err(MarketplaceSellerTranslationExactLocaleError::Validation(
             "marketplace seller Translation progress aggregate is internally inconsistent"
                 .to_string(),
-        )
-        .into());
+        ));
     }
     Ok(facts)
 }
 
-fn canonical_locale(
-    locale: &str,
-) -> MarketplaceSellerTranslationExactLocaleResult<String> {
-    normalize_seller_locale(locale).map_err(Into::into)
+fn canonical_locale(locale: &str) -> MarketplaceSellerTranslationExactLocaleResult<String> {
+    normalize_seller_locale(locale).map_err(|error| {
+        MarketplaceSellerTranslationExactLocaleError::Validation(error.to_string())
+    })
 }
 
 fn progress_count(
@@ -114,10 +111,9 @@ fn progress_count(
     field: &'static str,
 ) -> MarketplaceSellerTranslationExactLocaleResult<u64> {
     u64::try_from(value).map_err(|_| {
-        MarketplaceSellerError::Validation(format!(
+        MarketplaceSellerTranslationExactLocaleError::Validation(format!(
             "marketplace seller Translation progress {field} must not be negative"
         ))
-        .into()
     })
 }
 
