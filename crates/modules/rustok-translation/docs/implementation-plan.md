@@ -3,7 +3,7 @@ id: doc://crates/modules/rustok-translation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress
-last_reviewed: 2026-09-12
+last_reviewed: 2026-09-13
 ---
 
 # Translation implementation plan
@@ -85,42 +85,43 @@ selection.
   work. Both reads fail closed on inconsistent workflow evidence and enforce
   explicit queue and workload bounds.
 - Media, Taxonomy, Navigation menu, Pages metadata, Settings static fields,
-  Product `product`/`variant`/`option`/`image`, Commerce `collection_copy`, SEO
-  `seo_copy`, Region `region_copy`, Inventory `stock_location_copy`, Pricing
-  `price_list_copy`, Fulfillment `shipping_option_copy`, Flex schema copy, Flex
-  attached `taxonomy.category`, and Flex standalone localized values are
-  registered owner providers. Registration is not readiness: the newer
-  Product/Commerce/SEO/Region/Inventory/Pricing/Fulfillment targets remain
-  registry-blocked until their retained PostgreSQL lifecycle/CAS/replay,
-  aggregate-progress, and ChangeCursor evidence gates are green, while broad
-  Product catalog and broad Fulfillment presentation/template parity remain
-  separate blocked completeness surfaces. Taxonomy applies term `name`,
-  review-only `slug`, and optional `description` through owner CAS and the
-  shared Outbox receipt ledger. Blog Category canonical copy is consumed
-  through the same-ID Blog-to-Taxonomy Category binding and the `taxonomy/term`
-  provider. Forum Category canonical copy is consumed through the same-ID
-  Forum-to-Taxonomy Category binding and the same `taxonomy/term` provider. The
-  former `blog/category` provider, Blog Category change journal, and Blog-local
-  Category translation storage are retired and must not be recreated. The
-  duplicate `forum/category` provider, Forum Category change/progress runtime,
-  and Forum-local donor translation storage are retired and must not be
-  recreated. Forum topic/reply Translation remains a separate opt-in UGC
-  onboarding track. Navigation applies its menu name and every item title as
-  one CAS-guarded locale aggregate through `MenuService`, using a content-free
-  cursor journal without claiming a generic menu event. Pages applies exact
-  title, review-only slug, and optional SEO metadata through `PageService`,
-  keeping Fly/GrapesJS bodies outside this pilot. Settings registers
-  `modules/static_settings` through the server-owned provider, resolves only
-  owner-admitted localized package fields, reads exact source/target snapshots,
-  progress and bounded changes through public Settings services, and applies
-  deterministic CAS-guarded owner commands with provider-level replay safety;
-  Translation does not read Settings persistence or manifest storage directly.
-  Flex `flex/attached_localized_value` is a retained repository-hosted pilot
-  candidate for the `taxonomy.category` donor: lifecycle exact-head run
-  `34594653702` verifies multi-replica CAS/conflict, idempotent replay,
-  aggregate progress, schema fan-out, canonical hard-delete tombstones and
-  ChangeCursor recovery, while policy/RBAC exact-head run `34592656347`
-  verifies fail-closed defaults, safe explicit policy, forbidden
+  Product `product`/`variant`/`option`/`image`/`attribute`/`attribute_schema`/
+  `category_form`, Commerce `collection_copy`, SEO `seo_copy`, Region
+  `region_copy`, Inventory `stock_location_copy`, Pricing `price_list_copy`,
+  Fulfillment `shipping_option_copy`, Flex schema copy, Flex attached
+  `taxonomy.category`, and Flex standalone localized values are registered owner
+  providers. Registration is not readiness: retained repository-hosted
+  PostgreSQL evidence sources are present for the newer Product/Commerce/SEO/
+  Region/Inventory/Pricing/Fulfillment narrow targets, but they remain
+  readiness-blocked until focused exact-head runs are green and reviewed
+  post-merge evidence is retained. Broad Product catalog and broad Fulfillment
+  presentation/template parity remain separate blocked completeness surfaces.
+  Taxonomy applies term `name`, review-only `slug`, and optional `description`
+  through owner CAS and the shared Outbox receipt ledger. Blog Category
+  canonical copy is consumed through the same-ID Blog-to-Taxonomy Category
+  binding and the `taxonomy/term` provider. Forum Category canonical copy is
+  consumed through the same-ID Forum-to-Taxonomy Category binding and the same
+  `taxonomy/term` provider. The former `blog/category` provider, Blog Category
+  change journal, and Blog-local Category translation storage are retired and
+  must not be recreated. The duplicate `forum/category` provider, Forum Category
+  change/progress runtime, and Forum-local donor translation storage are retired
+  and must not be recreated. Forum topic/reply Translation remains a separate
+  opt-in UGC onboarding track. Navigation applies its menu name and every item
+  title as one CAS-guarded locale aggregate through `MenuService`, using a
+  content-free cursor journal without claiming a generic menu event. Pages
+  applies exact title, review-only slug, and optional SEO metadata through
+  `PageService`, keeping Fly/GrapesJS bodies outside this pilot. Settings
+  registers `modules/static_settings` through the server-owned provider,
+  resolves only owner-admitted localized package fields, reads exact
+  source/target snapshots, progress and bounded changes through public Settings
+  services, and applies deterministic CAS-guarded owner commands with
+  provider-level replay safety; Translation does not read Settings persistence
+  or manifest storage directly. Flex `flex/attached_localized_value` is a
+  retained repository-hosted pilot candidate for the `taxonomy.category` donor:
+  lifecycle exact-head run `34594653702` verifies multi-replica CAS/conflict,
+  idempotent replay, aggregate progress, schema fan-out, canonical hard-delete
+  tombstones and ChangeCursor recovery, while policy/RBAC exact-head run
+  `34592656347` verifies fail-closed defaults, safe explicit policy, forbidden
   classifications, permission floors, unknown-field validation and policy-only
   changes without content revision/change evidence. Flex
   `flex/standalone_localized_value` is also registered with durable exact-locale
@@ -425,7 +426,7 @@ selection.
     `taxonomy.category` lifecycle `34594653702` and policy/RBAC `34592656347`,
     application router exact-head `33608857569`, and post-merge `main`
     `33609559524`.
-- Last verified at (UTC): 2026-09-12
+- Last verified at (UTC): 2026-09-13
 - Owner: Translation module maintainers
 
 ## Milestones
@@ -494,13 +495,15 @@ selection.
    PostgreSQL evidence is not green; repair and retain exact-head/post-merge
    evidence before any standalone readiness promotion.
 10. Production composition registration is current for Product `product`,
-    `variant`, `option`, `image`, SEO `seo_copy`, Region `region_copy`, Inventory
+    `variant`, `option`, `image`, `attribute`, `attribute_schema`, and
+    `category_form`, plus SEO `seo_copy`, Region `region_copy`, Inventory
     `stock_location_copy`, Pricing `price_list_copy`, and Fulfillment
-    `shipping_option_copy`. Keep these exact targets blocked until retained
-    PostgreSQL CAS/replay/progress/ChangeCursor evidence is green, and keep broad
-    Product catalog plus broad Fulfillment presentation/template completeness as
-    separate onboarding surfaces rather than treating narrow registration as
-    aggregate parity.
+    `shipping_option_copy`. Retained PostgreSQL evidence sources are present for
+    these newer narrow targets, but keep them blocked until focused exact-head
+    workflows are green and reviewed post-merge evidence is retained. Keep
+    broad Product catalog plus broad Fulfillment presentation/template
+    completeness as separate onboarding surfaces rather than treating narrow
+    registration as aggregate parity.
 
 ## Verification
 

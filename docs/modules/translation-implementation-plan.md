@@ -36,7 +36,7 @@ operations, not request-locale selection.
 
 ## Planning status
 
-This is the active cross-cutting implementation plan. As of 2026-09-12:
+This is the active cross-cutting implementation plan. As of 2026-09-13:
 
 - the dependency boundary for machine translation now exists:
   `rustok-translation` owns `MachineTranslationPort`, `rustok-ai` owns
@@ -176,84 +176,85 @@ This is the active cross-cutting implementation plan. As of 2026-09-12:
   exact-locale, revision, validation, apply, progress, change-cursor, and
   interchange contracts;
 - production composition now registers Media, Taxonomy, Navigation menu, Pages
-  metadata, Settings static fields, Product `product`/`variant`/`option`/`image`,
-  Commerce `collection_copy`, SEO `seo_copy`, Region `region_copy`, Inventory
-  `stock_location_copy`, Pricing `price_list_copy`, Fulfillment
-  `shipping_option_copy`, Flex schema copy, Flex attached `taxonomy.category`,
-  and Flex standalone localized values as owner providers. Registration is not
-  a readiness promotion: the newly registered Product/Commerce/SEO/Region/
-  Inventory/Pricing/Fulfillment targets remain blocked until retained
-  PostgreSQL CAS/replay/progress/ChangeCursor evidence is green, and broad
-  Product catalog plus broad Fulfillment copy remain separate completeness
-  surfaces. The attached Flex provider uses the neutral
-  `flex/attached_localized_value` key, donor-scoped identity, exact list/read,
-  revision-safe/idempotent validate/apply, aggregate progress, and the durable
-  Flex-owned bounded ChangeCursor. Its resource revision is the same `attached:N`
-  evidence used by snapshots and active change rows; Taxonomy aggregate revision
-  remains only an owner serialization/CAS mechanism. Flex now owns a reusable
-  attached-field policy plane keyed by `(tenant_id, entity_type, field_key)`.
-  Missing or reset policy resolves to `tenant_private` with AI export disabled;
-  an explicit safe policy may admit AI export, while `secret` and
-  `immutable_transaction` cannot enable it. The owner-owned Flex GraphQL control
-  plane exposes effective policy with explicit/default provenance, requires
-  `flex_schemas:list` for reads and `flex_schemas:update` for mutations, and
-  validates field keys through the existing donor definition registry. Policy
-  is live governance metadata and does not manufacture `attached:N` revisions
-  or ChangeCursor rows. The attached `taxonomy.category` surface is a
-  repository-hosted pilot candidate: exact-head lifecycle run `34594653702`
-  verifies PostgreSQL migrations, multi-replica CAS/conflict, idempotent replay,
-  aggregate-progress stability, translation-relevant schema fan-out,
-  same-transaction hard-delete tombstones, and ChangeCursor recovery; exact-head
-  policy/RBAC run `34592656347` verifies fail-closed defaults, explicit safe
-  admission, forbidden-class rejection, RBAC, unknown-field validation, and
-  policy-only changes without content revision/change evidence. Production
-  enablement remains an operator/live-rollout decision. Standalone Flex
-  `standalone_localized_value` is now registered with durable exact-locale
-  revisions, progress, bounded ChangeCursor and fail-closed governance, but its
-  current focused lifecycle/policy PostgreSQL evidence is not green, so it
-  remains blocked until exact-head and post-merge retained evidence is repaired.
-  Media's exact-locale CAS apply, stable receipt, append-only tenant cursor, and
-  content-free owner event are transactional; every other Media translation
-  write emits the same repair evidence. Its aggregate progress counts only exact
-  target-row values for source-eligible active assets inside a stable cursor
-  window. Translated-asset deletion and failure emit deleted/unavailable cursor
-  evidence, so lifecycle changes cannot leave projection freshness falsely
-  current. Taxonomy's `taxonomy/term` provider exposes exact `name`, review-only
-  `slug`, and optional `description`, applies target-locale
-  resource/source/target CAS, uses the shared owner receipt ledger, and records
-  an append-only owner change cursor. Taxonomy does not claim a global
-  owner-event contract. Blog Category copy follows that canonical Taxonomy
-  provider through the same-ID Blog-to-Taxonomy Category binding. Forum Category
-  copy also follows the canonical Taxonomy provider through the same-ID
-  Forum-to-Taxonomy Category binding. The former `blog/category` provider, Blog
-  change cursor/journal, and Blog-local Category translation storage were
-  retired by TAXONOMY-CAT-8..12; the duplicate Forum `forum/category` provider,
-  change cursor/progress runtime, and donor translation storage are retired
-  after the verified CAT-5 cutover. Those consumer-local provider/storage paths
-  remain historical migration evidence only. Navigation's `navigation/menu`
-  provider applies an exact locale aggregate containing the menu name and every
-  item title through `MenuService`, with resource/source/target CAS, the shared
-  receipt ledger, and a content-free owner cursor; it does not claim a generic
-  menu event. Pages' `pages/page_metadata` provider exposes exact `title`,
-  review-only `slug`, optional `meta_title`, and optional `meta_description`. It
-  applies through `PageService` with page resource/source/target CAS, the shared
-  receipt ledger, a content-free owner cursor, and the existing `NodeUpdated`
-  owner event. Settings registers `modules/static_settings` through the
-  server-owned provider, exposes only owner-admitted localized package fields,
-  reads exact source/target snapshots, progress, and bounded changes through
-  public Settings owner services, and applies deterministic CAS-guarded owner
-  commands with provider-level replay safety. Translation neither reads
-  Settings persistence nor parses manifest storage as a second owner.
-  Fly/GrapesJS bodies remain outside this pilot. Taxonomy-owned tags and Blog
-  posts remain outside this pilot. Focused green evidence includes Translation
-  Memory retention run `33539223647`, Pages `page_metadata` run `33545157694`,
-  Navigation `navigation/menu` run `33549035590`, Forum Category/Taxonomy
-  cutover run `33431200532`, Media `media/asset` PostgreSQL exact-head run
-  `33623651814` plus post-merge `main` run `33635199181`, Settings
-  `modules/static_settings` runtime composition `33952057144` plus migration
-  approval `33952055814`, Flex attached lifecycle `34594653702`, and Flex
-  attached policy/RBAC `34592656347`. No green standalone Flex retained run is
-  claimed by this plan;
+  metadata, Settings static fields, Product `product`/`variant`/`option`/`image`/
+  `attribute`/`attribute_schema`/`category_form`, Commerce `collection_copy`, SEO
+  `seo_copy`, Region `region_copy`, Inventory `stock_location_copy`, Pricing
+  `price_list_copy`, Fulfillment `shipping_option_copy`, Flex schema copy, Flex
+  attached `taxonomy.category`, and Flex standalone localized values as owner
+  providers. Registration is not a readiness promotion: retained
+  repository-hosted PostgreSQL evidence sources are present for the newer
+  Product/Commerce/SEO/Region/Inventory/Pricing/Fulfillment narrow targets, but
+  they remain blocked until focused exact-head runs are green and reviewed
+  post-merge evidence is retained. Broad Product catalog plus broad Fulfillment
+  copy remain separate completeness surfaces. The attached Flex provider uses
+  the neutral `flex/attached_localized_value` key, donor-scoped identity, exact
+  list/read, revision-safe/idempotent validate/apply, aggregate progress, and
+  the durable Flex-owned bounded ChangeCursor. Its resource revision is the same
+  `attached:N` evidence used by snapshots and active change rows; Taxonomy
+  aggregate revision remains only an owner serialization/CAS mechanism. Flex
+  now owns a reusable attached-field policy plane keyed by
+  `(tenant_id, entity_type, field_key)`. Missing or reset policy resolves to
+  `tenant_private` with AI export disabled; an explicit safe policy may admit AI
+  export, while `secret` and `immutable_transaction` cannot enable it. The
+  owner-owned Flex GraphQL control plane exposes effective policy with explicit/
+  default provenance, requires `flex_schemas:list` for reads and
+  `flex_schemas:update` for mutations, and validates field keys through the
+  existing donor definition registry. Policy is live governance metadata and
+  does not manufacture `attached:N` revisions or ChangeCursor rows. The attached
+  `taxonomy.category` surface is a repository-hosted pilot candidate: exact-head
+  lifecycle run `34594653702` verifies PostgreSQL migrations, multi-replica
+  CAS/conflict, idempotent replay, aggregate-progress stability,
+  translation-relevant schema fan-out, same-transaction hard-delete tombstones,
+  and ChangeCursor recovery; exact-head policy/RBAC run `34592656347` verifies
+  fail-closed defaults, explicit safe admission, forbidden-class rejection,
+  RBAC, unknown-field validation, and policy-only changes without content
+  revision/change evidence. Production enablement remains an operator/live-
+  rollout decision. Standalone Flex `standalone_localized_value` is now
+  registered with durable exact-locale revisions, progress, bounded ChangeCursor
+  and fail-closed governance, but its current focused lifecycle/policy
+  PostgreSQL evidence is not green, so it remains blocked until exact-head and
+  post-merge retained evidence is repaired. Media's exact-locale CAS apply,
+  stable receipt, append-only tenant cursor, and content-free owner event are
+  transactional; every other Media translation write emits the same repair
+  evidence. Its aggregate progress counts only exact target-row values for
+  source-eligible active assets inside a stable cursor window. Translated-asset
+  deletion and failure emit deleted/unavailable cursor evidence, so lifecycle
+  changes cannot leave projection freshness falsely current. Taxonomy's
+  `taxonomy/term` provider exposes exact `name`, review-only `slug`, and optional
+  `description`, applies target-locale resource/source/target CAS, uses the
+  shared owner receipt ledger, and records an append-only owner change cursor.
+  Taxonomy does not claim a global owner-event contract. Blog Category copy
+  follows that canonical Taxonomy provider through the same-ID Blog-to-Taxonomy
+  Category binding. Forum Category copy also follows the canonical Taxonomy
+  provider through the same-ID Forum-to-Taxonomy Category binding. The former
+  `blog/category` provider, Blog change cursor/journal, and Blog-local Category
+  translation storage were retired by TAXONOMY-CAT-8..12; the duplicate Forum
+  `forum/category` provider, change cursor/progress runtime, and donor
+  translation storage are retired after the verified CAT-5 cutover. Those
+  consumer-local provider/storage paths remain historical migration evidence
+  only. Navigation's `navigation/menu` provider applies an exact locale
+  aggregate containing the menu name and every item title through `MenuService`,
+  with resource/source/target CAS, the shared receipt ledger, and a content-free
+  owner cursor; it does not claim a generic menu event. Pages'
+  `pages/page_metadata` provider exposes exact `title`, review-only `slug`,
+  optional `meta_title`, and optional `meta_description`. It applies through
+  `PageService` with page resource/source/target CAS, the shared receipt ledger,
+  a content-free owner cursor, and the existing `NodeUpdated` owner event.
+  Settings registers `modules/static_settings` through the server-owned
+  provider, exposes only owner-admitted localized package fields, reads exact
+  source/target snapshots, progress, and bounded changes through public Settings
+  owner services, and applies deterministic CAS-guarded owner commands with
+  provider-level replay safety. Translation neither reads Settings persistence
+  nor parses manifest storage as a second owner. Fly/GrapesJS bodies remain
+  outside this pilot. Taxonomy-owned tags and Blog posts remain outside this
+  pilot. Focused green evidence includes Translation Memory retention run
+  `33539223647`, Pages `page_metadata` run `33545157694`, Navigation
+  `navigation/menu` run `33549035590`, Forum Category/Taxonomy cutover run
+  `33431200532`, Media `media/asset` PostgreSQL exact-head run `33623651814`
+  plus post-merge `main` run `33635199181`, Settings `modules/static_settings`
+  runtime composition `33952057144` plus migration approval `33952055814`, Flex
+  attached lifecycle `34594653702`, and Flex attached policy/RBAC
+  `34592656347`. No green standalone Flex retained run is claimed by this plan;
 - module-owned Leptos and Next admin workbenches expose six parity tabs for
   policy, target, inventory, progress, reviewed workflow, versioned glossaries,
   and Translation Memory. Both use URL-owned `glossary_id` and
@@ -375,7 +376,7 @@ Four related planes must remain distinct:
 | Locale type boundary | Completed at the platform contract: runtime/tenant and stored-provenance locale types share one canonical normalizer with distinct `und` rules | Migrate remaining package-local DTOs/validators before onboarding those owners |
 | Tenant locale ownership | Completed: `rustok-tenant` owns revisioned enabled/default/fallback policy and invariants | Keep admin/runtime callers on the owner port; do not restore direct SQL |
 | Source language | Many not-yet-onboarded resources do not identify an authoritative source locale | Provider must return an exact selected source locale; `und` cannot be a source for AI or memory |
-| Revision safety | Media, Taxonomy, Navigation menu, Pages metadata, Settings static fields, Product `product`/`variant`/`option`/`image`, Commerce `collection_copy`, SEO `seo_copy`, Region `region_copy`, Inventory `stock_location_copy`, Pricing `price_list_copy`, Fulfillment `shipping_option_copy`, Flex schema copy, attached `taxonomy.category`, and standalone Flex values expose provider-visible revision/CAS evidence; remaining broad candidate surfaces are mixed | Keep exact targets blocked until retained owner-specific PostgreSQL CAS/replay/progress/change evidence is green and normalize revision semantics before every additional onboarding |
+| Revision safety | Media, Taxonomy, Navigation menu, Pages metadata, Settings static fields, Product `product`/`variant`/`option`/`image`/`attribute`/`attribute_schema`/`category_form`, Commerce `collection_copy`, SEO `seo_copy`, Region `region_copy`, Inventory `stock_location_copy`, Pricing `price_list_copy`, Fulfillment `shipping_option_copy`, Flex schema copy, attached `taxonomy.category`, and standalone Flex values expose provider-visible revision/CAS evidence; remaining broad candidate surfaces are mixed | Keep exact targets blocked until retained owner-specific PostgreSQL CAS/replay/progress/change evidence is green and normalize revision semantics before every additional onboarding |
 | Idempotency | Registered exact owner applies have durable replay semantics; not every remaining candidate owner write is idempotent | Require idempotency keys and replay receipts before onboarding |
 | Owner events | Registered owners expose their documented event/change-cursor repair contracts; there is deliberately no invented universal owner event | Each new provider must supply transactional owner change evidence or a bounded repair cursor |
 | Baseline verification | Completed for the Translation baseline and focused runtime evidence | Keep multilingual and Translation verifiers green on every affected change |
@@ -401,7 +402,7 @@ surfaces; it does not replace the storage audit.
 ### Current P0 cleanup ledger
 
 The following repository facts were confirmed during the 2026-07-26 planning
-audit and updated for the 2026-09-12 Translation evidence reconciliation. They
+audit and updated for the 2026-09-13 Translation evidence reconciliation. They
 are explicit preparation work, not implementation details to defer until after
 the module exists.
 
@@ -412,10 +413,10 @@ the module exists.
 | Establish tenant locale ownership | Completed: `rustok-tenant` owns revisioned policy read/replace, CAS, durable idempotency receipts, canonical/default/fallback/cycle invariants, and server middleware consumes the port | Add the admin transport over the same owner service without restoring direct SQL |
 | Remove locale DTO drift | Media now converts translation writes to canonical `TenantLocale`; Content and other not-yet-onboarded owner surfaces still apply different length/case rules | Every translatable owner accepts the canonical locale type instead of package-local five- or ten-character validators or whole-tag lowercasing |
 | Resolve owner/schema drift | Blog Category/Taxonomy is completed through TAXONOMY-CAT-12: same-ID Taxonomy Category owns canonical localized copy, the separate `blog/category` provider is retired, and Blog donor translation storage/journal are removed. Forum Category/Taxonomy is completed through the verified CAT-5 cutover: same-ID Taxonomy Category owns canonical localized copy, routes, hierarchy and presentation; the duplicate `forum/category` provider and donor translation storage are retired. Broad Product/Commerce Foundation, Pages/Navigation, and Content/SEO still have separate drift to resolve beyond their already registered narrow translation targets | Keep the Blog and Forum Category ownership guards green; for remaining broad surfaces, registry/docs/migrations/entities identify one physical and semantic owner and superseded internal paths are deleted atomically |
-| Make owner writes safe | Media, Taxonomy, Navigation menu, Pages metadata, Settings static fields, Product `product`/`variant`/`option`/`image`, Commerce `collection_copy`, SEO `seo_copy`, Region `region_copy`, Inventory `stock_location_copy`, Pricing `price_list_copy`, Fulfillment `shipping_option_copy`, Flex schema copy, attached `taxonomy.category`, and standalone Flex values have registered exact-locale providers with owner CAS/replay semantics and bounded change repair. Broad Product catalog, broad Fulfillment presentation/template copy, Page Builder bodies, and other candidate surfaces remain separate onboarding work | Keep each exact registered target blocked until retained PostgreSQL CAS/replay/progress/ChangeCursor evidence is green; every additional owner must provide atomic exact-locale/field apply, source and target revisions, idempotency conflict detection, owner validation, durable owner change evidence, and bounded repair |
+| Make owner writes safe | Media, Taxonomy, Navigation menu, Pages metadata, Settings static fields, Product `product`/`variant`/`option`/`image`/`attribute`/`attribute_schema`/`category_form`, Commerce `collection_copy`, SEO `seo_copy`, Region `region_copy`, Inventory `stock_location_copy`, Pricing `price_list_copy`, Fulfillment `shipping_option_copy`, Flex schema copy, attached `taxonomy.category`, and standalone Flex values have registered exact-locale providers with owner CAS/replay semantics and bounded change repair. Broad Product catalog, broad Fulfillment presentation/template copy, Page Builder bodies, and other candidate surfaces remain separate onboarding work | Keep each exact registered target blocked until retained PostgreSQL CAS/replay/progress/ChangeCursor evidence is green; every additional owner must provide atomic exact-locale/field apply, source and target revisions, idempotency conflict detection, owner validation, durable owner change evidence, and bounded repair |
 | Correct Flex exact semantics | Attached and standalone authoring reject invalid locales and prepare from an exact target-locale row; presentation fallback remains isolated to explicit read resolution. Attached `taxonomy.category` has retained exact-head lifecycle `34594653702` and policy/RBAC `34592656347` evidence and remains a pilot candidate. Standalone now has registered exact source/target APIs, durable revision-safe/idempotent apply, aggregate progress, bounded ChangeCursor and a fail-closed governance plane, but its current focused retained PostgreSQL lifecycle/policy evidence is not green | Preserve fail-closed/live-policy export admission without changing content revisions; keep attached operator/live rollout evidence separate; repair and retain green standalone exact-head/post-merge lifecycle and policy evidence before promotion |
 | Type localized settings | Completed for Modules static settings: stable localized field IDs/string-leaf eligibility and sensitivity fences, owner-local exact-locale rows and reads, shared plus per-field CAS with replay-safe exact apply, source-locale provenance, bounded change/progress reads, neutral identity/descriptors/revisions, and the registered `modules/static_settings` runtime provider are implemented | Keep owner metadata/storage/CAS/change contracts and provider composition evidence green; onboard any different settings owner only through equivalent typed owner gates |
-| Finish semantic string classification | Broad Product catalog fields beyond the four registered exact targets, Search linguistic dictionaries, channel policy names, and transactional tax/order prose need explicit classification | Every candidate is classified as identifier, technical, secret, code-owned message, tenant-localized copy, immutable snapshot, search-linguistic data, or excluded with owner/reason |
+| Finish semantic string classification | Broad Product catalog presentation beyond the separately registered `product/product`, `product/variant`, `product/option`, `product/image`, `product/attribute`, `product/attribute_schema`, and `product/category_form` targets, plus Search linguistic dictionaries, channel policy names, and transactional tax/order prose need explicit classification | Every candidate is classified as identifier, technical, secret, code-owned message, tenant-localized copy, immutable snapshot, search-linguistic data, or excluded with owner/reason |
 | Prepare structured AI execution | The cross-module port and content-free execution/attempt/accounting schema exist. Registration is request-hash idempotent; execution leases, cancellation receipts, tenant budget reservation/concurrency, immutable provider price/concurrency policy, exact task descriptors, durable provider slots, actual per-attempt token/cost evidence, atomic queued/terminal settlement, and accounting-aware expired-lease recovery are implemented. AES-256-GCM transient-result storage keeps content out of the generic ledger; successful attempt, encrypted handoff, slot release, budget settlement, and terminal execution commit together. Tenant-scoped replay authenticates identity/digests/size, supports retained-key rotation, records replay counts, and expires without reopening or re-billing execution. Tenant operators can provision accounting policies through GraphQL/native contracts, the result keyring is deployment-owned, and the AI scheduler reconciles cancellations/leases and removes expired handoffs before claims. The private executor validates exact policy/schema identity, selects preferred then deterministic eligible providers, performs real structured inference/fallback, records typed content-free failures, enforces deadlines, and observes durable cancellation. The production distribution bridge publishes the owner-neutral lazy runtime factory, and the separate chat task service is not used. | Collect live external-provider accounting, outage, restart, fallback, cancellation, and expiry evidence; retain production-database multi-replica evidence separately |
 
 The baseline repair should update
@@ -438,13 +439,13 @@ and exclusion reason.
 | Pages | title/slug/meta copy and localized body | Registered `pages/page_metadata` pilot supplies exact title, review-only slug, optional meta copy, resource/source/target CAS, durable receipt replay, existing Pages owner events, and a content-free cursor. Visual documents still require a lossless owner segment extractor/materializer and body-revision CAS; production enablement requires PostgreSQL concurrency and cursor-recovery evidence |
 | Navigation | menu name and item title | Registered `navigation/menu` pilot applies the full menu locale aggregate through Navigation-owned CAS, shared durable receipt replay, and content-free cursor evidence; production enablement still requires PostgreSQL concurrent-aggregate and cursor-recovery evidence |
 | Forum | Category binding plus topic/reply copy | Forum Category canonical copy is not a Forum Translation target. The verified CAT-5 cutover moved canonical localized copy, routes, hierarchy and presentation to Taxonomy and retired `forum/category`, its change/progress runtime, and donor translation storage. Category Translation goes through `taxonomy/term`; topic/reply are UGC and require opt-in, moderation, revisions, and no author-content overwrite |
-| Product/catalog | product/variant/options, attributes, category/schema labels, SEO, image alt, localized Flex values | Exact `product/product`, `product/variant`, `product/option`, and `product/image` targets are registered. Keep them blocked until retained PostgreSQL CAS/replay/progress/ChangeCursor evidence is green; broad attributes, category/schema labels, SEO/Flex integration, and remaining catalog presentation stay in the separate `product_catalog` completeness surface rather than being implied by the four narrow targets |
+| Product/catalog | product/variant/options, attributes, category-form/schema labels, SEO, image alt, localized Flex values | Exact `product/product`, `product/variant`, `product/option`, `product/image`, `product/attribute`, `product/attribute_schema`, and `product/category_form` targets are registered with retained PostgreSQL evidence source. Keep them blocked until focused exact-head workflows are green and reviewed post-merge evidence is retained. `product/category_form` owns only Product-local form-group labels; canonical Product Category name/slug/description remain Taxonomy-owned. Broad SEO/Flex integration and any other uncovered catalog presentation stay in the separate `product_catalog` completeness surface rather than being implied by the narrow targets |
 | Taxonomy | term name/slug/description, including canonical Category copy consumed by Blog and Forum | Registered `taxonomy/term` pilot with exact-locale snapshots, resource/source/target CAS, shared durable receipts, and an append-only owner cursor. Aliases remain curated search/SEO semantics rather than automatic MT by default; Blog and Forum Category do not add a second provider or evidence gate |
 | Media | title/alt/caption | Provider registered for bounded exact discovery/read/validate/apply and tenant-scoped cursor repair with resource/source/target revisions, atomic receipt, and neutral owner event. Direct owner edits publish identical repair evidence. Repository-hosted PostgreSQL projection replay and multi-replica checkpoint evidence is retained as exact-head run `33623651814` and post-merge run `33635199181`; isolated/live deployment remains a separate provider-owned gate |
 | SEO | title/description/keywords/Open Graph copy | Owner/override precedence is resolved and `seo/seo_copy` is registered for copy fields. Keep it blocked until retained PostgreSQL CAS/replay/progress/ChangeCursor plus reindex/event evidence is green; media identifiers and technical canonical/robots/structured-data fields stay outside this copy target |
 | Flex | schema copy and attached/standalone localized values | `flex/schema_copy` is registered. `flex/attached_localized_value` for `taxonomy.category` is a repository-hosted pilot candidate with retained exact-head lifecycle `34594653702` and policy/RBAC `34592656347` evidence covering concurrent CAS/replay, progress, schema fan-out, hard-delete tombstones, cursor recovery and fail-closed governance. Standalone `flex/standalone_localized_value` is now registered with equivalent exact-locale/revision/progress/ChangeCursor and policy contracts but remains blocked because its current focused retained lifecycle/policy PostgreSQL evidence is not green. Production enablement remains an operator/live-rollout decision |
 | Profiles/Comments/Groups | display copy, bios, comments, group title/summary/body | Treat personal/UGC fields as opt-in and policy-sensitive; preserve names by default and never rewrite immutable revisions |
-| Shipping/Region/Inventory/Fulfillment/Pricing | presentation names and descriptions | Exact `region/region_copy`, `inventory/stock_location_copy`, `pricing/price_list_copy`, and `fulfillment/shipping_option_copy` targets are registered with bounded change repair. Keep them blocked until retained PostgreSQL CAS/replay/progress/ChangeCursor evidence is green. Broad Fulfillment presentation/template copy remains a separate blocked surface, and identifiers, amounts, currencies, provider configuration, rules, metadata, quantities, and calculations are preserved as non-translatable facts |
+| Shipping/Region/Inventory/Fulfillment/Pricing | presentation names and descriptions | Exact `region/region_copy`, `inventory/stock_location_copy`, `pricing/price_list_copy`, and `fulfillment/shipping_option_copy` targets are registered with retained PostgreSQL evidence source and bounded change repair. Keep them blocked until focused exact-head workflows are green and reviewed post-merge evidence is retained. Broad Fulfillment presentation/template copy remains a separate blocked surface, and identifiers, amounts, currencies, provider configuration, rules, metadata, quantities, and calculations are preserved as non-translatable facts |
 | Cart/Order/Payment/Ledger | locale-attributed transaction snapshots | Never retroactively mutate transaction facts; use an optional derived presentation projection if a business case is approved |
 | Marketplace/Tenant | seller presentation and storefront display name | Separate legal identity from translatable presentation; retain source attribution on compliance/event prose |
 | Settings | explicitly declared tenant-module business copy | Registered `modules/static_settings` exposes only owner-admitted typed localized leaves with stable field identity, sensitivity fences, exact owner rows/source provenance, revisions, bounded changes/progress, and replay-safe apply. Config, secrets, URLs, enums, IDs, provider identifiers, executable templates, and arbitrary JSON remain excluded; other settings owners must not infer localization from JSON |
@@ -1427,14 +1428,17 @@ Deliverables:
   readiness records;
 - [x] implement provider-level exact-locale coverage and opaque-cursor
   freshness, with Media, Taxonomy, Navigation menu, Pages metadata, Settings
-  `modules/static_settings`, Product `product`/`variant`/`option`/`image`,
-  Commerce `collection_copy`, SEO `seo_copy`, Region `region_copy`, Inventory
-  `stock_location_copy`, Pricing `price_list_copy`, Fulfillment
-  `shipping_option_copy`, Flex `schema_copy`, attached `taxonomy.category`, and
-  standalone Flex providers contributing aggregates and Translation-side fact
-  validation. Blog Category copy is consumed through the canonical Taxonomy
-  provider rather than a duplicate Blog provider. Newer providers remain
-  readiness-blocked until their retained evidence gates are green;
+  `modules/static_settings`, Product `product`/`variant`/`option`/`image`/
+  `attribute`/`attribute_schema`/`category_form`, Commerce `collection_copy`, SEO
+  `seo_copy`, Region `region_copy`, Inventory `stock_location_copy`, Pricing
+  `price_list_copy`, Fulfillment `shipping_option_copy`, Flex `schema_copy`,
+  attached `taxonomy.category`, and standalone Flex providers contributing
+  aggregates and Translation-side fact validation. Blog Category copy is
+  consumed through the canonical Taxonomy provider rather than a duplicate Blog
+  provider. Retained PostgreSQL evidence sources are present for the newer
+  narrow Product/Commerce/SEO/Region/Inventory/Pricing/Fulfillment targets, but
+  they remain readiness-blocked until focused exact-head runs are green and
+  reviewed post-merge evidence is retained;
 - [x] complete required-target-locale policies and deterministic Phase 1 QA;
   job completion, safe blocked-item retry, rebuildable job workflow progress,
   jobs, items, proposals, assignments, cancellation, receipts, durable apply
@@ -1515,13 +1519,16 @@ target:
    AI-export governance. Keep it `blocked`: the current focused retained
    lifecycle/policy PostgreSQL evidence is not green. Repair and retain green
    exact-head and post-merge evidence before promotion.
-9. Product `product`/`variant`/`option`/`image`, Commerce `collection_copy`, SEO
-   `seo_copy`, Region `region_copy`, Inventory `stock_location_copy`, Pricing
-   `price_list_copy`, and Fulfillment `shipping_option_copy` are registered exact
-   targets. Keep them blocked until retained owner-specific PostgreSQL
-   CAS/idempotent-replay, progress-stability and ChangeCursor recovery evidence
-   is green. Do not infer broad Product catalog or broad Fulfillment parity from
-   these narrow registrations.
+9. Product `product`/`variant`/`option`/`image`/`attribute`/`attribute_schema`/
+   `category_form`, Commerce `collection_copy`, SEO `seo_copy`, Region
+   `region_copy`, Inventory `stock_location_copy`, Pricing `price_list_copy`,
+   and Fulfillment `shipping_option_copy` are registered exact targets with
+   retained owner-specific PostgreSQL evidence source. Keep them blocked until
+   focused exact-head workflows are green and reviewed post-merge evidence is
+   retained. `product/category_form` covers Product-owned category-local form
+   group labels only; canonical Category copy remains Taxonomy-owned. Do not
+   infer broad Product catalog or broad Fulfillment parity from these narrow
+   registrations.
 
 Focused retained green evidence currently includes Translation Memory retention
 `33539223647`, Pages `page_metadata` `33545157694`, Navigation
@@ -1658,15 +1665,18 @@ never traversed heuristically.
 
 ### Phase 7 — catalog, commerce, and marketplace breadth
 
-Exact Product `product`/`variant`/`option`/`image`, Commerce `collection_copy`,
-Region `region_copy`, Inventory `stock_location_copy`, Pricing
-`price_list_copy`, and Fulfillment `shipping_option_copy` targets are already
-registered. Their next gate is retained owner-specific PostgreSQL CAS/replay,
-progress-stability and ChangeCursor recovery evidence before pilot promotion.
+Exact Product `product`/`variant`/`option`/`image`/`attribute`/
+`attribute_schema`/`category_form`, Commerce `collection_copy`, Region
+`region_copy`, Inventory `stock_location_copy`, Pricing `price_list_copy`, and
+Fulfillment `shipping_option_copy` targets are already registered with retained
+owner-specific PostgreSQL evidence source. Their next gate is a green focused
+exact-head workflow plus reviewed post-merge evidence before pilot promotion.
 
-Continue broad Product catalog work only for remaining attributes,
-categories/schema labels, SEO/Flex integration and other presentation copy not
-covered by those exact targets. Continue broad Fulfillment only for explicitly
+Continue broad Product catalog work only for remaining SEO/Flex integration and
+other yet-unclassified Product-owned presentation copy not covered by those
+exact targets. `product/category_form` covers Product-local form-group labels;
+canonical Category name/slug/description remain Taxonomy-owned and must not be
+reintroduced under Product. Continue broad Fulfillment only for explicitly
 classified presentation/template copy beyond `shipping_option_copy`; never fold
 provider configuration, amounts, currencies, routing rules, metadata or other
 operational facts into Translation. Marketplace presentation remains a later
@@ -1752,7 +1762,7 @@ Baseline repository gates:
 - FFA/FBA and module-specific provider conformance verifiers;
 - `git diff --check`.
 
-Focused retained green evidence as of 2026-09-12:
+Focused retained green evidence as of 2026-09-13:
 
 - Translation Memory retention: `33539223647`;
 - Pages `pages/page_metadata`: `33545157694`;
