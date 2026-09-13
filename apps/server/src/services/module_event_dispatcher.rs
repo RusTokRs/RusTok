@@ -460,6 +460,17 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         extensions.insert(fulfillment_registry);
     }
 
+    #[cfg(feature = "mod-marketplace_seller")]
+    rustok_marketplace_seller::register_marketplace_seller_translation_target_provider(
+        &mut extensions,
+        db.clone(),
+    )
+    .map_err(|error| {
+        Error::Message(format!(
+            "Marketplace Seller presentation translation target provider registration failed: {error}"
+        ))
+    })?;
+
     #[cfg(feature = "commerce-marketplace-financial")]
     {
         let financial_runtime = runtime_ctx
@@ -871,6 +882,14 @@ mod tests {
                 .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
                     descriptor.owner_slug.as_str() == "modules"
                         && descriptor.resource_kind.as_str() == "static_settings"
+                }))
+        );
+        #[cfg(feature = "mod-marketplace_seller")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "marketplace_seller"
+                        && descriptor.resource_kind.as_str() == "seller_presentation"
                 }))
         );
         #[cfg(feature = "mod-forum")]
