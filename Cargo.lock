@@ -13888,6 +13888,8 @@ dependencies = [
  "rustok-pages-admin",
  "rustok-pricing-admin",
  "rustok-product-admin",
+ "rustok-product-bundles-admin",
+ "rustok-product-relations-admin",
  "rustok-rbac",
  "rustok-rbac-admin",
  "rustok-region-admin",
@@ -14702,6 +14704,7 @@ dependencies = [
  "rustok-payment",
  "rustok-pricing",
  "rustok-product",
+ "rustok-product-bundles",
  "rustok-product-relations",
  "rustok-product-transport",
  "rustok-region",
@@ -14978,6 +14981,7 @@ dependencies = [
  "rustok-payment",
  "rustok-pricing",
  "rustok-product",
+ "rustok-product-bundles",
  "rustok-product-relations",
  "rustok-profiles",
  "rustok-rbac",
@@ -15671,6 +15675,7 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-translation-targets",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -16657,6 +16662,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-product-bundles"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-events",
+ "rustok-outbox",
+ "rustok-product",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-product-bundles-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos_axum",
+ "rust_decimal",
+ "rustok-api",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-product-bundles",
+ "rustok-ui-core",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-product-catalog-service"
 version = "0.1.0"
 dependencies = [
@@ -16690,6 +16736,25 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-product-relations-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos_axum",
+ "rustok-api",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-product-relations",
+ "rustok-ui-core",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
  "tracing",
  "uuid",
 ]
@@ -17333,6 +17398,7 @@ dependencies = [
  "rustok-payment",
  "rustok-pricing",
  "rustok-product",
+ "rustok-product-bundles",
  "rustok-product-relations",
  "rustok-product-transport",
  "rustok-profiles",

@@ -132,6 +132,10 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
         "async fn brand_by_slug(",
         "async fn brands(",
         "async fn product_brand(",
+        "async fn bundle(",
+        "async fn bundle_by_slug(",
+        "async fn bundles(",
+        "async fn product_bundles(",
         "async fn storefront_cart(",
         "async fn storefront_payment_collection(",
         "async fn storefront_me(",
@@ -191,6 +195,11 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
         "async fn delete_brand(",
         "async fn assign_product_brand(",
         "async fn unassign_product_brand(",
+        "async fn create_bundle(",
+        "async fn update_bundle(",
+        "async fn delete_bundle(",
+        "async fn add_bundle_item(",
+        "async fn remove_bundle_item(",
     ] {
         assert!(
             mutation_source.contains(required),

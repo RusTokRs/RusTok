@@ -842,6 +842,169 @@ impl CommerceCatalogMutation {
         Ok(true)
     }
 
+    async fn create_bundle(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateBundleInputGql,
+        locale: Option<String>,
+    ) -> Result<GqlBundle> {
+        require_module_enabled(ctx, "product_bundles").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_MANAGE],
+            "Permission denied: products:manage required",
+        )?;
+        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = rustok_product_bundles::BundleService::new(db.clone());
+        use rustok_product_bundles::ports::BundlePort;
+        let bundle = service
+            .create_bundle(
+                tenant_id,
+                rustok_product_bundles::dto::CreateBundleInput {
+                    bundle_product_id: input.bundle_product_id,
+                    slug: input.slug,
+                    bundle_type: input.bundle_type,
+                    status: input.status,
+                    discount_type: input.discount_type,
+                    discount_value: input.discount_value,
+                    metadata: input.metadata.map(|j| j.0),
+                    translations: vec![rustok_product_bundles::dto::BundleTranslationInput {
+                        locale: locale.unwrap_or_else(|| "en".to_string()),
+                        name: input.name,
+                        description: input.description,
+                    }],
+                    items: vec![],
+                },
+            )
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(bundle.into())
+    }
+
+    async fn update_bundle(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: UpdateBundleInputGql,
+        locale: Option<String>,
+    ) -> Result<GqlBundle> {
+        require_module_enabled(ctx, "product_bundles").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = rustok_product_bundles::BundleService::new(db.clone());
+        use rustok_product_bundles::ports::BundlePort;
+        let translations = input.name.map(|name| {
+            vec![rustok_product_bundles::dto::BundleTranslationInput {
+                locale: locale.unwrap_or_else(|| "en".to_string()),
+                name,
+                description: input.description,
+            }]
+        });
+        let bundle = service
+            .update_bundle(
+                tenant_id,
+                id,
+                rustok_product_bundles::dto::UpdateBundleInput {
+                    bundle_product_id: input.bundle_product_id.map(Some),
+                    slug: input.slug,
+                    bundle_type: input.bundle_type,
+                    status: input.status,
+                    discount_type: input.discount_type,
+                    discount_value: input.discount_value,
+                    metadata: input.metadata.map(|j| j.0),
+                    translations,
+                },
+            )
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(bundle.into())
+    }
+
+    async fn delete_bundle(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, "product_bundles").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_MANAGE],
+            "Permission denied: products:manage required",
+        )?;
+        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = rustok_product_bundles::BundleService::new(db.clone());
+        use rustok_product_bundles::ports::BundlePort;
+        service
+            .delete_bundle(tenant_id, id)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(true)
+    }
+
+    async fn add_bundle_item(
+        &self,
+        ctx: &Context<'_>,
+        bundle_id: Uuid,
+        item: BundleItemInputGql,
+    ) -> Result<GqlBundleItem> {
+        require_module_enabled(ctx, "product_bundles").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = rustok_product_bundles::BundleService::new(db.clone());
+        use rustok_product_bundles::ports::BundlePort;
+        let created_item = service
+            .add_bundle_item(
+                tenant_id,
+                bundle_id,
+                rustok_product_bundles::dto::BundleItemInput {
+                    product_id: item.product_id,
+                    variant_id: item.variant_id,
+                    quantity: item.quantity.unwrap_or(1),
+                    is_optional: item.is_optional,
+                    discount_rate: item.discount_rate,
+                    position: item.position,
+                },
+            )
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(created_item.into())
+    }
+
+    async fn remove_bundle_item(
+        &self,
+        ctx: &Context<'_>,
+        bundle_id: Uuid,
+        item_id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, "product_bundles").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = rustok_product_bundles::BundleService::new(db.clone());
+        use rustok_product_bundles::ports::BundlePort;
+        service
+            .remove_bundle_item(tenant_id, bundle_id, item_id)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(true)
+    }
+
     async fn create_product_attribute(
         &self,
         ctx: &Context<'_>,

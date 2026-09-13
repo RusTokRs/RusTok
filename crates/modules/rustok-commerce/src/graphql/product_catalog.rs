@@ -446,4 +446,94 @@ impl ProductCatalogQuery {
             .map_err(|e| async_graphql::Error::new(e.to_string()))?;
         Ok(brand.map(Into::into))
     }
+
+    async fn bundle(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        locale: Option<String>,
+    ) -> Result<Option<super::GqlBundle>> {
+        require_module_enabled(ctx, "product_bundles").await?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let service = rustok_product_bundles::BundleService::new(db.clone());
+        use rustok_product_bundles::ports::BundlePort;
+        let bundle = service
+            .get_bundle(tenant.id, id, locale.as_deref())
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(Some(bundle.into()))
+    }
+
+    async fn bundle_by_slug(
+        &self,
+        ctx: &Context<'_>,
+        slug: String,
+        locale: Option<String>,
+    ) -> Result<Option<super::GqlBundle>> {
+        require_module_enabled(ctx, "product_bundles").await?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let service = rustok_product_bundles::BundleService::new(db.clone());
+        use rustok_product_bundles::ports::BundlePort;
+        let bundle = service
+            .get_bundle_by_slug(tenant.id, &slug, locale.as_deref())
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(Some(bundle.into()))
+    }
+
+    async fn bundles(
+        &self,
+        ctx: &Context<'_>,
+        filter: Option<super::GqlBundleFilter>,
+        page: Option<u64>,
+        per_page: Option<u64>,
+        locale: Option<String>,
+    ) -> Result<super::GqlBundleListResponse> {
+        require_module_enabled(ctx, "product_bundles").await?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let service = rustok_product_bundles::BundleService::new(db.clone());
+        use rustok_product_bundles::ports::BundlePort;
+        let res = service
+            .list_bundles(
+                tenant.id,
+                rustok_product_bundles::dto::BundleFilter {
+                    search: filter.as_ref().and_then(|f| f.search.clone()),
+                    status: filter.as_ref().and_then(|f| f.status.clone()),
+                    bundle_type: filter.as_ref().and_then(|f| f.bundle_type.clone()),
+                },
+                page.unwrap_or(1),
+                per_page.unwrap_or(20),
+                locale.as_deref(),
+            )
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+
+        Ok(super::GqlBundleListResponse {
+            items: res.items.into_iter().map(Into::into).collect(),
+            total: res.total,
+            page: res.page,
+            per_page: res.per_page,
+        })
+    }
+
+    async fn product_bundles(
+        &self,
+        ctx: &Context<'_>,
+        product_id: Uuid,
+        locale: Option<String>,
+    ) -> Result<Vec<super::GqlBundle>> {
+        require_module_enabled(ctx, "product_bundles").await?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let service = rustok_product_bundles::BundleService::new(db.clone());
+        use rustok_product_bundles::ports::BundlePort;
+        let bundles = service
+            .get_bundles_for_product(tenant.id, product_id, locale.as_deref())
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(bundles.into_iter().map(Into::into).collect())
+    }
 }

@@ -1,0 +1,35 @@
+[package]
+name = "rustok-product-relations-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin FFA package for Product Relations administration"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "rustok-api/server",
+  "dep:leptos_axum",
+  "dep:rustok-core",
+  "dep:rustok-product-relations",
+]
+
+[dependencies]
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+rustok-api = { workspace = true, default-features = false }
+rustok-core = { workspace = true, optional = true }
+rustok-graphql.workspace = true
+rustok-product-relations = { workspace = true, optional = true }
+rustok-ui-core.workspace = true
+rustok-ui-transport.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tracing.workspace = true

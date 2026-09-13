@@ -154,6 +154,14 @@ pub fn build_registry() -> ModuleRegistry {
     {
         registry = registry.register(rustok_product_relations::ProductRelationsModule);
     }
+    #[cfg(feature = "mod-brand")]
+    {
+        registry = registry.register(rustok_brand::BrandModule);
+    }
+    #[cfg(feature = "mod-product_bundles")]
+    {
+        registry = registry.register(rustok_product_bundles::ProductBundlesModule);
+    }
     #[cfg(feature = "mod-profiles")]
     {
         registry = registry.register(rustok_profiles::ProfilesModule);

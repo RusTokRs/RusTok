@@ -103,7 +103,9 @@ integration. The canonical source of truth here is only manifest wiring.
 - `rustok-marketplace-listing` admin UI: [README](../../crates/modules/rustok-marketplace-listing/admin/README.md)
 - `rustok-groups` admin UI: [README](../../crates/modules/rustok-groups/admin/README.md)
 - `rustok-product` admin UI: [README](../../crates/modules/rustok-product/admin/README.md)
+- `rustok-product-relations` admin UI: [README](../../crates/modules/rustok-product-relations/admin/README.md)
 - `rustok-brand` admin UI: [README](../../crates/modules/rustok-brand/admin/README.md)
+- `rustok-product-bundles` admin UI: [README](../../crates/modules/rustok-product-bundles/admin/README.md)
 - Ecommerce admin UI routes `rustok-product` <-> `rustok-pricing` support
   stable deep links through product `id`; display fields are not used as identity.
 - `rustok-fulfillment` admin UI: [README](../../crates/modules/rustok-fulfillment/admin/README.md)

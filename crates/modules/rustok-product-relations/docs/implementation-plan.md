@@ -19,18 +19,18 @@ Product relations, merchandising associations (cross-sells, up-sells, related, a
 - Native migration `m20260914_000001_create_product_relations` implemented and verified.
 - `ProductRelationsPort` and `ProductRelationService` implemented with tenant isolation and outbox events.
 - GraphQL surface exposed through `rustok-commerce` (`productRelations`, `addProductRelation`, `removeProductRelation`, `reorderProductRelations`).
-- Admin UI panel `ProductRelationsPanel` integrated in `rustok-product-admin`.
-- In-memory SQLite tests pass 4/4; GraphQL surface regression tests pass; Product Admin tests pass 52/52.
+- Dedicated Leptos FFA admin package `rustok-product-relations-admin` with native server functions and parallel GraphQL contract.
+- In-memory SQLite tests pass 4/4; GraphQL surface regression tests pass.
 
 ## FFA/FBA Status
 
 ```yaml
 ffa:
-  status: not_started
-  shape: none
+  status: in_progress
+  shape: core_transport_ui
 fba:
   status: boundary_ready
-  shape: no_ui_boundary
+  shape: core_transport_ui
 ```
 
 ## Local work phases

@@ -4,206 +4,214 @@
 
 use rustok_core::ModuleRegistry;
 
-use rustok_channel::ChannelModule;
-use flex::FlexModule;
-use rustok_marketplace_payout::Marketplace_payoutModule;
-use rustok_moderation::ModerationModule;
-use rustok_pages::PagesModule;
-use rustok_product::ProductModule;
-use rustok_rbac::RbacModule;
-use rustok_region::RegionModule;
-use rustok_email::EmailModule;
-use rustok_workflow::WorkflowModule;
-use rustok_taxonomy::TaxonomyModule;
-use rustok_outbox::OutboxModule;
-use rustok_marketplace_listing::Marketplace_listingModule;
-use rustok_marketplace::MarketplaceModule;
-use rustok_index::IndexModule;
-use rustok_profiles::ProfilesModule;
-use rustok_fulfillment::FulfillmentModule;
-use rustok_marketplace_ledger::Marketplace_ledgerModule;
-use rustok_pricing::PricingModule;
-use rustok_search::SearchModule;
-use rustok_tenant::TenantModule;
-use rustok_groups::GroupsModule;
-use rustok_commerce::CommerceModule;
-use rustok_modules::ModulesModule;
-use rustok_page_builder::Page_builderModule;
-use rustok_payment::PaymentModule;
-use rustok_seo::SeoModule;
-use rustok_cache::CacheModule;
-use rustok_marketplace_allocation::Marketplace_allocationModule;
-use rustok_marketplace_commission::Marketplace_commissionModule;
-use rustok_product_relations::Product_relationsModule;
-use rustok_cart::CartModule;
-use rustok_customer::CustomerModule;
-use rustok_order::OrderModule;
-use rustok_social_graph::Social_graphModule;
-use rustok_translation::TranslationModule;
-use rustok_comments::CommentsModule;
-use rustok_blog::BlogModule;
-use rustok_content::ContentModule;
-use rustok_navigation::NavigationModule;
-use rustok_auth::AuthModule;
-use rustok_reactions::ReactionsModule;
-use rustok_marketplace_seller::Marketplace_sellerModule;
-use rustok_forum::ForumModule;
-use rustok_media::MediaModule;
-use rustok_events_module::EventsModule;
 use alloy::AlloyModule;
+use rustok_index::IndexModule;
+use rustok_channel::ChannelModule;
+use rustok_pricing::PricingModule;
+use rustok_social_graph::Social_graphModule;
+use rustok_taxonomy::TaxonomyModule;
+use rustok_tenant::TenantModule;
+use rustok_marketplace_ledger::Marketplace_ledgerModule;
+use rustok_payment::PaymentModule;
+use rustok_translation::TranslationModule;
+use rustok_forum::ForumModule;
 use rustok_inventory::InventoryModule;
+use rustok_cart::CartModule;
+use rustok_commerce::CommerceModule;
+use rustok_groups::GroupsModule;
+use rustok_outbox::OutboxModule;
+use rustok_rbac::RbacModule;
+use rustok_product::ProductModule;
+use rustok_auth::AuthModule;
+use rustok_marketplace_payout::Marketplace_payoutModule;
+use rustok_workflow::WorkflowModule;
+use rustok_comments::CommentsModule;
+use rustok_marketplace_commission::Marketplace_commissionModule;
+use rustok_email::EmailModule;
+use rustok_marketplace_allocation::Marketplace_allocationModule;
+use rustok_moderation::ModerationModule;
+use rustok_modules::ModulesModule;
+use rustok_media::MediaModule;
+use rustok_fulfillment::FulfillmentModule;
 use rustok_notifications::NotificationsModule;
+use rustok_cache::CacheModule;
+use rustok_content::ContentModule;
+use rustok_events_module::EventsModule;
+use flex::FlexModule;
+use rustok_marketplace_listing::Marketplace_listingModule;
+use rustok_order::OrderModule;
+use rustok_page_builder::Page_builderModule;
+use rustok_pages::PagesModule;
+use rustok_marketplace::MarketplaceModule;
+use rustok_customer::CustomerModule;
+use rustok_product_bundles::Product_bundlesModule;
+use rustok_product_relations::Product_relationsModule;
+use rustok_navigation::NavigationModule;
+use rustok_reactions::ReactionsModule;
+use rustok_blog::BlogModule;
+use rustok_seo::SeoModule;
+use rustok_profiles::ProfilesModule;
+use rustok_region::RegionModule;
+use rustok_marketplace_seller::Marketplace_sellerModule;
+use rustok_search::SearchModule;
+use rustok_brand::BrandModule;
 
 /// Build ModuleRegistry from configured modules
 pub fn build_registry() -> ModuleRegistry {
     let mut registry = ModuleRegistry::new();
 
-    // Register channel module
-    registry.register(Box::new(ChannelModule::new()));
-
-    // Register flex module
-    registry.register(Box::new(FlexModule::new()));
-
-    // Register marketplace_payout module
-    registry.register(Box::new(Marketplace_payoutModule::new()));
-
-    // Register moderation module
-    registry.register(Box::new(ModerationModule::new()));
-
-    // Register pages module
-    registry.register(Box::new(PagesModule::new()));
-
-    // Register product module
-    registry.register(Box::new(ProductModule::new()));
-
-    // Register rbac module
-    registry.register(Box::new(RbacModule::new()));
-
-    // Register region module
-    registry.register(Box::new(RegionModule::new()));
-
-    // Register email module
-    registry.register(Box::new(EmailModule::new()));
-
-    // Register workflow module
-    registry.register(Box::new(WorkflowModule::new()));
-
-    // Register taxonomy module
-    registry.register(Box::new(TaxonomyModule::new()));
-
-    // Register outbox module
-    registry.register(Box::new(OutboxModule::new()));
-
-    // Register marketplace_listing module
-    registry.register(Box::new(Marketplace_listingModule::new()));
-
-    // Register marketplace module
-    registry.register(Box::new(MarketplaceModule::new()));
+    // Register alloy module
+    registry.register(Box::new(AlloyModule::new()));
 
     // Register index module
     registry.register(Box::new(IndexModule::new()));
 
-    // Register profiles module
-    registry.register(Box::new(ProfilesModule::new()));
-
-    // Register fulfillment module
-    registry.register(Box::new(FulfillmentModule::new()));
-
-    // Register marketplace_ledger module
-    registry.register(Box::new(Marketplace_ledgerModule::new()));
+    // Register channel module
+    registry.register(Box::new(ChannelModule::new()));
 
     // Register pricing module
     registry.register(Box::new(PricingModule::new()));
 
-    // Register search module
-    registry.register(Box::new(SearchModule::new()));
+    // Register social_graph module
+    registry.register(Box::new(Social_graphModule::new()));
+
+    // Register taxonomy module
+    registry.register(Box::new(TaxonomyModule::new()));
 
     // Register tenant module
     registry.register(Box::new(TenantModule::new()));
 
-    // Register groups module
-    registry.register(Box::new(GroupsModule::new()));
-
-    // Register commerce module
-    registry.register(Box::new(CommerceModule::new()));
-
-    // Register modules module
-    registry.register(Box::new(ModulesModule::new()));
-
-    // Register page_builder module
-    registry.register(Box::new(Page_builderModule::new()));
+    // Register marketplace_ledger module
+    registry.register(Box::new(Marketplace_ledgerModule::new()));
 
     // Register payment module
     registry.register(Box::new(PaymentModule::new()));
 
-    // Register seo module
-    registry.register(Box::new(SeoModule::new()));
-
-    // Register cache module
-    registry.register(Box::new(CacheModule::new()));
-
-    // Register marketplace_allocation module
-    registry.register(Box::new(Marketplace_allocationModule::new()));
-
-    // Register marketplace_commission module
-    registry.register(Box::new(Marketplace_commissionModule::new()));
-
-    // Register product_relations module
-    registry.register(Box::new(Product_relationsModule::new()));
-
-    // Register cart module
-    registry.register(Box::new(CartModule::new()));
-
-    // Register customer module
-    registry.register(Box::new(CustomerModule::new()));
-
-    // Register order module
-    registry.register(Box::new(OrderModule::new()));
-
-    // Register social_graph module
-    registry.register(Box::new(Social_graphModule::new()));
-
     // Register translation module
     registry.register(Box::new(TranslationModule::new()));
-
-    // Register comments module
-    registry.register(Box::new(CommentsModule::new()));
-
-    // Register blog module
-    registry.register(Box::new(BlogModule::new()));
-
-    // Register content module
-    registry.register(Box::new(ContentModule::new()));
-
-    // Register navigation module
-    registry.register(Box::new(NavigationModule::new()));
-
-    // Register auth module
-    registry.register(Box::new(AuthModule::new()));
-
-    // Register reactions module
-    registry.register(Box::new(ReactionsModule::new()));
-
-    // Register marketplace_seller module
-    registry.register(Box::new(Marketplace_sellerModule::new()));
 
     // Register forum module
     registry.register(Box::new(ForumModule::new()));
 
+    // Register inventory module
+    registry.register(Box::new(InventoryModule::new()));
+
+    // Register cart module
+    registry.register(Box::new(CartModule::new()));
+
+    // Register commerce module
+    registry.register(Box::new(CommerceModule::new()));
+
+    // Register groups module
+    registry.register(Box::new(GroupsModule::new()));
+
+    // Register outbox module
+    registry.register(Box::new(OutboxModule::new()));
+
+    // Register rbac module
+    registry.register(Box::new(RbacModule::new()));
+
+    // Register product module
+    registry.register(Box::new(ProductModule::new()));
+
+    // Register auth module
+    registry.register(Box::new(AuthModule::new()));
+
+    // Register marketplace_payout module
+    registry.register(Box::new(Marketplace_payoutModule::new()));
+
+    // Register workflow module
+    registry.register(Box::new(WorkflowModule::new()));
+
+    // Register comments module
+    registry.register(Box::new(CommentsModule::new()));
+
+    // Register marketplace_commission module
+    registry.register(Box::new(Marketplace_commissionModule::new()));
+
+    // Register email module
+    registry.register(Box::new(EmailModule::new()));
+
+    // Register marketplace_allocation module
+    registry.register(Box::new(Marketplace_allocationModule::new()));
+
+    // Register moderation module
+    registry.register(Box::new(ModerationModule::new()));
+
+    // Register modules module
+    registry.register(Box::new(ModulesModule::new()));
+
     // Register media module
     registry.register(Box::new(MediaModule::new()));
+
+    // Register fulfillment module
+    registry.register(Box::new(FulfillmentModule::new()));
+
+    // Register notifications module
+    registry.register(Box::new(NotificationsModule::new()));
+
+    // Register cache module
+    registry.register(Box::new(CacheModule::new()));
+
+    // Register content module
+    registry.register(Box::new(ContentModule::new()));
 
     // Register events module
     registry.register(Box::new(EventsModule::new()));
 
-    // Register alloy module
-    registry.register(Box::new(AlloyModule::new()));
+    // Register flex module
+    registry.register(Box::new(FlexModule::new()));
 
-    // Register inventory module
-    registry.register(Box::new(InventoryModule::new()));
+    // Register marketplace_listing module
+    registry.register(Box::new(Marketplace_listingModule::new()));
 
-    // Register notifications module
-    registry.register(Box::new(NotificationsModule::new()));
+    // Register order module
+    registry.register(Box::new(OrderModule::new()));
+
+    // Register page_builder module
+    registry.register(Box::new(Page_builderModule::new()));
+
+    // Register pages module
+    registry.register(Box::new(PagesModule::new()));
+
+    // Register marketplace module
+    registry.register(Box::new(MarketplaceModule::new()));
+
+    // Register customer module
+    registry.register(Box::new(CustomerModule::new()));
+
+    // Register product_bundles module
+    registry.register(Box::new(Product_bundlesModule::new()));
+
+    // Register product_relations module
+    registry.register(Box::new(Product_relationsModule::new()));
+
+    // Register navigation module
+    registry.register(Box::new(NavigationModule::new()));
+
+    // Register reactions module
+    registry.register(Box::new(ReactionsModule::new()));
+
+    // Register blog module
+    registry.register(Box::new(BlogModule::new()));
+
+    // Register seo module
+    registry.register(Box::new(SeoModule::new()));
+
+    // Register profiles module
+    registry.register(Box::new(ProfilesModule::new()));
+
+    // Register region module
+    registry.register(Box::new(RegionModule::new()));
+
+    // Register marketplace_seller module
+    registry.register(Box::new(Marketplace_sellerModule::new()));
+
+    // Register search module
+    registry.register(Box::new(SearchModule::new()));
+
+    // Register brand module
+    registry.register(Box::new(BrandModule::new()));
 
     registry
 }

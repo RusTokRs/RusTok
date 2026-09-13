@@ -1,4 +1,5 @@
 use async_graphql::{Enum, InputObject, Json, MaybeUndefined, SimpleObject};
+use rust_decimal::Decimal;
 use rustok_product::entities::product::ProductStatus;
 use uuid::Uuid;
 
@@ -2797,4 +2798,137 @@ pub struct UpdateBrandInputGql {
     pub metadata: Option<Json<serde_json::Value>>,
 }
 
+#[derive(SimpleObject, Clone)]
+pub struct GqlBundleTranslation {
+    pub locale: String,
+    pub name: String,
+    pub description: Option<String>,
+}
 
+#[derive(SimpleObject, Clone)]
+pub struct GqlBundleItem {
+    pub id: Uuid,
+    pub bundle_id: Uuid,
+    pub product_id: Uuid,
+    pub variant_id: Option<Uuid>,
+    pub quantity: i32,
+    pub is_optional: bool,
+    pub discount_rate: Option<Decimal>,
+    pub position: i32,
+}
+
+impl From<rustok_product_bundles::dto::BundleItemDto> for GqlBundleItem {
+    fn from(item: rustok_product_bundles::dto::BundleItemDto) -> Self {
+        Self {
+            id: item.id,
+            bundle_id: item.bundle_id,
+            product_id: item.product_id,
+            variant_id: item.variant_id,
+            quantity: item.quantity,
+            is_optional: item.is_optional,
+            discount_rate: item.discount_rate,
+            position: item.position,
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct GqlBundle {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub bundle_product_id: Option<Uuid>,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub bundle_type: String,
+    pub status: String,
+    pub discount_type: String,
+    pub discount_value: Decimal,
+    pub metadata: Json<serde_json::Value>,
+    pub items: Vec<GqlBundleItem>,
+    pub translations: Vec<GqlBundleTranslation>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<rustok_product_bundles::dto::BundleDto> for GqlBundle {
+    fn from(b: rustok_product_bundles::dto::BundleDto) -> Self {
+        Self {
+            id: b.id,
+            tenant_id: b.tenant_id,
+            bundle_product_id: b.bundle_product_id,
+            slug: b.slug,
+            name: b.name,
+            description: b.description,
+            bundle_type: b.bundle_type,
+            status: b.status,
+            discount_type: b.discount_type,
+            discount_value: b.discount_value,
+            metadata: Json(b.metadata),
+            items: b.items.into_iter().map(Into::into).collect(),
+            translations: b
+                .translations
+                .into_iter()
+                .map(|t| GqlBundleTranslation {
+                    locale: t.locale,
+                    name: t.name,
+                    description: t.description,
+                })
+                .collect(),
+            created_at: b.created_at.to_rfc3339(),
+            updated_at: b.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct GqlBundleListResponse {
+    pub items: Vec<GqlBundle>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+#[derive(InputObject, Clone, Default)]
+pub struct GqlBundleFilter {
+    pub search: Option<String>,
+    pub status: Option<String>,
+    pub bundle_type: Option<String>,
+    pub product_id: Option<Uuid>,
+}
+
+#[derive(InputObject, Clone)]
+pub struct CreateBundleInputGql {
+    pub bundle_product_id: Option<Uuid>,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub bundle_type: Option<String>,
+    pub status: Option<String>,
+    pub discount_type: Option<String>,
+    pub discount_value: Option<Decimal>,
+    pub metadata: Option<Json<serde_json::Value>>,
+}
+
+#[derive(InputObject, Clone, Default)]
+pub struct UpdateBundleInputGql {
+    pub bundle_product_id: Option<Uuid>,
+    pub slug: Option<String>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub bundle_type: Option<String>,
+    pub status: Option<String>,
+    pub discount_type: Option<String>,
+    pub discount_value: Option<Decimal>,
+    pub metadata: Option<Json<serde_json::Value>>,
+}
+
+#[derive(InputObject, Clone)]
+pub struct BundleItemInputGql {
+    pub product_id: Uuid,
+    pub variant_id: Option<Uuid>,
+    pub quantity: Option<i32>,
+    pub is_optional: Option<bool>,
+    pub discount_rate: Option<Decimal>,
+    pub position: Option<i32>,
+}

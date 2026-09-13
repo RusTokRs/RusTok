@@ -51,6 +51,7 @@ customer = { crate = "rustok-customer", source = "path", path = "crates/modules/
 product = { crate = "rustok-product", source = "path", path = "crates/modules/rustok-product", depends_on = ["taxonomy"] }
 product_relations = { crate = "rustok-product-relations", source = "path", path = "crates/modules/rustok-product-relations", depends_on = ["product"] }
 brand = { crate = "rustok-brand", source = "path", path = "crates/modules/rustok-brand", depends_on = ["product"] }
+product_bundles = { crate = "rustok-product-bundles", source = "path", path = "crates/modules/rustok-product-bundles", depends_on = ["product"] }
 profiles = { crate = "rustok-profiles", source = "path", path = "crates/modules/rustok-profiles", depends_on = ["media", "social_graph", "taxonomy"] }
 social_graph = { crate = "rustok-social-graph", source = "path", path = "crates/modules/rustok-social-graph", depends_on = ["index", "outbox"] }
 reactions = { crate = "rustok-reactions", source = "path", path = "crates/modules/rustok-reactions", depends_on = ["outbox"] }
@@ -91,4 +92,4 @@ ai = { crate = "rustok-ai", source = "path", path = "crates/modules/rustok-ai", 
 iggy_connector = { crate = "rustok-iggy-connector", source = "path", path = "crates/modules/rustok-iggy-connector", runtime = "extension" }
 
 [settings]
-default_enabled = ["content", "cart", "customer", "product", "product_relations", "brand", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages", "navigation", "page_builder"]
+default_enabled = ["content", "cart", "customer", "product", "product_relations", "brand", "product_bundles", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages", "navigation", "page_builder"]
