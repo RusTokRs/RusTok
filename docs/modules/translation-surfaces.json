@@ -225,7 +225,7 @@
       "data_classification": ["public", "tenant_private"],
       "ai_export": "restricted",
       "evidence_paths": ["crates/modules/rustok-product/docs/implementation-plan.md"],
-      "blockers": ["Broad Product catalog parity remains incomplete beyond the separately registered product/product, product/variant, product/option, product/image, and product/attribute targets; classify and onboard remaining category/schema/group presentation labels, SEO/Flex integration, and other catalog presentation surfaces without collapsing them into this aggregate row."]
+      "blockers": ["Broad Product catalog parity remains incomplete beyond the separately registered product/product, product/variant, product/option, product/image, product/attribute, product/attribute_schema, and product/category_form targets. Classify and onboard remaining SEO/Flex integration and any other uncovered Product-owned catalog presentation surfaces without collapsing them into this aggregate row; Product Category canonical name/slug/description remain Taxonomy-owned rather than part of broad Product parity."]
     },
     {
       "id": "product_product_copy",
@@ -315,6 +315,42 @@
         ".github/workflows/product-attribute-translation-target-postgres.yml"
       ],
       "blockers": ["The product/attribute provider is registered over the canonical ProductCatalogSchemaService and retained PostgreSQL source covers tenant isolation, durable replay, multi-replica CAS, progress, frozen ChangeCursor windows, and late canonical option invalidation. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; archive/delete lifecycle evidence must follow canonical mounted owner commands rather than test-only SQL if those commands are exposed later."]
+    },
+    {
+      "id": "product_attribute_schema_copy",
+      "owner_slug": "product",
+      "resource_kind": "attribute_schema",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text"],
+      "data_classification": ["public", "tenant_private"],
+      "ai_export": "restricted",
+      "evidence_paths": [
+        "crates/modules/rustok-product/src/services/catalog_schema_service/schemas/translation.rs",
+        "crates/modules/rustok-product/src/migrations/m20260913_000027_add_product_attribute_schema_translation_change_journal.rs",
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/product_attribute_schema_translation_target_postgres.rs",
+        ".github/workflows/product-attribute-schema-translation-target-postgres.yml"
+      ],
+      "blockers": ["The product/attribute_schema provider is registered over the canonical ProductCatalogSchemaService and retained PostgreSQL source covers tenant isolation, durable replay, multi-replica CAS, progress, frozen ChangeCursor windows, late canonical schema-group invalidation, and binding-only no-copy churn. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."]
+    },
+    {
+      "id": "product_category_form_copy",
+      "owner_slug": "product",
+      "resource_kind": "category_form",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text"],
+      "data_classification": ["public"],
+      "ai_export": "allowed",
+      "evidence_paths": [
+        "crates/modules/rustok-product/src/services/catalog_schema_service/categories/translation.rs",
+        "crates/modules/rustok-product/src/migrations/m20260913_000028_add_product_category_form_translation_change_journal.rs",
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/product_category_form_translation_target_postgres.rs",
+        ".github/workflows/product-category-form-translation-target-postgres.yml"
+      ],
+      "blockers": ["The product/category_form provider is registered for Product-owned category-local form-group labels only; canonical Category name/slug/description remain Taxonomy-owned. Retained PostgreSQL source covers tenant isolation, durable replay, multi-replica CAS, progress, frozen ChangeCursor windows, late canonical group invalidation, and binding-only no-copy churn. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; any future group-removal lifecycle evidence must follow its canonical Product owner command rather than test-only SQL."]
     },
     {
       "id": "commerce_collection_copy",
@@ -480,9 +516,11 @@
         "crates/modules/rustok-region/src/translation_target.rs",
         "crates/modules/rustok-region/src/translation_changes.rs",
         "crates/modules/rustok-region/src/migrations/m20260912_000113_add_region_translation_change_journal.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/region_translation_target_postgres.rs",
+        ".github/workflows/region-translation-target-postgres.yml"
       ],
-      "blockers": ["The region/region_copy provider is registered with transactional owner apply and bounded change repair. Collect retained PostgreSQL concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion."]
+      "blockers": ["The region/region_copy provider is registered and retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."]
     },
     {
       "id": "inventory_stock_location_copy",
@@ -497,9 +535,11 @@
         "crates/modules/rustok-inventory/src/translation_target.rs",
         "crates/modules/rustok-inventory/src/translation_changes.rs",
         "crates/modules/rustok-inventory/src/migrations/m20260912_000023_add_stock_location_translation_change_journal.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/inventory_stock_location_translation_target_postgres.rs",
+        ".github/workflows/inventory-stock-location-translation-target-postgres.yml"
       ],
-      "blockers": ["The inventory/stock_location_copy provider is registered. Collect retained PostgreSQL concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion; inventory identities and quantitative facts remain outside Translation."]
+      "blockers": ["The inventory/stock_location_copy provider is registered and retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; inventory identities and quantitative facts remain outside Translation."]
     },
     {
       "id": "pricing_price_list_copy",
@@ -513,9 +553,11 @@
       "evidence_paths": [
         "crates/modules/rustok-pricing/src/translation_target.rs",
         "crates/modules/rustok-pricing/src/translation_changes.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/pricing_price_list_translation_target_postgres.rs",
+        ".github/workflows/pricing-price-list-translation-target-postgres.yml"
       ],
-      "blockers": ["The pricing/price_list_copy provider is registered. Collect retained PostgreSQL concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion; prices, currencies, rules, and calculations remain non-translatable facts."]
+      "blockers": ["The pricing/price_list_copy provider is registered and retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; prices, currencies, rules, and calculations remain non-translatable facts."]
     },
     {
       "id": "fulfillment_copy",
@@ -542,9 +584,11 @@
         "crates/modules/rustok-fulfillment/src/translation_target.rs",
         "crates/modules/rustok-fulfillment/src/translation_changes.rs",
         "crates/modules/rustok-fulfillment/src/migrations/m20260912_000118_add_shipping_option_translation_change_journal.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/fulfillment_shipping_option_translation_target_postgres.rs",
+        ".github/workflows/fulfillment-shipping-option-translation-target-postgres.yml"
       ],
-      "blockers": ["The fulfillment/shipping_option_copy provider is registered with atomic owner create/update/apply, copy-only revisions, stable aggregate high-water progress, and a durable bounded ChangeCursor. Collect retained PostgreSQL concurrent CAS/idempotent replay, lifecycle/progress stability, and cursor recovery evidence before pilot promotion; operational shipping facts remain outside Translation."]
+      "blockers": ["The fulfillment/shipping_option_copy provider is registered with atomic owner create/update/apply, copy-only revisions, stable aggregate high-water progress, a durable bounded ChangeCursor, and retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/lifecycle/progress/cursor evidence source. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; operational shipping facts remain outside Translation."]
     },
     {
       "id": "marketplace_seller_copy",
