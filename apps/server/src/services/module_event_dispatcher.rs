@@ -612,7 +612,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         rustok_moderation::materialize_moderation_subject_adapter_registry(&mut extensions, &host)
             .map_err(|error| {
                 Error::Message(format!(
-                    "moderation subject adapter provider materialization failed: {error}"
+                    "moderation subject adapter materialization failed: {error}"
                 ))
             })?;
     }
