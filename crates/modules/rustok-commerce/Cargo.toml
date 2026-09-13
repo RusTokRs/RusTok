@@ -27,6 +27,7 @@ rustok-cart.workspace = true
 rustok-customer.workspace = true
 rustok-product.workspace = true
 rustok-product-relations.workspace = true
+rustok-brand.workspace = true
 rustok-region.workspace = true
 rustok-pricing.workspace = true
 rustok-inventory.workspace = true

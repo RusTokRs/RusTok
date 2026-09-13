@@ -13857,6 +13857,7 @@ dependencies = [
  "rustok-api",
  "rustok-auth-admin",
  "rustok-blog-admin",
+ "rustok-brand-admin",
  "rustok-build",
  "rustok-cache",
  "rustok-channel-admin",
@@ -14343,6 +14344,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-brand"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "rustok-events",
+ "rustok-outbox",
+ "rustok-product",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-brand-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos_axum",
+ "rustok-api",
+ "rustok-brand",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-ui-core",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-build"
 version = "0.1.0"
 dependencies = [
@@ -14643,6 +14684,7 @@ dependencies = [
  "rust_decimal",
  "rust_decimal_macros",
  "rustok-api",
+ "rustok-brand",
  "rustok-cart",
  "rustok-channel",
  "rustok-commerce-foundation",
@@ -14900,6 +14942,7 @@ dependencies = [
  "rustok-api",
  "rustok-auth",
  "rustok-blog",
+ "rustok-brand",
  "rustok-cache",
  "rustok-cart",
  "rustok-channel",
@@ -17243,6 +17286,7 @@ dependencies = [
  "rustok-api",
  "rustok-auth",
  "rustok-blog",
+ "rustok-brand",
  "rustok-build",
  "rustok-cache",
  "rustok-cart",

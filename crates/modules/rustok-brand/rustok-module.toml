@@ -5,10 +5,21 @@ version = "0.1.0"
 description = "Brand catalog, manufacturers, media presentation, and product associations"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "capability_only"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
 
 [dependencies]
 product = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "BrandModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-brand-admin"
+route_segment = "brands"
+nav_label = "Brands"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

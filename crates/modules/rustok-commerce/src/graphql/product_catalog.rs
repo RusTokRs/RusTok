@@ -356,4 +356,94 @@ impl ProductCatalogQuery {
             .map_err(|e| async_graphql::Error::new(e.to_string()))?;
         Ok(relations.into_iter().map(Into::into).collect())
     }
+
+    async fn brand(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        locale: Option<String>,
+    ) -> Result<Option<super::GqlBrand>> {
+        require_module_enabled(ctx, "brand").await?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let service = rustok_brand::BrandService::new(db.clone());
+        use rustok_brand::BrandPort;
+        let brand = service
+            .get_brand(tenant.id, id, locale.as_deref())
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(Some(brand.into()))
+    }
+
+    async fn brand_by_slug(
+        &self,
+        ctx: &Context<'_>,
+        slug: String,
+        locale: Option<String>,
+    ) -> Result<Option<super::GqlBrand>> {
+        require_module_enabled(ctx, "brand").await?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let service = rustok_brand::BrandService::new(db.clone());
+        use rustok_brand::BrandPort;
+        let brand = service
+            .get_brand_by_slug(tenant.id, &slug, locale.as_deref())
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(Some(brand.into()))
+    }
+
+    async fn brands(
+        &self,
+        ctx: &Context<'_>,
+        filter: Option<super::GqlBrandFilter>,
+        page: Option<u64>,
+        per_page: Option<u64>,
+        locale: Option<String>,
+    ) -> Result<super::GqlBrandListResponse> {
+        require_module_enabled(ctx, "brand").await?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let service = rustok_brand::BrandService::new(db.clone());
+        let f = filter.unwrap_or_default();
+        use rustok_brand::BrandPort;
+        let response = service
+            .list_brands(
+                tenant.id,
+                rustok_brand::dto::BrandFilter {
+                    search: f.search,
+                    is_active: f.is_active,
+                },
+                page.unwrap_or(1),
+                per_page.unwrap_or(20),
+                locale.as_deref(),
+            )
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+
+        Ok(super::GqlBrandListResponse {
+            items: response.items.into_iter().map(Into::into).collect(),
+            total: response.total,
+            page: response.page,
+            per_page: response.per_page,
+        })
+    }
+
+    async fn product_brand(
+        &self,
+        ctx: &Context<'_>,
+        product_id: Uuid,
+        locale: Option<String>,
+    ) -> Result<Option<super::GqlBrand>> {
+        require_module_enabled(ctx, "brand").await?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let service = rustok_brand::BrandService::new(db.clone());
+        use rustok_brand::BrandPort;
+        let brand = service
+            .get_brand_for_product(tenant.id, product_id, locale.as_deref())
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(brand.map(Into::into))
+    }
 }

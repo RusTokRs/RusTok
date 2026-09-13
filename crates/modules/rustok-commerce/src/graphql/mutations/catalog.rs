@@ -694,6 +694,154 @@ impl CommerceCatalogMutation {
         Ok(reordered.into_iter().map(Into::into).collect())
     }
 
+    async fn create_brand(
+        &self,
+        ctx: &Context<'_>,
+        input: super::super::types::CreateBrandInputGql,
+    ) -> Result<super::super::types::GqlBrand> {
+        require_module_enabled(ctx, "brand").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_MANAGE],
+            "Permission denied: products:manage required",
+        )?;
+        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = rustok_brand::BrandService::new(db.clone());
+        use rustok_brand::BrandPort;
+        let created = service
+            .create_brand(
+                tenant_id,
+                rustok_brand::dto::CreateBrandInput {
+                    slug: input.slug,
+                    logo_media_id: input.logo_media_id,
+                    banner_media_id: input.banner_media_id,
+                    website_url: input.website_url,
+                    is_active: input.is_active,
+                    metadata: input.metadata.map(|m| m.0),
+                    translations: vec![rustok_brand::dto::BrandTranslationInput {
+                        locale: "en".to_string(),
+                        name: input.name,
+                        description: input.description,
+                    }],
+                },
+            )
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(created.into())
+    }
+
+    async fn update_brand(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: super::super::types::UpdateBrandInputGql,
+    ) -> Result<super::super::types::GqlBrand> {
+        require_module_enabled(ctx, "brand").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_MANAGE],
+            "Permission denied: products:manage required",
+        )?;
+        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = rustok_brand::BrandService::new(db.clone());
+        use rustok_brand::BrandPort;
+        let translations = input.name.map(|name| {
+            vec![rustok_brand::dto::BrandTranslationInput {
+                locale: "en".to_string(),
+                name,
+                description: input.description.clone(),
+            }]
+        });
+        let updated = service
+            .update_brand(
+                tenant_id,
+                id,
+                rustok_brand::dto::UpdateBrandInput {
+                    slug: input.slug,
+                    logo_media_id: input.logo_media_id.map(Some),
+                    banner_media_id: input.banner_media_id.map(Some),
+                    website_url: input.website_url.map(Some),
+                    is_active: input.is_active,
+                    metadata: input.metadata.map(|m| m.0),
+                    translations,
+                },
+            )
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(updated.into())
+    }
+
+    async fn delete_brand(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, "brand").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_MANAGE],
+            "Permission denied: products:manage required",
+        )?;
+        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = rustok_brand::BrandService::new(db.clone());
+        use rustok_brand::BrandPort;
+        service
+            .delete_brand(tenant_id, id)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(true)
+    }
+
+    async fn assign_product_brand(
+        &self,
+        ctx: &Context<'_>,
+        product_id: Uuid,
+        brand_id: Uuid,
+        is_primary: Option<bool>,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, "brand").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = rustok_brand::BrandService::new(db.clone());
+        use rustok_brand::BrandPort;
+        service
+            .assign_product_brand(tenant_id, brand_id, product_id, is_primary.unwrap_or(true))
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(true)
+    }
+
+    async fn unassign_product_brand(
+        &self,
+        ctx: &Context<'_>,
+        product_id: Uuid,
+        brand_id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, "brand").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = rustok_brand::BrandService::new(db.clone());
+        use rustok_brand::BrandPort;
+        service
+            .unassign_product_brand(tenant_id, brand_id, product_id)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(true)
+    }
+
     async fn create_product_attribute(
         &self,
         ctx: &Context<'_>,

@@ -1557,7 +1557,9 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.variant_attribute_value_translation_owner_unavailable",
             "Product Variant attribute-value translation storage is temporarily unavailable",
         ),
-        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => {
+        CommerceError::ProductNotFound(_)
+        | CommerceError::VariantNotFound(_)
+        | CommerceError::ImageNotFound(_) => {
             PortError::not_found(
                 "product.variant_attribute_value_translation_resource_not_found",
                 "Product Variant attribute-value translation resource was not found",

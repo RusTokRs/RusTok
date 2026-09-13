@@ -2707,3 +2707,94 @@ pub struct UpdateProductRelationInput {
     pub metadata: Option<Json<serde_json::Value>>,
 }
 
+#[derive(SimpleObject, Clone)]
+pub struct GqlBrandTranslation {
+    pub locale: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct GqlBrand {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub logo_media_id: Option<Uuid>,
+    pub banner_media_id: Option<Uuid>,
+    pub website_url: Option<String>,
+    pub is_active: bool,
+    pub metadata: Json<serde_json::Value>,
+    pub translations: Vec<GqlBrandTranslation>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<rustok_brand::dto::BrandDto> for GqlBrand {
+    fn from(b: rustok_brand::dto::BrandDto) -> Self {
+        Self {
+            id: b.id,
+            tenant_id: b.tenant_id,
+            slug: b.slug,
+            name: b.name,
+            description: b.description,
+            logo_media_id: b.logo_media_id,
+            banner_media_id: b.banner_media_id,
+            website_url: b.website_url,
+            is_active: b.is_active,
+            metadata: Json(b.metadata),
+            translations: b
+                .translations
+                .into_iter()
+                .map(|t| GqlBrandTranslation {
+                    locale: t.locale,
+                    name: t.name,
+                    description: t.description,
+                })
+                .collect(),
+            created_at: b.created_at.to_rfc3339(),
+            updated_at: b.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct GqlBrandListResponse {
+    pub items: Vec<GqlBrand>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+#[derive(InputObject, Clone, Default)]
+pub struct GqlBrandFilter {
+    pub search: Option<String>,
+    pub is_active: Option<bool>,
+}
+
+#[derive(InputObject, Clone)]
+pub struct CreateBrandInputGql {
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub logo_media_id: Option<Uuid>,
+    pub banner_media_id: Option<Uuid>,
+    pub website_url: Option<String>,
+    pub is_active: Option<bool>,
+    pub metadata: Option<Json<serde_json::Value>>,
+}
+
+#[derive(InputObject, Clone, Default)]
+pub struct UpdateBrandInputGql {
+    pub slug: Option<String>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub logo_media_id: Option<Uuid>,
+    pub banner_media_id: Option<Uuid>,
+    pub website_url: Option<String>,
+    pub is_active: Option<bool>,
+    pub metadata: Option<Json<serde_json::Value>>,
+}
+
+

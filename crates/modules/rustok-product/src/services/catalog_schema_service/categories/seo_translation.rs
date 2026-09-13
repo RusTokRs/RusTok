@@ -890,7 +890,7 @@ impl TranslationTargetProvider for ProductCategorySeoTranslationTargetProvider {
                     code: "product.category_seo_translation_target_empty".to_string(),
                     message: error.message,
                     severity: rustok_translation_targets::TranslationPatchIssueSeverity::Error,
-                    field_key: None,
+                    field: None,
                 });
             }
         }
@@ -1537,7 +1537,9 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.category_seo_translation_owner_validation",
             "Product rejected the Category SEO translation mutation",
         ),
-        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => PortError::not_found(
+        CommerceError::ProductNotFound(_)
+        | CommerceError::VariantNotFound(_)
+        | CommerceError::ImageNotFound(_) => PortError::not_found(
             "product.category_seo_translation_resource_not_found",
             "Product Category SEO translation resource was not found",
         ),

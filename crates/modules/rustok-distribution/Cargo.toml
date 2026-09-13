@@ -11,6 +11,7 @@ mod-cart = ["dep:rustok-cart"]
 mod-customer = ["dep:rustok-customer"]
 mod-product = ["dep:rustok-product", "mod-taxonomy", "dep:chrono", "dep:hex", "dep:rust_decimal"]
 mod-product_relations = ["dep:rustok-product-relations", "mod-product"]
+mod-brand = ["dep:rustok-brand", "mod-product"]
 mod-profiles = ["dep:rustok-profiles", "mod-media", "mod-taxonomy"]
 mod-groups = ["dep:rustok-groups"]
 mod-region = ["dep:rustok-region"]
@@ -72,6 +73,7 @@ rustok-cart = { workspace = true, optional = true }
 rustok-customer = { workspace = true, optional = true }
 rustok-product = { workspace = true, optional = true }
 rustok-product-relations = { workspace = true, optional = true }
+rustok-brand = { workspace = true, optional = true }
 rustok-profiles = { workspace = true, optional = true }
 rustok-social-graph = { path = "../rustok-social-graph" }
 rustok-groups = { path = "../rustok-groups", optional = true }

@@ -110,7 +110,11 @@ fn storefront_graphql_transports_keep_owner_handoff_stable() {
 
 #[test]
 fn commerce_graphql_module_keeps_expected_root_fields() {
-    let query_source = include_str!("../src/graphql/query.rs");
+    let query_source = format!(
+        "{}\n{}",
+        include_str!("../src/graphql/query.rs"),
+        include_str!("../src/graphql/product_catalog.rs"),
+    );
     let mutation_source = format!(
         "{}\n{}\n{}\n{}\n{}\n{}",
         include_str!("../src/graphql/mutations/cart.rs"),
@@ -124,6 +128,10 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
     for required in [
         "async fn product(",
         "async fn products(",
+        "async fn brand(",
+        "async fn brand_by_slug(",
+        "async fn brands(",
+        "async fn product_brand(",
         "async fn storefront_cart(",
         "async fn storefront_payment_collection(",
         "async fn storefront_me(",
@@ -178,6 +186,11 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
         "async fn add_product_relation(",
         "async fn remove_product_relation(",
         "async fn reorder_product_relations(",
+        "async fn create_brand(",
+        "async fn update_brand(",
+        "async fn delete_brand(",
+        "async fn assign_product_brand(",
+        "async fn unassign_product_brand(",
     ] {
         assert!(
             mutation_source.contains(required),
