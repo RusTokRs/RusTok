@@ -178,8 +178,12 @@ impl ProductWriteTransaction {
             product_attribute_schema_translation_change_target(&event);
         let category_form_translation_change_target =
             product_category_form_translation_change_target(&event);
+        let category_seo_translation_change_target =
+            product_category_seo_translation_change_target(&event);
         let attribute_value_translation_change_target =
             product_attribute_value_translation_change_target(&event);
+        let variant_attribute_value_translation_change_target =
+            product_variant_attribute_value_translation_change_target(&event);
         let root_event_id = self
             .event_bus
             .publish_in_tx_with_envelope_id(&self.transaction, tenant_id, actor_id, event)
@@ -277,6 +281,19 @@ impl ProductWriteTransaction {
             .await?;
         }
 
+        if let Some(category_id) = category_seo_translation_change_target {
+            // Product Category SEO is a separate owner surface from Taxonomy canonical Category copy
+            // and from SEO-module overrides. Canonical Category lifecycle events capture the exact
+            // post-command SEO aggregate; semantic revision/lifecycle dedupe suppresses unrelated edits.
+            ProductCatalogSchemaService::record_category_seo_translation_change_in_tx(
+                &self.transaction,
+                tenant_id,
+                category_id,
+                root_event_id,
+            )
+            .await?;
+        }
+
         if let Some(product_id) = attribute_value_translation_change_target {
             // Localized Product EAV values are independent Translation resources keyed by their
             // canonical value-row UUID. Only value writes and Product hard-delete cross this boundary;
@@ -286,6 +303,20 @@ impl ProductWriteTransaction {
                 tenant_id,
                 product_id,
                 root_event_id,
+            )
+            .await?;
+        }
+
+        if let Some((product_id, variant_id)) = variant_attribute_value_translation_change_target {
+            // Localized Variant EAV values are independent row-owned Translation resources. Canonical
+            // Variant EAV writes surface as VariantUpdated, while Variant/Product hard-delete records
+            // tombstones from the durable journal after storage cascade deletion.
+            ProductCatalogSchemaService::record_variant_attribute_value_translation_changes_in_tx(
+                &self.transaction,
+                tenant_id,
+                product_id,
+                root_event_id,
+                variant_id,
             )
             .await?;
         }
@@ -422,10 +453,36 @@ fn product_category_form_translation_change_target(event: &DomainEvent) -> Optio
     }
 }
 
+fn product_category_seo_translation_change_target(event: &DomainEvent) -> Option<Uuid> {
+    match event {
+        DomainEvent::CatalogCategoryCreated { category_id }
+        | DomainEvent::CatalogCategoryUpdated { category_id }
+        | DomainEvent::CatalogCategoryDeleted { category_id } => Some(*category_id),
+        _ => None,
+    }
+}
+
 fn product_attribute_value_translation_change_target(event: &DomainEvent) -> Option<Uuid> {
     match event {
         DomainEvent::ProductAttributeValuesChanged { product_id }
         | DomainEvent::ProductDeleted { product_id } => Some(*product_id),
+        _ => None,
+    }
+}
+
+fn product_variant_attribute_value_translation_change_target(
+    event: &DomainEvent,
+) -> Option<(Uuid, Option<Uuid>)> {
+    match event {
+        DomainEvent::ProductDeleted { product_id } => Some((*product_id, None)),
+        DomainEvent::VariantUpdated {
+            variant_id,
+            product_id,
+        }
+        | DomainEvent::VariantDeleted {
+            variant_id,
+            product_id,
+        } => Some((*product_id, Some(*variant_id))),
         _ => None,
     }
 }

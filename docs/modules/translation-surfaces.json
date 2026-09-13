@@ -219,13 +219,18 @@
       "id": "product_catalog",
       "owner_slug": "product",
       "resource_kind": "catalog_product",
-      "readiness": "blocked",
+      "readiness": "excluded",
       "provider_status": "not_registered",
       "field_profiles": ["plain_text", "seo_text", "slug", "localized_scalar"],
       "data_classification": ["public", "tenant_private"],
-      "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/rustok-product/docs/implementation-plan.md"],
-      "blockers": ["Broad Product catalog parity remains incomplete beyond the separately registered product/product, product/variant, product/option, product/image, product/attribute, product/attribute_schema, product/category_form, and product/attribute_value targets. Classify and onboard remaining SEO/Flex integration and any other uncovered Product-owned catalog presentation surfaces without collapsing them into this aggregate row; Product Category canonical name/slug/description remain Taxonomy-owned rather than part of broad Product parity."]
+      "ai_export": "forbidden",
+      "evidence_paths": [
+        "crates/modules/rustok-product/docs/implementation-plan.md",
+        "crates/modules/rustok-product/src/services/catalog_schema_service.rs",
+        "crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "exclusion_reason": "The broad product/catalog_product row is a parity-tracking aggregate, not one canonical Translation resource. Product-owned localized copy is intentionally decomposed into product/product, product/variant, product/option, product/image, product/attribute, product/attribute_schema, product/category_form, product/category_seo, product/attribute_value, and product/variant_attribute_value. Product Category canonical name/slug/description are Taxonomy-owned, Product Category SEO remains product/category_seo, Product SEO fields remain product/product, and Flex schema/attached/standalone localized values remain Flex-owned. Registering product/catalog_product would duplicate owner storage and collapse independent revisions, lifecycle and policy boundaries."
     },
     {
       "id": "product_product_copy",
@@ -242,7 +247,7 @@
         "apps/server/tests/product_product_translation_target_postgres.rs",
         ".github/workflows/product-product-translation-target-postgres.yml"
       ],
-      "blockers": ["Retained repository-hosted PostgreSQL migration/CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; broader Product catalog parity remains tracked separately by product_catalog."]
+      "blockers": ["Retained repository-hosted PostgreSQL migration/CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; broad product/catalog_product is intentionally excluded rather than registered as a duplicate aggregate target."]
     },
     {
       "id": "product_variant_copy",
@@ -353,6 +358,23 @@
       "blockers": ["The product/category_form provider is registered for Product-owned category-local form-group labels only; canonical Category name/slug/description remain Taxonomy-owned. Retained PostgreSQL source covers tenant isolation, durable replay, multi-replica CAS, progress, frozen ChangeCursor windows, late canonical group invalidation, and binding-only no-copy churn. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; any future group-removal lifecycle evidence must follow its canonical Product owner command rather than test-only SQL."]
     },
     {
+      "id": "product_category_seo_copy",
+      "owner_slug": "product",
+      "resource_kind": "category_seo",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["seo_text"],
+      "data_classification": ["public"],
+      "ai_export": "allowed",
+      "evidence_paths": [
+        "crates/modules/rustok-product/src/services/catalog_schema_service/categories/seo_translation.rs",
+        "crates/modules/rustok-product/src/migrations/m20260913_000031_add_product_category_seo_translation_target.rs",
+        "crates/modules/rustok-product/src/services/write_transaction.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["The product/category_seo provider is registered over Product-owned catalog_category_seo_translations only; canonical Category name/slug/description remain Taxonomy-owned and seo/seo_copy remains the separate SEO override plane. Source covers canonical locale normalization, exact-locale CAS, durable idempotent replay, aggregate progress, frozen ChangeCursor windows, semantic lifecycle journal dedupe, and Category delete tombstones. Retain focused maintainer-run PostgreSQL evidence before pilot promotion."]
+    },
+    {
       "id": "product_attribute_value_copy",
       "owner_slug": "product",
       "resource_kind": "attribute_value",
@@ -369,6 +391,23 @@
         ".github/workflows/product-attribute-value-translation-target-postgres.yml"
       ],
       "blockers": ["The product/attribute_value provider is registered over canonical Product localized text EAV rows with row-owned identity and AI export disabled. Retained PostgreSQL source covers canonical locale normalization, tenant isolation, durable replay, multi-replica CAS, aggregate progress, frozen ChangeCursor windows, source mutation, and canonical hard-delete tombstones. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; numeric, select, multiselect, JSON, and other non-localized Product attribute facts remain outside Translation."]
+    },
+    {
+      "id": "product_variant_attribute_value_copy",
+      "owner_slug": "product",
+      "resource_kind": "variant_attribute_value",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text"],
+      "data_classification": ["tenant_private"],
+      "ai_export": "forbidden",
+      "evidence_paths": [
+        "crates/modules/rustok-product/src/services/catalog_schema_service/values/variant_translation.rs",
+        "crates/modules/rustok-product/src/migrations/m20260913_000030_add_product_variant_attribute_value_translation_target.rs",
+        "crates/modules/rustok-product/src/services/write_transaction.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["The product/variant_attribute_value provider is registered over canonical Product-owned localized Variant text EAV rows with row-owned identity and AI export disabled. Source covers canonical locale normalization, exact-locale CAS, durable idempotent replay, aggregate progress, frozen ChangeCursor windows, canonical Variant owner freshness, semantic journal dedupe, and Variant/Product hard-delete tombstones. Retain focused maintainer-run PostgreSQL evidence before pilot promotion; numeric, select, multiselect, JSON, and other non-localized Variant attribute facts remain outside Translation."]
     },
     {
       "id": "commerce_collection_copy",
@@ -581,13 +620,20 @@
       "id": "fulfillment_copy",
       "owner_slug": "fulfillment",
       "resource_kind": "fulfillment_copy",
-      "readiness": "blocked",
+      "readiness": "excluded",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "template_text"],
-      "data_classification": ["tenant_private"],
-      "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/rustok-fulfillment/README.md"],
-      "blockers": ["Broad Fulfillment presentation/template parity remains incomplete beyond the separately registered fulfillment/shipping_option_copy target. Classify and onboard any remaining presentation copy explicitly while keeping identifiers, provider configuration, amounts, currencies, routing rules, metadata, and transactional facts outside Translation."]
+      "field_profiles": ["plain_text"],
+      "data_classification": ["tenant_private", "immutable_transaction"],
+      "ai_export": "forbidden",
+      "evidence_paths": [
+        "crates/modules/rustok-fulfillment/README.md",
+        "crates/modules/rustok-fulfillment/docs/README.md",
+        "crates/modules/rustok-fulfillment/src/dto/fulfillment.rs",
+        "crates/modules/rustok-fulfillment/src/migrations/m20260325_000105_create_fulfillment_tables.rs",
+        "crates/modules/rustok-fulfillment/src/migrations/m20260411_000108_add_shipping_option_translations.rs",
+        "crates/modules/rustok-fulfillment/src/translation_target.rs"
+      ],
+      "exclusion_reason": "The broad fulfillment/fulfillment_copy row is a parity-tracking aggregate, not one canonical Translation resource. Fulfillment's mutable localized presentation is the separately registered fulfillment/shipping_option_copy name. Carrier and tracking values are identifiers, provider/profile configuration and metadata are operational facts, amounts/currencies/routing are non-translatable facts, and delivered_note/cancellation_reason are fulfillment-history prose that must preserve their original operational context rather than be retroactively translated. Registering fulfillment/fulfillment_copy would duplicate the shipping-option owner target and mix mutable presentation with transactional evidence."
     },
     {
       "id": "fulfillment_shipping_option_copy",
