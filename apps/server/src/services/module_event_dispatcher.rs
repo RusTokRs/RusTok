@@ -608,12 +608,6 @@ pub fn build_shared_runtime_extensions_with_host_providers(
 
     #[cfg(feature = "mod-notifications")]
     {
-        if !registry.contains("notifications") {
-            return Err(Error::Message(
-                "Notifications feature is selected but NotificationsModule is missing from ModuleRegistry"
-                    .to_string(),
-            ));
-        }
         let host =
             extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()));
         rustok_notifications::api::materialize_notification_source_registry(&mut extensions, &host)
