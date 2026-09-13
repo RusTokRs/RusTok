@@ -620,13 +620,20 @@
       "id": "fulfillment_copy",
       "owner_slug": "fulfillment",
       "resource_kind": "fulfillment_copy",
-      "readiness": "blocked",
+      "readiness": "excluded",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "template_text"],
-      "data_classification": ["tenant_private"],
-      "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/rustok-fulfillment/README.md"],
-      "blockers": ["Broad Fulfillment presentation/template parity remains incomplete beyond the separately registered fulfillment/shipping_option_copy target. Classify and onboard any remaining presentation copy explicitly while keeping identifiers, provider configuration, amounts, currencies, routing rules, metadata, and transactional facts outside Translation."]
+      "field_profiles": ["plain_text"],
+      "data_classification": ["tenant_private", "immutable_transaction"],
+      "ai_export": "forbidden",
+      "evidence_paths": [
+        "crates/modules/rustok-fulfillment/README.md",
+        "crates/modules/rustok-fulfillment/docs/README.md",
+        "crates/modules/rustok-fulfillment/src/dto/fulfillment.rs",
+        "crates/modules/rustok-fulfillment/src/migrations/m20260325_000105_create_fulfillment_tables.rs",
+        "crates/modules/rustok-fulfillment/src/migrations/m20260411_000108_add_shipping_option_translations.rs",
+        "crates/modules/rustok-fulfillment/src/translation_target.rs"
+      ],
+      "exclusion_reason": "The broad fulfillment/fulfillment_copy row is a parity-tracking aggregate, not one canonical Translation resource. Fulfillment's mutable localized presentation is the separately registered fulfillment/shipping_option_copy name. Carrier and tracking values are identifiers, provider/profile configuration and metadata are operational facts, amounts/currencies/routing are non-translatable facts, and delivered_note/cancellation_reason are fulfillment-history prose that must preserve their original operational context rather than be retroactively translated. Registering fulfillment/fulfillment_copy would duplicate the shipping-option owner target and mix mutable presentation with transactional evidence."
     },
     {
       "id": "fulfillment_shipping_option_copy",
