@@ -348,12 +348,21 @@ pub fn build_shared_runtime_extensions_with_host_providers(
             })?;
         let provider =
             rustok_product::ProductCatalogSchemaService::attribute_value_translation_target_provider(
-                schema_service,
+                schema_service.clone(),
             );
         rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
             .map_err(|error| {
                 Error::Message(format!(
                     "Product Attribute Value translation target provider registration failed: {error}"
+                ))
+            })?;
+        let provider = rustok_product::ProductCatalogSchemaService::variant_attribute_value_translation_target_provider(
+            schema_service,
+        );
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Variant Attribute Value translation target provider registration failed: {error}"
                 ))
             })?;
     }
@@ -561,7 +570,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         }
         let host =
             extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()));
-        rustok_reactions::api::materialize_reaction_subject_registry(&mut extensions, &host)
+        rustok_reactions::api::materialize_reaction_subject_adapter_registry(&mut extensions, &host)
             .map_err(|error| {
                 Error::Message(format!(
                     "reaction subject provider materialization failed: {error}"
@@ -804,6 +813,14 @@ mod tests {
                 .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
                     descriptor.owner_slug.as_str() == "product"
                         && descriptor.resource_kind.as_str() == "attribute_value"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "variant_attribute_value"
                 }))
         );
         #[cfg(feature = "mod-commerce")]
