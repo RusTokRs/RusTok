@@ -717,12 +717,21 @@
       "owner_slug": "auth",
       "resource_kind": "oauth_application_copy",
       "readiness": "blocked",
-      "provider_status": "not_registered",
+      "provider_status": "registered",
       "field_profiles": ["plain_text"],
       "data_classification": ["tenant_private", "sensitive"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/modules/rustok-auth/README.md"],
-      "blockers": ["Separate localizable presentation from client identity, redirect URIs, scopes, and credentials; add owner CAS."]
+      "evidence_paths": [
+        "crates/modules/rustok-auth/README.md",
+        "crates/modules/rustok-auth/src/oauth_app_translation.rs",
+        "crates/modules/rustok-auth/src/migrations/m20260913_000010_add_oauth_app_translation_target.rs",
+        "apps/server/src/services/oauth_app_translation.rs",
+        "apps/server/src/services/oauth_app_translation_target.rs",
+        "apps/server/src/services/mod.rs",
+        "apps/server/tests/oauth_app_translation_target_postgres.rs",
+        ".github/workflows/oauth-app-translation-target-postgres.yml"
+      ],
+      "blockers": ["The auth/oauth_application_copy provider is registered over localized name plus optional description only, with settings:manage read/apply floors, sensitive classification, AI export forbidden, copy-only revisions, aggregate progress, durable idempotent apply, frozen ChangeCursor, and canonical Active/Archived lifecycle. Retained repository-hosted PostgreSQL migration/backfill, tenant-isolation, canonical create/update/secret-rotation/revoke, multi-replica CAS, replay, progress, and cursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; client identity, slug, credentials, redirect URIs, scopes/grants, consent/token state, provenance, and other operational OAuth facts remain outside Translation."]
     },
     {
       "id": "registry_artifact_copy",
