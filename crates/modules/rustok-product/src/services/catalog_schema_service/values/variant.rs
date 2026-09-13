@@ -49,16 +49,16 @@ impl ProductCatalogSchemaService {
         .collect::<Vec<_>>();
         let product = load_product_primary_category(conn, tenant_id, owner.product_id).await?;
         let detached_attribute_ids = match product.primary_category_id {
-            Some(category_id) => self
-                .load_effective_form_for_category(
-                    tenant_id,
-                    category_id,
-                    &existing_value_attribute_ids,
-                )
-                .await?
-                .detached_attribute_ids
-                .into_iter()
-                .collect::<HashSet<_>>(),
+            Some(category_id) => Self::load_effective_form_for_category_in(
+                conn,
+                tenant_id,
+                category_id,
+                &existing_value_attribute_ids,
+            )
+            .await?
+            .detached_attribute_ids
+            .into_iter()
+            .collect::<HashSet<_>>(),
             None => existing_value_attribute_ids.into_iter().collect::<HashSet<_>>(),
         };
 
@@ -220,6 +220,7 @@ impl ProductCatalogSchemaService {
             .await?;
         }
         if !patches.is_empty() {
+            touch_variant_owner(&txn, tenant_id, variant_id).await?;
             txn.publish(
                 tenant_id,
                 Some(actor_id),
@@ -304,6 +305,7 @@ impl ProductCatalogSchemaService {
                 values,
             ))
             .await?;
+            touch_variant_owner(&txn, tenant_id, variant_id).await?;
             txn.publish(
                 tenant_id,
                 Some(actor_id),
@@ -357,6 +359,27 @@ where
     .one(conn)
     .await?
     .ok_or(CommerceError::VariantNotFound(variant_id))
+}
+
+async fn touch_variant_owner<C>(
+    conn: &C,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+) -> CommerceResult<()>
+where
+    C: ConnectionTrait,
+{
+    let result = conn
+        .execute_raw(Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            "UPDATE product_variants SET updated_at = CURRENT_TIMESTAMP WHERE tenant_id = $1 AND id = $2",
+            vec![tenant_id.into(), variant_id.into()],
+        ))
+        .await?;
+    if result.rows_affected() != 1 {
+        return Err(CommerceError::VariantNotFound(variant_id));
+    }
+    Ok(())
 }
 
 async fn load_variant_patch_definitions<C>(
