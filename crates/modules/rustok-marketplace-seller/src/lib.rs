@@ -16,6 +16,9 @@ mod seller_prose;
 #[cfg(test)]
 mod seller_response_events_tests;
 mod translation;
+mod translation_changes;
+mod translation_progress;
+pub mod translation_target;
 
 pub mod dto;
 pub mod entities;
@@ -41,6 +44,13 @@ pub use translation::{
     MarketplaceSellerTranslationExactLocaleError, MarketplaceSellerTranslationExactLocaleRecord,
     MarketplaceSellerTranslationExactLocaleResult, MarketplaceSellerTranslationExactLocaleSnapshot,
     MarketplaceSellerTranslationService,
+};
+pub use translation_changes::{
+    MarketplaceSellerTranslationChangeLifecycle, MarketplaceSellerTranslationChangeRecord,
+};
+pub use translation_target::{
+    MarketplaceSellerTranslationTargetProvider,
+    register_marketplace_seller_translation_target_provider,
 };
 
 /// Seller identity, lifecycle, onboarding, and membership owner for the
