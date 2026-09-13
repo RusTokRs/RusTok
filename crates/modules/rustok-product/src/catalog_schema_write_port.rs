@@ -22,7 +22,7 @@ use crate::services::{
 /// idempotency identity and deadline. Consumers must receive this capability from host
 /// composition rather than constructing `ProductCatalogSchemaService` directly.
 ///
-/// The embedded adapter durably binds all eleven mounted Product schema writes to the
+/// The embedded adapter durably binds all thirteen mounted Product schema writes to the
 /// shared owner-operation receipt ledger. Receipt completion is committed in the same
 /// Product transaction as schema/EAV rows and outbox publication using the actual result
 /// recorded by the owner write method. Attribute-value writes capture their exact
@@ -98,6 +98,32 @@ pub trait ProductCatalogSchemaWritePort: Send + Sync {
         locale: String,
         attribute_ids: Vec<Uuid>,
     ) -> Result<Vec<ProductAttributeValueRecord>, PortError>;
+
+    async fn save_variant_attribute_values(
+        &self,
+        _context: PortContext,
+        _variant_id: Uuid,
+        _locale: String,
+        _patches: Vec<ProductAttributeValuePatch>,
+    ) -> Result<Vec<ProductAttributeValueRecord>, PortError> {
+        Err(PortError::unavailable(
+            "product.variant_attribute_values_unavailable",
+            "product variant attribute values are unavailable",
+        ))
+    }
+
+    async fn clear_detached_variant_attribute_values(
+        &self,
+        _context: PortContext,
+        _variant_id: Uuid,
+        _locale: String,
+        _attribute_ids: Vec<Uuid>,
+    ) -> Result<Vec<ProductAttributeValueRecord>, PortError> {
+        Err(PortError::unavailable(
+            "product.variant_attribute_values_unavailable",
+            "product variant attribute values are unavailable",
+        ))
+    }
 }
 
 #[async_trait]
@@ -374,6 +400,74 @@ impl ProductCatalogSchemaWritePort for ProductCatalogSchemaService {
                 tenant_id,
                 actor_id,
                 product_id,
+                &locale,
+                attribute_ids,
+            ),
+        )
+        .await;
+        finish_receipted_schema_write(self, &context, operation, lease, result).await
+    }
+
+    async fn save_variant_attribute_values(
+        &self,
+        context: PortContext,
+        variant_id: Uuid,
+        locale: String,
+        patches: Vec<ProductAttributeValuePatch>,
+    ) -> Result<Vec<ProductAttributeValueRecord>, PortError> {
+        let operation = "save_variant_attribute_values";
+        let (tenant_id, actor_id) = schema_write_scope(&context, operation)?;
+        let request = serde_json::json!({
+            "actor": &context.actor,
+            "variant_id": variant_id,
+            "locale": &locale,
+            "patches": &patches,
+        });
+        let lease =
+            match admit_schema_operation(self, &context, tenant_id, operation, &request).await? {
+                idempotency::Admission::Run(lease) => lease,
+                idempotency::Admission::Replay(value) => {
+                    return decode_schema_receipt(&context, operation, value);
+                }
+                idempotency::Admission::ReplayError(error) => return Err(error),
+            };
+        let result = with_product_operation_receipt(
+            lease,
+            self.save_variant_attribute_values(tenant_id, actor_id, variant_id, &locale, patches),
+        )
+        .await;
+        finish_receipted_schema_write(self, &context, operation, lease, result).await
+    }
+
+    async fn clear_detached_variant_attribute_values(
+        &self,
+        context: PortContext,
+        variant_id: Uuid,
+        locale: String,
+        attribute_ids: Vec<Uuid>,
+    ) -> Result<Vec<ProductAttributeValueRecord>, PortError> {
+        let operation = "clear_detached_variant_attribute_values";
+        let (tenant_id, actor_id) = schema_write_scope(&context, operation)?;
+        let request = serde_json::json!({
+            "actor": &context.actor,
+            "variant_id": variant_id,
+            "locale": &locale,
+            "attribute_ids": &attribute_ids,
+        });
+        let lease =
+            match admit_schema_operation(self, &context, tenant_id, operation, &request).await? {
+                idempotency::Admission::Run(lease) => lease,
+                idempotency::Admission::Replay(value) => {
+                    return decode_schema_receipt(&context, operation, value);
+                }
+                idempotency::Admission::ReplayError(error) => return Err(error),
+            };
+        let result = with_product_operation_receipt(
+            lease,
+            self.clear_detached_variant_attribute_values(
+                tenant_id,
+                actor_id,
+                variant_id,
                 &locale,
                 attribute_ids,
             ),

@@ -1,5 +1,9 @@
+mod translation;
+mod variant;
+
 use super::*;
 use crate::services::write_transaction::record_product_operation_result;
+use rustok_api::TenantLocale;
 
 impl ProductCatalogSchemaService {
     pub async fn load_product_attribute_values(
@@ -20,7 +24,7 @@ impl ProductCatalogSchemaService {
     where
         C: ConnectionTrait,
     {
-        validate_locale(locale)?;
+        let locale = canonical_value_locale(locale)?;
         ensure_product(conn, tenant_id, product_id).await?;
         let detached_attribute_ids = match Self::load_effective_form_for_product_in(
             conn,
@@ -70,7 +74,7 @@ impl ProductCatalogSchemaService {
             WHERE pav.tenant_id = $1 AND pav.product_id = $2
             ORDER BY pa.position, pa.code
             "#,
-            vec![tenant_id.into(), product_id.into(), locale.trim().into()],
+            vec![tenant_id.into(), product_id.into(), locale.clone().into()],
         ))
         .all(conn)
         .await?;
@@ -234,7 +238,7 @@ impl ProductCatalogSchemaService {
         locale: &str,
         patches: Vec<ProductAttributeValuePatch>,
     ) -> CommerceResult<Vec<ProductAttributeValueRecord>> {
-        validate_locale(locale)?;
+        let locale = canonical_value_locale(locale)?;
         validate_uuid("product_id", product_id)?;
 
         let product = load_product_primary_category(&self.db, tenant_id, product_id).await?;
@@ -338,7 +342,7 @@ impl ProductCatalogSchemaService {
                 &txn,
                 tenant_id,
                 product_id,
-                locale.trim(),
+                locale.as_str(),
                 definition,
                 patch,
             )
@@ -352,8 +356,13 @@ impl ProductCatalogSchemaService {
             )
             .await?;
         }
-        let result =
-            Self::load_product_attribute_values_in(&txn, tenant_id, product_id, locale).await?;
+        let result = Self::load_product_attribute_values_in(
+            &txn,
+            tenant_id,
+            product_id,
+            locale.as_str(),
+        )
+        .await?;
         record_product_operation_result(&result)?;
         txn.commit().await?;
         Ok(result)
@@ -367,7 +376,7 @@ impl ProductCatalogSchemaService {
         locale: &str,
         attribute_ids: Vec<Uuid>,
     ) -> CommerceResult<Vec<ProductAttributeValueRecord>> {
-        validate_locale(locale)?;
+        let locale = canonical_value_locale(locale)?;
         validate_uuid("product_id", product_id)?;
         ensure_product(&self.db, tenant_id, product_id).await?;
         let detached_attribute_ids = match self
@@ -437,10 +446,21 @@ impl ProductCatalogSchemaService {
             )
             .await?;
         }
-        let result =
-            Self::load_product_attribute_values_in(&txn, tenant_id, product_id, locale).await?;
+        let result = Self::load_product_attribute_values_in(
+            &txn,
+            tenant_id,
+            product_id,
+            locale.as_str(),
+        )
+        .await?;
         record_product_operation_result(&result)?;
         txn.commit().await?;
         Ok(result)
     }
+}
+
+fn canonical_value_locale(locale: &str) -> CommerceResult<String> {
+    TenantLocale::new(locale)
+        .map(TenantLocale::into_inner)
+        .map_err(|error| CommerceError::Validation(error.to_string()))
 }
