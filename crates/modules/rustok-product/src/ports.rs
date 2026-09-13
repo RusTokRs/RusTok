@@ -730,6 +730,13 @@ fn product_error_to_port_error(
         CommerceError::ProductNotFound(_) => {
             PortError::not_found("product.product_not_found", "product was not found")
         }
+        CommerceError::VariantNotFound(_) => {
+            PortError::not_found("product.variant_not_found", "product variant was not found")
+        }
+        CommerceError::CannotDeleteOnlyVariant => PortError::conflict(
+            "product.cannot_delete_only_variant",
+            "cannot delete the only variant of a product",
+        ),
         CommerceError::DuplicateHandle { .. } => PortError::conflict(
             "product.duplicate_handle",
             "product handle conflicts with an existing product",
@@ -750,6 +757,8 @@ fn product_error_code(error: &crate::error::CommerceError) -> &'static str {
     match error {
         CommerceError::Database(_) => "product.database_unavailable",
         CommerceError::ProductNotFound(_) => "product.product_not_found",
+        CommerceError::VariantNotFound(_) => "product.variant_not_found",
+        CommerceError::CannotDeleteOnlyVariant => "product.cannot_delete_only_variant",
         CommerceError::DuplicateHandle { .. } => "product.duplicate_handle",
         CommerceError::Validation(_) => "product.validation",
         _ => "product.invariant_violation",
@@ -905,5 +914,28 @@ mod tests {
             "product handle conflicts with an existing product"
         );
         assert!(!duplicate.retryable);
+
+        let variant_not_found = product_error_to_port_error(
+            &context,
+            READ_PRODUCT_PROJECTION_OPERATION,
+            CommerceError::VariantNotFound(Uuid::nil()),
+        );
+        assert_eq!(variant_not_found.kind, PortErrorKind::NotFound);
+        assert_eq!(variant_not_found.code, "product.variant_not_found");
+        assert_eq!(variant_not_found.message, "product variant was not found");
+        assert!(!variant_not_found.retryable);
+
+        let cannot_delete_only = product_error_to_port_error(
+            &context,
+            READ_PRODUCT_PROJECTION_OPERATION,
+            CommerceError::CannotDeleteOnlyVariant,
+        );
+        assert_eq!(cannot_delete_only.kind, PortErrorKind::Conflict);
+        assert_eq!(cannot_delete_only.code, "product.cannot_delete_only_variant");
+        assert_eq!(
+            cannot_delete_only.message,
+            "cannot delete the only variant of a product"
+        );
+        assert!(!cannot_delete_only.retryable);
     }
 }

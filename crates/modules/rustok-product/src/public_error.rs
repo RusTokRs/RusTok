@@ -60,6 +60,17 @@ fn product_owner_error_facts(error: &CommerceError) -> ProductOwnerErrorFacts {
             ("validation", 1, message.chars().count(), 0, 0, false)
         }
         CommerceError::NoVariants => ("no_variants", 0, 0, 0, 0, false),
+        CommerceError::VariantNotFound(id) => (
+            "variant_not_found",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
+        CommerceError::CannotDeleteOnlyVariant => {
+            ("cannot_delete_only_variant", 0, 0, 0, 0, false)
+        }
         CommerceError::CannotDeletePublished => ("cannot_delete_published", 0, 0, 0, 0, false),
         CommerceError::Core(_) => ("core", 0, 0, 0, 0, true),
     };
@@ -86,6 +97,14 @@ pub fn map_product_public_error(
             true,
         ),
         CommerceError::ProductNotFound(_) => ("Product was not found", "PRODUCT_NOT_FOUND", false),
+        CommerceError::VariantNotFound(_) => {
+            ("Product variant was not found", "PRODUCT_VARIANT_NOT_FOUND", false)
+        }
+        CommerceError::CannotDeleteOnlyVariant => (
+            "Product must have at least one variant",
+            "CANNOT_DELETE_ONLY_VARIANT",
+            false,
+        ),
         CommerceError::DuplicateHandle { .. } => (
             "Product handle conflicts with an existing product",
             "DUPLICATE_HANDLE",

@@ -6980,11 +6980,83 @@ mod tests {
         }
     }
 
+    fn test_scope(tenant_id: Uuid, module_slug: &str) -> ArtifactDataScope {
+        ArtifactDataScope {
+            tenant_id,
+            data_owner_id: Uuid::new_v4(),
+            namespace_instance_id: Uuid::new_v4(),
+            data_contract_digest:
+                "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    .to_string(),
+            module_slug: module_slug.to_string(),
+            data_contract_revision: 1,
+            policy_revision: 1,
+        }
+    }
+
+    async fn setup_test_serving_namespace<C: ConnectionTrait>(
+        connection: &C,
+        scope: &ArtifactDataScope,
+    ) {
+        let backend = connection.get_database_backend();
+        connection
+            .execute_raw(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "INSERT INTO module_artifact_data_namespaces
+                     (tenant_id, data_owner_id, namespace_instance_id, module_slug,
+                      data_contract_revision, data_contract_digest, state,
+                      namespace_revision, created_at, updated_at)
+                     VALUES ({}, {}, {}, {}, {}, {}, 'serving', 1, {}, {})",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                    placeholder(backend, 6),
+                    now_expression(backend),
+                    now_expression(backend),
+                ),
+                vec![
+                    uuid_value(scope.tenant_id, backend),
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
+                    scope.module_slug.clone().into(),
+                    revision_value(scope.data_contract_revision).expect("revision"),
+                    scope.data_contract_digest.clone().into(),
+                ],
+            ))
+            .await
+            .expect("insert test namespace");
+        connection
+            .execute_raw(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "INSERT INTO module_artifact_data_owner_references
+                     (tenant_id, data_owner_id, namespace_instance_id, reference_revision)
+                     VALUES ({}, {}, {}, 1)",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                ),
+                vec![
+                    uuid_value(scope.tenant_id, backend),
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
+                ],
+            ))
+            .await
+            .expect("insert test owner reference");
+    }
+
     #[test]
     fn scope_and_keys_reject_guest_controlled_namespace_escapes() {
         assert!(matches!(
             ArtifactDataScope {
                 tenant_id: Uuid::nil(),
+                data_owner_id: Uuid::nil(),
+                namespace_instance_id: Uuid::nil(),
+                data_contract_digest: "invalid".into(),
                 module_slug: "module".into(),
                 data_contract_revision: 1,
                 policy_revision: 1,
@@ -7012,10 +7084,8 @@ mod tests {
         ));
 
         let scope = ArtifactDataScope {
-            tenant_id: Uuid::new_v4(),
-            module_slug: "quota_module".to_string(),
-            data_contract_revision: 1,
             policy_revision: 2,
+            ..test_scope(Uuid::new_v4(), "quota_module")
         };
         let quota = ArtifactDataQuota {
             max_structured_records: 5,
@@ -7030,12 +7100,7 @@ mod tests {
 
     #[test]
     fn owner_export_requires_active_revision_actor_reason_and_bounded_page() {
-        let scope = ArtifactDataScope {
-            tenant_id: Uuid::new_v4(),
-            module_slug: "sample_module".to_string(),
-            data_contract_revision: 1,
-            policy_revision: 1,
-        };
+        let scope = test_scope(Uuid::new_v4(), "sample_module");
         let mut request = ArtifactDataExportRequest {
             scope: scope.clone(),
             expected_namespace_revision: 1,
@@ -7247,11 +7312,10 @@ mod tests {
                 .expect("module migration");
         }
         let scope = ArtifactDataScope {
-            tenant_id: Uuid::new_v4(),
-            module_slug: "sample_module".to_string(),
-            data_contract_revision: 1,
             policy_revision: 7,
+            ..test_scope(Uuid::new_v4(), "sample_module")
         };
+        setup_test_serving_namespace(&database, &scope).await;
         let indexes = vec![ArtifactDataIndexField {
             name: "status".to_string(),
             json_pointer: "/status".to_string(),
@@ -7616,11 +7680,10 @@ mod tests {
                 .expect("module migration");
         }
         let scope = ArtifactDataScope {
-            tenant_id: Uuid::new_v4(),
-            module_slug: "quota_module".to_string(),
-            data_contract_revision: 1,
             policy_revision: 3,
+            ..test_scope(Uuid::new_v4(), "quota_module")
         };
+        setup_test_serving_namespace(&database, &scope).await;
         let quota = ArtifactDataQuota {
             max_structured_records: 2,
             max_structured_bytes: 8,
@@ -7852,12 +7915,8 @@ mod tests {
             fsync: false,
         })
         .expect("local storage");
-        let scope = ArtifactDataScope {
-            tenant_id: Uuid::new_v4(),
-            module_slug: "sample_module".to_string(),
-            data_contract_revision: 1,
-            policy_revision: 1,
-        };
+        let scope = test_scope(Uuid::new_v4(), "sample_module");
+        setup_test_serving_namespace(&database, &scope).await;
         let broker = SeaOrmArtifactDataObjectBroker::new(
             database.clone(),
             storage.clone(),
@@ -8006,11 +8065,10 @@ mod tests {
         })
         .expect("local storage");
         let scope = ArtifactDataScope {
-            tenant_id: Uuid::new_v4(),
-            module_slug: "quota_module".to_string(),
-            data_contract_revision: 1,
             policy_revision: 5,
+            ..test_scope(Uuid::new_v4(), "quota_module")
         };
+        setup_test_serving_namespace(&database, &scope).await;
         let quota = ArtifactDataQuota {
             max_objects: 1,
             max_object_bytes: 4,
@@ -8227,11 +8285,12 @@ mod tests {
     async fn upgrade_planning_reads_before_transforming_and_never_writes() {
         let completed = Arc::new(AtomicBool::new(false));
         let tenant_id = Uuid::new_v4();
-        let source = ArtifactDataScope {
-            tenant_id,
-            module_slug: "sample_module".to_string(),
-            data_contract_revision: 1,
-            policy_revision: 1,
+        let source = test_scope(tenant_id, "sample_module");
+        let target = ArtifactDataScope {
+            namespace_instance_id: Uuid::new_v4(),
+            data_contract_revision: 2,
+            policy_revision: 2,
+            ..source.clone()
         };
         let planner = ArtifactDataUpgradePlanner::new(
             CompletedPageBroker {
@@ -8248,12 +8307,7 @@ mod tests {
                 plan_id: Uuid::new_v4(),
                 target_installation_id: Uuid::new_v4(),
                 source,
-                target: ArtifactDataScope {
-                    tenant_id,
-                    module_slug: "sample_module".to_string(),
-                    data_contract_revision: 2,
-                    policy_revision: 2,
-                },
+                target,
                 hook_binding_id: "upgrade.v2".to_string(),
                 page: ArtifactDataPageRequest {
                     prefix: "state/".to_string(),
@@ -8304,23 +8358,19 @@ mod tests {
         let hook = ArtifactBindingDataUpgradeHook::new(executor, release, binding)
             .expect("dedicated upgrade hook");
         let tenant_id = Uuid::new_v4();
-        let source = ArtifactDataScope {
-            tenant_id,
-            module_slug: "sample_module".to_string(),
-            data_contract_revision: 1,
-            policy_revision: 1,
+        let source = test_scope(tenant_id, "sample_module");
+        let target = ArtifactDataScope {
+            namespace_instance_id: Uuid::new_v4(),
+            data_contract_revision: 2,
+            policy_revision: 2,
+            ..source.clone()
         };
         let transformed = hook
             .transform_data(
                 "upgrade.v2",
                 ArtifactDataUpgradeInput {
                     source: source.clone(),
-                    target: ArtifactDataScope {
-                        tenant_id,
-                        module_slug: "sample_module".to_string(),
-                        data_contract_revision: 2,
-                        policy_revision: 2,
-                    },
+                    target,
                     record: ArtifactDataRecord {
                         key: "state/current".to_string(),
                         value: json!({ "version": 1 }),
@@ -8344,22 +8394,18 @@ mod tests {
     #[tokio::test]
     async fn upgrade_application_retries_by_plan_id_before_checkpointing() {
         let tenant_id = Uuid::new_v4();
-        let source = ArtifactDataScope {
-            tenant_id,
-            module_slug: "sample_module".to_string(),
-            data_contract_revision: 1,
-            policy_revision: 1,
+        let source = test_scope(tenant_id, "sample_module");
+        let target = ArtifactDataScope {
+            namespace_instance_id: Uuid::new_v4(),
+            data_contract_revision: 2,
+            policy_revision: 2,
+            ..source.clone()
         };
         let plan = ArtifactDataUpgradePlan {
             plan_id: Uuid::new_v4(),
             target_installation_id: Uuid::new_v4(),
             source,
-            target: ArtifactDataScope {
-                tenant_id,
-                module_slug: "sample_module".to_string(),
-                data_contract_revision: 2,
-                policy_revision: 2,
-            },
+            target,
             hook_binding_id: "upgrade.v2".to_string(),
             records: vec![ArtifactDataUpgradeRecord {
                 key: "state/current".to_string(),
@@ -8470,12 +8516,7 @@ mod tests {
     #[tokio::test]
     async fn object_retention_snapshot_requires_explicit_eligible_rule() {
         let now = chrono::Utc::now();
-        let scope = ArtifactDataScope {
-            tenant_id: Uuid::new_v4(),
-            module_slug: "sample_module".to_string(),
-            data_contract_revision: 1,
-            policy_revision: 1,
-        };
+        let scope = test_scope(Uuid::new_v4(), "sample_module");
         let storage_key = "module-artifact-data/retained";
         let policy = SnapshotArtifactDataObjectRetentionPolicy::new(now, HashMap::new());
         assert!(

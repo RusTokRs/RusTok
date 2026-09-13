@@ -62,14 +62,25 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
     }
 
     let tenant_id = Uuid::new_v4();
+    let data_owner_id = Uuid::new_v4();
+    let source_namespace_instance_id = Uuid::new_v4();
+    let target_namespace_instance_id = Uuid::new_v4();
     let module_slug = "catalog".to_string();
+    let data_contract_digest =
+        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     // 1. Create source and target namespaces
     database
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "INSERT INTO module_artifact_data_namespaces (tenant_id, module_slug, data_contract_revision, namespace_revision, created_at, updated_at) VALUES (?1, ?2, 1, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
-            vec![tenant_id.to_string().into(), module_slug.clone().into()],
+            "INSERT INTO module_artifact_data_namespaces (tenant_id, data_owner_id, namespace_instance_id, module_slug, data_contract_revision, data_contract_digest, state, namespace_revision, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 1, ?5, 'serving', 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
+            vec![
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                source_namespace_instance_id.to_string().into(),
+                module_slug.clone().into(),
+                data_contract_digest.into(),
+            ],
         ))
         .await
         .expect("insert source namespace");
@@ -77,8 +88,14 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
     database
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "INSERT INTO module_artifact_data_namespaces (tenant_id, module_slug, data_contract_revision, namespace_revision, created_at, updated_at) VALUES (?1, ?2, 2, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
-            vec![tenant_id.to_string().into(), module_slug.clone().into()],
+            "INSERT INTO module_artifact_data_namespaces (tenant_id, data_owner_id, namespace_instance_id, module_slug, data_contract_revision, data_contract_digest, state, namespace_revision, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 2, ?5, 'staging', 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
+            vec![
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                target_namespace_instance_id.to_string().into(),
+                module_slug.clone().into(),
+                data_contract_digest.into(),
+            ],
         ))
         .await
         .expect("insert target namespace");
@@ -92,10 +109,11 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
         database
             .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
-                "INSERT INTO module_artifact_data (tenant_id, module_slug, data_contract_revision, data_key, value, value_size_bytes, revision, updated_at) VALUES (?1, ?2, 1, ?3, ?4, ?5, 1, '2026-09-01T00:00:00Z')",
+                "INSERT INTO module_artifact_data (tenant_id, data_owner_id, namespace_instance_id, data_key, value, value_size_bytes, revision, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, '2026-09-01T00:00:00Z')",
                 vec![
                     tenant_id.to_string().into(),
-                    module_slug.clone().into(),
+                    data_owner_id.to_string().into(),
+                    source_namespace_instance_id.to_string().into(),
                     key.into(),
                     val_bytes.into(),
                     (val.to_string().len() as i64).into(),
@@ -111,9 +129,9 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
     let page1_context = command_context(tenant_id);
     let page1_req = CrossRevisionDataCopyRequest {
         tenant_id,
-        module_slug: module_slug.clone(),
-        source_contract_revision: 1,
-        target_contract_revision: 2,
+        data_owner_id,
+        source_namespace_instance_id,
+        target_namespace_instance_id,
         page_size: 2,
         page_cursor: None,
         context: page1_context.clone(),
@@ -127,9 +145,9 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
     // Idempotent retry of Page 1 with same idempotency key
     let page1_retry = CrossRevisionDataCopyRequest {
         tenant_id,
-        module_slug: module_slug.clone(),
-        source_contract_revision: 1,
-        target_contract_revision: 2,
+        data_owner_id,
+        source_namespace_instance_id,
+        target_namespace_instance_id,
         page_size: 2,
         page_cursor: None,
         context: page1_context,
@@ -145,9 +163,9 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
     // 4. Copy Page 2 (size = 2): items 03 and 04
     let page2_req = CrossRevisionDataCopyRequest {
         tenant_id,
-        module_slug: module_slug.clone(),
-        source_contract_revision: 1,
-        target_contract_revision: 2,
+        data_owner_id,
+        source_namespace_instance_id,
+        target_namespace_instance_id,
         page_size: 2,
         page_cursor: page1_res.next_page_cursor,
         context: command_context(tenant_id),
@@ -161,9 +179,9 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
     // 5. Copy Page 3 (size = 2): item 05 (terminal page)
     let page3_req = CrossRevisionDataCopyRequest {
         tenant_id,
-        module_slug: module_slug.clone(),
-        source_contract_revision: 1,
-        target_contract_revision: 2,
+        data_owner_id,
+        source_namespace_instance_id,
+        target_namespace_instance_id,
         page_size: 2,
         page_cursor: page2_res.next_page_cursor,
         context: command_context(tenant_id),
@@ -178,8 +196,12 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
     let target_count_row = database
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "SELECT COUNT(*) AS count FROM module_artifact_data WHERE tenant_id = ?1 AND module_slug = ?2 AND data_contract_revision = 2",
-            vec![tenant_id.to_string().into(), module_slug.clone().into()],
+            "SELECT COUNT(*) AS count FROM module_artifact_data WHERE tenant_id = ?1 AND data_owner_id = ?2 AND namespace_instance_id = ?3",
+            vec![
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                target_namespace_instance_id.to_string().into(),
+            ],
         ))
         .await
         .expect("count query")
@@ -192,17 +214,21 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
     database
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "UPDATE module_artifact_data SET value = '{\"conflicting\": true}' WHERE tenant_id = ?1 AND module_slug = ?2 AND data_contract_revision = 2 AND data_key = 'item_01'",
-            vec![tenant_id.to_string().into(), module_slug.clone().into()],
+            "UPDATE module_artifact_data SET value = '{\"conflicting\": true}' WHERE tenant_id = ?1 AND data_owner_id = ?2 AND namespace_instance_id = ?3 AND data_key = 'item_01'",
+            vec![
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                target_namespace_instance_id.to_string().into(),
+            ],
         ))
         .await
         .expect("tamper target key");
 
     let conflict_req = CrossRevisionDataCopyRequest {
         tenant_id,
-        module_slug: module_slug.clone(),
-        source_contract_revision: 1,
-        target_contract_revision: 2,
+        data_owner_id,
+        source_namespace_instance_id,
+        target_namespace_instance_id,
         page_size: 2,
         page_cursor: None,
         context: command_context(tenant_id),
@@ -221,8 +247,12 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
     let tampered_row = database
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "SELECT CAST(value AS TEXT) AS value_text FROM module_artifact_data WHERE tenant_id = ?1 AND module_slug = ?2 AND data_contract_revision = 2 AND data_key = 'item_01'",
-            vec![tenant_id.to_string().into(), module_slug.clone().into()],
+            "SELECT CAST(value AS TEXT) AS value_text FROM module_artifact_data WHERE tenant_id = ?1 AND data_owner_id = ?2 AND namespace_instance_id = ?3 AND data_key = 'item_01'",
+            vec![
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                target_namespace_instance_id.to_string().into(),
+            ],
         ))
         .await
         .expect("get tampered row")
@@ -235,14 +265,16 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO module_artifact_data_copy_operations (\
-                operation_id, tenant_id, module_slug, source_contract_revision, target_contract_revision, \
+                operation_id, tenant_id, data_owner_id, source_namespace_instance_id, target_namespace_instance_id, \
                 page_cursor, page_digest, items_count, status, actor_id, trace_id, correlation_id, \
                 idempotency_key, reason, created_at\
-             ) VALUES (?1, ?2, ?3, 1, 2, NULL, 'sha256:0000000000000000000000000000000000000000000000000000000000000000', 0, 'intent', ?4, 'trace', ?5, ?6, 'crashed page', '2026-09-02T00:00:00Z')",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 'sha256:0000000000000000000000000000000000000000000000000000000000000000', 0, 'intent', ?6, 'trace', ?7, ?8, 'crashed page', '2026-09-02T00:00:00Z')",
             vec![
                 Uuid::new_v4().to_string().into(),
                 tenant_id.to_string().into(),
-                module_slug.clone().into(),
+                data_owner_id.to_string().into(),
+                source_namespace_instance_id.to_string().into(),
+                target_namespace_instance_id.to_string().into(),
                 Uuid::new_v4().to_string().into(),
                 Uuid::new_v4().to_string().into(),
                 Uuid::new_v4().to_string().into(),
@@ -252,7 +284,7 @@ async fn test_cross_revision_data_copier_paged_copy_and_idempotency() {
         .expect("insert stale intent");
 
     let reconciled = copier
-        .reconcile_stale_intents(tenant_id, &module_slug)
+        .reconcile_stale_intents(tenant_id, data_owner_id)
         .await
         .expect("reconcile succeeds");
     assert_eq!(reconciled, 1);

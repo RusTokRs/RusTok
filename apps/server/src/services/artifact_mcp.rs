@@ -272,9 +272,16 @@ mod tests {
     fn request(server: &str, tool: &str) -> ArtifactMcpCallRequest {
         let tenant_id = Uuid::new_v4();
         let installation_id = Uuid::new_v4();
+        let data_owner_id = Uuid::new_v4();
+        let namespace_instance_id = Uuid::new_v4();
         ArtifactMcpCallRequest {
             scope: ArtifactDataScope {
                 tenant_id,
+                data_owner_id,
+                namespace_instance_id,
+                data_contract_digest:
+                    "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                        .to_string(),
                 module_slug: "external_sample".to_string(),
                 data_contract_revision: 1,
                 policy_revision: 2,

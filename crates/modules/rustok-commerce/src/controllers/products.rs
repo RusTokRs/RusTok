@@ -104,7 +104,7 @@ fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
             "Product storage is temporarily unavailable",
             "database",
         ),
-        CommerceError::ProductNotFound(_) => (
+        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => (
             StatusCode::NOT_FOUND,
             "commerce_admin_not_found",
             "Commerce resource not found",
@@ -128,7 +128,7 @@ fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
             "Product request is invalid",
             "validation",
         ),
-        CommerceError::CannotDeletePublished => (
+        CommerceError::CannotDeletePublished | CommerceError::CannotDeleteOnlyVariant => (
             StatusCode::CONFLICT,
             "commerce_admin_product_state_conflict",
             "Product operation conflicts with the current state",

@@ -451,11 +451,6 @@ impl CatalogService {
         let translation_inputs = input.translations.clone();
 
         if let Some(translations) = translation_inputs {
-            entities::product_translation::Entity::delete_many()
-                .filter(entities::product_translation::Column::ProductId.eq(product_id))
-                .exec(&txn)
-                .await?;
-
             let mut seen = HashSet::new();
             for translation_input in translations {
                 let handle = translation_input
@@ -469,21 +464,41 @@ impl CatalogService {
                     return Err(CommerceError::DuplicateHandle { handle, locale });
                 }
 
-                let translation = entities::product_translation::ActiveModel {
-                    id: Set(generate_id()),
-                    product_id: Set(product_id),
-                    tenant_id: Set(tenant_id),
-                    locale: Set(translation_input.locale),
-                    title: Set(translation_input.title),
-                    handle: Set(handle.clone()),
-                    description: Set(translation_input.description),
-                    meta_title: Set(translation_input.meta_title),
-                    meta_description: Set(translation_input.meta_description),
-                };
-                translation
-                    .insert(&txn)
-                    .await
-                    .map_err(|error| map_product_unique_violation(error, &handle, &locale, None))?;
+                let existing = entities::product_translation::Entity::find()
+                    .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
+                    .filter(entities::product_translation::Column::ProductId.eq(product_id))
+                    .filter(entities::product_translation::Column::Locale.eq(&locale))
+                    .one(&txn)
+                    .await?;
+
+                if let Some(existing_model) = existing {
+                    let mut active: entities::product_translation::ActiveModel = existing_model.into();
+                    active.title = Set(translation_input.title);
+                    active.handle = Set(handle.clone());
+                    active.description = Set(translation_input.description);
+                    active.meta_title = Set(translation_input.meta_title);
+                    active.meta_description = Set(translation_input.meta_description);
+                    active
+                        .update(&txn)
+                        .await
+                        .map_err(|error| map_product_unique_violation(error, &handle, &locale, None))?;
+                } else {
+                    let translation = entities::product_translation::ActiveModel {
+                        id: Set(generate_id()),
+                        product_id: Set(product_id),
+                        tenant_id: Set(tenant_id),
+                        locale: Set(translation_input.locale),
+                        title: Set(translation_input.title),
+                        handle: Set(handle.clone()),
+                        description: Set(translation_input.description),
+                        meta_title: Set(translation_input.meta_title),
+                        meta_description: Set(translation_input.meta_description),
+                    };
+                    translation
+                        .insert(&txn)
+                        .await
+                        .map_err(|error| map_product_unique_violation(error, &handle, &locale, None))?;
+                }
             }
         }
 
@@ -769,6 +784,335 @@ impl CatalogService {
 
         txn.commit().await?;
         info!(product_id = %product_id, "Product deleted successfully");
+
+        Ok(())
+    }
+
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, product_id = %product_id))]
+    pub async fn create_variant(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        product_id: Uuid,
+        input: CreateVariantInput,
+    ) -> CommerceResult<VariantResponse> {
+        debug!("Creating product variant");
+
+        input
+            .validate()
+            .map_err(|e| CommerceError::Validation(e.to_string()))?;
+
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+
+        let _product = entities::product::Entity::find_by_id(product_id)
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await?
+            .ok_or(CommerceError::ProductNotFound(product_id))?;
+
+        let existing_locales = entities::product_translation::Entity::find()
+            .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
+            .filter(entities::product_translation::Column::ProductId.eq(product_id))
+            .all(&txn)
+            .await?
+            .into_iter()
+            .map(|t| t.locale)
+            .collect::<Vec<_>>();
+
+        let existing_variants = entities::product_variant::Entity::find()
+            .filter(entities::product_variant::Column::ProductId.eq(product_id))
+            .all(&txn)
+            .await?;
+        let next_position = existing_variants
+            .iter()
+            .map(|v| v.position)
+            .max()
+            .map_or(0, |max_pos| max_pos + 1);
+
+        let variant_id = generate_id();
+        let now = Utc::now();
+
+        let variant = entities::product_variant::ActiveModel {
+            id: Set(variant_id),
+            product_id: Set(product_id),
+            tenant_id: Set(tenant_id),
+            sku: Set(input.sku.clone()),
+            barcode: Set(input.barcode.clone()),
+            shipping_profile_slug: Set(input
+                .shipping_profile_slug
+                .as_deref()
+                .and_then(normalize_shipping_profile_slug)),
+            ean: Set(None),
+            upc: Set(None),
+            inventory_policy: Set(input.inventory_policy.clone()),
+            inventory_management: Set("manual".into()),
+            inventory_quantity: Set(0),
+            weight: Set(input.weight),
+            weight_unit: Set(input.weight_unit.clone()),
+            option1: Set(input.option1.clone()),
+            option2: Set(input.option2.clone()),
+            option3: Set(input.option3.clone()),
+            position: Set(next_position),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        };
+
+        variant.insert(&txn).await.map_err(|error| {
+            map_product_unique_violation(error, "", "", input.sku.as_deref())
+        })?;
+
+        let default_stock_location =
+            BootstrapService::ensure_default_location_in_tx(&txn, tenant_id).await?;
+
+        BootstrapService::create_initial_records_in_tx(
+            &txn,
+            &default_stock_location,
+            InitialInventory {
+                variant_id,
+                sku: input.sku.clone(),
+                available_quantity: input.inventory_quantity,
+            },
+        )
+        .await?;
+
+        let variant_title = generate_variant_title_from_inputs(
+            input.option1.as_deref(),
+            input.option2.as_deref(),
+            input.option3.as_deref(),
+        );
+
+        let mut variant_translation_models = Vec::new();
+        for locale in &existing_locales {
+            variant_translation_models.push(entities::variant_translation::ActiveModel {
+                id: Set(generate_id()),
+                variant_id: Set(variant_id),
+                locale: Set(locale.clone()),
+                title: Set(Some(variant_title.clone())),
+            });
+        }
+        if !variant_translation_models.is_empty() {
+            entities::variant_translation::Entity::insert_many(variant_translation_models)
+                .exec(&txn)
+                .await?;
+        }
+
+        let mut initial_prices = Vec::new();
+        for price_input in &input.prices {
+            initial_prices.push(InitialPrice {
+                variant_id,
+                channel_id: price_input.channel_id,
+                channel_slug: normalize_public_channel_slug(price_input.channel_slug.as_deref()),
+                currency_code: price_input.currency_code.clone(),
+                amount: price_input.amount,
+                compare_at_amount: price_input.compare_at_amount,
+            });
+        }
+        if !initial_prices.is_empty() {
+            PricingBootstrapService::create_initial_prices_in_tx(&txn, initial_prices).await?;
+        }
+
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::VariantCreated {
+                variant_id,
+                product_id,
+            },
+        )
+        .await?;
+
+        txn.commit().await?;
+
+        info!(
+            variant_id = %variant_id,
+            product_id = %product_id,
+            "Product variant created successfully"
+        );
+
+        self.get_variant(tenant_id, variant_id).await
+    }
+
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, variant_id = %variant_id))]
+    pub async fn update_variant(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        variant_id: Uuid,
+        input: UpdateVariantInput,
+    ) -> CommerceResult<VariantResponse> {
+        debug!("Updating product variant");
+
+        input
+            .validate()
+            .map_err(|e| CommerceError::Validation(e.to_string()))?;
+
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+
+        let variant = entities::product_variant::Entity::find_by_id(variant_id)
+            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await?
+            .ok_or(CommerceError::VariantNotFound(variant_id))?;
+
+        let product_id = variant.product_id;
+        let mut active: entities::product_variant::ActiveModel = variant.into();
+        active.updated_at = Set(Utc::now().into());
+
+        if let Some(sku) = input.sku.clone() {
+            active.sku = Set(Some(sku));
+        }
+        if let Some(barcode) = input.barcode {
+            active.barcode = Set(Some(barcode));
+        }
+        if input.shipping_profile_slug.is_some() {
+            active.shipping_profile_slug = Set(input
+                .shipping_profile_slug
+                .as_deref()
+                .and_then(normalize_shipping_profile_slug));
+        }
+        if let Some(inventory_policy) = input.inventory_policy {
+            active.inventory_policy = Set(inventory_policy);
+        }
+        if input.weight.is_some() {
+            active.weight = Set(input.weight);
+        }
+        if let Some(weight_unit) = input.weight_unit {
+            active.weight_unit = Set(Some(weight_unit));
+        }
+        let options_changed =
+            input.option1.is_some() || input.option2.is_some() || input.option3.is_some();
+        if let Some(option1) = input.option1.clone() {
+            active.option1 = Set(Some(option1));
+        }
+        if let Some(option2) = input.option2.clone() {
+            active.option2 = Set(Some(option2));
+        }
+        if let Some(option3) = input.option3.clone() {
+            active.option3 = Set(Some(option3));
+        }
+
+        let updated_variant = active.update(&txn).await.map_err(|error| {
+            map_product_unique_violation(error, "", "", input.sku.as_deref())
+        })?;
+
+        if options_changed {
+            let variant_title = generate_variant_title_from_inputs(
+                updated_variant.option1.as_deref(),
+                updated_variant.option2.as_deref(),
+                updated_variant.option3.as_deref(),
+            );
+            entities::variant_translation::Entity::update_many()
+                .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
+                .col_expr(
+                    entities::variant_translation::Column::Title,
+                    sea_orm::sea_query::Expr::value(Some(variant_title)),
+                )
+                .exec(&txn)
+                .await?;
+        }
+
+        if let Some(prices) = input.prices {
+            PricingBootstrapService::delete_prices_for_variants_in_tx(&txn, &[variant_id]).await?;
+
+            let mut initial_prices = Vec::new();
+            for price_input in &prices {
+                initial_prices.push(InitialPrice {
+                    variant_id,
+                    channel_id: price_input.channel_id,
+                    channel_slug: normalize_public_channel_slug(
+                        price_input.channel_slug.as_deref(),
+                    ),
+                    currency_code: price_input.currency_code.clone(),
+                    amount: price_input.amount,
+                    compare_at_amount: price_input.compare_at_amount,
+                });
+            }
+            if !initial_prices.is_empty() {
+                PricingBootstrapService::create_initial_prices_in_tx(&txn, initial_prices).await?;
+            }
+        }
+
+        if let Some(quantity) = input.inventory_quantity {
+            BootstrapService::update_initial_quantity_in_tx(&txn, variant_id, quantity).await?;
+        }
+
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::VariantUpdated {
+                variant_id,
+                product_id,
+            },
+        )
+        .await?;
+
+        txn.commit().await?;
+
+        info!(
+            variant_id = %variant_id,
+            product_id = %product_id,
+            "Product variant updated successfully"
+        );
+
+        self.get_variant(tenant_id, variant_id).await
+    }
+
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, variant_id = %variant_id))]
+    pub async fn delete_variant(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        variant_id: Uuid,
+    ) -> CommerceResult<()> {
+        debug!("Deleting product variant");
+
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+
+        let variant = entities::product_variant::Entity::find_by_id(variant_id)
+            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await?
+            .ok_or(CommerceError::VariantNotFound(variant_id))?;
+
+        let product_id = variant.product_id;
+
+        let count = entities::product_variant::Entity::find()
+            .filter(entities::product_variant::Column::ProductId.eq(product_id))
+            .count(&txn)
+            .await?;
+        if count <= 1 {
+            return Err(CommerceError::CannotDeleteOnlyVariant);
+        }
+
+        BootstrapService::delete_records_for_variants_in_tx(&txn, &[variant_id]).await?;
+        PricingBootstrapService::delete_prices_for_variants_in_tx(&txn, &[variant_id]).await?;
+
+        entities::variant_translation::Entity::delete_many()
+            .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
+            .exec(&txn)
+            .await?;
+
+        entities::product_variant::Entity::delete_by_id(variant_id)
+            .exec(&txn)
+            .await?;
+
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::VariantDeleted {
+                variant_id,
+                product_id,
+            },
+        )
+        .await?;
+
+        txn.commit().await?;
+
+        info!(
+            variant_id = %variant_id,
+            product_id = %product_id,
+            "Product variant deleted successfully"
+        );
 
         Ok(())
     }

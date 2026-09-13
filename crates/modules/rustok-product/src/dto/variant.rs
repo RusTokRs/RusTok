@@ -77,6 +77,12 @@ pub struct UpdateVariantInput {
     pub weight: Option<Decimal>,
     #[validate(length(max = 16, message = "Weight unit must be max 16 characters"))]
     pub weight_unit: Option<String>,
+    #[validate(length(max = 255, message = "Option value must be max 255 characters"))]
+    pub option1: Option<String>,
+    #[validate(length(max = 255, message = "Option value must be max 255 characters"))]
+    pub option2: Option<String>,
+    #[validate(length(max = 255, message = "Option value must be max 255 characters"))]
+    pub option3: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

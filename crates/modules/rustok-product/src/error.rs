@@ -23,6 +23,12 @@ pub enum CommerceError {
     #[error("Product must have at least one variant")]
     NoVariants,
 
+    #[error("Product variant not found: {0}")]
+    VariantNotFound(Uuid),
+
+    #[error("Cannot delete the only variant of a product")]
+    CannotDeleteOnlyVariant,
+
     #[error("Cannot delete published product")]
     CannotDeletePublished,
 

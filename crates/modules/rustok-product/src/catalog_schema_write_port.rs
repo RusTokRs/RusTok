@@ -565,6 +565,9 @@ fn schema_write_error(
         CommerceError::ProductNotFound(_) => {
             PortError::not_found("product.product_not_found", "product was not found")
         }
+        CommerceError::VariantNotFound(_) => {
+            PortError::not_found("product.variant_not_found", "product variant was not found")
+        }
         CommerceError::DuplicateHandle { .. } => PortError::conflict(
             "product.duplicate_handle",
             "product handle conflicts with an existing product",
@@ -581,6 +584,10 @@ fn schema_write_error(
             "product.no_variants",
             "product requires at least one variant",
         ),
+        CommerceError::CannotDeleteOnlyVariant => PortError::conflict(
+            "product.cannot_delete_only_variant",
+            "cannot delete the only variant of a product",
+        ),
         CommerceError::CannotDeletePublished => PortError::conflict(
             "product.lifecycle_conflict",
             "product operation conflicts with the current state",
@@ -596,10 +603,12 @@ fn schema_error_kind(error: &CommerceError) -> &'static str {
     match error {
         CommerceError::Database(_) => "database",
         CommerceError::ProductNotFound(_) => "not_found",
+        CommerceError::VariantNotFound(_) => "variant_not_found",
         CommerceError::DuplicateHandle { .. } => "duplicate_handle",
         CommerceError::DuplicateSku(_) => "duplicate_sku",
         CommerceError::Validation(_) => "validation",
         CommerceError::NoVariants => "no_variants",
+        CommerceError::CannotDeleteOnlyVariant => "cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "lifecycle_conflict",
         CommerceError::Core(_) => "core",
     }
@@ -609,10 +618,12 @@ fn schema_error_code(error: &CommerceError) -> &'static str {
     match error {
         CommerceError::Database(_) => "product.schema_database_unavailable",
         CommerceError::ProductNotFound(_) => "product.product_not_found",
+        CommerceError::VariantNotFound(_) => "product.variant_not_found",
         CommerceError::DuplicateHandle { .. } => "product.duplicate_handle",
         CommerceError::DuplicateSku(_) => "product.duplicate_sku",
         CommerceError::Validation(_) => "product.schema_validation",
         CommerceError::NoVariants => "product.no_variants",
+        CommerceError::CannotDeleteOnlyVariant => "product.cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "product.lifecycle_conflict",
         CommerceError::Core(_) => "product.schema_invariant_violation",
     }

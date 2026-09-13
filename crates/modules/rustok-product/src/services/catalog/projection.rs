@@ -396,6 +396,86 @@ impl CatalogService {
 
         Ok(response)
     }
+
+    #[instrument(skip(self))]
+    pub async fn get_variant(
+        &self,
+        tenant_id: Uuid,
+        variant_id: Uuid,
+    ) -> CommerceResult<VariantResponse> {
+        let variant = entities::product_variant::Entity::find_by_id(variant_id)
+            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(CommerceError::VariantNotFound(variant_id))?;
+
+        let (prices, translations, available_inventory_by_variant) = tokio::try_join!(
+            async {
+                PricingBootstrapService::load_prices_for_variants(&self.db, &[variant_id])
+                    .await
+                    .map_err(CommerceError::from)
+            },
+            async {
+                Ok::<_, CommerceError>(
+                    entities::variant_translation::Entity::find()
+                        .filter(entities::variant_translation::Column::VariantId.eq(variant_id))
+                        .order_by_asc(entities::variant_translation::Column::Locale)
+                        .all(&self.db)
+                        .await?,
+                )
+            },
+            async {
+                BootstrapService::load_available_quantities(&self.db, &[variant_id])
+                    .await
+                    .map_err(CommerceError::from)
+            },
+        )?;
+
+        let price_responses: Vec<PriceResponse> = prices
+            .into_iter()
+            .map(|price| PriceResponse {
+                currency_code: price.currency_code,
+                amount: price.amount,
+                compare_at_amount: price.compare_at_amount,
+                on_sale: price
+                    .compare_at_amount
+                    .map(|c| c > price.amount)
+                    .unwrap_or(false),
+            })
+            .collect();
+
+        let title = generate_variant_title(&variant);
+        let available_inventory = available_inventory_by_variant
+            .get(&variant.id)
+            .copied()
+            .unwrap_or(0);
+
+        Ok(VariantResponse {
+            id: variant.id,
+            product_id: variant.product_id,
+            sku: variant.sku,
+            barcode: variant.barcode,
+            shipping_profile_slug: variant.shipping_profile_slug,
+            title,
+            translations: translations
+                .into_iter()
+                .map(|translation| VariantTranslationResponse {
+                    locale: translation.locale,
+                    title: translation.title,
+                })
+                .collect(),
+            option1: variant.option1,
+            option2: variant.option2,
+            option3: variant.option3,
+            prices: price_responses,
+            inventory_quantity: available_inventory,
+            inventory_policy: variant.inventory_policy.clone(),
+            in_stock: available_inventory > 0 || variant.inventory_policy == "continue",
+            weight: variant.weight,
+            weight_unit: variant.weight_unit,
+            position: variant.position,
+        })
+    }
 }
 
 #[cfg(test)]

@@ -2,7 +2,10 @@ use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use uuid::Uuid;
 
-use crate::dto::{CreateProductInput, ProductResponse, UpdateProductInput};
+use crate::dto::{
+    CreateProductInput, CreateVariantInput, ProductResponse, UpdateProductInput,
+    UpdateVariantInput, VariantResponse,
+};
 use crate::{CatalogService, CommerceError};
 
 /// Transport-neutral owner boundary for Product catalog lifecycle commands.
@@ -39,6 +42,26 @@ pub trait ProductCatalogCommandPort: Send + Sync {
         context: PortContext,
         product_id: Uuid,
     ) -> Result<ProductResponse, PortError>;
+
+    async fn create_variant(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        input: CreateVariantInput,
+    ) -> Result<VariantResponse, PortError>;
+
+    async fn update_variant(
+        &self,
+        context: PortContext,
+        variant_id: Uuid,
+        input: UpdateVariantInput,
+    ) -> Result<VariantResponse, PortError>;
+
+    async fn delete_variant(
+        &self,
+        context: PortContext,
+        variant_id: Uuid,
+    ) -> Result<(), PortError>;
 }
 
 #[async_trait]
@@ -100,6 +123,44 @@ impl ProductCatalogCommandPort for CatalogService {
         let operation = "unpublish_product";
         let (tenant_id, actor_id) = command_scope(&context, operation)?;
         self.unpublish_product(tenant_id, actor_id, product_id)
+            .await
+            .map_err(|error| product_command_error(&context, operation, error))
+    }
+
+    async fn create_variant(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        input: CreateVariantInput,
+    ) -> Result<VariantResponse, PortError> {
+        let operation = "create_variant";
+        let (tenant_id, actor_id) = command_scope(&context, operation)?;
+        self.create_variant(tenant_id, actor_id, product_id, input)
+            .await
+            .map_err(|error| product_command_error(&context, operation, error))
+    }
+
+    async fn update_variant(
+        &self,
+        context: PortContext,
+        variant_id: Uuid,
+        input: UpdateVariantInput,
+    ) -> Result<VariantResponse, PortError> {
+        let operation = "update_variant";
+        let (tenant_id, actor_id) = command_scope(&context, operation)?;
+        self.update_variant(tenant_id, actor_id, variant_id, input)
+            .await
+            .map_err(|error| product_command_error(&context, operation, error))
+    }
+
+    async fn delete_variant(
+        &self,
+        context: PortContext,
+        variant_id: Uuid,
+    ) -> Result<(), PortError> {
+        let operation = "delete_variant";
+        let (tenant_id, actor_id) = command_scope(&context, operation)?;
+        self.delete_variant(tenant_id, actor_id, variant_id)
             .await
             .map_err(|error| product_command_error(&context, operation, error))
     }
@@ -182,6 +243,9 @@ fn product_command_error(
         CommerceError::ProductNotFound(_) => {
             PortError::not_found("product.product_not_found", "product was not found")
         }
+        CommerceError::VariantNotFound(_) => {
+            PortError::not_found("product.variant_not_found", "product variant was not found")
+        }
         CommerceError::DuplicateHandle { .. } => PortError::conflict(
             "product.duplicate_handle",
             "product handle conflicts with an existing product",
@@ -196,6 +260,10 @@ fn product_command_error(
         CommerceError::NoVariants => PortError::validation(
             "product.no_variants",
             "product requires at least one variant",
+        ),
+        CommerceError::CannotDeleteOnlyVariant => PortError::conflict(
+            "product.cannot_delete_only_variant",
+            "cannot delete the only variant of a product",
         ),
         CommerceError::CannotDeletePublished => PortError::conflict(
             "product.lifecycle_conflict",
@@ -212,10 +280,12 @@ fn product_error_kind(error: &CommerceError) -> &'static str {
     match error {
         CommerceError::Database(_) => "database",
         CommerceError::ProductNotFound(_) => "not_found",
+        CommerceError::VariantNotFound(_) => "variant_not_found",
         CommerceError::DuplicateHandle { .. } => "duplicate_handle",
         CommerceError::DuplicateSku(_) => "duplicate_sku",
         CommerceError::Validation(_) => "validation",
         CommerceError::NoVariants => "no_variants",
+        CommerceError::CannotDeleteOnlyVariant => "cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "lifecycle_conflict",
         CommerceError::Core(_) => "core",
     }
@@ -225,11 +295,54 @@ fn product_error_code(error: &CommerceError) -> &'static str {
     match error {
         CommerceError::Database(_) => "product.database_unavailable",
         CommerceError::ProductNotFound(_) => "product.product_not_found",
+        CommerceError::VariantNotFound(_) => "product.variant_not_found",
         CommerceError::DuplicateHandle { .. } => "product.duplicate_handle",
         CommerceError::DuplicateSku(_) => "product.duplicate_sku",
         CommerceError::Validation(_) => "product.validation",
         CommerceError::NoVariants => "product.no_variants",
+        CommerceError::CannotDeleteOnlyVariant => "product.cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "product.lifecycle_conflict",
         CommerceError::Core(_) => "product.invariant_violation",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::{PortActor, PortErrorKind};
+
+    fn test_context() -> PortContext {
+        PortContext::new(
+            Uuid::nil().to_string(),
+            PortActor::service("product-command-test"),
+            "en",
+            "corr-cmd-1",
+        )
+    }
+
+    #[test]
+    fn variant_command_errors_map_to_typed_port_errors() {
+        let context = test_context();
+        let variant_not_found = product_command_error(
+            &context,
+            "update_variant",
+            CommerceError::VariantNotFound(Uuid::nil()),
+        );
+        assert_eq!(variant_not_found.kind, PortErrorKind::NotFound);
+        assert_eq!(variant_not_found.code, "product.variant_not_found");
+        assert_eq!(variant_not_found.message, "product variant was not found");
+
+        let cannot_delete = product_command_error(
+            &context,
+            "delete_variant",
+            CommerceError::CannotDeleteOnlyVariant,
+        );
+        assert_eq!(cannot_delete.kind, PortErrorKind::Conflict);
+        assert_eq!(cannot_delete.code, "product.cannot_delete_only_variant");
+        assert_eq!(
+            cannot_delete.message,
+            "cannot delete the only variant of a product"
+        );
+    }
+}
+

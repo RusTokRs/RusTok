@@ -1126,6 +1126,11 @@ mod tests {
     fn request() -> ArtifactSecretBindingRequest {
         let scope = ArtifactDataScope {
             tenant_id: Uuid::new_v4(),
+            data_owner_id: Uuid::new_v4(),
+            namespace_instance_id: Uuid::new_v4(),
+            data_contract_digest:
+                "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    .to_string(),
             module_slug: "sample_module".to_string(),
             data_contract_revision: 1,
             policy_revision: 1,
@@ -1282,6 +1287,11 @@ mod tests {
         ArtifactSecretHandleRequest {
             scope: ArtifactDataScope {
                 tenant_id,
+                data_owner_id: Uuid::new_v4(),
+                namespace_instance_id: Uuid::new_v4(),
+                data_contract_digest:
+                    "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                        .to_string(),
                 module_slug: descriptor.slug.clone(),
                 data_contract_revision: 7,
                 policy_revision: 1,

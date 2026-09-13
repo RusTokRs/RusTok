@@ -37,14 +37,25 @@ async fn test_object_migration_lifecycle_acceptance_and_live_object_guard() {
     }
 
     let tenant_id = Uuid::new_v4();
-    let module_slug = "media";
+    let data_owner_id = Uuid::new_v4();
+    let source_namespace_instance_id = Uuid::new_v4();
+    let target_namespace_instance_id = Uuid::new_v4();
+    let module_slug = "media".to_string();
+    let data_contract_digest =
+        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     // 1. Create namespaces
     database
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "INSERT INTO module_artifact_data_namespaces (tenant_id, module_slug, data_contract_revision, namespace_revision, created_at, updated_at) VALUES (?1, ?2, 1, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
-            vec![tenant_id.to_string().into(), module_slug.into()],
+            "INSERT INTO module_artifact_data_namespaces (tenant_id, data_owner_id, namespace_instance_id, module_slug, data_contract_revision, data_contract_digest, state, namespace_revision, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 1, ?5, 'serving', 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
+            vec![
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                source_namespace_instance_id.to_string().into(),
+                module_slug.clone().into(),
+                data_contract_digest.into(),
+            ],
         ))
         .await
         .expect("insert source namespace");
@@ -52,8 +63,14 @@ async fn test_object_migration_lifecycle_acceptance_and_live_object_guard() {
     database
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "INSERT INTO module_artifact_data_namespaces (tenant_id, module_slug, data_contract_revision, namespace_revision, created_at, updated_at) VALUES (?1, ?2, 2, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
-            vec![tenant_id.to_string().into(), module_slug.into()],
+            "INSERT INTO module_artifact_data_namespaces (tenant_id, data_owner_id, namespace_instance_id, module_slug, data_contract_revision, data_contract_digest, state, namespace_revision, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 2, ?5, 'staging', 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
+            vec![
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                target_namespace_instance_id.to_string().into(),
+                module_slug.clone().into(),
+                data_contract_digest.into(),
+            ],
         ))
         .await
         .expect("insert target namespace");
@@ -88,12 +105,13 @@ async fn test_object_migration_lifecycle_acceptance_and_live_object_guard() {
             .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO module_artifact_data_objects (\
-                    tenant_id, module_slug, data_contract_revision, object_name, storage_key, \
+                    tenant_id, data_owner_id, namespace_instance_id, object_name, storage_key, \
                     content_type, size_bytes, digest_sha256, revision, created_at, updated_at\
-                 ) VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
                 vec![
                     tenant_id.to_string().into(),
-                    module_slug.into(),
+                    data_owner_id.to_string().into(),
+                    source_namespace_instance_id.to_string().into(),
                     name.into(),
                     key.into(),
                     content_type.into(),
@@ -111,13 +129,23 @@ async fn test_object_migration_lifecycle_acceptance_and_live_object_guard() {
     // 3. Live objects guard: ensure structured copy / revision change is DENIED
     // before object migration has run
     let unmigrated = obj_service
-        .count_unmigrated_live_objects(tenant_id, module_slug, 1, 2)
+        .count_unmigrated_live_objects(
+            tenant_id,
+            data_owner_id,
+            source_namespace_instance_id,
+            target_namespace_instance_id,
+        )
         .await
         .expect("count unmigrated objects");
     assert_eq!(unmigrated, 3, "all 3 objects must be unmigrated");
 
     let guard_err = data_copier
-        .ensure_no_unmigrated_live_objects(tenant_id, module_slug, 1, 2)
+        .ensure_no_unmigrated_live_objects(
+            tenant_id,
+            data_owner_id,
+            source_namespace_instance_id,
+            target_namespace_instance_id,
+        )
         .await
         .expect_err("must deny when live objects are unmigrated");
     assert_eq!(guard_err, ArtifactDataCopyError::UnmigratedLiveObjects(3));
@@ -125,9 +153,9 @@ async fn test_object_migration_lifecycle_acceptance_and_live_object_guard() {
     // 4. Perform broker-owned object migration
     let req = ArtifactDataObjectMigrationRequest {
         tenant_id,
-        module_slug: module_slug.to_string(),
-        source_contract_revision: 1,
-        target_contract_revision: 2,
+        data_owner_id,
+        source_namespace_instance_id,
+        target_namespace_instance_id,
         context: command_context(tenant_id),
         reason: "maintenance object migration for revision 2".to_string(),
     };
@@ -142,7 +170,12 @@ async fn test_object_migration_lifecycle_acceptance_and_live_object_guard() {
 
     // 5. Verify target objects and guard passing
     let remaining_unmigrated = obj_service
-        .count_unmigrated_live_objects(tenant_id, module_slug, 1, 2)
+        .count_unmigrated_live_objects(
+            tenant_id,
+            data_owner_id,
+            source_namespace_instance_id,
+            target_namespace_instance_id,
+        )
         .await
         .expect("count unmigrated objects after copy");
     assert_eq!(
@@ -151,7 +184,12 @@ async fn test_object_migration_lifecycle_acceptance_and_live_object_guard() {
     );
 
     data_copier
-        .ensure_no_unmigrated_live_objects(tenant_id, module_slug, 1, 2)
+        .ensure_no_unmigrated_live_objects(
+            tenant_id,
+            data_owner_id,
+            source_namespace_instance_id,
+            target_namespace_instance_id,
+        )
         .await
         .expect("guard must pass now that all objects are migrated");
 
@@ -159,8 +197,8 @@ async fn test_object_migration_lifecycle_acceptance_and_live_object_guard() {
     let ops_row = database
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "SELECT COUNT(*) AS count FROM module_artifact_data_object_copy_operations WHERE tenant_id = ?1 AND status = 'checkpointed'",
-            vec![tenant_id.to_string().into()],
+            "SELECT COUNT(*) AS count FROM module_artifact_data_object_copy_operations WHERE tenant_id = ?1 AND data_owner_id = ?2 AND status = 'checkpointed'",
+            vec![tenant_id.to_string().into(), data_owner_id.to_string().into()],
         ))
         .await
         .expect("query ops")
@@ -186,17 +224,57 @@ async fn test_object_migration_conflict_detection_and_reconciliation() {
     }
 
     let tenant_id = Uuid::new_v4();
-    let module_slug = "uploads";
+    let data_owner_id = Uuid::new_v4();
+    let source_namespace_instance_id = Uuid::new_v4();
+    let target_namespace_instance_id = Uuid::new_v4();
+    let module_slug = "uploads".to_string();
+    let data_contract_digest =
+        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    // Create source and target namespaces
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_data_namespaces (tenant_id, data_owner_id, namespace_instance_id, module_slug, data_contract_revision, data_contract_digest, state, namespace_revision, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 1, ?5, 'serving', 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
+            vec![
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                source_namespace_instance_id.to_string().into(),
+                module_slug.clone().into(),
+                data_contract_digest.into(),
+            ],
+        ))
+        .await
+        .expect("insert source namespace");
+
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_data_namespaces (tenant_id, data_owner_id, namespace_instance_id, module_slug, data_contract_revision, data_contract_digest, state, namespace_revision, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 2, ?5, 'staging', 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
+            vec![
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                target_namespace_instance_id.to_string().into(),
+                module_slug.clone().into(),
+                data_contract_digest.into(),
+            ],
+        ))
+        .await
+        .expect("insert target namespace");
 
     // 1. Insert source object in revision 1
     database
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO module_artifact_data_objects (\
-                tenant_id, module_slug, data_contract_revision, object_name, storage_key, \
+                tenant_id, data_owner_id, namespace_instance_id, object_name, storage_key, \
                 content_type, size_bytes, digest_sha256, revision, created_at, updated_at\
-             ) VALUES (?1, ?2, 1, 'banner.png', 'k1', 'image/png', 100, 'sha256:0000000000000000000000000000000000000000000000000000000000000000', 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
-            vec![tenant_id.to_string().into(), module_slug.into()],
+             ) VALUES (?1, ?2, ?3, 'banner.png', 'k1', 'image/png', 100, 'sha256:0000000000000000000000000000000000000000000000000000000000000000', 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
+            vec![
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                source_namespace_instance_id.to_string().into(),
+            ],
         ))
         .await
         .expect("insert source object");
@@ -206,10 +284,14 @@ async fn test_object_migration_conflict_detection_and_reconciliation() {
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO module_artifact_data_objects (\
-                tenant_id, module_slug, data_contract_revision, object_name, storage_key, \
+                tenant_id, data_owner_id, namespace_instance_id, object_name, storage_key, \
                 content_type, size_bytes, digest_sha256, revision, created_at, updated_at\
-             ) VALUES (?1, ?2, 2, 'banner.png', 'k2', 'image/png', 200, 'sha256:9999999999999999999999999999999999999999999999999999999999999999', 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
-            vec![tenant_id.to_string().into(), module_slug.into()],
+             ) VALUES (?1, ?2, ?3, 'banner.png', 'k2', 'image/png', 200, 'sha256:9999999999999999999999999999999999999999999999999999999999999999', 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
+            vec![
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                target_namespace_instance_id.to_string().into(),
+            ],
         ))
         .await
         .expect("insert conflicting target object");
@@ -218,9 +300,9 @@ async fn test_object_migration_conflict_detection_and_reconciliation() {
 
     let req = ArtifactDataObjectMigrationRequest {
         tenant_id,
-        module_slug: module_slug.to_string(),
-        source_contract_revision: 1,
-        target_contract_revision: 2,
+        data_owner_id,
+        source_namespace_instance_id,
+        target_namespace_instance_id,
         context: command_context(tenant_id),
         reason: "conflict test".to_string(),
     };
@@ -239,16 +321,18 @@ async fn test_object_migration_conflict_detection_and_reconciliation() {
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO module_artifact_data_object_copy_operations (\
-                operation_id, tenant_id, module_slug, source_contract_revision, target_contract_revision, \
+                operation_id, tenant_id, data_owner_id, source_namespace_instance_id, target_namespace_instance_id, \
                 inventory_manifest_digest, object_name, storage_key, digest_sha256, size_bytes, status, \
                 actor_id, trace_id, correlation_id, idempotency_key, reason, created_at\
-             ) VALUES (?1, ?2, ?3, 1, 2, 'sha256:0000000000000000000000000000000000000000000000000000000000000000', \
+             ) VALUES (?1, ?2, ?3, ?4, ?5, 'sha256:0000000000000000000000000000000000000000000000000000000000000000', \
                 'stale.bin', 'k3', 'sha256:0000000000000000000000000000000000000000000000000000000000000000', 50, 'intent', \
-                ?4, 'trace', ?5, ?6, 'crashed intent', '2026-09-01T00:00:00Z')",
+                ?6, 'trace', ?7, ?8, 'crashed intent', '2026-09-01T00:00:00Z')",
             vec![
                 Uuid::new_v4().to_string().into(),
                 tenant_id.to_string().into(),
-                module_slug.into(),
+                data_owner_id.to_string().into(),
+                source_namespace_instance_id.to_string().into(),
+                target_namespace_instance_id.to_string().into(),
                 Uuid::new_v4().to_string().into(),
                 Uuid::new_v4().to_string().into(),
                 Uuid::new_v4().to_string().into(),
@@ -258,7 +342,7 @@ async fn test_object_migration_conflict_detection_and_reconciliation() {
         .expect("insert stale intent");
 
     let reconciled = obj_service
-        .reconcile_stale_intents(tenant_id, module_slug)
+        .reconcile_stale_intents(tenant_id, data_owner_id)
         .await
         .expect("reconcile succeeds");
     assert_eq!(reconciled, 1);

@@ -49,7 +49,7 @@ fn map_storefront_product_error(
             "Product service is temporarily unavailable",
             "database",
         ),
-        ProductError::ProductNotFound(_) => (
+        ProductError::ProductNotFound(_) | ProductError::VariantNotFound(_) => (
             StatusCode::NOT_FOUND,
             "commerce_store_not_found",
             "Commerce resource not found",
@@ -65,6 +65,7 @@ fn map_storefront_product_error(
         | ProductError::DuplicateSku(_)
         | ProductError::NoVariants
         | ProductError::CannotDeletePublished
+        | ProductError::CannotDeleteOnlyVariant
         | ProductError::Core(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "commerce_store_product_failed",

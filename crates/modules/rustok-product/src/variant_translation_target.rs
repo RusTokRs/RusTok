@@ -513,10 +513,12 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.variant_translation_owner_unavailable",
             "Product Variant translation storage is temporarily unavailable",
         ),
-        CommerceError::ProductNotFound(_) => PortError::not_found(
-            "product.variant_translation_resource_not_found",
-            "Product Variant translation resource was not found",
-        ),
+        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => {
+            PortError::not_found(
+                "product.variant_translation_resource_not_found",
+                "Product Variant translation resource was not found",
+            )
+        }
         CommerceError::DuplicateHandle { .. } | CommerceError::DuplicateSku(_) => {
             PortError::conflict(
                 "product.variant_translation_owner_conflict",
@@ -527,10 +529,12 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.variant_translation_owner_validation",
             "Product rejected the Variant translation mutation",
         ),
-        CommerceError::CannotDeletePublished => PortError::conflict(
-            "product.variant_translation_owner_conflict",
-            "Product state conflicts with the requested Variant translation mutation",
-        ),
+        CommerceError::CannotDeletePublished | CommerceError::CannotDeleteOnlyVariant => {
+            PortError::conflict(
+                "product.variant_translation_owner_conflict",
+                "Product state conflicts with the requested Variant translation mutation",
+            )
+        }
         CommerceError::Core(_) => PortError::invariant_violation(
             "product.variant_translation_owner_invariant",
             "Product Variant translation state is invalid",

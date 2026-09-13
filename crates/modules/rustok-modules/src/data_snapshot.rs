@@ -2537,6 +2537,11 @@ mod tests {
         let foreign_context = command_context(Uuid::new_v4());
         let scope = ArtifactDataScope {
             tenant_id,
+            data_owner_id: Uuid::new_v4(),
+            namespace_instance_id: Uuid::new_v4(),
+            data_contract_digest:
+                "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    .to_string(),
             module_slug: "snapshot_module".to_string(),
             data_contract_revision: 1,
             policy_revision: 1,
@@ -2572,6 +2577,11 @@ mod tests {
         StoredSnapshotManifest {
             scope: ArtifactDataScope {
                 tenant_id: Uuid::new_v4(),
+                data_owner_id: Uuid::new_v4(),
+                namespace_instance_id: Uuid::new_v4(),
+                data_contract_digest:
+                    "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                        .to_string(),
                 module_slug: "quota_module".to_string(),
                 data_contract_revision: 1,
                 policy_revision: 1,

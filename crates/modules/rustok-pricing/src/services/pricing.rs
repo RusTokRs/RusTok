@@ -2301,6 +2301,10 @@ fn map_product_catalog_error(error: rustok_product::CommerceError) -> CommerceEr
         rustok_product::CommerceError::CannotDeletePublished => {
             CommerceError::CannotDeletePublished
         }
+        rustok_product::CommerceError::VariantNotFound(id) => CommerceError::VariantNotFound(id),
+        rustok_product::CommerceError::CannotDeleteOnlyVariant => {
+            CommerceError::Validation("cannot delete only variant of product".to_string())
+        }
         rustok_product::CommerceError::Core(error) => CommerceError::Core(error),
     }
 }

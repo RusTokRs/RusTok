@@ -1735,10 +1735,12 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.attribute_schema_translation_owner_unavailable",
             "Product Attribute Schema translation storage is temporarily unavailable",
         ),
-        CommerceError::ProductNotFound(_) => PortError::not_found(
-            "product.attribute_schema_translation_resource_not_found",
-            "Product Attribute Schema translation resource was not found",
-        ),
+        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => {
+            PortError::not_found(
+                "product.attribute_schema_translation_resource_not_found",
+                "Product Attribute Schema translation resource was not found",
+            )
+        }
         CommerceError::DuplicateHandle { .. } | CommerceError::DuplicateSku(_) => {
             PortError::conflict(
                 "product.attribute_schema_translation_owner_conflict",
@@ -1749,10 +1751,12 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.attribute_schema_translation_owner_validation",
             "Product rejected the Attribute Schema translation mutation",
         ),
-        CommerceError::CannotDeletePublished => PortError::conflict(
-            "product.attribute_schema_translation_owner_conflict",
-            "Product state conflicts with the requested Attribute Schema translation mutation",
-        ),
+        CommerceError::CannotDeletePublished | CommerceError::CannotDeleteOnlyVariant => {
+            PortError::conflict(
+                "product.attribute_schema_translation_owner_conflict",
+                "Product state conflicts with the requested Attribute Schema translation mutation",
+            )
+        }
         CommerceError::Core(_) => PortError::invariant_violation(
             "product.attribute_schema_translation_owner_invariant",
             "Product Attribute Schema translation state is invalid",

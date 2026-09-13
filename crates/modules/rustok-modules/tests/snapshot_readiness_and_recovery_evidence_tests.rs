@@ -27,15 +27,15 @@ async fn test_snapshot_readiness_and_attestation_lifecycle() {
 
     let service = ArtifactDataRecoveryReadinessService::new(database.clone());
     let tenant_id = Uuid::new_v4();
-    let module_slug = "orders";
-    let data_contract_revision = 1u64;
+    let data_owner_id = Uuid::new_v4();
+    let namespace_instance_id = Uuid::new_v4();
 
     // 1. Initially: No snapshot exists -> not ready
     let initial_readiness = service
         .evaluate_snapshot_readiness(
             tenant_id,
-            module_slug,
-            data_contract_revision,
+            data_owner_id,
+            namespace_instance_id,
             Duration::from_secs(3600),
         )
         .await
@@ -51,7 +51,7 @@ async fn test_snapshot_readiness_and_attestation_lifecycle() {
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO module_artifact_data_snapshots (\
-                snapshot_id, tenant_id, module_slug, data_contract_revision, policy_revision, \
+                snapshot_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision, \
                 source_namespace_revision, status, retention_revision, request_digest, \
                 manifest_digest, actor_id, trace_id, correlation_id, reason, idempotency_key, \
                 structured_record_count, object_count, total_object_bytes, retain_until, \
@@ -63,8 +63,8 @@ async fn test_snapshot_readiness_and_attestation_lifecycle() {
             vec![
                 snapshot_id_staging.to_string().into(),
                 tenant_id.to_string().into(),
-                module_slug.into(),
-                (data_contract_revision as i64).into(),
+                data_owner_id.to_string().into(),
+                namespace_instance_id.to_string().into(),
                 Uuid::new_v4().to_string().into(),
                 Uuid::new_v4().to_string().into(),
                 idempotency_key_staging.to_string().into(),
@@ -76,8 +76,8 @@ async fn test_snapshot_readiness_and_attestation_lifecycle() {
     let staging_readiness = service
         .evaluate_snapshot_readiness(
             tenant_id,
-            module_slug,
-            data_contract_revision,
+            data_owner_id,
+            namespace_instance_id,
             Duration::from_secs(3600),
         )
         .await
@@ -97,7 +97,7 @@ async fn test_snapshot_readiness_and_attestation_lifecycle() {
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO module_artifact_data_snapshots (\
-                snapshot_id, tenant_id, module_slug, data_contract_revision, policy_revision, \
+                snapshot_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision, \
                 source_namespace_revision, status, retention_revision, request_digest, \
                 manifest_digest, actor_id, trace_id, correlation_id, reason, idempotency_key, \
                 structured_record_count, object_count, total_object_bytes, retain_until, \
@@ -110,8 +110,8 @@ async fn test_snapshot_readiness_and_attestation_lifecycle() {
             vec![
                 snapshot_id_ready.to_string().into(),
                 tenant_id.to_string().into(),
-                module_slug.into(),
-                (data_contract_revision as i64).into(),
+                data_owner_id.to_string().into(),
+                namespace_instance_id.to_string().into(),
                 Uuid::new_v4().to_string().into(),
                 Uuid::new_v4().to_string().into(),
                 idempotency_key_ready.to_string().into(),
@@ -125,8 +125,8 @@ async fn test_snapshot_readiness_and_attestation_lifecycle() {
     let ready_readiness = service
         .evaluate_snapshot_readiness(
             tenant_id,
-            module_slug,
-            data_contract_revision,
+            data_owner_id,
+            namespace_instance_id,
             Duration::from_secs(3600),
         )
         .await
@@ -141,25 +141,27 @@ async fn test_snapshot_readiness_and_attestation_lifecycle() {
     let snapshot_id_stale = Uuid::new_v4();
     let idempotency_key_stale = Uuid::new_v4();
     let old_created_at = (Utc::now() - chrono::Duration::hours(48)).to_rfc3339();
+    let stale_namespace_instance_id = Uuid::new_v4();
 
     database
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO module_artifact_data_snapshots (\
-                snapshot_id, tenant_id, module_slug, data_contract_revision, policy_revision, \
+                snapshot_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision, \
                 source_namespace_revision, status, retention_revision, request_digest, \
                 manifest_digest, actor_id, trace_id, correlation_id, reason, idempotency_key, \
                 structured_record_count, object_count, total_object_bytes, retain_until, \
                 legal_hold, created_at, ready_at\
-             ) VALUES (?1, ?2, ?3, 2, 1, 1, 'ready', 1, \
+             ) VALUES (?1, ?2, ?3, ?4, 1, 1, 'ready', 1, \
                 'sha256:0000000000000000000000000000000000000000000000000000000000000004', \
                 'sha256:4444444444444444444444444444444444444444444444444444444444444444', \
-                ?4, 'trace-4', ?5, 'old snapshot', ?6, 10, 1, 512, \
-                ?7, 0, ?8, ?8)",
+                ?5, 'trace-4', ?6, 'old snapshot', ?7, 10, 1, 512, \
+                ?8, 0, ?9, ?9)",
             vec![
                 snapshot_id_stale.to_string().into(),
                 tenant_id.to_string().into(),
-                module_slug.into(),
+                data_owner_id.to_string().into(),
+                stale_namespace_instance_id.to_string().into(),
                 Uuid::new_v4().to_string().into(),
                 Uuid::new_v4().to_string().into(),
                 idempotency_key_stale.to_string().into(),
@@ -173,8 +175,8 @@ async fn test_snapshot_readiness_and_attestation_lifecycle() {
     let stale_readiness = service
         .evaluate_snapshot_readiness(
             tenant_id,
-            module_slug,
-            2u64,
+            data_owner_id,
+            stale_namespace_instance_id,
             Duration::from_secs(3600), // SLA is 1 hour, but snapshot was created 48 hours ago
         )
         .await
@@ -204,8 +206,8 @@ async fn test_platform_recovery_evidence_and_no_automatic_restore_invariant() {
 
     let service = ArtifactDataRecoveryReadinessService::new(database.clone());
     let tenant_id = Uuid::new_v4();
-    let module_slug = "customer";
-    let data_contract_revision = 1u64;
+    let data_owner_id = Uuid::new_v4();
+    let namespace_instance_id = Uuid::new_v4();
 
     // Insert a valid snapshot
     let snapshot_id = Uuid::new_v4();
@@ -217,7 +219,7 @@ async fn test_platform_recovery_evidence_and_no_automatic_restore_invariant() {
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO module_artifact_data_snapshots (\
-                snapshot_id, tenant_id, module_slug, data_contract_revision, policy_revision, \
+                snapshot_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision, \
                 source_namespace_revision, status, retention_revision, request_digest, \
                 manifest_digest, actor_id, trace_id, correlation_id, reason, idempotency_key, \
                 structured_record_count, object_count, total_object_bytes, retain_until, \
@@ -230,8 +232,8 @@ async fn test_platform_recovery_evidence_and_no_automatic_restore_invariant() {
             vec![
                 snapshot_id.to_string().into(),
                 tenant_id.to_string().into(),
-                module_slug.into(),
-                (data_contract_revision as i64).into(),
+                data_owner_id.to_string().into(),
+                namespace_instance_id.to_string().into(),
                 Uuid::new_v4().to_string().into(),
                 Uuid::new_v4().to_string().into(),
                 idempotency_key.to_string().into(),
@@ -259,15 +261,16 @@ async fn test_platform_recovery_evidence_and_no_automatic_restore_invariant() {
     let attestation = service
         .attest_recovery_readiness(
             tenant_id,
-            module_slug,
-            data_contract_revision,
+            data_owner_id,
+            namespace_instance_id,
             Duration::from_secs(86400),
         )
         .await
         .expect("attest recovery readiness");
 
     assert_eq!(attestation.tenant_id, tenant_id);
-    assert_eq!(attestation.module_slug, module_slug);
+    assert_eq!(attestation.data_owner_id, data_owner_id);
+    assert_eq!(attestation.namespace_instance_id, namespace_instance_id);
     assert!(attestation.snapshot.ready);
     assert!(attestation.platform_evidence.recovery_capable);
 

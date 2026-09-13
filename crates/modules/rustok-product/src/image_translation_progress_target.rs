@@ -353,10 +353,12 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.image_translation_owner_unavailable",
             "Product Image translation storage is temporarily unavailable",
         ),
-        CommerceError::ProductNotFound(_) => PortError::not_found(
-            "product.image_translation_resource_not_found",
-            "Product Image translation resource was not found",
-        ),
+        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => {
+            PortError::not_found(
+                "product.image_translation_resource_not_found",
+                "Product Image translation resource was not found",
+            )
+        }
         CommerceError::DuplicateHandle { .. } | CommerceError::DuplicateSku(_) => {
             PortError::conflict(
                 "product.image_translation_owner_conflict",
@@ -367,10 +369,12 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.image_translation_owner_validation",
             "Product rejected the Image translation request",
         ),
-        CommerceError::CannotDeletePublished => PortError::conflict(
-            "product.image_translation_owner_conflict",
-            "Product state conflicts with the Image translation request",
-        ),
+        CommerceError::CannotDeletePublished | CommerceError::CannotDeleteOnlyVariant => {
+            PortError::conflict(
+                "product.image_translation_owner_conflict",
+                "Product state conflicts with the Image translation request",
+            )
+        }
         CommerceError::Core(_) => PortError::invariant_violation(
             "product.image_translation_owner_invariant",
             "Product Image translation state is invalid",

@@ -453,12 +453,18 @@ mod tests {
             },
             reason: "Retire retained test data".to_string(),
         };
+        let data_owner_id = uuid::Uuid::new_v4();
         let owner = ArtifactDataPurgeAuthorizationContext {
             installation_id,
-            data_owner_id: uuid::Uuid::new_v4(),
+            data_owner_id,
             installation_revision: 2,
             scope: ArtifactDataScope {
                 tenant_id,
+                data_owner_id,
+                namespace_instance_id: uuid::Uuid::new_v4(),
+                data_contract_digest:
+                    "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                        .to_string(),
                 module_slug: "blog".to_string(),
                 data_contract_revision: 1,
                 policy_revision: 1,

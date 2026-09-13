@@ -134,6 +134,33 @@ impl BootstrapService {
         Ok(())
     }
 
+    pub async fn update_initial_quantity_in_tx<C>(
+        conn: &C,
+        variant_id: Uuid,
+        quantity: i32,
+    ) -> Result<(), sea_orm::DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if let Some(item) = entities::inventory_item::Entity::find()
+            .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
+            .one(conn)
+            .await?
+        {
+            if let Some(level) = entities::inventory_level::Entity::find()
+                .filter(entities::inventory_level::Column::InventoryItemId.eq(item.id))
+                .one(conn)
+                .await?
+            {
+                let mut active: entities::inventory_level::ActiveModel = level.into();
+                active.stocked_quantity = Set(quantity);
+                active.updated_at = Set(Utc::now().into());
+                active.update(conn).await?;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn load_available_quantities<C>(
         conn: &C,
         variant_ids: &[Uuid],
