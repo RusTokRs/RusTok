@@ -14,9 +14,20 @@ const PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY: &str = "product_admin_primary_gra
 const PRODUCT_ADMIN_HTTP_PUBLIC_MESSAGE: &str = "Product admin service is temporarily unavailable";
 const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str = "Product admin request could not be completed";
 
-const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($idempotencyKey: String!, $input: CreateProductInput!) { createProduct(idempotencyKey: $idempotencyKey, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
-const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
+const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($idempotencyKey: String!, $input: CreateProductInput!) { createProduct(idempotencyKey: $idempotencyKey, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } images { id mediaId url altText position } } }";
+const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } images { id mediaId url altText position } } }";
 const DELETE_PRODUCT_MUTATION: &str = "mutation ProductAdminDeleteProduct($idempotencyKey: String!, $id: UUID!) { deleteProduct(idempotencyKey: $idempotencyKey, id: $id) }";
+const CREATE_VARIANT_MUTATION: &str = "mutation ProductAdminCreateVariant($idempotencyKey: String!, $productId: UUID!, $input: CreateVariantInput!) { createProductVariant(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } }";
+const UPDATE_VARIANT_MUTATION: &str = "mutation ProductAdminUpdateVariant($idempotencyKey: String!, $id: UUID!, $input: UpdateVariantInput!) { updateProductVariant(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } }";
+const DELETE_VARIANT_MUTATION: &str = "mutation ProductAdminDeleteVariant($idempotencyKey: String!, $id: UUID!) { deleteProductVariant(idempotencyKey: $idempotencyKey, id: $id) }";
+const ADD_PRODUCT_IMAGE_MUTATION: &str = "mutation ProductAdminAddImage($idempotencyKey: String!, $productId: UUID!, $input: AddProductImageInput!) { addProductImage(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) { id mediaId url altText position } }";
+const UPDATE_PRODUCT_IMAGE_MUTATION: &str = "mutation ProductAdminUpdateImage($idempotencyKey: String!, $productId: UUID!, $id: UUID!, $input: UpdateProductImageInput!) { updateProductImage(idempotencyKey: $idempotencyKey, productId: $productId, id: $id, input: $input) { id mediaId url altText position } }";
+const DELETE_PRODUCT_IMAGE_MUTATION: &str = "mutation ProductAdminDeleteImage($idempotencyKey: String!, $productId: UUID!, $id: UUID!) { deleteProductImage(idempotencyKey: $idempotencyKey, productId: $productId, id: $id) }";
+const REORDER_PRODUCT_IMAGES_MUTATION: &str = "mutation ProductAdminReorderImages($idempotencyKey: String!, $productId: UUID!, $imageIds: [UUID!]!) { reorderProductImages(idempotencyKey: $idempotencyKey, productId: $productId, imageIds: $imageIds) }";
+const FETCH_PRODUCT_RELATIONS_QUERY: &str = "query ProductAdminProductRelations($productId: UUID!, $relationType: GqlRelationType) { productRelations(productId: $productId, relationType: $relationType) { id productId relatedProductId relationType position metadata createdAt updatedAt } }";
+const ADD_PRODUCT_RELATION_MUTATION: &str = "mutation ProductAdminAddRelation($input: AddProductRelationInput!) { addProductRelation(input: $input) { id productId relatedProductId relationType position metadata createdAt updatedAt } }";
+const REMOVE_PRODUCT_RELATION_MUTATION: &str = "mutation ProductAdminRemoveRelation($id: UUID!) { removeProductRelation(id: $id) }";
+const REORDER_PRODUCT_RELATIONS_MUTATION: &str = "mutation ProductAdminReorderRelations($productId: UUID!, $relationType: GqlRelationType!, $orderedRelationIds: [UUID!]!) { reorderProductRelations(productId: $productId, relationType: $relationType, orderedRelationIds: $orderedRelationIds) { id productId relatedProductId relationType position metadata createdAt updatedAt } }";
 
 #[derive(Debug, Deserialize)]
 struct CreateProductResponse {
@@ -34,6 +45,48 @@ struct UpdateProductResponse {
 struct DeleteProductResponse {
     #[serde(rename = "deleteProduct")]
     delete_product: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateVariantResponse {
+    #[serde(rename = "createProductVariant")]
+    create_product_variant: crate::model::ProductVariant,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateVariantResponse {
+    #[serde(rename = "updateProductVariant")]
+    update_product_variant: crate::model::ProductVariant,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteVariantResponse {
+    #[serde(rename = "deleteProductVariant")]
+    delete_product_variant: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddProductImageResponse {
+    #[serde(rename = "addProductImage")]
+    add_product_image: crate::model::ProductImage,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateProductImageResponse {
+    #[serde(rename = "updateProductImage")]
+    update_product_image: crate::model::ProductImage,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteProductImageResponse {
+    #[serde(rename = "deleteProductImage")]
+    delete_product_image: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReorderProductImagesResponse {
+    #[serde(rename = "reorderProductImages")]
+    reorder_product_images: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -56,6 +109,102 @@ struct DeleteProductVariables {
     #[serde(rename = "idempotencyKey")]
     idempotency_key: String,
     id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CreateVariantVariables {
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
+    #[serde(rename = "productId")]
+    product_id: String,
+    input: CreateVariantInput,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateVariantVariables {
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
+    id: String,
+    input: UpdateVariantInput,
+}
+
+#[derive(Debug, Serialize)]
+struct DeleteVariantVariables {
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
+    id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AddProductImageVariables {
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
+    #[serde(rename = "productId")]
+    product_id: String,
+    input: AddProductImageInput,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateProductImageVariables {
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
+    #[serde(rename = "productId")]
+    product_id: String,
+    id: String,
+    input: UpdateProductImageInput,
+}
+
+#[derive(Debug, Serialize)]
+struct DeleteProductImageVariables {
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
+    #[serde(rename = "productId")]
+    product_id: String,
+    id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ReorderProductImagesVariables {
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
+    #[serde(rename = "productId")]
+    product_id: String,
+    #[serde(rename = "imageIds")]
+    image_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateVariantInput {
+    sku: Option<String>,
+    barcode: Option<String>,
+    #[serde(rename = "shippingProfileSlug")]
+    shipping_profile_slug: Option<String>,
+    option1: Option<String>,
+    option2: Option<String>,
+    option3: Option<String>,
+    prices: Option<Vec<PriceInput>>,
+    #[serde(rename = "inventoryQuantity")]
+    inventory_quantity: Option<i32>,
+    #[serde(rename = "inventoryPolicy")]
+    inventory_policy: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct AddProductImageInput {
+    #[serde(rename = "mediaId")]
+    media_id: String,
+    position: Option<i32>,
+    #[serde(rename = "altText")]
+    alt_text: Option<String>,
+    locale: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateProductImageInput {
+    position: Option<i32>,
+    #[serde(rename = "altText")]
+    alt_text: Option<String>,
+    locale: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -174,6 +323,11 @@ impl MutationErrorContext {
 
     fn with_resource(mut self, resource_id: &str) -> Self {
         self.resource_id_length = Some(resource_id.chars().count());
+        self
+    }
+
+    fn with_product(mut self, product_id: &str) -> Self {
+        self.resource_id_length = Some(product_id.chars().count());
         self
     }
 
@@ -453,6 +607,488 @@ pub(crate) async fn delete_product(
     .map_err(|error| context.map_error(error))?;
     Ok(response.delete_product)
 }
+
+pub(crate) async fn create_product_variant(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    actor_id: String,
+    product_id: String,
+    idempotency_key: String,
+    draft: crate::model::VariantDraft,
+) -> Result<crate::model::ProductVariant, GraphqlHttpError> {
+    let context = MutationErrorContext::new(
+        "create_product_variant",
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        &tenant_id,
+        &actor_id,
+    )
+    .with_product(&product_id);
+
+    let input = CreateVariantInput {
+        sku: draft.sku.as_deref().and_then(optional_text),
+        barcode: draft.barcode.as_deref().and_then(optional_text),
+        shipping_profile_slug: draft.shipping_profile_slug.as_deref().and_then(optional_text),
+        option1: draft.option1.as_deref().and_then(optional_text),
+        option2: draft.option2.as_deref().and_then(optional_text),
+        option3: draft.option3.as_deref().and_then(optional_text),
+        prices: draft
+            .prices
+            .into_iter()
+            .map(|p| PriceInput {
+                currency_code: p.currency_code,
+                amount: p.amount,
+                compare_at_amount: p.compare_at_amount.as_deref().and_then(optional_text),
+            })
+            .collect(),
+        inventory_quantity: draft.inventory_quantity,
+        inventory_policy: draft.inventory_policy.as_deref().and_then(optional_text),
+    };
+
+    let response: CreateVariantResponse = request(
+        CREATE_VARIANT_MUTATION,
+        CreateVariantVariables {
+            idempotency_key,
+            product_id,
+            input,
+        },
+        token,
+        tenant_slug,
+    )
+    .await
+    .map_err(|error| context.map_error(error))?;
+
+    Ok(response.create_product_variant)
+}
+
+pub(crate) async fn update_product_variant(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    actor_id: String,
+    variant_id: String,
+    idempotency_key: String,
+    draft: crate::model::VariantDraft,
+) -> Result<crate::model::ProductVariant, GraphqlHttpError> {
+    let context = MutationErrorContext::new(
+        "update_product_variant",
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        &tenant_id,
+        &actor_id,
+    );
+
+    let prices = if draft.prices.is_empty() {
+        None
+    } else {
+        Some(
+            draft
+                .prices
+                .into_iter()
+                .map(|p| PriceInput {
+                    currency_code: p.currency_code,
+                    amount: p.amount,
+                    compare_at_amount: p.compare_at_amount.as_deref().and_then(optional_text),
+                })
+                .collect(),
+        )
+    };
+
+    let input = UpdateVariantInput {
+        sku: draft.sku.as_deref().and_then(optional_text),
+        barcode: draft.barcode.as_deref().and_then(optional_text),
+        shipping_profile_slug: draft.shipping_profile_slug.as_deref().and_then(optional_text),
+        option1: draft.option1.as_deref().and_then(optional_text),
+        option2: draft.option2.as_deref().and_then(optional_text),
+        option3: draft.option3.as_deref().and_then(optional_text),
+        prices,
+        inventory_quantity: draft.inventory_quantity,
+        inventory_policy: draft.inventory_policy.as_deref().and_then(optional_text),
+    };
+
+    let response: UpdateVariantResponse = request(
+        UPDATE_VARIANT_MUTATION,
+        UpdateVariantVariables {
+            idempotency_key,
+            id: variant_id,
+            input,
+        },
+        token,
+        tenant_slug,
+    )
+    .await
+    .map_err(|error| context.map_error(error))?;
+
+    Ok(response.update_product_variant)
+}
+
+pub(crate) async fn delete_product_variant(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    actor_id: String,
+    variant_id: String,
+    idempotency_key: String,
+) -> Result<bool, GraphqlHttpError> {
+    let context = MutationErrorContext::new(
+        "delete_product_variant",
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        &tenant_id,
+        &actor_id,
+    );
+
+    let response: DeleteVariantResponse = request(
+        DELETE_VARIANT_MUTATION,
+        DeleteVariantVariables {
+            idempotency_key,
+            id: variant_id,
+        },
+        token,
+        tenant_slug,
+    )
+    .await
+    .map_err(|error| context.map_error(error))?;
+
+    Ok(response.delete_product_variant)
+}
+
+pub(crate) async fn add_product_image(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    actor_id: String,
+    product_id: String,
+    idempotency_key: String,
+    draft: crate::model::ProductImageDraft,
+) -> Result<crate::model::ProductImage, GraphqlHttpError> {
+    let context = MutationErrorContext::new(
+        "add_product_image",
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        &tenant_id,
+        &actor_id,
+    )
+    .with_product(&product_id);
+
+    let input = AddProductImageInput {
+        media_id: draft.media_id,
+        position: draft.position,
+        alt_text: draft.alt_text.as_deref().and_then(optional_text),
+        locale: draft.locale.as_deref().and_then(optional_text),
+    };
+
+    let response: AddProductImageResponse = request(
+        ADD_PRODUCT_IMAGE_MUTATION,
+        AddProductImageVariables {
+            idempotency_key,
+            product_id,
+            input,
+        },
+        token,
+        tenant_slug,
+    )
+    .await
+    .map_err(|error| context.map_error(error))?;
+
+    Ok(response.add_product_image)
+}
+
+pub(crate) async fn update_product_image(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    actor_id: String,
+    product_id: String,
+    image_id: String,
+    idempotency_key: String,
+    draft: crate::model::UpdateProductImageDraft,
+) -> Result<crate::model::ProductImage, GraphqlHttpError> {
+    let context = MutationErrorContext::new(
+        "update_product_image",
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        &tenant_id,
+        &actor_id,
+    )
+    .with_product(&product_id);
+
+    let input = UpdateProductImageInput {
+        position: draft.position,
+        alt_text: draft.alt_text.as_deref().and_then(optional_text),
+        locale: draft.locale.as_deref().and_then(optional_text),
+    };
+
+    let response: UpdateProductImageResponse = request(
+        UPDATE_PRODUCT_IMAGE_MUTATION,
+        UpdateProductImageVariables {
+            idempotency_key,
+            product_id,
+            id: image_id,
+            input,
+        },
+        token,
+        tenant_slug,
+    )
+    .await
+    .map_err(|error| context.map_error(error))?;
+
+    Ok(response.update_product_image)
+}
+
+pub(crate) async fn delete_product_image(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    actor_id: String,
+    product_id: String,
+    image_id: String,
+    idempotency_key: String,
+) -> Result<bool, GraphqlHttpError> {
+    let context = MutationErrorContext::new(
+        "delete_product_image",
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        &tenant_id,
+        &actor_id,
+    )
+    .with_product(&product_id);
+
+    let response: DeleteProductImageResponse = request(
+        DELETE_PRODUCT_IMAGE_MUTATION,
+        DeleteProductImageVariables {
+            idempotency_key,
+            product_id,
+            id: image_id,
+        },
+        token,
+        tenant_slug,
+    )
+    .await
+    .map_err(|error| context.map_error(error))?;
+
+    Ok(response.delete_product_image)
+}
+
+pub(crate) async fn reorder_product_images(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    actor_id: String,
+    product_id: String,
+    image_ids: Vec<String>,
+    idempotency_key: String,
+) -> Result<bool, GraphqlHttpError> {
+    let context = MutationErrorContext::new(
+        "reorder_product_images",
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        &tenant_id,
+        &actor_id,
+    )
+    .with_product(&product_id);
+
+    let response: ReorderProductImagesResponse = request(
+        REORDER_PRODUCT_IMAGES_MUTATION,
+        ReorderProductImagesVariables {
+            idempotency_key,
+            product_id,
+            image_ids,
+        },
+        token,
+        tenant_slug,
+    )
+    .await
+    .map_err(|error| context.map_error(error))?;
+
+    Ok(response.reorder_product_images)
+}
+
+#[derive(Debug, Serialize)]
+struct FetchProductRelationsVariables {
+    #[serde(rename = "productId")]
+    product_id: String,
+    #[serde(rename = "relationType", skip_serializing_if = "Option::is_none")]
+    relation_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FetchProductRelationsResponse {
+    #[serde(rename = "productRelations")]
+    product_relations: Vec<crate::model::ProductRelationItem>,
+}
+
+#[derive(Debug, Serialize)]
+struct AddProductRelationInputVariable {
+    #[serde(rename = "productId")]
+    product_id: String,
+    #[serde(rename = "relatedProductId")]
+    related_product_id: String,
+    #[serde(rename = "relationType")]
+    relation_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    position: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize)]
+struct AddProductRelationVariables {
+    input: AddProductRelationInputVariable,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddProductRelationResponse {
+    #[serde(rename = "addProductRelation")]
+    add_product_relation: crate::model::ProductRelationItem,
+}
+
+#[derive(Debug, Serialize)]
+struct RemoveProductRelationVariables {
+    id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoveProductRelationResponse {
+    #[serde(rename = "removeProductRelation")]
+    remove_product_relation: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct ReorderProductRelationsVariables {
+    #[serde(rename = "productId")]
+    product_id: String,
+    #[serde(rename = "relationType")]
+    relation_type: String,
+    #[serde(rename = "orderedRelationIds")]
+    ordered_relation_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReorderProductRelationsResponse {
+    #[serde(rename = "reorderProductRelations")]
+    reorder_product_relations: Vec<crate::model::ProductRelationItem>,
+}
+
+pub(crate) async fn fetch_product_relations(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    product_id: String,
+    relation_type: Option<String>,
+) -> Result<Vec<crate::model::ProductRelationItem>, GraphqlHttpError> {
+    let response: FetchProductRelationsResponse = request(
+        FETCH_PRODUCT_RELATIONS_QUERY,
+        FetchProductRelationsVariables {
+            product_id,
+            relation_type,
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+
+    Ok(response.product_relations)
+}
+
+pub(crate) async fn add_product_relation(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    actor_id: String,
+    draft: crate::model::CreateProductRelationDraft,
+) -> Result<crate::model::ProductRelationItem, GraphqlHttpError> {
+    let context = MutationErrorContext::new(
+        "add_product_relation",
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        &tenant_id,
+        &actor_id,
+    )
+    .with_product(&draft.product_id);
+
+    let response: AddProductRelationResponse = request(
+        ADD_PRODUCT_RELATION_MUTATION,
+        AddProductRelationVariables {
+            input: AddProductRelationInputVariable {
+                product_id: draft.product_id,
+                related_product_id: draft.related_product_id,
+                relation_type: draft.relation_type,
+                position: draft.position,
+                metadata: draft.metadata,
+            },
+        },
+        token,
+        tenant_slug,
+    )
+    .await
+    .map_err(|error| context.map_error(error))?;
+
+    Ok(response.add_product_relation)
+}
+
+pub(crate) async fn remove_product_relation(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    actor_id: String,
+    id: String,
+) -> Result<bool, GraphqlHttpError> {
+    let context = MutationErrorContext::new(
+        "remove_product_relation",
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        &tenant_id,
+        &actor_id,
+    )
+    .with_resource(&id);
+
+    let response: RemoveProductRelationResponse = request(
+        REMOVE_PRODUCT_RELATION_MUTATION,
+        RemoveProductRelationVariables { id },
+        token,
+        tenant_slug,
+    )
+    .await
+    .map_err(|error| context.map_error(error))?;
+
+    Ok(response.remove_product_relation)
+}
+
+pub(crate) async fn reorder_product_relations(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    actor_id: String,
+    product_id: String,
+    relation_type: String,
+    ordered_relation_ids: Vec<String>,
+) -> Result<Vec<crate::model::ProductRelationItem>, GraphqlHttpError> {
+    let context = MutationErrorContext::new(
+        "reorder_product_relations",
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        &tenant_id,
+        &actor_id,
+    )
+    .with_product(&product_id);
+
+    let response: ReorderProductRelationsResponse = request(
+        REORDER_PRODUCT_RELATIONS_MUTATION,
+        ReorderProductRelationsVariables {
+            product_id,
+            relation_type,
+            ordered_relation_ids,
+        },
+        token,
+        tenant_slug,
+    )
+    .await
+    .map_err(|error| context.map_error(error))?;
+
+    Ok(response.reorder_product_relations)
+}
+
 
 fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
     CreateProductInput {

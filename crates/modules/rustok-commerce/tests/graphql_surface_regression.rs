@@ -168,6 +168,16 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
         "async fn cancel_order_change(",
         "async fn publish_product(",
         "async fn delete_product(",
+        "async fn create_product_variant(",
+        "async fn update_product_variant(",
+        "async fn delete_product_variant(",
+        "async fn add_product_image(",
+        "async fn update_product_image(",
+        "async fn delete_product_image(",
+        "async fn reorder_product_images(",
+        "async fn add_product_relation(",
+        "async fn remove_product_relation(",
+        "async fn reorder_product_relations(",
     ] {
         assert!(
             mutation_source.contains(required),

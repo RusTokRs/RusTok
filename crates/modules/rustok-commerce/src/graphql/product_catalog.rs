@@ -8,10 +8,12 @@ use rustok_product::{AdminProductListQuery, StorefrontProductListQuery};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
+use rustok_product_relations::ports::ProductRelationsPort;
+
 use super::{
-    GqlProductList, GqlProductListItem, GqlProductStatus, PRODUCT_MODULE_SLUG,
-    map_product_service_error, product_query_tenant, require_commerce_permission,
-    require_storefront_channel_enabled,
+    GqlProductList, GqlProductListItem, GqlProductRelation, GqlProductStatus, GqlRelationType,
+    PRODUCT_MODULE_SLUG, map_product_service_error, product_query_tenant,
+    require_commerce_permission, require_storefront_channel_enabled,
 };
 
 pub(crate) fn product_catalog_port_error(
@@ -335,5 +337,23 @@ impl ProductCatalogQuery {
                 })
                 .collect(),
         })
+    }
+
+    async fn product_relations(
+        &self,
+        ctx: &Context<'_>,
+        product_id: Uuid,
+        relation_type: Option<GqlRelationType>,
+    ) -> Result<Vec<GqlProductRelation>> {
+        require_module_enabled(ctx, "product_relations").await?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let service = rustok_product_relations::services::ProductRelationService::new(db.clone());
+        let domain_type = relation_type.map(Into::into);
+        let relations = service
+            .list_relations(tenant.id, product_id, domain_type)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(relations.into_iter().map(Into::into).collect())
     }
 }

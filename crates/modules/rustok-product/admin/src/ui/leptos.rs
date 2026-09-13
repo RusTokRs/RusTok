@@ -26,10 +26,14 @@ use crate::core::{
     product_admin_list_actions_disabled, product_admin_open_product_query_intent,
     product_admin_products_load_view_from_result, product_admin_saved_product_query_intent,
     product_admin_selected_product_query_state, shipping_profiles_load_view_from_result,
-    text_or_none,
+    text_or_none, build_product_media_panel_copy, build_product_variants_panel_copy,
+    build_product_relations_panel_copy,
+    build_product_image_view_models, build_variant_row_view_models,
 };
 use crate::model::{
-    ProductAdminBootstrap, ProductDetail, ProductEffectiveFormAttribute, ProductPricingDetail,
+    CreateProductRelationDraft, ProductAdminBootstrap, ProductDetail,
+    ProductEffectiveFormAttribute, ProductImageDraft, ProductPricingDetail, ProductRelationItem,
+    UpdateProductImageDraft, VariantDraft, VariantPriceDraft,
 };
 use crate::transport;
 
@@ -445,6 +449,61 @@ pub fn ProductAdmin() -> impl IntoView {
         );
         attribute_editor_state.set(ProductAttributeEditorState::default());
         set_error.set(None);
+    };
+
+    let reload_current_product = {
+        let bootstrap = bootstrap.clone();
+        let token = token.clone();
+        let tenant = tenant.clone();
+        let effective_locale_for_reload = effective_locale.clone();
+        let error_copy_for_reload = error_copy.clone();
+        move |product_id: String| {
+            if let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) {
+                open_product_for_edit(
+                    bootstrap,
+                    token.get_untracked(),
+                    tenant.get_untracked(),
+                    effective_locale_for_reload.clone(),
+                    product_id,
+                    error_copy_for_reload.clone(),
+                    set_busy,
+                    set_error,
+                    set_editing_id,
+                    set_selected,
+                    set_title,
+                    set_handle,
+                    set_description,
+                    set_seller_id,
+                    set_vendor,
+                    set_product_type,
+                    set_shipping_profile_slug,
+                    set_primary_category_id,
+                    set_sku,
+                    set_barcode,
+                    set_currency_code,
+                    set_amount,
+                    set_compare_at_amount,
+                    set_inventory_quantity,
+                    set_publish_now,
+                );
+            }
+        }
+    };
+
+    let on_variant_mutated = {
+        let reload = reload_current_product.clone();
+        Callback::new(move |product_id: String| {
+            set_refresh_nonce.update(|value| *value += 1);
+            reload(product_id);
+        })
+    };
+
+    let on_media_mutated = {
+        let reload = reload_current_product.clone();
+        Callback::new(move |product_id: String| {
+            set_refresh_nonce.update(|value| *value += 1);
+            reload(product_id);
+        })
     };
 
     let submit_ui_locale = ui_locale.clone();
@@ -1151,6 +1210,41 @@ pub fn ProductAdmin() -> impl IntoView {
                         </div>
                     </section>
 
+                    <Show when=move || selected.get().is_some()>
+                        <ProductVariantsPanel
+                            locale=ui_locale.clone()
+                            product=selected.get()
+                            token=token
+                            tenant=tenant
+                            bootstrap=bootstrap
+                            busy=busy
+                            set_busy=set_busy
+                            set_error=set_error
+                            on_variant_mutated=on_variant_mutated
+                        />
+                        <ProductMediaPanel
+                            locale=ui_locale.clone()
+                            product=selected.get()
+                            token=token
+                            tenant=tenant
+                            bootstrap=bootstrap
+                            busy=busy
+                            set_busy=set_busy
+                            set_error=set_error
+                            on_media_mutated=on_media_mutated
+                        />
+                        <ProductRelationsPanel
+                            locale=ui_locale.clone()
+                            product=selected.get()
+                            token=token
+                            tenant=tenant
+                            bootstrap=bootstrap
+                            busy=busy
+                            set_busy=set_busy
+                            set_error=set_error
+                        />
+                    </Show>
+
                     {
                         let seo_copy = build_product_admin_seo_panel_copy(effective_locale.as_deref());
                         view! {
@@ -1582,4 +1676,1204 @@ fn SelectedProductSummary(
         }
         .into_any(),
     }
+}
+
+#[component]
+fn ProductVariantsPanel(
+    locale: Option<String>,
+    product: Option<ProductDetail>,
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    bootstrap: LocalResource<Result<ProductAdminBootstrap, rustok_graphql::GraphqlHttpError>>,
+    busy: ReadSignal<bool>,
+    set_busy: WriteSignal<bool>,
+    set_error: WriteSignal<Option<String>>,
+    on_variant_mutated: Callback<String>,
+) -> impl IntoView {
+    let copy = build_product_variants_panel_copy(locale.as_deref());
+    let (show_add, set_show_add) = signal(false);
+    let (sku, set_sku) = signal(String::new());
+    let (barcode, set_barcode) = signal(String::new());
+    let (option1, set_option1) = signal(String::new());
+    let (option2, set_option2) = signal(String::new());
+    let (amount, set_amount) = signal(String::new());
+    let (inventory_quantity, set_inventory_quantity) = signal(0_i32);
+    let (inventory_policy, set_inventory_policy) = signal("DENY".to_string());
+    let (editing_variant_id, set_editing_variant_id) = signal(Option::<String>::None);
+    let (edit_sku, set_edit_sku) = signal(String::new());
+    let (edit_price, set_edit_price) = signal(String::new());
+    let (edit_stock, set_edit_stock) = signal(0_i32);
+
+    let Some(product) = product else {
+        return view! { <div /> }.into_any();
+    };
+
+    let product_id = product.id.clone();
+    let variant_rows = build_variant_row_view_models(&product);
+    let default_currency = product
+        .variants
+        .first()
+        .and_then(|v| v.prices.first())
+        .map(|p| p.currency_code.clone())
+        .unwrap_or_else(|| "USD".to_string());
+    let default_currency_for_form = default_currency.clone();
+
+    let on_add_submit = {
+        let bootstrap = bootstrap.clone();
+        let token = token.clone();
+        let tenant = tenant.clone();
+        let product_id_val = product_id.clone();
+        let default_currency_for_add = default_currency.clone();
+        let on_mutated = on_variant_mutated;
+        move |ev: SubmitEvent| {
+            ev.prevent_default();
+            let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                return;
+            };
+            let token_val = token.get_untracked();
+            let tenant_val = tenant.get_untracked();
+            let product_id_val = product_id_val.clone();
+
+            let price_val = amount.get_untracked().trim().to_string();
+            let price_val = if price_val.is_empty() { "0.00".to_string() } else { price_val };
+
+            let draft = VariantDraft {
+                sku: text_or_none(sku.get_untracked()),
+                barcode: text_or_none(barcode.get_untracked()),
+                shipping_profile_slug: None,
+                option1: text_or_none(option1.get_untracked()),
+                option2: text_or_none(option2.get_untracked()),
+                option3: None,
+                prices: vec![VariantPriceDraft {
+                    currency_code: default_currency_for_add.clone(),
+                    amount: price_val,
+                    compare_at_amount: None,
+                }],
+                inventory_quantity: Some(inventory_quantity.get_untracked()),
+                inventory_policy: Some(inventory_policy.get_untracked()),
+            };
+
+            set_busy.set(true);
+            set_error.set(None);
+            spawn_local(async move {
+                match transport::create_product_variant(
+                    token_val,
+                    tenant_val,
+                    bootstrap.current_tenant.id,
+                    bootstrap.me.id,
+                    product_id_val.clone(),
+                    draft,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        set_sku.set(String::new());
+                        set_barcode.set(String::new());
+                        set_option1.set(String::new());
+                        set_option2.set(String::new());
+                        set_amount.set(String::new());
+                        set_inventory_quantity.set(0);
+                        set_show_add.set(false);
+                        on_mutated.run(product_id_val);
+                    }
+                    Err(err) => set_error.set(Some(err.to_string())),
+                }
+                set_busy.set(false);
+            });
+        }
+    };
+
+    view! {
+        <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-lg font-semibold text-card-foreground">{copy.title}</h3>
+                    <p class="text-sm text-muted-foreground">{copy.subtitle}</p>
+                </div>
+                <button
+                    type="button"
+                    class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                    disabled=move || busy.get()
+                    on:click=move |_| set_show_add.update(|v| *v = !*v)
+                >
+                    {copy.add}
+                </button>
+            </div>
+
+            <Show when=move || show_add.get()>
+                <form class="mt-4 rounded-2xl border border-border/70 bg-background/50 p-4 space-y-3" on:submit={
+                    let on_submit = on_add_submit.clone();
+                    move |ev| on_submit(ev)
+                }>
+                    <div class="grid gap-3 md:grid-cols-2">
+                        <input
+                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                            placeholder="SKU"
+                            prop:value=move || sku.get()
+                            on:input=move |ev| set_sku.set(event_target_value(&ev))
+                        />
+                        <input
+                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                            placeholder="Barcode"
+                            prop:value=move || barcode.get()
+                            on:input=move |ev| set_barcode.set(event_target_value(&ev))
+                        />
+                    </div>
+                    <div class="grid gap-3 md:grid-cols-2">
+                        <input
+                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                            placeholder="Option 1 (e.g. Size)"
+                            prop:value=move || option1.get()
+                            on:input=move |ev| set_option1.set(event_target_value(&ev))
+                        />
+                        <input
+                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                            placeholder="Option 2 (e.g. Color)"
+                            prop:value=move || option2.get()
+                            on:input=move |ev| set_option2.set(event_target_value(&ev))
+                        />
+                    </div>
+                    <div class="grid gap-3 md:grid-cols-3">
+                        <input
+                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                            placeholder=format!("Price ({})", default_currency_for_form)
+                            prop:value=move || amount.get()
+                            on:input=move |ev| set_amount.set(event_target_value(&ev))
+                        />
+                        <input
+                            type="number"
+                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                            placeholder="Stock quantity"
+                            prop:value=move || inventory_quantity.get().to_string()
+                            on:input=move |ev| set_inventory_quantity.set(parse_product_admin_inventory_quantity_input(&event_target_value(&ev)))
+                        />
+                        <select
+                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                            prop:value=move || inventory_policy.get()
+                            on:change=move |ev| set_inventory_policy.set(event_target_value(&ev))
+                        >
+                            <option value="DENY">"Deny backorders"</option>
+                            <option value="CONTINUE">"Continue selling out of stock"</option>
+                        </select>
+                    </div>
+                    <div class="flex justify-end gap-2 pt-2">
+                        <button
+                            type="button"
+                            class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent"
+                            on:click=move |_| set_show_add.set(false)
+                        >
+                            "Cancel"
+                        </button>
+                        <button
+                            type="submit"
+                            class="rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                            disabled=move || busy.get()
+                        >
+                            "Save variant"
+                        </button>
+                    </div>
+                </form>
+            </Show>
+
+            <div class="mt-4 overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead>
+                        <tr class="border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            <th class="py-2.5 px-3">"SKU"</th>
+                            <th class="py-2.5 px-3">"Options"</th>
+                            <th class="py-2.5 px-3">"Price"</th>
+                            <th class="py-2.5 px-3">"Stock"</th>
+                            <th class="py-2.5 px-3">"Policy"</th>
+                            <th class="py-2.5 px-3 text-right">"Action"</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        {variant_rows.into_iter().map(|row| {
+                            let variant_id = row.id.clone();
+                            let can_delete = row.can_delete;
+                            let product_id_for_del = product_id.clone();
+                            let product_id_for_edit = product_id.clone();
+                            let default_curr = default_currency.clone();
+                            let on_mutated_del = on_variant_mutated;
+                            let on_mutated_edit = on_variant_mutated;
+
+                            let vid_for_edit = variant_id.clone();
+                            let sku_for_edit = row.sku.clone();
+                            let price_for_edit = row.price.clone();
+                            let stock_for_edit = row.stock.parse::<i32>().unwrap_or_default();
+
+                            let is_editing_this = {
+                                let v_id = variant_id.clone();
+                                Signal::derive(move || editing_variant_id.get().as_deref() == Some(&v_id))
+                            };
+
+                            let on_start_edit = {
+                                let v_id = vid_for_edit.clone();
+                                let s = sku_for_edit.clone();
+                                let p = price_for_edit.clone();
+                                move |_| {
+                                    set_edit_sku.set(s.clone());
+                                    set_edit_price.set(p.split_whitespace().next().unwrap_or("").to_string());
+                                    set_edit_stock.set(stock_for_edit);
+                                    set_editing_variant_id.set(Some(v_id.clone()));
+                                }
+                            };
+
+                            let on_save_edit = {
+                                let v_id = vid_for_edit.clone();
+                                let p_id = product_id_for_edit.clone();
+                                move |_| {
+                                    let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                        return;
+                                    };
+                                    let token_val = token.get_untracked();
+                                    let tenant_val = tenant.get_untracked();
+                                    let var_id = v_id.clone();
+                                    let prod_id = p_id.clone();
+
+                                    let draft = VariantDraft {
+                                        sku: text_or_none(edit_sku.get_untracked()),
+                                        barcode: None,
+                                        shipping_profile_slug: None,
+                                        option1: None,
+                                        option2: None,
+                                        option3: None,
+                                        prices: vec![VariantPriceDraft {
+                                            currency_code: default_curr.clone(),
+                                            amount: edit_price.get_untracked(),
+                                            compare_at_amount: None,
+                                        }],
+                                        inventory_quantity: Some(edit_stock.get_untracked()),
+                                        inventory_policy: None,
+                                    };
+
+                                    set_busy.set(true);
+                                    set_error.set(None);
+                                    spawn_local(async move {
+                                        match transport::update_product_variant(
+                                            token_val,
+                                            tenant_val,
+                                            bootstrap.current_tenant.id,
+                                            bootstrap.me.id,
+                                            var_id,
+                                            draft,
+                                        ).await {
+                                            Ok(_) => {
+                                                set_editing_variant_id.set(None);
+                                                on_mutated_edit.run(prod_id);
+                                            }
+                                            Err(err) => set_error.set(Some(err.to_string())),
+                                        }
+                                        set_busy.set(false);
+                                    });
+                                }
+                            };
+
+                            let on_delete = move |_| {
+                                let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                    return;
+                                };
+                                let token_val = token.get_untracked();
+                                let tenant_val = tenant.get_untracked();
+                                let variant_id_val = variant_id.clone();
+                                let product_id_val = product_id_for_del.clone();
+
+                                set_busy.set(true);
+                                set_error.set(None);
+                                spawn_local(async move {
+                                    match transport::delete_product_variant(
+                                        token_val,
+                                        tenant_val,
+                                        bootstrap.current_tenant.id,
+                                        bootstrap.me.id,
+                                        variant_id_val,
+                                    ).await {
+                                        Ok(_) => on_mutated_del.run(product_id_val),
+                                        Err(err) => set_error.set(Some(err.to_string())),
+                                    }
+                                    set_busy.set(false);
+                                });
+                            };
+
+                            view! {
+                                <tr class="hover:bg-muted/30 transition">
+                                    <td class="py-2.5 px-3 font-mono text-xs text-foreground">
+                                        {move || if is_editing_this.get() {
+                                            view! {
+                                                <input
+                                                    class="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary w-28"
+                                                    prop:value=move || edit_sku.get()
+                                                    on:input=move |ev| set_edit_sku.set(event_target_value(&ev))
+                                                />
+                                            }.into_any()
+                                        } else {
+                                            view! { <span>{row.sku.clone()}</span> }.into_any()
+                                        }}
+                                    </td>
+                                    <td class="py-2.5 px-3 text-foreground font-medium">{row.options_summary}</td>
+                                    <td class="py-2.5 px-3 text-foreground">
+                                        {move || if is_editing_this.get() {
+                                            view! {
+                                                <input
+                                                    class="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary w-20"
+                                                    prop:value=move || edit_price.get()
+                                                    on:input=move |ev| set_edit_price.set(event_target_value(&ev))
+                                                />
+                                            }.into_any()
+                                        } else {
+                                            view! { <span>{row.price.clone()}</span> }.into_any()
+                                        }}
+                                    </td>
+                                    <td class="py-2.5 px-3 text-foreground">
+                                        {move || if is_editing_this.get() {
+                                            view! {
+                                                <input
+                                                    type="number"
+                                                    class="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary w-16"
+                                                    prop:value=move || edit_stock.get().to_string()
+                                                    on:input=move |ev| set_edit_stock.set(parse_product_admin_inventory_quantity_input(&event_target_value(&ev)))
+                                                />
+                                            }.into_any()
+                                        } else {
+                                            view! { <span>{row.stock.clone()}</span> }.into_any()
+                                        }}
+                                    </td>
+                                    <td class="py-2.5 px-3">
+                                        <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium border border-border bg-muted/50 text-muted-foreground">
+                                            {row.inventory_policy}
+                                        </span>
+                                    </td>
+                                    <td class="py-2.5 px-3 text-right">
+                                        <div class="inline-flex items-center gap-1">
+                                            {move || if is_editing_this.get() {
+                                                view! {
+                                                    <button
+                                                        type="button"
+                                                        class="inline-flex rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                                                        disabled=move || busy.get()
+                                                        on:click=on_save_edit.clone()
+                                                    >
+                                                        "Save"
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="inline-flex rounded-lg border border-border px-2 py-1 text-xs font-medium text-foreground transition hover:bg-accent"
+                                                        on:click=move |_| set_editing_variant_id.set(None)
+                                                    >
+                                                        "Cancel"
+                                                    </button>
+                                                }.into_any()
+                                            } else {
+                                                view! {
+                                                    <button
+                                                        type="button"
+                                                        class="inline-flex rounded-lg border border-border px-2 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                                                        disabled=move || busy.get()
+                                                        on:click=on_start_edit.clone()
+                                                    >
+                                                        "Edit"
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="inline-flex rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-40 disabled:hover:bg-transparent"
+                                                        disabled=move || !can_delete || busy.get()
+                                                        title=if can_delete { "" } else { "Cannot delete the only variant of a product" }
+                                                        on:click=on_delete.clone()
+                                                    >
+                                                        "Delete"
+                                                    </button>
+                                                }.into_any()
+                                            }}
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }).collect_view()}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }.into_any()
+}
+
+#[component]
+fn ProductMediaPanel(
+    locale: Option<String>,
+    product: Option<ProductDetail>,
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    bootstrap: LocalResource<Result<ProductAdminBootstrap, rustok_graphql::GraphqlHttpError>>,
+    busy: ReadSignal<bool>,
+    set_busy: WriteSignal<bool>,
+    set_error: WriteSignal<Option<String>>,
+    on_media_mutated: Callback<String>,
+) -> impl IntoView {
+    let copy = build_product_media_panel_copy(locale.as_deref());
+    let (show_add, set_show_add) = signal(false);
+    let (media_id, set_media_id) = signal(String::new());
+    let (alt_text, set_alt_text) = signal(String::new());
+    let (position, set_position) = signal(0_i32);
+    let (editing_image_id, set_editing_image_id) = signal(Option::<String>::None);
+    let (edit_alt_text, set_edit_alt_text) = signal(String::new());
+
+    let Some(product) = product else {
+        return view! { <div /> }.into_any();
+    };
+
+    let product_id = product.id.clone();
+    let image_models = build_product_image_view_models(&product);
+    let current_image_ids: Vec<String> = product.images.iter().map(|img| img.id.clone()).collect();
+
+    let on_add_submit = {
+        let bootstrap = bootstrap.clone();
+        let token = token.clone();
+        let tenant = tenant.clone();
+        let product_id_val = product_id.clone();
+        let on_mutated = on_media_mutated;
+        let locale_for_add = locale.clone();
+        move |ev: SubmitEvent| {
+            ev.prevent_default();
+            let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                return;
+            };
+            let token_val = token.get_untracked();
+            let tenant_val = tenant.get_untracked();
+            let product_id_val = product_id_val.clone();
+
+            let media_id_val = media_id.get_untracked().trim().to_string();
+            if media_id_val.is_empty() {
+                set_error.set(Some("Media ID is required.".to_string()));
+                return;
+            }
+
+            let draft = ProductImageDraft {
+                media_id: media_id_val,
+                position: Some(position.get_untracked()),
+                alt_text: text_or_none(alt_text.get_untracked()),
+                locale: locale_for_add.clone(),
+            };
+
+            set_busy.set(true);
+            set_error.set(None);
+            spawn_local(async move {
+                match transport::add_product_image(
+                    token_val,
+                    tenant_val,
+                    bootstrap.current_tenant.id,
+                    bootstrap.me.id,
+                    product_id_val.clone(),
+                    draft,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        set_media_id.set(String::new());
+                        set_alt_text.set(String::new());
+                        set_position.set(0);
+                        set_show_add.set(false);
+                        on_mutated.run(product_id_val);
+                    }
+                    Err(err) => set_error.set(Some(err.to_string())),
+                }
+                set_busy.set(false);
+            });
+        }
+    };
+
+    view! {
+        <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-lg font-semibold text-card-foreground">{copy.title}</h3>
+                    <p class="text-sm text-muted-foreground">{copy.subtitle}</p>
+                </div>
+                <button
+                    type="button"
+                    class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                    disabled=move || busy.get()
+                    on:click=move |_| set_show_add.update(|v| *v = !*v)
+                >
+                    {copy.add}
+                </button>
+            </div>
+
+            <Show when=move || show_add.get()>
+                <form class="mt-4 rounded-2xl border border-border/70 bg-background/50 p-4 space-y-3" on:submit={
+                    let on_submit = on_add_submit.clone();
+                    move |ev| on_submit(ev)
+                }>
+                    <div class="grid gap-3 md:grid-cols-3">
+                        <input
+                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary font-mono text-xs"
+                            placeholder="Media UUID"
+                            prop:value=move || media_id.get()
+                            on:input=move |ev| set_media_id.set(event_target_value(&ev))
+                        />
+                        <input
+                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                            placeholder="Alt text"
+                            prop:value=move || alt_text.get()
+                            on:input=move |ev| set_alt_text.set(event_target_value(&ev))
+                        />
+                        <input
+                            type="number"
+                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                            placeholder="Position"
+                            prop:value=move || position.get().to_string()
+                            on:input=move |ev| set_position.set(parse_product_admin_inventory_quantity_input(&event_target_value(&ev)))
+                        />
+                    </div>
+                    <div class="flex justify-end gap-2 pt-2">
+                        <button
+                            type="button"
+                            class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent"
+                            on:click=move |_| set_show_add.set(false)
+                        >
+                            "Cancel"
+                        </button>
+                        <button
+                            type="submit"
+                            class="rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                            disabled=move || busy.get()
+                        >
+                            "Add image"
+                        </button>
+                    </div>
+                </form>
+            </Show>
+
+            <div class="mt-4">
+                {if image_models.is_empty() {
+                    view! {
+                        <p class="text-sm text-muted-foreground py-4 text-center">{copy.empty}</p>
+                    }.into_any()
+                } else {
+                    view! {
+                        <div class="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                            {image_models.into_iter().enumerate().map(|(idx, item)| {
+                                let image_id = item.id.clone();
+                                let img_pos = item.position;
+                                let product_id_for_del = product_id.clone();
+                                let product_id_for_update = product_id.clone();
+                                let product_id_for_reorder = product_id.clone();
+                                let current_ids = current_image_ids.clone();
+                                let on_mutated_del = on_media_mutated;
+                                let on_mutated_update = on_media_mutated;
+                                let on_mutated_reorder = on_media_mutated;
+                                let locale_for_update = locale.clone();
+
+                                let i_id = image_id.clone();
+                                let is_editing_this = {
+                                    let id = image_id.clone();
+                                    move || editing_image_id.get().as_deref() == Some(&id)
+                                };
+
+                                let on_start_edit = {
+                                    let id = image_id.clone();
+                                    let alt = item.alt_text.clone();
+                                    move |_| {
+                                        set_edit_alt_text.set(alt.clone());
+                                        set_editing_image_id.set(Some(id.clone()));
+                                    }
+                                };
+
+                                let on_save_edit = {
+                                    let id = image_id.clone();
+                                    let p_id = product_id_for_update.clone();
+                                    move |_| {
+                                        let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                            return;
+                                        };
+                                        let token_val = token.get_untracked();
+                                        let tenant_val = tenant.get_untracked();
+                                        let target_img_id = id.clone();
+                                        let prod_id = p_id.clone();
+
+                                        let draft = UpdateProductImageDraft {
+                                            position: Some(img_pos),
+                                            alt_text: text_or_none(edit_alt_text.get_untracked()),
+                                            locale: locale_for_update.clone(),
+                                        };
+
+                                        set_busy.set(true);
+                                        set_error.set(None);
+                                        spawn_local(async move {
+                                            match transport::update_product_image(
+                                                token_val,
+                                                tenant_val,
+                                                bootstrap.current_tenant.id,
+                                                bootstrap.me.id,
+                                                prod_id.clone(),
+                                                target_img_id,
+                                                draft,
+                                            ).await {
+                                                Ok(_) => {
+                                                    set_editing_image_id.set(None);
+                                                    on_mutated_update.run(prod_id);
+                                                }
+                                                Err(err) => set_error.set(Some(err.to_string())),
+                                            }
+                                            set_busy.set(false);
+                                        });
+                                    }
+                                };
+
+                                let on_remove = move |_| {
+                                    let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                        return;
+                                    };
+                                    let token_val = token.get_untracked();
+                                    let tenant_val = tenant.get_untracked();
+                                    let img_id = i_id.clone();
+                                    let prod_id = product_id_for_del.clone();
+
+                                    set_busy.set(true);
+                                    set_error.set(None);
+                                    spawn_local(async move {
+                                        match transport::delete_product_image(
+                                            token_val,
+                                            tenant_val,
+                                            bootstrap.current_tenant.id,
+                                            bootstrap.me.id,
+                                            prod_id.clone(),
+                                            img_id,
+                                        ).await {
+                                            Ok(_) => on_mutated_del.run(prod_id),
+                                            Err(err) => set_error.set(Some(err.to_string())),
+                                        }
+                                        set_busy.set(false);
+                                    });
+                                };
+
+                                let on_move_up = {
+                                    let current_ids = current_ids.clone();
+                                    let prod_id = product_id_for_reorder.clone();
+                                    move |_| {
+                                        if idx == 0 { return; }
+                                        let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                            return;
+                                        };
+                                        let token_val = token.get_untracked();
+                                        let tenant_val = tenant.get_untracked();
+                                        let mut new_ids = current_ids.clone();
+                                        new_ids.swap(idx, idx - 1);
+                                        let p_id = prod_id.clone();
+
+                                        set_busy.set(true);
+                                        set_error.set(None);
+                                        spawn_local(async move {
+                                            match transport::reorder_product_images(
+                                                token_val,
+                                                tenant_val,
+                                                bootstrap.current_tenant.id,
+                                                bootstrap.me.id,
+                                                p_id.clone(),
+                                                new_ids,
+                                            ).await {
+                                                Ok(_) => on_mutated_reorder.run(p_id),
+                                                Err(err) => set_error.set(Some(err.to_string())),
+                                            }
+                                            set_busy.set(false);
+                                        });
+                                    }
+                                };
+
+                                let on_move_down = {
+                                    let current_ids = current_ids.clone();
+                                    let prod_id = product_id_for_reorder.clone();
+                                    move |_| {
+                                        if idx + 1 >= current_ids.len() { return; }
+                                        let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                            return;
+                                        };
+                                        let token_val = token.get_untracked();
+                                        let tenant_val = tenant.get_untracked();
+                                        let mut new_ids = current_ids.clone();
+                                        new_ids.swap(idx, idx + 1);
+                                        let p_id = prod_id.clone();
+
+                                        set_busy.set(true);
+                                        set_error.set(None);
+                                        spawn_local(async move {
+                                            match transport::reorder_product_images(
+                                                token_val,
+                                                tenant_val,
+                                                bootstrap.current_tenant.id,
+                                                bootstrap.me.id,
+                                                p_id.clone(),
+                                                new_ids,
+                                            ).await {
+                                                Ok(_) => on_mutated_reorder.run(p_id),
+                                                Err(err) => set_error.set(Some(err.to_string())),
+                                            }
+                                            set_busy.set(false);
+                                        });
+                                    }
+                                };
+
+                                view! {
+                                    <div class="rounded-2xl border border-border bg-background p-3 flex flex-col gap-2">
+                                        <div class="h-32 w-full rounded-xl bg-muted/40 overflow-hidden flex items-center justify-center border border-border/40">
+                                            {if item.url.is_empty() {
+                                                view! { <span class="text-xs text-muted-foreground">"No preview"</span> }.into_any()
+                                            } else {
+                                                view! { <img src=item.url.clone() alt=item.alt_text.clone() class="h-full w-full object-cover" /> }.into_any()
+                                            }}
+                                        </div>
+                                        <div class="flex-1">
+                                            <p class="text-xs font-mono text-muted-foreground truncate" title=item.media_id.clone()>
+                                                {format!("Media: {}", item.media_id)}
+                                            </p>
+                                            {move || if is_editing_this() {
+                                                view! {
+                                                    <div class="flex items-center gap-1 mt-1">
+                                                        <input
+                                                            class="rounded border border-border bg-background px-2 py-0.5 text-xs outline-none focus:border-primary w-full"
+                                                            prop:value=move || edit_alt_text.get()
+                                                            on:input=move |ev| set_edit_alt_text.set(event_target_value(&ev))
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            class="rounded bg-primary px-2 py-0.5 text-xs text-primary-foreground font-medium hover:bg-primary/90"
+                                                            on:click=on_save_edit.clone()
+                                                        >
+                                                            "Save"
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            class="rounded border border-border px-1.5 py-0.5 text-xs text-foreground hover:bg-accent"
+                                                            on:click=move |_| set_editing_image_id.set(None)
+                                                        >
+                                                            "✕"
+                                                        </button>
+                                                    </div>
+                                                }.into_any()
+                                            } else {
+                                                view! {
+                                                    <p class="text-xs text-foreground truncate cursor-pointer hover:underline" title=item.alt_text.clone() on:click=on_start_edit.clone()>
+                                                        {if item.alt_text.is_empty() { "— (click to edit alt text)" } else { &item.alt_text }}
+                                                    </p>
+                                                }.into_any()
+                                            }}
+                                        </div>
+                                        <div class="flex items-center justify-between gap-1 pt-1 border-t border-border/50">
+                                            <div class="flex gap-1">
+                                                <button
+                                                    type="button"
+                                                    class="rounded p-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30"
+                                                    disabled=move || item.is_first || busy.get()
+                                                    title="Move up"
+                                                    on:click=on_move_up
+                                                >
+                                                    "↑"
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="rounded p-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30"
+                                                    disabled=move || item.is_last || busy.get()
+                                                    title="Move down"
+                                                    on:click=on_move_down
+                                                >
+                                                    "↓"
+                                                </button>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                class="rounded px-2 py-0.5 text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 transition disabled:opacity-50"
+                                                disabled=move || busy.get()
+                                                on:click=on_remove
+                                            >
+                                                "Remove"
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                            }).collect_view()}
+                        </div>
+                    }.into_any()
+                }}
+            </div>
+        </section>
+    }.into_any()
+}
+
+#[component]
+fn ProductRelationsPanel(
+    locale: Option<String>,
+    product: Option<ProductDetail>,
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    bootstrap: LocalResource<Result<ProductAdminBootstrap, rustok_graphql::GraphqlHttpError>>,
+    busy: ReadSignal<bool>,
+    set_busy: WriteSignal<bool>,
+    set_error: WriteSignal<Option<String>>,
+) -> impl IntoView {
+    let copy = std::sync::Arc::new(build_product_relations_panel_copy(locale.as_deref()));
+    let (selected_type, set_selected_type) = signal("CROSS_SELL".to_string());
+    let (show_add, set_show_add) = signal(false);
+    let (target_product_id, set_target_product_id) = signal(String::new());
+    let (position, set_position) = signal(0_i32);
+    let (reload_seq, set_reload_seq) = signal(0_usize);
+
+    let Some(product) = product else {
+        return view! { <div /> }.into_any();
+    };
+
+    let product_id = product.id.clone();
+
+    let relations_resource = {
+        let token = token.clone();
+        let tenant = tenant.clone();
+        let product_id = product_id.clone();
+        local_resource(
+            move || (selected_type.get(), reload_seq.get()),
+            move |(rel_type, _)| {
+                let token_val = token.get();
+                let tenant_val = tenant.get();
+                let prod_id = product_id.clone();
+                async move {
+                    transport::fetch_product_relations(
+                        token_val,
+                        tenant_val,
+                        prod_id,
+                        Some(rel_type),
+                    )
+                    .await
+                }
+            },
+        )
+    };
+
+    let on_add_submit = {
+        let bootstrap = bootstrap.clone();
+        let token = token.clone();
+        let tenant = tenant.clone();
+        let product_id = product_id.clone();
+        move |ev: SubmitEvent| {
+            ev.prevent_default();
+            let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                return;
+            };
+            let token_val = token.get_untracked();
+            let tenant_val = tenant.get_untracked();
+            let product_id_val = product_id.clone();
+            let target_id_val = target_product_id.get_untracked().trim().to_string();
+
+            if target_id_val.is_empty() {
+                set_error.set(Some("Target product ID is required.".to_string()));
+                return;
+            }
+            if target_id_val == product_id_val {
+                set_error.set(Some("A product cannot be related to itself.".to_string()));
+                return;
+            }
+
+            let draft = CreateProductRelationDraft {
+                product_id: product_id_val,
+                related_product_id: target_id_val,
+                relation_type: selected_type.get_untracked(),
+                position: Some(position.get_untracked()),
+                metadata: None,
+            };
+
+            set_busy.set(true);
+            set_error.set(None);
+            spawn_local(async move {
+                match transport::add_product_relation(
+                    token_val,
+                    tenant_val,
+                    bootstrap.current_tenant.id,
+                    bootstrap.me.id,
+                    draft,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        set_target_product_id.set(String::new());
+                        set_position.set(0);
+                        set_show_add.set(false);
+                        set_reload_seq.update(|v| *v += 1);
+                    }
+                    Err(err) => set_error.set(Some(err.to_string())),
+                }
+                set_busy.set(false);
+            });
+        }
+    };
+
+    let on_remove = {
+        let bootstrap = bootstrap.clone();
+        let token = token.clone();
+        let tenant = tenant.clone();
+        move |rel_id: String| {
+            let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                return;
+            };
+            let token_val = token.get_untracked();
+            let tenant_val = tenant.get_untracked();
+            set_busy.set(true);
+            set_error.set(None);
+            spawn_local(async move {
+                match transport::remove_product_relation(
+                    token_val,
+                    tenant_val,
+                    bootstrap.current_tenant.id,
+                    bootstrap.me.id,
+                    rel_id,
+                )
+                .await
+                {
+                    Ok(_) => set_reload_seq.update(|v| *v += 1),
+                    Err(err) => set_error.set(Some(err.to_string())),
+                }
+                set_busy.set(false);
+            });
+        }
+    };
+
+    let on_move = {
+        let bootstrap = bootstrap.clone();
+        let token = token.clone();
+        let tenant = tenant.clone();
+        let product_id = product_id.clone();
+        move |items: Vec<ProductRelationItem>, index: usize, delta: isize| {
+            let new_index = index as isize + delta;
+            if new_index < 0 || new_index >= items.len() as isize {
+                return;
+            }
+            let new_index = new_index as usize;
+            let mut ordered = items;
+            ordered.swap(index, new_index);
+            let ordered_ids: Vec<String> = ordered.iter().map(|item| item.id.clone()).collect();
+            let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                return;
+            };
+            let token_val = token.get_untracked();
+            let tenant_val = tenant.get_untracked();
+            let prod_id = product_id.clone();
+            let rel_type = selected_type.get_untracked();
+
+            set_busy.set(true);
+            set_error.set(None);
+            spawn_local(async move {
+                match transport::reorder_product_relations(
+                    token_val,
+                    tenant_val,
+                    bootstrap.current_tenant.id,
+                    bootstrap.me.id,
+                    prod_id,
+                    rel_type,
+                    ordered_ids,
+                )
+                .await
+                {
+                    Ok(_) => set_reload_seq.update(|v| *v += 1),
+                    Err(err) => set_error.set(Some(err.to_string())),
+                }
+                set_busy.set(false);
+            });
+        }
+    };
+
+    view! {
+        <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-lg font-semibold text-card-foreground">{copy.title.clone()}</h3>
+                    <p class="text-sm text-muted-foreground">{copy.subtitle.clone()}</p>
+                </div>
+                <button
+                    type="button"
+                    class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                    disabled=move || busy.get()
+                    on:click=move |_| set_show_add.update(|v| *v = !*v)
+                >
+                    {copy.add.clone()}
+                </button>
+            </div>
+
+            <div class="mt-4 flex flex-wrap gap-2 border-b border-border pb-3">
+                {
+                    let types = [
+                        ("CROSS_SELL", copy.tab_cross_sell.clone()),
+                        ("UP_SELL", copy.tab_up_sell.clone()),
+                        ("RELATED", copy.tab_related.clone()),
+                        ("ACCESSORY", copy.tab_accessory.clone()),
+                        ("ALTERNATIVE", copy.tab_alternative.clone()),
+                    ];
+                    types.into_iter().map(|(rel_key, label)| {
+                        let is_active = move || selected_type.get() == rel_key;
+                        let rel_key_str = rel_key.to_string();
+                        view! {
+                            <button
+                                type="button"
+                                class=move || {
+                                    if is_active() {
+                                        "rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition"
+                                    } else {
+                                        "rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                                    }
+                                }
+                                on:click=move |_| {
+                                    set_selected_type.set(rel_key_str.clone());
+                                }
+                            >
+                                {label}
+                            </button>
+                        }
+                    }).collect_view()
+                }
+            </div>
+
+            {
+                let copy_for_form = copy.clone();
+                view! {
+                    <Show when=move || show_add.get()>
+                        <form class="mt-4 rounded-2xl border border-border/70 bg-background/50 p-4 space-y-3" on:submit={
+                            let on_submit = on_add_submit.clone();
+                            move |ev| on_submit(ev)
+                        }>
+                            <div class="grid gap-3 md:grid-cols-2">
+                                <div>
+                                    <label class="block text-xs font-medium text-muted-foreground mb-1">{copy_for_form.target_product_id.clone()}</label>
+                                    <input
+                                        class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary font-mono text-xs"
+                                        placeholder="Product UUID"
+                                        prop:value=move || target_product_id.get()
+                                        on:input=move |ev| set_target_product_id.set(event_target_value(&ev))
+                                    />
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-muted-foreground mb-1">{copy_for_form.position.clone()}</label>
+                                    <input
+                                        type="number"
+                                        class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary text-xs"
+                                        prop:value=move || position.get().to_string()
+                                        on:input=move |ev| {
+                                            if let Ok(val) = event_target_value(&ev).parse::<i32>() {
+                                                set_position.set(val);
+                                            }
+                                        }
+                                    />
+                                </div>
+                            </div>
+                            <div class="flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    class="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent transition"
+                                    on:click=move |_| set_show_add.set(false)
+                                >
+                                    "Cancel"
+                                </button>
+                                <button
+                                    type="submit"
+                                    class="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 transition disabled:opacity-50"
+                                    disabled=move || busy.get()
+                                >
+                                    {copy_for_form.add.clone()}
+                                </button>
+                            </div>
+                        </form>
+                    </Show>
+                }
+            }
+
+            <div class="mt-4">
+                {
+                    let copy_for_list = copy.clone();
+                    move || {
+                        let copy = copy_for_list.clone();
+                        let relations = relations_resource.get().and_then(Result::ok).unwrap_or_default();
+                        if relations.is_empty() {
+                            view! {
+                                <div class="rounded-2xl border border-dashed border-border/70 p-6 text-center text-sm text-muted-foreground">
+                                    {copy.empty.clone()}
+                                </div>
+                            }.into_any()
+                        } else {
+                        let total = relations.len();
+                        let all_items = relations.clone();
+                        let on_move = on_move.clone();
+                        let on_remove = on_remove.clone();
+                        let copy_move_up = copy.move_up.clone();
+                        let copy_move_down = copy.move_down.clone();
+                        let copy_remove = copy.remove.clone();
+                        let copy_pos = copy.position.clone();
+                        let copy_target = copy.target_product_id.clone();
+                        view! {
+                            <div class="overflow-hidden rounded-2xl border border-border">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="bg-muted/40 text-xs text-muted-foreground">
+                                        <tr>
+                                            <th class="px-4 py-3 font-medium">{copy_pos}</th>
+                                            <th class="px-4 py-3 font-medium">{copy_target}</th>
+                                            <th class="px-4 py-3 text-right font-medium">"Actions"</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-border">
+                                        {relations.into_iter().enumerate().map(|(idx, item)| {
+                                            let item_id = item.id.clone();
+                                            let is_first = idx == 0;
+                                            let is_last = idx + 1 >= total;
+                                            let on_move_up = {
+                                                let on_move = on_move.clone();
+                                                let all_items = all_items.clone();
+                                                move |_| on_move(all_items.clone(), idx, -1)
+                                            };
+                                            let on_move_down = {
+                                                let on_move = on_move.clone();
+                                                let all_items = all_items.clone();
+                                                move |_| on_move(all_items.clone(), idx, 1)
+                                            };
+                                            let on_del = {
+                                                let on_remove = on_remove.clone();
+                                                let item_id = item_id.clone();
+                                                move |_| on_remove(item_id.clone())
+                                            };
+                                            view! {
+                                                <tr class="hover:bg-muted/20 transition">
+                                                    <td class="px-4 py-3 font-mono text-xs text-muted-foreground">{item.position}</td>
+                                                    <td class="px-4 py-3 font-mono text-xs text-foreground">{item.related_product_id}</td>
+                                                    <td class="px-4 py-3 text-right">
+                                                        <div class="flex items-center justify-end gap-1">
+                                                            <button
+                                                                type="button"
+                                                                class="rounded p-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30"
+                                                                disabled=move || is_first || busy.get()
+                                                                title=copy_move_up.clone()
+                                                                on:click=on_move_up
+                                                            >
+                                                                "↑"
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                class="rounded p-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30"
+                                                                disabled=move || is_last || busy.get()
+                                                                title=copy_move_down.clone()
+                                                                on:click=on_move_down
+                                                            >
+                                                                "↓"
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                class="rounded px-2 py-0.5 text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 transition disabled:opacity-50 ml-2"
+                                                                disabled=move || busy.get()
+                                                                on:click=on_del
+                                                            >
+                                                                {copy_remove.clone()}
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }).collect_view()}
+                                    </tbody>
+                                </table>
+                            </div>
+                        }.into_any()
+                    }
+                }}
+            </div>
+        </section>
+    }.into_any()
 }

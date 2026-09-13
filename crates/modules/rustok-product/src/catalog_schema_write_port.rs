@@ -662,6 +662,9 @@ fn schema_write_error(
         CommerceError::VariantNotFound(_) => {
             PortError::not_found("product.variant_not_found", "product variant was not found")
         }
+        CommerceError::ImageNotFound(_) => {
+            PortError::not_found("product.image_not_found", "product image was not found")
+        }
         CommerceError::DuplicateHandle { .. } => PortError::conflict(
             "product.duplicate_handle",
             "product handle conflicts with an existing product",
@@ -698,6 +701,7 @@ fn schema_error_kind(error: &CommerceError) -> &'static str {
         CommerceError::Database(_) => "database",
         CommerceError::ProductNotFound(_) => "not_found",
         CommerceError::VariantNotFound(_) => "variant_not_found",
+        CommerceError::ImageNotFound(_) => "image_not_found",
         CommerceError::DuplicateHandle { .. } => "duplicate_handle",
         CommerceError::DuplicateSku(_) => "duplicate_sku",
         CommerceError::Validation(_) => "validation",
@@ -713,6 +717,7 @@ fn schema_error_code(error: &CommerceError) -> &'static str {
         CommerceError::Database(_) => "product.schema_database_unavailable",
         CommerceError::ProductNotFound(_) => "product.product_not_found",
         CommerceError::VariantNotFound(_) => "product.variant_not_found",
+        CommerceError::ImageNotFound(_) => "product.image_not_found",
         CommerceError::DuplicateHandle { .. } => "product.duplicate_handle",
         CommerceError::DuplicateSku(_) => "product.duplicate_sku",
         CommerceError::Validation(_) => "product.schema_validation",

@@ -1116,4 +1116,282 @@ impl CatalogService {
 
         Ok(())
     }
+
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, product_id = %product_id))]
+    pub async fn add_product_image(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        product_id: Uuid,
+        input: AddProductImageInput,
+    ) -> CommerceResult<ProductImageResponse> {
+        debug!(media_id = %input.media_id, "Adding product image");
+
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+
+        let _product = entities::product::Entity::find_by_id(product_id)
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await?
+            .ok_or(CommerceError::ProductNotFound(product_id))?;
+
+        let position = match input.position {
+            Some(pos) => pos,
+            None => {
+                let max_pos: Option<i32> = entities::product_image::Entity::find()
+                    .filter(entities::product_image::Column::ProductId.eq(product_id))
+                    .order_by_desc(entities::product_image::Column::Position)
+                    .one(&txn)
+                    .await?
+                    .map(|img| img.position + 1);
+                max_pos.unwrap_or(0)
+            }
+        };
+
+        let image_id = generate_id();
+        let _image = entities::product_image::ActiveModel {
+            id: Set(image_id),
+            product_id: Set(product_id),
+            media_id: Set(input.media_id),
+            position: Set(position),
+        }
+        .insert(&txn)
+        .await?;
+
+        let mut translations = Vec::new();
+        if let Some(alt_text) = input.alt_text.as_deref() {
+            let locale = input
+                .locale
+                .clone()
+                .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+            entities::product_image_translation::ActiveModel {
+                id: Set(generate_id()),
+                image_id: Set(image_id),
+                locale: Set(locale.clone()),
+                alt_text: Set(Some(alt_text.to_string())),
+            }
+            .insert(&txn)
+            .await?;
+
+            translations.push(ProductImageTranslationResponse {
+                locale,
+                alt_text: Some(alt_text.to_string()),
+            });
+        }
+
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductUpdated { product_id },
+        )
+        .await?;
+
+        txn.commit().await?;
+
+        info!(
+            image_id = %image_id,
+            product_id = %product_id,
+            "Product image added successfully"
+        );
+
+        Ok(ProductImageResponse {
+            id: image_id,
+            media_id: input.media_id,
+            url: format!("/api/v1/media/{}", input.media_id),
+            alt_text: input.alt_text,
+            position,
+            translations,
+        })
+    }
+
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, product_id = %product_id, image_id = %image_id))]
+    pub async fn update_product_image(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        product_id: Uuid,
+        image_id: Uuid,
+        input: UpdateProductImageInput,
+    ) -> CommerceResult<ProductImageResponse> {
+        debug!("Updating product image");
+
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+
+        let _product = entities::product::Entity::find_by_id(product_id)
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await?
+            .ok_or(CommerceError::ProductNotFound(product_id))?;
+
+        let image = entities::product_image::Entity::find_by_id(image_id)
+            .filter(entities::product_image::Column::ProductId.eq(product_id))
+            .one(&txn)
+            .await?
+            .ok_or(CommerceError::ImageNotFound(image_id))?;
+
+        let mut active_image: entities::product_image::ActiveModel = image.clone().into();
+        let mut position = image.position;
+        if let Some(new_pos) = input.position {
+            active_image.position = Set(new_pos);
+            position = new_pos;
+        }
+        let updated_image = active_image.update(&txn).await?;
+
+        if let Some(alt_text) = input.alt_text.as_deref() {
+            let locale = input
+                .locale
+                .clone()
+                .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+            let existing_trans = entities::product_image_translation::Entity::find()
+                .filter(entities::product_image_translation::Column::ImageId.eq(image_id))
+                .filter(entities::product_image_translation::Column::Locale.eq(&locale))
+                .one(&txn)
+                .await?;
+
+            if let Some(existing) = existing_trans {
+                let mut active: entities::product_image_translation::ActiveModel = existing.into();
+                active.alt_text = Set(Some(alt_text.to_string()));
+                active.update(&txn).await?;
+            } else {
+                entities::product_image_translation::ActiveModel {
+                    id: Set(generate_id()),
+                    image_id: Set(image_id),
+                    locale: Set(locale),
+                    alt_text: Set(Some(alt_text.to_string())),
+                }
+                .insert(&txn)
+                .await?;
+            }
+        }
+
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductUpdated { product_id },
+        )
+        .await?;
+
+        txn.commit().await?;
+
+        let all_translations = entities::product_image_translation::Entity::find()
+            .filter(entities::product_image_translation::Column::ImageId.eq(image_id))
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|t| ProductImageTranslationResponse {
+                locale: t.locale,
+                alt_text: t.alt_text,
+            })
+            .collect();
+
+        info!(
+            image_id = %image_id,
+            product_id = %product_id,
+            "Product image updated successfully"
+        );
+
+        Ok(ProductImageResponse {
+            id: image_id,
+            media_id: updated_image.media_id,
+            url: format!("/api/v1/media/{}", updated_image.media_id),
+            alt_text: input.alt_text,
+            position,
+            translations: all_translations,
+        })
+    }
+
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, product_id = %product_id, image_id = %image_id))]
+    pub async fn delete_product_image(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        product_id: Uuid,
+        image_id: Uuid,
+    ) -> CommerceResult<()> {
+        debug!("Deleting product image");
+
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+
+        let _product = entities::product::Entity::find_by_id(product_id)
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await?
+            .ok_or(CommerceError::ProductNotFound(product_id))?;
+
+        let _image = entities::product_image::Entity::find_by_id(image_id)
+            .filter(entities::product_image::Column::ProductId.eq(product_id))
+            .one(&txn)
+            .await?
+            .ok_or(CommerceError::ImageNotFound(image_id))?;
+
+        entities::product_image_translation::Entity::delete_many()
+            .filter(entities::product_image_translation::Column::ImageId.eq(image_id))
+            .exec(&txn)
+            .await?;
+
+        entities::product_image::Entity::delete_by_id(image_id)
+            .exec(&txn)
+            .await?;
+
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductUpdated { product_id },
+        )
+        .await?;
+
+        txn.commit().await?;
+
+        info!(
+            image_id = %image_id,
+            product_id = %product_id,
+            "Product image deleted successfully"
+        );
+
+        Ok(())
+    }
+
+    #[instrument(skip(self, image_ids), fields(tenant_id = %tenant_id, product_id = %product_id))]
+    pub async fn reorder_product_images(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        product_id: Uuid,
+        image_ids: Vec<Uuid>,
+    ) -> CommerceResult<()> {
+        debug!(count = image_ids.len(), "Reordering product images");
+
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+
+        let _product = entities::product::Entity::find_by_id(product_id)
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await?
+            .ok_or(CommerceError::ProductNotFound(product_id))?;
+
+        for (pos, image_id) in image_ids.into_iter().enumerate() {
+            let image = entities::product_image::Entity::find_by_id(image_id)
+                .filter(entities::product_image::Column::ProductId.eq(product_id))
+                .one(&txn)
+                .await?;
+            if let Some(image) = image {
+                let mut active: entities::product_image::ActiveModel = image.into();
+                active.position = Set(pos as i32);
+                active.update(&txn).await?;
+            }
+        }
+
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductUpdated { product_id },
+        )
+        .await?;
+
+        txn.commit().await?;
+
+        info!(product_id = %product_id, "Product images reordered successfully");
+
+        Ok(())
+    }
 }

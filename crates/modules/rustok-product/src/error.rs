@@ -26,6 +26,9 @@ pub enum CommerceError {
     #[error("Product variant not found: {0}")]
     VariantNotFound(Uuid),
 
+    #[error("Product image not found: {0}")]
+    ImageNotFound(Uuid),
+
     #[error("Cannot delete the only variant of a product")]
     CannotDeleteOnlyVariant,
 

@@ -13,6 +13,7 @@ default = [
     "embed-admin",
     "embed-storefront",
     "mod-product",
+    "mod-product_relations",
     "mod-profiles",
     "mod-social_graph",
     "mod-region",
@@ -60,6 +61,7 @@ pages-inline-edit-assets = ["pages-inline-edit", "rustok-pages/inline-edit-asset
 mod-cart      = ["dep:rustok-cart", "rustok-distribution/mod-cart"]
 mod-customer  = ["dep:rustok-customer", "rustok-distribution/mod-customer"]
 mod-product   = ["dep:rustok-product", "dep:rustok-product-transport", "mod-taxonomy", "rustok-distribution/mod-product"]
+mod-product_relations = ["dep:rustok-product-relations", "mod-product", "rustok-distribution/mod-product_relations"]
 mod-profiles  = ["dep:rustok-profiles", "dep:rustok-media-transport", "mod-media", "mod-social_graph", "mod-taxonomy", "rustok-distribution/mod-profiles"]
 mod-social_graph = ["dep:rustok-social-graph", "rustok-social-graph/graphql", "rustok-social-graph/index-consumer"]
 mod-groups    = ["dep:rustok-groups", "rustok-groups/graphql", "rustok-distribution/mod-groups"]
@@ -128,6 +130,7 @@ rustok-cart      = { workspace = true, optional = true }
 rustok-customer  = { workspace = true, optional = true }
 rustok-product   = { workspace = true, optional = true }
 rustok-product-transport = { path = "../../crates/modules/rustok-product-transport", optional = true }
+rustok-product-relations = { workspace = true, optional = true }
 rustok-profiles  = { workspace = true, optional = true }
 rustok-social-graph = { path = "../../crates/modules/rustok-social-graph", optional = true }
 rustok-groups = { path = "../../crates/modules/rustok-groups", default-features = false, optional = true }

@@ -104,7 +104,9 @@ fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
             "Product storage is temporarily unavailable",
             "database",
         ),
-        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => (
+        CommerceError::ProductNotFound(_)
+        | CommerceError::VariantNotFound(_)
+        | CommerceError::ImageNotFound(_) => (
             StatusCode::NOT_FOUND,
             "commerce_admin_not_found",
             "Commerce resource not found",

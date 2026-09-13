@@ -49,7 +49,9 @@ fn map_storefront_product_error(
             "Product service is temporarily unavailable",
             "database",
         ),
-        ProductError::ProductNotFound(_) | ProductError::VariantNotFound(_) => (
+        ProductError::ProductNotFound(_)
+        | ProductError::VariantNotFound(_)
+        | ProductError::ImageNotFound(_) => (
             StatusCode::NOT_FOUND,
             "commerce_store_not_found",
             "Commerce resource not found",

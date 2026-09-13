@@ -6,6 +6,13 @@ pub(crate) enum ProductAdminLifecycleOperation {
     UpdateProduct,
     ChangeStatus,
     DeleteProduct,
+    CreateVariant,
+    UpdateVariant,
+    DeleteVariant,
+    AddImage,
+    UpdateImage,
+    DeleteImage,
+    ReorderImages,
 }
 
 impl ProductAdminLifecycleOperation {
@@ -15,6 +22,13 @@ impl ProductAdminLifecycleOperation {
             Self::UpdateProduct => "update-product",
             Self::ChangeStatus => "change-status",
             Self::DeleteProduct => "delete-product",
+            Self::CreateVariant => "create-variant",
+            Self::UpdateVariant => "update-variant",
+            Self::DeleteVariant => "delete-variant",
+            Self::AddImage => "add-image",
+            Self::UpdateImage => "update-image",
+            Self::DeleteImage => "delete-image",
+            Self::ReorderImages => "reorder-images",
         }
     }
 }
