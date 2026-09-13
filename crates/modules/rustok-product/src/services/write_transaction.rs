@@ -178,6 +178,8 @@ impl ProductWriteTransaction {
             product_attribute_schema_translation_change_target(&event);
         let category_form_translation_change_target =
             product_category_form_translation_change_target(&event);
+        let attribute_value_translation_change_target =
+            product_attribute_value_translation_change_target(&event);
         let root_event_id = self
             .event_bus
             .publish_in_tx_with_envelope_id(&self.transaction, tenant_id, actor_id, event)
@@ -270,6 +272,19 @@ impl ProductWriteTransaction {
                 &self.transaction,
                 tenant_id,
                 category_id,
+                root_event_id,
+            )
+            .await?;
+        }
+
+        if let Some(product_id) = attribute_value_translation_change_target {
+            // Localized Product EAV values are independent Translation resources keyed by their
+            // canonical value-row UUID. Only value writes and Product hard-delete cross this boundary;
+            // dynamic category/schema membership never manufactures EAV Translation changes.
+            ProductCatalogSchemaService::record_attribute_value_translation_changes_in_tx(
+                &self.transaction,
+                tenant_id,
+                product_id,
                 root_event_id,
             )
             .await?;
@@ -403,6 +418,14 @@ fn product_category_form_translation_change_target(event: &DomainEvent) -> Optio
         | DomainEvent::CatalogCategoryDeleted { category_id }
         | DomainEvent::CatalogCategoryAttributesChanged { category_id }
         | DomainEvent::CatalogCategorySchemaModeChanged { category_id } => Some(*category_id),
+        _ => None,
+    }
+}
+
+fn product_attribute_value_translation_change_target(event: &DomainEvent) -> Option<Uuid> {
+    match event {
+        DomainEvent::ProductAttributeValuesChanged { product_id }
+        | DomainEvent::ProductDeleted { product_id } => Some(*product_id),
         _ => None,
     }
 }
