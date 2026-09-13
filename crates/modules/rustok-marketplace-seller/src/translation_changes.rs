@@ -1,8 +1,7 @@
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseTransaction, EntityTrait,
-    FromQueryResult, QueryFilter, QueryOrder, Statement,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter,
+    QueryOrder, Statement,
 };
-use serde_json::Value;
 use uuid::Uuid;
 
 use crate::entities::{seller, seller_translation};
@@ -176,45 +175,26 @@ pub(crate) fn translation_lifecycle_for_status(
     }
 }
 
-pub(crate) async fn record_completed_seller_translation_change_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    operation_id: Uuid,
-    response_kind: &str,
-    response_json: &Value,
-) -> MarketplaceSellerResult<()> {
-    if response_kind != "seller" {
-        return Ok(());
-    }
-    let seller_id = response_json
-        .get("id")
-        .and_then(Value::as_str)
-        .and_then(|value| Uuid::parse_str(value).ok())
-        .ok_or_else(|| {
-            MarketplaceSellerError::Validation(
-                "marketplace seller command response is missing a valid seller id".to_string(),
-            )
-        })?;
-    record_current_seller_translation_change_in_tx(txn, tenant_id, seller_id, operation_id).await
-}
-
-pub(crate) async fn record_current_seller_translation_change_in_tx(
-    txn: &DatabaseTransaction,
+pub(crate) async fn record_current_seller_translation_change_in_tx<C>(
+    connection: &C,
     tenant_id: Uuid,
     seller_id: Uuid,
     operation_id: Uuid,
-) -> MarketplaceSellerResult<()> {
+) -> MarketplaceSellerResult<()>
+where
+    C: ConnectionTrait,
+{
     validate_identity(tenant_id, seller_id, operation_id)?;
     let seller = seller::Entity::find_by_id(seller_id)
         .filter(seller::Column::TenantId.eq(tenant_id))
-        .one(txn)
+        .one(connection)
         .await?
         .ok_or(MarketplaceSellerError::SellerNotFound(seller_id))?;
     let translations = seller_translation::Entity::find()
         .filter(seller_translation::Column::TenantId.eq(tenant_id))
         .filter(seller_translation::Column::SellerId.eq(seller_id))
         .order_by_asc(seller_translation::Column::Locale)
-        .all(txn)
+        .all(connection)
         .await?;
     if translations.is_empty() {
         return Ok(());
@@ -222,7 +202,7 @@ pub(crate) async fn record_current_seller_translation_change_in_tx(
     let revision = resource_revision(&seller, &translations);
     let lifecycle = translation_lifecycle_for_status(&seller.status)?;
     record_seller_translation_change_in_tx(
-        txn,
+        connection,
         tenant_id,
         seller_id,
         operation_id,
@@ -233,14 +213,17 @@ pub(crate) async fn record_current_seller_translation_change_in_tx(
 }
 
 #[allow(clippy::collapsible_if)]
-pub(crate) async fn record_seller_translation_change_in_tx(
-    txn: &DatabaseTransaction,
+pub(crate) async fn record_seller_translation_change_in_tx<C>(
+    connection: &C,
     tenant_id: Uuid,
     seller_id: Uuid,
     operation_id: Uuid,
     resource_revision: &str,
     lifecycle: MarketplaceSellerTranslationChangeLifecycle,
-) -> MarketplaceSellerResult<()> {
+) -> MarketplaceSellerResult<()>
+where
+    C: ConnectionTrait,
+{
     validate_identity(tenant_id, seller_id, operation_id)?;
     if resource_revision.trim().is_empty() {
         return Err(MarketplaceSellerError::Validation(
@@ -248,7 +231,7 @@ pub(crate) async fn record_seller_translation_change_in_tx(
         ));
     }
 
-    let backend = txn.get_database_backend();
+    let backend = connection.get_database_backend();
     let previous_sql = match backend {
         DatabaseBackend::Postgres => {
             r#"
@@ -274,7 +257,7 @@ LIMIT 1
         previous_sql,
         vec![tenant_id.into(), seller_id.into()],
     ))
-    .one(txn)
+    .one(connection)
     .await?
     {
         if previous.resource_revision == resource_revision
@@ -302,18 +285,19 @@ ON CONFLICT (operation_id, seller_id) DO NOTHING
 "#
         }
     };
-    txn.execute_raw(Statement::from_sql_and_values(
-        backend,
-        insert_sql,
-        vec![
-            operation_id.into(),
-            tenant_id.into(),
-            seller_id.into(),
-            resource_revision.to_string().into(),
-            lifecycle.as_str().into(),
-        ],
-    ))
-    .await?;
+    connection
+        .execute_raw(Statement::from_sql_and_values(
+            backend,
+            insert_sql,
+            vec![
+                operation_id.into(),
+                tenant_id.into(),
+                seller_id.into(),
+                resource_revision.to_string().into(),
+                lifecycle.as_str().into(),
+            ],
+        ))
+        .await?;
     Ok(())
 }
 
