@@ -69,7 +69,7 @@ impl MigrationTrait for Migration {
         let connection = manager.get_connection();
         let backend = connection.get_database_backend();
         connection
-            .execute(Statement::from_string(
+            .execute_raw(Statement::from_string(
                 backend,
                 r#"
 INSERT INTO alloy_script_presentations (
