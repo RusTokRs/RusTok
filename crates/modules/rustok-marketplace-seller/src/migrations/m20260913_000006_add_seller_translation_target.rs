@@ -13,53 +13,58 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .create_table(
-                Table::create()
-                    .table(MarketplaceSellerTranslationChangeJournal::Table)
-                    .if_not_exists()
-                    .col(
-                        ColumnDef::new(MarketplaceSellerTranslationChangeJournal::ChangeSeq)
-                            .big_integer()
-                            .not_null()
-                            .auto_increment()
-                            .primary_key(),
-                    )
-                    .col(
-                        ColumnDef::new(MarketplaceSellerTranslationChangeJournal::OperationId)
-                            .uuid(),
-                    )
-                    .col(
-                        ColumnDef::new(MarketplaceSellerTranslationChangeJournal::TenantId)
-                            .uuid()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(MarketplaceSellerTranslationChangeJournal::SellerId)
-                            .uuid()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(
-                            MarketplaceSellerTranslationChangeJournal::ResourceRevision,
-                        )
-                        .string_len(191)
-                        .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(MarketplaceSellerTranslationChangeJournal::Lifecycle)
-                            .string_len(16)
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(MarketplaceSellerTranslationChangeJournal::CreatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null()
-                            .default(Expr::current_timestamp()),
-                    )
-                    .to_owned(),
+        let mut table = Table::create();
+        table
+            .table(MarketplaceSellerTranslationChangeJournal::Table)
+            .if_not_exists();
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            table.col(
+                ColumnDef::new(MarketplaceSellerTranslationChangeJournal::ChangeSeq)
+                    .integer()
+                    .not_null()
+                    .auto_increment()
+                    .primary_key(),
+            );
+        } else {
+            table.col(
+                ColumnDef::new(MarketplaceSellerTranslationChangeJournal::ChangeSeq)
+                    .big_integer()
+                    .not_null()
+                    .auto_increment()
+                    .primary_key(),
+            );
+        }
+        table
+            .col(
+                ColumnDef::new(MarketplaceSellerTranslationChangeJournal::OperationId).uuid(),
             )
-            .await?;
+            .col(
+                ColumnDef::new(MarketplaceSellerTranslationChangeJournal::TenantId)
+                    .uuid()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(MarketplaceSellerTranslationChangeJournal::SellerId)
+                    .uuid()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(MarketplaceSellerTranslationChangeJournal::ResourceRevision)
+                    .string_len(96)
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(MarketplaceSellerTranslationChangeJournal::Lifecycle)
+                    .string_len(16)
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(MarketplaceSellerTranslationChangeJournal::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            );
+        manager.create_table(table.to_owned()).await?;
 
         for index in [
             Index::create()
@@ -155,7 +160,7 @@ INSERT INTO marketplace_seller_translation_change_journal (
     Ok(())
 }
 
-#[derive(Iden)]
+#[derive(DeriveIden)]
 enum MarketplaceSellerTranslationChangeJournal {
     Table,
     ChangeSeq,
