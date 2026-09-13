@@ -5,7 +5,7 @@ mod m20260713_000004_artifact_capability_grant_revision;
 mod m20260713_000005_module_artifact_rollback_operations;
 mod m20260715_000006_module_artifact_uninstall_operations;
 mod m20260716_000007_artifact_migration_checkpoints;
-mod m20260716_000008_module_artifact_deactivation_operations;
+mod m20260716_000008_artifact_deactivation_operations;
 mod m20260716_000009_artifact_tenant_lifecycle;
 mod m20260716_000010_artifact_data_broker;
 mod m20260716_000011_artifact_data_namespace_lifecycle;
@@ -51,6 +51,7 @@ pub(crate) mod m20260904_000052_module_source_objects;
 pub(crate) mod m20260904_000052_static_settings_change_cursor;
 pub(crate) mod m20260904_000053_module_operations_tool;
 pub(crate) mod m20260904_000053_static_settings_source_locale;
+pub(crate) mod m20260913_000054_registry_translation_change_cursor;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -63,7 +64,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000005_module_artifact_rollback_operations::Migration),
         Box::new(m20260715_000006_module_artifact_uninstall_operations::Migration),
         Box::new(m20260716_000007_artifact_migration_checkpoints::Migration),
-        Box::new(m20260716_000008_module_artifact_deactivation_operations::Migration),
+        Box::new(m20260716_000008_artifact_deactivation_operations::Migration),
         Box::new(m20260716_000009_artifact_tenant_lifecycle::Migration),
         Box::new(m20260716_000010_artifact_data_broker::Migration),
         Box::new(m20260716_000011_artifact_data_namespace_lifecycle::Migration),
@@ -109,6 +110,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260904_000051_admitted_oci_releases::Migration),
         Box::new(m20260904_000052_module_source_objects::Migration),
         Box::new(m20260904_000053_module_operations_tool::Migration),
+        Box::new(m20260913_000054_registry_translation_change_cursor::Migration),
     ]
 }
 

@@ -68,6 +68,7 @@ mod publish_validation;
 pub mod queue_drain;
 mod reconciliation;
 mod recovery;
+pub mod registry_translation;
 mod release_admission_journal;
 mod release_preparation;
 mod resolution;
@@ -311,7 +312,7 @@ pub use data::{
     ArtifactDataBatchWrite, ArtifactDataBroker, ArtifactDataDeleteRequest,
     ArtifactDataDeleteResult, ArtifactDataError, ArtifactDataExportAuthorizer,
     ArtifactDataExportRequest, ArtifactDataExportResult, ArtifactDataIndexQuery,
-    ArtifactDataMigrationCheckpointStore, ArtifactDataObject, ArtifactDataObjectBroker,
+    ArtifactDataMigrationCheckpointStore, ArtifactDataObject, ArtifactDataBroker,
     ArtifactDataObjectContent, ArtifactDataObjectDeleteRequest, ArtifactDataObjectDeleteResult,
     ArtifactDataObjectGcResult, ArtifactDataObjectPage, ArtifactDataObjectRetentionPolicy,
     ArtifactDataObjectRetentionRule, ArtifactDataObjectUpload, ArtifactDataObjectUploadChunk,
