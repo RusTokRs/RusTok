@@ -737,13 +737,19 @@
       "id": "registry_artifact_copy",
       "owner_slug": "modules",
       "resource_kind": "registry_artifact_copy",
-      "readiness": "blocked",
+      "readiness": "separate_track",
       "provider_status": "not_registered",
       "field_profiles": ["plain_text"],
-      "data_classification": ["public", "tenant_private"],
+      "data_classification": ["public"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/rustok-modules/README.md"],
-      "blockers": ["Assign the final registry metadata write owner and expose exact provenance-aware revisions before provider registration."]
+      "evidence_paths": [
+        "crates/modules/rustok-modules/src/governance.rs",
+        "crates/modules/rustok-modules/src/marketplace_content.rs",
+        "crates/modules/rustok-modules/src/publication_evidence.rs",
+        "crates/utils/rustok-migrations/src/m20260412_000002_split_registry_localized_metadata.rs",
+        "crates/libs/rustok-api/src/ports.rs"
+      ],
+      "exclusion_reason": "Registry localized metadata is platform-global publication data, not tenant-scoped Translation target data. Publish-request source copy is host-authorized immutable metadata with explicit locale provenance; module-release translations are materialized from that request snapshot during publication and rebuilt on release materialization. The shared Translation provider contract requires tenant-scoped PortContext, while registry publish/release records have no tenant identity. Do not invent a sentinel tenant or let Translation mutate publication evidence. Continue this surface as a dedicated platform Registry localization track that preserves source provenance and defines global revision/CAS/rematerialization semantics before any bridge to Translation."
     },
     {
       "id": "alloy_control_copy",
