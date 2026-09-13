@@ -78,7 +78,7 @@ impl ProductCatalogSchemaService {
         .await
     }
 
-    async fn load_effective_form_for_category_in<C>(
+    pub(super) async fn load_effective_form_for_category_in<C>(
         db: &C,
         tenant_id: Uuid,
         category_id: Uuid,
