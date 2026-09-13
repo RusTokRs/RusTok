@@ -91,6 +91,8 @@ pub struct OAuthAppTranslationApplyReceipt {
 pub struct OAuthAppTranslationProgressFacts {
     pub resources: u64,
     pub exact_required_units: u64,
+    pub optional_units: u64,
+    pub exact_optional_units: u64,
     pub complete_resources: u64,
 }
 
@@ -330,9 +332,15 @@ impl OAuthAppTranslationService {
         let facts = OAuthAppTranslationProgressFacts {
             resources: count(row.resources, "resources")?,
             exact_required_units: count(row.exact_required_units, "exact required units")?,
+            optional_units: count(row.optional_units, "optional units")?,
+            exact_optional_units: count(row.exact_optional_units, "exact optional units")?,
             complete_resources: count(row.complete_resources, "complete resources")?,
         };
-        if facts.exact_required_units > facts.resources || facts.complete_resources > facts.resources {
+        if facts.exact_required_units > facts.resources
+            || facts.optional_units > facts.resources
+            || facts.exact_optional_units > facts.optional_units
+            || facts.complete_resources > facts.resources
+        {
             return Err(OAuthAppTranslationError::Validation(
                 "OAuth application Translation progress aggregate is inconsistent".to_string(),
             ));
@@ -539,6 +547,8 @@ fn count(value: i64, field: &'static str) -> OAuthAppTranslationResult<u64> {
 struct ProgressRow {
     resources: i64,
     exact_required_units: i64,
+    optional_units: i64,
+    exact_optional_units: i64,
     complete_resources: i64,
 }
 
@@ -560,6 +570,12 @@ SELECT
     COUNT(*) AS resources,
     COUNT(CASE WHEN TRIM(COALESCE(target_translation.name, '')) <> '' THEN 1 END)
         AS exact_required_units,
+    COUNT(CASE WHEN TRIM(COALESCE(source_translation.description, '')) <> '' THEN 1 END)
+        AS optional_units,
+    COUNT(CASE
+        WHEN TRIM(COALESCE(source_translation.description, '')) <> ''
+         AND TRIM(COALESCE(target_translation.description, '')) <> ''
+        THEN 1 END) AS exact_optional_units,
     COUNT(CASE WHEN TRIM(COALESCE(target_translation.name, '')) <> '' THEN 1 END)
         AS complete_resources
 FROM oauth_app_translations AS source_translation
@@ -581,6 +597,12 @@ SELECT
     COUNT(*) AS resources,
     COUNT(CASE WHEN TRIM(COALESCE(target_translation.name, '')) <> '' THEN 1 END)
         AS exact_required_units,
+    COUNT(CASE WHEN TRIM(COALESCE(source_translation.description, '')) <> '' THEN 1 END)
+        AS optional_units,
+    COUNT(CASE
+        WHEN TRIM(COALESCE(source_translation.description, '')) <> ''
+         AND TRIM(COALESCE(target_translation.description, '')) <> ''
+        THEN 1 END) AS exact_optional_units,
     COUNT(CASE WHEN TRIM(COALESCE(target_translation.name, '')) <> '' THEN 1 END)
         AS complete_resources
 FROM oauth_app_translations AS source_translation
