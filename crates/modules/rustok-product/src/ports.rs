@@ -733,6 +733,9 @@ fn product_error_to_port_error(
         CommerceError::VariantNotFound(_) => {
             PortError::not_found("product.variant_not_found", "product variant was not found")
         }
+        CommerceError::ImageNotFound(_) => {
+            PortError::not_found("product.image_not_found", "product image was not found")
+        }
         CommerceError::CannotDeleteOnlyVariant => PortError::conflict(
             "product.cannot_delete_only_variant",
             "cannot delete the only variant of a product",
@@ -758,6 +761,7 @@ fn product_error_code(error: &crate::error::CommerceError) -> &'static str {
         CommerceError::Database(_) => "product.database_unavailable",
         CommerceError::ProductNotFound(_) => "product.product_not_found",
         CommerceError::VariantNotFound(_) => "product.variant_not_found",
+        CommerceError::ImageNotFound(_) => "product.image_not_found",
         CommerceError::CannotDeleteOnlyVariant => "product.cannot_delete_only_variant",
         CommerceError::DuplicateHandle { .. } => "product.duplicate_handle",
         CommerceError::Validation(_) => "product.validation",
@@ -937,5 +941,15 @@ mod tests {
             "cannot delete the only variant of a product"
         );
         assert!(!cannot_delete_only.retryable);
+
+        let image_not_found = product_error_to_port_error(
+            &context,
+            READ_PRODUCT_PROJECTION_OPERATION,
+            CommerceError::ImageNotFound(Uuid::nil()),
+        );
+        assert_eq!(image_not_found.kind, PortErrorKind::NotFound);
+        assert_eq!(image_not_found.code, "product.image_not_found");
+        assert_eq!(image_not_found.message, "product image was not found");
+        assert!(!image_not_found.retryable);
     }
 }

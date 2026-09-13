@@ -121,6 +121,110 @@ pub(crate) fn convert_create_product_input(
     })
 }
 
+pub(crate) fn convert_create_variant_input(
+    input: CreateVariantInput,
+) -> Result<crate::dto::CreateVariantInput> {
+    let prices = input
+        .prices
+        .into_iter()
+        .map(|price| {
+            let amount = parse_decimal(&price.amount)?;
+            let compare_at_amount = match price.compare_at_amount {
+                Some(value) => Some(parse_decimal(&value)?),
+                None => None,
+            };
+
+            Ok(crate::dto::PriceInput {
+                currency_code: price.currency_code,
+                channel_id: price.channel_id,
+                channel_slug: price.channel_slug,
+                amount,
+                compare_at_amount,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(crate::dto::CreateVariantInput {
+        sku: input.sku,
+        barcode: input.barcode,
+        shipping_profile_slug: input.shipping_profile_slug,
+        option1: input.option1,
+        option2: input.option2,
+        option3: input.option3,
+        prices,
+        inventory_quantity: input.inventory_quantity.unwrap_or(0),
+        inventory_policy: input
+            .inventory_policy
+            .unwrap_or_else(|| "deny".to_string()),
+        weight: None,
+        weight_unit: None,
+    })
+}
+
+pub(crate) fn convert_update_variant_input(
+    input: UpdateVariantInput,
+) -> Result<crate::dto::UpdateVariantInput> {
+    let prices = match input.prices {
+        Some(prices) => {
+            let converted = prices
+                .into_iter()
+                .map(|price| {
+                    let amount = parse_decimal(&price.amount)?;
+                    let compare_at_amount = match price.compare_at_amount {
+                        Some(value) => Some(parse_decimal(&value)?),
+                        None => None,
+                    };
+
+                    Ok(crate::dto::PriceInput {
+                        currency_code: price.currency_code,
+                        channel_id: price.channel_id,
+                        channel_slug: price.channel_slug,
+                        amount,
+                        compare_at_amount,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Some(converted)
+        }
+        None => None,
+    };
+
+    Ok(crate::dto::UpdateVariantInput {
+        sku: input.sku,
+        barcode: input.barcode,
+        shipping_profile_slug: input.shipping_profile_slug,
+        prices,
+        inventory_quantity: input.inventory_quantity,
+        inventory_policy: input.inventory_policy,
+        weight: None,
+        weight_unit: None,
+        option1: input.option1,
+        option2: input.option2,
+        option3: input.option3,
+    })
+}
+
+pub(crate) fn convert_add_product_image_input(
+    input: AddProductImageInput,
+) -> Result<crate::dto::AddProductImageInput> {
+    Ok(crate::dto::AddProductImageInput {
+        media_id: input.media_id,
+        position: input.position,
+        alt_text: input.alt_text,
+        locale: input.locale,
+    })
+}
+
+pub(crate) fn convert_update_product_image_input(
+    input: UpdateProductImageInput,
+) -> Result<crate::dto::UpdateProductImageInput> {
+    Ok(crate::dto::UpdateProductImageInput {
+        position: input.position,
+        alt_text: input.alt_text,
+        locale: input.locale,
+    })
+}
+
 pub(crate) fn parse_decimal(value: &str) -> Result<Decimal> {
     Decimal::from_str(value).map_err(|_| async_graphql::Error::new("Invalid decimal value"))
 }

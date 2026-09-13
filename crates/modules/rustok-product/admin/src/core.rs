@@ -504,6 +504,134 @@ pub(crate) fn build_product_attribute_form_copy(locale: Option<&str>) -> Product
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductVariantsPanelCopy {
+    pub title: String,
+    pub subtitle: String,
+    pub add: String,
+    pub sku: String,
+    pub barcode: String,
+    pub options: String,
+    pub price: String,
+    pub stock: String,
+    pub policy: String,
+    pub actions: String,
+    pub empty: String,
+    pub delete: String,
+    pub cannot_delete_only: String,
+}
+
+pub(crate) fn build_product_variants_panel_copy(locale: Option<&str>) -> ProductVariantsPanelCopy {
+    ProductVariantsPanelCopy {
+        title: t(locale, "product.variants.title", "Variants"),
+        subtitle: t(
+            locale,
+            "product.variants.subtitle",
+            "Manage SKUs, options, pricing, and inventory levels.",
+        ),
+        add: t(locale, "product.variants.add", "Add variant"),
+        sku: t(locale, "product.variants.sku", "SKU"),
+        barcode: t(locale, "product.variants.barcode", "Barcode"),
+        options: t(locale, "product.variants.options", "Options"),
+        price: t(locale, "product.variants.price", "Price"),
+        stock: t(locale, "product.variants.stock", "Stock"),
+        policy: t(locale, "product.variants.policy", "Policy"),
+        actions: t(locale, "product.variants.actions", "Actions"),
+        empty: t(locale, "product.variants.empty", "No variants found."),
+        delete: t(locale, "product.variants.delete", "Delete"),
+        cannot_delete_only: t(
+            locale,
+            "product.variants.cannotDeleteOnly",
+            "Cannot delete the only variant of a product.",
+        ),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductMediaPanelCopy {
+    pub title: String,
+    pub subtitle: String,
+    pub add: String,
+    pub media_id: String,
+    pub alt_text: String,
+    pub position: String,
+    pub empty: String,
+    pub remove: String,
+    pub move_up: String,
+    pub move_down: String,
+}
+
+pub(crate) fn build_product_media_panel_copy(locale: Option<&str>) -> ProductMediaPanelCopy {
+    ProductMediaPanelCopy {
+        title: t(locale, "product.media.title", "Media Gallery"),
+        subtitle: t(
+            locale,
+            "product.media.subtitle",
+            "Product images and visual assets.",
+        ),
+        add: t(locale, "product.media.add", "Add image"),
+        media_id: t(locale, "product.media.mediaId", "Media ID"),
+        alt_text: t(locale, "product.media.altText", "Alt text"),
+        position: t(locale, "product.media.position", "Position"),
+        empty: t(locale, "product.media.empty", "No images added yet."),
+        remove: t(locale, "product.media.remove", "Remove"),
+        move_up: t(locale, "product.media.moveUp", "Move up"),
+        move_down: t(locale, "product.media.moveDown", "Move down"),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductRelationsPanelCopy {
+    pub title: String,
+    pub subtitle: String,
+    pub tab_cross_sell: String,
+    pub tab_up_sell: String,
+    pub tab_related: String,
+    pub tab_accessory: String,
+    pub tab_alternative: String,
+    pub add: String,
+    pub target_product_id: String,
+    pub position: String,
+    pub empty: String,
+    pub remove: String,
+    pub move_up: String,
+    pub move_down: String,
+}
+
+pub(crate) fn build_product_relations_panel_copy(
+    locale: Option<&str>,
+) -> ProductRelationsPanelCopy {
+    ProductRelationsPanelCopy {
+        title: t(locale, "product.relations.title", "Product Relations"),
+        subtitle: t(
+            locale,
+            "product.relations.subtitle",
+            "Cross-sells, up-sells, accessories, and merchandising associations.",
+        ),
+        tab_cross_sell: t(locale, "product.relations.tabCrossSell", "Cross-sell"),
+        tab_up_sell: t(locale, "product.relations.tabUpSell", "Up-sell"),
+        tab_related: t(locale, "product.relations.tabRelated", "Related"),
+        tab_accessory: t(locale, "product.relations.tabAccessory", "Accessories"),
+        tab_alternative: t(locale, "product.relations.tabAlternative", "Alternatives"),
+        add: t(locale, "product.relations.add", "Add relation"),
+        target_product_id: t(
+            locale,
+            "product.relations.targetProductId",
+            "Target Product ID (UUID)",
+        ),
+        position: t(locale, "product.relations.position", "Position"),
+        empty: t(
+            locale,
+            "product.relations.empty",
+            "No relations configured for this type.",
+        ),
+        remove: t(locale, "product.relations.remove", "Remove"),
+        move_up: t(locale, "product.relations.moveUp", "Move up"),
+        move_down: t(locale, "product.relations.moveDown", "Move down"),
+    }
+}
+
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct ProductAttributeEditorState {
     entries: HashMap<String, ProductAttributeEditorEntry>,
@@ -1767,6 +1895,86 @@ pub(crate) fn product_admin_status_badge_container_class(status: &str) -> &'stat
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct VariantRowViewModel {
+    pub id: String,
+    pub sku: String,
+    pub title: String,
+    pub options_summary: String,
+    pub price: String,
+    pub stock: String,
+    pub inventory_policy: String,
+    pub can_delete: bool,
+}
+
+pub(crate) fn build_variant_row_view_models(
+    product: &ProductDetail,
+) -> Vec<VariantRowViewModel> {
+    let multiple = product.variants.len() > 1;
+    product
+        .variants
+        .iter()
+        .map(|v| {
+            let options: Vec<&str> = [v.option1.as_deref(), v.option2.as_deref(), v.option3.as_deref()]
+                .into_iter()
+                .flatten()
+                .filter(|opt| !opt.trim().is_empty())
+                .collect();
+            let options_summary = if options.is_empty() {
+                "—".to_string()
+            } else {
+                options.join(" / ")
+            };
+            let price = v
+                .prices
+                .first()
+                .map(|p| format!("{} {}", p.amount, p.currency_code))
+                .unwrap_or_else(|| "—".to_string());
+            VariantRowViewModel {
+                id: v.id.clone(),
+                sku: v.sku.clone().unwrap_or_else(|| "—".to_string()),
+                title: if v.title.trim().is_empty() { "—".to_string() } else { v.title.clone() },
+                options_summary,
+                price,
+                stock: v.inventory_quantity.to_string(),
+                inventory_policy: v.inventory_policy.clone(),
+                can_delete: multiple,
+            }
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductImageViewModel {
+    pub id: String,
+    pub media_id: String,
+    pub url: String,
+    pub alt_text: String,
+    pub position: i32,
+    pub is_first: bool,
+    pub is_last: bool,
+}
+
+pub(crate) fn build_product_image_view_models(
+    product: &ProductDetail,
+) -> Vec<ProductImageViewModel> {
+    let total = product.images.len();
+    product
+        .images
+        .iter()
+        .enumerate()
+        .map(|(idx, img)| ProductImageViewModel {
+            id: img.id.clone(),
+            media_id: img.media_id.clone(),
+            url: img.url.clone(),
+            alt_text: img.alt_text.clone().unwrap_or_default(),
+            position: img.position,
+            is_first: idx == 0,
+            is_last: idx + 1 == total,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1863,6 +2071,7 @@ mod tests {
                 inventory_policy: "DENY".to_string(),
                 in_stock: true,
             }],
+            images: Vec::new(),
             effective_form: None,
         }
     }
@@ -2200,6 +2409,7 @@ mod tests {
                 inventory_policy: "DENY".to_string(),
                 in_stock: true,
             }],
+            images: Vec::new(),
             effective_form: None,
         };
 
@@ -2626,6 +2836,7 @@ mod tests {
                 inventory_policy: "DENY".to_string(),
                 in_stock: true,
             }],
+            images: Vec::new(),
             effective_form: None,
         };
 
@@ -2705,5 +2916,98 @@ mod tests {
 
         assert_eq!(patches[0].kind, "clear");
         assert!(patches[0].text.is_none());
+    }
+
+    #[test]
+    fn variant_and_media_copies_localize() {
+        let en_var = build_product_variants_panel_copy(Some("en"));
+        assert_eq!(en_var.title, "Variants");
+        assert_eq!(en_var.cannot_delete_only, "Cannot delete the only variant of a product.");
+
+        let ru_var = build_product_variants_panel_copy(Some("ru"));
+        assert_eq!(ru_var.title, "Варианты");
+
+        let en_med = build_product_media_panel_copy(Some("en"));
+        assert_eq!(en_med.title, "Media Gallery");
+
+        let ru_med = build_product_media_panel_copy(Some("ru"));
+        assert_eq!(ru_med.title, "Медиагалерея");
+
+        let en_rel = build_product_relations_panel_copy(Some("en"));
+        assert_eq!(en_rel.title, "Product Relations");
+        assert_eq!(en_rel.tab_cross_sell, "Cross-sell");
+
+        let ru_rel = build_product_relations_panel_copy(Some("ru"));
+        assert_eq!(ru_rel.title, "Связанные товары");
+        assert_eq!(ru_rel.tab_cross_sell, "Сопутствующие");
+    }
+
+    #[test]
+    fn variant_row_view_models_track_multiple_variants_and_options() {
+        let mut product = product_detail();
+        assert_eq!(product.variants.len(), 1);
+        let rows = build_variant_row_view_models(&product);
+        assert_eq!(rows.len(), 1);
+        assert!(!rows[0].can_delete);
+        assert_eq!(rows[0].sku, "COAT-1");
+
+        product.variants.push(crate::model::ProductVariant {
+            id: "variant-2".to_string(),
+            sku: Some("COAT-BLK-M".to_string()),
+            barcode: None,
+            shipping_profile_slug: None,
+            title: "Medium".to_string(),
+            option1: Some("Black".to_string()),
+            option2: Some("M".to_string()),
+            option3: None,
+            prices: vec![crate::model::ProductPrice {
+                currency_code: "USD".to_string(),
+                amount: "120.00".to_string(),
+                compare_at_amount: None,
+                on_sale: false,
+            }],
+            inventory_quantity: 15,
+            inventory_policy: "DENY".to_string(),
+            in_stock: true,
+        });
+
+        let rows = build_variant_row_view_models(&product);
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].can_delete);
+        assert!(rows[1].can_delete);
+        assert_eq!(rows[1].options_summary, "Black / M");
+        assert_eq!(rows[1].price, "120.00 USD");
+        assert_eq!(rows[1].stock, "15");
+    }
+
+    #[test]
+    fn product_image_view_models_track_ordering_flags() {
+        let mut product = product_detail();
+        product.images = vec![
+            crate::model::ProductImage {
+                id: "img-1".to_string(),
+                media_id: "media-1".to_string(),
+                url: "https://example.com/1.jpg".to_string(),
+                alt_text: Some("Front view".to_string()),
+                position: 0,
+            },
+            crate::model::ProductImage {
+                id: "img-2".to_string(),
+                media_id: "media-2".to_string(),
+                url: "https://example.com/2.jpg".to_string(),
+                alt_text: None,
+                position: 1,
+            },
+        ];
+
+        let models = build_product_image_view_models(&product);
+        assert_eq!(models.len(), 2);
+        assert!(models[0].is_first);
+        assert!(!models[0].is_last);
+        assert_eq!(models[0].alt_text, "Front view");
+
+        assert!(!models[1].is_first);
+        assert!(models[1].is_last);
+        assert_eq!(models[1].alt_text, "");
     }
 }

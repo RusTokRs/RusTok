@@ -1464,13 +1464,16 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.attribute_value_translation_owner_unavailable",
             "Product attribute-value translation storage is temporarily unavailable",
         ),
-        CommerceError::ProductNotFound(_) => PortError::not_found(
+        CommerceError::ProductNotFound(_)
+        | CommerceError::VariantNotFound(_)
+        | CommerceError::ImageNotFound(_) => PortError::not_found(
             "product.attribute_value_translation_resource_not_found",
             "Product attribute-value translation resource was not found",
         ),
         CommerceError::DuplicateHandle { .. }
         | CommerceError::DuplicateSku(_)
-        | CommerceError::CannotDeletePublished => PortError::conflict(
+        | CommerceError::CannotDeletePublished
+        | CommerceError::CannotDeleteOnlyVariant => PortError::conflict(
             "product.attribute_value_translation_owner_conflict",
             "Product state conflicts with the requested attribute-value translation mutation",
         ),

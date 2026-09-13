@@ -2305,6 +2305,9 @@ fn map_product_catalog_error(error: rustok_product::CommerceError) -> CommerceEr
         rustok_product::CommerceError::CannotDeleteOnlyVariant => {
             CommerceError::Validation("cannot delete only variant of product".to_string())
         }
+        rustok_product::CommerceError::ImageNotFound(id) => {
+            CommerceError::Validation(format!("product image not found: {id}"))
+        }
         rustok_product::CommerceError::Core(error) => CommerceError::Core(error),
     }
 }

@@ -1,0 +1,14 @@
+[module]
+slug = "brand"
+name = "Brand"
+version = "0.1.0"
+description = "Brand catalog, manufacturers, media presentation, and product associations"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "capability_only"
+
+[dependencies]
+product = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "BrandModule"

@@ -355,12 +355,12 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.option_translation_owner_unavailable",
             "Product Option translation storage is temporarily unavailable",
         ),
-        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => {
-            PortError::not_found(
-                "product.option_translation_resource_not_found",
-                "Product Option translation resource was not found",
-            )
-        }
+        CommerceError::ProductNotFound(_)
+        | CommerceError::VariantNotFound(_)
+        | CommerceError::ImageNotFound(_) => PortError::not_found(
+            "product.option_translation_resource_not_found",
+            "Product Option translation resource was not found",
+        ),
         CommerceError::DuplicateHandle { .. } | CommerceError::DuplicateSku(_) => {
             PortError::conflict(
                 "product.option_translation_owner_conflict",

@@ -77,6 +77,8 @@ pub struct ProductDetail {
     pub translations: Vec<ProductTranslation>,
     pub options: Vec<ProductOption>,
     pub variants: Vec<ProductVariant>,
+    #[serde(default)]
+    pub images: Vec<ProductImage>,
     #[serde(rename = "effectiveForm", default)]
     pub effective_form: Option<ProductEffectiveForm>,
 }
@@ -175,6 +177,60 @@ pub struct ProductPrice {
     pub compare_at_amount: Option<String>,
     #[serde(rename = "onSale")]
     pub on_sale: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductImage {
+    pub id: String,
+    #[serde(rename = "mediaId")]
+    pub media_id: String,
+    pub url: String,
+    #[serde(rename = "altText")]
+    pub alt_text: Option<String>,
+    pub position: i32,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct VariantDraft {
+    pub sku: Option<String>,
+    pub barcode: Option<String>,
+    #[serde(rename = "shippingProfileSlug")]
+    pub shipping_profile_slug: Option<String>,
+    pub option1: Option<String>,
+    pub option2: Option<String>,
+    pub option3: Option<String>,
+    pub prices: Vec<VariantPriceDraft>,
+    #[serde(rename = "inventoryQuantity")]
+    pub inventory_quantity: Option<i32>,
+    #[serde(rename = "inventoryPolicy")]
+    pub inventory_policy: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct VariantPriceDraft {
+    #[serde(rename = "currencyCode")]
+    pub currency_code: String,
+    pub amount: String,
+    #[serde(rename = "compareAtAmount")]
+    pub compare_at_amount: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct ProductImageDraft {
+    #[serde(rename = "mediaId")]
+    pub media_id: String,
+    pub position: Option<i32>,
+    #[serde(rename = "altText")]
+    pub alt_text: Option<String>,
+    pub locale: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct UpdateProductImageDraft {
+    pub position: Option<i32>,
+    #[serde(rename = "altText")]
+    pub alt_text: Option<String>,
+    pub locale: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -476,3 +532,33 @@ pub struct BindCategoryAttributeDraft {
     pub is_disabled: bool,
     pub position: Option<i32>,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ProductRelationItem {
+    pub id: String,
+    #[serde(rename = "productId")]
+    pub product_id: String,
+    #[serde(rename = "relatedProductId")]
+    pub related_product_id: String,
+    #[serde(rename = "relationType")]
+    pub relation_type: String,
+    pub position: i32,
+    pub metadata: serde_json::Value,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CreateProductRelationDraft {
+    #[serde(rename = "productId")]
+    pub product_id: String,
+    #[serde(rename = "relatedProductId")]
+    pub related_product_id: String,
+    #[serde(rename = "relationType")]
+    pub relation_type: String,
+    pub position: Option<i32>,
+    pub metadata: Option<serde_json::Value>,
+}
+

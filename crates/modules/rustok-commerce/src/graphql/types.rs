@@ -51,6 +51,7 @@ pub struct GqlProduct {
     pub translations: Vec<GqlProductTranslation>,
     pub options: Vec<GqlProductOption>,
     pub variants: Vec<GqlVariant>,
+    pub images: Vec<GqlProductImage>,
 }
 
 #[derive(SimpleObject)]
@@ -102,6 +103,22 @@ pub struct GqlPrice {
     pub amount: String,
     pub compare_at_amount: Option<String>,
     pub on_sale: bool,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlProductImage {
+    pub id: Uuid,
+    pub media_id: Uuid,
+    pub url: String,
+    pub alt_text: Option<String>,
+    pub position: i32,
+    pub translations: Vec<GqlProductImageTranslation>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlProductImageTranslation {
+    pub locale: String,
+    pub alt_text: Option<String>,
 }
 
 #[derive(SimpleObject)]
@@ -1081,6 +1098,34 @@ pub struct UpdateProductInput {
 }
 
 #[derive(InputObject)]
+pub struct UpdateVariantInput {
+    pub sku: Option<String>,
+    pub barcode: Option<String>,
+    pub shipping_profile_slug: Option<String>,
+    pub option1: Option<String>,
+    pub option2: Option<String>,
+    pub option3: Option<String>,
+    pub prices: Option<Vec<PriceInput>>,
+    pub inventory_quantity: Option<i32>,
+    pub inventory_policy: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct AddProductImageInput {
+    pub media_id: Uuid,
+    pub position: Option<i32>,
+    pub alt_text: Option<String>,
+    pub locale: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct UpdateProductImageInput {
+    pub position: Option<i32>,
+    pub alt_text: Option<String>,
+    pub locale: Option<String>,
+}
+
+#[derive(InputObject)]
 pub struct ProductsFilter {
     pub status: Option<GqlProductStatus>,
     pub vendor: Option<String>,
@@ -1615,6 +1660,11 @@ impl From<dto::ProductResponse> for GqlProduct {
                 .map(GqlProductOption::from)
                 .collect(),
             variants: product.variants.into_iter().map(GqlVariant::from).collect(),
+            images: product
+                .images
+                .into_iter()
+                .map(GqlProductImage::from)
+                .collect(),
         }
     }
 }
@@ -1772,6 +1822,32 @@ impl From<dto::PriceResponse> for GqlPrice {
             amount: price.amount.to_string(),
             compare_at_amount: price.compare_at_amount.map(|value| value.to_string()),
             on_sale: price.on_sale,
+        }
+    }
+}
+
+impl From<dto::ProductImageResponse> for GqlProductImage {
+    fn from(image: dto::ProductImageResponse) -> Self {
+        Self {
+            id: image.id,
+            media_id: image.media_id,
+            url: image.url,
+            alt_text: image.alt_text,
+            position: image.position,
+            translations: image
+                .translations
+                .into_iter()
+                .map(GqlProductImageTranslation::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<dto::ProductImageTranslationResponse> for GqlProductImageTranslation {
+    fn from(translation: dto::ProductImageTranslationResponse) -> Self {
+        Self {
+            locale: translation.locale,
+            alt_text: translation.alt_text,
         }
     }
 }
@@ -2554,3 +2630,80 @@ impl From<dto::FulfillmentItemResponse> for GqlFulfillmentItem {
         }
     }
 }
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq, Debug)]
+pub enum GqlRelationType {
+    CrossSell,
+    UpSell,
+    Related,
+    Accessory,
+    Alternative,
+}
+
+impl From<GqlRelationType> for rustok_product_relations::dto::RelationType {
+    fn from(t: GqlRelationType) -> Self {
+        match t {
+            GqlRelationType::CrossSell => rustok_product_relations::dto::RelationType::CrossSell,
+            GqlRelationType::UpSell => rustok_product_relations::dto::RelationType::UpSell,
+            GqlRelationType::Related => rustok_product_relations::dto::RelationType::Related,
+            GqlRelationType::Accessory => rustok_product_relations::dto::RelationType::Accessory,
+            GqlRelationType::Alternative => rustok_product_relations::dto::RelationType::Alternative,
+        }
+    }
+}
+
+impl From<rustok_product_relations::dto::RelationType> for GqlRelationType {
+    fn from(t: rustok_product_relations::dto::RelationType) -> Self {
+        match t {
+            rustok_product_relations::dto::RelationType::CrossSell => GqlRelationType::CrossSell,
+            rustok_product_relations::dto::RelationType::UpSell => GqlRelationType::UpSell,
+            rustok_product_relations::dto::RelationType::Related => GqlRelationType::Related,
+            rustok_product_relations::dto::RelationType::Accessory => GqlRelationType::Accessory,
+            rustok_product_relations::dto::RelationType::Alternative => GqlRelationType::Alternative,
+            rustok_product_relations::dto::RelationType::Custom(_) => GqlRelationType::Related,
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct GqlProductRelation {
+    pub id: Uuid,
+    pub product_id: Uuid,
+    pub related_product_id: Uuid,
+    pub relation_type: GqlRelationType,
+    pub position: i32,
+    pub metadata: Json<serde_json::Value>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<rustok_product_relations::dto::ProductRelationDto> for GqlProductRelation {
+    fn from(r: rustok_product_relations::dto::ProductRelationDto) -> Self {
+        Self {
+            id: r.id,
+            product_id: r.product_id,
+            related_product_id: r.related_product_id,
+            relation_type: r.relation_type.into(),
+            position: r.position,
+            metadata: Json(r.metadata),
+            created_at: r.created_at.to_rfc3339(),
+            updated_at: r.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+#[derive(InputObject)]
+pub struct AddProductRelationInput {
+    pub product_id: Uuid,
+    pub related_product_id: Uuid,
+    pub relation_type: GqlRelationType,
+    pub position: Option<i32>,
+    pub metadata: Option<Json<serde_json::Value>>,
+}
+
+#[derive(InputObject)]
+pub struct UpdateProductRelationInput {
+    pub position: Option<i32>,
+    pub metadata: Option<Json<serde_json::Value>>,
+}
+

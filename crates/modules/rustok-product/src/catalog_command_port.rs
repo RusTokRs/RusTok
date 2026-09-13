@@ -3,8 +3,9 @@ use rustok_api::{PortCallPolicy, PortContext, PortError};
 use uuid::Uuid;
 
 use crate::dto::{
-    CreateProductInput, CreateVariantInput, ProductResponse, UpdateProductInput,
-    UpdateVariantInput, VariantResponse,
+    AddProductImageInput, CreateProductInput, CreateVariantInput, ProductImageResponse,
+    ProductResponse, UpdateProductInput, UpdateProductImageInput, UpdateVariantInput,
+    VariantResponse,
 };
 use crate::{CatalogService, CommerceError};
 
@@ -61,6 +62,35 @@ pub trait ProductCatalogCommandPort: Send + Sync {
         &self,
         context: PortContext,
         variant_id: Uuid,
+    ) -> Result<(), PortError>;
+
+    async fn add_product_image(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        input: AddProductImageInput,
+    ) -> Result<ProductImageResponse, PortError>;
+
+    async fn update_product_image(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        image_id: Uuid,
+        input: UpdateProductImageInput,
+    ) -> Result<ProductImageResponse, PortError>;
+
+    async fn delete_product_image(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        image_id: Uuid,
+    ) -> Result<(), PortError>;
+
+    async fn reorder_product_images(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        image_ids: Vec<Uuid>,
     ) -> Result<(), PortError>;
 }
 
@@ -164,6 +194,59 @@ impl ProductCatalogCommandPort for CatalogService {
             .await
             .map_err(|error| product_command_error(&context, operation, error))
     }
+
+    async fn add_product_image(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        input: AddProductImageInput,
+    ) -> Result<ProductImageResponse, PortError> {
+        let operation = "add_product_image";
+        let (tenant_id, actor_id) = command_scope(&context, operation)?;
+        self.add_product_image(tenant_id, actor_id, product_id, input)
+            .await
+            .map_err(|error| product_command_error(&context, operation, error))
+    }
+
+    async fn update_product_image(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        image_id: Uuid,
+        input: UpdateProductImageInput,
+    ) -> Result<ProductImageResponse, PortError> {
+        let operation = "update_product_image";
+        let (tenant_id, actor_id) = command_scope(&context, operation)?;
+        self.update_product_image(tenant_id, actor_id, product_id, image_id, input)
+            .await
+            .map_err(|error| product_command_error(&context, operation, error))
+    }
+
+    async fn delete_product_image(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        image_id: Uuid,
+    ) -> Result<(), PortError> {
+        let operation = "delete_product_image";
+        let (tenant_id, actor_id) = command_scope(&context, operation)?;
+        self.delete_product_image(tenant_id, actor_id, product_id, image_id)
+            .await
+            .map_err(|error| product_command_error(&context, operation, error))
+    }
+
+    async fn reorder_product_images(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        image_ids: Vec<Uuid>,
+    ) -> Result<(), PortError> {
+        let operation = "reorder_product_images";
+        let (tenant_id, actor_id) = command_scope(&context, operation)?;
+        self.reorder_product_images(tenant_id, actor_id, product_id, image_ids)
+            .await
+            .map_err(|error| product_command_error(&context, operation, error))
+    }
 }
 
 fn command_scope(
@@ -246,6 +329,9 @@ fn product_command_error(
         CommerceError::VariantNotFound(_) => {
             PortError::not_found("product.variant_not_found", "product variant was not found")
         }
+        CommerceError::ImageNotFound(_) => {
+            PortError::not_found("product.image_not_found", "product image was not found")
+        }
         CommerceError::DuplicateHandle { .. } => PortError::conflict(
             "product.duplicate_handle",
             "product handle conflicts with an existing product",
@@ -281,6 +367,7 @@ fn product_error_kind(error: &CommerceError) -> &'static str {
         CommerceError::Database(_) => "database",
         CommerceError::ProductNotFound(_) => "not_found",
         CommerceError::VariantNotFound(_) => "variant_not_found",
+        CommerceError::ImageNotFound(_) => "image_not_found",
         CommerceError::DuplicateHandle { .. } => "duplicate_handle",
         CommerceError::DuplicateSku(_) => "duplicate_sku",
         CommerceError::Validation(_) => "validation",
@@ -296,6 +383,7 @@ fn product_error_code(error: &CommerceError) -> &'static str {
         CommerceError::Database(_) => "product.database_unavailable",
         CommerceError::ProductNotFound(_) => "product.product_not_found",
         CommerceError::VariantNotFound(_) => "product.variant_not_found",
+        CommerceError::ImageNotFound(_) => "product.image_not_found",
         CommerceError::DuplicateHandle { .. } => "product.duplicate_handle",
         CommerceError::DuplicateSku(_) => "product.duplicate_sku",
         CommerceError::Validation(_) => "product.validation",
@@ -331,6 +419,15 @@ mod tests {
         assert_eq!(variant_not_found.kind, PortErrorKind::NotFound);
         assert_eq!(variant_not_found.code, "product.variant_not_found");
         assert_eq!(variant_not_found.message, "product variant was not found");
+
+        let image_not_found = product_command_error(
+            &context,
+            "delete_product_image",
+            CommerceError::ImageNotFound(Uuid::nil()),
+        );
+        assert_eq!(image_not_found.kind, PortErrorKind::NotFound);
+        assert_eq!(image_not_found.code, "product.image_not_found");
+        assert_eq!(image_not_found.message, "product image was not found");
 
         let cannot_delete = product_command_error(
             &context,

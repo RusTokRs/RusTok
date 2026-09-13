@@ -177,6 +177,21 @@ pub struct ProductImageTranslationResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct AddProductImageInput {
+    pub media_id: Uuid,
+    pub position: Option<i32>,
+    pub alt_text: Option<String>,
+    pub locale: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UpdateProductImageInput {
+    pub position: Option<i32>,
+    pub alt_text: Option<String>,
+    pub locale: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PriceResponse {
     pub currency_code: String,
     pub amount: Decimal,

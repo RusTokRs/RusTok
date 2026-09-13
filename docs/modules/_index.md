@@ -103,6 +103,7 @@ Module local documentation lives inside the crates themselves at
 | `rustok-cart` | [docs](../../crates/modules/rustok-cart/docs/README.md) | [plan](../../crates/modules/rustok-cart/docs/implementation-plan.md) |
 | `rustok-customer` | [docs](../../crates/modules/rustok-customer/docs/README.md) | [plan](../../crates/modules/rustok-customer/docs/implementation-plan.md) |
 | `rustok-product` | [docs](../../crates/modules/rustok-product/docs/README.md) | [plan](../../crates/modules/rustok-product/docs/implementation-plan.md) |
+| `rustok-product-relations` | [docs](../../crates/modules/rustok-product-relations/docs/README.md) | [plan](../../crates/modules/rustok-product-relations/docs/implementation-plan.md) |
 | `rustok-profiles` | [docs](../../crates/modules/rustok-profiles/docs/README.md) | [plan](../../crates/modules/rustok-profiles/docs/implementation-plan.md) |
 | `rustok-groups` | [docs](../../crates/modules/rustok-groups/docs/README.md) | [plan](../../crates/modules/rustok-groups/docs/implementation-plan.md) |
 | `rustok-reactions` | [docs](../../crates/modules/rustok-reactions/docs/README.md) | [plan](../../crates/modules/rustok-reactions/docs/implementation-plan.md) |

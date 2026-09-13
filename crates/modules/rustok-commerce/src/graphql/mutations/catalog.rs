@@ -9,6 +9,7 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use rustok_product::{ProductCatalogCommandRuntime, ProductCatalogSchemaWritePort};
+use rustok_product_relations::ports::ProductRelationsPort;
 
 use super::super::{
     PRODUCT_MODULE_SLUG as MODULE_SLUG, product_mutation_actor, require_commerce_permission,
@@ -129,7 +130,17 @@ fn product_command_port_error(
             "Product data is temporarily unavailable",
             "PRODUCT_TEMPORARILY_UNAVAILABLE",
         ),
+        (PortErrorKind::NotFound, "product.variant_not_found") => {
+            ("Product variant was not found", "PRODUCT_VARIANT_NOT_FOUND")
+        }
+        (PortErrorKind::NotFound, "product.image_not_found") => {
+            ("Product image was not found", "PRODUCT_IMAGE_NOT_FOUND")
+        }
         (PortErrorKind::NotFound, _) => ("Product was not found", "PRODUCT_NOT_FOUND"),
+        (PortErrorKind::Conflict, "product.cannot_delete_only_variant") => (
+            "Cannot delete the only variant of a product",
+            "CANNOT_DELETE_ONLY_VARIANT",
+        ),
         (PortErrorKind::Conflict, "product.duplicate_handle") => (
             "Product handle conflicts with an existing product",
             "DUPLICATE_HANDLE",
@@ -353,6 +364,334 @@ impl CommerceCatalogMutation {
             .map_err(|error| product_command_port_error(&port_context, error, "delete_product"))?;
 
         Ok(true)
+    }
+
+    async fn create_product_variant(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        product_id: Uuid,
+        input: CreateVariantInput,
+    ) -> Result<GqlVariant> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        validate_product_shipping_profile_input(
+            db,
+            tenant_id,
+            input.shipping_profile_slug.as_deref(),
+        )
+        .await?;
+        let domain_input = convert_create_variant_input(input)?;
+        let port_context = product_command_context(
+            ctx,
+            (tenant_id, user_id),
+            Some(product_id),
+            idempotency_key,
+            "create_product_variant",
+        )?;
+        let variant = product_command_runtime(ctx)?
+            .command_port()
+            .create_variant(port_context.clone(), product_id, domain_input)
+            .await
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "create_product_variant")
+            })?;
+
+        Ok(variant.into())
+    }
+
+    async fn update_product_variant(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        id: Uuid,
+        input: UpdateVariantInput,
+    ) -> Result<GqlVariant> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+
+        if let Some(shipping_profile_slug) = input.shipping_profile_slug.as_deref() {
+            let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+            validate_product_shipping_profile_input(
+                db,
+                tenant_id,
+                Some(shipping_profile_slug),
+            )
+            .await?;
+        }
+        let domain_input = convert_update_variant_input(input)?;
+        let port_context = product_command_context(
+            ctx,
+            (tenant_id, user_id),
+            Some(id),
+            idempotency_key,
+            "update_product_variant",
+        )?;
+        let variant = product_command_runtime(ctx)?
+            .command_port()
+            .update_variant(port_context.clone(), id, domain_input)
+            .await
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "update_product_variant")
+            })?;
+
+        Ok(variant.into())
+    }
+
+    async fn delete_product_variant(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_DELETE],
+            "Permission denied: products:delete required",
+        )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+
+        let port_context = product_command_context(
+            ctx,
+            (tenant_id, user_id),
+            Some(id),
+            idempotency_key,
+            "delete_product_variant",
+        )?;
+        product_command_runtime(ctx)?
+            .command_port()
+            .delete_variant(port_context.clone(), id)
+            .await
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "delete_product_variant")
+            })?;
+
+        Ok(true)
+    }
+
+    async fn add_product_image(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        product_id: Uuid,
+        input: AddProductImageInput,
+    ) -> Result<GqlProductImage> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+
+        let domain_input = convert_add_product_image_input(input)?;
+        let port_context = product_command_context(
+            ctx,
+            (tenant_id, user_id),
+            Some(product_id),
+            idempotency_key,
+            "add_product_image",
+        )?;
+        let image = product_command_runtime(ctx)?
+            .command_port()
+            .add_product_image(port_context.clone(), product_id, domain_input)
+            .await
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "add_product_image")
+            })?;
+
+        Ok(image.into())
+    }
+
+    async fn update_product_image(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        product_id: Uuid,
+        id: Uuid,
+        input: UpdateProductImageInput,
+    ) -> Result<GqlProductImage> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+
+        let domain_input = convert_update_product_image_input(input)?;
+        let port_context = product_command_context(
+            ctx,
+            (tenant_id, user_id),
+            Some(id),
+            idempotency_key,
+            "update_product_image",
+        )?;
+        let image = product_command_runtime(ctx)?
+            .command_port()
+            .update_product_image(port_context.clone(), product_id, id, domain_input)
+            .await
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "update_product_image")
+            })?;
+
+        Ok(image.into())
+    }
+
+    async fn delete_product_image(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        product_id: Uuid,
+        id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_DELETE],
+            "Permission denied: products:delete required",
+        )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+
+        let port_context = product_command_context(
+            ctx,
+            (tenant_id, user_id),
+            Some(id),
+            idempotency_key,
+            "delete_product_image",
+        )?;
+        product_command_runtime(ctx)?
+            .command_port()
+            .delete_product_image(port_context.clone(), product_id, id)
+            .await
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "delete_product_image")
+            })?;
+
+        Ok(true)
+    }
+
+    async fn reorder_product_images(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        product_id: Uuid,
+        image_ids: Vec<Uuid>,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+
+        let port_context = product_command_context(
+            ctx,
+            (tenant_id, user_id),
+            Some(product_id),
+            idempotency_key,
+            "reorder_product_images",
+        )?;
+        product_command_runtime(ctx)?
+            .command_port()
+            .reorder_product_images(port_context.clone(), product_id, image_ids)
+            .await
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "reorder_product_images")
+            })?;
+
+        Ok(true)
+    }
+
+    async fn add_product_relation(
+        &self,
+        ctx: &Context<'_>,
+        input: AddProductRelationInput,
+    ) -> Result<GqlProductRelation> {
+        require_module_enabled(ctx, "product_relations").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = rustok_product_relations::services::ProductRelationService::new(db.clone());
+        let domain_input = rustok_product_relations::dto::CreateProductRelationInput {
+            product_id: input.product_id,
+            related_product_id: input.related_product_id,
+            relation_type: input.relation_type.into(),
+            position: input.position,
+            metadata: input.metadata.map(|m| m.0),
+        };
+        let rel = service
+            .create_relation(tenant_id, Some(user_id), domain_input)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(rel.into())
+    }
+
+    async fn remove_product_relation(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, "product_relations").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = rustok_product_relations::services::ProductRelationService::new(db.clone());
+        service
+            .delete_relation(tenant_id, Some(user_id), id)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(true)
+    }
+
+    async fn reorder_product_relations(
+        &self,
+        ctx: &Context<'_>,
+        product_id: Uuid,
+        relation_type: GqlRelationType,
+        ordered_relation_ids: Vec<Uuid>,
+    ) -> Result<Vec<GqlProductRelation>> {
+        require_module_enabled(ctx, "product_relations").await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = rustok_product_relations::services::ProductRelationService::new(db.clone());
+        let domain_input = rustok_product_relations::dto::ReorderProductRelationsInput {
+            product_id,
+            relation_type: relation_type.into(),
+            ordered_relation_ids,
+        };
+        let reordered = service
+            .reorder_relations(tenant_id, Some(user_id), domain_input)
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(reordered.into_iter().map(Into::into).collect())
     }
 
     async fn create_product_attribute(
