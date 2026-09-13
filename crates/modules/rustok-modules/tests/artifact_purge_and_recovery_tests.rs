@@ -3,39 +3,151 @@
 
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
+use object_store::{ObjectStoreExt, path::Path};
 use rustok_core::MigrationSource;
 use rustok_modules::{
-    ArtifactDataError, ArtifactDataPurgeAuthorizationContext, ArtifactDataPurgeAuthorizer,
-    ArtifactDataPurgePreviewService, ArtifactDataPurgeRequest, ArtifactModuleKind,
-    ArtifactPayloadKind, ArtifactPersistenceContract, ArtifactSchemaDocument,
-    ArtifactSettingsPurgePreviewService, ArtifactSettingsPurgeRequest,
-    ArtifactSettingsRecoveryAuthorizationContext, ArtifactSettingsRecoveryAuthorizer,
-    ArtifactSettingsRecoveryBindRequest, ArtifactSettingsRecoveryCipher,
-    ArtifactSettingsRecoveryCipherContext, ArtifactSettingsRecoveryCiphertext,
-    ArtifactSettingsRecoveryCollectionRequest, ArtifactSettingsRecoveryError,
-    ArtifactSettingsRecoveryPointCreateRequest, ArtifactSettingsRecoveryRetention,
-    ArtifactSettingsRecoveryRetentionUpdate, ArtifactSettingsRecoveryRetentionUpdateRequest,
-    ArtifactSettingsRecoveryRewrapRequest, ArtifactSettingsRestoreRequest,
-    ModuleArtifactDescriptor, ModuleCommandContext, ModulesModule, SeaOrmArtifactDataPurgeService,
+    ArtifactDataError, ArtifactDataPostPurgeRecoveryService, ArtifactDataPurgeAuthorizationContext,
+    ArtifactDataPurgeAuthorizer, ArtifactDataPurgePreviewService, ArtifactDataPurgeRequest,
+    ArtifactDataQuota, ArtifactDataRecoveryAuthorizationContext, ArtifactDataRecoveryAuthorizer,
+    ArtifactDataRestoreRequest, ArtifactDataScope, ArtifactDataSnapshotAuthorizer,
+    ArtifactDataSnapshotCreateRequest, ArtifactModuleKind, ArtifactPayloadKind,
+    ArtifactPersistenceContract, ArtifactSchemaDocument, ArtifactSettingsPurgePreviewService,
+    ArtifactSettingsPurgeRequest, ArtifactSettingsRecoveryAuthorizationContext,
+    ArtifactSettingsRecoveryAuthorizer, ArtifactSettingsRecoveryBindRequest,
+    ArtifactSettingsRecoveryCipher, ArtifactSettingsRecoveryCipherContext,
+    ArtifactSettingsRecoveryCiphertext, ArtifactSettingsRecoveryCollectionRequest,
+    ArtifactSettingsRecoveryError, ArtifactSettingsRecoveryPointCreateRequest,
+    ArtifactSettingsRecoveryRetention, ArtifactSettingsRecoveryRetentionUpdate,
+    ArtifactSettingsRecoveryRetentionUpdateRequest, ArtifactSettingsRecoveryRewrapRequest,
+    ArtifactSettingsRestoreRequest, ModuleArtifactDescriptor, ModuleCommandContext, ModulesModule,
+    PostPurgeRecoveryCutoverRequest, PostPurgeRecoveryError, PrepareRecoveryRequest,
+    SeaOrmArtifactDataPurgeService, SeaOrmArtifactDataSnapshotService,
     SeaOrmArtifactSettingsRecoveryService, canonical_schema_digest,
 };
+use rustok_storage::{LocalStorageConfig, ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 #[derive(Clone)]
+struct RecoveryFixturePolicy {
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    installation_id: Uuid,
+    data_owner_id: Uuid,
+}
+
+impl RecoveryFixturePolicy {
+    fn check_scope(&self, context: &ModuleCommandContext, scope: &ArtifactDataScope) -> bool {
+        context.tenant_id == Some(self.tenant_id)
+            && context.actor_id == self.actor_id
+            && scope.tenant_id == self.tenant_id
+            && scope.data_owner_id == self.data_owner_id
+    }
+    async fn check_owner(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        context: &ModuleCommandContext,
+        owner: &ArtifactDataRecoveryAuthorizationContext,
+    ) -> Result<(), PostPurgeRecoveryError> {
+        if !self.check_scope(context, &owner.original.scope)
+            || !self.check_scope(context, &owner.target)
+            || owner.original.installation_id != self.installation_id
+            || owner.original.scope.namespace_instance_id == owner.target.namespace_instance_id
+        {
+            return Err(PostPurgeRecoveryError::AuthorizationDenied);
+        }
+        let row = transaction.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "SELECT 1 FROM module_artifact_data_namespaces WHERE tenant_id=?1 AND data_owner_id=?2
+             AND namespace_instance_id=?3 AND state='purged' AND purged_at IS NOT NULL",
+            vec![self.tenant_id.to_string().into(),self.data_owner_id.to_string().into(),
+                 owner.original.scope.namespace_instance_id.to_string().into()]))
+            .await.map_err(|e|PostPurgeRecoveryError::Storage(e.to_string()))?;
+        if row.is_none() {
+            return Err(PostPurgeRecoveryError::AuthorizationDenied);
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl ArtifactDataSnapshotAuthorizer for RecoveryFixturePolicy {
+    async fn authorize_snapshot(
+        &self,
+        request: &ArtifactDataSnapshotCreateRequest,
+    ) -> Result<(), ArtifactDataError> {
+        if !self.check_scope(&request.context, &request.scope) {
+            return Err(ArtifactDataError::SnapshotPrecondition);
+        }
+        Ok(())
+    }
+    async fn authorize_restore(
+        &self,
+        request: &ArtifactDataRestoreRequest,
+    ) -> Result<ArtifactDataQuota, ArtifactDataError> {
+        if !self.check_scope(&request.context, &request.target) {
+            return Err(ArtifactDataError::RestorePrecondition);
+        }
+        Ok(ArtifactDataQuota::default())
+    }
+}
+#[async_trait]
+impl ArtifactDataRecoveryAuthorizer for RecoveryFixturePolicy {
+    async fn authorize_prepare_on(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        request: &PrepareRecoveryRequest,
+        owner: &ArtifactDataRecoveryAuthorizationContext,
+    ) -> Result<(), PostPurgeRecoveryError> {
+        self.check_owner(transaction, &request.context, owner).await
+    }
+    async fn authorize_cutover_on(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        request: &PostPurgeRecoveryCutoverRequest,
+        owner: &ArtifactDataRecoveryAuthorizationContext,
+    ) -> Result<(), PostPurgeRecoveryError> {
+        self.check_owner(transaction, &request.context, owner).await
+    }
+}
+
+#[derive(Clone)]
 struct TestAuthorizer;
 
 #[async_trait]
-impl ArtifactDataPurgeAuthorizer for TestAuthorizer {
-    async fn authorize_purge(
+impl ArtifactDataPurgeAuthorizer for RecoveryFixturePolicy {
+    async fn authorize_purge_on(
         &self,
+        transaction: &sea_orm::DatabaseTransaction,
         request: &ArtifactDataPurgeRequest,
-        context: &ArtifactDataPurgeAuthorizationContext,
+        owner: &ArtifactDataPurgeAuthorizationContext,
     ) -> Result<(), ArtifactDataError> {
-        if request.reason.trim().is_empty() || context.installation_id != request.installation_id {
-            return Err(ArtifactDataError::PurgePrecondition);
+        if !self.check_scope(&request.context, &owner.scope)
+            || owner.installation_id != self.installation_id
+            || request.installation_id != self.installation_id
+        {
+            return Err(ArtifactDataError::PolicyDenied);
+        }
+        let row = transaction
+            .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT 1 FROM module_artifact_data_namespaces
+             WHERE tenant_id=?1 AND data_owner_id=?2 AND namespace_instance_id=?3
+               AND purged_at IS NULL AND namespace_revision=?4",
+                vec![
+                    self.tenant_id.to_string().into(),
+                    self.data_owner_id.to_string().into(),
+                    owner.scope.namespace_instance_id.to_string().into(),
+                    i64::try_from(request.expected_namespace_revision)
+                        .map_err(|_| ArtifactDataError::PurgePrecondition)?
+                        .into(),
+                ],
+            ))
+            .await
+            .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
+        if row.is_none() {
+            return Err(ArtifactDataError::PolicyDenied);
         }
         Ok(())
     }
@@ -340,7 +452,7 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
                 tenant_id.to_string().into(),
                 data_owner_id.to_string().into(),
                 namespace_instance_id.to_string().into(),
-                data_contract_digest.into(),
+                data_contract_digest.clone().into(),
             ],
         ))
         .await
@@ -357,7 +469,88 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         vec![tenant_id.to_string().into(), data_owner_id.to_string().into(), namespace_instance_id.to_string().into(),
             serde_json::json!({"theme": "ocean"}).to_string().into()]
     )).await.expect("source owner value fixture");
-    let data_purge_service = SeaOrmArtifactDataPurgeService::new(database.clone(), TestAuthorizer);
+    let storage_parent = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../target")
+        .canonicalize()
+        .expect("absolute workspace target");
+    let storage_root = storage_parent.join(format!("recovery-fixture-{}", Uuid::new_v4()));
+    assert!(storage_root.starts_with(&storage_parent));
+    let storage = StorageRuntime::local(&LocalStorageConfig {
+        base_dir: storage_root.display().to_string(),
+        fsync: true,
+        ..Default::default()
+    })
+    .expect("actual local storage");
+    let recovery_policy = RecoveryFixturePolicy {
+        tenant_id,
+        actor_id,
+        installation_id,
+        data_owner_id,
+    };
+    let snapshot_service = SeaOrmArtifactDataSnapshotService::new(
+        database.clone(),
+        storage.clone(),
+        recovery_policy.clone(),
+    );
+    let object_bytes = bytes::Bytes::from_static(b"actual recovery object payload");
+    let object_digest = format!("sha256:{}", hex::encode(Sha256::digest(&object_bytes)));
+    let object_key = ObjectKey::chronological(
+        "module-artifact-data",
+        ObjectZone::Objects,
+        ObjectScope::Namespace {
+            tenant_id,
+            owner_id: data_owner_id,
+            instance_id: namespace_instance_id,
+        },
+        Utc::now(),
+        Uuid::new_v4(),
+        "bin",
+    )
+    .expect("owner-scoped source key")
+    .to_string();
+    storage
+        .objects
+        .put(
+            &Path::from(object_key.as_str()),
+            object_bytes.clone().into(),
+        )
+        .await
+        .expect("source object bytes");
+    database.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+        "INSERT INTO module_artifact_data_objects
+         (tenant_id,data_owner_id,namespace_instance_id,object_name,storage_key,content_type,size_bytes,digest_sha256,
+          revision,created_at,updated_at) VALUES (?1,?2,?3,'recovery-payload',?4,'application/octet-stream',?5,?6,1,?7,?7)",
+        vec![tenant_id.to_string().into(),data_owner_id.to_string().into(),namespace_instance_id.to_string().into(),
+             object_key.into(),i64::try_from(object_bytes.len()).unwrap().into(),object_digest.into(),Utc::now().into()]))
+        .await.expect("source object metadata");
+    let snapshot = snapshot_service
+        .create(ArtifactDataSnapshotCreateRequest {
+            scope: ArtifactDataScope {
+                tenant_id,
+                data_owner_id,
+                namespace_instance_id,
+                data_contract_digest,
+                module_slug: "theme_manager".into(),
+                data_contract_revision: 1,
+                policy_revision: 1,
+            },
+            expected_namespace_revision: 1,
+            context: command_context(tenant_id, actor_id),
+            reason: "Capture actual source data".into(),
+            retain_until: Utc::now() + Duration::days(30),
+            legal_hold: false,
+        })
+        .await
+        .expect("actual source snapshot before purge");
+    let data_purge_service = SeaOrmArtifactDataPurgeService::new(
+        database.clone(),
+        RecoveryFixturePolicy {
+            tenant_id,
+            actor_id,
+            installation_id,
+            data_owner_id,
+        },
+    );
     let data_purge_req = ArtifactDataPurgeRequest {
         installation_id,
         expected_namespace_revision: 1,
@@ -562,6 +755,18 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         .expect("retired data preview");
     assert!(retired_data_preview.can_purge);
     assert_eq!(retired_data_preview.namespace_revision, 1);
+    let mut denied_purge = data_purge_req.clone();
+    denied_purge.context = command_context(tenant_id, Uuid::new_v4());
+    assert_eq!(
+        data_purge_service.purge(denied_purge).await,
+        Err(ArtifactDataError::PolicyDenied)
+    );
+    let after_denial = data_preview_service
+        .preview(tenant_id, installation_id)
+        .await
+        .unwrap();
+    assert!(after_denial.can_purge);
+    assert_eq!(after_denial.namespace_revision, 1);
 
     // 4. Now that installation is retired, creating recovery point succeeds!
     let recovery_pt = recovery_service
@@ -620,7 +825,7 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         .expect("data purge succeeds");
 
     assert_eq!(data_purge_res.namespace_revision, 2);
-    assert_eq!(data_purge_res.purged_records, 1);
+    assert_eq!(data_purge_res.purged_records, 2);
     assert_eq!(
         data_purge_service
             .purge(data_purge_req)
@@ -709,4 +914,231 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
             .unwrap()
             .is_some()
     );
+    let data_recovery = ArtifactDataPostPurgeRecoveryService::new(
+        database.clone(),
+        storage.clone(),
+        recovery_policy.clone(),
+        recovery_policy,
+    );
+    let prepare = PrepareRecoveryRequest {
+        installation_id,
+        expected_reference_revision: 1,
+        expected_tombstone_revision: 2,
+        source_snapshot_id: snapshot.snapshot_id,
+        context: command_context(tenant_id, actor_id),
+        reason: "Restore exact retired owner".into(),
+    };
+    let staged = data_recovery
+        .prepare_recovery(prepare.clone())
+        .await
+        .expect("restore and verify actual recovery target");
+    assert_eq!(staged.data_owner_id, data_owner_id);
+    assert_eq!(staged.source_namespace_instance_id, namespace_instance_id);
+    assert_ne!(staged.namespace_instance_id, namespace_instance_id);
+    assert_eq!(staged.target_namespace_revision, 2);
+    assert_eq!(staged.records_restored, 1);
+    assert_eq!(staged.objects_restored, 1);
+    assert_eq!(
+        data_recovery
+            .prepare_recovery(prepare.clone())
+            .await
+            .expect("exact prepared replay"),
+        staged
+    );
+    let row = database.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+        "SELECT namespace.state,data.value,reference.namespace_instance_id AS active_instance
+         FROM module_artifact_data_namespaces namespace
+         JOIN module_artifact_data data USING (tenant_id,data_owner_id,namespace_instance_id)
+         JOIN module_artifact_data_owner_references reference USING (tenant_id,data_owner_id)
+         WHERE namespace.tenant_id=?1 AND namespace.data_owner_id=?2 AND namespace.namespace_instance_id=?3",
+        vec![tenant_id.to_string().into(),data_owner_id.to_string().into(),staged.namespace_instance_id.to_string().into()]))
+        .await.expect("restored target SQL").expect("actual target row");
+    assert_eq!(row.try_get::<String>("", "state").unwrap(), "verified");
+    assert_eq!(
+        row.try_get::<serde_json::Value>("", "value").unwrap(),
+        serde_json::json!({"theme":"ocean"})
+    );
+    assert_eq!(
+        row.try_get::<String>("", "active_instance").unwrap(),
+        namespace_instance_id.to_string()
+    );
+    let cutover = PostPurgeRecoveryCutoverRequest {
+        recovery_id: staged.recovery_id,
+        expected_reference_revision: 1,
+        expected_tombstone_revision: 2,
+        expected_target_namespace_revision: staged.target_namespace_revision,
+        verified_manifest_digest: staged.verified_manifest_digest.clone(),
+        context: command_context(tenant_id, actor_id),
+        reason: "Authorize exact verified reference".into(),
+    };
+    let mut denied = cutover.clone();
+    denied.context.actor_id = Uuid::new_v4();
+    assert_eq!(
+        data_recovery.execute_cas_cutover(denied).await.unwrap_err(),
+        PostPurgeRecoveryError::AuthorizationDenied
+    );
+    let mut stale = cutover.clone();
+    stale.expected_reference_revision = 2;
+    assert_eq!(
+        data_recovery.execute_cas_cutover(stale).await.unwrap_err(),
+        PostPurgeRecoveryError::CasCutoverConflict
+    );
+    let row = database
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT storage_key FROM module_artifact_data_objects
+         WHERE tenant_id=?1 AND data_owner_id=?2 AND namespace_instance_id=?3",
+            vec![
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                staged.namespace_instance_id.to_string().into(),
+            ],
+        ))
+        .await
+        .expect("target object SQL")
+        .expect("target object row");
+    let target_key: String = row.try_get("", "storage_key").unwrap();
+    assert_eq!(
+        storage
+            .objects
+            .get(&Path::from(target_key.as_str()))
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap(),
+        object_bytes
+    );
+    storage
+        .objects
+        .put(
+            &Path::from(target_key.as_str()),
+            bytes::Bytes::from_static(b"corrupt target").into(),
+        )
+        .await
+        .expect("corrupt bounded target fixture");
+    assert_eq!(
+        data_recovery
+            .execute_cas_cutover(cutover.clone())
+            .await
+            .unwrap_err(),
+        PostPurgeRecoveryError::Integrity
+    );
+    let row=database.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+        "SELECT namespace_instance_id FROM module_artifact_data_owner_references WHERE tenant_id=?1 AND data_owner_id=?2",
+        vec![tenant_id.to_string().into(),data_owner_id.to_string().into()])).await.unwrap().unwrap();
+    assert_eq!(
+        row.try_get::<String>("", "namespace_instance_id").unwrap(),
+        namespace_instance_id.to_string()
+    );
+    storage
+        .objects
+        .put(&Path::from(target_key), object_bytes.into())
+        .await
+        .expect("repair bounded target fixture");
+    let activated = data_recovery
+        .execute_cas_cutover(cutover.clone())
+        .await
+        .expect("separately authorized reference CAS");
+    assert_eq!(
+        activated.namespace_instance_id,
+        staged.namespace_instance_id
+    );
+    assert_eq!(activated.active_reference_revision, 2);
+    assert_eq!(activated.active_namespace_revision, 3);
+    // Later lifecycle changes cannot invalidate exact terminal receipt replay.
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_admissions SET status='active' WHERE installation_id=?1",
+            vec![installation_id.to_string().into()],
+        ))
+        .await
+        .expect("later lifecycle");
+    assert_eq!(
+        data_recovery
+            .prepare_recovery(prepare.clone())
+            .await
+            .expect("prepared receipt after cutover/lifecycle"),
+        staged
+    );
+    assert_eq!(
+        data_recovery
+            .execute_cas_cutover(cutover.clone())
+            .await
+            .expect("terminal cutover replay"),
+        activated
+    );
+    let mut conflict = cutover;
+    conflict.context.correlation_id = Uuid::new_v4();
+    assert_eq!(
+        data_recovery
+            .execute_cas_cutover(conflict)
+            .await
+            .unwrap_err(),
+        PostPurgeRecoveryError::IdempotencyConflict
+    );
+    let mut conflict = prepare;
+    conflict.reason = "Changed prepared command".into();
+    assert_eq!(
+        data_recovery.prepare_recovery(conflict).await.unwrap_err(),
+        PostPurgeRecoveryError::IdempotencyConflict
+    );
+    let row=database.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+        "SELECT reference.namespace_instance_id,namespace.state,namespace.namespace_revision,
+          (SELECT count(*) FROM module_artifact_data_snapshot_holds hold WHERE hold.tenant_id=reference.tenant_id
+           AND hold.holder_kind='recovery' AND hold.released_at IS NULL) AS active_holds
+         FROM module_artifact_data_owner_references reference
+         JOIN module_artifact_data_namespaces namespace USING (tenant_id,data_owner_id,namespace_instance_id)
+         WHERE reference.tenant_id=?1 AND reference.data_owner_id=?2",
+        vec![tenant_id.to_string().into(),data_owner_id.to_string().into()])).await.expect("final reference SQL").expect("final reference");
+    assert_eq!(
+        row.try_get::<String>("", "namespace_instance_id").unwrap(),
+        staged.namespace_instance_id.to_string()
+    );
+    assert_eq!(row.try_get::<String>("", "state").unwrap(), "serving");
+    assert_eq!(row.try_get::<i64>("", "active_holds").unwrap(), 0);
+    let row = database
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT namespace_revision,purged_at FROM module_artifact_data_namespaces
+         WHERE tenant_id=?1 AND data_owner_id=?2 AND namespace_instance_id=?3",
+            vec![
+                tenant_id.to_string().into(),
+                data_owner_id.to_string().into(),
+                namespace_instance_id.to_string().into(),
+            ],
+        ))
+        .await
+        .expect("permanent source SQL")
+        .expect("permanent source tombstone");
+    assert_eq!(row.try_get::<i64>("", "namespace_revision").unwrap(), 2);
+    assert!(
+        row.try_get::<Option<String>>("", "purged_at")
+            .unwrap()
+            .is_some()
+    );
+    for sql in [
+        "DELETE FROM module_artifact_data_namespace_recovery_operations WHERE recovery_id=?1",
+        "UPDATE module_artifact_data_namespace_recovery_operations SET status='verified' WHERE recovery_id=?1",
+        "UPDATE module_artifact_data_namespace_recovery_operations SET objects_restored=objects_restored+1 WHERE recovery_id=?1",
+    ] {
+        assert!(
+            database
+                .execute_raw(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    sql,
+                    vec![staged.recovery_id.to_string().into()]
+                ))
+                .await
+                .is_err(),
+            "immutable receipt: {sql}"
+        );
+    }
+    drop(data_recovery);
+    drop(snapshot_service);
+    drop(storage);
+    let absolute_root = storage_root.canonicalize().expect("absolute isolated root");
+    assert!(absolute_root.starts_with(&storage_parent));
+    std::fs::remove_dir_all(absolute_root).expect("remove isolated fixture storage");
 }

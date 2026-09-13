@@ -116,7 +116,8 @@ impl ServerArtifactMcpInvoker {
                     "server_alias": request.server,
                     "execution_id": request.execution_id,
                     "phase": format!("{:?}", request.phase).to_lowercase(),
-                    "data_contract_revision": request.scope.data_contract_revision,
+                    "installation_id": request.scope.installation_id,
+                    "data_owner_id": request.scope.data_owner_id,
                     "policy_revision": request.scope.policy_revision,
                     "subject": subject_metadata,
                 }),
@@ -189,20 +190,12 @@ impl ArtifactMcpInvoker for ServerArtifactMcpInvoker {
 
 fn artifact_identity(request: &ArtifactMcpCallRequest) -> Result<McpIdentity, ArtifactMcpError> {
     let SandboxSubject::ModuleArtifact {
-        installation_id,
-        slug,
-        version,
-        digest,
+        installation_id, ..
     } = &request.subject
     else {
         return Err(ArtifactMcpError::InvalidScope);
     };
-    if slug != &request.scope.module_slug
-        || version.trim().is_empty()
-        || digest.trim().is_empty()
-        || request.scope.data_contract_revision == 0
-        || request.scope.policy_revision == 0
-    {
+    if !request.scope.matches_subject(&request.subject) {
         return Err(ArtifactMcpError::InvalidScope);
     }
 
@@ -211,10 +204,10 @@ fn artifact_identity(request: &ArtifactMcpCallRequest) -> Result<McpIdentity, Ar
         actor_type: McpActorType::ServiceClient,
         tenant_id: Some(request.scope.tenant_id.to_string()),
         delegated_user_id: request.actor_id.clone(),
-        display_name: Some(format!("{} artifact", request.scope.module_slug)),
+        display_name: Some(format!("{} artifact", request.scope.release.slug)),
         scopes: vec![
             format!("tenant:{}", request.scope.tenant_id),
-            format!("module:{}", request.scope.module_slug),
+            format!("module:{}", request.scope.release.slug),
         ],
     })
 }
@@ -246,7 +239,7 @@ mod tests {
 
     use anyhow::anyhow;
     use rustok_mcp::McpToolCallAuditEvent;
-    use rustok_modules::{ArtifactDataScope, ArtifactMcpInvoker};
+    use rustok_modules::{ArtifactCapabilityScope, ArtifactMcpInvoker};
     use rustok_sandbox::{ExecutionPhase, SandboxSubject};
     use uuid::Uuid;
 
@@ -273,17 +266,18 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let installation_id = Uuid::new_v4();
         let data_owner_id = Uuid::new_v4();
-        let namespace_instance_id = Uuid::new_v4();
         ArtifactMcpCallRequest {
-            scope: ArtifactDataScope {
+            scope: ArtifactCapabilityScope {
                 tenant_id,
                 data_owner_id,
-                namespace_instance_id,
-                data_contract_digest:
-                    "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-                        .to_string(),
-                module_slug: "external_sample".to_string(),
-                data_contract_revision: 1,
+                installation_id,
+                release: rustok_modules::ArtifactReleaseRef {
+                    slug: "external_sample".into(),
+                    version: "1.0.0".into(),
+                    digest:
+                        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                            .into(),
+                },
                 policy_revision: 2,
             },
             execution_id: Uuid::new_v4(),

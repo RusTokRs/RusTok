@@ -724,6 +724,24 @@ authorize or claim lifecycle success.
   denial/migration, irreversible-gate races, tenant isolation, finalization
   denial, and measured restore drills.
 
+## Current artifact-data recovery evidence
+
+The owner derives recovery from an exact retired installation and purge receipt,
+pins contract/reference/tombstone facts, and allocates a fresh empty non-serving
+instance with a source hold. Prepare invokes actual restore and full target
+verification. A separate command authorizes on the transaction, re-verifies
+target rows/bytes, and CASes the owner reference. The source tombstone remains
+unchanged; code stays inactive. Full digests govern terminal replay, and schema
+guards preserve identity, verification facts, and terminal receipts.
+
+The purge/recovery integration passes 1/1 with actual object bytes, denied
+actors/revisions, target corruption rejecting CAS, and replay after later
+lifecycle changes. This is bounded SQLite/local-storage and fixture-policy
+evidence. Production policy/revocation and traffic/job/write/recovery/retention
+fences, host/native/GraphQL composition, recovery outbox facts, and remaining
+callers/fixtures are open. The full release-safety promise remains unproven;
+module FFA/FBA readiness is unchanged.
+
 ## Related Documents
 
 - [Module Release and Rollback Plan](../docs/modules/module-release-rollback-plan.md)
@@ -735,3 +753,9 @@ authorize or claim lifecycle success.
 - [Artifact security state boundary](./2026-07-22-artifact-security-state-boundary.md)
 - [Shared owner-operation receipt ledger](./2026-08-03-owner-operation-receipts.md)
 - [Neutral sandbox foundation](./2026-07-11-neutral-sandbox-foundation.md)
+
+Current destructive-data policy uses `authorize_purge_on` on the owner write
+transaction after exact installation/namespace locking. Terminal receipts are
+rechecked after lifecycle serialization before mutable target facts; recovery
+prepare/finalize/cutover share that ordering. This removes the separate policy
+connection without claiming a revocation or traffic/job/write fence.

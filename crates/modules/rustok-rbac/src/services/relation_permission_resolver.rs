@@ -179,7 +179,7 @@ pub async fn resolve_persisted_permissions_on<C: ConnectionTrait>(
 }
 
 #[async_trait::async_trait]
-impl crate::PermissionResolver for SeaOrmRelationPermissionStore {
+impl<C: ConnectionTrait> crate::PermissionResolver for ConnectionRelationPermissionStore<'_, C> {
     type Error = sea_orm::DbErr;
 
     async fn resolve_permissions(
@@ -188,22 +188,40 @@ impl crate::PermissionResolver for SeaOrmRelationPermissionStore {
         user_id: &uuid::Uuid,
     ) -> Result<crate::PermissionResolution, Self::Error> {
         Ok(crate::PermissionResolution {
-            permissions: resolve_persisted_permissions_on(&self.db, tenant_id, user_id).await?,
+            permissions: resolve_permissions_from_relations(self, tenant_id, user_id).await?,
             cache_hit: false,
         })
     }
 }
 
+#[async_trait::async_trait]
+impl crate::PermissionResolver for SeaOrmRelationPermissionStore {
+    type Error = sea_orm::DbErr;
+
+    async fn resolve_permissions(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> Result<crate::PermissionResolution, Self::Error> {
+        crate::PermissionResolver::resolve_permissions(
+            &ConnectionRelationPermissionStore { db: &self.db },
+            tenant_id,
+            user_id,
+        )
+        .await
+    }
+}
+
 /// Evaluate current persisted grants through the canonical tenant policy engine,
 /// without request snapshots or a cache. This is not a revocation fence.
-pub async fn authorize_current_permission(
-    db: &sea_orm::DatabaseConnection,
+pub async fn authorize_current_permission<C: ConnectionTrait>(
+    db: &C,
     tenant_id: &uuid::Uuid,
     user_id: &uuid::Uuid,
     required_permission: &Permission,
 ) -> Result<crate::AuthorizationDecision, sea_orm::DbErr> {
     crate::authorize_permission(
-        &SeaOrmRelationPermissionStore::new(db.clone()),
+        &ConnectionRelationPermissionStore { db },
         tenant_id,
         user_id,
         required_permission,
@@ -455,6 +473,17 @@ mod tests {
                     .expect("owner must use the supplied transaction")
                     .is_empty()
             );
+            let revoked = super::authorize_current_permission(
+                &transaction,
+                &tenant_id,
+                &user_id,
+                &Permission::MODULES_MANAGE,
+            )
+            .await
+            .expect("current policy must use the supplied transaction");
+            assert!(!revoked.allowed);
+            assert!(!revoked.cache_hit);
+            assert_eq!(revoked.engine, crate::AuthzEngine::Policy);
             transaction.rollback().await.expect("rollback revocation");
             assert!(check().await.expect("rolled-back grants remain").allowed);
         }

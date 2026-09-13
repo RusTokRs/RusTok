@@ -114,6 +114,21 @@ impl RbacRoleAssignmentDbWriter {
             .await
     }
 
+    /// Replace memberships after the caller has obtained an owner mutation plan.
+    /// Host commit and post-commit invalidation remain outside this operation.
+    pub async fn replace_role_on<C>(
+        db: &C,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        role: UserRole,
+    ) -> Result<(), RbacRoleAssignmentError>
+    where
+        C: ConnectionTrait,
+    {
+        Self::remove_tenant_role_assignments_on(db, tenant_id, user_id).await?;
+        Self::assign_role_on(db, tenant_id, user_id, role).await
+    }
+
     /// Remove the user's tenant role memberships inside the caller's transaction.
     ///
     /// The host owns commit and post-commit invalidation. The owner validates

@@ -6,7 +6,7 @@ use rustok_modules::{
     ArtifactDataPurgeRequest, ArtifactSettingsRecoveryAuthorizer, ArtifactSettingsRecoveryCipher,
     SeaOrmArtifactSettingsRecoveryService,
 };
-use sea_orm::DatabaseConnection;
+use sea_orm::DatabaseTransaction;
 
 /// Settings recovery requires host-composed policy and authenticated encryption.
 /// Transports never construct a default authorizer or cipher.
@@ -17,20 +17,13 @@ pub type ArtifactSettingsRecoveryRuntime = SeaOrmArtifactSettingsRecoveryService
 
 /// Host authorization for artifact structured data purge.
 #[derive(Clone)]
-pub struct ServerArtifactDataPurgeAuthorizer {
-    db: DatabaseConnection,
-}
-
-impl ServerArtifactDataPurgeAuthorizer {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
-    }
-}
+pub struct ServerArtifactDataPurgeAuthorizer;
 
 #[async_trait]
 impl ArtifactDataPurgeAuthorizer for ServerArtifactDataPurgeAuthorizer {
-    async fn authorize_purge(
+    async fn authorize_purge_on(
         &self,
+        transaction: &DatabaseTransaction,
         request: &ArtifactDataPurgeRequest,
         owner: &ArtifactDataPurgeAuthorizationContext,
     ) -> Result<(), ArtifactDataError> {
@@ -47,7 +40,7 @@ impl ArtifactDataPurgeAuthorizer for ServerArtifactDataPurgeAuthorizer {
             return Err(ArtifactDataError::PolicyDenied);
         }
         let decision = rustok_rbac::authorize_current_permission(
-            &self.db,
+            transaction,
             &owner.scope.tenant_id,
             &request.context.actor_id,
             &rustok_api::Permission::MODULES_MANAGE,

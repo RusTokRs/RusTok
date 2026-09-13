@@ -10,8 +10,8 @@ use rustok_core::{UserRole, UserStatus, infer_user_role_from_permissions};
 use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_rbac::{
-    RbacRoleMutationFacts, RbacRoleMutationOutcome, RbacRoleMutationPlan,
-    RbacRoleMutationPolicyError, plan_user_role_mutation,
+    RbacRoleMutationOutcome, RbacRoleMutationPlan, RbacRoleMutationPolicyError,
+    RbacUserRoleMutationRequest, plan_persisted_user_role_mutation_on,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
@@ -21,10 +21,7 @@ use std::{str::FromStr, sync::Arc};
 use uuid::Uuid;
 
 use crate::auth::hash_password;
-use crate::models::{
-    _entities::{roles, user_roles},
-    sessions, users,
-};
+use crate::models::{sessions, users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_cache_invalidation::publish_user_rbac_invalidation;
@@ -33,10 +30,7 @@ use crate::services::rbac_request_scope::role_for;
 use crate::services::rbac_service::RbacService;
 
 use super::{
-    ServerAuthAdminMutationProvider,
-    super_admin_guard::{
-        count_remaining_active_super_admins, ensure_active_super_admin_continuity,
-    },
+    ServerAuthAdminMutationProvider, super_admin_guard::ensure_active_super_admin_continuity,
 };
 
 fn parse_user_status(value: &str) -> Result<UserStatus, AuthAdminMutationError> {
@@ -83,9 +77,12 @@ fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> AuthAd
     }
 }
 
-fn map_role_mutation_policy_error(error: RbacRoleMutationPolicyError) -> AuthAdminMutationError {
+pub(super) fn map_role_mutation_policy_error(
+    error: RbacRoleMutationPolicyError,
+) -> AuthAdminMutationError {
     match error {
         RbacRoleMutationPolicyError::CannotAssignPeerOrHigherRole
+        | RbacRoleMutationPolicyError::RequestAuthorityCeiling { .. }
         | RbacRoleMutationPolicyError::CannotManagePeerOrHigherUser
         | RbacRoleMutationPolicyError::ActorTenantMismatch
         | RbacRoleMutationPolicyError::TargetTenantMismatch => {
@@ -99,10 +96,6 @@ fn map_role_mutation_policy_error(error: RbacRoleMutationPolicyError) -> AuthAdm
             AuthAdminMutationError::Internal(error.to_string())
         }
     }
-}
-
-fn forbidden(message: impl Into<String>) -> AuthAdminMutationError {
-    AuthAdminMutationError::Forbidden(message.into())
 }
 
 impl ServerAuthAdminMutationProvider {
@@ -138,11 +131,8 @@ impl ServerAuthAdminMutationProvider {
         requested_role: &UserRole,
     ) -> Result<(), AuthAdminMutationError> {
         let actor_role = self.actor_role(context).await?;
-        if actor_role.can_assign_role(requested_role) {
-            Ok(())
-        } else {
-            Err(forbidden("cannot assign a peer or higher-privileged role"))
-        }
+        rustok_rbac::require_role_assignment(&actor_role, requested_role)
+            .map_err(map_role_mutation_policy_error)
     }
 
     async fn ensure_target_management_allowed(
@@ -151,16 +141,14 @@ impl ServerAuthAdminMutationProvider {
         target_user_id: Uuid,
         target_role: &UserRole,
     ) -> Result<(), AuthAdminMutationError> {
-        if context.actor_id == target_user_id {
-            return Ok(());
-        }
-
         let actor_role = self.actor_role(context).await?;
-        if actor_role.can_manage_role(target_role) {
-            Ok(())
-        } else {
-            Err(forbidden("cannot modify a peer or higher-privileged user"))
-        }
+        rustok_rbac::require_user_management(
+            context.actor_id,
+            target_user_id,
+            &actor_role,
+            target_role,
+        )
+        .map_err(map_role_mutation_policy_error)
     }
 }
 
@@ -203,42 +191,6 @@ where
     };
 
     user.ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))
-}
-
-async fn has_exact_tenant_role_assignment<C>(
-    db: &C,
-    tenant_id: Uuid,
-    user_id: Uuid,
-    requested_role: &UserRole,
-) -> Result<bool, AuthAdminMutationError>
-where
-    C: ConnectionTrait,
-{
-    let tenant_roles = roles::Entity::find()
-        .filter(roles::Column::TenantId.eq(tenant_id))
-        .all(db)
-        .await
-        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-    let requested_slug = requested_role.to_string();
-    let requested_role_id = tenant_roles
-        .iter()
-        .find(|role| role.slug == requested_slug && role.is_system)
-        .map(|role| role.id);
-    let tenant_role_ids = tenant_roles
-        .into_iter()
-        .map(|role| role.id)
-        .collect::<Vec<_>>();
-    if requested_role_id.is_none() || tenant_role_ids.is_empty() {
-        return Ok(false);
-    }
-
-    let assignments = user_roles::Entity::find()
-        .filter(user_roles::Column::UserId.eq(user_id))
-        .filter(user_roles::Column::RoleId.is_in(tenant_role_ids))
-        .all(db)
-        .await
-        .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-    Ok(assignments.len() == 1 && assignments[0].role_id == requested_role_id.unwrap())
 }
 
 async fn revoke_active_sessions<C>(
@@ -454,53 +406,35 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .user_role(&tx, context.tenant_id, locked_user.id)
             .await?;
         let user_id = locked_user.id;
-        let target_tenant_id = locked_user.tenant_id;
         let target_status = locked_user.status.clone();
         let status_changed = status_change_requested(&target_status, requested_status.as_ref());
 
-        let role_mutation_plan: Option<RbacRoleMutationPlan> = if let Some(requested_role) =
-            requested_role.as_ref()
-        {
-            let actor_role = self.actor_role(context).await?;
-            let resulting_status = requested_status
-                .clone()
-                .unwrap_or_else(|| target_status.clone());
-            let removes_active_super_admin = current_role == UserRole::SuperAdmin
-                && target_status == UserStatus::Active
-                && (requested_role != &UserRole::SuperAdmin
-                    || resulting_status != UserStatus::Active);
-            let remaining_active_super_admins = if removes_active_super_admin {
-                count_remaining_active_super_admins(&tx, context.tenant_id, user_id).await?
+        let role_mutation_plan: Option<RbacRoleMutationPlan> =
+            if let Some(requested_role) = requested_role.as_ref() {
+                let actor_role = self.actor_role(context).await?;
+                match plan_persisted_user_role_mutation_on(
+                    &tx,
+                    RbacUserRoleMutationRequest {
+                        tenant_id: context.tenant_id,
+                        actor_id: context.actor_id,
+                        actor_tenant_id: context.tenant_id,
+                        actor_role,
+                        target_user_id: user_id,
+                        requested_role: requested_role.clone(),
+                        resulting_status: requested_status.clone(),
+                    },
+                )
+                .await
+                .map_err(super::super_admin_guard::persistence_error)?
+                {
+                    RbacRoleMutationOutcome::Noop => None,
+                    RbacRoleMutationOutcome::Apply(plan) => Some(plan),
+                }
             } else {
-                0
-            };
-            let assignment_is_exact =
-                has_exact_tenant_role_assignment(&tx, context.tenant_id, user_id, requested_role)
+                self.ensure_target_management_allowed(context, user_id, &current_role)
                     .await?;
-            match plan_user_role_mutation(RbacRoleMutationFacts {
-                tenant_id: context.tenant_id,
-                actor_id: context.actor_id,
-                actor_tenant_id: context.tenant_id,
-                actor_role,
-                target_user_id: user_id,
-                target_tenant_id,
-                target_role: current_role.clone(),
-                target_status: target_status.clone(),
-                requested_role: requested_role.clone(),
-                resulting_status,
-                assignment_is_exact,
-                remaining_active_super_admins,
-            })
-            .map_err(map_role_mutation_policy_error)?
-            {
-                RbacRoleMutationOutcome::Noop => None,
-                RbacRoleMutationOutcome::Apply(plan) => Some(plan),
-            }
-        } else {
-            self.ensure_target_management_allowed(context, user_id, &current_role)
-                .await?;
-            None
-        };
+                None
+            };
 
         let user_row_update_requested = command.email.is_some()
             || command.name.is_some()
@@ -535,7 +469,6 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
                 &tx,
                 context.tenant_id,
                 user_id,
-                &current_role,
                 None,
                 effective_requested_status,
                 false,
@@ -658,16 +591,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let current_role = self.user_role(&tx, context.tenant_id, user.id).await?;
         self.ensure_target_management_allowed(context, user.id, &current_role)
             .await?;
-        ensure_active_super_admin_continuity(
-            &tx,
-            context.tenant_id,
-            user.id,
-            &current_role,
-            None,
-            None,
-            true,
-        )
-        .await?;
+        ensure_active_super_admin_continuity(&tx, context.tenant_id, user.id, None, None, true)
+            .await?;
         AuthLifecycleService::deactivate_user_in_tx(&tx, context.tenant_id, user.id)
             .await
             .map_err(map_lifecycle_error)?;

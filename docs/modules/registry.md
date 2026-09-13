@@ -119,7 +119,7 @@ Product/search Next storefront metadata boundary update as of 2026-07-02: `apps/
 | `outbox` | admin | `in_progress` | `boundary_ready` | `core_transport_ui` | [Live plan](../../crates/modules/rustok-outbox/docs/implementation-plan.md); accepted single-adapter read-only owner fragment; the relay worker consumes `OutboxRelayPort` with deadline and idempotency policy. Evidence: `crates/modules/rustok-outbox/contracts/outbox-fba-registry.json`, `crates/modules/rustok-outbox/contracts/evidence/outbox-provider-runtime-order-smoke.json`, and `npm run verify:outbox:admin-boundary`. |
 | `index` | admin | `in_progress` | `boundary_ready` | `core_transport_ui` | [Live plan](../../crates/modules/rustok-index/docs/implementation-plan.md); M2 accepted JSONB and archived same-commit evidence. M3 registers the generic seven-table migration foundation and adds the Index-owned atomic inbox/entity/link mutation adapter. M11 admin is complete: four native server endpoints (`fetch_bootstrap`, `trigger_replay`, `cancel_job`, `retry_job`) with strict tenant isolation (`require_index_admin_tenant_scope` before permission admission), live inbox-queue/job-recovery/query-diagnostics metrics, rebuild/cancel/retry operator actions, pure view-model formatters (EN/RU), and a contract test verifying all four endpoints enforce `AuthContext` + `TenantContext` + scope guard. Query execution, GraphQL admin parity, PostgreSQL concurrency evidence, and provider-consumer live execution remain pending, so FBA stays `boundary_ready` until `transport_verified` evidence is produced. |
 
-| `rbac` | admin | `in_progress` | `boundary_ready` | `core_transport_ui` | [Live plan](../../crates/modules/rustok-rbac/docs/implementation-plan.md); `crates/modules/rustok-rbac/contracts/rbac-fba-registry.json`, `crates/modules/rustok-rbac/contracts/evidence/rbac-provider-runtime-order-smoke.json`, and `scripts/verify/verify-rbac-admin-boundary.mjs`. `RbacPermissionDecisionProvider` resolves the UUID tenant and authenticated user actor through the owner `PermissionResolver`; the active contract-test profile is embedded `in_process` only, while live degraded-path evidence remains required for `transport_verified`. |
+| `rbac` | admin | `in_progress` | `boundary_ready` | `core_transport_ui` | [Live plan](../../crates/modules/rustok-rbac/docs/implementation-plan.md); `crates/modules/rustok-rbac/contracts/rbac-fba-registry.json`, `crates/modules/rustok-rbac/contracts/evidence/rbac-provider-runtime-order-smoke.json`, and `scripts/verify/verify-rbac-admin-boundary.mjs`. `RbacPermissionDecisionProvider` resolves the UUID tenant and authenticated user actor through the owner `PermissionResolver`; the active contract-test profile is embedded `in_process` only, while live degraded-path evidence remains required for `transport_verified`. Owner transaction APIs collect current role facts, check exact assignments, enforce request permission ceilings and active-administrator continuity; focused owner SQLite tests pass 6/6. Current server runtime and PostgreSQL concurrency remain separate verification gates. |
 | `tenant` | admin | `in_progress` | `transport_verified` | `core_transport_ui` | [Live plan](../../crates/modules/rustok-tenant/docs/implementation-plan.md); `TenantReadPort` and the revisioned CAS/idempotent `TenantLocalePolicyPort` remain owner boundaries; server locale middleware consumes the policy port. Tenant Admin consumes the host-composed `SharedModuleEffectivePolicyReader` for its module badges, so it cannot reconstruct availability from tenant rows or omit active-composition co-requisites. `crates/modules/rustok-tenant/contracts/tenant-fba-registry.json` and `crates/modules/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json` are checked by `npm run verify:tenant:fba`. |
 | `profiles` | storefront | `in_progress` | `not_started` | `core_transport_ui` | [Live plan](../../crates/modules/rustok-profiles/docs/implementation-plan.md); module-owned Leptos storefront owns profile reads and follow controls through selected native/GraphQL transports; Media and Social Graph remain host-composed owner boundaries, and live runtime parity evidence remains open. |
 | `taxonomy` | none | `not_started` | `boundary_ready` | `no_ui_boundary` | [Live plan](../../crates/modules/rustok-taxonomy/docs/implementation-plan.md); registered `taxonomy/term` Translation target supplies exact source/target snapshots, resource/source/target CAS apply, owner-scoped durable receipt replay, exact progress, and append-only change-cursor repair. PostgreSQL concurrent apply/cursor-recovery evidence remains required before production pilot enablement. |
@@ -159,6 +159,9 @@ Product/search Next storefront metadata boundary update as of 2026-07-02: `apps/
 The `modules` control-plane remains `boundary_ready`: registry validation automation evidence is one typed `ModuleGovernanceAutomatedCheck` to `RegistryAutomatedCheckLifecycle` chain. The owner rejects blank or duplicate checks, exposes only valid normalized persisted entries, orders lifecycle events deterministically by `created_at` and `id`, and GraphQL/native Admin render the newest non-empty owner event without raw JSON parsing or empty placeholder checks.
 
 The `modules` FFA status remains `not_started`, FBA `boundary_ready`.
+MCP now binds its calls to installation-backed capability authority and exact
+release identity without requiring a data contract/namespace. Stateless runtime
+verification is pending. Independent secret-instance scope/storage remains open.
 Artifact-data preview/apply derive scope from one retired installation and
 bind collisions to its exact serving owner/instance. The physical cutover is
 in progress: pending schemas, broker SQL, and object keys use stable owners and
@@ -168,9 +171,17 @@ restored target manifest before sealing a non-serving verified instance.
 The focused SQLite/local-storage runtime test passes 1/1, including retry,
 corruption rejection, retained unresolved bytes, and sealed-target guards.
 Callers, fixtures, independent secret/MCP scopes, migration-object publication,
-and authorized reference CAS are not yet complete. GraphQL hides storage errors and checks receipt
+and production recovery composition remain incomplete. The coordinator now
+derives retired-installation authority, performs actual restore/verification,
+and separately authorizes exact reference CAS with permanent source tombstones
+and full terminal replay. The purge/recovery test passes 1/1, including real
+objects, denied actors/revisions, corruption rejection before CAS, and immutable
+terminal receipts. Fixture evidence does not prove production fences; recovery
+outbox facts and host/native/GraphQL transports remain open. GraphQL hides storage errors and checks receipt
 integers; the server purge authorizer binds owner context and reads persisted
-`modules:manage` grants without cached/request snapshots. This does not prove
+`modules:manage` grants through the owner's write transaction without
+cached/request snapshots. Terminal replay is rechecked after lifecycle
+serialization before mutable target facts. This does not prove
 terminal traffic/job/write or revocation fencing. Snapshot/recovery
 ledgers do not prove restored content; schema-enforced immutable tombstones
 alone do not prove safe recovery. The

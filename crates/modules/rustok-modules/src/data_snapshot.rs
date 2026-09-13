@@ -950,7 +950,7 @@ where
         })
     }
 
-    async fn verify_restored_rows_in(
+    pub(crate) async fn verify_restored_rows_in(
         &self,
         transaction: &DatabaseTransaction,
         target: &ArtifactDataScope,
@@ -1570,7 +1570,7 @@ struct LogicalSnapshotManifest {
 }
 
 #[derive(Clone, Debug)]
-struct StoredSnapshotManifest {
+pub(crate) struct StoredSnapshotManifest {
     scope: ArtifactDataScope,
     source_namespace_revision: u64,
     records: Vec<ArtifactDataRecord>,
@@ -1771,7 +1771,7 @@ async fn persist_snapshot_rows(
     Ok(())
 }
 
-async fn load_manifest<C: ConnectionTrait>(
+pub(crate) async fn load_manifest<C: ConnectionTrait>(
     connection: &C,
     tenant_id: Uuid,
     snapshot_id: Uuid,
@@ -1811,7 +1811,7 @@ async fn query_stored_snapshot_objects<C: ConnectionTrait>(
         placeholder(backend,1), placeholder(backend,2), MAX_SNAPSHOT_OBJECTS + 1), vec![uuid_value(tenant_id, backend), uuid_value(snapshot_id, backend)])).await.map_err(snapshot_storage_error)?.into_iter().map(snapshot_object_from_snapshot_row).collect()
 }
 
-async fn lock_snapshot<C: ConnectionTrait>(
+pub(crate) async fn lock_snapshot<C: ConnectionTrait>(
     connection: &C,
     tenant_id: Uuid,
     snapshot_id: Uuid,
@@ -2203,7 +2203,7 @@ fn snapshot_scope_from_row(
     })
 }
 
-fn snapshot_from_row(
+pub(crate) fn snapshot_from_row(
     row: &sea_orm::QueryResult,
     backend: DbBackend,
 ) -> Result<ArtifactDataSnapshot, ArtifactDataError> {
@@ -2459,7 +2459,10 @@ fn scope_values(
     ])
 }
 
-fn positive_u64(row: &sea_orm::QueryResult, column: &str) -> Result<u64, ArtifactDataError> {
+pub(crate) fn positive_u64(
+    row: &sea_orm::QueryResult,
+    column: &str,
+) -> Result<u64, ArtifactDataError> {
     let value: i64 = row.try_get("", column).map_err(snapshot_storage_error)?;
     u64::try_from(value)
         .ok()
@@ -2486,7 +2489,7 @@ fn bool_from_row(
     }
 }
 
-fn datetime_from_row(
+pub(crate) fn datetime_from_row(
     row: &sea_orm::QueryResult,
     column: &str,
     backend: DbBackend,

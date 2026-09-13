@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "contract_id": "rbac_owner_role_mutation_v1",
-  "status": "source_ready_unvalidated",
+  "status": "in_progress",
   "base_revision": "6ca587546e5a218d38c49f7c0612edcf61d8f816",
   "cycle": "cycle-001",
   "component": "core/rbac",
@@ -11,7 +11,8 @@
     "policy": "plan_user_role_mutation",
     "facts": "RbacRoleMutationFacts",
     "outcome": "RbacRoleMutationOutcome",
-    "plan": "RbacRoleMutationPlan"
+    "plan": "RbacRoleMutationPlan",
+    "request_role_grant": "require_request_role_grant"
   },
   "authoritative_facts": [
     "requested tenant identity",
@@ -39,7 +40,11 @@
     "outbox": "TransactionalEventBus::publish_contract_in_tx",
     "atomic_transaction": true,
     "event_failure_rolls_back_relation_user_and_generation": true,
-    "post_commit_cache_invalidation": true
+    "post_commit_cache_invalidation": true,
+    "fact_reader": "plan_persisted_user_role_mutation_on",
+    "continuity_guard": "ensure_user_authority_continuity_on",
+    "committed_relation_writer": "replace_persisted_user_role_on",
+    "parallel_source_event_payload": false
   },
   "event_contracts": [
     {
@@ -74,19 +79,18 @@
     "custom role creation or custom role hierarchy",
     "arbitrary permission grant management",
     "new remote or headless role-management transport",
-    "status-only or account-deletion event redesign",
-    "migration or removal of the legacy source payload RbacRoleAssignmentEvent",
-    "claiming compiled or executed verification"
+    "status-only or account-deletion event redesign"
   ],
   "validation": {
-    "rust_tests_executed": false,
-    "source_verifier_executed": false,
-    "format_checked": false,
-    "cargo_checked": false,
-    "server_compiled": false,
+    "rust_tests_executed": true,
+    "source_verifier_executed": true,
+    "format_checked": true,
+    "cargo_checked": true,
+    "server_compiled": true,
     "outbox_runtime_executed": false,
     "transport_runtime_executed": false,
-    "workflow_or_ci_observed": false
+    "workflow_or_ci_observed": false,
+    "scope": "Current owner persistence cutover; wider transport, Outbox failure and production fence gates remain open"
   },
   "remaining_gates": {
     "same_revision_compile_and_module_gates": false,
@@ -97,5 +101,20 @@
     "live_negative_transport_requests": false,
     "core_rbac_complete": false
   },
-  "cursor_advanced": false
+  "cursor_advanced": false,
+  "owner_persistence_evidence": {
+    "date": "2026-09-13",
+    "scope": "SQLite transaction-backed owner reads and continuity; excludes transport and production fences",
+    "focused_owner_tests_passed": 6,
+    "focused_owner_tests_total": 6,
+    "current_server_runtime": {
+      "scope": "committed role replacement, cache invalidation, exact no-op and last-active-admin rollback",
+      "passed": 4,
+      "total": 4
+    },
+    "postgres_concurrency": "pending",
+    "owner_lib_tests_passed": 73,
+    "owner_lib_tests_total": 73,
+    "scoped_clippy": "passed"
+  }
 }

@@ -146,34 +146,47 @@ fn runtime_mutation_paths_use_explicit_transaction_or_committed_entrypoints() {
 }
 
 #[test]
-fn committed_role_replacement_locks_target_and_checks_noop_before_generation_bump() {
+fn committed_role_replacement_delegates_authority_before_generation_bump() {
     let committed = source("apps/server/src/services/rbac_committed_mutations.rs");
-
+    let owner = source("crates/modules/rustok-rbac/src/role_mutation.rs");
     for required in [
-        "lock_target_user_for_role_mutation",
-        "query().lock_exclusive().one(db).await?",
-        "Expr::col(users::Column::UpdatedAt)",
-        "has_exact_tenant_role_assignment",
+        "replace_persisted_user_role_on(&tx",
+        "if !changed",
         "exact_single_role_replacement_is_a_generation_noop",
         "matching_role_among_multiple_assignments_is_not_treated_as_noop",
     ] {
         assert!(
             committed.contains(required),
-            "committed role path must retain {required}"
+            "committed path must retain {required}"
         );
     }
-
-    let lock = committed
-        .find("let target = lock_target_user_for_role_mutation")
-        .expect("target user must be locked");
-    let noop = committed
-        .find("if has_exact_tenant_role_assignment")
-        .expect("exact role no-op must be checked");
+    for forbidden in ["users::Entity::", "roles::Entity::", "user_roles::Entity::"] {
+        assert!(
+            !committed
+                .split("#[cfg(test)]")
+                .next()
+                .unwrap()
+                .contains(forbidden)
+        );
+    }
+    let delegate = committed
+        .find("rustok_rbac::replace_persisted_user_role_on")
+        .unwrap();
+    let noop = committed.find("if !changed").unwrap();
     let reserve = committed
         .find("reserve_rbac_invalidation_generation(&tx)")
-        .expect("real role change must reserve durable generation");
-    assert!(lock < noop);
-    assert!(noop < reserve);
+        .unwrap();
+    assert!(delegate < noop && noop < reserve);
+    for required in [
+        "SELECT status FROM users WHERE id = ? AND tenant_id = ? FOR UPDATE",
+        "UPDATE users SET updated_at = updated_at",
+        "has_exact_tenant_role_assignment_on",
+        "ensure_user_authority_continuity_on",
+        "count_remaining_active_super_admins_on",
+        "persisted_role_mutations_preserve_tenant_and_active_admin_authority",
+    ] {
+        assert!(owner.contains(required), "owner must retain {required}");
+    }
 }
 
 #[test]

@@ -385,8 +385,22 @@ impl ModuleControlPlane {
     }
 
     /// Returns the post-purge artifact data recovery service for isolated staging and verified CAS cutover.
-    pub fn artifact_data_post_purge_recovery(&self) -> ArtifactDataPostPurgeRecoveryService {
-        ArtifactDataPostPurgeRecoveryService::new(self.db.clone())
+    pub fn artifact_data_post_purge_recovery<
+        S: ArtifactDataSnapshotAuthorizer,
+        A: crate::ArtifactDataRecoveryAuthorizer,
+    >(
+        &self,
+        storage: StorageRuntime,
+        snapshots: S,
+        authorizer: A,
+    ) -> ArtifactDataPostPurgeRecoveryService<S, A> {
+        ArtifactDataPostPurgeRecoveryService::with_infrastructure(
+            self.db.clone(),
+            storage,
+            snapshots,
+            authorizer,
+            self.infrastructure.clone(),
+        )
     }
 
     /// Returns the OCI release admission service for admitting digest-pinned OCI packages

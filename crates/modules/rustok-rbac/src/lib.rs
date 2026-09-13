@@ -7,7 +7,6 @@ pub mod dto;
 pub mod error;
 #[cfg(feature = "graphql")]
 pub mod graphql;
-pub mod integration;
 mod invalidation_generation;
 mod m20260714_900001_enforce_rbac_relation_tenant_integrity;
 mod m20260714_900002_create_rbac_invalidation_state;
@@ -33,11 +32,6 @@ pub use control_plane::{
     RbacControlPlaneAdmissionError, RbacControlPlanePrincipal, require_direct_control_plane_user,
 };
 pub use error::RbacError;
-pub use integration::{
-    RBAC_EVENT_ROLE_PERMISSIONS_ASSIGNED, RBAC_EVENT_TENANT_ROLE_ASSIGNMENTS_REMOVED,
-    RBAC_EVENT_USER_ROLE_ASSIGNMENT_REMOVED, RBAC_EVENT_USER_ROLE_REPLACED,
-    RbacIntegrationEventKind, RbacRoleAssignmentEvent,
-};
 pub use invalidation_generation::{
     RBAC_PERMISSION_INVALIDATION_SCOPE, RbacInvalidationGenerationError,
     read_permission_invalidation_generation, reserve_permission_invalidation_generation,
@@ -49,7 +43,11 @@ pub use repair::{
 };
 pub use role_mutation::{
     RbacRoleMutationChange, RbacRoleMutationFacts, RbacRoleMutationOutcome, RbacRoleMutationPlan,
-    RbacRoleMutationPolicyError, plan_user_role_mutation,
+    RbacRoleMutationPolicyError, RbacRolePersistenceError, RbacUserAuthorityChange,
+    RbacUserRoleMutationRequest, count_remaining_active_super_admins_on,
+    ensure_user_authority_continuity_on, has_exact_tenant_role_assignment_on,
+    plan_persisted_user_role_mutation_on, plan_user_role_mutation, replace_persisted_user_role_on,
+    require_request_role_grant, require_role_assignment, require_user_management,
 };
 pub use services::authz_mode::AuthzEngine;
 pub use services::permission_authorizer::{

@@ -1895,15 +1895,20 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
   GraphQL previews call owner projections rather than rebuilding lifecycle
   joins or record counts. Apply and preview errors hide storage details and
   receipt integers use checked conversions. The server data authorizer binds
-  owner context and reads current persisted `modules:manage` grants without
-  request/cache snapshots. Lifecycle and collision checks do not establish
+  owner context and reads current persisted `modules:manage` grants through
+  the supplied owner write transaction without request/cache snapshots.
+  Terminal replay is rechecked after lifecycle serialization before mutable
+  target reads. Lifecycle and collision checks do not establish
   terminal production traffic/job/write or atomic revocation fences. The full
   owner-keyed storage, continuity, recovery, and operational hold safety remain
   open. Snapshot/restore now use real durable copy reservations and verified
   bytes; source snapshot holds serialize with collection admission/resume,
   and full target manifest/byte verification seals a non-serving instance.
   The focused SQLite/local-storage runtime test passes 1/1. Authorized
-  post-purge reference CAS and production fence evidence remain separate gaps.
+  post-purge reference CAS is now implemented and covered by the coordinator
+  purge/recovery test (1/1), including actual object bytes, corruption rejecting
+  CAS, and exact replay. Host ports/transports, recovery lifecycle outbox facts,
+  and production fence evidence remain separate gaps.
 - [ ] Complete `dynamic_artifact_settings_purge` as the independently
   authorized settings-owner lifecycle. The implemented core has exact
   encrypted recovery points, immutable KMS key-version/schema/descriptor/value

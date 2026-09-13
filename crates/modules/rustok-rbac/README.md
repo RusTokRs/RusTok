@@ -10,6 +10,8 @@
 - Resolve effective permissions from relation data.
 - Own persisted relation reads and tenant membership deletion; server adapters
   delegate mutations inside the host transaction.
+- Own transaction-backed role-mutation fact collection, exact assignment checks,
+  and active-super-administrator continuity for role/status/account changes.
 - Evaluate permission checks through the single live policy engine.
 - Publish the typed `settings:*` and `logs:*` platform-admin surface used by server adapters.
 - Own explicit tenant-role grants for immutable artifact permission keys without

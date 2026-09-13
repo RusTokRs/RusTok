@@ -427,7 +427,7 @@ mod tests {
             ArtifactDataError, ArtifactDataPurgeAuthorizationContext, ArtifactDataPurgeAuthorizer,
             ArtifactDataPurgeRequest, ArtifactDataScope, ModuleCommandContext,
         };
-        use sea_orm::{ColumnTrait, QueryFilter};
+        use sea_orm::{ColumnTrait, QueryFilter, TransactionTrait};
 
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let (tenant_id, user_id) =
@@ -470,31 +470,44 @@ mod tests {
                 policy_revision: 1,
             },
         };
-        let authorizer = ServerArtifactDataPurgeAuthorizer::new(db.clone());
-        assert_eq!(authorizer.authorize_purge(&request, &owner).await, Ok(()));
+        let authorizer = ServerArtifactDataPurgeAuthorizer;
+        let transaction = db.begin().await.expect("policy transaction");
+        assert_eq!(
+            authorizer
+                .authorize_purge_on(&transaction, &request, &owner)
+                .await,
+            Ok(())
+        );
         let mut foreign_owner = owner.clone();
         foreign_owner.scope.tenant_id = uuid::Uuid::new_v4();
         assert_eq!(
-            authorizer.authorize_purge(&request, &foreign_owner).await,
+            authorizer
+                .authorize_purge_on(&transaction, &request, &foreign_owner)
+                .await,
             Err(ArtifactDataError::PolicyDenied)
         );
         let mut changed_owner = owner.clone();
         changed_owner.installation_id = uuid::Uuid::new_v4();
         assert_eq!(
-            authorizer.authorize_purge(&request, &changed_owner).await,
+            authorizer
+                .authorize_purge_on(&transaction, &request, &changed_owner)
+                .await,
             Err(ArtifactDataError::PolicyDenied)
         );
         changed_owner = owner.clone();
         changed_owner.data_owner_id = uuid::Uuid::nil();
         assert_eq!(
-            authorizer.authorize_purge(&request, &changed_owner).await,
+            authorizer
+                .authorize_purge_on(&transaction, &request, &changed_owner)
+                .await,
             Err(ArtifactDataError::PolicyDenied)
         );
 
-        // Remove persisted membership without invalidating the warmed cache.
+        // Remove membership inside the supplied transaction without invalidating
+        // the warmed cache. A policy read on a separate connection is incorrect.
         crate::models::_entities::user_roles::Entity::delete_many()
             .filter(crate::models::_entities::user_roles::Column::UserId.eq(user_id))
-            .exec(&db)
+            .exec(&transaction)
             .await
             .expect("remove membership");
         let scope = RbacRequestScope::new(
@@ -505,11 +518,14 @@ mod tests {
         );
         with_rbac_request_scope(Some(scope), async {
             assert_eq!(
-                authorizer.authorize_purge(&request, &owner).await,
+                authorizer
+                    .authorize_purge_on(&transaction, &request, &owner)
+                    .await,
                 Err(ArtifactDataError::PolicyDenied)
             );
         })
         .await;
+        transaction.rollback().await.expect("policy rollback");
     }
 
     #[tokio::test]

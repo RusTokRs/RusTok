@@ -572,32 +572,27 @@ pub(crate) fn artifact_data_scope_for_execution(
     execution: &ArtifactCapabilityExecution,
     capability: &rustok_sandbox::CapabilityName,
 ) -> SandboxResult<ArtifactDataScope> {
-    if installation.installation_id != execution.installation_id
-        || installation.release.slug != execution.slug
-        || installation.release.version != execution.version
-        || installation.release.digest != execution.digest
-        || installation.descriptor.slug != execution.slug
-        || installation.descriptor.version != execution.version
-        || installation.descriptor.artifact_digest != execution.digest
-    {
-        return Err(SandboxError::CapabilityDenied(capability.clone()));
-    }
+    let authority = crate::artifact_capability_router::artifact_capability_scope_for_execution(
+        installation,
+        execution,
+        capability,
+    )?;
     let contract = installation
         .descriptor
         .persistence_contract
         .as_ref()
         .ok_or_else(|| SandboxError::CapabilityDenied(capability.clone()))?;
     let scope = ArtifactDataScope {
-        tenant_id: execution.tenant_id,
-        data_owner_id: installation.data_owner_id,
+        tenant_id: authority.tenant_id,
+        data_owner_id: authority.data_owner_id,
         namespace_instance_id: installation
             .namespace_instance_id
             .ok_or_else(|| SandboxError::CapabilityDenied(capability.clone()))?,
         data_contract_digest: crate::promotion::digest_json(contract)
             .map_err(|_| SandboxError::CapabilityDenied(capability.clone()))?,
-        module_slug: installation.descriptor.slug.clone(),
+        module_slug: authority.release.slug,
         data_contract_revision: contract.revision,
-        policy_revision: installation.capability_grant_revision,
+        policy_revision: authority.policy_revision,
     };
     scope
         .validate()
@@ -1056,10 +1051,14 @@ impl ArtifactDataSchemaValidator for SeaOrmArtifactDataSchemaValidator {
 
 /// The host owns destructive-data authority. An artifact cannot supply an
 /// implementation or replace this check through its broker capability.
+/// Current policy reads use the owner's write transaction. The host must
+/// additionally enforce operational, recovery/retention/hold, and revocation
+/// fences; a current grant read alone is not that proof.
 #[async_trait]
 pub trait ArtifactDataPurgeAuthorizer: Send + Sync {
-    async fn authorize_purge(
+    async fn authorize_purge_on(
         &self,
+        transaction: &DatabaseTransaction,
         request: &ArtifactDataPurgeRequest,
         context: &ArtifactDataPurgeAuthorizationContext,
     ) -> Result<(), ArtifactDataError>;
@@ -5327,34 +5326,6 @@ where
         // An exact terminal receipt is replayable after a later lifecycle
         // transition. Check it before requiring that the historical target is
         // still purge-eligible.
-        let pre_authorization = self.db.begin().await.map_err(storage_error)?;
-        configure_tenant_scope(&pre_authorization, tenant_id).await?;
-        if let Some(existing) = find_artifact_data_purge_operation(
-            &pre_authorization,
-            tenant_id,
-            request.installation_id,
-            &request,
-        )
-        .await?
-        {
-            pre_authorization.commit().await.map_err(storage_error)?;
-            return Ok(existing);
-        }
-        let authorized_target = load_artifact_data_purge_target(
-            &pre_authorization,
-            tenant_id,
-            request.installation_id,
-            false,
-        )
-        .await?;
-        ensure_artifact_data_purge_target_is_retired(&pre_authorization, &authorized_target)
-            .await?;
-        pre_authorization.commit().await.map_err(storage_error)?;
-
-        self.authorizer
-            .authorize_purge(&request, &authorized_target.authorization)
-            .await?;
-
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, tenant_id).await?;
         let backend = transaction.get_database_backend();
@@ -5370,13 +5341,29 @@ where
             return Ok(existing);
         }
 
-        let locked_target =
-            load_artifact_data_purge_target(&transaction, tenant_id, request.installation_id, true)
-                .await?;
-        ensure_artifact_data_purge_target_is_retired(&transaction, &locked_target).await?;
-        if locked_target.authorization != authorized_target.authorization {
-            return Err(ArtifactDataError::PurgePrecondition);
+        lock_artifact_data_installation_on(&transaction, tenant_id, request.installation_id)
+            .await?;
+        // Another command may have committed while this operation waited for
+        // the lifecycle lock. Replay before reading its mutable target facts.
+        if let Some(existing) = find_artifact_data_purge_operation(
+            &transaction,
+            tenant_id,
+            request.installation_id,
+            &request,
+        )
+        .await?
+        {
+            transaction.commit().await.map_err(storage_error)?;
+            return Ok(existing);
         }
+        let locked_target = query_artifact_data_purge_target(
+            &transaction,
+            tenant_id,
+            request.installation_id,
+            true,
+        )
+        .await?;
+        ensure_artifact_data_purge_target_is_retired(&transaction, &locked_target).await?;
         let scope = &locked_target.authorization.scope;
 
         let namespace = transaction
@@ -5408,6 +5395,9 @@ where
         {
             return Err(ArtifactDataError::PurgePrecondition);
         }
+        self.authorizer
+            .authorize_purge_on(&transaction, &request, &locked_target.authorization)
+            .await?;
         transaction
             .execute_raw(Statement::from_sql_and_values(
                 backend,
@@ -5847,19 +5837,60 @@ async fn load_artifact_data_purge_target<C: ConnectionTrait>(
     installation_id: Uuid,
     lock: bool,
 ) -> Result<ArtifactDataPurgeTarget, ArtifactDataError> {
-    let target =
-        query_artifact_data_purge_target(connection, tenant_id, installation_id, false).await?;
-    if !lock {
-        return Ok(target);
+    if lock {
+        lock_artifact_data_installation_on(connection, tenant_id, installation_id).await?;
     }
-    crate::installation::acquire_artifact_activation_lock(
-        connection,
-        &target.installation_scope,
-        &target.authorization.scope.module_slug,
-    )
-    .await
-    .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
-    query_artifact_data_purge_target(connection, tenant_id, installation_id, true).await
+    query_artifact_data_purge_target(connection, tenant_id, installation_id, lock).await
+}
+
+fn data_installation_scope_from_row(
+    row: &sea_orm::QueryResult,
+    backend: DbBackend,
+) -> Result<ModuleInstallationScope, ArtifactDataError> {
+    match row
+        .try_get::<String>("", "scope_kind")
+        .map_err(storage_error)?
+        .as_str()
+    {
+        "platform" => Ok(ModuleInstallationScope::Platform),
+        "tenant" => Ok(ModuleInstallationScope::Tenant {
+            tenant_id: uuid_from_row(row, "tenant_id", backend)?,
+        }),
+        _ => Err(ArtifactDataError::PurgePrecondition),
+    }
+}
+
+/// Lock immutable installation identity before deriving mutable namespace facts.
+pub(crate) async fn lock_artifact_data_installation_on<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    installation_id: Uuid,
+) -> Result<(), ArtifactDataError> {
+    let backend = connection.get_database_backend();
+    let row = connection
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT scope_kind, tenant_id, slug FROM module_artifact_installations
+             WHERE installation_id = {}
+               AND ((scope_kind = 'platform' AND tenant_id IS NULL)
+                    OR (scope_kind = 'tenant' AND tenant_id = {}))",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+            ),
+            vec![
+                uuid_value(installation_id, backend),
+                uuid_value(tenant_id, backend),
+            ],
+        ))
+        .await
+        .map_err(storage_error)?
+        .ok_or(ArtifactDataError::PurgePrecondition)?;
+    let scope = data_installation_scope_from_row(&row, backend)?;
+    let slug: String = row.try_get("", "slug").map_err(storage_error)?;
+    crate::installation::acquire_artifact_activation_lock(connection, &scope, &slug)
+        .await
+        .map_err(|error| ArtifactDataError::Storage(error.to_string()))
 }
 
 async fn query_artifact_data_purge_target<C: ConnectionTrait>(
@@ -5903,17 +5934,7 @@ async fn query_artifact_data_purge_target<C: ConnectionTrait>(
         .await
         .map_err(storage_error)?
         .ok_or(ArtifactDataError::PurgePrecondition)?;
-    let installation_scope = match row
-        .try_get::<String>("", "scope_kind")
-        .map_err(storage_error)?
-        .as_str()
-    {
-        "platform" => ModuleInstallationScope::Platform,
-        "tenant" => ModuleInstallationScope::Tenant {
-            tenant_id: uuid_from_row(&row, "tenant_id", backend)?,
-        },
-        _ => return Err(ArtifactDataError::PurgePrecondition),
-    };
+    let installation_scope = data_installation_scope_from_row(&row, backend)?;
     let descriptor: crate::ModuleArtifactDescriptor = serde_json::from_str(
         &row.try_get::<String>("", "descriptor")
             .map_err(storage_error)?,
@@ -5988,6 +6009,17 @@ async fn ensure_artifact_data_purge_target_is_retired<C: ConnectionTrait>(
         return Err(ArtifactDataError::PurgePrecondition);
     }
     ensure_no_active_artifact_data_scope_collision(connection, target).await
+}
+
+pub(crate) async fn load_retired_artifact_data_authorization_on<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    installation_id: Uuid,
+) -> Result<ArtifactDataPurgeAuthorizationContext, ArtifactDataError> {
+    let target =
+        load_artifact_data_purge_target(connection, tenant_id, installation_id, true).await?;
+    ensure_artifact_data_purge_target_is_retired(connection, &target).await?;
+    Ok(target.authorization)
 }
 
 /// Serving installations collide only with this exact tenant owner instance.
@@ -6709,15 +6741,46 @@ mod tests {
     }
 
     #[derive(Clone)]
-    struct AllowPurgeAuthorizer;
+    struct DataPurgeFixturePolicy {
+        scope: ArtifactDataScope,
+        actor_id: Uuid,
+        installation_id: Uuid,
+    }
 
     #[async_trait]
-    impl ArtifactDataPurgeAuthorizer for AllowPurgeAuthorizer {
-        async fn authorize_purge(
+    impl ArtifactDataPurgeAuthorizer for DataPurgeFixturePolicy {
+        async fn authorize_purge_on(
             &self,
-            _: &ArtifactDataPurgeRequest,
-            _: &ArtifactDataPurgeAuthorizationContext,
+            transaction: &DatabaseTransaction,
+            request: &ArtifactDataPurgeRequest,
+            owner: &ArtifactDataPurgeAuthorizationContext,
         ) -> Result<(), ArtifactDataError> {
+            if owner.scope != self.scope
+                || request.context.actor_id != self.actor_id
+                || request.installation_id != self.installation_id
+                || owner.installation_id != self.installation_id
+                || request.context.tenant_id != Some(self.scope.tenant_id)
+            {
+                return Err(ArtifactDataError::PolicyDenied);
+            }
+            let row = transaction
+                .query_one_raw(Statement::from_sql_and_values(
+                    transaction.get_database_backend(),
+                    "SELECT 1 FROM module_artifact_data_namespaces
+                 WHERE tenant_id=?1 AND data_owner_id=?2 AND namespace_instance_id=?3
+                   AND purged_at IS NULL AND namespace_revision=?4",
+                    vec![
+                        self.scope.tenant_id.to_string().into(),
+                        self.scope.data_owner_id.to_string().into(),
+                        self.scope.namespace_instance_id.to_string().into(),
+                        revision_value(request.expected_namespace_revision)?,
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?;
+            if row.is_none() {
+                return Err(ArtifactDataError::PolicyDenied);
+            }
             Ok(())
         }
     }
@@ -6768,10 +6831,10 @@ mod tests {
                 DbBackend::Sqlite,
                 "INSERT INTO module_artifact_installations (\
                     installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, slug, version, payload_kind, \
-                    runtime_abi, payload_digest, entrypoint, descriptor, data_owner_id, settings_instance_id, dependency_graph_revision, \
+                    runtime_abi, payload_digest, entrypoint, descriptor, data_owner_id, settings_instance_id, namespace_instance_id, dependency_graph_revision, \
                     dependency_graph_digest, dependency_lock, capability_grant_revision, installed_at\
                  ) VALUES (?1, 'tenant', ?2, 'registry.example', 'modules/purge', ?3, ?4, '1.0.0', 'rhai', \
-                    'rustok:module/runtime@1', ?5, 'main', ?6, ?7, ?8, 1, ?9, '{}', ?10, '2026-09-01T00:00:00Z')"
+                    'rustok:module/runtime@1', ?5, 'main', ?6, ?7, ?8, ?11, 1, ?9, '{}', ?10, '2026-09-01T00:00:00Z')"
                     .to_string(),
                 vec![
                     installation_id.to_string().into(),
@@ -6782,12 +6845,13 @@ mod tests {
                     sea_orm::Value::Json(Some(Box::new(
                         serde_json::to_value(&descriptor).expect("descriptor value"),
                     ))),
-                    Uuid::new_v4().to_string().into(),
+                    scope.data_owner_id.to_string().into(),
                     Uuid::new_v4().to_string().into(),
                     format!("sha256:{}", "c".repeat(64)).into(),
                     i64::try_from(scope.policy_revision)
                         .expect("policy revision fits SQLite integer")
                         .into(),
+                    scope.namespace_instance_id.to_string().into(),
                 ],
             ))
             .await
@@ -7313,6 +7377,15 @@ mod tests {
         }
         let scope = ArtifactDataScope {
             policy_revision: 7,
+            data_contract_digest: crate::promotion::digest_json(&ArtifactPersistenceContract {
+                revision: 1,
+                schema_digest: canonical_schema_digest(&json!({
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object",
+                })),
+                indexes: Vec::new(),
+            })
+            .expect("purge fixture contract digest"),
             ..test_scope(Uuid::new_v4(), "sample_module")
         };
         setup_test_serving_namespace(&database, &scope).await;
@@ -7544,7 +7617,14 @@ mod tests {
             reason: "verify policy-scoped purge evidence".to_string(),
         };
         let purge_context = purge_request.context.clone();
-        let purge = SeaOrmArtifactDataPurgeService::new(database.clone(), AllowPurgeAuthorizer);
+        let purge = SeaOrmArtifactDataPurgeService::new(
+            database.clone(),
+            DataPurgeFixturePolicy {
+                scope: next_scope.clone(),
+                actor_id: purge_request.context.actor_id,
+                installation_id: purge_installation_id,
+            },
+        );
         assert!(matches!(
             purge
                 .purge(ArtifactDataPurgeRequest {

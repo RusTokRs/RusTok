@@ -107,8 +107,10 @@ pub use data_object_migration::{
     ArtifactDataObjectMigrationRequest, ArtifactDataObjectMigrationService,
 };
 pub use data_post_purge_recovery::{
-    ArtifactDataPostPurgeRecoveryService, PostPurgeRecoveryCutoverReceipt, PostPurgeRecoveryError,
-    PrepareRecoveryRequest, StagedRecoveryReceipt,
+    ArtifactDataPostPurgeRecoveryService, ArtifactDataRecoveryAuthorizationContext,
+    ArtifactDataRecoveryAuthorizer, PostPurgeRecoveryCutoverReceipt,
+    PostPurgeRecoveryCutoverRequest, PostPurgeRecoveryError, PrepareRecoveryRequest,
+    StagedRecoveryReceipt,
 };
 pub use data_snapshot_intents::{
     ArtifactDataSnapshotIntentService, ReconciledSnapshotIntentsReceipt, SnapshotCopyKind,
@@ -215,7 +217,7 @@ pub use artifact::{
 };
 pub use artifact_capability_router::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityBrokerResolverRouter,
-    ArtifactCapabilityExecution, ResolvingArtifactCapabilityBroker,
+    ArtifactCapabilityExecution, ArtifactCapabilityScope, ResolvingArtifactCapabilityBroker,
     resolve_granted_artifact_capability,
 };
 pub use artifact_cas::StorageArtifactBlobStore;

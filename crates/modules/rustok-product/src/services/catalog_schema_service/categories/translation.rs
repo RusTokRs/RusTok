@@ -1596,7 +1596,7 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.category_form_translation_owner_unavailable",
             "Product Category Form translation storage is temporarily unavailable",
         ),
-        CommerceError::ProductNotFound(_) => PortError::not_found(
+        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => PortError::not_found(
             "product.category_form_translation_resource_not_found",
             "Product Category Form translation resource was not found",
         ),
@@ -1610,7 +1610,7 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.category_form_translation_owner_validation",
             "Product rejected the Category Form translation mutation",
         ),
-        CommerceError::CannotDeletePublished => PortError::conflict(
+        CommerceError::CannotDeletePublished | CommerceError::CannotDeleteOnlyVariant => PortError::conflict(
             "product.category_form_translation_owner_conflict",
             "Product state conflicts with the requested Category Form translation mutation",
         ),

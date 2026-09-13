@@ -46,3 +46,15 @@ The key architectural goal: `crates/modules/rustok-rbac` remains the policy host
 1. Keep the migration plan synchronized with the relation/casbin-only model.
 2. Remove any new legacy compatibility layers at the first safe opportunity.
 3. Close the `casbin_only` gate with a separate release decision.
+
+## Current owner persistence boundary (2026-09-13)
+
+The canonical owner now reads persisted role-mutation facts and enforces active
+administrator continuity inside host-supplied transactions. Target authority
+and tenant system-role locks belong to `rustok-rbac`; the server supplies
+authenticated actor evidence and composes user writes, commit, outbox delivery,
+cache integration, and telemetry. Ordinary committed replacement shares the
+same owner exact-assignment and continuity implementation as user administration.
+SQLite runtime regressions are bounded evidence; PostgreSQL concurrency,
+transport parity, and transaction-spanning revocation fences remain separate
+completion gates.

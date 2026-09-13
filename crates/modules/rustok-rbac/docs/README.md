@@ -22,12 +22,17 @@ documentation for this module must live inside the crate, not spread across
 
 - `SeaOrmRelationPermissionStore` owns persisted relation reads for both cached
   runtime and uncached decisions. `authorize_current_permission` evaluates
-  those current grants through the canonical tenant policy engine; it never
+  those current grants on a host-supplied connection or transaction through the
+  canonical tenant policy engine; it never
   consumes request snapshots and does not establish a revocation fence;
 - `resolve_persisted_permissions_on` uses that same reader on a host-supplied
   connection or transaction; server authoritative reads delegate here;
 - `RbacRoleAssignmentDbWriter::remove_tenant_role_assignments_on` validates
   persisted subject tenancy and owns membership deletion inside the host transaction;
+- `plan_persisted_user_role_mutation_on` reads and locks current target authority,
+  exact assignments, and continuity facts. `ensure_user_authority_continuity_on`
+  also covers status-only changes and removal; `replace_persisted_user_role_on`
+  applies ordinary replacement before host commit and cache delivery;
 - `apps/server` owns only authenticated adapters, cache integration, transport
   extractors and observability; it no longer implements the persisted relation reader;
 - GraphQL role query/mutation/types live in `rustok-rbac`; `apps/server` only composes roots and passes adapter role records to runtime persistence;

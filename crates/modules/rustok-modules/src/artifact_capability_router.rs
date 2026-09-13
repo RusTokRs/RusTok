@@ -60,6 +60,65 @@ impl ArtifactCapabilityExecution {
     }
 }
 
+/// Exact installation-backed authority shared by independent capabilities.
+/// Persistence and secret namespace identities belong to their own scopes.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactCapabilityScope {
+    pub installation_id: Uuid,
+    pub tenant_id: Uuid,
+    pub data_owner_id: Uuid,
+    pub release: ArtifactReleaseRef,
+    pub policy_revision: u64,
+}
+
+impl ArtifactCapabilityScope {
+    pub fn matches_subject(&self, subject: &SandboxSubject) -> bool {
+        if self.installation_id.is_nil()
+            || self.tenant_id.is_nil()
+            || self.data_owner_id.is_nil()
+            || self.policy_revision == 0
+            || self.release.slug.trim().is_empty()
+            || semver::Version::parse(&self.release.version).is_err()
+            || !crate::promotion::valid_digest(&self.release.digest)
+        {
+            return false;
+        }
+        matches!(subject, SandboxSubject::ModuleArtifact { installation_id, slug, version, digest }
+            if *installation_id == self.installation_id && *slug == self.release.slug
+             && *version == self.release.version && *digest == self.release.digest)
+    }
+}
+
+pub(crate) fn artifact_capability_scope_for_execution(
+    installation: &InstalledModuleArtifact,
+    execution: &ArtifactCapabilityExecution,
+    capability: &CapabilityName,
+) -> SandboxResult<ArtifactCapabilityScope> {
+    let scope = ArtifactCapabilityScope {
+        installation_id: installation.installation_id,
+        tenant_id: execution.tenant_id,
+        data_owner_id: installation.data_owner_id,
+        release: installation.release.clone(),
+        policy_revision: installation.capability_grant_revision,
+    };
+    let subject = SandboxSubject::ModuleArtifact {
+        installation_id: execution.installation_id,
+        slug: execution.slug.clone(),
+        version: execution.version.clone(),
+        digest: execution.digest.clone(),
+    };
+    if !scope.matches_subject(&subject)
+        || installation.descriptor.slug != execution.slug
+        || installation.descriptor.version != execution.version
+        || installation.descriptor.artifact_digest != execution.digest
+        || !installation.descriptor.capabilities.contains(capability)
+    {
+        return Err(SandboxError::CapabilityDenied(capability.clone()));
+    }
+    Ok(scope)
+}
+
 /// Deployment-owned resolver for one exact artifact execution. Implementations
 /// must load only the admitted installation named by `execution`, verify its
 /// tenant/lifecycle/policy eligibility, and return a broker for the requested

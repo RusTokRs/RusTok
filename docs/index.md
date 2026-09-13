@@ -89,7 +89,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 ### Domain Module Documentation
 
 - [Auth Module Documentation](../crates/modules/rustok-auth/docs/README.md)
-- [RBAC Module Documentation](../crates/modules/rustok-rbac/docs/README.md) — canonical persisted relation reader and tenant-policy decisions, including uncached maintenance authorization.
+- [RBAC Module Documentation](../crates/modules/rustok-rbac/docs/README.md) — canonical persisted relation reads/writes, transaction-backed role-mutation facts and administrator continuity, and uncached tenant-policy decisions used by owner-transaction purge authorization.
 - [MCP Capability Documentation](../crates/modules/rustok-mcp/docs/README.md)
 - [AI Capability Documentation](../crates/modules/rustok-ai/docs/README.md) — provider-neutral RAG ingestion and Athanor data plane
 - [Content Module Documentation](../crates/modules/rustok-content/docs/README.md)

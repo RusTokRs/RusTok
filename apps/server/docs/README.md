@@ -10,15 +10,20 @@ Local documentation for the main RusToK backend host application. This file capt
 - publishes HTTP, GraphQL, Leptos `#[server]`, health, metrics, and related control-plane surfaces;
 - remains a thin transport/wiring layer where domain logic has already been extracted into module crates.
 
-RBAC persisted relation reads and tenant membership deletion live in
-`rustok-rbac`; server adapters own composition, caller transactions, cache
-invalidation after commit, and process telemetry.
+RBAC persisted relation reads, tenant membership writes, role-mutation fact
+collection, exact assignment checks, and active-administrator continuity live
+in `rustok-rbac`. Server adapters own authenticated request evidence, user-field
+persistence, caller transactions, outbox composition, cache invalidation after
+commit, and process telemetry.
 
 Artifact purge previews call `ModuleControlPlane` owner projections. Data purge
 accepts an exact installation, positive namespace revision, reason, and
 idempotency UUID; the authenticated server supplies tenant/actor command
 evidence. The host authorizer binds owner-derived context and reads current
-persisted `modules:manage` grants without permission-cache/request snapshots.
+persisted `modules:manage` grants on the owner-supplied write transaction
+without permission-cache/request snapshots. The policy has no separate database
+connection. Terminal replay after lifecycle serialization precedes mutable
+owner target reads.
 Preview/apply errors hide storage details and receipt integers are checked.
 Lifecycle retirement and same-slug collision checks do not prove terminal
 traffic/job/write or atomic revocation fences. The server settings recovery
@@ -490,6 +495,13 @@ Minimum local verification path for changes in `apps/server`:
 - export API contracts via `node scripts/verify/export-reference-artifacts.mjs artifacts/reference`; the Bash wrapper `scripts/verify/export-reference-artifacts.sh` is intended for CI and Unix environments.
 
 ## Related documents
+
+Artifact MCP calls consume the owner-issued `ArtifactCapabilityScope`; server
+identity checks use its exact installation/release matcher and audit stable
+owner/installation facts. MCP no longer carries a data-contract revision or
+data namespace. It remains subject to host alias/tool policy and durable audit.
+The independent logical-secret scope/storage cutover and stateless MCP runtime
+verification are still tracked in the module control-plane owner plan.
 
 - [Health and runtime guardrails](./health.md)
 - [Backend module guides](../../../docs/backend/README.md)

@@ -1,6 +1,6 @@
 # Owner role mutation contract
 
-Status: `source_ready_unvalidated`
+Status: `in_progress`
 
 This cycle-001 slice defines the first approved owner-level operator mutation
 contract for canonical built-in user roles. It does not add a new role-management
@@ -25,8 +25,8 @@ relation write is introduced.
 
 ## Owner policy
 
-`rustok-rbac::plan_user_role_mutation` consumes authoritative facts collected by
-the host adapter:
+`rustok-rbac::plan_user_role_mutation` evaluates authoritative facts collected by
+the transaction-backed owner operation:
 
 - requested tenant identity;
 - authenticated actor identity, actor tenant and request-bound actor role;
@@ -37,9 +37,17 @@ the host adapter:
 
 The owner validates non-nil identities, actor and target tenant equality, role
 assignment hierarchy, target-management hierarchy and last-active-SuperAdmin
-continuity. The server is responsible for acquiring the target-user and
-SuperAdmin-role locks and for reading the facts; it no longer decides the role
-mutation policy.
+continuity. `plan_persisted_user_role_mutation_on` locks the target and reads its
+status, effective permissions, exact assignments, and remaining active
+administrators inside the host transaction. The authenticated host supplies
+request-bound actor authority and the requested change.
+
+The shared `ensure_user_authority_continuity_on` checks status-only changes and
+account removal from persisted target authority. Inactive targets do not reduce
+the active administrator set. The canonical system-role lock serializes
+continuity counts on PostgreSQL; SQLite obtains its write lock through an
+unchanged-value update before reading the count. Ordinary committed replacement
+uses `replace_persisted_user_role_on`; the host owns commit and cache delivery.
 
 The policy returns one of three semantic results:
 
@@ -89,10 +97,21 @@ committed durable generation. The roles must differ.
 committed durable generation. Both events accept only the four canonical built-in
 role slugs and reject nil users or generation zero.
 
-The older `rustok-rbac::RbacRoleAssignmentEvent` source payload is retained for
-compatibility in this slice. Live durable publication uses the registered sealed
-`rustok-events` contract rather than that legacy payload or an arbitrary event
-name.
+Durable publication uses the registered sealed `rustok-events` contracts.
+The unused parallel source event payload, its constructors, exports, and tests
+were deleted during the ownership cutover. There is one canonical event family
+per mutation capability.
+
+`require_request_role_grant` owns the privilege-delegation ceiling: privileged
+roles must fit within the token's effective permissions, while Customer remains
+the baseline account role. The server reads the immutable request snapshot and
+delegates this rule to the owner. `require_role_assignment` and
+`require_user_management` share the same hierarchy policy with the role planner.
+
+`authorize_current_permission` uses the canonical persisted relation reader and
+tenant policy engine on the caller's connection or transaction. Transaction-local
+grant revocation must deny a current decision before commit; rollback restores
+the persisted authority. This uncached read does not constitute a revocation fence.
 
 ## Deliberate boundary
 
@@ -111,10 +130,17 @@ operator parity and the remote/headless product decision are complete.
 
 ## Verification boundary
 
-The implementation unit did not run Rust tests, the source verifier, rustfmt,
-Cargo checks, server compilation, database/outbox execution, transport requests,
-workflows or CI. The source remains `source_ready_unvalidated` and the platform
-cursor remains on `core/rbac`.
+The initial source report did not run Rust tests or execution gates. The
+2026-09-13 ownership cutover adds a SQLite runtime regression for owner-read
+facts, tenant isolation, rejected last-active-administrator demotion and
+deactivation, exact no-op, malformed-assignment repair, and inactive-target
+removal. The focused owner tests pass 6/6. Server runtime, PostgreSQL concurrency,
+outbox failure, transport parity, and wider permission-management evidence must
+be assessed separately. The platform cursor remains on `core/rbac`; bounded
+ownership tests do not promote the broader readiness status. The complete
+RBAC lib tests pass 73/73 and scoped clippy passes; server committed-role tests
+pass 4/4. These results do not prove the fresh purge-policy transaction host
+test, PostgreSQL concurrency, or transport/Outbox parity.
 
 Targeted maintainer commands:
 

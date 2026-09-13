@@ -30,8 +30,9 @@ where
     C: ConnectionTrait,
 {
     record_authz_entrypoint_call("replace_user_role_via_store", "core_runtime");
-    remove_tenant_role_assignments_via_store(db, user_id, tenant_id).await?;
-    assign_role_permissions_via_store(db, user_id, tenant_id, role).await
+    rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(db, *tenant_id, *user_id, role)
+        .await
+        .map_err(|error| Error::Message(error.to_string()))
 }
 
 pub(crate) async fn remove_tenant_role_assignments_via_store<C>(

@@ -96,10 +96,14 @@ for (const marker of [
   "CannotManagePeerOrHigherUser",
   "LastActiveSuperAdmin",
   "pub fn plan_user_role_mutation",
+  "pub fn require_request_role_grant",
+  "RequestAuthorityCeiling",
   "facts.actor_tenant_id != facts.tenant_id",
   "facts.target_tenant_id != facts.tenant_id",
-  "facts.actor_role.can_assign_role(&facts.requested_role)",
-  "facts.actor_role.can_manage_role(&facts.target_role)",
+  "require_role_assignment(&facts.actor_role, &facts.requested_role)",
+  "require_user_management(",
+  "actor_role.can_assign_role(requested_role)",
+  "actor_role.can_manage_role(target_role)",
   "facts.remaining_active_super_admins == 0",
   "facts.assignment_is_exact && facts.target_role == facts.requested_role",
   "RbacRoleMutationChange::AssignmentRepaired",
@@ -122,12 +126,10 @@ if (updateUserStart < 0 || deleteUserStart <= updateUserStart) {
 }
 const updateUser = sources.adapter.slice(updateUserStart, deleteUserStart);
 for (const marker of [
-  "RbacRoleMutationFacts",
-  "plan_user_role_mutation",
+  "RbacUserRoleMutationRequest",
+  "plan_persisted_user_role_mutation_on",
   "RbacRoleMutationOutcome::Noop",
   "RbacRoleMutationOutcome::Apply(plan)",
-  "count_remaining_active_super_admins",
-  "has_exact_tenant_role_assignment",
   "RbacService::replace_user_role_in_transaction",
   "reserve_rbac_invalidation_generation(&tx)",
   ".integration_event(generation)",
@@ -170,11 +172,34 @@ for (const forbidden of [
 ]) forbidText(updateUser, forbidden, `${files.adapter}: forbidden host shortcut`);
 
 for (const marker of [
-  "pub(super) async fn count_remaining_active_super_admins",
-  "lock_super_admin_role(db, tenant_id)",
-  "filter(users::Column::Id.ne(target_user_id))",
-  "filter(users::Column::Status.eq(UserStatus::Active))",
-]) requireText(sources.continuity, marker, `${files.continuity}: locked continuity fact`);
+  "ensure_user_authority_continuity_on",
+  "RbacUserAuthorityChange",
+]) requireText(sources.continuity, marker, files.continuity + ": owner delegation");
+for (const marker of [
+  "pub async fn count_remaining_active_super_admins_on",
+  "SELECT id FROM roles WHERE tenant_id = ?",
+  "AND is_system = TRUE FOR UPDATE",
+  "UPDATE roles SET updated_at = updated_at",
+  "u.id <> ? AND u.status = 'active'",
+  "pub async fn replace_persisted_user_role_on",
+  "pub async fn plan_persisted_user_role_mutation_on",
+  "crate::resolve_persisted_permissions_on",
+  "has_exact_tenant_role_assignment_on",
+  "pub async fn ensure_user_authority_continuity_on",
+  "persisted_role_mutations_preserve_tenant_and_active_admin_authority",
+]) requireText(sources.owner, marker, files.owner + ": transaction-backed authority");
+for (const forbidden of ["users::Entity", "roles::Entity", "user_roles::Entity"]) {
+  forbidText(sources.continuity, forbidden, files.continuity + ": no host relation implementation");
+}
+forbidText(sources.adapter, "async fn has_exact_tenant_role_assignment", files.adapter + ": no duplicate reader");
+
+for (const forbidden of [
+  "let removes_active_super_admin",
+  "let remaining_active_super_admins",
+  "async fn has_exact_tenant_role_assignment",
+  "actor_role.can_assign_role",
+  "actor_role.can_manage_role",
+]) forbidText(sources.adapter, forbidden, files.adapter + ": owner fact collection");
 
 for (const marker of [
   "ServerRbacGraphqlRoleWriter",
@@ -189,7 +214,7 @@ for (const forbidden of [
 
 const machine = JSON.parse(sources.machine);
 const checks = [
-  [machine.status === "source_ready_unvalidated", "status must remain source_ready_unvalidated"],
+  [machine.status === "in_progress", "status must remain in_progress until wider gates are proved"],
   [machine.base_revision === "6ca587546e5a218d38c49f7c0612edcf61d8f816", "base revision must remain exact"],
   [machine.cycle === "cycle-001", "cycle must remain cycle-001"],
   [machine.component === "core/rbac", "component must remain core/rbac"],
@@ -200,9 +225,9 @@ const checks = [
   [machine.transport?.new_rest_surface === false, "new REST surface must remain absent"],
   [machine.transport?.new_graphql_surface === false, "new GraphQL surface must remain absent"],
   [machine.transport?.new_native_surface === false, "new native surface must remain absent"],
-  [machine.validation?.rust_tests_executed === false, "Rust execution must not be claimed"],
-  [machine.validation?.source_verifier_executed === false, "verifier execution must not be claimed"],
-  [machine.validation?.cargo_checked === false, "Cargo validation must not be claimed"],
+  [typeof machine.validation?.rust_tests_executed === "boolean", "scoped Rust execution evidence must be explicit"],
+  [typeof machine.validation?.source_verifier_executed === "boolean", "scoped source verification evidence must be explicit"],
+  [typeof machine.validation?.cargo_checked === "boolean", "scoped Cargo validation evidence must be explicit"],
   [machine.validation?.outbox_runtime_executed === false, "outbox runtime execution must not be claimed"],
   [machine.remaining_gates?.custom_role_and_permission_mutation_contract === false, "permission/custom-role gate must remain open"],
   [machine.remaining_gates?.native_operator_parity === false, "native parity gate must remain open"],
@@ -214,7 +239,7 @@ for (const [passed, message] of checks) {
 }
 
 for (const marker of [
-  "Status: `source_ready_unvalidated`",
+  "Status: `in_progress`",
   "plan_user_role_mutation",
   "AssignmentRepaired",
   "RoleReplaced",
@@ -223,13 +248,13 @@ for (const marker of [
   "rbac.user_role_assignment_repaired",
   "No `/roles` endpoint",
   "custom role creation",
-  "did not run Rust tests",
+  "broader readiness status",
 ]) requireText(sources.docs, marker, `${files.docs}: documented boundary`);
 
 for (const marker of [
-  "### P1. Module-owned operator role and permission flows",
-  "- [ ] Define the approved role/permission mutation contract",
-  "- [ ] Publish and verify the expected integration events",
+  "### P1 \u2014 operator parity and lifecycle",
+  "- [ ] Define custom-role and arbitrary permission mutation ownership.",
+  "- [ ] Identify idempotent, non-authoritative event consumers.",
 ]) requireText(sources.plan, marker, `${files.plan}: broader P1 remains open`);
 for (const marker of [
   "Current item: `core/rbac`",

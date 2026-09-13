@@ -1455,8 +1455,7 @@ impl RootMutation {
         }
         let db = ctx.data::<DatabaseConnection>()?;
         let control_plane = ModuleControlPlane::new(db.clone());
-        let service =
-            control_plane.artifact_data_purge(ServerArtifactDataPurgeAuthorizer::new(db.clone()));
+        let service = control_plane.artifact_data_purge(ServerArtifactDataPurgeAuthorizer);
 
         let result = service
             .purge(ArtifactDataPurgeRequest {

@@ -1,13 +1,6 @@
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait,
-    QueryFilter, QuerySelect, TransactionTrait, sea_query::Expr,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
 
 use crate::error::{Error, Result};
-use crate::models::{
-    _entities::{roles, user_roles},
-    users,
-};
 
 use super::rbac_cache_invalidation::publish_user_rbac_invalidation;
 use super::rbac_invalidation_generation::reserve_rbac_invalidation_generation;
@@ -47,13 +40,13 @@ impl RbacService {
     ) -> Result<()> {
         Self::record_committed_mutation_entrypoint();
         let tx = db.begin().await?;
-        let target = lock_target_user_for_role_mutation(&tx, user_id, tenant_id).await?;
-        if has_exact_tenant_role_assignment(&tx, user_id, tenant_id, &role).await? {
+        let changed = rustok_rbac::replace_persisted_user_role_on(&tx, *tenant_id, *user_id, role)
+            .await
+            .map_err(role_persistence_error)?;
+        if !changed {
             tx.rollback().await?;
             return Ok(());
         }
-        ensure_active_super_admin_continuity(&tx, &target, tenant_id, &role).await?;
-        Self::replace_user_role_in_transaction(&tx, user_id, tenant_id, role).await?;
         let durable_generation = reserve_rbac_invalidation_generation(&tx).await?;
         tx.commit().await?;
         Self::invalidate_user_rbac_caches(tenant_id, user_id).await;
@@ -84,144 +77,13 @@ impl RbacService {
     }
 }
 
-async fn lock_target_user_for_role_mutation<C>(
-    db: &C,
-    user_id: &uuid::Uuid,
-    tenant_id: &uuid::Uuid,
-) -> Result<users::Model>
-where
-    C: ConnectionTrait,
-{
-    let query =
-        || users::Entity::find_by_id(*user_id).filter(users::Column::TenantId.eq(*tenant_id));
-    let target = match db.get_database_backend() {
-        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await?,
-        DbBackend::Sqlite => {
-            let target = query().one(db).await?;
-            if target.is_some() {
-                users::Entity::update_many()
-                    .col_expr(
-                        users::Column::UpdatedAt,
-                        Expr::col(users::Column::UpdatedAt),
-                    )
-                    .filter(users::Column::Id.eq(*user_id))
-                    .filter(users::Column::TenantId.eq(*tenant_id))
-                    .exec(db)
-                    .await?;
-            }
-            target
+fn role_persistence_error(error: rustok_rbac::RbacRolePersistenceError) -> Error {
+    match error {
+        rustok_rbac::RbacRolePersistenceError::TargetNotFound => Error::NotFound,
+        rustok_rbac::RbacRolePersistenceError::Policy(policy) => {
+            Error::BadRequest(policy.to_string())
         }
-        _ => unreachable!("unsupported SeaORM database backend"),
-    };
-    target.ok_or(Error::NotFound)
-}
-
-async fn has_exact_tenant_role_assignment<C>(
-    db: &C,
-    user_id: &uuid::Uuid,
-    tenant_id: &uuid::Uuid,
-    resulting_role: &rustok_core::UserRole,
-) -> Result<bool>
-where
-    C: ConnectionTrait,
-{
-    let tenant_roles = roles::Entity::find()
-        .filter(roles::Column::TenantId.eq(*tenant_id))
-        .all(db)
-        .await?;
-    let target_slug = resulting_role.to_string();
-    let target_role_id = tenant_roles
-        .iter()
-        .find(|role| role.slug == target_slug && role.is_system)
-        .map(|role| role.id);
-    let tenant_role_ids = tenant_roles
-        .into_iter()
-        .map(|role| role.id)
-        .collect::<Vec<_>>();
-    if target_role_id.is_none() || tenant_role_ids.is_empty() {
-        return Ok(false);
-    }
-
-    let assignments = user_roles::Entity::find()
-        .filter(user_roles::Column::UserId.eq(*user_id))
-        .filter(user_roles::Column::RoleId.is_in(tenant_role_ids))
-        .all(db)
-        .await?;
-    Ok(assignments.len() == 1 && assignments[0].role_id == target_role_id.unwrap())
-}
-
-async fn ensure_active_super_admin_continuity<C>(
-    db: &C,
-    target: &users::Model,
-    tenant_id: &uuid::Uuid,
-    resulting_role: &rustok_core::UserRole,
-) -> Result<()>
-where
-    C: ConnectionTrait,
-{
-    if resulting_role == &rustok_core::UserRole::SuperAdmin
-        || target.status != rustok_core::UserStatus::Active
-    {
-        return Ok(());
-    }
-
-    let Some(super_admin_role) = find_super_admin_role_for_update(db, tenant_id).await? else {
-        return Ok(());
-    };
-
-    let target_is_super_admin = user_roles::Entity::find()
-        .filter(user_roles::Column::UserId.eq(target.id))
-        .filter(user_roles::Column::RoleId.eq(super_admin_role.id))
-        .count(db)
-        .await?
-        > 0;
-    if !target_is_super_admin {
-        return Ok(());
-    }
-
-    let super_admin_user_ids = user_roles::Entity::find()
-        .select_only()
-        .column(user_roles::Column::UserId)
-        .filter(user_roles::Column::RoleId.eq(super_admin_role.id))
-        .into_tuple::<uuid::Uuid>()
-        .all(db)
-        .await?;
-    let remaining_active = users::Entity::find()
-        .filter(users::Column::TenantId.eq(*tenant_id))
-        .filter(users::Column::Id.is_in(super_admin_user_ids))
-        .filter(users::Column::Id.ne(target.id))
-        .filter(users::Column::Status.eq(rustok_core::UserStatus::Active))
-        .count(db)
-        .await?;
-
-    if remaining_active == 0 {
-        return Err(Error::BadRequest(
-            "cannot demote the last active super administrator".to_string(),
-        ));
-    }
-
-    Ok(())
-}
-
-async fn find_super_admin_role_for_update<C>(
-    db: &C,
-    tenant_id: &uuid::Uuid,
-) -> Result<Option<roles::Model>>
-where
-    C: ConnectionTrait,
-{
-    let query = || {
-        roles::Entity::find()
-            .filter(roles::Column::TenantId.eq(*tenant_id))
-            .filter(roles::Column::Slug.eq(rustok_core::UserRole::SuperAdmin.to_string()))
-    };
-
-    match db.get_database_backend() {
-        DbBackend::Sqlite => query().one(db).await.map_err(Into::into),
-        DbBackend::Postgres | DbBackend::MySql => {
-            query().lock_exclusive().one(db).await.map_err(Into::into)
-        }
-        _ => unreachable!("unsupported SeaORM database backend"),
+        other => Error::Message(other.to_string()),
     }
 }
 

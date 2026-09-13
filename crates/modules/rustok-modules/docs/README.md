@@ -493,7 +493,10 @@ that installation's admitted descriptor and capability grant, binds the
 durable receipt to `(tenant_id, installation_id, idempotency_key)`, and repeats
 the inactive-plus-uninstalled lifecycle fence inside its write transaction.
 The server authorizer binds tenant and installation to owner-derived facts and
-resolves persisted `modules:manage` grants without request/cache snapshots.
+resolves persisted `modules:manage` grants through the supplied owner write
+transaction without request/cache snapshots. The policy no longer opens a
+separate connection. Purge replays terminal receipts after lifecycle
+serialization before deriving mutable target facts.
 The relation reader and current tenant-policy decision belong to `rustok-rbac`;
 the server only binds module-owner context and consumes that decision.
 This is a policy read, not an atomic revocation or traffic/job/write fence.
@@ -584,18 +587,24 @@ resumable `collecting` decision. Missing policy retains data; final collection
 preserves independent audit facts and emits an outbox event rather than using
 implicit age-only GC.
 
-Because the current empty-target restore rejects a purged namespace, pre-purge
-snapshot evidence is not yet a usable post-purge recovery path. The accepted
-target restores into a new isolated empty namespace instance under the same
-stable data-owner identity, verifies it fully, and performs a separately
-authorized active-reference CAS cutover. The old namespace remains tombstoned;
-crash replay cannot clear it, attach by slug, or expose two active instances.
-The existing `data_post_purge_recovery` ledger does not implement this target:
-it records snapshot counts without restoring bytes, marks the ledger verified
-without content verification, and attempts to clear the original purge row
-at cutover. Schema tombstones reject that mutation. It must be replaced with
-the atomic owner/instance storage cutover;
-its current tests cannot establish usable post-purge recovery.
+Post-purge recovery derives the exact retired installation, stable owner,
+contract, and current tombstoned namespace. Prepare requires the exact purge
+receipt and reference/tombstone revisions, reserves a fresh empty non-serving
+instance and recovery hold, then invokes actual snapshot restore and verification.
+A separate cutover command authorizes on the transaction, re-verifies target
+rows and bytes, and CASes the owner reference. It keeps the source permanently
+tombstoned, releases only its own recovery hold, and never activates code.
+Complete prepare/cutover digests govern terminal replay before mutable lifecycle
+checks. Schema guards preserve command identity, verification facts, and terminal
+receipts. No permissive host authorizer is supplied.
+
+The purge/recovery integration passes 1/1 with actual record/object restore,
+denied actors/revisions, corrupt target bytes rejecting CAS, permanent source
+tombstones, and terminal replay after later lifecycle changes. This is bounded
+SQLite/local-storage evidence with explicit fixture policies. Host runtime/
+transport composition, recovery lifecycle outbox facts, remaining callers/
+fixtures, and production policy/traffic/job/write/recovery/retention fences
+remain open. No FFA/FBA status is promoted.
 
 The physical cutover is in progress. Pending schemas and broker SQL now use
 tenant/owner/opaque instance identities, with immutable namespace metadata and
@@ -611,9 +620,17 @@ metadata cannot be changed or deleted; verification evidence cannot be removed,
 and the instance cannot return to staging. Collection checks active holds at
 admission and resume. Missing copy parents remain unresolved, with no age-based
 orphan deletion. The focused real-storage test passes 1/1. Remaining callers,
-fixtures, secret/MCP scope separation, actual migration-object copy, and
-authorized active-reference cutover are not yet closed. This worktree is
+fixtures, independent secret scope/storage, actual migration-object copy, and
+production recovery composition and lifecycle outbox facts are not yet closed. This worktree is
 not a production-ready post-purge recovery path.
+
+MCP now consumes the shared installation-backed `ArtifactCapabilityScope`,
+binding tenant, stable owner, exact release, installation, and grant revision.
+It does not require a data contract or namespace. Its broker and server invoker
+match the complete admitted subject instead of only the slug. The data broker
+uses that same immutable authority binding before adding its own persistence
+scope. Stateless MCP runtime verification remains pending. Secrets still use
+the persistence scope and require their independent secret-instance cutover.
 
 Final registry publication revalidates localized rows loaded from the database.
 Every locale must already be canonical, names and descriptions must satisfy the

@@ -25,9 +25,30 @@
 - Predecessor standby strategy: `Standby DB + Slot`
 - Rollback eligibility: `AutomaticSingleAttempt`
 - N/N+1 compatibility: Additive definitions and projections; inert release definitions keyed by `(release_digest, module_slug, permission_key)`; scoped install projects under `(scope, installation_id)`. Unchanged authorization fingerprint retains continuity; fingerprint diff requires explicit operator approval; display text changes are excluded from fingerprint and remain non-breaking.
-- External side effects & fences: Monotonic RBAC epoch binding; outbox event publication (`RBAC_EVENT_ROLE_PERMISSIONS_ASSIGNED`) commits in owner transaction; removed grants become dormant; rollback never restores revoked grants.
+- External side effects & fences: Monotonic RBAC epoch binding; sealed role and artifact-permission outbox event publication commits in owner transaction; removed grants become dormant; rollback never restores revoked grants.
 - Uncertain-outcome recovery: Crash-safe idempotent projections; transaction rollback restores canonical schema.
 - Responsible module owner: Platform RBAC Owner
+
+## Current role ownership verification
+
+Role-mutation facts and persisted continuity checks now belong to
+`rustok-rbac`. `plan_persisted_user_role_mutation_on` reads the locked target,
+effective permissions, exact assignment set, and remaining active administrators
+inside the caller transaction. Token permission ceilings and role hierarchy
+also use shared owner policy; server guards only extract request evidence.
+Ordinary committed replacement delegates to
+`replace_persisted_user_role_on`; status-only and removal adapters call
+`ensure_user_authority_continuity_on`. The host retains user-field persistence,
+commit, outbox composition, post-commit cache delivery, and telemetry.
+
+On 2026-09-13, the focused owner tests pass 6/6 with a native-UUID SQLite
+regression for tenant isolation, rejected last-administrator removal/demotion,
+exact no-op, malformed-assignment repair, and inactive-target removal. The complete RBAC lib tests pass 73/73 and scoped clippy passes.
+Server committed-role tests pass 4/4, covering cache invalidation, exact no-op,
+malformed-assignment repair, and last-active-admin rollback. PostgreSQL
+concurrency and broader host/Outbox/parity evidence remain to be revalidated.
+FFA `in_progress` and FBA `boundary_ready` are unchanged. These transaction
+checks do not establish an atomic permission-revocation fence for module purge.
 
 ## Source of truth
 

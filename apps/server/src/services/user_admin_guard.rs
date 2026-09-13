@@ -7,7 +7,7 @@ use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
     UserAdminMutationPort, UserMutationRecord,
 };
-use rustok_core::{Rbac, UserRole};
+use rustok_core::UserRole;
 use uuid::Uuid;
 
 use super::rbac_request_scope::{permissions_for, role_for};
@@ -75,28 +75,8 @@ impl GuardedUserAdminMutationProvider {
         requested_role: &UserRole,
     ) -> Result<(), AuthAdminMutationError> {
         let actor_role = Self::request_role(context)?;
-        if !actor_role.can_assign_role(requested_role) {
-            return Err(AuthAdminMutationError::Forbidden(
-                "cannot assign a peer or higher-privileged role".to_string(),
-            ));
-        }
-
-        // Customer is the platform's baseline account role. Provisioning a
-        // customer remains part of users:create/users:manage. Any privileged
-        // role, however, delegates cross-domain authority and must fit inside
-        // the current token's effective permission ceiling.
-        if requested_role == &UserRole::Customer {
-            return Ok(());
-        }
-
-        for permission in Rbac::permissions_for_role(requested_role) {
-            if !has_effective_permission(authority, permission) {
-                return Err(AuthAdminMutationError::Forbidden(format!(
-                    "cannot assign role `{requested_role}` because permission `{permission}` exceeds the current request authority"
-                )));
-            }
-        }
-        Ok(())
+        rustok_rbac::require_request_role_grant(&actor_role, authority, requested_role)
+            .map_err(|error| AuthAdminMutationError::Forbidden(error.to_string()))
     }
 }
 

@@ -872,6 +872,32 @@ try {
     );
   }
 
+  const serverDataPurgeHost = fs.readFileSync(
+    path.join(root, "apps/server/src/services/artifact_purge_recovery_host.rs"), "utf8",
+  );
+  const purgeBodyStart = artifactDataOwner.indexOf("impl<A> SeaOrmArtifactDataPurgeService");
+  const purgeBodyEnd = artifactDataOwner.indexOf("async fn find_artifact_data_purge_operation", purgeBodyStart);
+  const purgeBody = artifactDataOwner.slice(purgeBodyStart, purgeBodyEnd);
+  const lifecycleLock = purgeBody.indexOf("lock_artifact_data_installation_on(");
+  const replayAfterLock = purgeBody.indexOf("find_artifact_data_purge_operation(", lifecycleLock);
+  const targetAfterReplay = purgeBody.indexOf("query_artifact_data_purge_target(", replayAfterLock);
+  const policyOn = purgeBody.indexOf(".authorize_purge_on(&transaction,");
+  const firstDelete = purgeBody.indexOf("DELETE FROM module_artifact_data_index_contracts");
+  if (
+    !artifactDataOwner.includes("transaction: &DatabaseTransaction,") ||
+    lifecycleLock < 0 || replayAfterLock < lifecycleLock ||
+    targetAfterReplay < replayAfterLock || policyOn < targetAfterReplay ||
+    firstDelete < policyOn ||
+    purgeBody.includes("pre_authorization") ||
+    purgeBody.includes(".authorize_purge(&request") ||
+    !serverDataPurgeHost.includes("async fn authorize_purge_on(") ||
+    !serverDataPurgeHost.includes("transaction: &DatabaseTransaction,") ||
+    !serverDataPurgeHost.includes("rustok_rbac::authorize_current_permission(") ||
+    serverDataPurgeHost.includes("&self.db")
+  ) {
+    fail("data purge must replay after lifecycle serialization before mutable target reads, and current host policy must use the same write transaction before deletion; production revocation and operational fences require separate evidence");
+  }
+
   const purgeRequest = artifactDataOwner.match(
     /pub struct ArtifactDataPurgeRequest\s*\{(?<fields>[\s\S]*?)\n\}/,
   );
@@ -1013,26 +1039,28 @@ try {
 
   if (
     !postPurgeRecoveryOwner.includes("pub context: ModuleCommandContext,") ||
-    !postPurgeRecoveryOwner.includes(
-      "request.context.tenant_id != Some(request.tenant_id)",
-    ) ||
+    !postPurgeRecoveryOwner.includes("validate_context(&request.context, &request.reason)") ||
     !postPurgeRecoveryOwner.includes("let request_digest = digest_json(&request)") ||
-    !postPurgeRecoveryOwner.includes(
-      "stored_request_digest != request_digest",
-    ) ||
+    !postPurgeRecoveryOwner.includes("stored_request_digest != request_digest") ||
     !postPurgeRecoveryOwner.includes("ArtifactDataRestoreRequest") ||
     !postPurgeRecoveryOwner.includes("namespace_instance_id: Uuid") ||
     !postPurgeRecoveryOwner.includes("module_artifact_data_owner_references") ||
+    !postPurgeRecoveryOwner.includes("load_retired_artifact_data_authorization_on") ||
+    !postPurgeRecoveryOwner.includes("lock_artifact_data_installation_on") ||
+    !postPurgeRecoveryOwner.includes("authorize_cutover_on") ||
+    !postPurgeRecoveryOwner.includes("verify_restored_rows_in") ||
+    !postPurgeRecoveryOwner.includes("terminal_cutover_replay") ||
+    !postPurgeRecoveryOwner.includes("ensure_recovery_hold_on") ||
+    !postPurgeRecoveryOwner.includes("module_artifact_data_purge_operations") ||
     /SET\s+purged_at\s*=\s*NULL/i.test(postPurgeRecoveryOwner) ||
-    !postPurgeRecoveryMigration.includes(
-      "request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$')",
-    ) ||
-    !postPurgeRecoveryMigration.includes(
-      "request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:'",
-    )
+    /pub\s+(?:module_slug|data_contract_revision):/.test(postPurgeRecoveryOwner) ||
+    !postPurgeRecoveryMigration.includes("UNIQUE (tenant_id, installation_id, idempotency_key)") ||
+    !postPurgeRecoveryMigration.includes("cutover_request_digest TEXT NULL") ||
+    !postPurgeRecoveryMigration.includes("source_namespace_instance_id UUID NOT NULL") ||
+    !postPurgeRecoveryMigration.includes("source_namespace_instance_id TEXT NOT NULL")
   ) {
     fail(
-      "canonical post-purge recovery is incomplete: require real restore into an opaque non-serving instance, exact replay, and owner-reference CAS without clearing tombstones; runtime content and fence evidence remain separate gates",
+      "canonical post-purge recovery must derive retired-installation authority, perform real restore and content verification, retain source holds, and require independently authorized exact owner-reference CAS/replay without clearing tombstones; host/fleet evidence remains a separate gate",
     );
   }
 

@@ -1306,7 +1306,7 @@ checkpoints, and receipts independently of code selection.
 | maintenance before point-of-no-return | cancellation may leave an approved additive expansion, but serving compatibility is preserved and no irreversible effect has begun |
 | maintenance after point-of-no-return | no automatic code or data rollback; failure is `recovery_required` and follows only the recorded forward repair, compensation, or isolated restore/cutover |
 | compatibility finalization | after explicit rollback closure and every compatibility hold, delete only the previewed obsolete schema/index/binding/contract artifacts; owner domain data is not implicitly purged |
-| dynamic artifact-data purge | only after absent/retired state and terminal fences, separately privileged deletion of the exact previewed structured/index/object namespace after matching artifact-data recovery evidence and all holds; the current safe interim command accepts one exact retired installation and derives its namespace owner-side, then blocks if an active tenant-visible installation shares the slug until physical storage is rekeyed by stable data owner; it is not dynamic artifact-settings purge, finalization, uninstall, or GC |
+| dynamic artifact-data purge | only after absent/retired state and terminal fences, separately privileged deletion of the exact previewed structured/index/object namespace after matching artifact-data recovery evidence and all holds; the current command accepts one exact retired installation and derives its stable owner/namespace instance, then blocks active tenant-visible selectors of that exact instance; another owner with the same display slug has independent data. Full storage/copy/secret composition and production fences remain open. This command is separate from dynamic artifact-settings purge, finalization, uninstall, and GC |
 | dynamic artifact-settings purge | only after absent/retired state and terminal fences, separately privileged deletion of the exact previewed settings set after its own protected recovery evidence and all holds; grants and external secret bytes are out of scope, and it is not dynamic artifact-data purge, finalization, uninstall, or GC |
 | background GC | delete only exact source/artifact/cache/staging/object identities already proven physically unreferenced after tombstone, grace, and final owner recheck; no logical data or lifecycle state changes |
 | database restore | separately privileged recovery into an isolated/empty target followed by verification and authorized cutover; never an automatic overwrite of live production |
@@ -2124,35 +2124,49 @@ backend preflight.
   work, and proven traffic/job/write fences. The current owner services enforce
   the exact inactive-plus-uninstalled lifecycle precondition in both preview
   and apply; structured-data purge additionally fails closed when an active
-  tenant-visible installation shares the slug. This prevents
+  tenant-visible installation selects the same stable owner and namespace instance. This prevents
   reset-while-installed authority, but it does not yet prove the remaining
   live traffic/job/write fence sources.
   The structured-data server authorizer now validates owner-derived context
-  and reads persisted `modules:manage` grants without request/cache snapshots.
-  This is not a transaction-spanning revocation fence. GraphQL preview/apply
+  and reads persisted `modules:manage` grants through the owner write transaction
+  without request/cache snapshots. Purge/recovery terminal replay is rechecked
+  after installation serialization before mutable lifecycle/reference facts.
+  This does not prove a transaction-spanning revocation fence. GraphQL preview/apply
   errors are sanitized and receipt integers use checked conversions.
-- [x] Persist a monotonic settings-instance purge tombstone/revision instead of
-  deleting its CAS authority. Restore only against that exact tombstone under a
-  fence and create a new non-serving settings instance/revision. Bind only an
-  explicitly named non-retired inactive installation under the same data owner;
-  after retirement leave it unbound for a later continuity-checked reinstall.
-  Reject stale restore after newer settings writes and prove crash replay
-  before/after purge and restore CAS.
-  Verified by `artifact_purge_and_recovery_tests.rs` and `artifact_settings_recovery.rs`.
-- [x] Add durable per-copy snapshot/restore intents and staging receipts so a
-  crash after object publication but before metadata commit resumes exactly or
-  collects the proven orphan through tombstone/grace/final recheck.
-  Verified by `m20260903_000049_artifact_data_snapshot_and_recovery_operations.rs`, `data_snapshot_intents.rs`, and `snapshot_intents_and_post_purge_recovery_tests.rs`.
+- [x] Implement the owner settings-instance tombstone and revision CAS, restore
+  into a fresh non-serving instance, and bind only an explicitly named compatible
+  inactive installation under the same data owner. After source retirement the
+  restored instance stays unbound for a continuity-checked reinstall. Bounded
+  fixtures cover stale revisions and terminal replay; they are not encryption,
+  host authorization, or terminal-fence evidence.
+- [ ] Compose actual authenticated encryption/KMS, current owner policy, secret
+  handle safety, retention/hold decisions, and terminal fences through the real
+  settings recovery host. Execute the full crash, concurrency, and transport
+  scenarios. The server currently fails closed without this composition.
+- [x] Reserve durable per-copy snapshot/restore keys before publication, verify
+  actual bytes, and commit the staging intent against exact parent metadata in
+  the same transaction. Exact retry reuses the reserved key; stale reconciliation
+  resumes only proven committed parents and retains unresolved bytes.
+  Bounded runtime evidence: `snapshot_intents_and_post_purge_recovery_tests.rs`;
+  owner implementation: `data_snapshot_intents.rs` and the pending snapshot
+  operation schema.
+- [ ] Complete owner-authorized orphan collection with tombstone, grace, and
+  final reference/hold rechecks. Missing metadata or intent age alone cannot
+  authorize byte deletion; the current reconciler retains these objects.
 - [ ] Complete post-purge artifact-data recovery into a new isolated empty
   namespace instance under the same stable data-owner identity. Verify the full
   snapshot before a separately authorized active-namespace CAS cutover, never
   clear the old purge tombstone, and reconcile crashes before/after cutover
-  without two active namespaces or slug-based attachment. The existing
-  slug/revision-scoped recovery code is not evidence of this owner-keyed target
-  and must be replaced atomically with the storage cutover below.
-  In particular, its staging counts are copied metadata, verification does not
-  hash restored content, and cutover clears the original `purged_at` row.
-  Preserving the purge receipt does not preserve the namespace tombstone.
+  without two active namespaces or slug-based attachment. The owner coordinator
+  now derives exact retired-installation authority, restores actual records and
+  object bytes into a fresh non-serving instance, verifies the complete target
+  manifest, and separately authorizes active-reference CAS. It rechecks target
+  bytes before CAS and leaves the source tombstone permanently unchanged. The
+  bounded SQLite/local-storage regression covers corruption rejection, denied
+  actors/revisions, durable snapshot holds, and exact terminal replay. Production
+  recovery policy/fences, lifecycle outbox facts, host/native/GraphQL composition,
+  full storage/copy/secret cutover, and complete crash/concurrency evidence remain
+  open. The earlier status-only recovery implementation was deleted.
 
 ### 5. Complete Dynamic Artifact Installation and Recovery
 
@@ -2244,11 +2258,15 @@ backend preflight.
   bytes and does not block this namespace. The updated SQLite purge integration
   checks this boundary and permanent root tombstones. Caller/fixture conversion,
   independent secret/MCP scopes, migration-object copy publication,
-  and authorized reference CAS remain open. Snapshot/restore reservations now
+  and production recovery composition remain open. Snapshot/restore reservations now
   publish and re-read actual bytes, source holds block collection, and full
   target manifest/byte verification seals a non-serving instance before any
   active-reference cutover. The focused SQLite/local-storage test passes 1/1;
-  it does not prove authorized post-purge recovery or production fences. Publisher-lineage evidence must be connected to the
+  the coordinator purge/recovery test also passes 1/1 with actual object bytes,
+  denied actors/revisions, corruption rejection before CAS, permanent source
+  tombstones, and complete terminal replay. These fixture policies do not prove
+  production fences/revocation/retention/hold policy or host composition.
+  Recovery lifecycle outbox facts remain open. Publisher-lineage evidence must be connected to the
   full owner-keyed data/objects/snapshots/recovery replacement, not treated as
   a completed retained-data attach contract.
 - [x] Atomically cut dynamic artifact settings reads/writes and RLS from

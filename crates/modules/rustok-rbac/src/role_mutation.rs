@@ -109,6 +109,13 @@ pub enum RbacRoleMutationPolicyError {
     CannotAssignPeerOrHigherRole,
     #[error("cannot modify a peer or higher-privileged user")]
     CannotManagePeerOrHigherUser,
+    #[error(
+        "cannot assign role `{role}` because permission `{permission}` exceeds the current request authority"
+    )]
+    RequestAuthorityCeiling {
+        role: UserRole,
+        permission: rustok_api::Permission,
+    },
     #[error("cannot remove, demote, or deactivate the last active super administrator")]
     LastActiveSuperAdmin,
     #[error("RBAC role mutation durable generation must be greater than zero")]
@@ -130,14 +137,13 @@ pub fn plan_user_role_mutation(
     if facts.target_tenant_id != facts.tenant_id {
         return Err(RbacRoleMutationPolicyError::TargetTenantMismatch);
     }
-    if !facts.actor_role.can_assign_role(&facts.requested_role) {
-        return Err(RbacRoleMutationPolicyError::CannotAssignPeerOrHigherRole);
-    }
-    if facts.actor_id != facts.target_user_id
-        && !facts.actor_role.can_manage_role(&facts.target_role)
-    {
-        return Err(RbacRoleMutationPolicyError::CannotManagePeerOrHigherUser);
-    }
+    require_role_assignment(&facts.actor_role, &facts.requested_role)?;
+    require_user_management(
+        facts.actor_id,
+        facts.target_user_id,
+        &facts.actor_role,
+        &facts.target_role,
+    )?;
 
     let removes_active_super_admin = facts.target_role == UserRole::SuperAdmin
         && facts.target_status == UserStatus::Active
@@ -174,10 +180,567 @@ fn validate_identity(field: &'static str, value: Uuid) -> Result<(), RbacRoleMut
     }
 }
 
+pub fn require_role_assignment(
+    actor_role: &UserRole,
+    requested_role: &UserRole,
+) -> Result<(), RbacRoleMutationPolicyError> {
+    if actor_role.can_assign_role(requested_role) {
+        Ok(())
+    } else {
+        Err(RbacRoleMutationPolicyError::CannotAssignPeerOrHigherRole)
+    }
+}
+
+pub fn require_user_management(
+    actor_id: Uuid,
+    target_user_id: Uuid,
+    actor_role: &UserRole,
+    target_role: &UserRole,
+) -> Result<(), RbacRoleMutationPolicyError> {
+    validate_identity("actor_id", actor_id)?;
+    validate_identity("target_user_id", target_user_id)?;
+    if actor_id == target_user_id || actor_role.can_manage_role(target_role) {
+        Ok(())
+    } else {
+        Err(RbacRoleMutationPolicyError::CannotManagePeerOrHigherUser)
+    }
+}
+
+/// A privileged role must fit inside the token's effective permission ceiling.
+/// Customer provisioning is the baseline users:create/users:manage operation.
+pub fn require_request_role_grant(
+    actor_role: &UserRole,
+    authority: &[rustok_api::Permission],
+    requested_role: &UserRole,
+) -> Result<(), RbacRoleMutationPolicyError> {
+    require_role_assignment(actor_role, requested_role)?;
+    if requested_role != &UserRole::Customer {
+        for permission in rustok_core::Rbac::permissions_for_role(requested_role) {
+            if !crate::has_effective_permission_in_set(authority, permission) {
+                return Err(RbacRoleMutationPolicyError::RequestAuthorityCeiling {
+                    role: requested_role.clone(),
+                    permission: *permission,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, Error)]
+pub enum RbacRolePersistenceError {
+    #[error(transparent)]
+    Database(#[from] sea_orm::DbErr),
+    #[error(transparent)]
+    Assignment(#[from] crate::RbacRoleAssignmentError),
+    #[error(transparent)]
+    Policy(#[from] RbacRoleMutationPolicyError),
+    #[error("RBAC target user was not found in the requested tenant")]
+    TargetNotFound,
+    #[error("active super administrator role assignment is inconsistent")]
+    InconsistentAuthority,
+}
+
+/// The requested change to a user's participation in the active administrator set.
+#[derive(Clone, Debug, Default)]
+pub struct RbacUserAuthorityChange {
+    pub role: Option<UserRole>,
+    pub status: Option<UserStatus>,
+    pub deleting: bool,
+}
+
+fn role_statement<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    sql: &str,
+    values: Vec<sea_orm::Value>,
+) -> Result<sea_orm::Statement, sea_orm::DbErr> {
+    let backend = db.get_database_backend();
+    if !matches!(
+        backend,
+        sea_orm::DbBackend::Postgres | sea_orm::DbBackend::Sqlite
+    ) {
+        return Err(sea_orm::DbErr::Custom(
+            "RBAC role mutation requires PostgreSQL or SQLite".to_string(),
+        ));
+    }
+    let mut index = 0;
+    let sql = sql
+        .chars()
+        .map(|ch| {
+            if ch == '?' {
+                index += 1;
+                match backend {
+                    sea_orm::DbBackend::Postgres => format!("${}", index),
+                    _ => format!("?{}", index),
+                }
+            } else {
+                ch.to_string()
+            }
+        })
+        .collect::<String>();
+    Ok(sea_orm::Statement::from_sql_and_values(
+        backend, sql, values,
+    ))
+}
+
+/// Read the complete tenant membership set, rather than only its effective role.
+pub async fn has_exact_tenant_role_assignment_on<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    requested_role: &UserRole,
+) -> Result<bool, RbacRolePersistenceError> {
+    validate_identity("tenant_id", tenant_id)?;
+    validate_identity("target_user_id", user_id)?;
+    let rows = db.query_all_raw(role_statement(
+        db,
+        "SELECT r.slug, r.is_system FROM user_roles ur JOIN roles r ON r.id = ur.role_id JOIN users u ON u.id = ur.user_id AND u.tenant_id = r.tenant_id WHERE ur.user_id = ? AND r.tenant_id = ?",
+        vec![user_id.into(), tenant_id.into()],
+    )?).await?;
+    Ok(rows.len() == 1
+        && rows[0].try_get::<String>("", "slug")? == requested_role.to_string()
+        && rows[0].try_get::<bool>("", "is_system")?)
+}
+
+/// Serialize continuity checks on the tenant's canonical administrator role.
+/// The transaction owner must retain this lock through its user/relation write.
+pub async fn count_remaining_active_super_admins_on(
+    db: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    target_user_id: Uuid,
+) -> Result<u64, RbacRolePersistenceError> {
+    use sea_orm::ConnectionTrait;
+    validate_identity("tenant_id", tenant_id)?;
+    validate_identity("target_user_id", target_user_id)?;
+    let sql = match db.get_database_backend() {
+        sea_orm::DbBackend::Postgres => {
+            "SELECT id FROM roles WHERE tenant_id = ? AND slug = ? AND is_system = TRUE FOR UPDATE"
+        }
+        sea_orm::DbBackend::Sqlite => {
+            "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND slug = ? AND is_system = TRUE RETURNING id"
+        }
+        _ => {
+            return Err(sea_orm::DbErr::Custom(
+                "RBAC continuity requires PostgreSQL or SQLite".to_string(),
+            )
+            .into());
+        }
+    };
+    let role = db
+        .query_one_raw(role_statement(
+            db,
+            sql,
+            vec![tenant_id.into(), UserRole::SuperAdmin.to_string().into()],
+        )?)
+        .await?
+        .ok_or(RbacRolePersistenceError::InconsistentAuthority)?;
+    let role_id: Uuid = role.try_get("", "id")?;
+    let row = db.query_one_raw(role_statement(
+        db,
+        "SELECT COUNT(*) AS remaining FROM users u WHERE u.tenant_id = ? AND u.id <> ? AND u.status = 'active' AND EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id AND ur.role_id = ?)",
+        vec![tenant_id.into(), target_user_id.into(), role_id.into()],
+    )?).await?.ok_or(RbacRolePersistenceError::InconsistentAuthority)?;
+    let remaining: i64 = row.try_get("", "remaining")?;
+    u64::try_from(remaining).map_err(|_| {
+        sea_orm::DbErr::Custom("RBAC administrator count is negative".to_string()).into()
+    })
+}
+
+#[derive(Clone, Debug)]
+pub struct RbacUserRoleMutationRequest {
+    pub tenant_id: Uuid,
+    pub actor_id: Uuid,
+    pub actor_tenant_id: Uuid,
+    pub actor_role: UserRole,
+    pub target_user_id: Uuid,
+    pub requested_role: UserRole,
+    pub resulting_status: Option<UserStatus>,
+}
+
+/// Build the role plan from owner-read facts under the host's transaction.
+/// Actor authority is bound to the authenticated request by the host.
+pub async fn plan_persisted_user_role_mutation_on(
+    db: &sea_orm::DatabaseTransaction,
+    request: RbacUserRoleMutationRequest,
+) -> Result<RbacRoleMutationOutcome, RbacRolePersistenceError> {
+    validate_identity("actor_id", request.actor_id)?;
+    validate_identity("actor_tenant_id", request.actor_tenant_id)?;
+    if request.actor_tenant_id != request.tenant_id {
+        return Err(RbacRoleMutationPolicyError::ActorTenantMismatch.into());
+    }
+    let target_status =
+        lock_target_authority_on(db, request.tenant_id, request.target_user_id).await?;
+    let permissions =
+        crate::resolve_persisted_permissions_on(db, &request.tenant_id, &request.target_user_id)
+            .await?;
+    let target_role = rustok_core::infer_user_role_from_permissions(&permissions);
+    let resulting_status = request
+        .resulting_status
+        .unwrap_or_else(|| target_status.clone());
+    let removes_active_super_admin = target_role == UserRole::SuperAdmin
+        && target_status == UserStatus::Active
+        && (request.requested_role != UserRole::SuperAdmin
+            || resulting_status != UserStatus::Active);
+    let remaining_active_super_admins = if removes_active_super_admin {
+        count_remaining_active_super_admins_on(db, request.tenant_id, request.target_user_id)
+            .await?
+    } else {
+        0
+    };
+    let assignment_is_exact = has_exact_tenant_role_assignment_on(
+        db,
+        request.tenant_id,
+        request.target_user_id,
+        &request.requested_role,
+    )
+    .await?;
+    Ok(plan_user_role_mutation(RbacRoleMutationFacts {
+        tenant_id: request.tenant_id,
+        actor_id: request.actor_id,
+        actor_tenant_id: request.actor_tenant_id,
+        actor_role: request.actor_role,
+        target_user_id: request.target_user_id,
+        target_tenant_id: request.tenant_id,
+        target_role,
+        target_status,
+        requested_role: request.requested_role,
+        resulting_status,
+        assignment_is_exact,
+        remaining_active_super_admins,
+    })?)
+}
+
+async fn lock_target_authority_on(
+    db: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> Result<UserStatus, RbacRolePersistenceError> {
+    use sea_orm::ConnectionTrait;
+    validate_identity("tenant_id", tenant_id)?;
+    validate_identity("target_user_id", user_id)?;
+    let sql = match db.get_database_backend() {
+        sea_orm::DbBackend::Postgres => {
+            "SELECT status FROM users WHERE id = ? AND tenant_id = ? FOR UPDATE"
+        }
+        sea_orm::DbBackend::Sqlite => {
+            "UPDATE users SET updated_at = updated_at WHERE id = ? AND tenant_id = ? RETURNING status"
+        }
+        _ => {
+            return Err(sea_orm::DbErr::Custom(
+                "RBAC user mutation requires PostgreSQL or SQLite".to_string(),
+            )
+            .into());
+        }
+    };
+    let row = db
+        .query_one_raw(role_statement(
+            db,
+            sql,
+            vec![user_id.into(), tenant_id.into()],
+        )?)
+        .await?
+        .ok_or(RbacRolePersistenceError::TargetNotFound)?;
+    match row.try_get::<String>("", "status")?.as_str() {
+        "active" => Ok(UserStatus::Active),
+        "inactive" => Ok(UserStatus::Inactive),
+        "banned" => Ok(UserStatus::Banned),
+        _ => Err(RbacRolePersistenceError::InconsistentAuthority),
+    }
+}
+
+/// Validate removal, role demotion, and status changes against current persisted
+/// authority inside the same transaction that applies the host-owned user change.
+pub async fn ensure_user_authority_continuity_on(
+    db: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    change: &RbacUserAuthorityChange,
+) -> Result<(), RbacRolePersistenceError> {
+    use sea_orm::ConnectionTrait;
+    let active = lock_target_authority_on(db, tenant_id, user_id).await? == UserStatus::Active;
+    let remains = !change.deleting
+        && change
+            .role
+            .as_ref()
+            .is_none_or(|role| role == &UserRole::SuperAdmin)
+        && change
+            .status
+            .as_ref()
+            .is_none_or(|status| status == &UserStatus::Active);
+    if !active || remains {
+        return Ok(());
+    }
+    let membership = db.query_one_raw(role_statement(
+        db,
+        "SELECT r.id FROM roles r JOIN user_roles ur ON ur.role_id = r.id WHERE r.tenant_id = ? AND r.slug = ? AND r.is_system = TRUE AND ur.user_id = ?",
+        vec![tenant_id.into(), UserRole::SuperAdmin.to_string().into(), user_id.into()],
+    )?).await?;
+    if membership.is_some()
+        && count_remaining_active_super_admins_on(db, tenant_id, user_id).await? == 0
+    {
+        return Err(RbacRoleMutationPolicyError::LastActiveSuperAdmin.into());
+    }
+    Ok(())
+}
+
+/// Replace a persisted role within the caller's transaction. Returns false only
+/// for an exact canonical single-role assignment. Host commit and invalidation
+/// remain outside this owner operation.
+pub async fn replace_persisted_user_role_on(
+    db: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    role: UserRole,
+) -> Result<bool, RbacRolePersistenceError> {
+    lock_target_authority_on(db, tenant_id, user_id).await?;
+    if has_exact_tenant_role_assignment_on(db, tenant_id, user_id, &role).await? {
+        return Ok(false);
+    }
+    ensure_user_authority_continuity_on(
+        db,
+        tenant_id,
+        user_id,
+        &RbacUserAuthorityChange {
+            role: Some(role.clone()),
+            ..Default::default()
+        },
+    )
+    .await?;
+    crate::RbacRoleAssignmentDbWriter::replace_role_on(db, tenant_id, user_id, role).await?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use rustok_events::{RBAC_EVENT_USER_ROLE_ASSIGNMENT_REPAIRED, RBAC_EVENT_USER_ROLE_REPLACED};
+
+    #[tokio::test]
+    async fn persisted_role_mutations_preserve_tenant_and_active_admin_authority() {
+        use sea_orm::{ConnectionTrait, Database, TransactionTrait};
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("PRAGMA foreign_keys = ON")
+            .await
+            .unwrap();
+        // These are the host-owned relation parents. UUID values use the same
+        // native SeaORM codec as the live server models.
+        for ddl in [
+            "CREATE TABLE users (id BLOB PRIMARY KEY, tenant_id BLOB NOT NULL, status TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE roles (id BLOB PRIMARY KEY, tenant_id BLOB NOT NULL, name TEXT NOT NULL, slug TEXT NOT NULL, description TEXT, is_system BOOLEAN NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (tenant_id, slug))",
+            "CREATE TABLE user_roles (id BLOB PRIMARY KEY, user_id BLOB NOT NULL REFERENCES users(id), role_id BLOB NOT NULL REFERENCES roles(id), UNIQUE (user_id, role_id))",
+            "CREATE TABLE permissions (id BLOB PRIMARY KEY, tenant_id BLOB NOT NULL, resource TEXT NOT NULL, action TEXT NOT NULL, description TEXT, UNIQUE (tenant_id, resource, action))",
+            "CREATE TABLE role_permissions (id BLOB PRIMARY KEY, role_id BLOB NOT NULL REFERENCES roles(id), permission_id BLOB NOT NULL REFERENCES permissions(id), UNIQUE (role_id, permission_id))",
+        ] {
+            db.execute_unprepared(ddl).await.unwrap();
+        }
+        let tenant = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let admin = Uuid::new_v4();
+        let successor = Uuid::new_v4();
+        let foreign_admin = Uuid::new_v4();
+        for (id, tenant_id) in [
+            (admin, tenant),
+            (successor, tenant),
+            (foreign_admin, other_tenant),
+        ] {
+            db.execute_raw(
+                role_statement(
+                    &db,
+                    "INSERT INTO users (id, tenant_id, status) VALUES (?, ?, 'active')",
+                    vec![id.into(), tenant_id.into()],
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        }
+        let tx = db.begin().await.unwrap();
+        for (id, tenant_id) in [(admin, tenant), (foreign_admin, other_tenant)] {
+            crate::RbacRoleAssignmentDbWriter::assign_role_on(
+                &tx,
+                tenant_id,
+                id,
+                UserRole::SuperAdmin,
+            )
+            .await
+            .unwrap();
+        }
+        tx.commit().await.unwrap();
+
+        let tx = db.begin().await.unwrap();
+        assert_eq!(
+            count_remaining_active_super_admins_on(&tx, tenant, admin)
+                .await
+                .unwrap(),
+            0
+        );
+        let request = RbacUserRoleMutationRequest {
+            tenant_id: tenant,
+            actor_id: admin,
+            actor_tenant_id: tenant,
+            actor_role: UserRole::SuperAdmin,
+            target_user_id: admin,
+            requested_role: UserRole::SuperAdmin,
+            resulting_status: None,
+        };
+        assert_eq!(
+            plan_persisted_user_role_mutation_on(&tx, request.clone())
+                .await
+                .unwrap(),
+            RbacRoleMutationOutcome::Noop,
+        );
+        let mut demotion = request.clone();
+        demotion.requested_role = UserRole::Customer;
+        assert!(matches!(
+            plan_persisted_user_role_mutation_on(&tx, demotion).await,
+            Err(RbacRolePersistenceError::Policy(
+                RbacRoleMutationPolicyError::LastActiveSuperAdmin
+            ))
+        ));
+        let mut escalation = request.clone();
+        escalation.actor_id = successor;
+        escalation.actor_role = UserRole::Admin;
+        assert!(matches!(
+            plan_persisted_user_role_mutation_on(&tx, escalation).await,
+            Err(RbacRolePersistenceError::Policy(
+                RbacRoleMutationPolicyError::CannotAssignPeerOrHigherRole
+            ))
+        ));
+        let mut mismatch = request;
+        mismatch.actor_tenant_id = other_tenant;
+        assert!(matches!(
+            plan_persisted_user_role_mutation_on(&tx, mismatch).await,
+            Err(RbacRolePersistenceError::Policy(
+                RbacRoleMutationPolicyError::ActorTenantMismatch
+            ))
+        ));
+        assert!(
+            !replace_persisted_user_role_on(&tx, tenant, admin, UserRole::SuperAdmin)
+                .await
+                .unwrap()
+        );
+        assert!(matches!(
+            replace_persisted_user_role_on(&tx, tenant, admin, UserRole::Customer).await,
+            Err(RbacRolePersistenceError::Policy(
+                RbacRoleMutationPolicyError::LastActiveSuperAdmin
+            ))
+        ));
+        for change in [
+            RbacUserAuthorityChange {
+                status: Some(UserStatus::Inactive),
+                ..Default::default()
+            },
+            RbacUserAuthorityChange {
+                deleting: true,
+                ..Default::default()
+            },
+        ] {
+            assert!(matches!(
+                ensure_user_authority_continuity_on(&tx, tenant, admin, &change).await,
+                Err(RbacRolePersistenceError::Policy(
+                    RbacRoleMutationPolicyError::LastActiveSuperAdmin
+                ))
+            ));
+        }
+        assert!(matches!(
+            replace_persisted_user_role_on(&tx, other_tenant, admin, UserRole::Customer).await,
+            Err(RbacRolePersistenceError::TargetNotFound)
+        ));
+        tx.rollback().await.unwrap();
+        assert!(
+            has_exact_tenant_role_assignment_on(&db, tenant, admin, &UserRole::SuperAdmin)
+                .await
+                .unwrap()
+        );
+
+        let tx = db.begin().await.unwrap();
+        crate::RbacRoleAssignmentDbWriter::assign_role_on(
+            &tx,
+            tenant,
+            successor,
+            UserRole::SuperAdmin,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            count_remaining_active_super_admins_on(&tx, tenant, admin)
+                .await
+                .unwrap(),
+            1
+        );
+        assert!(
+            replace_persisted_user_role_on(&tx, tenant, admin, UserRole::Customer)
+                .await
+                .unwrap()
+        );
+        tx.commit().await.unwrap();
+        assert!(
+            has_exact_tenant_role_assignment_on(&db, tenant, admin, &UserRole::Customer)
+                .await
+                .unwrap()
+        );
+
+        let tx = db.begin().await.unwrap();
+        crate::RbacRoleAssignmentDbWriter::assign_role_on(&tx, tenant, admin, UserRole::Manager)
+            .await
+            .unwrap();
+        assert!(
+            !has_exact_tenant_role_assignment_on(&tx, tenant, admin, &UserRole::Customer)
+                .await
+                .unwrap()
+        );
+        assert!(
+            replace_persisted_user_role_on(&tx, tenant, admin, UserRole::Customer)
+                .await
+                .unwrap()
+        );
+        tx.commit().await.unwrap();
+        assert!(
+            has_exact_tenant_role_assignment_on(&db, tenant, admin, &UserRole::Customer)
+                .await
+                .unwrap()
+        );
+
+        let tx = db.begin().await.unwrap();
+        db_status_update(&tx, successor, "inactive").await;
+        // Removing an inactive administrator cannot reduce the active set.
+        ensure_user_authority_continuity_on(
+            &tx,
+            tenant,
+            successor,
+            &RbacUserAuthorityChange {
+                deleting: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        tx.rollback().await.unwrap();
+        assert!(
+            has_exact_tenant_role_assignment_on(
+                &db,
+                other_tenant,
+                foreign_admin,
+                &UserRole::SuperAdmin
+            )
+            .await
+            .unwrap()
+        );
+    }
+
+    async fn db_status_update(db: &sea_orm::DatabaseTransaction, user: Uuid, status: &str) {
+        use sea_orm::ConnectionTrait;
+        db.execute_raw(
+            role_statement(
+                db,
+                "UPDATE users SET status = ? WHERE id = ?",
+                vec![status.into(), user.into()],
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    }
 
     fn facts() -> RbacRoleMutationFacts {
         let tenant_id = Uuid::new_v4();
@@ -236,6 +799,15 @@ mod tests {
 
     #[test]
     fn hierarchy_and_tenant_scope_fail_closed() {
+        assert!(require_request_role_grant(&UserRole::Admin, &[], &UserRole::Customer).is_ok());
+        assert!(matches!(
+            require_request_role_grant(
+                &UserRole::Admin,
+                &[rustok_api::Permission::USERS_MANAGE],
+                &UserRole::Manager,
+            ),
+            Err(RbacRoleMutationPolicyError::RequestAuthorityCeiling { .. })
+        ));
         let mut peer = facts();
         peer.requested_role = UserRole::Admin;
         assert_eq!(

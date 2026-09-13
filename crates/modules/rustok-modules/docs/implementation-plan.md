@@ -199,12 +199,19 @@ source manifest, target scope, and private object keys. Schema guards reject
 writes, deletes, rollback to staging, and changes to retained verification
 evidence. This is isolated restore evidence, not authorized recovery cutover.
 
-The obsolete post-purge recovery ledger remains incomplete and must be replaced:
-it counts snapshot metadata, marks status without actual restore, and attempts
-to clear the original tombstone. Schema guards reject that mutation. Earlier
-ledger tests were removed because they asserted the unsafe behavior as success.
-The write-path verifier remains closed until real recovery composition and
-separate authorized owner-reference CAS exist.
+The post-purge ledger has been replaced with real owner-derived recovery.
+Prepare binds one retired installation, exact purge receipt, reference/tombstone
+revisions, complete context, and source snapshot. It allocates a fresh instance
+and source recovery hold, invokes actual restore, and records observed restored
+counts and the sealed fingerprint. A separate cutover command authorizes on
+the transaction, re-verifies target content/bytes, and CASes the owner reference
+while preserving the permanent source tombstone. Full prepare/cutover digests
+govern replay before mutable lifecycle checks. Schema guards protect command
+identity, verified evidence, and terminal receipts. The focused purge/recovery
+integration passes 1/1 including actual objects, corrupt target bytes rejecting
+CAS, denied actors/revisions, and terminal replay after later lifecycle changes.
+Fixture policies are bounded test evidence. Production host ports/transports,
+fences, retention/hold policy, and recovery outbox facts remain open.
 
 On 2026-09-03, Bounded Artifact-Data Snapshot Readiness and Platform PostgreSQL Recovery Evidence were delivered per Section 4 of the Rollback Plan:
 - `crates/modules/rustok-modules/src/data_snapshot_readiness.rs` implemented `ArtifactDataRecoveryReadinessService`:
@@ -402,11 +409,16 @@ checks under its write lock, and rejects exact serving-instance collisions. Grap
 previews use owner projections; apply and preview errors are sanitized, and
 receipt integers use checked conversions. The server data-purge authorizer
 binds the owner context and resolves current persisted `modules:manage` grants
-through `rustok-rbac::authorize_current_permission` and its canonical tenant
+inside the owner write transaction through `authorize_purge_on` and
+`rustok-rbac::authorize_current_permission` and its canonical tenant
 policy engine without request/cache snapshots. The persisted reader belongs to
 the RBAC owner and is also used by the cached host runtime. This policy read does not establish an atomic
 revocation fence or production traffic/job/write drain. Terminal replay remains
-bound to the original full command before mutable lifecycle preconditions.
+bound to the original full command before mutable lifecycle preconditions,
+including a recheck after waiting for the installation lock. Recovery prepare,
+finalization, and cutover use the same serialization/replay ordering. The
+purge integration passes 1/1 after the policy transaction cutover; fresh broader
+and host runtime checks remain pending.
 
 Required next cutover: replace every slug/revision storage, broker, copy,
 snapshot, restore, and install selector with stable `data_owner_id` and opaque
@@ -2180,8 +2192,9 @@ idempotency and redacted audit evidence. The structured-value namespace now has 
 SeaOrmArtifactDataPurgeService:
 it serializes writes and purge through namespace state, marks the purged revision,
 stores actor/reason/idempotency audit data, and emits an outbox fact. The current
-post-purge recovery ledger can clear that marker and is not safe recovery
-evidence; immutable tombstones require the atomic instance cutover. The service
+post-purge coordinator retains the marker permanently and requires a fresh
+verified instance plus separate authorized reference CAS. Production composition
+and operational fence evidence remain incomplete. The service
 requires a host-provided ArtifactDataPurgeAuthorizer. The current host binds
 owner context and checks current RBAC grants; legal-hold, retention, traffic,
 job, and write fences remain open. No guest capability can authorize itself.
@@ -2212,9 +2225,9 @@ target at the expected namespace revision. It copies and re-hashes snapshot
 objects before atomically restoring structured values, object metadata,
 materialized indexes, the index contract, namespace revision CAS, durable
 idempotency/audit data, and the restore outbox event. This snapshot restore path
-rejects purged targets, but the separate post-purge recovery ledger can clear a
-tombstone. Neither path implements the required fresh non-serving instance and
-separate authorized active-reference CAS.
+rejects purged targets. The post-purge coordinator allocates a fresh non-serving
+instance and invokes actual restore before separate authorized reference CAS.
+It never clears the original tombstone. Production composition/fences remain open.
 
 The accepted release-safety cutover replaces that current restore identity with
 exact `(scope_id, stable data_owner_id, namespace_instance_id,
@@ -2616,12 +2629,13 @@ a namespace. Shared storage keys include the same owner/instance identities.
 Restore admission requires a distinct empty staging instance, with no serving
 reference. This is incomplete worktree state, not release-safety readiness:
 all fixtures/callers, independent secret/MCP scopes, migration-object copy
-publication, authorized reference CAS, and real traffic/job/write/recovery/
+publication, production recovery composition and outbox facts, and real traffic/job/write/recovery/
 retention fences still require closure. Snapshot/restore copy reservations now
 publish and verify real bytes, and restore verifies the complete target manifest
 before sealing its new non-serving instance. Source snapshot holds protect
-assembly from collection; unresolved copies are retained for reconciliation. The former
-post-purge ledger must be replaced; it cannot bypass schema tombstones.
+assembly from collection; unresolved copies are retained for reconciliation.
+Post-purge prepare now invokes this restore before separately authorized exact
+reference CAS, with complete replay evidence and permanent source tombstones.
 
 The owner library check passed after the initial SQL/identity changes. Direct
 SQLite execution of the pending root/data DDL proved same-slug owner isolation,
@@ -2633,8 +2647,9 @@ with actual source deletion, preservation of an active foreign owner's same-slug
 data, serving-successor collision rejection, terminal replay, and immutable
 tombstones. The default server check passed. Cargo metadata and diff checks
 passed. Full owner Clippy exposes unconverted unit-test scopes; the write-path
-verifier fails closed on missing canonical post-purge recovery. These gates
-must pass after full caller/fixture and recovery replacement. Earlier suites below precede this physical cutover
+verifier checks canonical post-purge prepare/restore/verification/CAS boundaries.
+This source gate does not prove production composition or operational safety.
+Full caller/fixture and host recovery closure remain required. Earlier suites below precede this physical cutover
 and must be repeated after its callers and fixtures are consistent.
 
 - GraphQL purge errors hide storage details and receipt revisions/counts use
@@ -2654,8 +2669,8 @@ and must be repeated after its callers and fixtures are consistent.
   protection. The write-path verifier, Cargo metadata, and diff checks passed.
 - Final server and RBAC runtime verification after the membership-writer
   ownership correction remains pending. FFA stays `not_started`, FBA stays
-  `boundary_ready`. The in-progress physical storage cutover, the unsafe post-purge
-  ledger, and the atomic owner/instance cutover remain open.
+  `boundary_ready`. The in-progress physical storage cutover, host recovery
+  composition, and the atomic owner/instance cutover remain open.
 
 ### 2026-09-08 marketplace browser-contract slice
 
@@ -2988,3 +3003,22 @@ retention of unresolved copy bytes. Actual collection holds an expired snapshot
 while restore is pending, then deletes the source after release while preserving
 target bytes. The target does not test post-purge recovery authorization/CAS or
 production fences. Windows emitted its existing informational linker warning.
+
+The shared `ArtifactCapabilityScope` now binds exact installed release, tenant,
+stable owner, installation, and grant revision without a persistence contract.
+MCP and its server invoker consume it and match the complete admitted subject.
+Data scope resolution reuses this binding before adding namespace/contract
+facts. Stateless MCP runtime verification is pending; secrets still require
+the independent opaque secret-instance scope/storage/caller cutover.
+
+Current coordinator runtime evidence: artifact_purge_and_recovery_tests passes
+1/1 with exact admitted/retired installation lineage, actual structured/object
+restore, a sealed non-serving target, independent actor/revision authorization,
+corrupted target bytes rejecting CAS without changing the reference, permanent
+source tombstones, immutable terminal receipts, and full prepare/cutover replay
+after later lifecycle changes. Tests use explicit fixture policies and fsynced
+local object storage. Host/native/GraphQL composition, recovery lifecycle outbox
+facts, production fences/retention/hold policy, and remaining callers/fixtures
+are still open. The default server check passed before the coordinator API
+replacement and must be repeated. Full owner Clippy exposes unconverted
+secret/data unit-test scopes. FFA remains not_started; FBA remains boundary_ready.

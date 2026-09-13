@@ -10,9 +10,9 @@ use rustok_sandbox::{
     ExecutionPhase, SandboxError, SandboxResult, SandboxSubject,
 };
 
-use crate::data::artifact_data_scope_for_execution;
+use crate::artifact_capability_router::artifact_capability_scope_for_execution;
 use crate::{
-    ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactDataScope,
+    ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactCapabilityScope,
     resolve_granted_artifact_capability,
 };
 
@@ -24,7 +24,7 @@ const MAX_ARTIFACT_MCP_OUTPUT_BYTES: usize = 64 * 1024;
 /// this call to its own MCP authorization and audit policies.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ArtifactMcpCallRequest {
-    pub scope: ArtifactDataScope,
+    pub scope: ArtifactCapabilityScope,
     pub execution_id: Uuid,
     pub subject: SandboxSubject,
     pub phase: ExecutionPhase,
@@ -53,14 +53,14 @@ pub trait ArtifactMcpInvoker: Send + Sync {
 #[derive(Clone)]
 pub struct ArtifactMcpCapabilityBroker<I> {
     invoker: I,
-    scope: ArtifactDataScope,
+    scope: ArtifactCapabilityScope,
 }
 
 impl<I> ArtifactMcpCapabilityBroker<I>
 where
     I: ArtifactMcpInvoker,
 {
-    pub fn new(invoker: I, scope: ArtifactDataScope) -> Self {
+    pub fn new(invoker: I, scope: ArtifactCapabilityScope) -> Self {
         Self { invoker, scope }
     }
 }
@@ -73,14 +73,12 @@ where
     async fn invoke(
         &self,
         call: &CapabilityCall,
-        _grant: &CapabilityGrant,
+        grant: &CapabilityGrant,
     ) -> SandboxResult<CapabilityResponse> {
         if call.capability.as_str() != "platform.mcp"
             || call.context.tenant_id != Some(self.scope.tenant_id)
-            || !matches!(
-                &call.subject,
-                SandboxSubject::ModuleArtifact { slug, .. } if slug == &self.scope.module_slug
-            )
+            || grant.name != call.capability
+            || !self.scope.matches_subject(&call.subject)
         {
             return Err(SandboxError::CapabilityDenied(call.capability.clone()));
         }
@@ -148,7 +146,7 @@ where
         }
         let installation =
             resolve_granted_artifact_capability(&self.db, execution, capability).await?;
-        let scope = artifact_data_scope_for_execution(&installation, execution, capability)?;
+        let scope = artifact_capability_scope_for_execution(&installation, execution, capability)?;
         Ok(Arc::new(ArtifactMcpCapabilityBroker::new(
             self.invoker.clone(),
             scope,
