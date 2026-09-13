@@ -314,8 +314,8 @@ impl TranslationTargetProvider for OAuthAppTranslationTargetProvider {
             let facts = TranslationTargetProgressFacts {
                 required_units: owner.resources,
                 exact_required_units: owner.exact_required_units,
-                optional_units: 0,
-                exact_optional_units: 0,
+                optional_units: owner.optional_units,
+                exact_optional_units: owner.exact_optional_units,
                 resources: owner.resources,
                 complete_resources: owner.complete_resources,
                 owner_change_cursor: after
