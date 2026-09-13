@@ -164,7 +164,7 @@ fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) {
     ensure_stop_handle(ctx);
     let stop_rx = ctx
         .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .expect("StopHandle must exist before paid-order label worker startup")
+        .expect("StopHandle must exist before payment provider event worker startup")
         .subscribe();
     ctx.shared_insert(
         crate::services::payment_provider_event_worker::spawn_payment_provider_event_worker(
