@@ -174,6 +174,8 @@ impl ProductWriteTransaction {
         let variant_translation_change_target = product_variant_translation_change_target(&event);
         let attribute_translation_change_target =
             product_attribute_translation_change_target(&event);
+        let attribute_schema_translation_change_target =
+            product_attribute_schema_translation_change_target(&event);
         let root_event_id = self
             .event_bus
             .publish_in_tx_with_envelope_id(&self.transaction, tenant_id, actor_id, event)
@@ -240,6 +242,19 @@ impl ProductWriteTransaction {
                 &self.transaction,
                 tenant_id,
                 attribute_id,
+                root_event_id,
+            )
+            .await?;
+        }
+
+        if let Some(schema_id) = attribute_schema_translation_change_target {
+            // Attribute Schema name/description and schema-group labels form one Product-owned
+            // Translation aggregate. Binding-only events intentionally pass this boundary too;
+            // semantic revision dedupe suppresses them unless presentation copy actually changed.
+            ProductCatalogSchemaService::record_attribute_schema_translation_change_in_tx(
+                &self.transaction,
+                tenant_id,
+                schema_id,
                 root_event_id,
             )
             .await?;
@@ -352,6 +367,16 @@ fn product_attribute_translation_change_target(event: &DomainEvent) -> Option<Uu
         | DomainEvent::ProductAttributeOptionCreated { attribute_id, .. }
         | DomainEvent::ProductAttributeOptionUpdated { attribute_id, .. }
         | DomainEvent::ProductAttributeOptionDeleted { attribute_id, .. } => Some(*attribute_id),
+        _ => None,
+    }
+}
+
+fn product_attribute_schema_translation_change_target(event: &DomainEvent) -> Option<Uuid> {
+    match event {
+        DomainEvent::ProductAttributeSchemaCreated { schema_id }
+        | DomainEvent::ProductAttributeSchemaUpdated { schema_id }
+        | DomainEvent::ProductAttributeSchemaDeleted { schema_id }
+        | DomainEvent::ProductAttributeSchemaBindingsChanged { schema_id } => Some(*schema_id),
         _ => None,
     }
 }
