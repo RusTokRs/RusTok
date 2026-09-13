@@ -399,6 +399,8 @@ fn product_attribute_schema_translation_change_target(event: &DomainEvent) -> Op
 fn product_category_form_translation_change_target(event: &DomainEvent) -> Option<Uuid> {
     match event {
         DomainEvent::CatalogCategoryCreated { category_id }
+        | DomainEvent::CatalogCategoryUpdated { category_id }
+        | DomainEvent::CatalogCategoryDeleted { category_id }
         | DomainEvent::CatalogCategoryAttributesChanged { category_id }
         | DomainEvent::CatalogCategorySchemaModeChanged { category_id } => Some(*category_id),
         _ => None,
