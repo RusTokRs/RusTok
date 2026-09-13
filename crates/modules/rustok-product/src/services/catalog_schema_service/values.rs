@@ -1,4 +1,5 @@
 mod translation;
+mod variant;
 
 use super::*;
 use crate::services::write_transaction::record_product_operation_result;
