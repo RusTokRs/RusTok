@@ -225,7 +225,7 @@
       "data_classification": ["public", "tenant_private"],
       "ai_export": "restricted",
       "evidence_paths": ["crates/modules/rustok-product/docs/implementation-plan.md"],
-      "blockers": ["Broad Product catalog parity remains incomplete beyond the separately registered product/product, product/variant, product/option, and product/image targets; classify and onboard remaining attributes, category/schema labels, SEO/Flex integration, and other catalog presentation surfaces without collapsing them into this aggregate row."]
+      "blockers": ["Broad Product catalog parity remains incomplete beyond the separately registered product/product, product/variant, product/option, product/image, and product/attribute targets; classify and onboard remaining category/schema/group presentation labels, SEO/Flex integration, and other catalog presentation surfaces without collapsing them into this aggregate row."]
     },
     {
       "id": "product_product_copy",
@@ -238,9 +238,11 @@
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-product/src/translation_target.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/product_product_translation_target_postgres.rs",
+        ".github/workflows/product-product-translation-target-postgres.yml"
       ],
-      "blockers": ["Collect retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion; broader Product catalog parity remains tracked separately by product_catalog."]
+      "blockers": ["Retained repository-hosted PostgreSQL migration/CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; broader Product catalog parity remains tracked separately by product_catalog."]
     },
     {
       "id": "product_variant_copy",
@@ -254,9 +256,11 @@
       "evidence_paths": [
         "crates/modules/rustok-product/src/variant_translation_target.rs",
         "crates/modules/rustok-product/src/variant_translation_progress_target.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/product_variant_translation_target_postgres.rs",
+        ".github/workflows/product-variant-translation-target-postgres.yml"
       ],
-      "blockers": ["Collect retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion."]
+      "blockers": ["Retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."]
     },
     {
       "id": "product_option_copy",
@@ -270,9 +274,11 @@
       "evidence_paths": [
         "crates/modules/rustok-product/src/option_translation_target.rs",
         "crates/modules/rustok-product/src/option_translation_progress_target.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/product_option_translation_target_postgres.rs",
+        ".github/workflows/product-option-translation-target-postgres.yml"
       ],
-      "blockers": ["Collect retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion."]
+      "blockers": ["Retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."]
     },
     {
       "id": "product_image_copy",
@@ -286,9 +292,29 @@
       "evidence_paths": [
         "crates/modules/rustok-product/src/image_translation_target.rs",
         "crates/modules/rustok-product/src/image_translation_progress_target.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/product_image_translation_target_postgres.rs",
+        ".github/workflows/product-image-translation-target-postgres.yml"
       ],
-      "blockers": ["Collect retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress stability, and ChangeCursor recovery evidence before pilot promotion; keep image identity and other non-copy metadata outside Translation."]
+      "blockers": ["Retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; keep image identity and other non-copy metadata outside Translation."]
+    },
+    {
+      "id": "product_attribute_copy",
+      "owner_slug": "product",
+      "resource_kind": "attribute",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text", "seo_text"],
+      "data_classification": ["public", "tenant_private"],
+      "ai_export": "restricted",
+      "evidence_paths": [
+        "crates/modules/rustok-product/src/services/catalog_schema_service/attributes/translation.rs",
+        "crates/modules/rustok-product/src/migrations/m20260913_000026_add_product_attribute_translation_change_journal.rs",
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/product_attribute_translation_target_postgres.rs",
+        ".github/workflows/product-attribute-translation-target-postgres.yml"
+      ],
+      "blockers": ["The product/attribute provider is registered over the canonical ProductCatalogSchemaService and retained PostgreSQL source covers tenant isolation, durable replay, multi-replica CAS, progress, frozen ChangeCursor windows, and late canonical option invalidation. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; archive/delete lifecycle evidence must follow canonical mounted owner commands rather than test-only SQL if those commands are exposed later."]
     },
     {
       "id": "commerce_collection_copy",
@@ -306,9 +332,11 @@
         "crates/modules/rustok-commerce/src/collection_translation_progress_target.rs",
         "crates/modules/rustok-commerce/src/collection_translation_changes.rs",
         "crates/modules/rustok-commerce/src/migrations/m20260909_000008_add_collection_translation_change_journal.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/commerce_collection_translation_target_postgres.rs",
+        ".github/workflows/commerce-collection-translation-target-postgres.yml"
       ],
-      "blockers": ["Collect retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress stability, and change-cursor recovery evidence before pilot promotion."]
+      "blockers": ["Retained repository-hosted PostgreSQL migration/concurrent CAS/idempotent-replay/progress/change-cursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."]
     },
     {
       "id": "flex_schema_copy",
@@ -328,9 +356,11 @@
         "apps/server/src/services/flex_schema_translation_owner.rs",
         "apps/server/src/services/flex_schema_translation_progress_owner.rs",
         "apps/server/src/services/flex_standalone_service_journaled.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/flex_schema_translation_target_postgres.rs",
+        ".github/workflows/flex-schema-copy-translation-target-postgres.yml"
       ],
-      "blockers": ["Collect retained PostgreSQL migration, concurrent owner/standalone CRUD CAS and idempotent replay, aggregate-progress stability, and change-cursor recovery evidence before pilot promotion."]
+      "blockers": ["Retained repository-hosted PostgreSQL owner/apply/replay/progress/frozen-ChangeCursor/lifecycle evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."]
     },
     {
       "id": "flex_attached_values",
@@ -395,9 +425,11 @@
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-seo/src/services/translation_target.rs",
-        "crates/modules/rustok-seo/src/lib.rs"
+        "crates/modules/rustok-seo/src/lib.rs",
+        "apps/server/tests/seo_translation_target_postgres.rs",
+        ".github/workflows/seo-translation-target-postgres.yml"
       ],
-      "blockers": ["Owner/override precedence is resolved and seo/seo_copy is registered. Collect retained PostgreSQL migration, concurrent CAS/idempotent replay, aggregate-progress stability, ChangeCursor recovery, and reindex/event evidence before pilot promotion; canonical/robots/structured data and media identifiers remain outside this copy target."]
+      "blockers": ["Owner/override precedence is resolved and seo/seo_copy is registered with retained repository-hosted PostgreSQL CAS/replay/progress/ChangeCursor/reindex-event evidence source. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; canonical/robots/structured data and media identifiers remain outside this copy target."]
     },
     {
       "id": "profile_copy",
