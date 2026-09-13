@@ -96,6 +96,17 @@ impl SeaOrmScriptPresentationStore {
         &self.db
     }
 
+    async fn ensure_script_owned(
+        &self,
+        tenant_id: Uuid,
+        script_id: Uuid,
+    ) -> Result<(), ScriptPresentationStoreError> {
+        match super::ScriptsEntity::find_by_id(script_id).one(&self.db).await? {
+            Some(script) if script.tenant_id == tenant_id => Ok(()),
+            _ => Err(ScriptPresentationStoreError::NotFound),
+        }
+    }
+
     async fn load_model(
         &self,
         tenant_id: Uuid,
@@ -146,6 +157,7 @@ impl ScriptPresentationStore for SeaOrmScriptPresentationStore {
         locale: StoredLocale,
         description: Option<String>,
     ) -> Result<ScriptPresentation, ScriptPresentationStoreError> {
+        self.ensure_script_owned(tenant_id, script_id).await?;
         if self
             .load_model(tenant_id, script_id, &locale)
             .await?
@@ -178,6 +190,19 @@ impl ScriptPresentationStore for SeaOrmScriptPresentationStore {
         expected_copy_revision: i64,
         description: Option<String>,
     ) -> Result<ScriptPresentation, ScriptPresentationStoreError> {
+        let current = self
+            .load_model(tenant_id, script_id, locale)
+            .await?
+            .ok_or(ScriptPresentationStoreError::NotFound)?;
+        if current.copy_revision != expected_copy_revision {
+            return Err(ScriptPresentationStoreError::RevisionConflict {
+                expected: expected_copy_revision,
+            });
+        }
+        if current.description == description {
+            return try_into_domain(current);
+        }
+
         let now = Utc::now().fixed_offset();
         let result = Entity::update_many()
             .col_expr(Column::Description, Expr::value(description))
