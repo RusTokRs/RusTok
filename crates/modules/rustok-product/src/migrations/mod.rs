@@ -20,7 +20,7 @@ mod m20260711_000003_enforce_catalog_value_invariants;
 mod m20260711_000004_normalize_product_channel_visibility;
 mod m20260716_000002_add_product_field_cache_generation_trigger;
 mod m20260725_000001_remove_product_image_media_foreign_key;
-mod m20260725_000002_enforce_catalog_category_tree_invariants;
+mod m20260725_000002_enforce_product_catalog_category_tree_invariants;
 mod m20260725_000003_remove_transitional_catalog_columns;
 mod m20260730_000001_add_product_index_revision;
 mod m20260730_000002_add_product_variant_index_revision;
@@ -51,6 +51,7 @@ mod m20260908_000024_add_product_option_translation_change_journal;
 mod m20260909_000025_add_product_image_translation_change_journal;
 mod m20260913_000026_add_product_attribute_translation_change_journal;
 mod m20260913_000027_add_product_attribute_schema_translation_change_journal;
+mod m20260913_000028_add_product_category_form_translation_change_journal;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -77,7 +78,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260711_000004_normalize_product_channel_visibility::Migration),
         Box::new(m20260716_000002_add_product_field_cache_generation_trigger::Migration),
         Box::new(m20260725_000001_remove_product_image_media_foreign_key::Migration),
-        Box::new(m20260725_000002_enforce_catalog_category_tree_invariants::Migration),
+        Box::new(m20260725_000002_enforce_product_catalog_category_tree_invariants::Migration),
         Box::new(m20260725_000003_remove_transitional_catalog_columns::Migration),
         Box::new(m20260730_000001_add_product_index_revision::Migration),
         Box::new(m20260730_000002_add_product_variant_index_revision::Migration),
@@ -106,6 +107,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260909_000025_add_product_image_translation_change_journal::Migration),
         Box::new(m20260913_000026_add_product_attribute_translation_change_journal::Migration),
         Box::new(m20260913_000027_add_product_attribute_schema_translation_change_journal::Migration),
+        Box::new(m20260913_000028_add_product_category_form_translation_change_journal::Migration),
     ]
 }
 

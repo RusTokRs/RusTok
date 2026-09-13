@@ -176,6 +176,8 @@ impl ProductWriteTransaction {
             product_attribute_translation_change_target(&event);
         let attribute_schema_translation_change_target =
             product_attribute_schema_translation_change_target(&event);
+        let category_form_translation_change_target =
+            product_category_form_translation_change_target(&event);
         let root_event_id = self
             .event_bus
             .publish_in_tx_with_envelope_id(&self.transaction, tenant_id, actor_id, event)
@@ -255,6 +257,19 @@ impl ProductWriteTransaction {
                 &self.transaction,
                 tenant_id,
                 schema_id,
+                root_event_id,
+            )
+            .await?;
+        }
+
+        if let Some(category_id) = category_form_translation_change_target {
+            // Product category-form copy owns only category-local group labels. Category canonical
+            // name/slug/description remain Taxonomy-owned. Binding/schema-mode events pass this
+            // boundary so semantic revision dedupe can prove they do not manufacture copy changes.
+            ProductCatalogSchemaService::record_category_form_translation_change_in_tx(
+                &self.transaction,
+                tenant_id,
+                category_id,
                 root_event_id,
             )
             .await?;
@@ -377,6 +392,15 @@ fn product_attribute_schema_translation_change_target(event: &DomainEvent) -> Op
         | DomainEvent::ProductAttributeSchemaUpdated { schema_id }
         | DomainEvent::ProductAttributeSchemaDeleted { schema_id }
         | DomainEvent::ProductAttributeSchemaBindingsChanged { schema_id } => Some(*schema_id),
+        _ => None,
+    }
+}
+
+fn product_category_form_translation_change_target(event: &DomainEvent) -> Option<Uuid> {
+    match event {
+        DomainEvent::CatalogCategoryCreated { category_id }
+        | DomainEvent::CatalogCategoryAttributesChanged { category_id }
+        | DomainEvent::CatalogCategorySchemaModeChanged { category_id } => Some(*category_id),
         _ => None,
     }
 }

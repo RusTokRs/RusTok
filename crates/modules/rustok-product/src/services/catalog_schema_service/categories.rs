@@ -1,3 +1,5 @@
+mod translation;
+
 use std::collections::{HashMap, HashSet};
 
 use super::{
