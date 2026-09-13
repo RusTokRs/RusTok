@@ -225,7 +225,7 @@
       "data_classification": ["public", "tenant_private"],
       "ai_export": "restricted",
       "evidence_paths": ["crates/modules/rustok-product/docs/implementation-plan.md"],
-      "blockers": ["Broad Product catalog parity remains incomplete beyond the separately registered product/product, product/variant, product/option, product/image, product/attribute, product/attribute_schema, product/category_form, and product/attribute_value targets. Classify and onboard remaining SEO/Flex integration and any other uncovered Product-owned catalog presentation surfaces without collapsing them into this aggregate row; Product Category canonical name/slug/description remain Taxonomy-owned rather than part of broad Product parity."]
+      "blockers": ["Broad Product catalog parity remains incomplete beyond the separately registered product/product, product/variant, product/option, product/image, product/attribute, product/attribute_schema, product/category_form, product/attribute_value, and product/variant_attribute_value targets. Classify and onboard remaining SEO/Flex integration and any other uncovered Product-owned catalog presentation surfaces without collapsing them into this aggregate row; Product Category canonical name/slug/description remain Taxonomy-owned rather than part of broad Product parity."]
     },
     {
       "id": "product_product_copy",
@@ -369,6 +369,23 @@
         ".github/workflows/product-attribute-value-translation-target-postgres.yml"
       ],
       "blockers": ["The product/attribute_value provider is registered over canonical Product localized text EAV rows with row-owned identity and AI export disabled. Retained PostgreSQL source covers canonical locale normalization, tenant isolation, durable replay, multi-replica CAS, aggregate progress, frozen ChangeCursor windows, source mutation, and canonical hard-delete tombstones. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; numeric, select, multiselect, JSON, and other non-localized Product attribute facts remain outside Translation."]
+    },
+    {
+      "id": "product_variant_attribute_value_copy",
+      "owner_slug": "product",
+      "resource_kind": "variant_attribute_value",
+      "readiness": "blocked",
+      "provider_status": "registered",
+      "field_profiles": ["plain_text"],
+      "data_classification": ["tenant_private"],
+      "ai_export": "forbidden",
+      "evidence_paths": [
+        "crates/modules/rustok-product/src/services/catalog_schema_service/values/variant_translation.rs",
+        "crates/modules/rustok-product/src/migrations/m20260913_000030_add_product_variant_attribute_value_translation_target.rs",
+        "crates/modules/rustok-product/src/services/write_transaction.rs",
+        "apps/server/src/services/module_event_dispatcher.rs"
+      ],
+      "blockers": ["The product/variant_attribute_value provider is registered over canonical Product-owned localized Variant text EAV rows with row-owned identity and AI export disabled. Source covers canonical locale normalization, exact-locale CAS, durable idempotent replay, aggregate progress, frozen ChangeCursor windows, canonical Variant owner freshness, semantic journal dedupe, and Variant/Product hard-delete tombstones. Retain focused maintainer-run PostgreSQL evidence before pilot promotion; numeric, select, multiselect, JSON, and other non-localized Variant attribute facts remain outside Translation."]
     },
     {
       "id": "commerce_collection_copy",
