@@ -670,9 +670,28 @@
         "crates/modules/rustok-marketplace-seller/src/translation_progress.rs",
         "crates/modules/rustok-marketplace-seller/src/translation_target.rs",
         "crates/modules/rustok-marketplace-seller/src/migrations/m20260913_000006_add_seller_translation_target.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "apps/server/src/services/module_event_dispatcher.rs",
+        "apps/server/tests/marketplace_seller_translation_target_postgres.rs",
+        ".github/workflows/marketplace-seller-translation-target-postgres.yml"
       ],
-      "blockers": ["The marketplace_seller/seller_presentation provider is registered for public display_name only, with exact resource/source/target CAS, durable idempotent apply, canonical owner-event parity, aggregate progress, and a frozen durable ChangeCursor. Retain focused PostgreSQL migration, concurrent CAS, idempotent replay, lifecycle/progress, and cursor-recovery evidence before pilot promotion; legal identity, handle, metadata, onboarding/suspension prose, memberships, verification facts, and other operational seller state remain outside Translation."]
+      "blockers": ["The marketplace_seller/seller_presentation provider is registered for public display_name only, with exact resource/source/target CAS, durable idempotent apply, canonical owner-event parity, aggregate progress, and a frozen durable ChangeCursor. Retained repository-hosted PostgreSQL migration/backfill, tenant-isolation, multi-replica CAS, durable replay, semantic-dedupe, progress, and cursor-recovery evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; Archived lifecycle evidence must follow a future canonical Seller close/delete command rather than test-only SQL. Legal identity, handle, metadata, onboarding/suspension prose, memberships, verification facts, and other operational seller state remain outside Translation."]
+    },
+    {
+      "id": "marketplace_listing_copy",
+      "owner_slug": "marketplace_listing",
+      "resource_kind": "listing_presentation",
+      "readiness": "excluded",
+      "provider_status": "not_registered",
+      "field_profiles": ["identifier"],
+      "data_classification": ["tenant_private"],
+      "ai_export": "forbidden",
+      "evidence_paths": [
+        "crates/modules/rustok-marketplace-listing/README.md",
+        "crates/modules/rustok-marketplace-listing/src/dto.rs",
+        "crates/modules/rustok-marketplace-listing/src/entities/listing.rs",
+        "crates/modules/rustok-marketplace-listing/src/entities/listing_terms.rs"
+      ],
+      "exclusion_reason": "The current Marketplace Listing owner model has no listing-local localized presentation copy. Master Product/Variant presentation remains Product-owned and Seller presentation remains Marketplace Seller-owned. Listing-owned seller SKU, market/channel slugs, lifecycle/approval state, versioned pricing/inventory/fulfillment references, arbitrary metadata, and moderation/operational prose are identifiers or operational evidence and must not enter Translation. If seller-authored listing merchandising copy is introduced later, add explicit owner-local localized storage and a new narrow Translation target rather than scanning metadata or duplicating Product/Seller copy."
     },
     {
       "id": "module_settings_copy",

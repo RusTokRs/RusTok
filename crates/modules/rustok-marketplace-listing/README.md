@@ -25,6 +25,30 @@ RusToK Marketplace Family.
 - Avoid buy-box ranking; selection policy belongs to a later Marketplace Family
   capability.
 
+## Translation boundary
+
+The current Listing owner model has no listing-local translatable presentation
+copy and therefore must not register a broad `marketplace_listing` Translation
+target.
+
+- Master Product/Variant presentation remains Product-owned and is consumed by
+  reference rather than copied into a listing.
+- Seller presentation remains Marketplace Seller-owned.
+- `seller_sku`, `market_slug`, and `channel_slug` are stable identifiers, not
+  localizable copy.
+- Versioned `pricing_reference`, `inventory_reference`, and
+  `fulfillment_profile_slug` values are commercial/operational references and
+  must not enter Translation.
+- Lifecycle/approval state is enum-like owner state. Listing metadata and
+  review/suspension notes are operational evidence and are not an implicit
+  translation surface.
+
+If Listing later introduces seller-authored merchandising copy, it must first
+receive explicit owner-local localized storage, exact source/target revision
+semantics, idempotent owner apply, lifecycle/change evidence, and a new narrow
+resource kind. Translation must not infer that future target from arbitrary
+metadata or duplicate Product/Seller presentation in the meantime.
+
 ## Entry points
 
 - `MarketplaceListingModule`
