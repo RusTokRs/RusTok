@@ -212,7 +212,7 @@ impl TranslationTargetProvider for MarketplaceSellerTranslationTargetProvider {
         request: TranslationPatchRequest,
     ) -> Result<TranslationApplicationReceipt, PortError> {
         validate_translation_apply_context(&context)?;
-        authorize(&context, Action::Update)?;
+        let actor_user_id = authorize(&context, Action::Update)?.user_id;
         request
             .validate()
             .map_err(|error| contract_validation_error(error.to_string()))?;
@@ -250,6 +250,7 @@ impl TranslationTargetProvider for MarketplaceSellerTranslationTargetProvider {
                 .service
                 .apply_exact_locale_with_operation(
                     tenant_id,
+                    actor_user_id,
                     seller_id,
                     MarketplaceSellerTranslationExactLocaleApply {
                         source_locale: request.source_locale.as_str().to_string(),
