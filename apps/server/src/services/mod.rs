@@ -294,6 +294,19 @@ pub mod module_event_dispatcher {
             }
         }
 
+        #[cfg(feature = "mod-translation")]
+        rustok_translation_targets::register_translation_target_provider(
+            &mut extensions,
+            super::oauth_app_translation_target::OAuthAppTranslationTargetProvider::new(
+                db.clone(),
+            ),
+        )
+        .map_err(|error| {
+            Error::Message(format!(
+                "OAuth application Translation target provider registration failed: {error}"
+            ))
+        })?;
+
         #[cfg(feature = "mod-seo")]
         {
             let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
@@ -462,6 +475,10 @@ pub mod notification_outbox_intake_worker;
 pub mod notification_recipient_policy;
 pub mod oauth_admin_guard;
 pub mod oauth_app;
+#[cfg(feature = "mod-translation")]
+pub mod oauth_app_translation;
+#[cfg(feature = "mod-translation")]
+pub mod oauth_app_translation_target;
 pub mod oauth_consent_service;
 pub mod oauth_token_service;
 #[cfg(feature = "mod-pages")]
