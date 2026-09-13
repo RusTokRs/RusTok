@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::Utc;
 use rustok_api::PortError;
-use rustok_outbox::idempotency;
+use rustok_events::MarketplaceSellerEvent;
+use rustok_outbox::{OutboxTransport, TransactionalEventBus, idempotency};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait,
@@ -105,14 +106,17 @@ pub struct MarketplaceSellerTranslationExactLocaleApplyReceipt {
 /// Only localized `display_name` participates in Translation revisions. Legal identity,
 /// onboarding/suspension prose, membership, metadata, handle and operational lifecycle remain
 /// Marketplace Seller state. The parent Seller row is the serialization lock for every localized
-/// presentation write.
+/// presentation write. A real localized mutation publishes the canonical Seller profile-updated
+/// contract in the same transaction as the copy row, owner change journal and operation receipt.
 pub struct MarketplaceSellerTranslationService {
     db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
 }
 
 impl MarketplaceSellerTranslationService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+        Self { db, event_bus }
     }
 
     pub fn database(&self) -> &DatabaseConnection {
@@ -232,26 +236,34 @@ impl MarketplaceSellerTranslationService {
     ) -> MarketplaceSellerTranslationExactLocaleResult<
         MarketplaceSellerTranslationExactLocaleApplyReceipt,
     > {
-        self.apply_exact_locale_inner(tenant_id, seller_id, request, None)
+        self.apply_exact_locale_inner(tenant_id, None, seller_id, request, None)
             .await
     }
 
     pub(crate) async fn apply_exact_locale_with_operation(
         &self,
         tenant_id: Uuid,
+        actor_user_id: Option<Uuid>,
         seller_id: Uuid,
         request: MarketplaceSellerTranslationExactLocaleApply,
         operation_lease: idempotency::Lease,
     ) -> MarketplaceSellerTranslationExactLocaleResult<
         MarketplaceSellerTranslationExactLocaleApplyReceipt,
     > {
-        self.apply_exact_locale_inner(tenant_id, seller_id, request, Some(operation_lease))
-            .await
+        self.apply_exact_locale_inner(
+            tenant_id,
+            actor_user_id,
+            seller_id,
+            request,
+            Some(operation_lease),
+        )
+        .await
     }
 
     async fn apply_exact_locale_inner(
         &self,
         tenant_id: Uuid,
+        actor_user_id: Option<Uuid>,
         seller_id: Uuid,
         request: MarketplaceSellerTranslationExactLocaleApply,
         operation_lease: Option<idempotency::Lease>,
@@ -360,6 +372,30 @@ impl MarketplaceSellerTranslationService {
                     error.to_string(),
                 ))
             })?;
+
+            if let Err(error) = self
+                .event_bus
+                .publish_contract_in_tx(
+                    &txn,
+                    tenant_id,
+                    actor_user_id,
+                    MarketplaceSellerEvent::MarketplaceSellerProfileUpdated { seller_id },
+                )
+                .await
+            {
+                tracing::error!(
+                    tenant_id = %tenant_id,
+                    seller_id = %seller_id,
+                    error = %error,
+                    "Marketplace Seller Translation owner event publication failed"
+                );
+                return Err(MarketplaceSellerTranslationExactLocaleError::Database(
+                    sea_orm::DbErr::Custom(
+                        "marketplace seller Translation owner event publication unavailable"
+                            .to_string(),
+                    ),
+                ));
+            }
         }
 
         let receipt = MarketplaceSellerTranslationExactLocaleApplyReceipt {
