@@ -277,6 +277,7 @@ impl OAuthAppTranslationService {
             })?;
         let resource_revision = oauth_apps::translation_resource_revision(&app, &translations_after);
         let operation_id = operation_lease
+            .as_ref()
             .map(|lease| lease.operation_id)
             .or_else(|| (!unchanged).then(rustok_core::generate_id));
         if !unchanged {
