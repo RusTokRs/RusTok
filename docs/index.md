@@ -89,6 +89,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 ### Domain Module Documentation
 
 - [Auth Module Documentation](../crates/modules/rustok-auth/docs/README.md)
+- [RBAC Module Documentation](../crates/modules/rustok-rbac/docs/README.md) — canonical persisted relation reader and tenant-policy decisions, including uncached maintenance authorization.
 - [MCP Capability Documentation](../crates/modules/rustok-mcp/docs/README.md)
 - [AI Capability Documentation](../crates/modules/rustok-ai/docs/README.md) — provider-neutral RAG ingestion and Athanor data plane
 - [Content Module Documentation](../crates/modules/rustok-content/docs/README.md)
@@ -104,7 +105,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 ### Implementation Plans and Machine-Readable Contracts
 
 - [Implementation Plans Registry](./modules/implementation-plans-registry.md)
-- [Module Release and Rollback Plan](./modules/module-release-rollback-plan.md) — end-to-end portable instance-root, source, artifact, installation, update, recovery, retention, and database-safety contract for platform, native, WASM, and Rhai releases.
+- [Module Release and Rollback Plan](./modules/module-release-rollback-plan.md) — end-to-end portable instance-root, source, artifact, installation, update, recovery, retention, and database-safety contract for platform, native, WASM, and Rhai releases; tracks the in-progress owner/namespace storage cutover, actual snapshot/restore copy verification and source holds, shared [opaque namespace object keys](../crates/utils/rustok-storage/docs/README.md), production purge fences, and protected recovery requirements separately from bounded ledger tests.
 - [Richtext Implementation Plan](./modules/rich-text-implementation-plan.md)
 - [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
 - [Translation Module Implementation Plan](./modules/translation-implementation-plan.md) — owner-safe control plane, 49-operation admin contract, guarded human workflow controls, private workflow collaboration, checksum-verified expiring interchange artifacts, fixed-cardinality content-free observability, and AI machine-translation workflow

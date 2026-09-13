@@ -111,8 +111,8 @@ pub use data_post_purge_recovery::{
     PrepareRecoveryRequest, StagedRecoveryReceipt,
 };
 pub use data_snapshot_intents::{
-    ArtifactDataSnapshotIntentService, ReconciledSnapshotIntentsReceipt, SnapshotCopyIntent,
-    SnapshotCopyKind, SnapshotIntentError,
+    ArtifactDataSnapshotIntentService, ReconciledSnapshotIntentsReceipt, SnapshotCopyKind,
+    SnapshotIntentError,
 };
 pub use data_snapshot_readiness::{
     ArtifactDataRecoveryReadinessAttestation, ArtifactDataRecoveryReadinessService,

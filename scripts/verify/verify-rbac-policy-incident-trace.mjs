@@ -21,6 +21,7 @@ const files = {
   packet: "apps/server/tests/rbac_policy_incident_trace.rs",
   service: "apps/server/src/services/rbac_service.rs",
   authoritative: "apps/server/src/services/rbac_authoritative.rs",
+  relationReader: "crates/modules/rustok-rbac/src/services/relation_permission_resolver.rs",
   runtime: "apps/server/src/services/rbac_runtime.rs",
   generation: "apps/server/src/services/rbac_invalidation_generation.rs",
   metrics: "crates/libs/rustok-telemetry/src/rbac_invalidation_metrics.rs",
@@ -77,11 +78,21 @@ for (const marker of [
 
 for (const marker of [
   "get_user_permissions_authoritative",
-  "user_belongs_to_tenant",
+  "rustok_rbac::resolve_persisted_permissions_on(db, tenant_id, user_id)",
+]) requireText(sources.authoritative, marker, `${files.authoritative}: relation truth`);
+
+const authoritativeAdapter = sources.authoritative.split("#[cfg(test)]")[0];
+for (const forbidden of [
   "user_roles::Entity::find()",
   "role_permissions::Entity::find()",
   "permissions::Entity::find()",
-]) requireText(sources.authoritative, marker, `${files.authoritative}: relation truth`);
+]) forbidText(authoritativeAdapter, forbidden, `${files.authoritative}: owner-only relation reader`);
+for (const marker of [
+  "resolve_persisted_permissions_on<C: ConnectionTrait>",
+  "ConnectionRelationPermissionStore",
+  "subject.tenant_id = role.tenant_id",
+  "role.tenant_id = permission.tenant_id",
+]) requireText(sources.relationReader, marker, `${files.relationReader}: canonical relation truth`);
 
 for (const marker of [
   "CachedPermissionSnapshot",
@@ -146,16 +157,16 @@ for (const marker of [
 ]) requireText(sources.docs, marker, `${files.docs}: incident contract`);
 
 for (const marker of [
-  "### P1. Invalidation observability and incident operations",
-  "Make one policy incident traceable",
-  "Retain one real or dedicated integration incident packet",
+  "### Durable invalidation and recovery",
+  "- [ ] Execute and retain the incident packet from #2846.",
+  "- [ ] Complete incident and live negative transport evidence.",
   "Status: `in_progress`",
 ]) requireText(sources.plan, marker, `${files.plan}: open owner gate`);
 
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "one complete incident trace",
+  "incident/live negative",
 ]) requireText(sources.master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {

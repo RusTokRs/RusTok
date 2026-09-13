@@ -226,6 +226,12 @@ pub struct InstalledModuleArtifact {
     /// Stable opaque identity of retained mutable artifact state. It survives
     /// a compatible update and is never derived from a module slug or version.
     pub data_owner_id: Uuid,
+    /// Opaque initial data instance allocated only for a declared data boundary.
+    /// Tenant owner references select the current instance after a cutover.
+    pub namespace_instance_id: Option<Uuid>,
+    /// Logical secret bindings have an independent instance and never follow a
+    /// structured-data purge or restore implicitly.
+    pub secret_instance_id: Option<Uuid>,
     /// Exact mutable settings instance selected for this installation. It is
     /// distinct from the installation so compatible release changes keep one
     /// governed settings lineage.
@@ -307,6 +313,21 @@ impl InstalledModuleArtifact {
         {
             return Err(ModuleInstallationError::DependencyLock(
                 "artifact installation persistence identities must be non-nil".into(),
+            ));
+        }
+        let declares_data = self.descriptor.persistence_contract.is_some();
+        let declares_secrets = self
+            .descriptor
+            .capabilities
+            .iter()
+            .any(|capability| capability.as_str() == "platform.secrets");
+        if self.namespace_instance_id.is_some() != declares_data
+            || self.secret_instance_id.is_some() != declares_secrets
+            || self.namespace_instance_id.is_some_and(|id| id.is_nil())
+            || self.secret_instance_id.is_some_and(|id| id.is_nil())
+        {
+            return Err(ModuleInstallationError::DependencyLock(
+                "artifact instance identities must match declared mutable boundaries".into(),
             ));
         }
         self.dependency_lock
@@ -1626,6 +1647,7 @@ impl SeaOrmArtifactInstallationStore {
                 format!(
                     "SELECT installation.slug, installation.registry, installation.repository, \
                      installation.data_owner_id, installation.settings_instance_id, \
+                     installation.namespace_instance_id, installation.secret_instance_id, \
                      CAST(installation.descriptor AS TEXT) AS descriptor, \
                      admission.status, admission.revision \
                      FROM module_artifact_installations installation \
@@ -1661,6 +1683,10 @@ impl SeaOrmArtifactInstallationStore {
         let candidate_data_owner_id = required_uuid_from_row(&candidate, "data_owner_id", backend)?;
         let candidate_settings_instance_id =
             required_uuid_from_row(&candidate, "settings_instance_id", backend)?;
+        let candidate_namespace_instance_id =
+            optional_uuid_from_row(&candidate, "namespace_instance_id", backend)?;
+        let candidate_secret_instance_id =
+            optional_uuid_from_row(&candidate, "secret_instance_id", backend)?;
         let candidate_descriptor: ModuleArtifactDescriptor = serde_json::from_str(
             &candidate
                 .try_get::<String>("", "descriptor")
@@ -1708,6 +1734,7 @@ impl SeaOrmArtifactInstallationStore {
                     format!(
                             "SELECT admission.revision, installation.registry, installation.repository, \
                              installation.data_owner_id, installation.settings_instance_id, \
+                             installation.namespace_instance_id, installation.secret_instance_id, \
                              CAST(installation.descriptor AS TEXT) AS descriptor \
                          FROM module_artifact_admissions admission \
                          JOIN module_artifact_installations installation \
@@ -1769,6 +1796,19 @@ impl SeaOrmArtifactInstallationStore {
             let data_owner_id = required_uuid_from_row(&predecessor, "data_owner_id", backend)?;
             let settings_instance_id =
                 required_uuid_from_row(&predecessor, "settings_instance_id", backend)?;
+            let namespace_instance_id = if predecessor_descriptor.persistence_contract
+                == candidate_descriptor.persistence_contract
+            {
+                optional_uuid_from_row(&predecessor, "namespace_instance_id", backend)?
+            } else {
+                candidate_namespace_instance_id
+            };
+            let secret_instance_id = if candidate_secret_instance_id.is_some() {
+                optional_uuid_from_row(&predecessor, "secret_instance_id", backend)?
+                    .or(candidate_secret_instance_id)
+            } else {
+                None
+            };
             let deactivated = transaction
                 .execute_raw(Statement::from_sql_and_values(
                     backend,
@@ -1807,6 +1847,8 @@ impl SeaOrmArtifactInstallationStore {
                 })?,
                 data_owner_id,
                 settings_instance_id,
+                namespace_instance_id,
+                secret_instance_id,
                 predecessor_descriptor.artifact_digest.clone(),
             ))
         } else {
@@ -1814,16 +1856,36 @@ impl SeaOrmArtifactInstallationStore {
         };
         let predecessor_revision = predecessor_state
             .as_ref()
-            .map(|(revision, _, _, _)| *revision);
+            .map(|(revision, _, _, _, _, _)| *revision);
         let predecessor_digest = predecessor_state
             .as_ref()
-            .map(|(_, _, _, digest)| digest.clone());
-        let (data_owner_id, settings_instance_id) = predecessor_state
-            .as_ref()
-            .map(|(_, data_owner_id, settings_instance_id, _)| {
-                (*data_owner_id, *settings_instance_id)
-            })
-            .unwrap_or((candidate_data_owner_id, candidate_settings_instance_id));
+            .map(|(_, _, _, _, _, digest)| digest.clone());
+        let (data_owner_id, settings_instance_id, namespace_instance_id, secret_instance_id) =
+            predecessor_state
+                .as_ref()
+                .map(
+                    |(
+                        _,
+                        data_owner_id,
+                        settings_instance_id,
+                        namespace_instance_id,
+                        secret_instance_id,
+                        _,
+                    )| {
+                        (
+                            *data_owner_id,
+                            *settings_instance_id,
+                            *namespace_instance_id,
+                            *secret_instance_id,
+                        )
+                    },
+                )
+                .unwrap_or((
+                    candidate_data_owner_id,
+                    candidate_settings_instance_id,
+                    candidate_namespace_instance_id,
+                    candidate_secret_instance_id,
+                ));
         let installation_revision = candidate_revision.checked_add(1).ok_or_else(|| {
             ModuleInstallationError::AdmissionRevisionConflict(
                 "activation revision exceeds database range".into(),
@@ -1834,7 +1896,8 @@ impl SeaOrmArtifactInstallationStore {
                 backend,
                 format!(
                     "UPDATE module_artifact_installations SET previous_installation_id = {}, \
-                     data_owner_id = {}, settings_instance_id = {} \
+                     data_owner_id = {}, settings_instance_id = {}, \
+                     namespace_instance_id = {}, secret_instance_id = {} \
                      WHERE installation_id = {}",
                     if backend == DbBackend::Postgres {
                         "$1"
@@ -1856,11 +1919,23 @@ impl SeaOrmArtifactInstallationStore {
                     } else {
                         "?4"
                     },
+                    if backend == DbBackend::Postgres {
+                        "$5"
+                    } else {
+                        "?5"
+                    },
+                    if backend == DbBackend::Postgres {
+                        "$6"
+                    } else {
+                        "?6"
+                    },
                 ),
                 vec![
                     optional_uuid_value(predecessor_installation_id, backend),
                     uuid_value(data_owner_id, backend),
                     uuid_value(settings_instance_id, backend),
+                    optional_uuid_value(namespace_instance_id, backend),
+                    optional_uuid_value(secret_instance_id, backend),
                     uuid_value(request.installation_id, backend),
                 ],
             ))
@@ -3434,6 +3509,7 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
                 backend,
                 format!(
                     "SELECT installation.installation_id, installation.data_owner_id, \
+                     installation.namespace_instance_id, installation.secret_instance_id, \
                      installation.settings_instance_id, installation.scope_kind, installation.tenant_id, \
                      installation.registry, installation.repository, installation.manifest_digest, \
                      installation.slug, installation.version, installation.payload_digest, \
@@ -3486,6 +3562,10 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
         let installation_id = required_uuid_from_row(&row, "installation_id", backend)
             .map_err(|error| error.to_string())?;
         let data_owner_id = required_uuid_from_row(&row, "data_owner_id", backend)
+            .map_err(|error| error.to_string())?;
+        let namespace_instance_id = optional_uuid_from_row(&row, "namespace_instance_id", backend)
+            .map_err(|error| error.to_string())?;
+        let secret_instance_id = optional_uuid_from_row(&row, "secret_instance_id", backend)
             .map_err(|error| error.to_string())?;
         let settings_instance_id = required_uuid_from_row(&row, "settings_instance_id", backend)
             .map_err(|error| error.to_string())?;
@@ -3583,6 +3663,8 @@ impl crate::ArtifactInstallationResolver for SeaOrmArtifactInstallationStore {
         Ok(InstalledModuleArtifact {
             installation_id,
             data_owner_id,
+            namespace_instance_id,
+            secret_instance_id,
             settings_instance_id,
             scope,
             reference,
@@ -4302,10 +4384,10 @@ async fn configure_rls_scope<C: ConnectionTrait>(
 
 fn installation_insert_sql(backend: DbBackend) -> String {
     let placeholders = match backend {
-        DbBackend::Postgres => (1..=21)
+        DbBackend::Postgres => (1..=23)
             .map(|index| format!("${index}"))
             .collect::<Vec<_>>(),
-        _ => (1..=21)
+        _ => (1..=23)
             .map(|index| format!("?{index}"))
             .collect::<Vec<_>>(),
     };
@@ -4314,7 +4396,7 @@ fn installation_insert_sql(backend: DbBackend) -> String {
             installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, \
             slug, version, payload_kind, runtime_abi, payload_digest, entrypoint, descriptor, \
             data_owner_id, settings_instance_id, dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at, \
-            previous_installation_id, capability_grant_revision\
+            previous_installation_id, capability_grant_revision, namespace_instance_id, secret_instance_id\
          ) VALUES ({})",
         placeholders.join(", ")
     )
@@ -4459,6 +4541,8 @@ fn installation_values(
         installed_at,
         optional_uuid_value(previous_installation_id, backend),
         capability_grant_revision.into(),
+        optional_uuid_value(artifact.namespace_instance_id, backend),
+        optional_uuid_value(artifact.secret_instance_id, backend),
     ])
 }
 
@@ -4946,6 +5030,17 @@ where
         let artifact = InstalledModuleArtifact {
             installation_id: self.infrastructure.new_id(),
             data_owner_id: self.infrastructure.new_id(),
+            namespace_instance_id: package
+                .descriptor
+                .persistence_contract
+                .as_ref()
+                .map(|_| self.infrastructure.new_id()),
+            secret_instance_id: package
+                .descriptor
+                .capabilities
+                .iter()
+                .any(|capability| capability.as_str() == "platform.secrets")
+                .then(|| self.infrastructure.new_id()),
             settings_instance_id: self.infrastructure.new_id(),
             scope: command.scope.clone(),
             reference: package.reference,
@@ -5567,6 +5662,17 @@ mod tests {
         let artifact = InstalledModuleArtifact {
             installation_id: Uuid::new_v4(),
             data_owner_id: Uuid::new_v4(),
+            namespace_instance_id: package
+                .descriptor
+                .persistence_contract
+                .as_ref()
+                .map(|_| Uuid::new_v4()),
+            secret_instance_id: package
+                .descriptor
+                .capabilities
+                .iter()
+                .any(|capability| capability.as_str() == "platform.secrets")
+                .then(Uuid::new_v4),
             settings_instance_id: Uuid::new_v4(),
             scope: ModuleInstallationScope::Platform,
             reference: package.reference.clone(),
@@ -6446,6 +6552,15 @@ mod tests {
         let installed = InstalledModuleArtifact {
             installation_id: admission.installation_id,
             data_owner_id: Uuid::new_v4(),
+            namespace_instance_id: expected_descriptor
+                .persistence_contract
+                .as_ref()
+                .map(|_| Uuid::new_v4()),
+            secret_instance_id: expected_descriptor
+                .capabilities
+                .iter()
+                .any(|capability| capability.as_str() == "platform.secrets")
+                .then(Uuid::new_v4),
             settings_instance_id: Uuid::new_v4(),
             scope: ModuleInstallationScope::Tenant { tenant_id },
             reference: expected_reference,

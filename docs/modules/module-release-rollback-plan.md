@@ -2098,7 +2098,7 @@ backend preflight.
 - [x] Integrate bounded artifact-data snapshot readiness and platform
   PostgreSQL recovery evidence without adding automatic restore.
   Verified by `data_snapshot_readiness.rs`, `control_plane.rs`, and `snapshot_readiness_and_recovery_evidence_tests.rs`.
-- [x] Add a separate protected settings recovery-point and restore contract
+- [ ] Complete the separate protected settings recovery-point and restore contract
   binding scope, stable data-owner, installation-to-settings-instance binding,
   settings instance/revision, schema digest, canonical validated values, and
   unresolved secret handles.
@@ -2111,7 +2111,14 @@ backend preflight.
   `dynamic_artifact_data_purge` as separate preview/apply
   operations and reject combined apply; grants and external secret bytes are
   never implicit targets.
-  Verified by `artifact_purge_and_recovery_tests.rs` and `apps/server/src/graphql/mutations.rs`.
+  Owner-port contracts and separate transports exist in
+  `artifact_purge_and_recovery_tests.rs` and `apps/server/src/graphql/mutations.rs`.
+  Production protection is not verified. The plaintext-tag cipher and
+  permissive settings authorizer were deleted. Mutations require a
+  host-composed owner service, return unavailable without it, and previews
+  disable apply readiness. Real encryption/KMS, owner-backed retention and
+  secret-handle policy, and hold/fence adapters must be composed and verified
+  before this item is complete.
 - [ ] Complete production terminal-fence evidence for either purge: no
   selected/desired/re-enable or attach/reinstall/restore operation, terminal
   work, and proven traffic/job/write fences. The current owner services enforce
@@ -2120,6 +2127,10 @@ backend preflight.
   tenant-visible installation shares the slug. This prevents
   reset-while-installed authority, but it does not yet prove the remaining
   live traffic/job/write fence sources.
+  The structured-data server authorizer now validates owner-derived context
+  and reads persisted `modules:manage` grants without request/cache snapshots.
+  This is not a transaction-spanning revocation fence. GraphQL preview/apply
+  errors are sanitized and receipt integers use checked conversions.
 - [x] Persist a monotonic settings-instance purge tombstone/revision instead of
   deleting its CAS authority. Restore only against that exact tombstone under a
   fence and create a new non-serving settings instance/revision. Bind only an
@@ -2139,6 +2150,9 @@ backend preflight.
   without two active namespaces or slug-based attachment. The existing
   slug/revision-scoped recovery code is not evidence of this owner-keyed target
   and must be replaced atomically with the storage cutover below.
+  In particular, its staging counts are copied metadata, verification does not
+  hash restored content, and cutover clears the original `purged_at` row.
+  Preserving the purge receipt does not preserve the namespace tombstone.
 
 ### 5. Complete Dynamic Artifact Installation and Recovery
 
@@ -2223,11 +2237,18 @@ backend preflight.
   declared mutable boundaries; update inherits them; uninstall retains them;
   reinstall explicitly attaches with continuity or starts empty; and owner
   transfer is separately privileged. Never let a foreign publisher inherit
-  retained settings/data/objects by reusing a slug. Current structured-data
-  storage remains tenant/slug/data-contract scoped. The implemented purge
-  boundary is deliberately conservative: it derives that scope from one exact
-  retired installation and rejects it while any active installation with the
-  same slug is visible. Publisher-lineage evidence must be connected to the
+  retained settings/data/objects by reusing a slug. The physical cutover is in
+  progress: pending schemas, broker SQL, and private object keys use stable
+  tenant/owner/opaque instance identities. Exact-instance serving collisions
+  block purge; another active owner with the same slug retains independent
+  bytes and does not block this namespace. The updated SQLite purge integration
+  checks this boundary and permanent root tombstones. Caller/fixture conversion,
+  independent secret/MCP scopes, migration-object copy publication,
+  and authorized reference CAS remain open. Snapshot/restore reservations now
+  publish and re-read actual bytes, source holds block collection, and full
+  target manifest/byte verification seals a non-serving instance before any
+  active-reference cutover. The focused SQLite/local-storage test passes 1/1;
+  it does not prove authorized post-purge recovery or production fences. Publisher-lineage evidence must be connected to the
   full owner-keyed data/objects/snapshots/recovery replacement, not treated as
   a completed retained-data attach contract.
 - [x] Atomically cut dynamic artifact settings reads/writes and RLS from

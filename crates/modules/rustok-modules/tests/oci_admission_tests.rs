@@ -628,6 +628,15 @@ async fn test_runtime_reads_cas_only_and_never_falls_back_to_oci() {
     let installed_artifact = InstalledModuleArtifact {
         installation_id: Uuid::new_v4(),
         data_owner_id: Uuid::new_v4(),
+        namespace_instance_id: descriptor
+            .persistence_contract
+            .as_ref()
+            .map(|_| Uuid::new_v4()),
+        secret_instance_id: descriptor
+            .capabilities
+            .iter()
+            .any(|capability| capability.as_str() == "platform.secrets")
+            .then(Uuid::new_v4),
         settings_instance_id: Uuid::new_v4(),
         scope: ModuleInstallationScope::Platform,
         reference: reference.clone(),

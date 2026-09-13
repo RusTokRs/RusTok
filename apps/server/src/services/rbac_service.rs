@@ -421,6 +421,93 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn artifact_data_purge_checks_owner_context_and_current_grants() {
+        use crate::services::artifact_purge_recovery_host::ServerArtifactDataPurgeAuthorizer;
+        use rustok_modules::{
+            ArtifactDataError, ArtifactDataPurgeAuthorizationContext, ArtifactDataPurgeAuthorizer,
+            ArtifactDataPurgeRequest, ArtifactDataScope, ModuleCommandContext,
+        };
+        use sea_orm::{ColumnTrait, QueryFilter};
+
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (tenant_id, user_id) =
+            insert_tenant_and_user(&db, "purge-policy", "purge-policy@example.com").await;
+        RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::SuperAdmin)
+            .await
+            .expect("role assignment should succeed");
+        assert!(
+            RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::MODULES_MANAGE)
+                .await
+                .expect("warm permission cache")
+        );
+        let installation_id = uuid::Uuid::new_v4();
+        let request = ArtifactDataPurgeRequest {
+            installation_id,
+            expected_namespace_revision: 1,
+            context: ModuleCommandContext {
+                actor_id: user_id,
+                tenant_id: Some(tenant_id),
+                trace_id: "purge-policy-test".to_string(),
+                correlation_id: uuid::Uuid::new_v4(),
+                idempotency_key: uuid::Uuid::new_v4(),
+            },
+            reason: "Retire retained test data".to_string(),
+        };
+        let owner = ArtifactDataPurgeAuthorizationContext {
+            installation_id,
+            data_owner_id: uuid::Uuid::new_v4(),
+            installation_revision: 2,
+            scope: ArtifactDataScope {
+                tenant_id,
+                module_slug: "blog".to_string(),
+                data_contract_revision: 1,
+                policy_revision: 1,
+            },
+        };
+        let authorizer = ServerArtifactDataPurgeAuthorizer::new(db.clone());
+        assert_eq!(authorizer.authorize_purge(&request, &owner).await, Ok(()));
+        let mut foreign_owner = owner.clone();
+        foreign_owner.scope.tenant_id = uuid::Uuid::new_v4();
+        assert_eq!(
+            authorizer.authorize_purge(&request, &foreign_owner).await,
+            Err(ArtifactDataError::PolicyDenied)
+        );
+        let mut changed_owner = owner.clone();
+        changed_owner.installation_id = uuid::Uuid::new_v4();
+        assert_eq!(
+            authorizer.authorize_purge(&request, &changed_owner).await,
+            Err(ArtifactDataError::PolicyDenied)
+        );
+        changed_owner = owner.clone();
+        changed_owner.data_owner_id = uuid::Uuid::nil();
+        assert_eq!(
+            authorizer.authorize_purge(&request, &changed_owner).await,
+            Err(ArtifactDataError::PolicyDenied)
+        );
+
+        // Remove persisted membership without invalidating the warmed cache.
+        crate::models::_entities::user_roles::Entity::delete_many()
+            .filter(crate::models::_entities::user_roles::Column::UserId.eq(user_id))
+            .exec(&db)
+            .await
+            .expect("remove membership");
+        let scope = RbacRequestScope::new(
+            tenant_id,
+            user_id,
+            vec![Permission::MODULES_MANAGE],
+            UserRole::SuperAdmin,
+        );
+        with_rbac_request_scope(Some(scope), async {
+            assert_eq!(
+                authorizer.authorize_purge(&request, &owner).await,
+                Err(ArtifactDataError::PolicyDenied)
+            );
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn has_permission_records_cache_miss_then_hit() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let (tenant_id, user_id) = insert_tenant_and_user(

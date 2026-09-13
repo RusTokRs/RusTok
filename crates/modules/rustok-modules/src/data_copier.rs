@@ -22,7 +22,7 @@ use crate::{
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ArtifactDataCopyError {
-    #[error("Cross-revision copy requires distinct source and target contract revisions")]
+    #[error("Copy requires distinct source and target namespace instances")]
     SameRevision,
     #[error("Command context tenant does not match request tenant")]
     TenantMismatch,
@@ -32,10 +32,10 @@ pub enum ArtifactDataCopyError {
         "Target key '{0}' already exists with different value; create-only copier refuses overwrite"
     )]
     TargetKeyConflict(String),
-    #[error("Source namespace for revision {0} not found")]
-    SourceNamespaceMissing(u64),
-    #[error("Target namespace for revision {0} not found")]
-    TargetNamespaceMissing(u64),
+    #[error("Source namespace instance {0} not found")]
+    SourceNamespaceMissing(Uuid),
+    #[error("Target namespace instance {0} not found")]
+    TargetNamespaceMissing(Uuid),
     #[error(
         "Source has {0} unmigrated live objects in module_artifact_data_objects; structured copier alone cannot authorize revision change"
     )]
@@ -57,9 +57,9 @@ fn storage_error<E: std::fmt::Display>(e: E) -> ArtifactDataCopyError {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CrossRevisionDataCopyRequest {
     pub tenant_id: Uuid,
-    pub module_slug: String,
-    pub source_contract_revision: u64,
-    pub target_contract_revision: u64,
+    pub data_owner_id: Uuid,
+    pub source_namespace_instance_id: Uuid,
+    pub target_namespace_instance_id: Uuid,
     pub page_size: u32,
     pub page_cursor: Option<String>,
     pub context: ModuleCommandContext,
@@ -70,9 +70,9 @@ pub struct CrossRevisionDataCopyRequest {
 pub struct CrossRevisionDataCopyReceipt {
     pub operation_id: Uuid,
     pub tenant_id: Uuid,
-    pub module_slug: String,
-    pub source_contract_revision: u64,
-    pub target_contract_revision: u64,
+    pub data_owner_id: Uuid,
+    pub source_namespace_instance_id: Uuid,
+    pub target_namespace_instance_id: Uuid,
     pub page_cursor: Option<String>,
     pub next_page_cursor: Option<String>,
     pub page_digest: String,
@@ -100,7 +100,7 @@ impl ArtifactDataCrossRevisionCopier {
         request: CrossRevisionDataCopyRequest,
     ) -> Result<CrossRevisionDataCopyReceipt, ArtifactDataCopyError> {
         // 1. Validation
-        if request.source_contract_revision == request.target_contract_revision {
+        if request.source_namespace_instance_id == request.target_namespace_instance_id {
             return Err(ArtifactDataCopyError::SameRevision);
         }
         if request.context.tenant_id != Some(request.tenant_id) {
@@ -121,8 +121,8 @@ impl ArtifactDataCrossRevisionCopier {
                 format!(
                     "SELECT operation_id, page_digest, items_count, status \
                      FROM module_artifact_data_copy_operations \
-                     WHERE tenant_id = {} AND module_slug = {} \
-                       AND source_contract_revision = {} AND target_contract_revision = {} \
+                     WHERE tenant_id = {} AND data_owner_id = {} \
+                       AND source_namespace_instance_id = {} AND target_namespace_instance_id = {} \
                        AND idempotency_key = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -132,9 +132,9 @@ impl ArtifactDataCrossRevisionCopier {
                 ),
                 vec![
                     uuid_value(request.tenant_id, backend),
-                    request.module_slug.clone().into(),
-                    revision_value(request.source_contract_revision)?,
-                    revision_value(request.target_contract_revision)?,
+                    uuid_value(request.data_owner_id, backend),
+                    uuid_value(request.source_namespace_instance_id, backend),
+                    uuid_value(request.target_namespace_instance_id, backend),
                     uuid_value(request.context.idempotency_key, backend),
                 ],
             ))
@@ -151,9 +151,9 @@ impl ArtifactDataCrossRevisionCopier {
                 return Ok(CrossRevisionDataCopyReceipt {
                     operation_id,
                     tenant_id: request.tenant_id,
-                    module_slug: request.module_slug,
-                    source_contract_revision: request.source_contract_revision,
-                    target_contract_revision: request.target_contract_revision,
+                    data_owner_id: request.data_owner_id,
+                    source_namespace_instance_id: request.source_namespace_instance_id,
+                    target_namespace_instance_id: request.target_namespace_instance_id,
                     page_cursor: request.page_cursor,
                     next_page_cursor: None,
                     page_digest,
@@ -170,7 +170,7 @@ impl ArtifactDataCrossRevisionCopier {
                 format!(
                     "SELECT data_key, CAST(value AS TEXT) AS value_text, revision \
                      FROM module_artifact_data \
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} \
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} \
                      ORDER BY data_key ASC LIMIT {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -179,15 +179,15 @@ impl ArtifactDataCrossRevisionCopier {
                 ),
                 vec![
                     uuid_value(request.tenant_id, backend),
-                    request.module_slug.clone().into(),
-                    revision_value(request.source_contract_revision)?,
+                    uuid_value(request.data_owner_id, backend),
+                    uuid_value(request.source_namespace_instance_id, backend),
                 ],
             ),
             Some(cursor) => (
                 format!(
                     "SELECT data_key, CAST(value AS TEXT) AS value_text, revision \
                      FROM module_artifact_data \
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} \
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} \
                        AND data_key > {} \
                      ORDER BY data_key ASC LIMIT {}",
                     placeholder(backend, 1),
@@ -198,8 +198,8 @@ impl ArtifactDataCrossRevisionCopier {
                 ),
                 vec![
                     uuid_value(request.tenant_id, backend),
-                    request.module_slug.clone().into(),
-                    revision_value(request.source_contract_revision)?,
+                    uuid_value(request.data_owner_id, backend),
+                    uuid_value(request.source_namespace_instance_id, backend),
                     cursor.clone().into(),
                 ],
             ),
@@ -214,9 +214,9 @@ impl ArtifactDataCrossRevisionCopier {
         // 4. Compute deterministic page digest
         let mut hasher = Sha256::new();
         hasher.update(request.tenant_id.as_bytes());
-        hasher.update(request.module_slug.as_bytes());
-        hasher.update(request.source_contract_revision.to_be_bytes());
-        hasher.update(request.target_contract_revision.to_be_bytes());
+        hasher.update(request.data_owner_id.as_bytes());
+        hasher.update(request.source_namespace_instance_id.as_bytes());
+        hasher.update(request.target_namespace_instance_id.as_bytes());
 
         let mut source_items = Vec::with_capacity(rows.len());
         for row in rows {
@@ -253,7 +253,7 @@ impl ArtifactDataCrossRevisionCopier {
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_copy_operations (\
-                        operation_id, tenant_id, module_slug, source_contract_revision, target_contract_revision, \
+                        operation_id, tenant_id, data_owner_id, source_namespace_instance_id, target_namespace_instance_id, \
                         page_cursor, page_digest, items_count, status, actor_id, trace_id, correlation_id, \
                         idempotency_key, reason, created_at\
                      ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, 'intent', {}, {}, {}, {}, {}, {})",
@@ -275,9 +275,9 @@ impl ArtifactDataCrossRevisionCopier {
                 vec![
                     uuid_value(operation_id, backend),
                     uuid_value(request.tenant_id, backend),
-                    request.module_slug.clone().into(),
-                    revision_value(request.source_contract_revision)?,
-                    revision_value(request.target_contract_revision)?,
+                    uuid_value(request.data_owner_id, backend),
+                    uuid_value(request.source_namespace_instance_id, backend),
+                    uuid_value(request.target_namespace_instance_id, backend),
                     request.page_cursor.clone().map(SqlValue::from).unwrap_or(SqlValue::String(None)),
                     page_digest.clone().into(),
                     (items_count as i64).into(),
@@ -299,8 +299,8 @@ impl ArtifactDataCrossRevisionCopier {
                     format!(
                         "SELECT CAST(value AS TEXT) AS value_text \
                          FROM module_artifact_data \
-                         WHERE tenant_id = {} AND module_slug = {} \
-                           AND data_contract_revision = {} AND data_key = {}",
+                         WHERE tenant_id = {} AND data_owner_id = {} \
+                           AND namespace_instance_id = {} AND data_key = {}",
                         placeholder(backend, 1),
                         placeholder(backend, 2),
                         placeholder(backend, 3),
@@ -308,8 +308,8 @@ impl ArtifactDataCrossRevisionCopier {
                     ),
                     vec![
                         uuid_value(request.tenant_id, backend),
-                        request.module_slug.clone().into(),
-                        revision_value(request.target_contract_revision)?,
+                        uuid_value(request.data_owner_id, backend),
+                        uuid_value(request.target_namespace_instance_id, backend),
                         data_key.clone().into(),
                     ],
                 ))
@@ -337,7 +337,7 @@ impl ArtifactDataCrossRevisionCopier {
                     backend,
                     format!(
                         "INSERT INTO module_artifact_data (\
-                            tenant_id, module_slug, data_contract_revision, data_key, value, \
+                            tenant_id, data_owner_id, namespace_instance_id, data_key, value, \
                             value_size_bytes, revision, updated_at\
                          ) VALUES ({}, {}, {}, {}, {}, {}, 1, {})",
                         placeholder(backend, 1),
@@ -350,8 +350,8 @@ impl ArtifactDataCrossRevisionCopier {
                     ),
                     vec![
                         uuid_value(request.tenant_id, backend),
-                        request.module_slug.clone().into(),
-                        revision_value(request.target_contract_revision)?,
+                        uuid_value(request.data_owner_id, backend),
+                        uuid_value(request.target_namespace_instance_id, backend),
                         data_key.clone().into(),
                         SqlValue::Json(Some(Box::new(parsed_value))),
                         revision_value(value_size_bytes)?,
@@ -384,7 +384,7 @@ impl ArtifactDataCrossRevisionCopier {
                 format!(
                     "UPDATE module_artifact_data_namespaces \
                      SET namespace_revision = namespace_revision + 1, updated_at = {} \
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                     now_expression(backend),
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -392,8 +392,8 @@ impl ArtifactDataCrossRevisionCopier {
                 ),
                 vec![
                     uuid_value(request.tenant_id, backend),
-                    request.module_slug.clone().into(),
-                    revision_value(request.target_contract_revision)?,
+                    uuid_value(request.data_owner_id, backend),
+                    uuid_value(request.target_namespace_instance_id, backend),
                 ],
             ))
             .await
@@ -404,9 +404,9 @@ impl ArtifactDataCrossRevisionCopier {
         Ok(CrossRevisionDataCopyReceipt {
             operation_id,
             tenant_id: request.tenant_id,
-            module_slug: request.module_slug,
-            source_contract_revision: request.source_contract_revision,
-            target_contract_revision: request.target_contract_revision,
+            data_owner_id: request.data_owner_id,
+            source_namespace_instance_id: request.source_namespace_instance_id,
+            target_namespace_instance_id: request.target_namespace_instance_id,
             page_cursor: request.page_cursor,
             next_page_cursor,
             page_digest,
@@ -420,7 +420,7 @@ impl ArtifactDataCrossRevisionCopier {
     pub async fn reconcile_stale_intents(
         &self,
         tenant_id: Uuid,
-        module_slug: &str,
+        data_owner_id: Uuid,
     ) -> Result<u64, ArtifactDataCopyError> {
         let backend = self.db.get_database_backend();
         let result = self
@@ -430,13 +430,13 @@ impl ArtifactDataCrossRevisionCopier {
                 format!(
                     "UPDATE module_artifact_data_copy_operations \
                      SET status = 'failed' \
-                     WHERE tenant_id = {} AND module_slug = {} AND status = 'intent'",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND status = 'intent'",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                 ),
                 vec![
                     uuid_value(tenant_id, backend),
-                    module_slug.to_string().into(),
+                    uuid_value(data_owner_id, backend),
                 ],
             ))
             .await
@@ -450,9 +450,9 @@ impl ArtifactDataCrossRevisionCopier {
     pub async fn ensure_no_unmigrated_live_objects(
         &self,
         tenant_id: Uuid,
-        module_slug: &str,
-        source_contract_revision: u64,
-        target_contract_revision: u64,
+        data_owner_id: Uuid,
+        source_namespace_instance_id: Uuid,
+        target_namespace_instance_id: Uuid,
     ) -> Result<(), ArtifactDataCopyError> {
         let backend = self.db.get_database_backend();
         let row = self
@@ -462,11 +462,11 @@ impl ArtifactDataCrossRevisionCopier {
                 format!(
                     "SELECT COUNT(*) AS count \
                      FROM module_artifact_data_objects src \
-                     WHERE src.tenant_id = {} AND src.module_slug = {} AND src.data_contract_revision = {} \
+                     WHERE src.tenant_id = {} AND src.data_owner_id = {} AND src.namespace_instance_id = {} \
                        AND NOT EXISTS ( \
                            SELECT 1 FROM module_artifact_data_objects tgt \
-                           WHERE tgt.tenant_id = src.tenant_id AND tgt.module_slug = src.module_slug \
-                             AND tgt.data_contract_revision = {} AND tgt.object_name = src.object_name \
+                           WHERE tgt.tenant_id = src.tenant_id AND tgt.data_owner_id = src.data_owner_id \
+                             AND tgt.namespace_instance_id = {} AND tgt.object_name = src.object_name \
                              AND tgt.digest_sha256 = src.digest_sha256 \
                        )",
                     placeholder(backend, 1),
@@ -476,9 +476,9 @@ impl ArtifactDataCrossRevisionCopier {
                 ),
                 vec![
                     uuid_value(tenant_id, backend),
-                    module_slug.to_string().into(),
-                    revision_value(source_contract_revision)?,
-                    revision_value(target_contract_revision)?,
+                    uuid_value(data_owner_id, backend),
+                    uuid_value(source_namespace_instance_id, backend),
+                    uuid_value(target_namespace_instance_id, backend),
                 ],
             ))
             .await

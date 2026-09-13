@@ -1887,19 +1887,35 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
   transactional-outbox fact with that same command identity, and leaves a
   durable namespace tombstone. Both preview and apply require an inactive,
   uninstalled installation, and apply locks then revalidates the target before
-  deletion. Because physical namespace storage is still keyed by slug and
-  data-contract revision, an active tenant-visible installation with the same
-  slug makes the historical namespace ambiguous and blocks preview/apply. The
+  deletion. The canonical physical cutover is in progress: pending schemas,
+  broker SQL, and object keys use tenant/owner/opaque instance identities.
+  An exact-instance serving collision blocks purge. The updated SQLite purge
+  integration proves that another active owner using the same slug retains
+  independent bytes and does not block purge of this namespace. The
   GraphQL previews call owner projections rather than rebuilding lifecycle
-  joins or record counts. This is a safe interim cutover; the full owner-keyed
-  structured-data storage and continuity model remains open below.
-- [x] Complete `dynamic_artifact_settings_purge` as the independently
+  joins or record counts. Apply and preview errors hide storage details and
+  receipt integers use checked conversions. The server data authorizer binds
+  owner context and reads current persisted `modules:manage` grants without
+  request/cache snapshots. Lifecycle and collision checks do not establish
+  terminal production traffic/job/write or atomic revocation fences. The full
+  owner-keyed storage, continuity, recovery, and operational hold safety remain
+  open. Snapshot/restore now use real durable copy reservations and verified
+  bytes; source snapshot holds serialize with collection admission/resume,
+  and full target manifest/byte verification seals a non-serving instance.
+  The focused SQLite/local-storage runtime test passes 1/1. Authorized
+  post-purge reference CAS and production fence evidence remain separate gaps.
+- [ ] Complete `dynamic_artifact_settings_purge` as the independently
   authorized settings-owner lifecycle. The implemented core has exact
   encrypted recovery points, immutable KMS key-version/schema/descriptor/value
   roots, unresolved-secret-handle digest, policy/retention/hold-aware
   authorization context, authenticated decrypt/revalidation, idempotent
   tombstoned purge, fresh-instance restore, and transactional outbox facts. It
   rejects combined data/settings apply and retains no generic `purge` command.
+  These are owner-port contracts, not verified server protection. The
+  plaintext-tag cipher and permissive settings policy were removed; mutations
+  require a host-composed owner service, and missing composition returns
+  unavailable with apply readiness disabled. Real encryption/KMS, policy,
+  secret-handle, hold, and production-fence adapters remain required.
   Recovery retention has its own revision-CAS receipt and may only extend
   expiry or add holds; the host KMS port rewraps authenticated ciphertext under the current
   approved key; collection records durable `ready`/`collecting`/`collected`

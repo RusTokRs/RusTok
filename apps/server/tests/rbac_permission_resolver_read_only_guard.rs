@@ -103,4 +103,23 @@ fn server_runtime_does_not_reintroduce_assignment_store_adapter() {
 
     assert!(runtime.contains("RuntimePermissionResolver<SeaOrmRelationPermissionStore"));
     assert!(runtime.contains("RuntimePermissionResolver::new("));
+    assert!(!runtime.contains("struct SeaOrmRelationPermissionStore"));
+    assert!(!runtime.contains("impl RelationPermissionStore for SeaOrmRelationPermissionStore"));
+    let owner = source("crates/modules/rustok-rbac/src/services/relation_permission_resolver.rs");
+    assert!(owner.contains("pub struct SeaOrmRelationPermissionStore"));
+
+    let persistence = source("apps/server/src/services/rbac_persistence.rs");
+    let adapter = persistence
+        .split("#[cfg(test)]")
+        .next()
+        .expect("server persistence adapter");
+    assert!(adapter.contains("RbacRoleAssignmentDbWriter::remove_tenant_role_assignments_on"));
+    assert!(!adapter.contains("user_roles::Entity::delete_many"));
+    assert!(!adapter.contains("roles::Entity::find"));
+    let authoritative = source("apps/server/src/services/rbac_authoritative.rs");
+    let adapter = authoritative.split("#[cfg(test)]").next().unwrap();
+    assert!(adapter.contains("rustok_rbac::resolve_persisted_permissions_on"));
+    assert!(!adapter.contains("user_roles::Entity::find"));
+    assert!(!adapter.contains("role_permissions::Entity::find"));
+    assert!(!adapter.contains("permissions::Entity::find"));
 }

@@ -1,470 +1,553 @@
-//! Integration tests for durable snapshot intents and post-purge data recovery.
+//! Runtime evidence for owner-scoped snapshot copies and isolated restore.
+//! This does not attest post-purge recovery verification, cutover, or fleet fences.
 
-use std::time::Duration;
-
+use async_trait::async_trait;
 use chrono::Utc;
+use object_store::{ObjectStoreExt, path::Path};
 use rustok_core::MigrationSource;
 use rustok_modules::{
-    ArtifactDataPostPurgeRecoveryService, ArtifactDataSnapshotIntentService, ModuleCommandContext,
-    ModulesModule, PostPurgeRecoveryError, PrepareRecoveryRequest, SnapshotCopyKind,
+    ArtifactDataError, ArtifactDataQuota, ArtifactDataRestoreRequest, ArtifactDataScope,
+    ArtifactDataSnapshotAuthorizer, ArtifactDataSnapshotCollectionAuthorizer,
+    ArtifactDataSnapshotCollectionRequest, ArtifactDataSnapshotCollectionRule,
+    ArtifactDataSnapshotCreateRequest, ArtifactDataSnapshotIntentService, ModuleCommandContext,
+    ModulesModule, SeaOrmArtifactDataSnapshotCollectionService, SeaOrmArtifactDataSnapshotService,
+    SnapshotArtifactDataSnapshotCollectionPolicy,
 };
-use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+use rustok_storage::{LocalStorageConfig, ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sha2::{Digest, Sha256};
+use std::{path::PathBuf, time::Duration};
 use uuid::Uuid;
 
-#[tokio::test]
-async fn test_snapshot_intent_lifecycle_and_stale_orphan_reconciliation() {
-    let database = Database::connect("sqlite::memory:")
-        .await
-        .expect("sqlite database");
-    rustok_outbox::SysEventsMigration
-        .up(&SchemaManager::new(&database))
-        .await
-        .expect("outbox migration");
-    for migration in ModulesModule.migrations() {
-        migration
-            .up(&SchemaManager::new(&database))
-            .await
-            .expect("module migration");
+struct FixturePolicy {
+    db: DatabaseConnection,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    owner_id: Uuid,
+}
+
+impl FixturePolicy {
+    async fn check(
+        &self,
+        scope: &ArtifactDataScope,
+        context: &ModuleCommandContext,
+    ) -> Result<(), ArtifactDataError> {
+        if scope.tenant_id != self.tenant_id
+            || context.tenant_id != Some(self.tenant_id)
+            || context.actor_id != self.actor_id
+            || scope.data_owner_id != self.owner_id
+            || scope.policy_revision != 1
+        {
+            return Err(ArtifactDataError::RestorePrecondition);
+        }
+        let row = self.db.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "SELECT 1 FROM module_artifact_data_namespaces WHERE tenant_id = ?1 AND data_owner_id = ?2
+             AND namespace_instance_id = ?3 AND data_contract_digest = ?4",
+            vec![scope.tenant_id.to_string().into(),scope.data_owner_id.to_string().into(),
+                 scope.namespace_instance_id.to_string().into(),scope.data_contract_digest.clone().into()]))
+            .await.map_err(|e| ArtifactDataError::Storage(e.to_string()))?;
+        if row.is_none() {
+            return Err(ArtifactDataError::RestorePrecondition);
+        }
+        Ok(())
     }
+}
 
-    let intent_service = ArtifactDataSnapshotIntentService::new(database.clone());
-    let tenant_id = Uuid::new_v4();
-    let snapshot_id = Uuid::new_v4();
+#[async_trait]
+impl ArtifactDataSnapshotAuthorizer for FixturePolicy {
+    async fn authorize_snapshot(
+        &self,
+        request: &ArtifactDataSnapshotCreateRequest,
+    ) -> Result<(), ArtifactDataError> {
+        self.check(&request.scope, &request.context).await
+    }
+    async fn authorize_restore(
+        &self,
+        request: &ArtifactDataRestoreRequest,
+    ) -> Result<ArtifactDataQuota, ArtifactDataError> {
+        self.check(&request.target, &request.context).await?;
+        Ok(ArtifactDataQuota::default())
+    }
+}
 
-    // 1. Normal lifecycle: reserve -> staging -> committed
-    let intent_id = intent_service
-        .reserve_intent(
-            tenant_id,
-            snapshot_id,
-            SnapshotCopyKind::Snapshot,
-            "product-images/catalog.png",
-            "source/key/1",
-            "target/key/1",
-            "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-            1024,
-        )
-        .await
-        .expect("reserve intent");
+#[async_trait]
+impl ArtifactDataSnapshotCollectionAuthorizer for FixturePolicy {
+    async fn authorize_collection(
+        &self,
+        request: &ArtifactDataSnapshotCollectionRequest,
+    ) -> Result<(), ArtifactDataError> {
+        if request.tenant_id != self.tenant_id
+            || request.context.tenant_id != Some(self.tenant_id)
+            || request.context.actor_id != self.actor_id
+        {
+            return Err(ArtifactDataError::SnapshotCollectionPrecondition);
+        }
+        Ok(())
+    }
+}
 
-    intent_service
-        .record_staging_receipt(intent_id)
-        .await
-        .expect("record staging receipt");
+struct FixtureRoot(PathBuf);
 
-    intent_service
-        .commit_intent(intent_id)
-        .await
-        .expect("commit intent");
+impl FixtureRoot {
+    fn new() -> Self {
+        let target = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../target");
+        std::fs::create_dir_all(&target).expect("workspace target");
+        let target = target.canonicalize().expect("absolute workspace target");
+        let path = target.join(format!("snapshot-fixture-{}", Uuid::new_v4()));
+        std::fs::create_dir(&path).expect("fixture storage root");
+        assert!(path.starts_with(&target));
+        Self(path)
+    }
+}
 
-    // 2. Reconciliation test: setup two stale intents created 10 minutes ago
-    // Intent A: Parent snapshot ABORTED/FAILED (no ready row in snapshots table) -> should be collected as orphan
-    let aborted_snapshot_id = Uuid::new_v4();
-    let stale_intent_a = intent_service
-        .reserve_intent(
-            tenant_id,
-            aborted_snapshot_id,
-            SnapshotCopyKind::Snapshot,
-            "orphan-file.png",
-            "source/orphan",
-            "target/orphan",
-            "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-            2048,
-        )
-        .await
-        .expect("reserve stale intent a");
-    intent_service
-        .record_staging_receipt(stale_intent_a)
-        .await
-        .expect("staging intent a");
+impl Drop for FixtureRoot {
+    fn drop(&mut self) {
+        let target = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../target")
+            .canonicalize()
+            .expect("workspace target");
+        assert!(self.0.starts_with(target));
+        std::fs::remove_dir_all(&self.0).expect("remove isolated fixture root");
+    }
+}
 
-    // Intent B: Parent snapshot COMPLETED ('ready' in snapshots table) -> should be resumed and committed
-    let completed_snapshot_id = Uuid::new_v4();
-    let stale_intent_b = intent_service
-        .reserve_intent(
-            tenant_id,
-            completed_snapshot_id,
-            SnapshotCopyKind::Snapshot,
-            "valid-file.png",
-            "source/valid",
-            "target/valid",
-            "sha256:3333333333333333333333333333333333333333333333333333333333333333",
-            4096,
-        )
-        .await
-        .expect("reserve stale intent b");
-    intent_service
-        .record_staging_receipt(stale_intent_b)
-        .await
-        .expect("staging intent b");
+async fn execute(db: &DatabaseConnection, sql: &str, values: Vec<sea_orm::Value>) {
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        sql,
+        values,
+    ))
+    .await
+    .expect("fixture SQL");
+}
 
-    // Insert 'ready' row for completed_snapshot_id
-    let now_str = Utc::now().to_rfc3339();
-    let future_str = (Utc::now() + chrono::Duration::days(30)).to_rfc3339();
-    database
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            "INSERT INTO module_artifact_data_snapshots (\
-                snapshot_id, tenant_id, module_slug, data_contract_revision, policy_revision, \
-                source_namespace_revision, status, retention_revision, request_digest, \
-                manifest_digest, actor_id, trace_id, correlation_id, reason, idempotency_key, \
-                structured_record_count, object_count, total_object_bytes, retain_until, \
-                legal_hold, created_at, ready_at\
-             ) VALUES (?1, ?2, 'media', 1, 1, 1, 'ready', 1, \
-                'sha256:0000000000000000000000000000000000000000000000000000000000000001', \
-                'sha256:3333333333333333333333333333333333333333333333333333333333333333', \
-                ?3, 'trace-1', ?4, 'test snapshot', ?5, 1, 1, 4096, ?6, 0, ?7, ?7)",
-            vec![
-                completed_snapshot_id.to_string().into(),
-                tenant_id.to_string().into(),
-                Uuid::new_v4().to_string().into(),
-                Uuid::new_v4().to_string().into(),
-                Uuid::new_v4().to_string().into(),
-                future_str.into(),
-                now_str.into(),
-            ],
-        ))
+async fn scalar(db: &DatabaseConnection, sql: &str) -> i64 {
+    db.query_one_raw(Statement::from_string(DbBackend::Sqlite, sql))
         .await
-        .expect("insert ready snapshot");
-
-    // Make intents appear 10 minutes old in database
-    let past_str = (Utc::now() - chrono::Duration::minutes(10)).to_rfc3339();
-    database
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            "UPDATE module_artifact_data_snapshot_copy_intents SET created_at = ?1 \
-             WHERE intent_id IN (?2, ?3)",
-            vec![
-                past_str.into(),
-                stale_intent_a.to_string().into(),
-                stale_intent_b.to_string().into(),
-            ],
-        ))
-        .await
-        .expect("backdate intents");
-
-    // Reconcile with 5 minute grace period
-    let receipt = intent_service
-        .reconcile_stale_intents(tenant_id, Duration::from_secs(300))
-        .await
-        .expect("reconcile stale intents");
-
-    assert_eq!(receipt.total_scanned, 2);
-    assert_eq!(receipt.orphans_collected, 1);
-    assert_eq!(receipt.committed_resumed, 1);
-
-    // Verify intent A is collected
-    let status_a: String = database
-        .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            "SELECT status FROM module_artifact_data_snapshot_copy_intents WHERE intent_id = ?1",
-            vec![stale_intent_a.to_string().into()],
-        ))
-        .await
-        .expect("query intent a")
-        .expect("row")
-        .try_get("", "status")
-        .expect("get status");
-    assert_eq!(status_a, "collected");
-
-    // Verify intent B is committed
-    let status_b: String = database
-        .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            "SELECT status FROM module_artifact_data_snapshot_copy_intents WHERE intent_id = ?1",
-            vec![stale_intent_b.to_string().into()],
-        ))
-        .await
-        .expect("query intent b")
-        .expect("row")
-        .try_get("", "status")
-        .expect("get status");
-    assert_eq!(status_b, "committed");
+        .expect("scalar SQL")
+        .expect("scalar row")
+        .try_get("", "value")
+        .expect("scalar value")
 }
 
 #[tokio::test]
-async fn test_post_purge_recovery_staging_and_cas_cutover() {
-    let database = Database::connect("sqlite::memory:")
-        .await
-        .expect("sqlite database");
+async fn snapshot_restore_reuses_reserved_keys_and_preserves_tombstones_and_holds() {
+    let db = Database::connect("sqlite::memory:").await.expect("sqlite");
     rustok_outbox::SysEventsMigration
-        .up(&SchemaManager::new(&database))
+        .up(&SchemaManager::new(&db))
         .await
-        .expect("outbox migration");
+        .expect("outbox");
     for migration in ModulesModule.migrations() {
         migration
-            .up(&SchemaManager::new(&database))
+            .up(&SchemaManager::new(&db))
             .await
             .expect("module migration");
     }
-
-    let recovery_service = ArtifactDataPostPurgeRecoveryService::new(database.clone());
+    let root = FixtureRoot::new();
+    let storage = StorageRuntime::local(&LocalStorageConfig {
+        base_dir: root.0.display().to_string(),
+        fsync: true,
+        ..Default::default()
+    })
+    .expect("real local storage");
     let tenant_id = Uuid::new_v4();
-    let module_slug = "catalog";
-    let data_contract_revision = 1u64;
-    let tombstone_rev = 3u64;
-
-    // 1. Create purged namespace with active purge tombstone
-    let purged_at_str = Utc::now().to_rfc3339();
-    database
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            "INSERT INTO module_artifact_data_namespaces (\
-                tenant_id, module_slug, data_contract_revision, namespace_revision, \
-                purged_at, created_at, updated_at\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?5)",
-            vec![
-                tenant_id.to_string().into(),
-                module_slug.into(),
-                (data_contract_revision as i64).into(),
-                (tombstone_rev as i64).into(),
-                purged_at_str.into(),
-            ],
-        ))
-        .await
-        .expect("insert purged namespace");
-
-    // Also record historical purge operation
-    let purge_idempotency = Uuid::new_v4();
-    database
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            "INSERT INTO module_artifact_data_purge_operations (\
-                tenant_id, module_slug, data_contract_revision, policy_revision, \
-                idempotency_key, expected_namespace_revision, namespace_revision, \
-                actor_id, trace_id, correlation_id, reason, purged_records, completed_at\
-             ) VALUES (?1, ?2, ?3, 1, ?4, 2, ?5, ?6, 'trace-purge', ?7, 'tenant requested purge', 100, ?8)",
-            vec![
-                tenant_id.to_string().into(),
-                module_slug.into(),
-                (data_contract_revision as i64).into(),
-                purge_idempotency.to_string().into(),
-                (tombstone_rev as i64).into(),
-                Uuid::new_v4().to_string().into(),
-                Uuid::new_v4().to_string().into(),
-                Utc::now().to_rfc3339().into(),
-            ],
-        ))
-        .await
-        .expect("insert purge operation");
-
-    // 2. Create ready snapshot
-    let snapshot_id = Uuid::new_v4();
-    let future_str = (Utc::now() + chrono::Duration::days(30)).to_rfc3339();
-    let now_str = Utc::now().to_rfc3339();
-    database
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            "INSERT INTO module_artifact_data_snapshots (\
-                snapshot_id, tenant_id, module_slug, data_contract_revision, policy_revision, \
-                source_namespace_revision, status, retention_revision, request_digest, \
-                manifest_digest, actor_id, trace_id, correlation_id, reason, idempotency_key, \
-                structured_record_count, object_count, total_object_bytes, retain_until, \
-                legal_hold, created_at, ready_at\
-             ) VALUES (?1, ?2, ?3, ?4, 1, 2, 'ready', 1, \
-                'sha256:0000000000000000000000000000000000000000000000000000000000000002', \
-                'sha256:4444444444444444444444444444444444444444444444444444444444444444', \
-                ?5, 'trace-snap', ?6, 'valid snapshot', ?7, 50, 4, 8192, ?8, 0, ?9, ?9)",
-            vec![
-                snapshot_id.to_string().into(),
-                tenant_id.to_string().into(),
-                module_slug.into(),
-                (data_contract_revision as i64).into(),
-                Uuid::new_v4().to_string().into(),
-                Uuid::new_v4().to_string().into(),
-                Uuid::new_v4().to_string().into(),
-                future_str.into(),
-                now_str.into(),
-            ],
-        ))
-        .await
-        .expect("insert snapshot");
-
-    // 3. Step A: Prepare recovery in isolated staging context
-    let prep_req = PrepareRecoveryRequest {
+    let owner_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let source = ArtifactDataScope {
         tenant_id,
-        module_slug: module_slug.to_string(),
-        data_contract_revision,
-        source_snapshot_id: snapshot_id,
-        context: ModuleCommandContext {
-            actor_id: Uuid::new_v4(),
-            tenant_id: Some(tenant_id),
-            trace_id: "trace-recovery-1".to_string(),
-            correlation_id: Uuid::new_v4(),
-            idempotency_key: Uuid::new_v4(),
-        },
+        data_owner_id: owner_id,
+        namespace_instance_id: Uuid::new_v4(),
+        data_contract_digest: format!(
+            "sha256:{}",
+            hex::encode(Sha256::digest(b"fixture data contract"))
+        ),
+        module_slug: "snapshot_module".into(),
+        data_contract_revision: 1,
+        policy_revision: 1,
     };
-
-    let staged_receipt = recovery_service
-        .prepare_recovery(prep_req.clone())
+    let target = ArtifactDataScope {
+        namespace_instance_id: Uuid::new_v4(),
+        ..source.clone()
+    };
+    let now = Utc::now();
+    for (scope, state) in [(&source, "serving"), (&target, "staging")] {
+        execute(&db,"INSERT INTO module_artifact_data_namespaces
+            (tenant_id,data_owner_id,namespace_instance_id,module_slug,data_contract_revision,data_contract_digest,
+             state,namespace_revision,purged_at,created_at,updated_at) VALUES (?1,?2,?3,?4,1,?5,?6,1,NULL,?7,?7)",
+            vec![tenant_id.to_string().into(),owner_id.to_string().into(),scope.namespace_instance_id.to_string().into(),
+                 scope.module_slug.clone().into(),scope.data_contract_digest.clone().into(),state.into(),now.into()]).await;
+    }
+    execute(
+        &db,
+        "INSERT INTO module_artifact_data_owner_references VALUES (?1,?2,?3,1)",
+        vec![
+            tenant_id.to_string().into(),
+            owner_id.to_string().into(),
+            source.namespace_instance_id.to_string().into(),
+        ],
+    )
+    .await;
+    execute(
+        &db,
+        "INSERT INTO module_artifact_data VALUES (?1,?2,?3,'record','{\"answer\":42}',13,3,?4)",
+        vec![
+            tenant_id.to_string().into(),
+            owner_id.to_string().into(),
+            source.namespace_instance_id.to_string().into(),
+            now.into(),
+        ],
+    )
+    .await;
+    execute(
+        &db,
+        "INSERT INTO module_artifact_data_indexes VALUES (?1,?2,?3,'answer','42','record')",
+        vec![
+            tenant_id.to_string().into(),
+            owner_id.to_string().into(),
+            source.namespace_instance_id.to_string().into(),
+        ],
+    )
+    .await;
+    execute(
+        &db,
+        "INSERT INTO module_artifact_data_index_contracts VALUES (?1,?2,?3,?4,?5)",
+        vec![
+            tenant_id.to_string().into(),
+            owner_id.to_string().into(),
+            source.namespace_instance_id.to_string().into(),
+            format!(
+                "sha256:{}",
+                hex::encode(Sha256::digest(b"fixture answer index contract"))
+            )
+            .into(),
+            now.into(),
+        ],
+    )
+    .await;
+    let bytes = bytes::Bytes::from_static(b"actual snapshot payload");
+    let digest = format!("sha256:{}", hex::encode(Sha256::digest(&bytes)));
+    let source_key = ObjectKey::chronological(
+        "module-artifact-data",
+        ObjectZone::Objects,
+        ObjectScope::Namespace {
+            tenant_id,
+            owner_id,
+            instance_id: source.namespace_instance_id,
+        },
+        now,
+        Uuid::new_v4(),
+        "bin",
+    )
+    .expect("source private key")
+    .to_string();
+    storage
+        .objects
+        .put(&Path::from(source_key.as_str()), bytes.clone().into())
         .await
-        .expect("prepare recovery succeeds");
-
-    assert_eq!(staged_receipt.status, "staging");
-    assert_eq!(staged_receipt.tombstone_namespace_revision, 3);
-    assert_eq!(staged_receipt.target_namespace_revision, 4);
-    assert_eq!(staged_receipt.records_restored, 50);
-    assert_eq!(staged_receipt.objects_restored, 4);
-
-    let recovery_evidence = database
-        .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            "SELECT request_digest, actor_id, trace_id, correlation_id \
-             FROM module_artifact_data_namespace_recovery_operations \
-             WHERE recovery_id = ?1",
-            vec![staged_receipt.recovery_id.to_string().into()],
-        ))
-        .await
-        .expect("query recovery evidence")
-        .expect("recovery evidence");
-    let request_digest: String = recovery_evidence
-        .try_get("", "request_digest")
-        .expect("request digest");
-    let actor_id: String = recovery_evidence.try_get("", "actor_id").expect("actor ID");
-    let trace_id: String = recovery_evidence.try_get("", "trace_id").expect("trace ID");
-    let correlation_id: String = recovery_evidence
-        .try_get("", "correlation_id")
-        .expect("correlation ID");
-    assert!(request_digest.starts_with("sha256:"));
-    assert_eq!(actor_id, prep_req.context.actor_id.to_string());
-    assert_eq!(trace_id, prep_req.context.trace_id);
-    assert_eq!(correlation_id, prep_req.context.correlation_id.to_string());
-    let replay = recovery_service
-        .prepare_recovery(prep_req.clone())
-        .await
-        .expect("exact recovery replay");
-    assert_eq!(replay.recovery_id, staged_receipt.recovery_id);
-    let mut changed_context = prep_req.clone();
-    changed_context.context.trace_id = "trace-recovery-changed".to_string();
-    assert!(matches!(
-        recovery_service.prepare_recovery(changed_context).await,
-        Err(PostPurgeRecoveryError::IdempotencyConflict)
-    ));
-    let mut changed_snapshot = prep_req.clone();
-    changed_snapshot.source_snapshot_id = Uuid::new_v4();
-    assert!(matches!(
-        recovery_service.prepare_recovery(changed_snapshot).await,
-        Err(PostPurgeRecoveryError::IdempotencyConflict)
-    ));
-    let mut foreign_context = prep_req.clone();
-    foreign_context.context.tenant_id = Some(Uuid::new_v4());
-    foreign_context.context.idempotency_key = Uuid::new_v4();
-    assert!(matches!(
-        recovery_service.prepare_recovery(foreign_context).await,
-        Err(PostPurgeRecoveryError::InvalidCommand)
-    ));
-
-    let foreign_tenant_id = Uuid::new_v4();
-    database
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            "UPDATE module_artifact_data_snapshots SET tenant_id = ?1 WHERE snapshot_id = ?2",
-            vec![
-                foreign_tenant_id.to_string().into(),
-                snapshot_id.to_string().into(),
-            ],
-        ))
-        .await
-        .expect("move snapshot outside recovery tenant");
-    let mut foreign_snapshot = prep_req.clone();
-    foreign_snapshot.context.idempotency_key = Uuid::new_v4();
-    foreign_snapshot.context.correlation_id = Uuid::new_v4();
-    assert!(matches!(
-        recovery_service.prepare_recovery(foreign_snapshot).await,
-        Err(PostPurgeRecoveryError::SnapshotNotReady(id)) if id == snapshot_id
-    ));
-
-    // 4. Step B: Premature cutover before verification must fail
-    let premature_cutover_err = recovery_service
-        .execute_cas_cutover(staged_receipt.recovery_id)
-        .await
-        .expect_err("premature cutover must fail");
-    assert!(matches!(
-        premature_cutover_err,
-        PostPurgeRecoveryError::InvalidRecoveryState { .. }
-    ));
-
-    // 5. Step C: Verify staged recovery
-    let verified_receipt = recovery_service
-        .verify_staged_recovery(staged_receipt.recovery_id)
-        .await
-        .expect("verify staged recovery");
-    assert_eq!(verified_receipt.status, "verified");
-
-    // 6. Step D: Execute authorized CAS cutover
-    let cutover_receipt = recovery_service
-        .execute_cas_cutover(staged_receipt.recovery_id)
-        .await
-        .expect("execute CAS cutover");
-
-    assert_eq!(cutover_receipt.active_namespace_revision, 4);
-    assert_eq!(cutover_receipt.records_restored, 50);
-    assert_eq!(cutover_receipt.objects_restored, 4);
-
-    // 7. Verify active namespace state: active at revision 4, purged_at IS NULL
-    let active_row = database
-        .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            "SELECT namespace_revision, purged_at FROM module_artifact_data_namespaces \
-             WHERE tenant_id = ?1 AND module_slug = ?2 AND data_contract_revision = ?3",
-            vec![
-                tenant_id.to_string().into(),
-                module_slug.into(),
-                (data_contract_revision as i64).into(),
-            ],
-        ))
-        .await
-        .expect("query active namespace")
-        .expect("row");
-
-    let active_rev: i64 = active_row.try_get("", "namespace_revision").expect("rev");
-    let active_purged: Option<String> = active_row.try_get("", "purged_at").expect("purged_at");
-    assert_eq!(active_rev, 4);
-    assert_eq!(active_purged, None, "active namespace must not be purged");
-
-    // 8. ARCHITECTURAL INVARIANT: "never clear the old purge tombstone"
-    // Verify that the historical purge operations table still contains the immutable tombstone
-    let purge_op_count: i64 = database
-        .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            "SELECT COUNT(*) AS c FROM module_artifact_data_purge_operations \
-             WHERE tenant_id = ?1 AND module_slug = ?2 AND data_contract_revision = ?3",
-            vec![
-                tenant_id.to_string().into(),
-                module_slug.into(),
-                (data_contract_revision as i64).into(),
-            ],
-        ))
-        .await
-        .expect("query purge ops")
-        .expect("row")
-        .try_get("", "c")
-        .expect("count");
-    assert_eq!(
-        purge_op_count, 1,
-        "purge tombstone history must remain intact"
+        .expect("publish source bytes");
+    execute(&db,"INSERT INTO module_artifact_data_objects
+        (tenant_id,data_owner_id,namespace_instance_id,object_name,storage_key,content_type,size_bytes,digest_sha256,
+         revision,created_at,updated_at) VALUES (?1,?2,?3,'payload',?4,'application/octet-stream',?5,?6,4,?7,?7)",
+        vec![tenant_id.to_string().into(),owner_id.to_string().into(),source.namespace_instance_id.to_string().into(),
+             source_key.clone().into(),i64::try_from(bytes.len()).expect("size").into(),digest.into(),now.into()]).await;
+    let context = ModuleCommandContext {
+        actor_id,
+        tenant_id: Some(tenant_id),
+        trace_id: "test:snapshot-intents".into(),
+        correlation_id: Uuid::new_v4(),
+        idempotency_key: Uuid::new_v4(),
+    };
+    let service = SeaOrmArtifactDataSnapshotService::new(
+        db.clone(),
+        storage.clone(),
+        FixturePolicy {
+            db: db.clone(),
+            tenant_id,
+            actor_id,
+            owner_id,
+        },
     );
-
-    // 9. Negative test: Attempt to prepare recovery for non-purged namespace fails
-    let bad_prep = PrepareRecoveryRequest {
-        tenant_id,
-        module_slug: module_slug.to_string(),
-        data_contract_revision,
-        source_snapshot_id: snapshot_id,
+    let create = ArtifactDataSnapshotCreateRequest {
+        scope: source.clone(),
+        expected_namespace_revision: 1,
+        context: context.clone(),
+        reason: "Capture fixture".into(),
+        retain_until: now + chrono::Duration::days(1),
+        legal_hold: false,
+    };
+    let snapshot = service
+        .create(create.clone())
+        .await
+        .expect("copy and finalize actual snapshot");
+    assert_eq!(
+        service.create(create).await.expect("exact snapshot replay"),
+        snapshot
+    );
+    assert_eq!(
+        scalar(
+            &db,
+            "SELECT count(*) AS value FROM module_artifact_data_snapshot_copy_intents"
+        )
+        .await,
+        1
+    );
+    let snapshot_key: String = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT snapshot_storage_key FROM module_artifact_data_snapshot_objects",
+        ))
+        .await
+        .expect("snapshot key SQL")
+        .expect("snapshot object")
+        .try_get("", "snapshot_storage_key")
+        .expect("snapshot key");
+    execute(
+        &db,
+        "UPDATE module_artifact_data_namespaces SET state='purged',purged_at=?1
+        WHERE namespace_instance_id=?2",
+        vec![now.into(), source.namespace_instance_id.to_string().into()],
+    )
+    .await;
+    execute(
+        &db,
+        "DELETE FROM module_artifact_data_objects WHERE namespace_instance_id=?1",
+        vec![source.namespace_instance_id.to_string().into()],
+    )
+    .await;
+    storage
+        .objects
+        .delete(&Path::from(source_key))
+        .await
+        .expect("remove purged source bytes");
+    storage
+        .objects
+        .put(
+            &Path::from(snapshot_key.as_str()),
+            bytes::Bytes::from_static(b"corrupt").into(),
+        )
+        .await
+        .expect("corrupt bounded snapshot fixture");
+    let restore = ArtifactDataRestoreRequest {
+        snapshot_id: snapshot.snapshot_id,
+        target: target.clone(),
+        expected_namespace_revision: 1,
         context: ModuleCommandContext {
-            actor_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+            ..context
+        },
+        reason: "Restore into empty staging".into(),
+    };
+    assert!(matches!(
+        service.restore(restore.clone()).await,
+        Err(ArtifactDataError::SnapshotIntegrity)
+    ));
+    assert_eq!(
+        scalar(
+            &db,
+            "SELECT count(*) AS value FROM module_artifact_data_snapshot_holds WHERE released_at IS NULL"
+        ).await,
+        1
+    );
+    assert_eq!(
+        scalar(
+            &db,
+            "SELECT count(*) AS value FROM module_artifact_data_restore_operations"
+        )
+        .await,
+        0
+    );
+    execute(
+        &db,
+        "UPDATE module_artifact_data_snapshots SET retain_until=?1",
+        vec![(now - chrono::Duration::days(1)).into()],
+    )
+    .await;
+    let collector = SeaOrmArtifactDataSnapshotCollectionService::new(
+        db.clone(),
+        storage.clone(),
+        FixturePolicy {
+            db: db.clone(),
+            tenant_id,
+            actor_id,
+            owner_id,
+        },
+    );
+    let collection = ArtifactDataSnapshotCollectionRequest {
+        tenant_id,
+        context: ModuleCommandContext {
+            actor_id,
             tenant_id: Some(tenant_id),
-            trace_id: "trace-bad".to_string(),
+            trace_id: "test:snapshot-collection".into(),
             correlation_id: Uuid::new_v4(),
             idempotency_key: Uuid::new_v4(),
         },
+        reason: "Collect expired fixture snapshot".into(),
+        policy_snapshot_id: "fixture-approved-policy".into(),
+        limit: 1,
     };
-    let err = recovery_service
-        .prepare_recovery(bad_prep)
+    let collection_policy = SnapshotArtifactDataSnapshotCollectionPolicy::new(
+        collection.policy_snapshot_id.clone(),
+        std::collections::HashMap::from([(
+            snapshot.snapshot_id,
+            ArtifactDataSnapshotCollectionRule {
+                audit_hold: false,
+                rollback_hold: false,
+                collection_approved: true,
+            },
+        )]),
+    )
+    .expect("approved collection rule");
+    assert_eq!(
+        collector
+            .collect(collection.clone(), &collection_policy)
+            .await
+            .expect("held collection")
+            .collected,
+        0
+    );
+    assert!(
+        storage
+            .objects
+            .head(&Path::from(snapshot_key.as_str()))
+            .await
+            .is_ok()
+    );
+    let reserved: String = db.query_one_raw(Statement::from_string(DbBackend::Sqlite,
+        "SELECT target_storage_key FROM module_artifact_data_snapshot_copy_intents WHERE operation_kind='restore'"))
+        .await.expect("restore reservation SQL").expect("restore intent").try_get("","target_storage_key").expect("reserved key");
+    storage
+        .objects
+        .put(&Path::from(snapshot_key), bytes.clone().into())
         .await
-        .expect_err("must reject recovery for non-purged namespace");
+        .expect("repair fixture bytes");
+    let restored = service
+        .restore(restore.clone())
+        .await
+        .expect("resume reserved restore");
+    assert_eq!(restored.restored_records, 1);
+    assert_eq!(restored.restored_objects, 1);
+    assert_eq!(
+        service
+            .restore(restore.clone())
+            .await
+            .expect("exact terminal replay"),
+        restored
+    );
+    let mut conflict = restore;
+    conflict.reason = "Changed replay evidence".into();
     assert!(matches!(
-        err,
-        PostPurgeRecoveryError::NamespaceNotPurged { .. }
+        service.restore(conflict).await,
+        Err(ArtifactDataError::IdempotencyConflict)
     ));
+    assert_eq!(
+        storage
+            .objects
+            .get(&Path::from(reserved.as_str()))
+            .await
+            .expect("actual target")
+            .bytes()
+            .await
+            .expect("target bytes"),
+        bytes
+    );
+    assert_eq!(
+        scalar(
+            &db,
+            "SELECT count(*) AS value FROM module_artifact_data_snapshot_copy_intents"
+        )
+        .await,
+        2
+    );
+    assert_eq!(
+        scalar(
+            &db,
+            "SELECT count(*) AS value FROM module_artifact_data_snapshot_copy_intents WHERE status='committed'"
+        ).await,
+        2
+    );
+    assert_eq!(
+        scalar(
+            &db,
+            "SELECT count(*) AS value FROM module_artifact_data_snapshot_holds WHERE released_at IS NULL"
+        ).await,
+        0
+    );
+    assert_eq!(
+        scalar(
+            &db,
+            "SELECT count(*) AS value FROM module_artifact_data_namespaces WHERE state='purged' AND purged_at IS NOT NULL"
+        ).await,
+        1
+    );
+    assert_eq!(
+        scalar(
+            &db,
+            "SELECT count(*) AS value FROM module_artifact_data_namespaces WHERE state='verified' AND verified_manifest_digest IS NOT NULL"
+        ).await,
+        1
+    );
+    assert_eq!(scalar(&db,"SELECT count(*) AS value FROM module_artifact_data_owner_references reference
+        JOIN module_artifact_data_namespaces namespace USING (tenant_id,data_owner_id,namespace_instance_id)
+        WHERE namespace.state='purged'").await,1);
+    for sql in [
+        "DELETE FROM module_artifact_data WHERE namespace_instance_id=?1",
+        "UPDATE module_artifact_data SET revision=revision+1 WHERE namespace_instance_id=?1",
+        "DELETE FROM module_artifact_data_objects WHERE namespace_instance_id=?1",
+        "UPDATE module_artifact_data_namespaces SET state='staging' WHERE namespace_instance_id=?1",
+        "UPDATE module_artifact_data_namespaces SET verified_manifest_digest=NULL WHERE namespace_instance_id=?1",
+        "DELETE FROM module_artifact_data_namespaces WHERE namespace_instance_id=?1",
+    ] {
+        assert!(
+            db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                sql,
+                vec![target.namespace_instance_id.to_string().into()]
+            ))
+            .await
+            .is_err(),
+            "sealed target: {sql}"
+        );
+    }
+    assert_eq!(scalar(&db,"SELECT revision AS value FROM module_artifact_data record
+        JOIN module_artifact_data_namespaces namespace USING (tenant_id,data_owner_id,namespace_instance_id)
+        WHERE namespace.state='verified'").await,3);
+    assert_eq!(scalar(&db,"SELECT revision AS value FROM module_artifact_data_objects object
+        JOIN module_artifact_data_namespaces namespace USING (tenant_id,data_owner_id,namespace_instance_id)
+        WHERE namespace.state='verified'").await,4);
+    assert_eq!(scalar(&db,"SELECT count(*) AS value FROM module_artifact_data_indexes record
+        JOIN module_artifact_data_namespaces namespace USING (tenant_id,data_owner_id,namespace_instance_id)
+        WHERE namespace.state='verified' AND index_name='answer' AND index_value='42'").await,1);
+    // Age and an absent metadata parent never authorize orphan deletion.
+    execute(&db,"UPDATE module_artifact_data_snapshot_copy_intents SET status='staging',committed_at=NULL,created_at=?1
+        WHERE operation_kind='restore'",vec![(now - chrono::Duration::minutes(10)).into()]).await;
+    execute(
+        &db,
+        "DELETE FROM module_artifact_data_restore_operations",
+        vec![],
+    )
+    .await;
+    let reconciler = ArtifactDataSnapshotIntentService::new(db.clone(), storage.clone());
+    let receipt = reconciler
+        .reconcile_stale_intents(tenant_id, Duration::from_secs(300))
+        .await
+        .expect("reconcile unresolved");
+    assert_eq!(receipt.retained_unresolved, 1);
+    assert_eq!(receipt.committed_resumed, 0);
+    assert!(
+        storage
+            .objects
+            .head(&Path::from(reserved.as_str()))
+            .await
+            .is_ok()
+    );
+    assert_eq!(
+        collector
+            .collect(collection, &collection_policy)
+            .await
+            .expect("released collection")
+            .collected,
+        1
+    );
+    assert!(storage.objects.head(&Path::from(reserved)).await.is_ok());
 }

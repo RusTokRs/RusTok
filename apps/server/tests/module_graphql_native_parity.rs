@@ -24,6 +24,72 @@ async fn module_schema_contract() -> String {
 }
 
 #[tokio::test]
+async fn settings_recovery_mutations_fail_closed_without_host_policy_and_cipher() {
+    use rustok_api::Permission;
+    use rustok_core::UserRole;
+    use rustok_server::context::{AuthContext, TenantContext};
+    use rustok_server::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
+
+    let db = Database::connect("sqlite::memory:")
+        .await
+        .expect("test database");
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    let schema = Schema::build(RootQuery, RootMutation, EmptySubscription)
+        .data(db)
+        .data(AuthContext {
+            user_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::MODULES_MANAGE],
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        })
+        .data(TenantContext {
+            id: tenant_id,
+            name: "Recovery policy test".to_string(),
+            slug: "recovery-policy-test".to_string(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        })
+        .finish();
+    let installation_id = Uuid::new_v4();
+    let recovery_point_id = Uuid::new_v4();
+    let idempotency_key = Uuid::new_v4();
+    for fields in [
+        format!(
+            "createTenantArtifactSettingsRecoveryPoint(installationId: \"{installation_id}\", expectedInstallationRevision: 1, expectedSettingsRevision: 1, reason: \"Retain settings\", idempotencyKey: \"{idempotency_key}\") {{ recoveryPointId }}"
+        ),
+        format!(
+            "purgeTenantArtifactSettings(installationId: \"{installation_id}\", recoveryPointId: \"{recovery_point_id}\", expectedInstallationRevision: 1, expectedSettingsRevision: 1, reason: \"Retire settings\", idempotencyKey: \"{idempotency_key}\") {{ purgeOperationId }}"
+        ),
+        format!(
+            "restoreTenantArtifactSettings(recoveryPointId: \"{recovery_point_id}\", reason: \"Restore retained settings\", idempotencyKey: \"{idempotency_key}\") {{ restoreOperationId }}"
+        ),
+    ] {
+        let scope = RbacRequestScope::new(
+            tenant_id,
+            user_id,
+            vec![Permission::MODULES_MANAGE],
+            UserRole::SuperAdmin,
+        );
+        let response = with_rbac_request_scope(
+            Some(scope),
+            schema.execute(format!("mutation {{ {fields} }}")),
+        )
+        .await;
+        assert_eq!(response.errors.len(), 1, "{response:?}");
+        assert_eq!(
+            response.errors[0].message,
+            "Artifact settings recovery is unavailable"
+        );
+    }
+}
+
+#[tokio::test]
 async fn transition_graphql_contract_matches_the_owner_command_shape() {
     let contract = module_schema_contract().await;
 

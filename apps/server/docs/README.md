@@ -10,6 +10,28 @@ Local documentation for the main RusToK backend host application. This file capt
 - publishes HTTP, GraphQL, Leptos `#[server]`, health, metrics, and related control-plane surfaces;
 - remains a thin transport/wiring layer where domain logic has already been extracted into module crates.
 
+RBAC persisted relation reads and tenant membership deletion live in
+`rustok-rbac`; server adapters own composition, caller transactions, cache
+invalidation after commit, and process telemetry.
+
+Artifact purge previews call `ModuleControlPlane` owner projections. Data purge
+accepts an exact installation, positive namespace revision, reason, and
+idempotency UUID; the authenticated server supplies tenant/actor command
+evidence. The host authorizer binds owner-derived context and reads current
+persisted `modules:manage` grants without permission-cache/request snapshots.
+Preview/apply errors hide storage details and receipt integers are checked.
+Lifecycle retirement and same-slug collision checks do not prove terminal
+traffic/job/write or atomic revocation fences. The server settings recovery
+plaintext-tag cipher and permissive policy were deleted. Settings mutations
+require a host-composed owner service from `GraphqlRuntimeInputs` and return
+unavailable without it; previews disable apply readiness. The owner supports
+shared policy/encryption ports, but actual encryption/KMS, secret-handle,
+retention, hold, and terminal-fence composition remain missing. Persisted RBAC
+relation reading and current tenant-policy evaluation are owned by `rustok-rbac`;
+the server retains cache integration, authenticated adapters, and telemetry.
+Follow the owner plan and central rollback plan for these
+open completion gates.
+
 ## Mandatory platform baseline
 
 For `apps/server`, the mandatory baseline consists of two layers.

@@ -487,7 +487,11 @@ impl RootQuery {
             .artifact_settings_purge_preview()
             .preview(tenant.id, installation_id)
             .await
-            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+            .map_err(crate::graphql::mutations::map_artifact_settings_recovery_error)?;
+        let recovery_ready = ctx
+            .data::<crate::services::artifact_purge_recovery_host::ArtifactSettingsRecoveryRuntime>(
+            )
+            .is_ok();
         Ok(ArtifactSettingsPurgePreview {
             installation_id: preview.installation_id,
             data_owner_id: preview.data_owner_id,
@@ -499,13 +503,18 @@ impl RootQuery {
             })?,
             has_recovery_point: preview.has_recovery_point,
             recovery_point_id: preview.recovery_point_id,
-            can_purge: preview.can_purge,
-            reason: preview.reason,
+            can_purge: preview.can_purge && recovery_ready,
+            reason: if preview.can_purge && !recovery_ready {
+                "Protected settings recovery is unavailable".to_string()
+            } else {
+                preview.reason
+            },
         })
     }
 
-    /// Previews a structured artifact data purge. Purge is permitted only if
-    /// the namespace is uninstalled/retired and no active writes are in flight.
+    /// Previews lifecycle eligibility for an exact retired installation.
+    /// Active tenant-visible installations with the same slug block this preview.
+    /// Traffic, job, and write-drain fences are not established by this read.
     async fn preview_tenant_artifact_data_purge(
         &self,
         ctx: &Context<'_>,
@@ -518,7 +527,7 @@ impl RootQuery {
             .artifact_data_purge_preview()
             .preview(tenant.id, installation_id)
             .await
-            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+            .map_err(crate::graphql::mutations::map_artifact_data_purge_error)?;
         Ok(ArtifactDataPurgePreview {
             installation_id: preview.installation_id,
             namespace_revision: i64::try_from(preview.namespace_revision).map_err(|_| {

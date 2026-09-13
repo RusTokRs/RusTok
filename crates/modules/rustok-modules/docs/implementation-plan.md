@@ -20,7 +20,7 @@ The cross-component sequence and completion rules are defined by the
 - Predecessor standby strategy: `Standby DB + CAS Holds`
 - Rollback eligibility: `AutomaticSingleAttempt`
 - N/N+1 compatibility: Durable intent journal before CAS mutations; CAS-protected receipts; inert release definitions keyed by `(release_digest, module_slug, permission_key)`; scoped install projects under `(scope, installation_id)`. Bounded migration plan digest verification.
-- External side effects & fences: Monotonic release-security epoch fence; owner operation locks (`derive_canonical_conflict_keys`, `fleet_operations_tool`); queue drain before disable/uninstall; delayed work rejected for retired generations.
+- External side effects & fences: Monotonic release-security epoch checks and owner operation locks (`derive_canonical_conflict_keys`, `fleet_operations_tool`) exist; terminal production traffic/job/write fences and fleet convergence evidence remain incomplete. Queue-drain contracts and retired-generation rejection do not by themselves prove production fencing.
 - Uncertain-outcome recovery: `DataBackfillCoordinator` with intermediate page checkpoints and payload digests; uncertain-outcome reconciliation before cursor advance; `ReleaseAdmissionIntentJournal` recovery scan; single-attempt predecessor recovery for operations tools.
 - Responsible module owner: Platform Foundation Team
 
@@ -181,27 +181,30 @@ Cosign-sign and attest deterministic OCI evidence before isolated verification
 records only platform admission. It never creates a build-service attestation for an
 Alloy-authored workspace.
 
-On 2026-09-03, Durable Snapshot/Restore Intents, Staging Receipts, and Post-Purge Data Recovery were delivered per Section 4 of the Rollback Plan:
-- `crates/modules/rustok-modules/src/migrations/m20260903_000049_artifact_data_snapshot_and_recovery_operations.rs` created persistent tables `module_artifact_data_snapshot_copy_intents` and `module_artifact_data_namespace_recovery_operations` with RLS tenant isolation.
-- `crates/modules/rustok-modules/src/data_snapshot_intents.rs` implemented `ArtifactDataSnapshotIntentService`:
-  - Enforces durable per-copy intent logging (`status = 'intent'`) before storage publication.
-  - Issues staging receipt (`status = 'staging'`) after object upload.
-  - Finalizes intent commit (`status = 'committed'`) upon metadata transaction completion.
-  - Provides `reconcile_stale_intents` for crash recovery: resumes commits when parent snapshot is ready, or safely collects and deletes proven orphan objects after grace expiry (`status = 'collected'`).
-- `crates/modules/rustok-modules/src/data_post_purge_recovery.rs` implemented `ArtifactDataPostPurgeRecoveryService`:
-  - `prepare_recovery`: verifies the existing purge tombstone (`purged_at IS NOT NULL`) and ready snapshot, creating an isolated staging recovery operation (`status = 'staging'`).
-  - `verify_staged_recovery`: verifies full snapshot digests and restored counts, promoting to `status = 'verified'`.
-  - `execute_cas_cutover`: executes an atomic CAS cutover advancing the active namespace revision (`tombstone_rev + 1`, `purged_at = NULL` for the new revision) while preserving the historical purge operation records in `module_artifact_data_purge_operations` completely intact ("never clear the old purge tombstone").
-  - `PrepareRecoveryRequest` now accepts one tenant-matched `ModuleCommandContext`; its durable staging receipt records a canonical request digest plus actor, trace, correlation, and idempotency facts. Exact replay returns the original receipt, while changed context or snapshot evidence fails closed. A ready snapshot is selected only from the same tenant, module, and data-contract revision.
-- `crates/modules/rustok-modules/src/control_plane.rs` exposed `artifact_data_snapshot_intents()` and `artifact_data_post_purge_recovery()` on `ModuleControlPlane`.
-- Verified by:
-  - `cargo test --locked -p rustok-modules --test snapshot_intents_and_post_purge_recovery_tests` (2 passed, 0 warnings).
-  - `cargo test --locked -p rustok-modules --test snapshot_readiness_and_recovery_evidence_tests` (2 passed, 0 warnings).
-  - `cargo test --locked -p rustok-modules --test artifact_purge_and_recovery_tests` (1 passed, 0 warnings).
-  - `cargo test --locked -p rustok-modules --test snapshot_intents_and_post_purge_recovery_tests` (2 passed, 0 warnings) after the command-evidence cutover.
-  - `cargo check -p rustok-server --test module_graphql_native_parity` (passed, 0 errors).
-  - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
-  - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
+Snapshot-copy and restore reservations now run through the actual owner pipeline.
+Each reservation binds tenant, stable owner, opaque target instance, operation,
+full request digest, source key/digest, and manifest entry. Exact replay retains
+one owner-selected target key. Conditional publication is followed by a re-read
+of actual bytes; copy completion commits with exact metadata in one transaction.
+Reconciliation retains missing or mismatched parents as unresolved. Age does
+not authorize orphan deletion. The host must provide the real StorageRuntime
+to ModuleControlPlane::artifact_data_snapshot_intents.
+
+Restore holds the source snapshot before copying. Collection admission and
+resume recheck active holds under the snapshot lock. Restore commits only after
+re-reading target records, objects, indexes, and index-contract metadata,
+comparing the complete normalized logical manifest, and re-hashing target object
+bytes. It seals the non-serving instance as verified with a fingerprint binding
+source manifest, target scope, and private object keys. Schema guards reject
+writes, deletes, rollback to staging, and changes to retained verification
+evidence. This is isolated restore evidence, not authorized recovery cutover.
+
+The obsolete post-purge recovery ledger remains incomplete and must be replaced:
+it counts snapshot metadata, marks status without actual restore, and attempts
+to clear the original tombstone. Schema guards reject that mutation. Earlier
+ledger tests were removed because they asserted the unsafe behavior as success.
+The write-path verifier remains closed until real recovery composition and
+separate authorized owner-reference CAS exist.
 
 On 2026-09-03, Bounded Artifact-Data Snapshot Readiness and Platform PostgreSQL Recovery Evidence were delivered per Section 4 of the Rollback Plan:
 - `crates/modules/rustok-modules/src/data_snapshot_readiness.rs` implemented `ArtifactDataRecoveryReadinessService`:
@@ -274,8 +277,8 @@ On 2026-09-03, Crash-Safe Cross-Revision Artifact Data Copier and Preflight Evol
   - `node scripts/verify/verify-module-control-plane-write-path.mjs` (passed).
   - `node scripts/verify/verify-module-build-worker-isolation.mjs` (passed).
 
-On 2026-09-03, Protected Artifact Settings Recovery Points, Separate Preview/Apply Purge Operations, and Retirement Fences were delivered per Section 4 of the Rollback Plan:
-- `apps/server/src/services/artifact_purge_recovery_host.rs` implemented `ServerArtifactSettingsRecoveryAuthorizer`, `ServerArtifactDataPurgeAuthorizer`, and `ServerArtifactSettingsRecoveryCipher` with AES/SHA-256 context-bound ciphertext encryption and 30-day retention policies.
+On 2026-09-03, settings recovery ports and separate preview/apply transports were added. Production protection and terminal fencing remain incomplete under Section 4 of the Rollback Plan:
+- Audit found plaintext with an unkeyed SHA-256 context tag and a permissive host policy with fabricated secret-handle evidence. Both adapters were deleted. Settings recovery mutations now require an owner service supplied through host `GraphqlRuntimeInputs`; missing policy/encryption composition returns unavailable, and previews cannot authorize apply without it. The owner service accepts shared policy/cipher ports without copying or defaulting their implementations. Real encryption/KMS, retention, secret-handle, hold, and terminal-fence adapters remain required before this surface is operational.
 - `apps/server/src/graphql/types.rs` added `ArtifactSettingsPurgePreview`, `ArtifactSettingsPurgeReceipt`, `ArtifactDataPurgePreview`, `ArtifactDataPurgeReceipt`, `ArtifactSettingsRecoveryPointReceipt`, and `ArtifactSettingsRestoreReceipt`.
 - `apps/server/src/graphql/queries.rs` added `preview_tenant_artifact_settings_purge` and `preview_tenant_artifact_data_purge` with retired-state gating and recovery point presence checks.
 - `apps/server/src/graphql/mutations.rs` added `create_tenant_artifact_settings_recovery_point`, `purge_tenant_artifact_settings`, `restore_tenant_artifact_settings`, and `purge_tenant_artifact_data` strictly separated into distinct mutations that reject combined application and deny purge while active/serving ("reset-while-installed" protection).
@@ -392,6 +395,26 @@ test suite was run.
 - FFA status: `not_started`
 - FBA status: `boundary_ready`
 - Structural shape: `no_ui_boundary`
+
+Purge and recovery readiness remains bounded: the structured-data owner derives
+the scope from an exact inactive, uninstalled installation, repeats lifecycle
+checks under its write lock, and rejects exact serving-instance collisions. GraphQL
+previews use owner projections; apply and preview errors are sanitized, and
+receipt integers use checked conversions. The server data-purge authorizer
+binds the owner context and resolves current persisted `modules:manage` grants
+through `rustok-rbac::authorize_current_permission` and its canonical tenant
+policy engine without request/cache snapshots. The persisted reader belongs to
+the RBAC owner and is also used by the cached host runtime. This policy read does not establish an atomic
+revocation fence or production traffic/job/write drain. Terminal replay remains
+bound to the original full command before mutable lifecycle preconditions.
+
+Required next cutover: replace every slug/revision storage, broker, copy,
+snapshot, restore, and install selector with stable `data_owner_id` and opaque
+namespace-instance identity in one change. Keep the purged instance tombstoned;
+restore and verify the full snapshot in a fresh empty non-serving instance,
+then perform a separately authorized active-reference CAS. Production fences,
+host-composed recovery-point encryption/policy, retention holds, and fleet evidence remain
+open. Ledger or source-marker tests do not promote these statuses.
 
 Implemented:
 
@@ -2011,8 +2034,8 @@ tenant-scoped `SeaOrmArtifactDataObjectGcService` deletes a queued key only
 after a supplied retention snapshot explicitly approves it; missing rules and
 legal/audit/rollback holds fail closed rather than issuing a guest-driven
 physical delete.
-That purge does not delete artifact settings. The implemented separate dynamic
-artifact-settings owner service creates a protected encrypted recovery point
+That purge does not delete artifact settings. The separate dynamic
+artifact-settings owner service requires host ports to create a protected encrypted recovery point
 bound to exact scope, stable data owner, installation-to-settings-instance
 binding, settings instance/revision, admitted schema/descriptor, canonical
 validated value, and unresolved secret handles. Host policy supplies the
@@ -2024,7 +2047,9 @@ it only to an explicit compatible inactive installation under the same owner;
 after uninstall/retirement it stays unbound and never clears retirement.
 Settings deletion is denied when matching restore-tested evidence is missing;
 role/actor grants and external secret bytes are never implicit snapshot or
-purge targets. Recovery retention is revision-guarded and monotonic (it can
+purge targets. These are owner-service port contracts; production authenticated
+encryption, KMS, retention, holds, and fencing adapters are not composed, so
+server protected recovery mutations remain unavailable. Recovery retention is revision-guarded and monotonic (it can
 only extend expiry or add holds), KMS rewrap is host-owned, and collection
 records a durable `collecting` intent before it terminally clears ciphertext
 while preserving recovery evidence and the original typed command context. A
@@ -2060,9 +2085,9 @@ declared mutable boundaries; stateless/no-settings releases persist
 `not_applicable`. Active update inherits the exact owner and instances;
 `start_empty` is limited to first install or reinstall, while changing an
 active binding is a separate fenced maintenance migration/cutover.
-Artifact-data snapshots bind exact scope, stable data owner, namespace instance
+The required artifact-data snapshot cutover must bind exact scope, stable data owner, namespace instance
 and revision, and data-contract digest. Slug/version/installation are metadata,
-not restore authority. Post-purge restore assembles a new isolated namespace
+not restore authority. The target post-purge restore assembles a new isolated namespace
 under the same owner and CAS-cuts over the active reference; the old tombstone
 is never cleared.
 `CapabilityBrokerRouter` composes this data adapter with the durable secret
@@ -2153,11 +2178,13 @@ in its receipt, while resolver/consumer failures remain content-free.
 Concrete consumers retain responsibility for their operation-specific
 idempotency and redacted audit evidence. The structured-value namespace now has a separate
 SeaOrmArtifactDataPurgeService:
-it serializes writes and purge through namespace state, permanently tombstones a
-purged revision, stores actor/reason/idempotency audit data, and emits an
-outbox fact. The service requires a host-provided ArtifactDataPurgeAuthorizer
-for lifecycle, legal-hold, retention, and policy decisions; no guest capability
-can mark itself authorized.
+it serializes writes and purge through namespace state, marks the purged revision,
+stores actor/reason/idempotency audit data, and emits an outbox fact. The current
+post-purge recovery ledger can clear that marker and is not safe recovery
+evidence; immutable tombstones require the atomic instance cutover. The service
+requires a host-provided ArtifactDataPurgeAuthorizer. The current host binds
+owner context and checks current RBAC grants; legal-hold, retention, traffic,
+job, and write fences remain open. No guest capability can authorize itself.
 
 `SeaOrmArtifactDataExportService` provides the first owner-only export slice.
 Each bounded keyset page requires a host `ArtifactDataExportAuthorizer`, an
@@ -2184,8 +2211,10 @@ contract identity, a ready manifest with verified digest, and an empty active
 target at the expected namespace revision. It copies and re-hashes snapshot
 objects before atomically restoring structured values, object metadata,
 materialized indexes, the index contract, namespace revision CAS, durable
-idempotency/audit data, and the restore outbox event. A purge tombstone is never
-cleared and live data is never replaced.
+idempotency/audit data, and the restore outbox event. This snapshot restore path
+rejects purged targets, but the separate post-purge recovery ledger can clear a
+tombstone. Neither path implements the required fresh non-serving instance and
+separate authorized active-reference CAS.
 
 The accepted release-safety cutover replaces that current restore identity with
 exact `(scope_id, stable data_owner_id, namespace_instance_id,
@@ -2575,6 +2604,59 @@ corresponding runtime verification gates pass.
 
 ## Verification
 
+### 2026-09-12 purge boundary and protected recovery composition
+
+The 2026-09-13 worktree starts the canonical physical cutover: pending data
+migrations use `(tenant_id, data_owner_id, namespace_instance_id)` keys and
+opaque source/target copy identities. Namespace roots precede data tables,
+retain immutable slug/contract metadata, enforce permanent purge tombstones,
+and have one revisioned tenant/owner reference. Data broker resolution binds
+that reference to an exact active installation; ordinary writes cannot create
+a namespace. Shared storage keys include the same owner/instance identities.
+Restore admission requires a distinct empty staging instance, with no serving
+reference. This is incomplete worktree state, not release-safety readiness:
+all fixtures/callers, independent secret/MCP scopes, migration-object copy
+publication, authorized reference CAS, and real traffic/job/write/recovery/
+retention fences still require closure. Snapshot/restore copy reservations now
+publish and verify real bytes, and restore verifies the complete target manifest
+before sealing its new non-serving instance. Source snapshot holds protect
+assembly from collection; unresolved copies are retained for reconciliation. The former
+post-purge ledger must be replaced; it cannot bypass schema tombstones.
+
+The owner library check passed after the initial SQL/identity changes. Direct
+SQLite execution of the pending root/data DDL proved same-slug owner isolation,
+immutable metadata, permanent tombstones, and foreign-namespace FK rejection.
+This is DDL smoke evidence, not a Rust broker/recovery runtime or PostgreSQL
+production claim. Shared storage tests passed 4/4, including physical namespace
+isolation and nil identity rejection. The updated purge integration passed 1/1
+with actual source deletion, preservation of an active foreign owner's same-slug
+data, serving-successor collision rejection, terminal replay, and immutable
+tombstones. The default server check passed. Cargo metadata and diff checks
+passed. Full owner Clippy exposes unconverted unit-test scopes; the write-path
+verifier fails closed on missing canonical post-purge recovery. These gates
+must pass after full caller/fixture and recovery replacement. Earlier suites below precede this physical cutover
+and must be repeated after its callers and fixtures are consistent.
+
+- GraphQL purge errors hide storage details and receipt revisions/counts use
+  checked integer conversions. Previews consume owner projections and do not
+  claim traffic, job, or write-drain fences.
+- Data purge binds exact owner context and consumes a current persisted RBAC
+  policy decision. The single relation reader is owned by `rustok-rbac`.
+  Current reads do not establish transaction-spanning revocation fencing.
+- The plaintext-tag settings cipher and permissive policy were removed.
+  Settings mutations require an explicitly host-composed owner service and
+  fail closed without it. Real policy, KMS, encryption, and retention/hold
+  adapters remain incomplete.
+- `cargo check --locked -p rustok-modules --lib --offline`, the purge/recovery
+  integration test (1/1), and scoped owner Clippy with `-D warnings` passed.
+  The rebuilt owner library test binary passed 307/307, including shared-port
+  settings recovery. These tests prove bounded owner contracts, not production
+  protection. The write-path verifier, Cargo metadata, and diff checks passed.
+- Final server and RBAC runtime verification after the membership-writer
+  ownership correction remains pending. FFA stays `not_started`, FBA stays
+  `boundary_ready`. The in-progress physical storage cutover, the unsafe post-purge
+  ledger, and the atomic owner/instance cutover remain open.
+
 ### 2026-09-08 marketplace browser-contract slice
 
 - Marketplace list and detail reads now use the single browser-safe
@@ -2895,3 +2977,14 @@ installation, sandbox admission, or promotion semantics change.
 - Evidence: `target/debug/xtask.exe validate-manifest; target/debug/xtask.exe module test modules; rustok-modules test binary (121 passed); node scripts/verify/verify-runtime-context-invariants.mjs; node scripts/verify/verify-module-control-plane-write-path.mjs; node scripts/verify/verify-oci-registry-transport-policy.mjs; node scripts/verify/verify-module-build-worker-isolation.mjs; scripts/verify/verify-architecture.ps1`
 - Next action: `resume the master queue at core/auth; revisit PostgreSQL migration execution and registry translation constraints in the foundation/closing waves`
 - Resume command: `target\debug\xtask.exe module test auth`
+
+Current isolated snapshot/restore runtime evidence: the focused
+snapshot_intents_and_post_purge_recovery_tests target passed 1/1 using SQLite
+and fsynced local object storage. It verifies corruption rejection, retained
+holds after failure, exact key reuse on retry, actual restored record/object
+content and revisions, index-contract restoration, terminal replay conflicts,
+permanent source tombstones, verified target mutation/deletion rejection, and
+retention of unresolved copy bytes. Actual collection holds an expired snapshot
+while restore is pending, then deletes the source after release while preserving
+target bytes. The target does not test post-purge recovery authorization/CAS or
+production fences. Windows emitted its existing informational linker warning.

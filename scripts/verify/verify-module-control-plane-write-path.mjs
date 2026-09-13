@@ -886,7 +886,12 @@ try {
       "ensure_artifact_data_purge_target_is_retired",
     ) ||
     !artifactDataOwner.includes("find_artifact_data_purge_operation(") ||
-    !artifactDataOwner.includes("installation_id, module_slug, data_contract_revision") ||
+    !artifactDataOwner.includes("installation_id, data_owner_id, namespace_instance_id") ||
+    !artifactDataOwner.includes("pub data_owner_id: Uuid,") ||
+    !artifactDataOwner.includes("pub namespace_instance_id: Uuid,") ||
+    !artifactDataOwner.includes("pub data_contract_digest: String,") ||
+    !artifactDataOwner.includes("resolve_serving_artifact_data_scope") ||
+    !artifactDataOwner.includes("reference.namespace_instance_id = {}") ||
     !artifactDataPurgeMigration.includes("installation_id UUID NOT NULL") ||
     !artifactDataPurgeMigration.includes("installation_id TEXT NOT NULL") ||
     !artifactDataPurgeMigration.includes(
@@ -997,9 +1002,9 @@ try {
     snapshotEventEnvelopes.length < 4 ||
     !artifactDataSnapshotOwner.includes("valid_command_context") ||
     !artifactDataSnapshotOwner.includes("command_context_from_row") ||
-    !artifactDataSnapshotOwner.includes(
-      "trace_id, correlation_id, idempotency_key",
-    )
+    !artifactDataSnapshotOwner.includes('uuid_from_row(row, "correlation_id", backend)?') ||
+    !artifactDataSnapshotOwner.includes('uuid_from_row(row, "idempotency_key", backend)?') ||
+    !artifactDataSnapshotOwner.includes('.try_get("", "trace_id")')
   ) {
     fail(
       "artifact data snapshot commands must preserve tenant-matched ModuleCommandContext evidence across staging, receipts, and resumable collection work",
@@ -1015,9 +1020,10 @@ try {
     !postPurgeRecoveryOwner.includes(
       "stored_request_digest != request_digest",
     ) ||
-    !postPurgeRecoveryOwner.includes(
-      "snapshot_id = {} AND tenant_id = {} AND module_slug = {}",
-    ) ||
+    !postPurgeRecoveryOwner.includes("ArtifactDataRestoreRequest") ||
+    !postPurgeRecoveryOwner.includes("namespace_instance_id: Uuid") ||
+    !postPurgeRecoveryOwner.includes("module_artifact_data_owner_references") ||
+    /SET\s+purged_at\s*=\s*NULL/i.test(postPurgeRecoveryOwner) ||
     !postPurgeRecoveryMigration.includes(
       "request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$')",
     ) ||
@@ -1026,7 +1032,7 @@ try {
     )
   ) {
     fail(
-      "post-purge recovery must use a tenant-matched ModuleCommandContext, bind exact replay evidence, and reject a ready snapshot outside the requested namespace scope",
+      "canonical post-purge recovery is incomplete: require real restore into an opaque non-serving instance, exact replay, and owner-reference CAS without clearing tombstones; runtime content and fence evidence remain separate gates",
     );
   }
 

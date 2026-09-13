@@ -11,25 +11,11 @@ impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let statements: &[&str] = match manager.get_database_backend() {
             DbBackend::Postgres => &[
-                "CREATE TABLE module_artifact_data_namespaces (\
-                    tenant_id UUID NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision BIGINT NOT NULL CHECK (data_contract_revision > 0),\
-                    namespace_revision BIGINT NOT NULL CHECK (namespace_revision > 0),\
-                    purged_at TIMESTAMPTZ NULL,\
-                    created_at TIMESTAMPTZ NOT NULL,\
-                    updated_at TIMESTAMPTZ NOT NULL,\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision)\
-                )",
-                "ALTER TABLE module_artifact_data_namespaces ENABLE ROW LEVEL SECURITY",
-                "CREATE POLICY module_artifact_data_namespaces_scope ON module_artifact_data_namespaces \
-                 USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
-                 WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
                 "CREATE TABLE module_artifact_data_purge_operations (\
                     tenant_id UUID NOT NULL,\
                     installation_id UUID NOT NULL REFERENCES module_artifact_installations(installation_id),\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision BIGINT NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id UUID NOT NULL,\
+                    namespace_instance_id UUID NOT NULL,\
                     policy_revision BIGINT NOT NULL CHECK (policy_revision > 0),\
                     idempotency_key UUID NOT NULL,\
                     expected_namespace_revision BIGINT NOT NULL CHECK (expected_namespace_revision > 0),\
@@ -47,22 +33,11 @@ impl MigrationTrait for Migration {
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
-                "CREATE TABLE module_artifact_data_namespaces (\
-                    tenant_id TEXT NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
-                    namespace_revision INTEGER NOT NULL CHECK (namespace_revision > 0),\
-                    purged_at TEXT NULL,\
-                    created_at TEXT NOT NULL,\
-                    updated_at TEXT NOT NULL,\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision)\
-                )",
-                "CREATE TABLE module_artifact_data_purge_operations (\
+            DbBackend::Sqlite => &["CREATE TABLE module_artifact_data_purge_operations (\
                     tenant_id TEXT NOT NULL,\
                     installation_id TEXT NOT NULL REFERENCES module_artifact_installations(installation_id),\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id TEXT NOT NULL,\
+                    namespace_instance_id TEXT NOT NULL,\
                     policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),\
                     idempotency_key TEXT NOT NULL,\
                     expected_namespace_revision INTEGER NOT NULL CHECK (expected_namespace_revision > 0),\
@@ -74,8 +49,7 @@ impl MigrationTrait for Migration {
                     purged_records INTEGER NOT NULL CHECK (purged_records >= 0),\
                     completed_at TEXT NOT NULL,\
                     PRIMARY KEY (tenant_id, installation_id, idempotency_key)\
-                )",
-            ],
+                )"],
             backend => {
                 return Err(DbErr::Migration(format!(
                     "artifact data namespace lifecycle migration does not support database backend {backend:?}"
@@ -95,10 +69,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        for table in [
-            "module_artifact_data_purge_operations",
-            "module_artifact_data_namespaces",
-        ] {
+        for table in ["module_artifact_data_purge_operations"] {
             manager
                 .get_connection()
                 .execute_unprepared(&format!("DROP TABLE {table}"))

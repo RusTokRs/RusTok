@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     ModuleCommandContext,
-    data::{configure_tenant_scope, now_expression, placeholder, revision_value, uuid_value},
+    data::{configure_tenant_scope, now_expression, placeholder, uuid_value},
 };
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -53,9 +53,9 @@ fn storage_error<E: std::fmt::Display>(e: E) -> ArtifactDataObjectMigrationError
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactDataObjectMigrationRequest {
     pub tenant_id: Uuid,
-    pub module_slug: String,
-    pub source_contract_revision: u64,
-    pub target_contract_revision: u64,
+    pub data_owner_id: Uuid,
+    pub source_namespace_instance_id: Uuid,
+    pub target_namespace_instance_id: Uuid,
     pub context: ModuleCommandContext,
     pub reason: String,
 }
@@ -64,9 +64,9 @@ pub struct ArtifactDataObjectMigrationRequest {
 pub struct ArtifactDataObjectMigrationReceipt {
     pub operation_id: Uuid,
     pub tenant_id: Uuid,
-    pub module_slug: String,
-    pub source_contract_revision: u64,
-    pub target_contract_revision: u64,
+    pub data_owner_id: Uuid,
+    pub source_namespace_instance_id: Uuid,
+    pub target_namespace_instance_id: Uuid,
     pub inventory_manifest_digest: String,
     pub objects_migrated: u64,
     pub accepted: bool,
@@ -85,8 +85,8 @@ impl ArtifactDataObjectMigrationService {
     pub async fn calculate_source_inventory_manifest(
         &self,
         tenant_id: Uuid,
-        module_slug: &str,
-        source_contract_revision: u64,
+        data_owner_id: Uuid,
+        source_namespace_instance_id: Uuid,
     ) -> Result<(String, u64), ArtifactDataObjectMigrationError> {
         let backend = self.db.get_database_backend();
         let rows = self
@@ -96,7 +96,7 @@ impl ArtifactDataObjectMigrationService {
                 format!(
                     "SELECT object_name, digest_sha256, size_bytes \
                      FROM module_artifact_data_objects \
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} \
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} \
                      ORDER BY object_name ASC",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -104,8 +104,8 @@ impl ArtifactDataObjectMigrationService {
                 ),
                 vec![
                     uuid_value(tenant_id, backend),
-                    module_slug.to_string().into(),
-                    revision_value(source_contract_revision)?,
+                    uuid_value(data_owner_id, backend),
+                    uuid_value(source_namespace_instance_id, backend),
                 ],
             ))
             .await
@@ -113,8 +113,8 @@ impl ArtifactDataObjectMigrationService {
 
         let mut hasher = Sha256::new();
         hasher.update(tenant_id.as_bytes());
-        hasher.update(module_slug.as_bytes());
-        hasher.update(source_contract_revision.to_be_bytes());
+        hasher.update(data_owner_id.as_bytes());
+        hasher.update(source_namespace_instance_id.as_bytes());
 
         let count = rows.len() as u64;
         for row in rows {
@@ -135,9 +135,9 @@ impl ArtifactDataObjectMigrationService {
     pub async fn count_unmigrated_live_objects(
         &self,
         tenant_id: Uuid,
-        module_slug: &str,
-        source_contract_revision: u64,
-        target_contract_revision: u64,
+        data_owner_id: Uuid,
+        source_namespace_instance_id: Uuid,
+        target_namespace_instance_id: Uuid,
     ) -> Result<u64, ArtifactDataObjectMigrationError> {
         let backend = self.db.get_database_backend();
         let row = self
@@ -147,11 +147,11 @@ impl ArtifactDataObjectMigrationService {
                 format!(
                     "SELECT COUNT(*) AS count \
                      FROM module_artifact_data_objects src \
-                     WHERE src.tenant_id = {} AND src.module_slug = {} AND src.data_contract_revision = {} \
+                     WHERE src.tenant_id = {} AND src.data_owner_id = {} AND src.namespace_instance_id = {} \
                        AND NOT EXISTS ( \
                            SELECT 1 FROM module_artifact_data_objects tgt \
-                           WHERE tgt.tenant_id = src.tenant_id AND tgt.module_slug = src.module_slug \
-                             AND tgt.data_contract_revision = {} AND tgt.object_name = src.object_name \
+                           WHERE tgt.tenant_id = src.tenant_id AND tgt.data_owner_id = src.data_owner_id \
+                             AND tgt.namespace_instance_id = {} AND tgt.object_name = src.object_name \
                              AND tgt.digest_sha256 = src.digest_sha256 \
                        )",
                     placeholder(backend, 1),
@@ -161,9 +161,9 @@ impl ArtifactDataObjectMigrationService {
                 ),
                 vec![
                     uuid_value(tenant_id, backend),
-                    module_slug.to_string().into(),
-                    revision_value(source_contract_revision)?,
-                    revision_value(target_contract_revision)?,
+                    uuid_value(data_owner_id, backend),
+                    uuid_value(source_namespace_instance_id, backend),
+                    uuid_value(target_namespace_instance_id, backend),
                 ],
             ))
             .await
@@ -179,7 +179,7 @@ impl ArtifactDataObjectMigrationService {
         &self,
         request: ArtifactDataObjectMigrationRequest,
     ) -> Result<ArtifactDataObjectMigrationReceipt, ArtifactDataObjectMigrationError> {
-        if request.source_contract_revision == request.target_contract_revision {
+        if request.source_namespace_instance_id == request.target_namespace_instance_id {
             return Err(ArtifactDataObjectMigrationError::SameRevision);
         }
         if request.context.tenant_id != Some(request.tenant_id) {
@@ -193,8 +193,8 @@ impl ArtifactDataObjectMigrationService {
         let (inventory_manifest_digest, source_count) = self
             .calculate_source_inventory_manifest(
                 request.tenant_id,
-                &request.module_slug,
-                request.source_contract_revision,
+                request.data_owner_id,
+                request.source_namespace_instance_id,
             )
             .await?;
 
@@ -205,9 +205,9 @@ impl ArtifactDataObjectMigrationService {
             return Ok(ArtifactDataObjectMigrationReceipt {
                 operation_id,
                 tenant_id: request.tenant_id,
-                module_slug: request.module_slug,
-                source_contract_revision: request.source_contract_revision,
-                target_contract_revision: request.target_contract_revision,
+                data_owner_id: request.data_owner_id,
+                source_namespace_instance_id: request.source_namespace_instance_id,
+                target_namespace_instance_id: request.target_namespace_instance_id,
                 inventory_manifest_digest,
                 objects_migrated: 0,
                 accepted: true,
@@ -222,7 +222,7 @@ impl ArtifactDataObjectMigrationService {
                 format!(
                     "SELECT object_name, storage_key, content_type, size_bytes, digest_sha256 \
                      FROM module_artifact_data_objects \
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} \
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} \
                      ORDER BY object_name ASC",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -230,8 +230,8 @@ impl ArtifactDataObjectMigrationService {
                 ),
                 vec![
                     uuid_value(request.tenant_id, backend),
-                    request.module_slug.clone().into(),
-                    revision_value(request.source_contract_revision)?,
+                    uuid_value(request.data_owner_id, backend),
+                    uuid_value(request.source_namespace_instance_id, backend),
                 ],
             ))
             .await
@@ -259,7 +259,7 @@ impl ArtifactDataObjectMigrationService {
                     backend,
                     format!(
                         "INSERT INTO module_artifact_data_object_copy_operations (\
-                            operation_id, tenant_id, module_slug, source_contract_revision, target_contract_revision, \
+                            operation_id, tenant_id, data_owner_id, source_namespace_instance_id, target_namespace_instance_id, \
                             inventory_manifest_digest, object_name, storage_key, digest_sha256, size_bytes, status, \
                             actor_id, trace_id, correlation_id, idempotency_key, reason, created_at\
                          ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'intent', {}, {}, {}, {}, {}, {})",
@@ -273,9 +273,9 @@ impl ArtifactDataObjectMigrationService {
                     vec![
                         uuid_value(item_op_id, backend),
                         uuid_value(request.tenant_id, backend),
-                        request.module_slug.clone().into(),
-                        revision_value(request.source_contract_revision)?,
-                        revision_value(request.target_contract_revision)?,
+                        uuid_value(request.data_owner_id, backend),
+                        uuid_value(request.source_namespace_instance_id, backend),
+                        uuid_value(request.target_namespace_instance_id, backend),
                         inventory_manifest_digest.clone().into(),
                         object_name.clone().into(),
                         storage_key.clone().into(),
@@ -298,7 +298,7 @@ impl ArtifactDataObjectMigrationService {
                     format!(
                         "SELECT digest_sha256, size_bytes \
                          FROM module_artifact_data_objects \
-                         WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND object_name = {}",
+                         WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} AND object_name = {}",
                         placeholder(backend, 1),
                         placeholder(backend, 2),
                         placeholder(backend, 3),
@@ -306,8 +306,8 @@ impl ArtifactDataObjectMigrationService {
                     ),
                     vec![
                         uuid_value(request.tenant_id, backend),
-                        request.module_slug.clone().into(),
-                        revision_value(request.target_contract_revision)?,
+                        uuid_value(request.data_owner_id, backend),
+                        uuid_value(request.target_namespace_instance_id, backend),
                         object_name.clone().into(),
                     ],
                 ))
@@ -326,13 +326,13 @@ impl ArtifactDataObjectMigrationService {
             } else {
                 // Insert target reference with distinct target storage key
                 let target_storage_key =
-                    format!("{}:r{}", storage_key, request.target_contract_revision);
+                    format!("{}:r{}", storage_key, request.target_namespace_instance_id);
                 transaction
                     .execute_raw(Statement::from_sql_and_values(
                         backend,
                         format!(
                             "INSERT INTO module_artifact_data_objects (\
-                                tenant_id, module_slug, data_contract_revision, object_name, storage_key, \
+                                tenant_id, data_owner_id, namespace_instance_id, object_name, storage_key, \
                                 content_type, size_bytes, digest_sha256, revision, created_at, updated_at\
                              ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, 1, {}, {})",
                             placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
@@ -342,8 +342,8 @@ impl ArtifactDataObjectMigrationService {
                         ),
                         vec![
                             uuid_value(request.tenant_id, backend),
-                            request.module_slug.clone().into(),
-                            revision_value(request.target_contract_revision)?,
+                            uuid_value(request.data_owner_id, backend),
+                            uuid_value(request.target_namespace_instance_id, backend),
                             object_name.clone().into(),
                             target_storage_key.into(),
                             content_type.into(),
@@ -381,7 +381,7 @@ impl ArtifactDataObjectMigrationService {
                 format!(
                     "SELECT object_name, digest_sha256, size_bytes \
                      FROM module_artifact_data_objects \
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} \
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} \
                      ORDER BY object_name ASC",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -389,8 +389,8 @@ impl ArtifactDataObjectMigrationService {
                 ),
                 vec![
                     uuid_value(request.tenant_id, backend),
-                    request.module_slug.clone().into(),
-                    revision_value(request.target_contract_revision)?,
+                    uuid_value(request.data_owner_id, backend),
+                    uuid_value(request.target_namespace_instance_id, backend),
                 ],
             ))
             .await
@@ -406,8 +406,8 @@ impl ArtifactDataObjectMigrationService {
 
         let mut target_hasher = Sha256::new();
         target_hasher.update(request.tenant_id.as_bytes());
-        target_hasher.update(request.module_slug.as_bytes());
-        target_hasher.update(request.source_contract_revision.to_be_bytes());
+        target_hasher.update(request.data_owner_id.as_bytes());
+        target_hasher.update(request.source_namespace_instance_id.as_bytes());
 
         for row in target_rows {
             let object_name: String = row.try_get("", "object_name").map_err(storage_error)?;
@@ -434,7 +434,7 @@ impl ArtifactDataObjectMigrationService {
                 format!(
                     "UPDATE module_artifact_data_namespaces \
                      SET namespace_revision = namespace_revision + 1, updated_at = {} \
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                     now_expression(backend),
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -442,8 +442,8 @@ impl ArtifactDataObjectMigrationService {
                 ),
                 vec![
                     uuid_value(request.tenant_id, backend),
-                    request.module_slug.clone().into(),
-                    revision_value(request.target_contract_revision)?,
+                    uuid_value(request.data_owner_id, backend),
+                    uuid_value(request.target_namespace_instance_id, backend),
                 ],
             ))
             .await
@@ -454,9 +454,9 @@ impl ArtifactDataObjectMigrationService {
         Ok(ArtifactDataObjectMigrationReceipt {
             operation_id,
             tenant_id: request.tenant_id,
-            module_slug: request.module_slug,
-            source_contract_revision: request.source_contract_revision,
-            target_contract_revision: request.target_contract_revision,
+            data_owner_id: request.data_owner_id,
+            source_namespace_instance_id: request.source_namespace_instance_id,
+            target_namespace_instance_id: request.target_namespace_instance_id,
             inventory_manifest_digest,
             objects_migrated,
             accepted: true,
@@ -467,7 +467,7 @@ impl ArtifactDataObjectMigrationService {
     pub async fn reconcile_stale_intents(
         &self,
         tenant_id: Uuid,
-        module_slug: &str,
+        data_owner_id: Uuid,
     ) -> Result<u64, ArtifactDataObjectMigrationError> {
         let backend = self.db.get_database_backend();
         let result = self
@@ -477,13 +477,13 @@ impl ArtifactDataObjectMigrationService {
                 format!(
                     "UPDATE module_artifact_data_object_copy_operations \
                      SET status = 'failed' \
-                     WHERE tenant_id = {} AND module_slug = {} AND status = 'intent'",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND status = 'intent'",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                 ),
                 vec![
                     uuid_value(tenant_id, backend),
-                    module_slug.to_string().into(),
+                    uuid_value(data_owner_id, backend),
                 ],
             ))
             .await

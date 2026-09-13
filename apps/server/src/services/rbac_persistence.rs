@@ -1,11 +1,9 @@
 use crate::error::Error;
 use crate::error::Result;
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
+use sea_orm::ConnectionTrait;
 
 use rustok_core::UserRole;
 use rustok_telemetry::metrics;
-
-use crate::models::_entities::{roles, user_roles};
 
 pub(crate) async fn assign_role_permissions_via_store<C>(
     db: &C,
@@ -45,25 +43,11 @@ where
     C: ConnectionTrait,
 {
     record_authz_entrypoint_call("remove_tenant_role_assignments_via_store", "core_runtime");
-    let tenant_role_models = roles::Entity::find()
-        .filter(roles::Column::TenantId.eq(*tenant_id))
-        .all(db)
-        .await?;
-
-    let tenant_role_ids: Vec<uuid::Uuid> = tenant_role_models
-        .into_iter()
-        .map(|tenant_role| tenant_role.id)
-        .collect();
-
-    if !tenant_role_ids.is_empty() {
-        user_roles::Entity::delete_many()
-            .filter(user_roles::Column::UserId.eq(*user_id))
-            .filter(user_roles::Column::RoleId.is_in(tenant_role_ids))
-            .exec(db)
-            .await?;
-    }
-
-    Ok(())
+    rustok_rbac::RbacRoleAssignmentDbWriter::remove_tenant_role_assignments_on(
+        db, *tenant_id, *user_id,
+    )
+    .await
+    .map_err(|error| Error::Message(error.to_string()))
 }
 
 fn record_authz_entrypoint_call(entry_point: &str, path: &str) {
@@ -438,6 +422,35 @@ mod tests {
             .await
             .expect("manager role assignment should succeed");
 
+        let (other_tenant_id, other_user_id) = insert_tenant_and_user(
+            &db,
+            "test-tenant-retain-other-roles",
+            "retain-other-roles@example.com",
+        )
+        .await;
+        assign_role_permissions_via_store(
+            &db,
+            &other_user_id,
+            &other_tenant_id,
+            UserRole::Customer,
+        )
+        .await
+        .expect("other tenant role assignment should succeed");
+        assert!(
+            remove_tenant_role_assignments_via_store(&db, &user_id, &other_tenant_id)
+                .await
+                .is_err(),
+            "the owner must reject a mismatched subject tenant"
+        );
+        assert_eq!(
+            user_roles::Entity::find()
+                .filter(user_roles::Column::UserId.eq(user_id))
+                .count(&db)
+                .await
+                .expect("membership count after rejected removal"),
+            2
+        );
+
         remove_tenant_role_assignments_via_store(&db, &user_id, &tenant_id)
             .await
             .expect("remove tenant role assignments should succeed");
@@ -449,5 +462,13 @@ mod tests {
             .expect("failed to query remaining user_roles links");
 
         assert!(remaining_links.is_empty());
+        assert_eq!(
+            user_roles::Entity::find()
+                .filter(user_roles::Column::UserId.eq(other_user_id))
+                .count(&db)
+                .await
+                .expect("other tenant membership count"),
+            1
+        );
     }
 }

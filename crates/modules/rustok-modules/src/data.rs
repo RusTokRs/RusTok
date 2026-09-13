@@ -54,6 +54,9 @@ const MAX_ARTIFACT_OBJECT_GC_BATCH_SIZE: u32 = 100;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactDataScope {
     pub tenant_id: Uuid,
+    pub data_owner_id: Uuid,
+    pub namespace_instance_id: Uuid,
+    pub data_contract_digest: String,
     pub module_slug: String,
     pub data_contract_revision: u64,
     pub policy_revision: u64,
@@ -548,6 +551,9 @@ pub struct ArtifactDataExportResult {
 impl ArtifactDataScope {
     pub fn validate(&self) -> Result<(), ArtifactDataError> {
         if self.tenant_id.is_nil()
+            || self.data_owner_id.is_nil()
+            || self.namespace_instance_id.is_nil()
+            || !crate::promotion::valid_digest(&self.data_contract_digest)
             || !valid_module_slug(&self.module_slug)
             || self.data_contract_revision == 0
             || self.policy_revision == 0
@@ -583,6 +589,12 @@ pub(crate) fn artifact_data_scope_for_execution(
         .ok_or_else(|| SandboxError::CapabilityDenied(capability.clone()))?;
     let scope = ArtifactDataScope {
         tenant_id: execution.tenant_id,
+        data_owner_id: installation.data_owner_id,
+        namespace_instance_id: installation
+            .namespace_instance_id
+            .ok_or_else(|| SandboxError::CapabilityDenied(capability.clone()))?,
+        data_contract_digest: crate::promotion::digest_json(contract)
+            .map_err(|_| SandboxError::CapabilityDenied(capability.clone()))?,
         module_slug: installation.descriptor.slug.clone(),
         data_contract_revision: contract.revision,
         policy_revision: installation.capability_grant_revision,
@@ -958,8 +970,8 @@ impl SeaOrmArtifactDataSchemaValidator {
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let backend = transaction.get_database_backend();
         let placeholders = match backend {
-            DbBackend::Postgres => ("$1", "$2", "$3"),
-            _ => ("?1", "?2", "?3"),
+            DbBackend::Postgres => ("$1", "$2", "$3", "$4", "$5"),
+            _ => ("?1", "?2", "?3", "?4", "?5"),
         };
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
@@ -969,16 +981,22 @@ impl SeaOrmArtifactDataSchemaValidator {
                      FROM module_artifact_installations installation \
                      JOIN module_artifact_admissions admission \
                        ON admission.installation_id = installation.installation_id \
+                     JOIN module_artifact_data_namespaces namespace \
+                       ON namespace.tenant_id = {} AND namespace.data_owner_id = installation.data_owner_id \
+                      AND namespace.namespace_instance_id = {} AND namespace.data_contract_digest = {} \
                      WHERE installation.installation_id = {} \
-                       AND installation.slug = {} \
+                       AND installation.data_owner_id = {} \
                        AND (installation.scope_kind = 'platform' OR installation.tenant_id = {}) \
                        AND admission.status IN ('admitted', 'installed', 'active', 'inactive')",
+                    placeholders.2, placeholders.3, placeholders.4,
                     placeholders.0, placeholders.1, placeholders.2,
                 ),
                 vec![
                     uuid_value(self.installation_id, backend),
-                    scope.module_slug.clone().into(),
+                    uuid_value(scope.data_owner_id, backend),
                     uuid_value(scope.tenant_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
+                    scope.data_contract_digest.clone().into(),
                 ],
             ))
             .await
@@ -1000,6 +1018,12 @@ impl SeaOrmArtifactDataSchemaValidator {
             .as_ref()
             .filter(|contract| contract.revision == scope.data_contract_revision)
             .ok_or(ArtifactDataError::DataContractUnavailable)?;
+        if crate::promotion::digest_json(contract)
+            .map_err(|error| ArtifactDataError::Storage(error.to_string()))?
+            != scope.data_contract_digest
+        {
+            return Err(ArtifactDataError::DataContractUnavailable);
+        }
         let schema = descriptor
             .schema_document(&contract.schema_digest)
             .cloned()
@@ -1385,7 +1409,7 @@ where
                 backend,
                 format!(
                     "SELECT data_key, value, revision FROM module_artifact_data
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND data_key = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} AND data_key = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -1513,7 +1537,7 @@ where
                 backend,
                 format!(
                     "SELECT data_key, value, revision FROM module_artifact_data
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -1534,7 +1558,7 @@ where
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key = {} AND revision = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -1544,8 +1568,8 @@ where
                 ),
                 vec![
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     request.key.clone().into(),
                     revision_value(request.expected_revision)?,
                 ],
@@ -1583,7 +1607,7 @@ where
             Some(after_key) => (
                 format!(
                     "SELECT data_key, value, revision FROM module_artifact_data
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key LIKE {} ESCAPE '\\' AND data_key > {}
                      ORDER BY data_key ASC LIMIT {}",
                     placeholder(backend, 1),
@@ -1595,8 +1619,8 @@ where
                 ),
                 vec![
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     prefix_pattern.clone().into(),
                     after_key.into(),
                     query_limit.into(),
@@ -1605,7 +1629,7 @@ where
             None => (
                 format!(
                     "SELECT data_key, value, revision FROM module_artifact_data
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key LIKE {} ESCAPE '\\'
                      ORDER BY data_key ASC LIMIT {}",
                     placeholder(backend, 1),
@@ -1616,8 +1640,8 @@ where
                 ),
                 vec![
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     prefix_pattern.into(),
                     query_limit.into(),
                 ],
@@ -1688,11 +1712,11 @@ where
                      FROM module_artifact_data_indexes indexed
                      INNER JOIN module_artifact_data data
                        ON data.tenant_id = indexed.tenant_id
-                      AND data.module_slug = indexed.module_slug
-                      AND data.data_contract_revision = indexed.data_contract_revision
+                      AND data.data_owner_id = indexed.data_owner_id
+                      AND data.namespace_instance_id = indexed.namespace_instance_id
                       AND data.data_key = indexed.data_key
-                     WHERE indexed.tenant_id = {} AND indexed.module_slug = {}
-                       AND indexed.data_contract_revision = {} AND indexed.index_name = {}
+                     WHERE indexed.tenant_id = {} AND indexed.data_owner_id = {}
+                       AND indexed.namespace_instance_id = {} AND indexed.index_name = {}
                        AND indexed.index_value = {} AND data.data_key LIKE {} ESCAPE '\\'
                        AND data.data_key > {} ORDER BY data.data_key ASC LIMIT {}",
                     placeholder(backend, 1),
@@ -1706,8 +1730,8 @@ where
                 ),
                 vec![
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     query.index.into(),
                     index_value.clone().into(),
                     prefix_pattern.clone().into(),
@@ -1721,11 +1745,11 @@ where
                      FROM module_artifact_data_indexes indexed
                      INNER JOIN module_artifact_data data
                        ON data.tenant_id = indexed.tenant_id
-                      AND data.module_slug = indexed.module_slug
-                      AND data.data_contract_revision = indexed.data_contract_revision
+                      AND data.data_owner_id = indexed.data_owner_id
+                      AND data.namespace_instance_id = indexed.namespace_instance_id
                       AND data.data_key = indexed.data_key
-                     WHERE indexed.tenant_id = {} AND indexed.module_slug = {}
-                       AND indexed.data_contract_revision = {} AND indexed.index_name = {}
+                     WHERE indexed.tenant_id = {} AND indexed.data_owner_id = {}
+                       AND indexed.namespace_instance_id = {} AND indexed.index_name = {}
                        AND indexed.index_value = {} AND data.data_key LIKE {} ESCAPE '\\'
                      ORDER BY data.data_key ASC LIMIT {}",
                     placeholder(backend, 1),
@@ -1738,8 +1762,8 @@ where
                 ),
                 vec![
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     query.index.into(),
                     index_value.into(),
                     prefix_pattern.into(),
@@ -1918,10 +1942,10 @@ where
                 format!(
                     "SELECT session_id, object_name, content_type, expected_revision, request_digest, CAST(expires_at AS TEXT) AS expires_at
                      FROM module_artifact_data_object_upload_sessions
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND policy_revision = {} AND idempotency_key = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} AND policy_revision = {} AND idempotency_key = {}",
                     placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4), placeholder(backend, 5),
                 ),
-                vec![uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, revision_value(scope.policy_revision)?, uuid_value(request.idempotency_key, backend)],
+                vec![uuid_value(scope.tenant_id, backend), uuid_value(scope.data_owner_id, backend), uuid_value(scope.namespace_instance_id, backend), revision_value(scope.policy_revision)?, uuid_value(request.idempotency_key, backend)],
             )).await.map_err(storage_error)? {
             let stored_digest: String = row.try_get("", "request_digest").map_err(storage_error)?;
             if stored_digest != request_digest {
@@ -1945,7 +1969,7 @@ where
                 format!(
                     "SELECT COUNT(*) AS session_count
                      FROM module_artifact_data_object_upload_sessions
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND status IN ('open', 'completing')",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -1973,11 +1997,11 @@ where
             backend,
             format!(
                 "INSERT INTO module_artifact_data_object_upload_sessions
-                 (session_id, tenant_id, module_slug, data_contract_revision, policy_revision, object_name, content_type, expected_revision, idempotency_key, request_digest, status, expires_at, created_at, updated_at)
+                 (session_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision, object_name, content_type, expected_revision, idempotency_key, request_digest, status, expires_at, created_at, updated_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'open', {}, {}, {})",
                 placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4), placeholder(backend, 5), placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8), placeholder(backend, 9), placeholder(backend, 10), upload_expiry_expression(backend), now_expression(backend), now_expression(backend),
             ),
-            vec![uuid_value(session_id, backend), uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, revision_value(scope.policy_revision)?, request.name.clone().into(), request.content_type.clone().into(), optional_revision_value(request.expected_revision)?, uuid_value(request.idempotency_key, backend), request_digest.into()],
+            vec![uuid_value(session_id, backend), uuid_value(scope.tenant_id, backend), uuid_value(scope.data_owner_id, backend), uuid_value(scope.namespace_instance_id, backend), revision_value(scope.policy_revision)?, request.name.clone().into(), request.content_type.clone().into(), optional_revision_value(request.expected_revision)?, uuid_value(request.idempotency_key, backend), request_digest.into()],
         )).await.map_err(storage_error)?;
         let row = transaction.query_one_raw(Statement::from_sql_and_values(
             backend,
@@ -2043,7 +2067,7 @@ where
                 format!(
                     "UPDATE module_artifact_data_object_upload_sessions
                      SET updated_at = updated_at
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND policy_revision = {} AND session_id = {} AND status = 'open'
                      AND expires_at > {}",
                     placeholder(backend, 1),
@@ -2055,8 +2079,8 @@ where
                 ),
                 vec![
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     revision_value(scope.policy_revision)?,
                     uuid_value(chunk.session_id, backend),
                 ],
@@ -2104,8 +2128,8 @@ where
                      FROM module_artifact_data_object_upload_chunks chunk
                      INNER JOIN module_artifact_data_object_upload_sessions session
                        ON session.tenant_id = chunk.tenant_id AND session.session_id = chunk.session_id
-                     WHERE session.tenant_id = {} AND session.module_slug = {}
-                       AND session.data_contract_revision = {}
+                     WHERE session.tenant_id = {} AND session.data_owner_id = {}
+                       AND session.namespace_instance_id = {}
                        AND session.status IN ('open', 'completing')",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -2131,7 +2155,11 @@ where
         let key = ObjectKey::chronological(
             "module-artifact-data",
             ObjectZone::Staging,
-            ObjectScope::Tenant(scope.tenant_id),
+            ObjectScope::Namespace {
+                tenant_id: scope.tenant_id,
+                owner_id: scope.data_owner_id,
+                instance_id: scope.namespace_instance_id,
+            },
             self.infrastructure.now(),
             self.infrastructure.new_id(),
             "chunk",
@@ -2307,10 +2335,15 @@ where
             .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT session_id, module_slug, data_contract_revision, policy_revision
-                     FROM module_artifact_data_object_upload_sessions
-                     WHERE tenant_id = {} AND status IN ('open', 'completing') AND expires_at <= {}
-                     ORDER BY expires_at ASC, session_id ASC LIMIT {}",
+                    "SELECT session.session_id, session.data_owner_id, session.namespace_instance_id,
+                            session.policy_revision, namespace.module_slug, namespace.data_contract_revision,
+                            namespace.data_contract_digest
+                     FROM module_artifact_data_object_upload_sessions session
+                     JOIN module_artifact_data_namespaces namespace
+                       ON namespace.tenant_id = session.tenant_id AND namespace.data_owner_id = session.data_owner_id
+                      AND namespace.namespace_instance_id = session.namespace_instance_id
+                     WHERE session.tenant_id = {} AND session.status IN ('open', 'completing') AND session.expires_at <= {}
+                     ORDER BY session.expires_at ASC, session.session_id ASC LIMIT {}",
                     placeholder(backend, 1),
                     now_expression(backend),
                     placeholder(backend, 2),
@@ -2329,6 +2362,11 @@ where
             let policy_revision: i64 = row.try_get("", "policy_revision").map_err(storage_error)?;
             let scope = ArtifactDataScope {
                 tenant_id,
+                data_owner_id: uuid_from_row(&row, "data_owner_id", backend)?,
+                namespace_instance_id: uuid_from_row(&row, "namespace_instance_id", backend)?,
+                data_contract_digest: row
+                    .try_get("", "data_contract_digest")
+                    .map_err(storage_error)?,
                 module_slug: row.try_get("", "module_slug").map_err(storage_error)?,
                 data_contract_revision: u64::try_from(data_contract_revision)
                     .map_err(|_| ArtifactDataError::RevisionConflict)?,
@@ -2344,7 +2382,7 @@ where
                     format!(
                         "UPDATE module_artifact_data_object_upload_sessions
                          SET status = 'abandoned', updated_at = {}
-                         WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                         WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                          AND policy_revision = {} AND session_id = {}
                          AND status IN ('open', 'completing') AND expires_at <= {}",
                         now_expression(tx_backend),
@@ -2357,8 +2395,8 @@ where
                     ),
                     vec![
                         uuid_value(tenant_id, tx_backend),
-                        scope.module_slug.clone().into(),
-                        revision_value(scope.data_contract_revision)?,
+                        uuid_value(scope.data_owner_id, backend),
+                        uuid_value(scope.namespace_instance_id, backend),
                         revision_value(scope.policy_revision)?,
                         uuid_value(session_id, tx_backend),
                     ],
@@ -2437,7 +2475,7 @@ where
         let transaction = self.db.begin().await.map_err(storage_error)?;
         configure_tenant_scope(&transaction, scope.tenant_id).await?;
         let backend = transaction.get_database_backend();
-        let row = transaction.query_one_raw(Statement::from_sql_and_values(backend, format!("SELECT object_name, content_type, expected_revision, idempotency_key FROM module_artifact_data_object_upload_sessions WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND policy_revision = {} AND session_id = {} AND status = 'open' AND expires_at > {}", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), now_expression(backend)), vec![uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?, revision_value(scope.policy_revision)?, uuid_value(session_id, backend)])).await.map_err(storage_error)?;
+        let row = transaction.query_one_raw(Statement::from_sql_and_values(backend, format!("SELECT object_name, content_type, expected_revision, idempotency_key FROM module_artifact_data_object_upload_sessions WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} AND policy_revision = {} AND session_id = {} AND status = 'open' AND expires_at > {}", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), now_expression(backend)), vec![uuid_value(scope.tenant_id, backend), uuid_value(scope.data_owner_id, backend), uuid_value(scope.namespace_instance_id, backend), revision_value(scope.policy_revision)?, uuid_value(session_id, backend)])).await.map_err(storage_error)?;
         transaction.commit().await.map_err(storage_error)?;
         let row = row.ok_or(ArtifactDataError::NamespacePurged)?;
         let expected_revision: Option<i64> = row
@@ -2467,7 +2505,7 @@ where
                 format!(
                     "SELECT object_name, content_type, expected_revision, idempotency_key, status
                      FROM module_artifact_data_object_upload_sessions
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND policy_revision = {} AND session_id = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -2477,8 +2515,8 @@ where
                 ),
                 vec![
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     revision_value(scope.policy_revision)?,
                     uuid_value(session_id, backend),
                 ],
@@ -2501,7 +2539,7 @@ where
                 format!(
                     "UPDATE module_artifact_data_object_upload_sessions
                      SET status = 'completing', expires_at = {}, updated_at = {}
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND policy_revision = {} AND session_id = {}
                      AND status IN ('open', 'completing') AND expires_at > {}",
                     upload_expiry_expression(backend),
@@ -2515,8 +2553,8 @@ where
                 ),
                 vec![
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     revision_value(scope.policy_revision)?,
                     uuid_value(session_id, backend),
                 ],
@@ -2630,9 +2668,14 @@ impl SeaOrmArtifactDataObjectGcService {
             .query_all_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT candidate_id, module_slug, data_contract_revision, policy_revision, storage_key
-                     FROM module_artifact_data_object_gc_candidates
-                     WHERE tenant_id = {} ORDER BY queued_at ASC, candidate_id ASC LIMIT {}",
+                    "SELECT candidate.candidate_id, candidate.tenant_id, candidate.data_owner_id,
+                            candidate.namespace_instance_id, candidate.policy_revision, candidate.storage_key,
+                            namespace.module_slug, namespace.data_contract_revision, namespace.data_contract_digest
+                     FROM module_artifact_data_object_gc_candidates candidate
+                     JOIN module_artifact_data_namespaces namespace
+                       ON namespace.tenant_id = candidate.tenant_id AND namespace.data_owner_id = candidate.data_owner_id
+                      AND namespace.namespace_instance_id = candidate.namespace_instance_id
+                     WHERE candidate.tenant_id = {} ORDER BY candidate.queued_at ASC, candidate.candidate_id ASC LIMIT {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                 ),
@@ -2663,7 +2706,7 @@ impl SeaOrmArtifactDataObjectGcService {
                     backend,
                     format!(
                         "SELECT namespace_revision FROM module_artifact_data_namespaces
-                         WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}{}",
+                         WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}{}",
                         placeholder(backend, 1),
                         placeholder(backend, 2),
                         placeholder(backend, 3),
@@ -2759,6 +2802,11 @@ fn artifact_data_object_gc_candidate_from_row(
     let policy_revision: i64 = row.try_get("", "policy_revision").map_err(storage_error)?;
     let scope = ArtifactDataScope {
         tenant_id: uuid_from_row(&row, "tenant_id", backend)?,
+        data_owner_id: uuid_from_row(&row, "data_owner_id", backend)?,
+        namespace_instance_id: uuid_from_row(&row, "namespace_instance_id", backend)?,
+        data_contract_digest: row
+            .try_get("", "data_contract_digest")
+            .map_err(storage_error)?,
         module_slug: row.try_get("", "module_slug").map_err(storage_error)?,
         data_contract_revision: u64::try_from(data_contract_revision)
             .map_err(|_| ArtifactDataError::InvalidObject)?,
@@ -2869,7 +2917,11 @@ where
         let generated_key = ObjectKey::chronological(
             "module-artifact-data",
             ObjectZone::Objects,
-            ObjectScope::Tenant(scope.tenant_id),
+            ObjectScope::Namespace {
+                tenant_id: scope.tenant_id,
+                owner_id: scope.data_owner_id,
+                instance_id: scope.namespace_instance_id,
+            },
             self.infrastructure.now(),
             self.infrastructure.new_id(),
             "bin",
@@ -2987,7 +3039,7 @@ where
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_objects
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND object_name = {} AND revision = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -2997,8 +3049,8 @@ where
                 ),
                 vec![
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     request.name.clone().into(),
                     revision_value(request.expected_revision)?,
                 ],
@@ -3043,7 +3095,7 @@ where
                 format!(
                     "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key
                      FROM module_artifact_data_objects
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND object_name LIKE {} ESCAPE '\\' AND object_name > {}
                      ORDER BY object_name ASC LIMIT {}",
                     placeholder(backend, 1),
@@ -3055,8 +3107,8 @@ where
                 ),
                 vec![
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     prefix.clone().into(),
                     after_name.into(),
                     limit.into(),
@@ -3066,7 +3118,7 @@ where
                 format!(
                     "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key
                      FROM module_artifact_data_objects
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND object_name LIKE {} ESCAPE '\\'
                      ORDER BY object_name ASC LIMIT {}",
                     placeholder(backend, 1),
@@ -3077,8 +3129,8 @@ where
                 ),
                 vec![
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     prefix.into(),
                     limit.into(),
                 ],
@@ -3149,7 +3201,7 @@ async fn find_artifact_data_object<C: ConnectionTrait>(
             format!(
                 "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key
                  FROM module_artifact_data_objects
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND object_name = {}",
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} AND object_name = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
@@ -3175,7 +3227,7 @@ async fn find_artifact_data_object_delete_operation<C: ConnectionTrait>(
             format!(
                 "SELECT object_name, expected_revision, deleted_revision
                  FROM module_artifact_data_object_delete_operations
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                  AND policy_revision = {} AND idempotency_key = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -3185,8 +3237,8 @@ async fn find_artifact_data_object_delete_operation<C: ConnectionTrait>(
             ),
             vec![
                 uuid_value(scope.tenant_id, backend),
-                scope.module_slug.clone().into(),
-                revision_value(scope.data_contract_revision)?,
+                uuid_value(scope.data_owner_id, backend),
+                uuid_value(scope.namespace_instance_id, backend),
                 revision_value(scope.policy_revision)?,
                 uuid_value(request.idempotency_key, backend),
             ],
@@ -3228,7 +3280,7 @@ async fn persist_artifact_data_object_delete_operation<C: ConnectionTrait>(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_object_delete_operations
-                 (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key,
+                 (tenant_id, data_owner_id, namespace_instance_id, policy_revision, idempotency_key,
                   object_name, expected_revision, deleted_revision, completed_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {})",
                 placeholder(backend, 1),
@@ -3243,8 +3295,8 @@ async fn persist_artifact_data_object_delete_operation<C: ConnectionTrait>(
             ),
             vec![
                 uuid_value(scope.tenant_id, backend),
-                scope.module_slug.clone().into(),
-                revision_value(scope.data_contract_revision)?,
+                uuid_value(scope.data_owner_id, backend),
+                uuid_value(scope.namespace_instance_id, backend),
                 revision_value(scope.policy_revision)?,
                 uuid_value(request.idempotency_key, backend),
                 request.name.clone().into(),
@@ -3269,7 +3321,7 @@ async fn queue_artifact_data_object_gc_candidate<C: ConnectionTrait>(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_object_gc_candidates
-                 (candidate_id, tenant_id, module_slug, data_contract_revision, policy_revision, storage_key, queued_at)
+                 (candidate_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision, storage_key, queued_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}) ON CONFLICT (storage_key) DO NOTHING",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -3282,8 +3334,8 @@ async fn queue_artifact_data_object_gc_candidate<C: ConnectionTrait>(
             vec![
                 uuid_value(infrastructure.new_id(), backend),
                 uuid_value(scope.tenant_id, backend),
-                scope.module_slug.clone().into(),
-                revision_value(scope.data_contract_revision)?,
+                uuid_value(scope.data_owner_id, backend),
+                uuid_value(scope.namespace_instance_id, backend),
                 revision_value(scope.policy_revision)?,
                 storage_key.to_owned().into(),
             ],
@@ -3336,7 +3388,7 @@ async fn persist_artifact_data_object(
                     format!(
                         "UPDATE module_artifact_data_objects
                          SET storage_key = {}, content_type = {}, size_bytes = {}, digest_sha256 = {}, revision = {}, updated_at = {}
-                         WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND object_name = {} AND revision = {}",
+                         WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} AND object_name = {} AND revision = {}",
                         placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
                         placeholder(backend, 4), placeholder(backend, 5), now_expression(backend),
                         placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8),
@@ -3346,7 +3398,7 @@ async fn persist_artifact_data_object(
                         storage_key.to_owned().into(), requested.content_type.clone().into(),
                         revision_value(requested.size_bytes)?, requested.digest_sha256.clone().into(),
                         revision_value(revision)?, uuid_value(scope.tenant_id, backend),
-                        scope.module_slug.clone().into(), revision_value(scope.data_contract_revision)?,
+                        uuid_value(scope.data_owner_id, backend), uuid_value(scope.namespace_instance_id, backend),
                         requested.name.clone().into(), revision_value(current.object.revision)?,
                     ],
                 ))
@@ -3375,15 +3427,15 @@ async fn persist_artifact_data_object(
                     backend,
                     format!(
                         "INSERT INTO module_artifact_data_objects
-                         (tenant_id, module_slug, data_contract_revision, object_name, storage_key, content_type, size_bytes, digest_sha256, revision, created_at, updated_at)
+                         (tenant_id, data_owner_id, namespace_instance_id, object_name, storage_key, content_type, size_bytes, digest_sha256, revision, created_at, updated_at)
                          VALUES ({}, {}, {}, {}, {}, {}, {}, {}, 1, {}, {}) ON CONFLICT DO NOTHING",
                         placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
                         placeholder(backend, 4), placeholder(backend, 5), placeholder(backend, 6),
                         placeholder(backend, 7), placeholder(backend, 8), now_expression(backend), now_expression(backend),
                     ),
                     vec![
-                        uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(),
-                        revision_value(scope.data_contract_revision)?, requested.name.clone().into(),
+                        uuid_value(scope.tenant_id, backend), uuid_value(scope.data_owner_id, backend),
+                        uuid_value(scope.namespace_instance_id, backend), requested.name.clone().into(),
                         storage_key.to_owned().into(), requested.content_type.clone().into(),
                         revision_value(requested.size_bytes)?, requested.digest_sha256.clone().into(),
                     ],
@@ -3411,7 +3463,7 @@ async fn persist_artifact_data_object(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_object_operations
-                 (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key, object_name, storage_key, content_type, size_bytes, digest_sha256, expected_revision, revision, completed_at)
+                 (tenant_id, data_owner_id, namespace_instance_id, policy_revision, idempotency_key, object_name, storage_key, content_type, size_bytes, digest_sha256, expected_revision, revision, completed_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                 placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4),
                 placeholder(backend, 5), placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8),
@@ -3419,8 +3471,8 @@ async fn persist_artifact_data_object(
                 now_expression(backend),
             ),
             vec![
-                uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(),
-                revision_value(scope.data_contract_revision)?, revision_value(scope.policy_revision)?,
+                uuid_value(scope.tenant_id, backend), uuid_value(scope.data_owner_id, backend),
+                uuid_value(scope.namespace_instance_id, backend), revision_value(scope.policy_revision)?,
                 uuid_value(upload.idempotency_key, backend),
                 stored.object.name.clone().into(), stored.storage_key.clone().into(),
                 stored.object.content_type.clone().into(), revision_value(stored.object.size_bytes)?,
@@ -3447,7 +3499,7 @@ async fn enforce_object_data_quota<C: ConnectionTrait>(
             format!(
                 "SELECT COUNT(*) AS object_count, COALESCE(SUM(size_bytes), 0) AS total_bytes
                  FROM module_artifact_data_objects
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
@@ -3484,14 +3536,14 @@ async fn find_artifact_data_object_operation<C: ConnectionTrait>(
             format!(
                 "SELECT object_name, content_type, size_bytes, digest_sha256, revision, storage_key, expected_revision
                  FROM module_artifact_data_object_operations
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                  AND policy_revision = {} AND idempotency_key = {}",
                 placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
                 placeholder(backend, 4), placeholder(backend, 5),
             ),
             vec![
-                uuid_value(scope.tenant_id, backend), scope.module_slug.clone().into(),
-                revision_value(scope.data_contract_revision)?, revision_value(scope.policy_revision)?,
+                uuid_value(scope.tenant_id, backend), uuid_value(scope.data_owner_id, backend),
+                uuid_value(scope.namespace_instance_id, backend), revision_value(scope.policy_revision)?,
                 uuid_value(idempotency_key, backend),
             ],
         ))
@@ -3558,7 +3610,7 @@ async fn find_artifact_data_delete_operation<C: ConnectionTrait>(
             format!(
                 "SELECT data_key, expected_revision, deleted_revision
                  FROM module_artifact_data_delete_operations
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                  AND policy_revision = {} AND idempotency_key = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -3568,8 +3620,8 @@ async fn find_artifact_data_delete_operation<C: ConnectionTrait>(
             ),
             vec![
                 uuid_value(scope.tenant_id, backend),
-                scope.module_slug.clone().into(),
-                revision_value(scope.data_contract_revision)?,
+                uuid_value(scope.data_owner_id, backend),
+                uuid_value(scope.namespace_instance_id, backend),
                 revision_value(scope.policy_revision)?,
                 uuid_value(request.idempotency_key, backend),
             ],
@@ -3611,7 +3663,7 @@ async fn persist_artifact_data_delete_operation<C: ConnectionTrait>(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_delete_operations
-                 (tenant_id, module_slug, data_contract_revision, policy_revision,
+                 (tenant_id, data_owner_id, namespace_instance_id, policy_revision,
                   idempotency_key, data_key, expected_revision, deleted_revision, completed_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {})",
                 placeholder(backend, 1),
@@ -3626,8 +3678,8 @@ async fn persist_artifact_data_delete_operation<C: ConnectionTrait>(
             ),
             vec![
                 uuid_value(scope.tenant_id, backend),
-                scope.module_slug.clone().into(),
-                revision_value(scope.data_contract_revision)?,
+                uuid_value(scope.data_owner_id, backend),
+                uuid_value(scope.namespace_instance_id, backend),
                 revision_value(scope.policy_revision)?,
                 uuid_value(request.idempotency_key, backend),
                 request.key.clone().into(),
@@ -3666,7 +3718,7 @@ async fn persist_artifact_data_write(
             backend,
             format!(
                 "SELECT data_key, value, revision, expected_revision FROM module_artifact_data_operations
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                  AND policy_revision = {} AND idempotency_key = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -3676,8 +3728,8 @@ async fn persist_artifact_data_write(
             ),
             vec![
                 uuid_value(scope.tenant_id, backend),
-                scope.module_slug.clone().into(),
-                revision_value(scope.data_contract_revision)?,
+                uuid_value(scope.data_owner_id, backend),
+                uuid_value(scope.namespace_instance_id, backend),
                 revision_value(scope.policy_revision)?,
                 uuid_value(write.idempotency_key, backend),
             ],
@@ -3708,7 +3760,7 @@ async fn persist_artifact_data_write(
             backend,
             format!(
                 "SELECT data_key, value, value_size_bytes, revision FROM module_artifact_data
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND data_key = {}",
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} AND data_key = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
@@ -3748,7 +3800,7 @@ async fn persist_artifact_data_write(
                 backend,
                 format!(
                     "UPDATE module_artifact_data SET value = {}, value_size_bytes = {}, revision = {}, updated_at = {}
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key = {} AND revision = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -3765,8 +3817,8 @@ async fn persist_artifact_data_write(
                     revision_value(value_size_bytes)?,
                     revision_value(next_revision)?,
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     write.key.clone().into(),
                     revision_value(current.revision)?,
                 ],
@@ -3786,7 +3838,7 @@ async fn persist_artifact_data_write(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data
-                     (tenant_id, module_slug, data_contract_revision, data_key, value, value_size_bytes, revision, updated_at)
+                     (tenant_id, data_owner_id, namespace_instance_id, data_key, value, value_size_bytes, revision, updated_at)
                      VALUES ({}, {}, {}, {}, {}, {}, 1, {}) ON CONFLICT DO NOTHING",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -3798,8 +3850,8 @@ async fn persist_artifact_data_write(
                 ),
                 vec![
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     write.key.clone().into(),
                     SqlValue::Json(Some(Box::new(write.value.clone()))),
                     revision_value(value_size_bytes)?,
@@ -3823,7 +3875,7 @@ async fn persist_artifact_data_write(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_operations
-                 (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key, data_key, value, expected_revision, revision, completed_at)
+                 (tenant_id, data_owner_id, namespace_instance_id, policy_revision, idempotency_key, data_key, value, expected_revision, revision, completed_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -3838,8 +3890,8 @@ async fn persist_artifact_data_write(
             ),
             vec![
                 uuid_value(scope.tenant_id, backend),
-                scope.module_slug.clone().into(),
-                revision_value(scope.data_contract_revision)?,
+                uuid_value(scope.data_owner_id, backend),
+                uuid_value(scope.namespace_instance_id, backend),
                 revision_value(scope.policy_revision)?,
                 uuid_value(write.idempotency_key, backend),
                 record.key.clone().into(),
@@ -3867,7 +3919,7 @@ async fn enforce_structured_data_quota<C: ConnectionTrait>(
             format!(
                 "SELECT COUNT(*) AS record_count, COALESCE(SUM(value_size_bytes), 0) AS total_bytes
                  FROM module_artifact_data
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
@@ -3925,7 +3977,7 @@ async fn synchronize_artifact_data_indexes(
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_indexes
-                     (tenant_id, module_slug, data_contract_revision, index_name, index_value, data_key)
+                     (tenant_id, data_owner_id, namespace_instance_id, index_name, index_value, data_key)
                      VALUES ({}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -3936,8 +3988,8 @@ async fn synchronize_artifact_data_indexes(
                 ),
                 vec![
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     index.name.clone().into(),
                     index_value.into(),
                     record.key.clone().into(),
@@ -3960,7 +4012,7 @@ async fn delete_artifact_data_indexes<C: ConnectionTrait>(
             backend,
             format!(
                 "DELETE FROM module_artifact_data_indexes
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                    AND data_key = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -4192,6 +4244,9 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataCapabilityBrokerReso
         let installation =
             resolve_granted_artifact_capability(&self.db, execution, capability).await?;
         let scope = artifact_data_scope_for_execution(&installation, execution, capability)?;
+        let scope = resolve_serving_artifact_data_scope(&self.db, &installation, scope)
+            .await
+            .map_err(|error| data_capability_error(capability, error))?;
         let quota = self
             .quota_policy
             .quota_for(&scope)
@@ -5090,7 +5145,7 @@ where
             Some(after_key) => (
                 format!(
                     "SELECT data_key, value, revision FROM module_artifact_data
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key LIKE {} ESCAPE '\\' AND data_key > {}
                      ORDER BY data_key ASC LIMIT {}",
                     placeholder(backend, 1),
@@ -5102,8 +5157,8 @@ where
                 ),
                 vec![
                     uuid_value(request.scope.tenant_id, backend),
-                    request.scope.module_slug.clone().into(),
-                    revision_value(request.scope.data_contract_revision)?,
+                    uuid_value(request.scope.data_owner_id, backend),
+                    uuid_value(request.scope.namespace_instance_id, backend),
                     prefix_pattern.clone().into(),
                     after_key.to_owned().into(),
                     query_limit.into(),
@@ -5112,7 +5167,7 @@ where
             None => (
                 format!(
                     "SELECT data_key, value, revision FROM module_artifact_data
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND data_key LIKE {} ESCAPE '\\'
                      ORDER BY data_key ASC LIMIT {}",
                     placeholder(backend, 1),
@@ -5123,8 +5178,8 @@ where
                 ),
                 vec![
                     uuid_value(request.scope.tenant_id, backend),
-                    request.scope.module_slug.clone().into(),
-                    revision_value(request.scope.data_contract_revision)?,
+                    uuid_value(request.scope.data_owner_id, backend),
+                    uuid_value(request.scope.namespace_instance_id, backend),
                     prefix_pattern.into(),
                     query_limit.into(),
                 ],
@@ -5155,7 +5210,7 @@ where
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_exports
-                     (export_id, tenant_id, module_slug, data_contract_revision, policy_revision, namespace_revision,
+                     (export_id, tenant_id, data_owner_id, namespace_instance_id, policy_revision, namespace_revision,
                       actor_id, trace_id, correlation_id, idempotency_key, prefix, after_key, page_limit, reason,
                       exported_records, completed_at)
                      VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
@@ -5179,8 +5234,8 @@ where
                 vec![
                     uuid_value(export_id, backend),
                     uuid_value(request.scope.tenant_id, backend),
-                    request.scope.module_slug.clone().into(),
-                    revision_value(request.scope.data_contract_revision)?,
+                    uuid_value(request.scope.data_owner_id, backend),
+                    uuid_value(request.scope.namespace_instance_id, backend),
                     revision_value(request.scope.policy_revision)?,
                     revision_value(namespace_revision)?,
                     uuid_value(request.context.actor_id, backend),
@@ -5330,7 +5385,7 @@ where
                 format!(
                     "SELECT namespace_revision, CASE WHEN purged_at IS NULL THEN 0 ELSE 1 END AS is_purged
                      FROM module_artifact_data_namespaces
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}{}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}{}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5358,7 +5413,7 @@ where
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_index_contracts
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5372,7 +5427,7 @@ where
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_indexes
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5386,7 +5441,7 @@ where
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5401,7 +5456,7 @@ where
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_operations
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5415,7 +5470,7 @@ where
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_delete_operations
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5429,7 +5484,7 @@ where
                 backend,
                 format!(
                     "SELECT storage_key FROM module_artifact_data_objects
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5453,7 +5508,7 @@ where
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_objects
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5468,7 +5523,7 @@ where
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_object_operations
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5482,7 +5537,7 @@ where
                 backend,
                 format!(
                     "DELETE FROM module_artifact_data_object_delete_operations
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5500,8 +5555,8 @@ where
                 backend,
                 format!(
                     "UPDATE module_artifact_data_namespaces
-                     SET namespace_revision = {}, purged_at = {}, updated_at = {}
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     SET namespace_revision = {}, state = 'purged', purged_at = {}, updated_at = {}
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                      AND namespace_revision = {} AND purged_at IS NULL",
                     placeholder(backend, 1),
                     now_expression(backend),
@@ -5514,8 +5569,8 @@ where
                 vec![
                     revision_value(next_revision)?,
                     uuid_value(scope.tenant_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     revision_value(request.expected_namespace_revision)?,
                 ],
             ))
@@ -5533,7 +5588,7 @@ where
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_purge_operations
-                     (tenant_id, installation_id, module_slug, data_contract_revision, policy_revision, idempotency_key, expected_namespace_revision,
+                     (tenant_id, installation_id, data_owner_id, namespace_instance_id, policy_revision, idempotency_key, expected_namespace_revision,
                       namespace_revision, actor_id, trace_id, correlation_id, reason, purged_records, completed_at)
                      VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1),
@@ -5554,8 +5609,8 @@ where
                 vec![
                     uuid_value(scope.tenant_id, backend),
                     uuid_value(request.installation_id, backend),
-                    scope.module_slug.clone().into(),
-                    revision_value(scope.data_contract_revision)?,
+                    uuid_value(scope.data_owner_id, backend),
+                    uuid_value(scope.namespace_instance_id, backend),
                     revision_value(scope.policy_revision)?,
                     uuid_value(request.context.idempotency_key, backend),
                     revision_value(request.expected_namespace_revision)?,
@@ -5657,7 +5712,7 @@ impl ArtifactDataPurgePreviewService {
                 format!(
                     "SELECT namespace_revision, CASE WHEN purged_at IS NULL THEN 0 ELSE 1 END AS is_purged
                      FROM module_artifact_data_namespaces
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5776,9 +5831,13 @@ async fn find_artifact_data_purge_operation<C: ConnectionTrait>(
     let purged_records: i64 = row.try_get("", "purged_records").map_err(storage_error)?;
     Ok(Some(ArtifactDataPurgeResult {
         namespace_revision: u64::try_from(namespace_revision)
-            .map_err(|_| ArtifactDataError::PurgePrecondition)?,
+            .ok()
+            .filter(|revision| *revision > 0)
+            .ok_or_else(|| {
+                storage_error("Stored data purge receipt has an invalid namespace revision")
+            })?,
         purged_records: u64::try_from(purged_records)
-            .map_err(|_| ArtifactDataError::PurgePrecondition)?,
+            .map_err(|_| storage_error("Stored data purge receipt has an invalid record count"))?,
     }))
 }
 
@@ -5815,6 +5874,7 @@ async fn query_artifact_data_purge_target<C: ConnectionTrait>(
             backend,
             format!(
                 "SELECT installation.scope_kind, installation.tenant_id, installation.slug, installation.data_owner_id, \
+                        reference.namespace_instance_id, namespace.data_contract_digest AS stored_contract_digest, \
                         installation.capability_grant_revision, admission.revision AS installation_revision, admission.status, \
                         CAST(installation.descriptor AS TEXT) AS descriptor, \
                         EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall \
@@ -5822,9 +5882,15 @@ async fn query_artifact_data_purge_target<C: ConnectionTrait>(
                  FROM module_artifact_installations installation \
                  JOIN module_artifact_admissions admission \
                    ON admission.installation_id = installation.installation_id \
+                 JOIN module_artifact_data_owner_references reference \
+                   ON reference.tenant_id = {} AND reference.data_owner_id = installation.data_owner_id \
+                 JOIN module_artifact_data_namespaces namespace \
+                   ON namespace.tenant_id = reference.tenant_id AND namespace.data_owner_id = reference.data_owner_id \
+                  AND namespace.namespace_instance_id = reference.namespace_instance_id \
                  WHERE installation.installation_id = {} \
                    AND ((installation.scope_kind = 'platform' AND installation.tenant_id IS NULL) \
                         OR (installation.scope_kind = 'tenant' AND installation.tenant_id = {})){}",
+                placeholder(backend, 2),
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 if lock { namespace_lock_clause(backend) } else { "" },
@@ -5867,8 +5933,20 @@ async fn query_artifact_data_purge_target<C: ConnectionTrait>(
     .ok()
     .filter(|revision| *revision > 0)
     .ok_or(ArtifactDataError::PurgePrecondition)?;
+    let data_contract_digest = crate::promotion::digest_json(contract)
+        .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
+    if row
+        .try_get::<String>("", "stored_contract_digest")
+        .map_err(storage_error)?
+        != data_contract_digest
+    {
+        return Err(ArtifactDataError::DataContractUnavailable);
+    }
     let scope = ArtifactDataScope {
         tenant_id,
+        data_owner_id: uuid_from_row(&row, "data_owner_id", backend)?,
+        namespace_instance_id: uuid_from_row(&row, "namespace_instance_id", backend)?,
+        data_contract_digest,
         module_slug: row.try_get("", "slug").map_err(storage_error)?,
         data_contract_revision: contract.revision,
         policy_revision: capability_grant_revision,
@@ -5912,10 +5990,8 @@ async fn ensure_artifact_data_purge_target_is_retired<C: ConnectionTrait>(
     ensure_no_active_artifact_data_scope_collision(connection, target).await
 }
 
-/// The current namespace storage still keys data by slug and data-contract
-/// revision rather than the stable data-owner identity. Until that owner-keyed
-/// storage cutover lands, any active installation with the same slug makes a
-/// historical namespace purge ambiguous and therefore ineligible.
+/// Serving installations collide only with this exact tenant owner instance.
+/// An unrelated installation with the same display slug is a separate boundary.
 async fn ensure_no_active_artifact_data_scope_collision<C: ConnectionTrait>(
     connection: &C,
     target: &ArtifactDataPurgeTarget,
@@ -5930,17 +6006,22 @@ async fn ensure_no_active_artifact_data_scope_collision<C: ConnectionTrait>(
                  FROM module_artifact_installations installation
                  JOIN module_artifact_admissions admission
                    ON admission.installation_id = installation.installation_id
-                 WHERE installation.slug = {}
+                 JOIN module_artifact_data_owner_references reference
+                   ON reference.data_owner_id = installation.data_owner_id AND reference.tenant_id = {}
+                 WHERE installation.data_owner_id = {} AND reference.namespace_instance_id = {}
                    AND admission.status = 'active'
                    AND ((installation.scope_kind = 'platform' AND installation.tenant_id IS NULL)
                         OR (installation.scope_kind = 'tenant' AND installation.tenant_id = {}))
                  LIMIT 1",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 1),
             ),
             vec![
-                scope.module_slug.clone().into(),
                 uuid_value(scope.tenant_id, backend),
+                uuid_value(scope.data_owner_id, backend),
+                uuid_value(scope.namespace_instance_id, backend),
             ],
         ))
         .await
@@ -5976,7 +6057,7 @@ async fn namespace_record_count<C: ConnectionTrait>(
             backend,
             format!(
                 "SELECT COUNT(*) AS record_count FROM {table}
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
@@ -6009,35 +6090,113 @@ pub(crate) async fn configure_tenant_scope<C: ConnectionTrait>(
     Ok(())
 }
 
+/// Resolve the tenant's single owner reference, initializing its first empty
+/// instance only from the exact admitted serving installation allocation.
+/// A retained tombstone or another contract never becomes an initial instance.
+async fn resolve_serving_artifact_data_scope(
+    db: &DatabaseConnection,
+    installation: &InstalledModuleArtifact,
+    mut scope: ArtifactDataScope,
+) -> Result<ArtifactDataScope, ArtifactDataError> {
+    scope.validate()?;
+    let transaction = db.begin().await.map_err(storage_error)?;
+    configure_tenant_scope(&transaction, scope.tenant_id).await?;
+    crate::installation::acquire_artifact_activation_lock(
+        &transaction,
+        &installation.scope,
+        &installation.descriptor.slug,
+    )
+    .await
+    .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
+    let backend = transaction.get_database_backend();
+    let values = vec![
+        uuid_value(scope.tenant_id, backend),
+        uuid_value(scope.data_owner_id, backend),
+        uuid_value(scope.namespace_instance_id, backend),
+        scope.module_slug.clone().into(),
+        revision_value(scope.data_contract_revision)?,
+        scope.data_contract_digest.clone().into(),
+        uuid_value(installation.installation_id, backend),
+        revision_value(scope.policy_revision)?,
+    ];
+    transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
+        "INSERT INTO module_artifact_data_namespaces
+         (tenant_id, data_owner_id, namespace_instance_id, module_slug, data_contract_revision,
+          data_contract_digest, state, namespace_revision, created_at, updated_at)
+         SELECT {tenant}, {owner}, {instance}, {slug}, {revision}, {digest}, 'serving', 1, {now}, {now}
+         FROM module_artifact_installations installation
+         JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id
+         WHERE installation.installation_id = {installation} AND installation.data_owner_id = {owner}
+           AND installation.namespace_instance_id = {instance} AND installation.capability_grant_revision = {policy}
+           AND admission.status = 'active'
+           AND (installation.scope_kind = 'platform' OR installation.tenant_id = {tenant})
+           AND NOT EXISTS (SELECT 1 FROM module_artifact_uninstall_operations uninstall
+                           WHERE uninstall.installation_id = installation.installation_id)
+           AND NOT EXISTS (SELECT 1 FROM module_artifact_tenant_lifecycle lifecycle
+                           WHERE lifecycle.installation_id = installation.installation_id
+                             AND lifecycle.tenant_id = {tenant} AND NOT lifecycle.enabled)
+           AND NOT EXISTS (SELECT 1 FROM module_artifact_data_owner_references reference
+                           WHERE reference.tenant_id = {tenant} AND reference.data_owner_id = {owner})
+         ON CONFLICT DO NOTHING",
+        tenant=placeholder(backend,1), owner=placeholder(backend,2), instance=placeholder(backend,3),
+        slug=placeholder(backend,4), revision=placeholder(backend,5), digest=placeholder(backend,6),
+        installation=placeholder(backend,7), policy=placeholder(backend,8), now=now_expression(backend),
+    ), values)).await.map_err(storage_error)?;
+    transaction.execute_raw(Statement::from_sql_and_values(backend, format!(
+        "INSERT INTO module_artifact_data_owner_references
+         (tenant_id, data_owner_id, namespace_instance_id, reference_revision)
+         SELECT tenant_id, data_owner_id, namespace_instance_id, 1 FROM module_artifact_data_namespaces
+         WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
+           AND state = 'serving' AND purged_at IS NULL
+         ON CONFLICT DO NOTHING",
+        placeholder(backend,1), placeholder(backend,2), placeholder(backend,3),
+    ), namespace_values(&scope,backend)?)).await.map_err(storage_error)?;
+    let row = transaction.query_one_raw(Statement::from_sql_and_values(backend, format!(
+        "SELECT namespace.namespace_instance_id, namespace.data_contract_digest
+         FROM module_artifact_data_owner_references reference
+         JOIN module_artifact_data_namespaces namespace
+           ON namespace.tenant_id = reference.tenant_id AND namespace.data_owner_id = reference.data_owner_id
+          AND namespace.namespace_instance_id = reference.namespace_instance_id
+         JOIN module_artifact_installations installation ON installation.installation_id = {}
+           AND installation.data_owner_id = reference.data_owner_id
+         JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id
+         WHERE reference.tenant_id = {} AND reference.data_owner_id = {}
+           AND namespace.state = 'serving' AND namespace.purged_at IS NULL AND admission.status = 'active'
+           AND installation.capability_grant_revision = {}{}",
+        placeholder(backend,3), placeholder(backend,1), placeholder(backend,2), placeholder(backend,4),
+        namespace_lock_clause(backend),
+    ), vec![uuid_value(scope.tenant_id,backend), uuid_value(scope.data_owner_id,backend),
+            uuid_value(installation.installation_id,backend), revision_value(scope.policy_revision)?]))
+        .await.map_err(storage_error)?.ok_or(ArtifactDataError::PolicyDenied)?;
+    let digest: String = row
+        .try_get("", "data_contract_digest")
+        .map_err(storage_error)?;
+    if digest != scope.data_contract_digest {
+        return Err(ArtifactDataError::DataContractUnavailable);
+    }
+    scope.namespace_instance_id = uuid_from_row(&row, "namespace_instance_id", backend)?;
+    transaction.commit().await.map_err(storage_error)?;
+    Ok(scope)
+}
+
 async fn ensure_active_namespace<C: ConnectionTrait>(
     connection: &C,
     scope: &ArtifactDataScope,
     backend: DbBackend,
 ) -> Result<(), ArtifactDataError> {
-    connection
-        .execute_raw(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "INSERT INTO module_artifact_data_namespaces
-                 (tenant_id, module_slug, data_contract_revision, namespace_revision, created_at, updated_at)
-                 VALUES ({}, {}, {}, 1, {}, {}) ON CONFLICT DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
-                now_expression(backend),
-            ),
-            namespace_values(scope, backend)?,
-        ))
-        .await
-        .map_err(storage_error)?;
     let active = connection
         .query_one_raw(Statement::from_sql_and_values(
             backend,
             format!(
                 "SELECT namespace_revision FROM module_artifact_data_namespaces
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
-                 AND purged_at IS NULL{}",
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
+                 AND state = 'serving' AND purged_at IS NULL
+                 AND EXISTS (SELECT 1 FROM module_artifact_data_owner_references reference
+                             WHERE reference.tenant_id = {} AND reference.data_owner_id = {}
+                               AND reference.namespace_instance_id = {}){}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
@@ -6067,7 +6226,7 @@ async fn require_active_namespace<C: ConnectionTrait>(
             backend,
             format!(
                 "SELECT namespace_revision FROM module_artifact_data_namespaces
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                  AND purged_at IS NULL{}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -6108,7 +6267,7 @@ async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
             backend,
             format!(
                 "SELECT contract_digest FROM module_artifact_data_index_contracts
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
@@ -6128,7 +6287,7 @@ async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
             backend,
             format!(
                 "SELECT 1 FROM module_artifact_data
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}
                  LIMIT 1",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -6149,7 +6308,7 @@ async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
             backend,
             format!(
                 "INSERT INTO module_artifact_data_index_contracts
-                 (tenant_id, module_slug, data_contract_revision, contract_digest, bound_at)
+                 (tenant_id, data_owner_id, namespace_instance_id, contract_digest, bound_at)
                  VALUES ({}, {}, {}, {}, {}) ON CONFLICT DO NOTHING",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -6171,7 +6330,7 @@ async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
             backend,
             format!(
                 "SELECT contract_digest FROM module_artifact_data_index_contracts
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
@@ -6225,8 +6384,8 @@ fn scope_values(
 ) -> Result<Vec<SqlValue>, ArtifactDataError> {
     Ok(vec![
         uuid_value(scope.tenant_id, backend),
-        scope.module_slug.clone().into(),
-        revision_value(scope.data_contract_revision)?,
+        uuid_value(scope.data_owner_id, backend),
+        uuid_value(scope.namespace_instance_id, backend),
         key.to_owned().into(),
     ])
 }
@@ -6237,8 +6396,8 @@ fn namespace_values(
 ) -> Result<Vec<SqlValue>, ArtifactDataError> {
     Ok(vec![
         uuid_value(scope.tenant_id, backend),
-        scope.module_slug.clone().into(),
-        revision_value(scope.data_contract_revision)?,
+        uuid_value(scope.data_owner_id, backend),
+        uuid_value(scope.namespace_instance_id, backend),
     ])
 }
 

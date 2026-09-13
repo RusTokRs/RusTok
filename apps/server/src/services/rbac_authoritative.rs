@@ -1,12 +1,6 @@
-use std::collections::HashSet;
-
-use crate::error::{Error, Result};
-use crate::models::{
-    _entities::{permissions, role_permissions, roles, user_roles},
-    users,
-};
-use rustok_api::{Action, Permission, Resource};
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
+use crate::error::Result;
+use rustok_api::Permission;
+use sea_orm::ConnectionTrait;
 
 use super::rbac_service::RbacService;
 
@@ -14,7 +8,7 @@ impl RbacService {
     /// Resolve the canonical database-backed permission snapshot without using
     /// the process-local authorization cache.
     ///
-    /// Authentication must observe role revocation and demotion immediately.
+    /// Authentication reads persisted role revocation and demotion without a cache.
     /// Authorization entry points use `get_user_permissions`, which honors the
     /// immutable request scope and may use the runtime cache outside a request.
     /// Accepting any `ConnectionTrait` keeps hierarchy and delegation checks on
@@ -27,73 +21,7 @@ impl RbacService {
     where
         C: ConnectionTrait,
     {
-        let user_belongs_to_tenant = users::Entity::find_by_id(*user_id)
-            .filter(users::Column::TenantId.eq(*tenant_id))
-            .one(db)
-            .await?
-            .is_some();
-        if !user_belongs_to_tenant {
-            return Ok(Vec::new());
-        }
-
-        let assigned_roles = user_roles::Entity::find()
-            .filter(user_roles::Column::UserId.eq(*user_id))
-            .all(db)
-            .await?;
-        if assigned_roles.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let assigned_role_ids = assigned_roles
-            .into_iter()
-            .map(|assignment| assignment.role_id)
-            .collect::<Vec<_>>();
-        let tenant_roles = roles::Entity::find()
-            .filter(roles::Column::TenantId.eq(*tenant_id))
-            .filter(roles::Column::Id.is_in(assigned_role_ids))
-            .all(db)
-            .await?;
-        if tenant_roles.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let tenant_role_ids = tenant_roles
-            .into_iter()
-            .map(|role| role.id)
-            .collect::<Vec<_>>();
-        let links = role_permissions::Entity::find()
-            .filter(role_permissions::Column::RoleId.is_in(tenant_role_ids))
-            .all(db)
-            .await?;
-        if links.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let permission_ids = links
-            .into_iter()
-            .map(|link| link.permission_id)
-            .collect::<Vec<_>>();
-        let rows = permissions::Entity::find()
-            .filter(permissions::Column::TenantId.eq(*tenant_id))
-            .filter(permissions::Column::Id.is_in(permission_ids))
-            .all(db)
-            .await?;
-
-        let mut seen = HashSet::new();
-        let mut resolved = Vec::with_capacity(rows.len());
-        for row in rows {
-            let resource = row
-                .resource
-                .parse::<Resource>()
-                .map_err(Error::BadRequest)?;
-            let action = row.action.parse::<Action>().map_err(Error::BadRequest)?;
-            let permission = Permission::new(resource, action);
-            if seen.insert(permission) {
-                resolved.push(permission);
-            }
-        }
-
-        Ok(resolved)
+        Ok(rustok_rbac::resolve_persisted_permissions_on(db, tenant_id, user_id).await?)
     }
 }
 

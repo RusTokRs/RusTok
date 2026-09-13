@@ -158,6 +158,34 @@ Product/search Next storefront metadata boundary update as of 2026-07-02: `apps/
 
 The `modules` control-plane remains `boundary_ready`: registry validation automation evidence is one typed `ModuleGovernanceAutomatedCheck` to `RegistryAutomatedCheckLifecycle` chain. The owner rejects blank or duplicate checks, exposes only valid normalized persisted entries, orders lifecycle events deterministically by `created_at` and `id`, and GraphQL/native Admin render the newest non-empty owner event without raw JSON parsing or empty placeholder checks.
 
+The `modules` FFA status remains `not_started`, FBA `boundary_ready`.
+Artifact-data preview/apply derive scope from one retired installation and
+bind collisions to its exact serving owner/instance. The physical cutover is
+in progress: pending schemas, broker SQL, and object keys use stable owners and
+opaque namespace instances. Snapshot/restore now reserve durable copy keys,
+verify actual published bytes, hold the source snapshot, and compare the full
+restored target manifest before sealing a non-serving verified instance.
+The focused SQLite/local-storage runtime test passes 1/1, including retry,
+corruption rejection, retained unresolved bytes, and sealed-target guards.
+Callers, fixtures, independent secret/MCP scopes, migration-object publication,
+and authorized reference CAS are not yet complete. GraphQL hides storage errors and checks receipt
+integers; the server purge authorizer binds owner context and reads persisted
+`modules:manage` grants without cached/request snapshots. This does not prove
+terminal traffic/job/write or revocation fencing. Snapshot/recovery
+ledgers do not prove restored content; schema-enforced immutable tombstones
+alone do not prove safe recovery. The
+plaintext-tag settings cipher and permissive policy were deleted.
+Settings mutations require a host-composed owner service and fail closed when
+it is unavailable. RBAC persisted relation reads and current policy decisions
+belong to `rustok-rbac`; the cached host runtime consumes the same owner reader.
+Tenant membership deletion is also owner-backed, with persisted subject-tenancy
+validation before mutation; the host retains transaction and cache orchestration.
+Server authoritative reads use the same owner reader on their supplied transaction.
+Real encryption/KMS and retention/secret-handle policy are still missing.
+Owner/instance storage cutover, protected
+recovery, production holds/fences, and full operations-tool fleet evidence are
+still completion gates.
+
 AI FBA baseline batch evidence: `crates/modules/rustok-ai/contracts/ai-fba-registry.json`, `crates/modules/rustok-ai/contracts/evidence/ai-runtime-fallback-smoke.json`, `crates/modules/rustok-ai-content/contracts/ai-content-fba-registry.json`, `crates/modules/rustok-ai-content/contracts/evidence/ai-content-runtime-fallback-smoke.json`, `crates/modules/rustok-ai-order/contracts/ai-order-fba-registry.json`, `crates/modules/rustok-ai-order/contracts/evidence/ai-order-runtime-fallback-smoke.json`, `crates/modules/rustok-auth/contracts/auth-fba-registry.json`, and `crates/modules/rustok-auth/contracts/evidence/auth-runtime-fallback-smoke.json` are verified together by `scripts/verify/verify-ai-fba-baseline.mjs` / `npm run verify:ai:fba-baseline`; router policy remains locked by `scripts/verify/verify-ai-router-policy.mjs`.
 
 Compiled FBA evidence as of 2026-06-30: `cargo check --workspace` passed for the entire workspace; `cargo test -p rustok-channel -p rustok-index -p rustok-tenant --no-run --locked` and `cargo test -p rustok-commerce -p rustok-email --no-run --locked` built target test binaries. Additional targeted runtime evidence in the current increment: `cargo test -p rustok-email --lib` passed 8/8, and `cargo test -p rustok-tenant tenant_read_port --test integration` passed 3/3, so `email` and `tenant` are raised to `transport_verified`. Full `cargo test --workspace --no-run` is not yet evidence due to external TLS error loading `rmcp-macros 2.0.0`; local offline cache of this version is not available. Other statuses are not raised to `transport_verified` without live runtime execution.

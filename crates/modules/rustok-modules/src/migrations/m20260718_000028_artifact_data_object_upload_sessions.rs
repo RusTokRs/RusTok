@@ -14,8 +14,8 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_artifact_data_object_upload_sessions (\
                     session_id UUID PRIMARY KEY,\
                     tenant_id UUID NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision BIGINT NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id UUID NOT NULL,\
+                    namespace_instance_id UUID NOT NULL,\
                     policy_revision BIGINT NOT NULL CHECK (policy_revision > 0),\
                     object_name TEXT NOT NULL CHECK (length(object_name) BETWEEN 1 AND 256),\
                     content_type TEXT NOT NULL CHECK (length(content_type) BETWEEN 1 AND 128),\
@@ -28,7 +28,7 @@ impl MigrationTrait for Migration {
                     created_at TIMESTAMPTZ NOT NULL,\
                     updated_at TIMESTAMPTZ NOT NULL,\
                     completed_at TIMESTAMPTZ NULL,\
-                    UNIQUE (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key)\
+                    UNIQUE (tenant_id, data_owner_id, namespace_instance_id, policy_revision, idempotency_key)\
                 )",
                 "CREATE INDEX module_artifact_data_object_upload_sessions_expiry_idx \
                  ON module_artifact_data_object_upload_sessions (tenant_id, expires_at, session_id)",
@@ -57,8 +57,8 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_artifact_data_object_upload_sessions (\
                     session_id TEXT PRIMARY KEY,\
                     tenant_id TEXT NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id TEXT NOT NULL,\
+                    namespace_instance_id TEXT NOT NULL,\
                     policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),\
                     object_name TEXT NOT NULL CHECK (length(object_name) BETWEEN 1 AND 256),\
                     content_type TEXT NOT NULL CHECK (length(content_type) BETWEEN 1 AND 128),\
@@ -71,7 +71,7 @@ impl MigrationTrait for Migration {
                     created_at TEXT NOT NULL,\
                     updated_at TEXT NOT NULL,\
                     completed_at TEXT NULL,\
-                    UNIQUE (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key)\
+                    UNIQUE (tenant_id, data_owner_id, namespace_instance_id, policy_revision, idempotency_key)\
                 )",
                 "CREATE INDEX module_artifact_data_object_upload_sessions_expiry_idx \
                  ON module_artifact_data_object_upload_sessions (tenant_id, expires_at, session_id)",

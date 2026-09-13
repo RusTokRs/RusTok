@@ -67,6 +67,25 @@ preserves the complete published base prefix and appends new migrations.
 Claims, presentation roles, caches, projections, and consumers are never permission or
 role-assignment authority.
 
+The persisted `SeaOrmRelationPermissionStore` is now owned here and shared by
+cached runtime and current decisions. `authorize_current_permission` evaluates
+persisted grants through the canonical tenant policy engine without request or
+cache snapshots. The server implementation was removed atomically; server
+composition uses this reader with its cache adapter. Current policy reads are
+not transaction-spanning revocation fences. Modules purge consumes the owner
+decision after binding its exact installation/tenant authority context.
+FFA/FBA statuses are unchanged; SQLite relation/revocation tests are bounded
+evidence and do not prove production fencing or remote execution.
+Tenant membership deletion also belongs to `RbacRoleAssignmentDbWriter` and
+validates the subject's persisted tenant before mutation. The server persistence
+adapter delegates to that writer; transaction commit and post-commit cache
+invalidation remain host responsibilities.
+The separate server authoritative permission query was also removed.
+`resolve_persisted_permissions_on` uses the same owner relation implementation
+on a caller-supplied connection or transaction, preserving host serialization
+locks without reading cache/request snapshots. The SQLite owner test checks
+transaction-local revocation and rollback, without claiming a production fence.
+
 ## Current state
 
 `cycle-001/core-rbac` remains `in_progress`.

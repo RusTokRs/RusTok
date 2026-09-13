@@ -8,6 +8,8 @@
 
 - Provide `RbacModule` metadata for the runtime registry.
 - Resolve effective permissions from relation data.
+- Own persisted relation reads and tenant membership deletion; server adapters
+  delegate mutations inside the host transaction.
 - Evaluate permission checks through the single live policy engine.
 - Publish the typed `settings:*` and `logs:*` platform-admin surface used by server adapters.
 - Own explicit tenant-role grants for immutable artifact permission keys without
@@ -30,6 +32,9 @@
 
 - `RbacModule`
 - `RuntimePermissionResolver`
+- `SeaOrmRelationPermissionStore`
+- `authorize_current_permission`
+- `resolve_persisted_permissions_on`
 - `PermissionResolver`
 - `authorize_permission`
 - `authorize_any_permission`

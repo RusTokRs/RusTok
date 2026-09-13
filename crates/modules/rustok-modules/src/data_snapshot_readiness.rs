@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::data::{placeholder, revision_value, uuid_value};
+use crate::data::{placeholder, uuid_value};
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SnapshotReadinessError {
@@ -68,8 +68,8 @@ pub struct PlatformPostgresRecoveryEvidence {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactDataRecoveryReadinessAttestation {
     pub tenant_id: Uuid,
-    pub module_slug: String,
-    pub data_contract_revision: u64,
+    pub data_owner_id: Uuid,
+    pub namespace_instance_id: Uuid,
     pub snapshot: ArtifactDataSnapshotReadiness,
     pub platform_evidence: PlatformPostgresRecoveryEvidence,
     pub automatic_restore_authorized: bool,
@@ -90,8 +90,8 @@ impl ArtifactDataRecoveryReadinessService {
     pub async fn evaluate_snapshot_readiness(
         &self,
         tenant_id: Uuid,
-        module_slug: &str,
-        data_contract_revision: u64,
+        data_owner_id: Uuid,
+        namespace_instance_id: Uuid,
         max_age: StdDuration,
     ) -> Result<ArtifactDataSnapshotReadiness, SnapshotReadinessError> {
         let backend = self.db.get_database_backend();
@@ -103,7 +103,7 @@ impl ArtifactDataRecoveryReadinessService {
                     "SELECT snapshot_id, manifest_digest, structured_record_count, object_count, \
                             total_object_bytes, created_at, retain_until \
                      FROM module_artifact_data_snapshots \
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} \
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} \
                        AND status = 'ready' \
                      ORDER BY created_at DESC LIMIT 1",
                     placeholder(backend, 1),
@@ -112,9 +112,8 @@ impl ArtifactDataRecoveryReadinessService {
                 ),
                 vec![
                     uuid_value(tenant_id, backend),
-                    module_slug.to_string().into(),
-                    revision_value(data_contract_revision)
-                        .map_err(|e| SnapshotReadinessError::Storage(e.to_string()))?,
+                    uuid_value(data_owner_id, backend),
+                    uuid_value(namespace_instance_id, backend),
                 ],
             ))
             .await
@@ -288,19 +287,19 @@ impl ArtifactDataRecoveryReadinessService {
     pub async fn attest_recovery_readiness(
         &self,
         tenant_id: Uuid,
-        module_slug: &str,
-        data_contract_revision: u64,
+        data_owner_id: Uuid,
+        namespace_instance_id: Uuid,
         max_age: StdDuration,
     ) -> Result<ArtifactDataRecoveryReadinessAttestation, RecoveryReadinessError> {
         let snapshot = self
-            .evaluate_snapshot_readiness(tenant_id, module_slug, data_contract_revision, max_age)
+            .evaluate_snapshot_readiness(tenant_id, data_owner_id, namespace_instance_id, max_age)
             .await?;
         let platform_evidence = self.evaluate_platform_recovery_evidence().await?;
 
         Ok(ArtifactDataRecoveryReadinessAttestation {
             tenant_id,
-            module_slug: module_slug.to_string(),
-            data_contract_revision,
+            data_owner_id,
+            namespace_instance_id,
             snapshot,
             platform_evidence,
             automatic_restore_authorized: false,

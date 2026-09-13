@@ -247,6 +247,13 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
     );
     let builder = schema_codegen::attach_module_graphql_data(builder, &graphql_runtime_inputs)
         .expect("manifest GraphQL runtime-data factory must materialize");
+    let builder = if let Some(runtime) = graphql_runtime_inputs
+        .shared_get::<crate::services::artifact_purge_recovery_host::ArtifactSettingsRecoveryRuntime>()
+    {
+        builder.data(runtime)
+    } else {
+        builder
+    };
     let builder = builder
         .data(db)
         .data(event_bus)

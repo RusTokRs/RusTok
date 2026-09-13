@@ -14,15 +14,15 @@ impl MigrationTrait for Migration {
             DbBackend::Postgres => &[
                 "CREATE TABLE module_artifact_data_indexes (\
                     tenant_id UUID NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision BIGINT NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id UUID NOT NULL,\
+                    namespace_instance_id UUID NOT NULL,\
                     index_name TEXT NOT NULL CHECK (length(index_name) BETWEEN 1 AND 64),\
                     index_value TEXT NOT NULL CHECK (length(index_value) BETWEEN 1 AND 256),\
                     data_key TEXT NOT NULL CHECK (length(data_key) BETWEEN 1 AND 256),\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, index_name, index_value, data_key)\
+                    PRIMARY KEY (tenant_id, data_owner_id, namespace_instance_id, index_name, index_value, data_key)\
                 )",
                 "CREATE INDEX module_artifact_data_indexes_lookup_idx \
-                 ON module_artifact_data_indexes (tenant_id, module_slug, data_contract_revision, index_name, index_value, data_key)",
+                 ON module_artifact_data_indexes (tenant_id, data_owner_id, namespace_instance_id, index_name, index_value, data_key)",
                 "ALTER TABLE module_artifact_data_indexes ENABLE ROW LEVEL SECURITY",
                 "CREATE POLICY module_artifact_data_indexes_scope ON module_artifact_data_indexes \
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
@@ -31,15 +31,15 @@ impl MigrationTrait for Migration {
             DbBackend::Sqlite => &[
                 "CREATE TABLE module_artifact_data_indexes (\
                     tenant_id TEXT NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id TEXT NOT NULL,\
+                    namespace_instance_id TEXT NOT NULL,\
                     index_name TEXT NOT NULL CHECK (length(index_name) BETWEEN 1 AND 64),\
                     index_value TEXT NOT NULL CHECK (length(index_value) BETWEEN 1 AND 256),\
                     data_key TEXT NOT NULL CHECK (length(data_key) BETWEEN 1 AND 256),\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, index_name, index_value, data_key)\
+                    PRIMARY KEY (tenant_id, data_owner_id, namespace_instance_id, index_name, index_value, data_key)\
                 )",
                 "CREATE INDEX module_artifact_data_indexes_lookup_idx \
-                 ON module_artifact_data_indexes (tenant_id, module_slug, data_contract_revision, index_name, index_value, data_key)",
+                 ON module_artifact_data_indexes (tenant_id, data_owner_id, namespace_instance_id, index_name, index_value, data_key)",
             ],
             backend => {
                 return Err(DbErr::Migration(format!(
@@ -56,6 +56,8 @@ impl MigrationTrait for Migration {
                 ))
                 .await?;
         }
+        super::protect_artifact_data_namespace_writes(manager, "module_artifact_data_indexes")
+            .await?;
         Ok(())
     }
 
@@ -63,6 +65,8 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared("DROP TABLE module_artifact_data_indexes")
+            .await?;
+        super::drop_artifact_data_namespace_write_guard(manager, "module_artifact_data_indexes")
             .await?;
         Ok(())
     }

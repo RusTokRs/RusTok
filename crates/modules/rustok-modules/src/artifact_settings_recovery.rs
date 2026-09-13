@@ -617,21 +617,36 @@ async fn commit_settings_purge_preview(
 /// Durable owner service for settings recovery points and destructive
 /// lifecycle. It is intentionally not a sandbox capability and can only be
 /// constructed by host composition with explicit policy and encryption ports.
-#[derive(Clone)]
-pub struct SeaOrmArtifactSettingsRecoveryService<A, C> {
+pub struct SeaOrmArtifactSettingsRecoveryService<A: ?Sized, C: ?Sized> {
     db: DatabaseConnection,
-    authorizer: A,
-    cipher: C,
+    authorizer: Arc<A>,
+    cipher: Arc<C>,
     validators: Arc<ArtifactSchemaValidatorCache>,
     infrastructure: ControlPlaneInfrastructure,
 }
 
-impl<A, C> SeaOrmArtifactSettingsRecoveryService<A, C>
+impl<A: ?Sized, C: ?Sized> Clone for SeaOrmArtifactSettingsRecoveryService<A, C> {
+    fn clone(&self) -> Self {
+        Self {
+            db: self.db.clone(),
+            authorizer: self.authorizer.clone(),
+            cipher: self.cipher.clone(),
+            validators: self.validators.clone(),
+            infrastructure: self.infrastructure.clone(),
+        }
+    }
+}
+
+impl<A: ?Sized, C: ?Sized> SeaOrmArtifactSettingsRecoveryService<A, C>
 where
     A: ArtifactSettingsRecoveryAuthorizer,
     C: ArtifactSettingsRecoveryCipher,
 {
-    pub fn new(db: DatabaseConnection, authorizer: A, cipher: C) -> Self {
+    pub fn new(db: DatabaseConnection, authorizer: A, cipher: C) -> Self
+    where
+        A: Sized,
+        C: Sized,
+    {
         let infrastructure = ControlPlaneInfrastructure::for_database(db.clone());
         Self::with_infrastructure(
             db,
@@ -648,12 +663,29 @@ where
         cipher: C,
         validators: Arc<ArtifactSchemaValidatorCache>,
         infrastructure: ControlPlaneInfrastructure,
-    ) -> Self {
+    ) -> Self
+    where
+        A: Sized,
+        C: Sized,
+    {
+        Self {
+            db,
+            authorizer: Arc::new(authorizer),
+            cipher: Arc::new(cipher),
+            validators,
+            infrastructure,
+        }
+    }
+
+    /// Compose the owner service with shared host policy and encryption ports.
+    /// No default policy or cipher exists for an unconfigured host.
+    pub fn with_shared_ports(db: DatabaseConnection, authorizer: Arc<A>, cipher: Arc<C>) -> Self {
+        let infrastructure = ControlPlaneInfrastructure::for_database(db.clone());
         Self {
             db,
             authorizer,
             cipher,
-            validators,
+            validators: Arc::new(ArtifactSchemaValidatorCache::default()),
             infrastructure,
         }
     }
@@ -3819,10 +3851,13 @@ mod tests {
             .await
             .expect("source settings");
 
-        let service = SeaOrmArtifactSettingsRecoveryService::new(
+        let service: SeaOrmArtifactSettingsRecoveryService<
+            dyn ArtifactSettingsRecoveryAuthorizer,
+            dyn ArtifactSettingsRecoveryCipher,
+        > = SeaOrmArtifactSettingsRecoveryService::with_shared_ports(
             database.clone(),
-            AllowRecoveryAuthorizer,
-            ContextBoundCipher,
+            Arc::new(AllowRecoveryAuthorizer),
+            Arc::new(ContextBoundCipher),
         );
         let recovery_request = ArtifactSettingsRecoveryPointCreateRequest {
             tenant_id,

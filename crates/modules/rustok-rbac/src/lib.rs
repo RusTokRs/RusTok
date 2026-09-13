@@ -4,7 +4,6 @@ pub mod bootstrap;
 pub mod catalog;
 mod control_plane;
 pub mod dto;
-pub mod entities;
 pub mod error;
 #[cfg(feature = "graphql")]
 pub mod graphql;
@@ -73,8 +72,10 @@ pub use services::policy_model::{
     default_tenant_policy_model, resolved_permissions_subject,
 };
 pub use services::relation_permission_resolver::{
-    PermissionCache, PermissionCacheLookup, RelationPermissionStore, invalidate_cached_permissions,
+    PermissionCache, PermissionCacheLookup, RelationPermissionStore, SeaOrmRelationPermissionStore,
+    authorize_current_permission, invalidate_cached_permissions,
     resolve_permissions_from_relations, resolve_permissions_with_cache,
+    resolve_persisted_permissions_on,
 };
 pub use services::runtime_permission_resolver::RuntimePermissionResolver;
 

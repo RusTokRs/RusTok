@@ -21,6 +21,11 @@ impl ObjectZone {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjectScope {
     Tenant(Uuid),
+    Namespace {
+        tenant_id: Uuid,
+        owner_id: Uuid,
+        instance_id: Uuid,
+    },
     Platform,
 }
 
@@ -39,7 +44,7 @@ impl ObjectKey {
     ) -> Result<Self, KeyError> {
         let namespace = validated_segment("namespace", namespace, 64)?;
         let extension = validated_extension(extension)?;
-        let scope = scope_segment(scope);
+        let scope = scope_segment(scope)?;
         let shard = format!("{:02x}", object_id.as_bytes()[15]);
         let raw = format!(
             "{}/{}/{}/{:04}/{:02}/{:02}/{}/{}.{}",
@@ -88,7 +93,7 @@ impl DigestObjectKey {
         let raw = format!(
             "{}/objects/{}/sha256/{}/{}/{}",
             namespace,
-            scope_segment(scope),
+            scope_segment(scope)?,
             &digest_hex[..2],
             &digest_hex[2..4],
             digest_hex
@@ -111,10 +116,22 @@ impl std::fmt::Display for DigestObjectKey {
     }
 }
 
-fn scope_segment(scope: ObjectScope) -> String {
+fn scope_segment(scope: ObjectScope) -> Result<String, KeyError> {
     match scope {
-        ObjectScope::Tenant(tenant_id) => format!("tenants/{tenant_id}"),
-        ObjectScope::Platform => "platform".to_string(),
+        ObjectScope::Tenant(tenant_id) => Ok(format!("tenants/{tenant_id}")),
+        ObjectScope::Namespace {
+            tenant_id,
+            owner_id,
+            instance_id,
+        } => {
+            if tenant_id.is_nil() || owner_id.is_nil() || instance_id.is_nil() {
+                return Err(KeyError::InvalidNamespaceIdentity);
+            }
+            Ok(format!(
+                "tenants/{tenant_id}/owners/{owner_id}/instances/{instance_id}"
+            ))
+        }
+        ObjectScope::Platform => Ok("platform".to_string()),
     }
 }
 
@@ -151,6 +168,8 @@ fn validated_extension(value: &str) -> Result<&str, KeyError> {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum KeyError {
+    #[error("Namespace tenant, owner, and instance identities must be non-nil")]
+    InvalidNamespaceIdentity,
     #[error("invalid {name} segment `{value}`")]
     InvalidSegment { name: &'static str, value: String },
     #[error("invalid object extension `{0}`")]
@@ -183,6 +202,69 @@ mod tests {
             key.to_string(),
             "media/objects/tenants/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/2026/07/22/2f/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb2f.webp"
         );
+    }
+
+    #[test]
+    fn namespace_keys_isolate_owners_and_instances_for_the_same_object() {
+        let tenant_id = Uuid::new_v4();
+        let owner_id = Uuid::new_v4();
+        let instance_id = Uuid::new_v4();
+        let object_id = Uuid::new_v4();
+        let created_at = Utc::now();
+        let key = |owner_id, instance_id| {
+            ObjectKey::chronological(
+                "module-artifact-data",
+                ObjectZone::Objects,
+                ObjectScope::Namespace {
+                    tenant_id,
+                    owner_id,
+                    instance_id,
+                },
+                created_at,
+                object_id,
+                "bin",
+            )
+            .unwrap()
+        };
+        let original = key(owner_id, instance_id);
+        assert_ne!(original, key(Uuid::new_v4(), instance_id));
+        assert_ne!(original, key(owner_id, Uuid::new_v4()));
+        assert!(original.to_string().contains(&format!(
+            "tenants/{tenant_id}/owners/{owner_id}/instances/{instance_id}/"
+        )));
+        for scope in [
+            ObjectScope::Namespace {
+                tenant_id: Uuid::nil(),
+                owner_id,
+                instance_id,
+            },
+            ObjectScope::Namespace {
+                tenant_id,
+                owner_id: Uuid::nil(),
+                instance_id,
+            },
+            ObjectScope::Namespace {
+                tenant_id,
+                owner_id,
+                instance_id: Uuid::nil(),
+            },
+        ] {
+            assert_eq!(
+                ObjectKey::chronological(
+                    "module-artifact-data",
+                    ObjectZone::Objects,
+                    scope,
+                    created_at,
+                    object_id,
+                    "bin"
+                ),
+                Err(KeyError::InvalidNamespaceIdentity)
+            );
+            assert_eq!(
+                DigestObjectKey::sha256("module-artifact-data", scope, &"a".repeat(64)),
+                Err(KeyError::InvalidNamespaceIdentity)
+            );
+        }
     }
 
     #[test]

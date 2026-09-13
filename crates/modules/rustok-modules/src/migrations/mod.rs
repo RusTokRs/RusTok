@@ -111,3 +111,102 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260904_000053_module_operations_tool::Migration),
     ]
 }
+
+fn artifact_data_storage_table(table: &str) -> Result<&str, sea_orm::DbErr> {
+    match table {
+        "module_artifact_data"
+        | "module_artifact_data_objects"
+        | "module_artifact_data_indexes"
+        | "module_artifact_data_index_contracts" => Ok(table),
+        _ => Err(sea_orm::DbErr::Migration(
+            "Unsupported artifact namespace storage table".into(),
+        )),
+    }
+}
+
+/// Serialize mutable metadata writes with the namespace root. Verified and
+/// purged instances cannot be changed by a cached broker or maintenance copier.
+pub(crate) async fn protect_artifact_data_namespace_writes(
+    manager: &sea_orm_migration::SchemaManager<'_>,
+    table: &str,
+) -> Result<(), sea_orm::DbErr> {
+    use sea_orm::{ConnectionTrait, DbBackend};
+    let table = artifact_data_storage_table(table)?;
+    let statements = match manager.get_database_backend() {
+        DbBackend::Postgres => vec![format!(
+            "CREATE FUNCTION {table}_namespace_write_guard() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
+               IF TG_OP = 'DELETE' THEN
+                 PERFORM 1 FROM module_artifact_data_namespaces namespace
+                  WHERE namespace.tenant_id = OLD.tenant_id AND namespace.data_owner_id = OLD.data_owner_id
+                    AND namespace.namespace_instance_id = OLD.namespace_instance_id
+                    AND namespace.state IN ('staging', 'serving', 'purged') FOR UPDATE;
+                 IF NOT FOUND THEN
+                   RAISE EXCEPTION 'Artifact data namespace is sealed' USING ERRCODE = '23514';
+                 END IF;
+                 RETURN OLD;
+               END IF;
+               IF TG_OP = 'UPDATE' AND ROW(NEW.tenant_id, NEW.data_owner_id, NEW.namespace_instance_id)
+                  IS DISTINCT FROM ROW(OLD.tenant_id, OLD.data_owner_id, OLD.namespace_instance_id) THEN
+                 RAISE EXCEPTION 'Artifact data namespace binding is immutable' USING ERRCODE = '23514';
+               END IF;
+               PERFORM 1 FROM module_artifact_data_namespaces namespace
+                WHERE namespace.tenant_id = NEW.tenant_id AND namespace.data_owner_id = NEW.data_owner_id
+                  AND namespace.namespace_instance_id = NEW.namespace_instance_id
+                  AND namespace.state IN ('staging', 'serving') AND namespace.purged_at IS NULL FOR UPDATE;
+               IF NOT FOUND THEN
+                 RAISE EXCEPTION 'Artifact data namespace is not writable' USING ERRCODE = '23514';
+               END IF;
+               RETURN NEW;
+             END $$"
+        ), format!(
+            "CREATE TRIGGER {table}_namespace_write BEFORE INSERT OR UPDATE OR DELETE ON {table}
+             FOR EACH ROW EXECUTE FUNCTION {table}_namespace_write_guard()"
+        )],
+        DbBackend::Sqlite => ["INSERT", "UPDATE", "DELETE"].into_iter().map(|operation| {
+            let row = if operation == "DELETE" { "OLD" } else { "NEW" };
+            let states = if operation == "DELETE" {
+                "namespace.state IN ('staging', 'serving', 'purged')"
+            } else {
+                "namespace.state IN ('staging', 'serving') AND namespace.purged_at IS NULL"
+            };
+            let binding = if operation == "UPDATE" {
+                " OR NEW.tenant_id IS NOT OLD.tenant_id OR NEW.data_owner_id IS NOT OLD.data_owner_id
+                    OR NEW.namespace_instance_id IS NOT OLD.namespace_instance_id"
+            } else { "" };
+            format!(
+                "CREATE TRIGGER {table}_namespace_write_{} BEFORE {operation} ON {table}
+                 WHEN NOT EXISTS (SELECT 1 FROM module_artifact_data_namespaces namespace
+                   WHERE namespace.tenant_id = {row}.tenant_id AND namespace.data_owner_id = {row}.data_owner_id
+                     AND namespace.namespace_instance_id = {row}.namespace_instance_id
+                     AND {states}){binding}
+                 BEGIN SELECT RAISE(ABORT, 'Artifact data namespace is not writable'); END",
+                operation.to_ascii_lowercase()
+            )
+        }).collect(),
+        _ => return Err(sea_orm::DbErr::Migration("Unsupported artifact namespace write guard backend".into())),
+    };
+    for statement in statements {
+        manager
+            .get_connection()
+            .execute_unprepared(&statement)
+            .await?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn drop_artifact_data_namespace_write_guard(
+    manager: &sea_orm_migration::SchemaManager<'_>,
+    table: &str,
+) -> Result<(), sea_orm::DbErr> {
+    use sea_orm::ConnectionTrait;
+    let table = artifact_data_storage_table(table)?;
+    // SQLite drops table-owned triggers with the table; PostgreSQL also needs
+    // the function removed after its table and trigger have been dropped.
+    if manager.get_database_backend() == sea_orm::DbBackend::Postgres {
+        manager
+            .get_connection()
+            .execute_unprepared(&format!("DROP FUNCTION {table}_namespace_write_guard()"))
+            .await?;
+    }
+    Ok(())
+}

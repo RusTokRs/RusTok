@@ -1,7 +1,215 @@
 use crate::services::permission_normalization::normalize_permissions;
 use rustok_api::Permission;
+use sea_orm::ConnectionTrait;
 
 const MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS: usize = 4;
+
+/// Canonical persisted relation reader shared by cached and current decisions.
+#[derive(Clone)]
+pub struct SeaOrmRelationPermissionStore {
+    db: sea_orm::DatabaseConnection,
+}
+
+impl SeaOrmRelationPermissionStore {
+    pub fn new(db: sea_orm::DatabaseConnection) -> Self {
+        Self { db }
+    }
+}
+
+struct ConnectionRelationPermissionStore<'a, C: ConnectionTrait> {
+    db: &'a C,
+}
+
+impl<C: ConnectionTrait> ConnectionRelationPermissionStore<'_, C> {
+    fn statement(
+        &self,
+        sql: &str,
+        values: Vec<sea_orm::Value>,
+    ) -> Result<sea_orm::Statement, sea_orm::DbErr> {
+        let backend = self.db.get_database_backend();
+        if !matches!(
+            backend,
+            sea_orm::DbBackend::Postgres | sea_orm::DbBackend::Sqlite
+        ) {
+            return Err(sea_orm::DbErr::Custom(
+                "RBAC relation reader requires PostgreSQL or SQLite".to_string(),
+            ));
+        }
+        let mut index = 0;
+        let sql = sql
+            .chars()
+            .map(|character| {
+                if character == '?' {
+                    index += 1;
+                    match backend {
+                        sea_orm::DbBackend::Postgres => format!("${index}"),
+                        _ => format!("?{index}"),
+                    }
+                } else {
+                    character.to_string()
+                }
+            })
+            .collect::<String>();
+        Ok(sea_orm::Statement::from_sql_and_values(
+            backend, sql, values,
+        ))
+    }
+
+    async fn role_ids(
+        &self,
+        statement: sea_orm::Statement,
+    ) -> Result<Vec<uuid::Uuid>, sea_orm::DbErr> {
+        self.db
+            .query_all_raw(statement)
+            .await?
+            .iter()
+            .map(|row| row.try_get("", "id"))
+            .collect()
+    }
+}
+
+#[async_trait::async_trait]
+impl<C: ConnectionTrait> RelationPermissionStore for ConnectionRelationPermissionStore<'_, C> {
+    type Error = sea_orm::DbErr;
+
+    async fn load_user_role_ids(
+        &self,
+        user_id: &uuid::Uuid,
+    ) -> Result<Vec<uuid::Uuid>, Self::Error> {
+        self.role_ids(self.statement(
+            "SELECT DISTINCT role.id FROM roles role JOIN user_roles membership ON membership.role_id = role.id JOIN users subject ON subject.id = membership.user_id AND subject.tenant_id = role.tenant_id WHERE subject.id = ?",
+            vec![(*user_id).into()],
+        )?).await
+    }
+
+    async fn load_tenant_role_ids(
+        &self,
+        tenant_id: &uuid::Uuid,
+        role_ids: &[uuid::Uuid],
+    ) -> Result<Vec<uuid::Uuid>, Self::Error> {
+        if role_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut values = vec![(*tenant_id).into()];
+        values.extend(role_ids.iter().map(|id| sea_orm::Value::from(*id)));
+        self.role_ids(self.statement(
+            &format!(
+                "SELECT id FROM roles WHERE tenant_id = ? AND id IN ({})",
+                vec!["?"; role_ids.len()].join(", ")
+            ),
+            values,
+        )?)
+        .await
+    }
+
+    async fn load_permissions_for_roles(
+        &self,
+        tenant_id: &uuid::Uuid,
+        role_ids: &[uuid::Uuid],
+    ) -> Result<Vec<Permission>, Self::Error> {
+        if role_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut values = vec![(*tenant_id).into()];
+        values.extend(role_ids.iter().map(|id| sea_orm::Value::from(*id)));
+        let rows = self.db.query_all_raw(self.statement(
+            &format!("SELECT DISTINCT permission.resource, permission.action FROM permissions permission JOIN role_permissions grant_row ON grant_row.permission_id = permission.id JOIN roles role ON role.id = grant_row.role_id AND role.tenant_id = permission.tenant_id WHERE permission.tenant_id = ? AND role.id IN ({})", vec!["?"; role_ids.len()].join(", ")),
+            values,
+        )?).await?;
+        rows.iter()
+            .map(|row| {
+                let resource: String = row.try_get("", "resource")?;
+                let action: String = row.try_get("", "action")?;
+                Ok(Permission::new(
+                    resource.parse().map_err(sea_orm::DbErr::Type)?,
+                    action.parse().map_err(sea_orm::DbErr::Type)?,
+                ))
+            })
+            .collect()
+    }
+}
+
+#[async_trait::async_trait]
+impl RelationPermissionStore for SeaOrmRelationPermissionStore {
+    type Error = sea_orm::DbErr;
+
+    async fn load_user_role_ids(
+        &self,
+        user_id: &uuid::Uuid,
+    ) -> Result<Vec<uuid::Uuid>, Self::Error> {
+        ConnectionRelationPermissionStore { db: &self.db }
+            .load_user_role_ids(user_id)
+            .await
+    }
+
+    async fn load_tenant_role_ids(
+        &self,
+        tenant_id: &uuid::Uuid,
+        role_ids: &[uuid::Uuid],
+    ) -> Result<Vec<uuid::Uuid>, Self::Error> {
+        ConnectionRelationPermissionStore { db: &self.db }
+            .load_tenant_role_ids(tenant_id, role_ids)
+            .await
+    }
+
+    async fn load_permissions_for_roles(
+        &self,
+        tenant_id: &uuid::Uuid,
+        role_ids: &[uuid::Uuid],
+    ) -> Result<Vec<Permission>, Self::Error> {
+        ConnectionRelationPermissionStore { db: &self.db }
+            .load_permissions_for_roles(tenant_id, role_ids)
+            .await
+    }
+}
+
+/// Resolve persisted grants using the supplied connection or transaction.
+/// Hosts retain their serialization locks; no cache or request scope is used.
+pub async fn resolve_persisted_permissions_on<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: &uuid::Uuid,
+    user_id: &uuid::Uuid,
+) -> Result<Vec<Permission>, sea_orm::DbErr> {
+    resolve_permissions_from_relations(
+        &ConnectionRelationPermissionStore { db },
+        tenant_id,
+        user_id,
+    )
+    .await
+}
+
+#[async_trait::async_trait]
+impl crate::PermissionResolver for SeaOrmRelationPermissionStore {
+    type Error = sea_orm::DbErr;
+
+    async fn resolve_permissions(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> Result<crate::PermissionResolution, Self::Error> {
+        Ok(crate::PermissionResolution {
+            permissions: resolve_persisted_permissions_on(&self.db, tenant_id, user_id).await?,
+            cache_hit: false,
+        })
+    }
+}
+
+/// Evaluate current persisted grants through the canonical tenant policy engine,
+/// without request snapshots or a cache. This is not a revocation fence.
+pub async fn authorize_current_permission(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: &uuid::Uuid,
+    user_id: &uuid::Uuid,
+    required_permission: &Permission,
+) -> Result<crate::AuthorizationDecision, sea_orm::DbErr> {
+    crate::authorize_permission(
+        &SeaOrmRelationPermissionStore::new(db.clone()),
+        tenant_id,
+        user_id,
+        required_permission,
+    )
+    .await
+}
 
 #[async_trait::async_trait]
 pub trait RelationPermissionStore {
@@ -166,6 +374,116 @@ mod tests {
 
     type PermissionCacheKey = (uuid::Uuid, uuid::Uuid);
     type PermissionCacheMap = HashMap<PermissionCacheKey, Vec<Permission>>;
+
+    #[tokio::test]
+    async fn persisted_policy_reader_is_tenant_scoped_and_observes_revocation() {
+        use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        for sql in [
+            "CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL)",
+            "CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL)",
+            "CREATE TABLE user_roles (user_id TEXT NOT NULL, role_id TEXT NOT NULL)",
+            "CREATE TABLE permissions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, resource TEXT NOT NULL, action TEXT NOT NULL)",
+            "CREATE TABLE role_permissions (role_id TEXT NOT NULL, permission_id TEXT NOT NULL)",
+        ] {
+            db.execute_raw(Statement::from_string(DbBackend::Sqlite, sql))
+                .await
+                .expect("relation schema");
+        }
+        let tenant_id = uuid::Uuid::new_v4();
+        let user_id = uuid::Uuid::new_v4();
+        let role_id = uuid::Uuid::new_v4();
+        let permission_id = uuid::Uuid::new_v4();
+        for (sql, values) in [
+            (
+                "INSERT INTO users VALUES (?1, ?2)",
+                vec![user_id.into(), tenant_id.into()],
+            ),
+            (
+                "INSERT INTO roles VALUES (?1, ?2)",
+                vec![role_id.into(), tenant_id.into()],
+            ),
+            (
+                "INSERT INTO user_roles VALUES (?1, ?2)",
+                vec![user_id.into(), role_id.into()],
+            ),
+            (
+                "INSERT INTO permissions VALUES (?1, ?2, 'modules', 'manage')",
+                vec![permission_id.into(), tenant_id.into()],
+            ),
+            (
+                "INSERT INTO role_permissions VALUES (?1, ?2)",
+                vec![role_id.into(), permission_id.into()],
+            ),
+        ] {
+            db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                sql,
+                values,
+            ))
+            .await
+            .expect("persist grants");
+        }
+        let check = || {
+            super::authorize_current_permission(
+                &db,
+                &tenant_id,
+                &user_id,
+                &Permission::MODULES_MANAGE,
+            )
+        };
+        let decision = check().await.expect("current decision");
+        assert!(decision.allowed);
+        assert!(!decision.cache_hit);
+        assert_eq!(decision.engine, crate::AuthzEngine::Policy);
+        {
+            use sea_orm::TransactionTrait;
+
+            let transaction = db.begin().await.expect("caller transaction");
+            transaction
+                .execute_raw(Statement::from_string(
+                    DbBackend::Sqlite,
+                    "DELETE FROM user_roles",
+                ))
+                .await
+                .expect("transaction-local revocation");
+            assert!(
+                super::resolve_persisted_permissions_on(&transaction, &tenant_id, &user_id)
+                    .await
+                    .expect("owner must use the supplied transaction")
+                    .is_empty()
+            );
+            transaction.rollback().await.expect("rollback revocation");
+            assert!(check().await.expect("rolled-back grants remain").allowed);
+        }
+        assert!(
+            !super::authorize_current_permission(
+                &db,
+                &uuid::Uuid::new_v4(),
+                &user_id,
+                &Permission::MODULES_MANAGE
+            )
+            .await
+            .expect("foreign tenant decision")
+            .allowed
+        );
+        db.execute_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "DELETE FROM user_roles",
+        ))
+        .await
+        .expect("revoke membership");
+        assert!(!check().await.expect("revoked decision").allowed);
+        db.execute_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "DROP TABLE user_roles",
+        ))
+        .await
+        .expect("remove relation availability");
+        assert!(check().await.is_err());
+    }
 
     struct StubStore {
         role_ids: Vec<uuid::Uuid>,

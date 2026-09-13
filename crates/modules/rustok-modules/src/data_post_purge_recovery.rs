@@ -1,12 +1,10 @@
-//! Post-purge artifact-data recovery into an isolated staging namespace instance
-//! and verified CAS cutover.
+//! Incomplete post-purge recovery ledger being replaced by canonical instance
+//! restore and independently authorized owner-reference cutover.
 //!
-//! Enforces that data recovery post-purge:
-//! 1. Verifies the existing purge tombstone (`purged_at IS NOT NULL`).
-//! 2. Restores and verifies the complete snapshot in an isolated staging operation.
-//! 3. Executes separately authorized CAS cutover to advance to a new non-purged revision
-//!    without ever clearing or deleting the purge operation history.
-//! 4. Guarantees no two active namespaces exist concurrently.
+//! Ledger counts and status transitions do not restore or verify content.
+//! Schema-enforced tombstones reject the former purge-marker mutation. The
+//! write-path gate remains closed until real restore, verification, reference
+//! CAS, and recovery/retention/fence integration replace this implementation.
 
 use chrono::{DateTime, Utc};
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
@@ -125,7 +123,7 @@ impl ArtifactDataPostPurgeRecoveryService {
                 format!(
                     "SELECT namespace_revision, purged_at \
                      FROM module_artifact_data_namespaces \
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}",
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -164,8 +162,8 @@ impl ArtifactDataPostPurgeRecoveryService {
                 format!(
                     "SELECT manifest_digest, structured_record_count, object_count \
                      FROM module_artifact_data_snapshots \
-                     WHERE snapshot_id = {} AND tenant_id = {} AND module_slug = {} \
-                       AND data_contract_revision = {} AND status = 'ready'",
+                     WHERE snapshot_id = {} AND tenant_id = {} AND data_owner_id = {} \
+                       AND namespace_instance_id = {} AND status = 'ready'",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -198,13 +196,13 @@ impl ArtifactDataPostPurgeRecoveryService {
                 backend,
                 format!(
                     "INSERT INTO module_artifact_data_namespace_recovery_operations (\
-                        recovery_id, tenant_id, module_slug, data_contract_revision, \
+                        recovery_id, tenant_id, data_owner_id, namespace_instance_id, \
                         source_snapshot_id, tombstone_namespace_revision, target_namespace_revision, \
                         status, records_restored, objects_restored, manifest_digest, request_digest, \
                         actor_id, trace_id, correlation_id, idempotency_key, \
                         created_at, verified_at, cutover_at\
                     ) VALUES ({}, {}, {}, {}, {}, {}, {}, 'staging', {}, {}, {}, {}, {}, {}, {}, {}, {}, NULL, NULL) \
-                    ON CONFLICT (tenant_id, module_slug, data_contract_revision, idempotency_key) DO NOTHING",
+                    ON CONFLICT (tenant_id, data_owner_id, namespace_instance_id, idempotency_key) DO NOTHING",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -293,7 +291,7 @@ impl ArtifactDataPostPurgeRecoveryService {
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT tenant_id, module_slug, data_contract_revision, \
+                    "SELECT tenant_id, data_owner_id, namespace_instance_id, \
                             tombstone_namespace_revision, target_namespace_revision, \
                             records_restored, objects_restored, manifest_digest, status \
                      FROM module_artifact_data_namespace_recovery_operations \
@@ -404,7 +402,7 @@ impl ArtifactDataPostPurgeRecoveryService {
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT tenant_id, module_slug, data_contract_revision, \
+                    "SELECT tenant_id, data_owner_id, namespace_instance_id, \
                             tombstone_namespace_revision, target_namespace_revision, \
                             records_restored, objects_restored, status \
                      FROM module_artifact_data_namespace_recovery_operations \
@@ -466,7 +464,7 @@ impl ArtifactDataPostPurgeRecoveryService {
                 format!(
                     "UPDATE module_artifact_data_namespaces \
                      SET namespace_revision = {}, purged_at = NULL, updated_at = {} \
-                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} \
+                     WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} \
                        AND namespace_revision = {} AND purged_at IS NOT NULL",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
@@ -582,7 +580,7 @@ async fn load_replay_receipt<C: ConnectionTrait>(
                         records_restored, objects_restored, manifest_digest, status, request_digest, \
                         actor_id, trace_id, correlation_id \
                  FROM module_artifact_data_namespace_recovery_operations \
-                 WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} \
+                 WHERE tenant_id = {} AND data_owner_id = {} AND namespace_instance_id = {} \
                    AND idempotency_key = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),

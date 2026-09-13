@@ -14,8 +14,8 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_artifact_data_exports (\
                     export_id UUID PRIMARY KEY,\
                     tenant_id UUID NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision BIGINT NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id UUID NOT NULL,\
+                    namespace_instance_id UUID NOT NULL,\
                     policy_revision BIGINT NOT NULL CHECK (policy_revision > 0),\
                     namespace_revision BIGINT NOT NULL CHECK (namespace_revision > 0),\
                     actor_id UUID NOT NULL,\
@@ -30,7 +30,7 @@ impl MigrationTrait for Migration {
                     completed_at TIMESTAMPTZ NOT NULL\
                 )",
                 "CREATE INDEX module_artifact_data_exports_scope_idx \
-                 ON module_artifact_data_exports (tenant_id, module_slug, data_contract_revision, policy_revision, completed_at, export_id)",
+                 ON module_artifact_data_exports (tenant_id, data_owner_id, namespace_instance_id, policy_revision, completed_at, export_id)",
                 "ALTER TABLE module_artifact_data_exports ENABLE ROW LEVEL SECURITY",
                 "CREATE POLICY module_artifact_data_exports_scope ON module_artifact_data_exports \
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
@@ -40,8 +40,8 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_artifact_data_exports (\
                     export_id TEXT PRIMARY KEY,\
                     tenant_id TEXT NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id TEXT NOT NULL,\
+                    namespace_instance_id TEXT NOT NULL,\
                     policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),\
                     namespace_revision INTEGER NOT NULL CHECK (namespace_revision > 0),\
                     actor_id TEXT NOT NULL,\
@@ -56,7 +56,7 @@ impl MigrationTrait for Migration {
                     completed_at TEXT NOT NULL\
                 )",
                 "CREATE INDEX module_artifact_data_exports_scope_idx \
-                 ON module_artifact_data_exports (tenant_id, module_slug, data_contract_revision, policy_revision, completed_at, export_id)",
+                 ON module_artifact_data_exports (tenant_id, data_owner_id, namespace_instance_id, policy_revision, completed_at, export_id)",
             ],
             backend => {
                 return Err(DbErr::Migration(format!(

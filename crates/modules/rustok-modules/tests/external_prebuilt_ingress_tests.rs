@@ -798,6 +798,15 @@ async fn test_runtime_and_recovery_read_cas_only_and_never_query_oci() {
     let installed = InstalledModuleArtifact {
         installation_id: Uuid::new_v4(),
         data_owner_id: Uuid::new_v4(),
+        namespace_instance_id: descriptor
+            .persistence_contract
+            .as_ref()
+            .map(|_| Uuid::new_v4()),
+        secret_instance_id: descriptor
+            .capabilities
+            .iter()
+            .any(|capability| capability.as_str() == "platform.secrets")
+            .then(Uuid::new_v4),
         settings_instance_id: Uuid::new_v4(),
         scope: ModuleInstallationScope::Platform,
         reference: reference.clone(),

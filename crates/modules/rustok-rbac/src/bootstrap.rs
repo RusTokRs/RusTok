@@ -113,6 +113,42 @@ impl RbacRoleAssignmentDbWriter {
             .assign_role(tenant_id, user_id, role, false)
             .await
     }
+
+    /// Remove the user's tenant role memberships inside the caller's transaction.
+    ///
+    /// The host owns commit and post-commit invalidation. The owner validates
+    /// subject tenancy before changing any relation.
+    pub async fn remove_tenant_role_assignments_on<C>(
+        db: &C,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<(), RbacRoleAssignmentError>
+    where
+        C: ConnectionTrait,
+    {
+        let backend = db.get_database_backend();
+        ensure_supported_backend(backend)?;
+        ConnectionRoleAssignmentWriter { db }
+            .ensure_user_tenant(tenant_id, user_id)
+            .await?;
+        let sql = match backend {
+            DbBackend::Sqlite => {
+                "DELETE FROM user_roles WHERE user_id = ?1 AND role_id IN (SELECT id FROM roles WHERE tenant_id = ?2)"
+            }
+            DbBackend::Postgres => {
+                "DELETE FROM user_roles WHERE user_id = $1 AND role_id IN (SELECT id FROM roles WHERE tenant_id = $2)"
+            }
+            _ => unreachable!("RBAC backend was validated before membership removal"),
+        };
+        db.execute_raw(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![user_id.into(), tenant_id.into()],
+        ))
+        .await
+        .map_err(|error| RbacRoleAssignmentError::Database(error.to_string()))?;
+        Ok(())
+    }
 }
 
 struct EnsuredRole {

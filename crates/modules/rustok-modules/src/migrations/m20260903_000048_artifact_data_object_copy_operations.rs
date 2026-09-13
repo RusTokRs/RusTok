@@ -14,9 +14,9 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_artifact_data_object_copy_operations (\
                     operation_id UUID PRIMARY KEY,\
                     tenant_id UUID NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    source_contract_revision BIGINT NOT NULL CHECK (source_contract_revision > 0),\
-                    target_contract_revision BIGINT NOT NULL CHECK (target_contract_revision > 0),\
+                    data_owner_id UUID NOT NULL,\
+                    source_namespace_instance_id UUID NOT NULL,\
+                    target_namespace_instance_id UUID NOT NULL,\
                     inventory_manifest_digest TEXT NOT NULL CHECK (inventory_manifest_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     object_name TEXT NOT NULL CHECK (length(object_name) BETWEEN 1 AND 256),\
                     storage_key TEXT NOT NULL,\
@@ -30,10 +30,10 @@ impl MigrationTrait for Migration {
                     reason TEXT NOT NULL CHECK (length(trim(reason)) BETWEEN 1 AND 2000),\
                     created_at TIMESTAMPTZ NOT NULL,\
                     committed_at TIMESTAMPTZ NULL,\
-                    UNIQUE (tenant_id, module_slug, source_contract_revision, target_contract_revision, object_name, idempotency_key)\
+                    UNIQUE (tenant_id, data_owner_id, source_namespace_instance_id, target_namespace_instance_id, object_name, idempotency_key)\
                 )",
                 "CREATE INDEX idx_artifact_data_object_copy_ops_scope \
-                 ON module_artifact_data_object_copy_operations (tenant_id, module_slug, source_contract_revision, target_contract_revision, status)",
+                 ON module_artifact_data_object_copy_operations (tenant_id, data_owner_id, source_namespace_instance_id, target_namespace_instance_id, status)",
                 "ALTER TABLE module_artifact_data_object_copy_operations ENABLE ROW LEVEL SECURITY",
                 "CREATE POLICY module_artifact_data_object_copy_operations_scope \
                  ON module_artifact_data_object_copy_operations \
@@ -44,9 +44,9 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_artifact_data_object_copy_operations (\
                     operation_id TEXT PRIMARY KEY NOT NULL,\
                     tenant_id TEXT NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    source_contract_revision INTEGER NOT NULL CHECK (source_contract_revision > 0),\
-                    target_contract_revision INTEGER NOT NULL CHECK (target_contract_revision > 0),\
+                    data_owner_id TEXT NOT NULL,\
+                    source_namespace_instance_id TEXT NOT NULL,\
+                    target_namespace_instance_id TEXT NOT NULL,\
                     inventory_manifest_digest TEXT NOT NULL CHECK (length(inventory_manifest_digest) = 71),\
                     object_name TEXT NOT NULL CHECK (length(object_name) BETWEEN 1 AND 256),\
                     storage_key TEXT NOT NULL,\
@@ -60,10 +60,10 @@ impl MigrationTrait for Migration {
                     reason TEXT NOT NULL CHECK (length(trim(reason)) BETWEEN 1 AND 2000),\
                     created_at TEXT NOT NULL,\
                     committed_at TEXT NULL,\
-                    UNIQUE (tenant_id, module_slug, source_contract_revision, target_contract_revision, object_name, idempotency_key)\
+                    UNIQUE (tenant_id, data_owner_id, source_namespace_instance_id, target_namespace_instance_id, object_name, idempotency_key)\
                 )",
                 "CREATE INDEX idx_artifact_data_object_copy_ops_scope \
-                 ON module_artifact_data_object_copy_operations (tenant_id, module_slug, source_contract_revision, target_contract_revision, status)",
+                 ON module_artifact_data_object_copy_operations (tenant_id, data_owner_id, source_namespace_instance_id, target_namespace_instance_id, status)",
             ],
             backend => {
                 return Err(DbErr::Migration(format!(

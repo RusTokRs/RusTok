@@ -20,8 +20,7 @@ use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
 use crate::modules::ManifestError;
 use crate::services::artifact_purge_recovery_host::{
-    ServerArtifactDataPurgeAuthorizer, ServerArtifactSettingsRecoveryAuthorizer,
-    ServerArtifactSettingsRecoveryCipher,
+    ArtifactSettingsRecoveryRuntime, ServerArtifactDataPurgeAuthorizer,
 };
 use crate::services::artifact_ui::execute_artifact_ui_action as execute_artifact_ui_action_service;
 #[cfg(test)]
@@ -688,7 +687,17 @@ fn map_artifact_ui_action_error(error: ServerError) -> FieldError {
     }
 }
 
-fn map_artifact_settings_recovery_error(err: ArtifactSettingsRecoveryError) -> FieldError {
+fn artifact_settings_recovery_runtime<'a>(
+    ctx: &Context<'a>,
+) -> Result<&'a ArtifactSettingsRecoveryRuntime> {
+    ctx.data::<ArtifactSettingsRecoveryRuntime>().map_err(|_| {
+        <FieldError as GraphQLError>::internal_error("Artifact settings recovery is unavailable")
+    })
+}
+
+pub(crate) fn map_artifact_settings_recovery_error(
+    err: ArtifactSettingsRecoveryError,
+) -> FieldError {
     match err {
         ArtifactSettingsRecoveryError::PolicyDenied => {
             <FieldError as GraphQLError>::permission_denied(
@@ -717,19 +726,39 @@ fn map_artifact_settings_recovery_error(err: ArtifactSettingsRecoveryError) -> F
         ArtifactSettingsRecoveryError::CiphertextIntegrity => {
             <FieldError as GraphQLError>::bad_user_input("Ciphertext integrity verification failed")
         }
-        other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
+        other => {
+            tracing::error!(error = %other, "Artifact settings recovery operation failed");
+            <FieldError as GraphQLError>::internal_error(
+                "Artifact settings recovery is unavailable",
+            )
+        }
     }
 }
 
-fn map_artifact_data_purge_error(err: ArtifactDataError) -> FieldError {
+pub(crate) fn map_artifact_data_purge_error(err: ArtifactDataError) -> FieldError {
     match err {
         ArtifactDataError::PurgePrecondition => <FieldError as GraphQLError>::bad_user_input(
-            "Data purge precondition failed: namespace must be uninstalled/retired and reason non-empty",
+            "Data purge preconditions are not satisfied",
         ),
         ArtifactDataError::NamespacePurged => {
             <FieldError as GraphQLError>::bad_user_input("Data namespace has already been purged")
         }
-        other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
+        ArtifactDataError::PolicyDenied => <FieldError as GraphQLError>::permission_denied(
+            "Artifact data purge policy denied the operation",
+        ),
+        ArtifactDataError::IdempotencyConflict => {
+            <FieldError as GraphQLError>::bad_user_input("Idempotency key conflict")
+        }
+        ArtifactDataError::InvalidScope | ArtifactDataError::InvalidIdempotencyKey => {
+            <FieldError as GraphQLError>::bad_user_input("Artifact data purge command is invalid")
+        }
+        ArtifactDataError::RevisionConflict => <FieldError as GraphQLError>::bad_user_input(
+            "Artifact data namespace revision conflict",
+        ),
+        other => {
+            tracing::error!(error = %other, "Artifact data purge operation failed");
+            <FieldError as GraphQLError>::internal_error("Artifact data purge is unavailable")
+        }
     }
 }
 
@@ -1266,19 +1295,25 @@ impl RootMutation {
                 "Recovery point creation requires non-nil idempotency key and non-negative revisions",
             ));
         }
-        let db = ctx.data::<DatabaseConnection>()?;
-        let control_plane = ModuleControlPlane::new(db.clone());
-        let service = control_plane.artifact_settings_recovery(
-            ServerArtifactSettingsRecoveryAuthorizer,
-            ServerArtifactSettingsRecoveryCipher,
-        );
+        let service = artifact_settings_recovery_runtime(ctx)?;
 
         let result = service
             .create_recovery_point(ArtifactSettingsRecoveryPointCreateRequest {
                 tenant_id: tenant.id,
                 installation_id,
-                expected_installation_revision: expected_installation_revision as u64,
-                expected_settings_revision: expected_settings_revision as u64,
+                expected_installation_revision: u64::try_from(expected_installation_revision)
+                    .map_err(|_| {
+                        <FieldError as GraphQLError>::bad_user_input(
+                            "Artifact installation revision is outside the supported range",
+                        )
+                    })?,
+                expected_settings_revision: u64::try_from(expected_settings_revision).map_err(
+                    |_| {
+                        <FieldError as GraphQLError>::bad_user_input(
+                            "Artifact settings revision is outside the supported range",
+                        )
+                    },
+                )?,
                 context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
                 reason,
             })
@@ -1288,7 +1323,11 @@ impl RootMutation {
         Ok(ArtifactSettingsRecoveryPointReceipt {
             recovery_point_id: result.recovery_point_id,
             settings_instance_id: result.settings_instance_id,
-            settings_revision: result.settings_revision as i64,
+            settings_revision: i64::try_from(result.settings_revision).map_err(|_| {
+                <FieldError as GraphQLError>::internal_error(
+                    "Artifact settings revision exceeds the GraphQL integer range",
+                )
+            })?,
             retain_until: result.retain_until.to_rfc3339(),
         })
     }
@@ -1314,20 +1353,26 @@ impl RootMutation {
                 "Settings purge requires non-nil idempotency key and non-negative revisions",
             ));
         }
-        let db = ctx.data::<DatabaseConnection>()?;
-        let control_plane = ModuleControlPlane::new(db.clone());
-        let service = control_plane.artifact_settings_recovery(
-            ServerArtifactSettingsRecoveryAuthorizer,
-            ServerArtifactSettingsRecoveryCipher,
-        );
+        let service = artifact_settings_recovery_runtime(ctx)?;
 
         let result = service
             .purge(ArtifactSettingsPurgeRequest {
                 tenant_id: tenant.id,
                 installation_id,
                 recovery_point_id,
-                expected_installation_revision: expected_installation_revision as u64,
-                expected_settings_revision: expected_settings_revision as u64,
+                expected_installation_revision: u64::try_from(expected_installation_revision)
+                    .map_err(|_| {
+                        <FieldError as GraphQLError>::bad_user_input(
+                            "Artifact installation revision is outside the supported range",
+                        )
+                    })?,
+                expected_settings_revision: u64::try_from(expected_settings_revision).map_err(
+                    |_| {
+                        <FieldError as GraphQLError>::bad_user_input(
+                            "Artifact settings revision is outside the supported range",
+                        )
+                    },
+                )?,
                 context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
                 reason,
             })
@@ -1337,7 +1382,11 @@ impl RootMutation {
         Ok(ArtifactSettingsPurgeReceipt {
             purge_operation_id: result.purge_operation_id,
             recovery_point_id: result.recovery_point_id,
-            tombstone_revision: result.tombstone_revision as i64,
+            tombstone_revision: i64::try_from(result.tombstone_revision).map_err(|_| {
+                <FieldError as GraphQLError>::internal_error(
+                    "Artifact settings tombstone revision exceeds the GraphQL integer range",
+                )
+            })?,
         })
     }
 
@@ -1357,12 +1406,7 @@ impl RootMutation {
                 "Settings restore requires a non-nil idempotency key",
             ));
         }
-        let db = ctx.data::<DatabaseConnection>()?;
-        let control_plane = ModuleControlPlane::new(db.clone());
-        let service = control_plane.artifact_settings_recovery(
-            ServerArtifactSettingsRecoveryAuthorizer,
-            ServerArtifactSettingsRecoveryCipher,
-        );
+        let service = artifact_settings_recovery_runtime(ctx)?;
 
         let result = service
             .restore(ArtifactSettingsRestoreRequest {
@@ -1370,7 +1414,14 @@ impl RootMutation {
                 recovery_point_id,
                 target_installation_id,
                 expected_target_installation_revision: expected_target_installation_revision
-                    .map(|r| r as u64),
+                    .map(|revision| {
+                        u64::try_from(revision).map_err(|_| {
+                            <FieldError as GraphQLError>::bad_user_input(
+                                "Artifact target installation revision must not be negative",
+                            )
+                        })
+                    })
+                    .transpose()?,
                 context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
                 reason,
             })
@@ -1404,12 +1455,19 @@ impl RootMutation {
         }
         let db = ctx.data::<DatabaseConnection>()?;
         let control_plane = ModuleControlPlane::new(db.clone());
-        let service = control_plane.artifact_data_purge(ServerArtifactDataPurgeAuthorizer);
+        let service =
+            control_plane.artifact_data_purge(ServerArtifactDataPurgeAuthorizer::new(db.clone()));
 
         let result = service
             .purge(ArtifactDataPurgeRequest {
                 installation_id,
-                expected_namespace_revision: expected_namespace_revision as u64,
+                expected_namespace_revision: u64::try_from(expected_namespace_revision).map_err(
+                    |_| {
+                        <FieldError as GraphQLError>::bad_user_input(
+                            "Artifact data namespace revision is outside the supported range",
+                        )
+                    },
+                )?,
                 context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
                 reason,
             })
@@ -1417,8 +1475,16 @@ impl RootMutation {
             .map_err(map_artifact_data_purge_error)?;
 
         Ok(ArtifactDataPurgeReceipt {
-            namespace_revision: result.namespace_revision as i64,
-            purged_records: result.purged_records as i64,
+            namespace_revision: i64::try_from(result.namespace_revision).map_err(|_| {
+                <FieldError as GraphQLError>::internal_error(
+                    "Artifact data namespace revision exceeds the GraphQL integer range",
+                )
+            })?,
+            purged_records: i64::try_from(result.purged_records).map_err(|_| {
+                <FieldError as GraphQLError>::internal_error(
+                    "Artifact data record count exceeds the GraphQL integer range",
+                )
+            })?,
         })
     }
 
@@ -1787,6 +1853,26 @@ mod tests {
 
         let policy_err = map_toggle_module_error(ToggleModuleError::Policy("policy".to_string()));
         assert!(!policy_err.message.is_empty());
+    }
+
+    #[test]
+    fn artifact_purge_errors_hide_storage_details_and_preserve_policy_denial() {
+        use rustok_modules::{ArtifactDataError, ArtifactSettingsRecoveryError};
+        let data = super::map_artifact_data_purge_error(ArtifactDataError::Storage(
+            "private connection string and SQL".to_string(),
+        ));
+        assert_eq!(data.message, "Artifact data purge is unavailable");
+        let settings = super::map_artifact_settings_recovery_error(
+            ArtifactSettingsRecoveryError::Storage("private ciphertext and SQL".to_string()),
+        );
+        assert_eq!(
+            settings.message,
+            "Artifact settings recovery is unavailable"
+        );
+        let denied = super::map_artifact_data_purge_error(ArtifactDataError::PolicyDenied);
+        assert_eq!(error_code(&denied), Some("PERMISSION_DENIED".to_string()));
+        let conflict = super::map_artifact_data_purge_error(ArtifactDataError::IdempotencyConflict);
+        assert_eq!(conflict.message, "Idempotency key conflict");
     }
 
     #[test]

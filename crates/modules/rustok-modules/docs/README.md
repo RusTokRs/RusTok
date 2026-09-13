@@ -492,10 +492,18 @@ only an exact installation; the owner derives the current namespace scope from
 that installation's admitted descriptor and capability grant, binds the
 durable receipt to `(tenant_id, installation_id, idempotency_key)`, and repeats
 the inactive-plus-uninstalled lifecycle fence inside its write transaction.
+The server authorizer binds tenant and installation to owner-derived facts and
+resolves persisted `modules:manage` grants without request/cache snapshots.
+The relation reader and current tenant-policy decision belong to `rustok-rbac`;
+the server only binds module-owner context and consumes that decision.
+This is a policy read, not an atomic revocation or traffic/job/write fence.
+Transport errors hide storage details and receipt integers are checked.
 The matching preview is an owner read projection, not a GraphQL-side database
-join. Until the physical structured-data namespace itself is rekeyed by stable
-data owner, an active tenant-visible installation with the same slug makes a
-historical namespace ambiguous and the preview/apply path fails closed. Dynamic artifact settings
+join. The in-progress physical cutover binds serving collisions to the exact
+tenant/owner/instance; an active different owner with the same slug has separate
+bytes. The updated purge integration verifies this storage boundary, terminal
+replay, and permanent root tombstones. Remaining cutover and recovery gates
+stay open. Dynamic artifact settings
 have a separate owner service for recovery-point creation, purge, and restore.
 It requires an inactive uninstalled source installation, exact
 scope/data-owner/settings-instance/revision/schema/descriptor/value identity,
@@ -510,6 +518,14 @@ same owner; after uninstall/retirement it remains unbound and never resurrects
 the old installation. It never snapshots or deletes role/actor grants or
 external secret bytes, and cannot borrow an artifact-data snapshot as
 authorization.
+
+The plaintext-tag cipher and permissive settings authorizer were deleted.
+Settings mutations now consume a host-composed owner service through
+`GraphqlRuntimeInputs`; absent policy/encryption ports return unavailable, and
+the matching preview cannot indicate apply readiness. The owner accepts shared
+ports without default implementations. Real encryption/KMS and owner-backed
+retention/secret-handle/hold/fence composition remain incomplete. Owner-port
+tests do not prove encrypted recovery, KMS rotation, or production hold safety.
 
 The target also installs an owner compatibility guard before a dynamic or
 native/static settings-bearing rollout. It binds both N/N+1 schema digests and
@@ -574,6 +590,30 @@ target restores into a new isolated empty namespace instance under the same
 stable data-owner identity, verifies it fully, and performs a separately
 authorized active-reference CAS cutover. The old namespace remains tombstoned;
 crash replay cannot clear it, attach by slug, or expose two active instances.
+The existing `data_post_purge_recovery` ledger does not implement this target:
+it records snapshot counts without restoring bytes, marks the ledger verified
+without content verification, and attempts to clear the original purge row
+at cutover. Schema tombstones reject that mutation. It must be replaced with
+the atomic owner/instance storage cutover;
+its current tests cannot establish usable post-purge recovery.
+
+The physical cutover is in progress. Pending schemas and broker SQL now use
+tenant/owner/opaque instance identities, with immutable namespace metadata and
+a revisioned tenant/owner serving reference. Data broker resolution initializes
+only the exact installation's first empty instance and reads this reference;
+ordinary writes never initialize namespaces. Private object/upload/snapshot/
+restore keys include the same owner/instance identities. Restore selects a
+distinct staging instance without a serving reference. Snapshot/restore copies
+reserve one durable key before publication and re-read actual target bytes.
+Restore holds its source snapshot, verifies all target rows and object bytes,
+then seals the target as verified with a source/target fingerprint. Verified
+metadata cannot be changed or deleted; verification evidence cannot be removed,
+and the instance cannot return to staging. Collection checks active holds at
+admission and resume. Missing copy parents remain unresolved, with no age-based
+orphan deletion. The focused real-storage test passes 1/1. Remaining callers,
+fixtures, secret/MCP scope separation, actual migration-object copy, and
+authorized active-reference cutover are not yet closed. This worktree is
+not a production-ready post-purge recovery path.
 
 Final registry publication revalidates localized rows loaded from the database.
 Every locale must already be canonical, names and descriptions must satisfy the

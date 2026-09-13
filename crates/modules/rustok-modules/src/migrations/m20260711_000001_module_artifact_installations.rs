@@ -30,6 +30,8 @@ impl MigrationTrait for Migration {
                     entrypoint TEXT NOT NULL,\
                     descriptor JSONB NOT NULL,\
                     data_owner_id UUID NOT NULL,\
+                    namespace_instance_id UUID NULL,\
+                    secret_instance_id UUID NULL,\
                     settings_instance_id UUID NOT NULL,\
                     dependency_graph_revision BIGINT NOT NULL,\
                     dependency_graph_digest TEXT NOT NULL,\
@@ -66,6 +68,8 @@ impl MigrationTrait for Migration {
                     entrypoint TEXT NOT NULL,\
                     descriptor JSON NOT NULL,\
                     data_owner_id TEXT NOT NULL,\
+                    namespace_instance_id TEXT NULL,\
+                    secret_instance_id TEXT NULL,\
                     settings_instance_id TEXT NOT NULL,\
                     dependency_graph_revision INTEGER NOT NULL,\
                     dependency_graph_digest TEXT NOT NULL,\

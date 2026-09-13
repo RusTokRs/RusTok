@@ -13,8 +13,8 @@ impl MigrationTrait for Migration {
             DbBackend::Postgres => &[
                 "CREATE TABLE module_artifact_data_objects (\
                     tenant_id UUID NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision BIGINT NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id UUID NOT NULL,\
+                    namespace_instance_id UUID NOT NULL,\
                     object_name TEXT NOT NULL CHECK (length(object_name) BETWEEN 1 AND 256),\
                     storage_key TEXT NOT NULL UNIQUE,\
                     content_type TEXT NOT NULL CHECK (length(content_type) BETWEEN 1 AND 128),\
@@ -23,7 +23,7 @@ impl MigrationTrait for Migration {
                     revision BIGINT NOT NULL CHECK (revision > 0),\
                     created_at TIMESTAMPTZ NOT NULL,\
                     updated_at TIMESTAMPTZ NOT NULL,\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, object_name)\
+                    PRIMARY KEY (tenant_id, data_owner_id, namespace_instance_id, object_name)\
                 )",
                 "ALTER TABLE module_artifact_data_objects ENABLE ROW LEVEL SECURITY",
                 "CREATE POLICY module_artifact_data_objects_scope ON module_artifact_data_objects \
@@ -32,8 +32,8 @@ impl MigrationTrait for Migration {
             ],
             DbBackend::Sqlite => &["CREATE TABLE module_artifact_data_objects (\
                     tenant_id TEXT NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id TEXT NOT NULL,\
+                    namespace_instance_id TEXT NOT NULL,\
                     object_name TEXT NOT NULL CHECK (length(object_name) BETWEEN 1 AND 256),\
                     storage_key TEXT NOT NULL UNIQUE,\
                     content_type TEXT NOT NULL CHECK (length(content_type) BETWEEN 1 AND 128),\
@@ -42,7 +42,7 @@ impl MigrationTrait for Migration {
                     revision INTEGER NOT NULL CHECK (revision > 0),\
                     created_at TEXT NOT NULL,\
                     updated_at TEXT NOT NULL,\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, object_name)\
+                    PRIMARY KEY (tenant_id, data_owner_id, namespace_instance_id, object_name)\
                 )"],
             backend => {
                 return Err(DbErr::Migration(format!(
@@ -59,6 +59,8 @@ impl MigrationTrait for Migration {
                 ))
                 .await?;
         }
+        super::protect_artifact_data_namespace_writes(manager, "module_artifact_data_objects")
+            .await?;
         Ok(())
     }
 
@@ -66,6 +68,8 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared("DROP TABLE module_artifact_data_objects")
+            .await?;
+        super::drop_artifact_data_namespace_write_guard(manager, "module_artifact_data_objects")
             .await?;
         Ok(())
     }

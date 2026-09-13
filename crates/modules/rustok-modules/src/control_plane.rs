@@ -377,8 +377,11 @@ impl ModuleControlPlane {
     }
 
     /// Returns the durable per-copy snapshot/restore intent and staging receipt service.
-    pub fn artifact_data_snapshot_intents(&self) -> ArtifactDataSnapshotIntentService {
-        ArtifactDataSnapshotIntentService::new(self.db.clone())
+    pub fn artifact_data_snapshot_intents(
+        &self,
+        storage: StorageRuntime,
+    ) -> ArtifactDataSnapshotIntentService {
+        ArtifactDataSnapshotIntentService::new(self.db.clone(), storage)
     }
 
     /// Returns the post-purge artifact data recovery service for isolated staging and verified CAS cutover.

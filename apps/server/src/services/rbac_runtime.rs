@@ -3,7 +3,7 @@ use crate::error::Result;
 use async_trait::async_trait;
 use moka::future::Cache;
 use once_cell::sync::Lazy;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::DatabaseConnection;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -12,14 +12,12 @@ use std::time::{Duration, Instant};
 #[cfg(test)]
 use rustok_core::UserRole;
 
-use rustok_api::{Action, Permission, Resource};
+use rustok_api::Permission;
 use rustok_rbac::{
     AuthorizationDecision, DeniedReasonKind, PermissionCache, PermissionCacheLookup,
-    RelationPermissionStore, RuntimePermissionResolver, authorize_all_permissions,
+    RuntimePermissionResolver, SeaOrmRelationPermissionStore, authorize_all_permissions,
     authorize_any_permission, authorize_permission, invalidate_cached_permissions,
 };
-
-use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
 
 #[cfg(test)]
 use super::rbac_persistence::assign_role_permissions_via_store;
@@ -221,7 +219,7 @@ pub(crate) fn observe_authorization_decision(decision: &AuthorizationDecision, l
 
 pub(crate) fn resolver(db: &DatabaseConnection) -> ServerRuntimePermissionResolver {
     RuntimePermissionResolver::new(
-        SeaOrmRelationPermissionStore { db: db.clone() },
+        SeaOrmRelationPermissionStore::new(db.clone()),
         MokaPermissionCache,
     )
 }
@@ -323,11 +321,6 @@ pub(crate) fn reset_metrics_for_tests() {
 }
 
 #[derive(Clone)]
-pub(crate) struct SeaOrmRelationPermissionStore {
-    db: DatabaseConnection,
-}
-
-#[derive(Clone)]
 pub(crate) struct MokaPermissionCache;
 
 #[async_trait]
@@ -407,99 +400,18 @@ impl PermissionCache for MokaPermissionCache {
     }
 }
 
-#[async_trait]
-impl RelationPermissionStore for SeaOrmRelationPermissionStore {
-    type Error = Error;
-
-    async fn load_user_role_ids(&self, user_id: &uuid::Uuid) -> Result<Vec<uuid::Uuid>> {
-        let Some(user) = users::Entity::find_by_id(*user_id).one(&self.db).await? else {
-            return Ok(Vec::new());
-        };
-
-        let assigned_role_ids = user_roles::Entity::find()
-            .filter(user_roles::Column::UserId.eq(*user_id))
-            .all(&self.db)
-            .await?
-            .into_iter()
-            .map(|user_role| user_role.role_id)
-            .collect::<Vec<_>>();
-        if assigned_role_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let user_tenant_roles = roles::Entity::find()
-            .filter(roles::Column::TenantId.eq(user.tenant_id))
-            .filter(roles::Column::Id.is_in(assigned_role_ids))
-            .all(&self.db)
-            .await?;
-
-        Ok(user_tenant_roles.into_iter().map(|role| role.id).collect())
-    }
-
-    async fn load_tenant_role_ids(
-        &self,
-        tenant_id: &uuid::Uuid,
-        role_ids: &[uuid::Uuid],
-    ) -> Result<Vec<uuid::Uuid>> {
-        let tenant_role_models = roles::Entity::find()
-            .filter(roles::Column::TenantId.eq(*tenant_id))
-            .filter(roles::Column::Id.is_in(role_ids.iter().copied()))
-            .all(&self.db)
-            .await?;
-
-        Ok(tenant_role_models.into_iter().map(|role| role.id).collect())
-    }
-
-    async fn load_permissions_for_roles(
-        &self,
-        tenant_id: &uuid::Uuid,
-        role_ids: &[uuid::Uuid],
-    ) -> Result<Vec<Permission>> {
-        let role_permission_models = role_permissions::Entity::find()
-            .filter(role_permissions::Column::RoleId.is_in(role_ids.iter().copied()))
-            .all(&self.db)
-            .await?;
-
-        if role_permission_models.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let permission_ids: Vec<uuid::Uuid> = role_permission_models
-            .into_iter()
-            .map(|role_permission| role_permission.permission_id)
-            .collect();
-
-        let permission_models = permissions::Entity::find()
-            .filter(permissions::Column::TenantId.eq(*tenant_id))
-            .filter(permissions::Column::Id.is_in(permission_ids))
-            .all(&self.db)
-            .await?;
-
-        let mut result = Vec::with_capacity(permission_models.len());
-        for permission in permission_models {
-            let resource = permission
-                .resource
-                .parse::<Resource>()
-                .map_err(Error::BadRequest)?;
-            let action = permission
-                .action
-                .parse::<Action>()
-                .map_err(Error::BadRequest)?;
-            result.push(Permission::new(resource, action));
-        }
-
-        Ok(result)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::_entities::{roles, user_roles};
     use crate::models::{tenants, users as user_models};
     use chrono::Utc;
+    use rustok_api::{Action, Resource};
     use rustok_core::UserStatus;
     use rustok_migrations::SqliteTestMigrator as Migrator;
+    use rustok_rbac::RelationPermissionStore;
     use rustok_test_utils::db::setup_test_db_with_migrations;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     use sea_orm::{ConnectionTrait, Set};
     use serial_test::serial;
 
@@ -691,7 +603,7 @@ mod tests {
             .is_err()
         );
 
-        let store = SeaOrmRelationPermissionStore { db };
+        let store = SeaOrmRelationPermissionStore::new(db);
         let role_ids = store
             .load_user_role_ids(&user_a)
             .await

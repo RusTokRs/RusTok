@@ -20,7 +20,16 @@ documentation for this module must live inside the crate, not spread across
 
 ## Integration
 
-- `apps/server` owns only the adapter/wiring layer: store adapters, cache integration, transport extractors and observability;
+- `SeaOrmRelationPermissionStore` owns persisted relation reads for both cached
+  runtime and uncached decisions. `authorize_current_permission` evaluates
+  those current grants through the canonical tenant policy engine; it never
+  consumes request snapshots and does not establish a revocation fence;
+- `resolve_persisted_permissions_on` uses that same reader on a host-supplied
+  connection or transaction; server authoritative reads delegate here;
+- `RbacRoleAssignmentDbWriter::remove_tenant_role_assignments_on` validates
+  persisted subject tenancy and owns membership deletion inside the host transaction;
+- `apps/server` owns only authenticated adapters, cache integration, transport
+  extractors and observability; it no longer implements the persisted relation reader;
 - GraphQL role query/mutation/types live in `rustok-rbac`; `apps/server` only composes roots and passes adapter role records to runtime persistence;
 - `rustok-core` remains the owner of typed primitives (`Permission`, `Resource`, `Action`, `SecurityContext`);
 - live authorization goes only through tenant policy evaluation, without a relation-only/shadow parity path;

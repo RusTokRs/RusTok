@@ -10,6 +10,7 @@ without hiding the external library behind a RusToK CRUD facade.
 - local and optional S3-compatible runtime configuration;
 - `Arc<dyn object_store::ObjectStore>` and optional `Signer` composition;
 - chronological and SHA-256 key construction;
+- opaque tenant/owner/instance namespace keys for isolated mutable storage;
 - public delivery-base and backend-kind diagnostics.
 
 ## Interactions

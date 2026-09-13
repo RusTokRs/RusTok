@@ -1,7 +1,7 @@
 # Module release rollback safety
 
 - Date: 2026-08-06
-- Status: Accepted, amended on 2026-08-09
+- Status: Accepted, amended on 2026-09-12
 - Supersedes in part:
   - the rebuild-on-rollback rule in
     [Static Promotion Review Boundary](./2026-07-22-static-promotion-review-boundary.md);
@@ -98,6 +98,35 @@ A static rollback can therefore return every module co-released in the direct
 predecessor composition. Operator preflight shows that complete blast radius.
 Unchanged dynamic dependencies and active dependents are eligibility evidence,
 not mutation targets.
+
+### Host-Composed Protected Recovery
+
+Artifact mutable storage uses the canonical physical key
+`(tenant_id, data_owner_id, namespace_instance_id)`. Namespace identity and
+contract metadata are immutable; purged roots remain tombstones. A revisioned
+tenant/owner reference selects the serving instance. Admission may initialize
+only an exact installation's first empty instance. Restore writes a distinct
+empty non-serving instance and cannot initialize or replace serving state.
+Full content verification precedes a separate authorized reference CAS.
+Private bytes use the shared storage namespace scope with the same opaque
+owner/instance identifiers. Schema and key primitives do not establish policy,
+traffic/job/write fences, recovery holds, or operational convergence by themselves.
+
+Protected settings recovery is composed as the modules owner service with
+explicit shared policy and authenticated encryption ports. GraphQL consumes
+that service from host runtime inputs and never constructs a default policy,
+fabricated retention/secret-handle evidence, or plaintext-tag cipher. Missing
+composition denies operations and apply readiness. Real KMS, retention, secret
+continuity, holds, and terminal-fence adapters remain implementation gates;
+an injectable port alone does not satisfy them.
+
+RBAC owns the persisted relation reader for cached and current decisions,
+including authoritative reads on host-supplied transactions. The host does not
+retain a separate permissions query or tenant membership deletion implementation.
+Maintenance authorization uses current persisted grants through the canonical
+tenant policy engine; the host binds authenticated module-command and owner
+context, then consumes the decision. An uncached decision is not a
+transaction-spanning revocation or traffic/job/write fence.
 
 ### Artifact Planes and Physical Deployment
 

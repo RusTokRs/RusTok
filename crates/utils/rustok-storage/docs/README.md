@@ -1,5 +1,11 @@
 # `rustok-storage` documentation
 
+`ObjectScope::Namespace` includes non-nil tenant, owner, and instance UUIDs in
+the physical key. Module data upload, objects, snapshot bytes, and restore bytes
+use this scope. Display slugs and contract revisions are not physical selectors.
+The owning module still controls metadata, serving references, copy intents,
+retention, and deletion authorization; a scoped key alone does not fence writes.
+
 `rustok-storage` constructs RusToK's direct `object_store` runtime and owns the
 canonical object-key policy. It is infrastructure support, not a domain service
 and not the owner of stored objects.

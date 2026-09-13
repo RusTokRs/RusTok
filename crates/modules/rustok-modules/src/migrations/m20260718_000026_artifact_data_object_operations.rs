@@ -14,8 +14,8 @@ impl MigrationTrait for Migration {
             DbBackend::Postgres => &[
                 "CREATE TABLE module_artifact_data_object_operations (\
                     tenant_id UUID NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision BIGINT NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id UUID NOT NULL,\
+                    namespace_instance_id UUID NOT NULL,\
                     policy_revision BIGINT NOT NULL CHECK (policy_revision > 0),\
                     idempotency_key UUID NOT NULL,\
                     object_name TEXT NOT NULL CHECK (length(object_name) BETWEEN 1 AND 256),\
@@ -26,7 +26,7 @@ impl MigrationTrait for Migration {
                     expected_revision BIGINT NULL CHECK (expected_revision > 0),\
                     revision BIGINT NOT NULL CHECK (revision > 0),\
                     completed_at TIMESTAMPTZ NOT NULL,\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key)\
+                    PRIMARY KEY (tenant_id, data_owner_id, namespace_instance_id, policy_revision, idempotency_key)\
                 )",
                 "ALTER TABLE module_artifact_data_object_operations ENABLE ROW LEVEL SECURITY",
                 "CREATE POLICY module_artifact_data_object_operations_scope ON module_artifact_data_object_operations \
@@ -35,8 +35,8 @@ impl MigrationTrait for Migration {
             ],
             DbBackend::Sqlite => &["CREATE TABLE module_artifact_data_object_operations (\
                     tenant_id TEXT NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id TEXT NOT NULL,\
+                    namespace_instance_id TEXT NOT NULL,\
                     policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),\
                     idempotency_key TEXT NOT NULL,\
                     object_name TEXT NOT NULL CHECK (length(object_name) BETWEEN 1 AND 256),\
@@ -47,7 +47,7 @@ impl MigrationTrait for Migration {
                     expected_revision INTEGER NULL CHECK (expected_revision > 0),\
                     revision INTEGER NOT NULL CHECK (revision > 0),\
                     completed_at TEXT NOT NULL,\
-                    PRIMARY KEY (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key)\
+                    PRIMARY KEY (tenant_id, data_owner_id, namespace_instance_id, policy_revision, idempotency_key)\
                 )"],
             backend => {
                 return Err(DbErr::Migration(format!(

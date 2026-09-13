@@ -15,8 +15,8 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_artifact_data_object_gc_candidates (\
                     candidate_id UUID PRIMARY KEY,\
                     tenant_id UUID NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision BIGINT NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id UUID NOT NULL,\
+                    namespace_instance_id UUID NOT NULL,\
                     policy_revision BIGINT NOT NULL CHECK (policy_revision > 0),\
                     storage_key TEXT NOT NULL UNIQUE,\
                     queued_at TIMESTAMPTZ NOT NULL\
@@ -33,8 +33,8 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_artifact_data_object_gc_candidates (\
                     candidate_id TEXT PRIMARY KEY,\
                     tenant_id TEXT NOT NULL,\
-                    module_slug TEXT NOT NULL,\
-                    data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
+                    data_owner_id TEXT NOT NULL,\
+                    namespace_instance_id TEXT NOT NULL,\
                     policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),\
                     storage_key TEXT NOT NULL UNIQUE,\
                     queued_at TEXT NOT NULL\

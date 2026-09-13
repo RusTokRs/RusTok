@@ -248,6 +248,7 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
     let actor_id = Uuid::new_v4();
     let installation_id = Uuid::new_v4();
     let data_owner_id = Uuid::new_v4();
+    let namespace_instance_id = Uuid::new_v4();
     let settings_instance_id = Uuid::new_v4();
 
     let schema = serde_json::json!({
@@ -265,6 +266,12 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         schema_digest.clone(),
         schema.clone(),
     );
+    let data_contract_digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(
+            serde_json::to_vec(desc.persistence_contract.as_ref().unwrap()).unwrap()
+        ))
+    );
 
     // 1. Insert installation and settings instance
     database
@@ -273,9 +280,9 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
             "INSERT INTO module_artifact_installations (\
                 installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, slug, version, payload_kind, \
                 runtime_abi, payload_digest, entrypoint, descriptor, data_owner_id, settings_instance_id, dependency_graph_revision, \
-                dependency_graph_digest, dependency_lock, installed_at\
+                dependency_graph_digest, dependency_lock, installed_at, namespace_instance_id\
              ) VALUES (?1, 'tenant', ?2, 'registry.example', 'modules/recovery', ?3, 'theme_manager', '1.0.0', 'rhai', \
-                'rustok:module/runtime@1', ?4, 'main', ?5, ?6, ?7, 1, ?8, '{}', '2026-08-13T00:00:00Z')",
+                'rustok:module/runtime@1', ?4, 'main', ?5, ?6, ?7, 1, ?8, '{}', '2026-08-13T00:00:00Z', ?9)",
             vec![
                 installation_id.to_string().into(),
                 tenant_id.to_string().into(),
@@ -285,6 +292,7 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
                 data_owner_id.to_string().into(),
                 settings_instance_id.to_string().into(),
                 format!("sha256:{}", "e".repeat(64)).into(),
+                namespace_instance_id.to_string().into(),
             ],
         ))
         .await
@@ -324,14 +332,31 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
     database
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "INSERT INTO module_artifact_data_namespaces (tenant_id, module_slug, data_contract_revision, namespace_revision, created_at, updated_at) VALUES (?1, ?2, 1, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
+            "INSERT INTO module_artifact_data_namespaces
+             (tenant_id, data_owner_id, namespace_instance_id, module_slug, data_contract_revision,
+              data_contract_digest, state, namespace_revision, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 'theme_manager', 1, ?4, 'serving', 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
             vec![
                 tenant_id.to_string().into(),
-                "theme_manager".to_string().into(),
+                data_owner_id.to_string().into(),
+                namespace_instance_id.to_string().into(),
+                data_contract_digest.into(),
             ],
         ))
         .await
         .expect("insert data namespace");
+    database.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+        "INSERT INTO module_artifact_data_owner_references
+         (tenant_id, data_owner_id, namespace_instance_id, reference_revision) VALUES (?1, ?2, ?3, 1)",
+        vec![tenant_id.to_string().into(), data_owner_id.to_string().into(), namespace_instance_id.to_string().into()]
+    )).await.expect("insert owner serving reference");
+    database.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+        "INSERT INTO module_artifact_data (tenant_id, data_owner_id, namespace_instance_id, data_key,
+                                          value, value_size_bytes, revision, updated_at)
+         VALUES (?1, ?2, ?3, 'theme', ?4, length(?4), 1, '2026-09-13T00:00:00Z')",
+        vec![tenant_id.to_string().into(), data_owner_id.to_string().into(), namespace_instance_id.to_string().into(),
+            serde_json::json!({"theme": "ocean"}).to_string().into()]
+    )).await.expect("source owner value fixture");
     let data_purge_service = SeaOrmArtifactDataPurgeService::new(database.clone(), TestAuthorizer);
     let data_purge_req = ArtifactDataPurgeRequest {
         installation_id,
@@ -404,10 +429,8 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         .await
         .expect("insert uninstall evidence");
 
-    // The current physical namespace key is still slug/revision based. A
-    // differently owned active installation with the same slug must therefore
-    // block destructive access to this historical namespace until the broader
-    // data-owner storage cutover is complete.
+    // A serving successor that retains this exact owner/instance blocks purge,
+    // independently of its release version and the retired source installation.
     let conflicting_installation_id = Uuid::new_v4();
     let conflicting_descriptor = descriptor(
         "theme_manager",
@@ -421,9 +444,9 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
             "INSERT INTO module_artifact_installations (\
                 installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, slug, version, payload_kind, \
                 runtime_abi, payload_digest, entrypoint, descriptor, data_owner_id, settings_instance_id, dependency_graph_revision, \
-                dependency_graph_digest, dependency_lock, installed_at\
+                dependency_graph_digest, dependency_lock, installed_at, namespace_instance_id\
              ) VALUES (?1, 'tenant', ?2, 'registry.example', 'modules/recovery', ?3, 'theme_manager', '1.0.1', 'rhai', \
-                'rustok:module/runtime@1', ?4, 'main', ?5, ?6, ?7, 1, ?8, '{}', '2026-08-13T00:00:00Z')",
+                'rustok:module/runtime@1', ?4, 'main', ?5, ?6, ?7, 1, ?8, '{}', '2026-08-13T00:00:00Z', ?9)",
             vec![
                 conflicting_installation_id.to_string().into(),
                 tenant_id.to_string().into(),
@@ -433,9 +456,10 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
                     serde_json::to_value(&conflicting_descriptor)
                         .expect("conflicting descriptor JSON"),
                 ))),
-                Uuid::new_v4().to_string().into(),
+                data_owner_id.to_string().into(),
                 Uuid::new_v4().to_string().into(),
                 format!("sha256:{}", "2".repeat(64)).into(),
+                namespace_instance_id.to_string().into(),
             ],
         ))
         .await
@@ -470,6 +494,68 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         .await
         .expect("retire conflicting installation");
 
+    // Another owner can serve the same display slug without sharing bytes.
+    let foreign_installation_id = Uuid::new_v4();
+    let foreign_owner_id = Uuid::new_v4();
+    let foreign_namespace_id = Uuid::new_v4();
+    database.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+        "INSERT INTO module_artifact_installations
+         (installation_id, scope_kind, tenant_id, registry, repository, manifest_digest, slug, version, payload_kind,
+          runtime_abi, payload_digest, entrypoint, descriptor, data_owner_id, settings_instance_id,
+          dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at, namespace_instance_id)
+         SELECT ?1, scope_kind, tenant_id, registry, repository, ?5, slug, version, payload_kind,
+                runtime_abi, payload_digest, entrypoint, descriptor, ?2, ?6,
+                dependency_graph_revision, dependency_graph_digest, dependency_lock, installed_at, ?3
+         FROM module_artifact_installations WHERE installation_id = ?4",
+        vec![foreign_installation_id.to_string().into(), foreign_owner_id.to_string().into(),
+            foreign_namespace_id.to_string().into(), conflicting_installation_id.to_string().into(),
+            format!("sha256:{}", "4".repeat(64)).into(), Uuid::new_v4().to_string().into()]
+    )).await.expect("foreign owner installation fixture");
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_data_namespaces
+         (tenant_id, data_owner_id, namespace_instance_id, module_slug, data_contract_revision,
+          data_contract_digest, state, namespace_revision, purged_at, created_at, updated_at)
+         SELECT tenant_id, ?2, ?3, module_slug, data_contract_revision,
+                data_contract_digest, 'serving', 1, NULL, created_at, updated_at
+         FROM module_artifact_data_namespaces WHERE tenant_id = ?1 AND data_owner_id = ?4",
+            vec![
+                tenant_id.to_string().into(),
+                foreign_owner_id.to_string().into(),
+                foreign_namespace_id.to_string().into(),
+                data_owner_id.to_string().into(),
+            ],
+        ))
+        .await
+        .expect("foreign owner namespace fixture");
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_artifact_data_owner_references VALUES (?1, ?2, ?3, 1)",
+            vec![
+                tenant_id.to_string().into(),
+                foreign_owner_id.to_string().into(),
+                foreign_namespace_id.to_string().into(),
+            ],
+        ))
+        .await
+        .expect("foreign owner reference fixture");
+    database.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+        "INSERT INTO module_artifact_admissions
+         (stage_id, installation_id, payload_digest, media_type, size_bytes, verification_evidence, status, revision, committed_at)
+         SELECT ?2, ?3, payload_digest, media_type, size_bytes, verification_evidence, 'active', 1, committed_at
+         FROM module_artifact_admissions WHERE installation_id = ?1",
+        vec![conflicting_installation_id.to_string().into(), Uuid::new_v4().to_string().into(), foreign_installation_id.to_string().into()]
+    )).await.expect("foreign owner serving admission fixture");
+    database.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+        "INSERT INTO module_artifact_data (tenant_id, data_owner_id, namespace_instance_id, data_key,
+                                          value, value_size_bytes, revision, updated_at)
+         VALUES (?1, ?2, ?3, 'theme', ?4, length(?4), 1, '2026-09-13T00:00:00Z')",
+        vec![tenant_id.to_string().into(), foreign_owner_id.to_string().into(), foreign_namespace_id.to_string().into(),
+            serde_json::json!({"theme": "foreign-owner"}).to_string().into()]
+    )).await.expect("foreign owner value fixture");
+
     let retired_data_preview = data_preview_service
         .preview(tenant_id, installation_id)
         .await
@@ -483,7 +569,7 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
         .await
         .expect("create recovery point");
 
-    assert_eq!(recovery_pt.recovery_point_id, recovery_pt.recovery_point_id);
+    assert_eq!(recovery_pt.data_owner_id, data_owner_id);
     let eligible_settings_preview = settings_preview_service
         .preview(tenant_id, installation_id)
         .await
@@ -529,10 +615,98 @@ async fn test_separate_settings_and_data_purge_lifecycle() {
     // 6. Data purge uses the same exact installation ID and succeeds only
     // after the owner lifecycle fence has become retired.
     let data_purge_res = data_purge_service
-        .purge(data_purge_req)
+        .purge(data_purge_req.clone())
         .await
         .expect("data purge succeeds");
 
     assert_eq!(data_purge_res.namespace_revision, 2);
-    assert_eq!(data_purge_res.purged_records, 0);
+    assert_eq!(data_purge_res.purged_records, 1);
+    assert_eq!(
+        data_purge_service
+            .purge(data_purge_req)
+            .await
+            .expect("exact terminal replay"),
+        data_purge_res
+    );
+
+    let foreign_value = database
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT data.value, namespace.purged_at, admission.status
+         FROM module_artifact_data data JOIN module_artifact_data_namespaces namespace
+           ON namespace.tenant_id = data.tenant_id AND namespace.data_owner_id = data.data_owner_id
+          AND namespace.namespace_instance_id = data.namespace_instance_id
+         JOIN module_artifact_admissions admission ON admission.installation_id = ?4
+         WHERE data.tenant_id = ?1 AND data.data_owner_id = ?2 AND data.namespace_instance_id = ?3",
+            vec![
+                tenant_id.to_string().into(),
+                foreign_owner_id.to_string().into(),
+                foreign_namespace_id.to_string().into(),
+                foreign_installation_id.to_string().into(),
+            ],
+        ))
+        .await
+        .expect("foreign data query")
+        .expect("foreign owner data must survive purge");
+    assert_eq!(
+        foreign_value.try_get::<String>("", "status").unwrap(),
+        "active"
+    );
+    assert!(
+        foreign_value
+            .try_get::<Option<String>>("", "purged_at")
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        foreign_value
+            .try_get::<serde_json::Value>("", "value")
+            .unwrap(),
+        serde_json::json!({"theme": "foreign-owner"})
+    );
+
+    for sql in [
+        "UPDATE module_artifact_data_namespaces SET purged_at = NULL WHERE tenant_id = ?1",
+        "UPDATE module_artifact_data_namespaces SET namespace_revision = namespace_revision + 1 WHERE tenant_id = ?1",
+        "DELETE FROM module_artifact_data_namespaces WHERE tenant_id = ?1",
+    ] {
+        assert!(
+            database
+                .execute_raw(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    sql,
+                    vec![tenant_id.to_string().into()],
+                ))
+                .await
+                .is_err(),
+            "direct storage mutation must not change a purged namespace: {sql}"
+        );
+    }
+    database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE module_artifact_data_namespaces SET namespace_revision = namespace_revision WHERE tenant_id = ?1",
+            vec![tenant_id.to_string().into()],
+        ))
+        .await
+        .expect("an unchanged write may acquire the SQLite lifecycle lock");
+    let tombstone = database
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT namespace_revision, purged_at FROM module_artifact_data_namespaces WHERE tenant_id = ?1 AND data_owner_id = ?2",
+            vec![tenant_id.to_string().into(), data_owner_id.to_string().into()],
+        ))
+        .await
+        .expect("tombstone query")
+        .expect("tombstone must remain present");
+    assert_eq!(
+        tombstone.try_get::<i64>("", "namespace_revision").unwrap(),
+        2
+    );
+    assert!(
+        tombstone
+            .try_get::<Option<String>>("", "purged_at")
+            .unwrap()
+            .is_some()
+    );
 }
