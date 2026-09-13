@@ -1,6 +1,4 @@
-use rustok_auth::{
-    oauth_app_translation_lifecycle, oauth_app_translation_resource_revision,
-};
+use crate::{oauth_app_translation_lifecycle, oauth_app_translation_resource_revision};
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
