@@ -13,6 +13,7 @@ use crate::{
             record_product_translation_change_in_tx,
             record_product_variant_translation_changes_in_tx,
         },
+        catalog_schema_service::ProductCatalogSchemaService,
         index_refresh::{
             product_locale_refresh_target, record_product_locale_refreshes_in_tx,
             record_product_variant_refreshes_in_tx,
@@ -171,6 +172,8 @@ impl ProductWriteTransaction {
         let product_locale_id = lifecycle_product_id.or(product_attribute_id);
         let product_variant_id = lifecycle_product_id;
         let variant_translation_change_target = product_variant_translation_change_target(&event);
+        let attribute_translation_change_target =
+            product_attribute_translation_change_target(&event);
         let root_event_id = self
             .event_bus
             .publish_in_tx_with_envelope_id(&self.transaction, tenant_id, actor_id, event)
@@ -225,6 +228,19 @@ impl ProductWriteTransaction {
                 product_id,
                 root_event_id,
                 variant_id,
+            )
+            .await?;
+        }
+
+        if let Some(attribute_id) = attribute_translation_change_target {
+            // Attribute definition copy and active option labels form one Product-owned Translation
+            // aggregate. Every canonical Attribute/Option event recomputes the exact post-command
+            // aggregate inside this transaction. Semantic dedupe suppresses non-copy owner changes.
+            ProductCatalogSchemaService::record_attribute_translation_change_in_tx(
+                &self.transaction,
+                tenant_id,
+                attribute_id,
+                root_event_id,
             )
             .await?;
         }
@@ -324,6 +340,18 @@ impl ProductWriteTransaction {
 fn product_index_revision_touch_target(event: &DomainEvent) -> Option<Uuid> {
     match event {
         DomainEvent::ProductAttributeValuesChanged { product_id } => Some(*product_id),
+        _ => None,
+    }
+}
+
+fn product_attribute_translation_change_target(event: &DomainEvent) -> Option<Uuid> {
+    match event {
+        DomainEvent::ProductAttributeCreated { attribute_id }
+        | DomainEvent::ProductAttributeUpdated { attribute_id }
+        | DomainEvent::ProductAttributeDeleted { attribute_id }
+        | DomainEvent::ProductAttributeOptionCreated { attribute_id, .. }
+        | DomainEvent::ProductAttributeOptionUpdated { attribute_id, .. }
+        | DomainEvent::ProductAttributeOptionDeleted { attribute_id, .. } => Some(*attribute_id),
         _ => None,
     }
 }

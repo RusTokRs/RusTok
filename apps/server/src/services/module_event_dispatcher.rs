@@ -141,7 +141,7 @@ fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
     ensure_stop_handle(ctx);
     let stop_rx = ctx
         .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .expect("StopHandle must exist before marketplace financial worker startup")
+        .expect("StopHandle must exist before paid-order label worker startup")
         .subscribe();
     ctx.shared_insert(
         crate::services::marketplace_financial_worker::spawn_marketplace_financial_worker(
@@ -164,7 +164,7 @@ fn spawn_payment_provider_event_worker_if_enabled(ctx: &ServerRuntimeContext) {
     ensure_stop_handle(ctx);
     let stop_rx = ctx
         .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .expect("StopHandle must exist before payment provider event worker startup")
+        .expect("StopHandle must exist before paid-order label worker startup")
         .subscribe();
     ctx.shared_insert(
         crate::services::payment_provider_event_worker::spawn_payment_provider_event_worker(
@@ -279,7 +279,14 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
             rustok_outbox::OutboxTransport::new(db.clone()),
         ));
-        let service = Arc::new(rustok_product::CatalogService::new(db.clone(), event_bus));
+        let service = Arc::new(rustok_product::CatalogService::new(
+            db.clone(),
+            event_bus.clone(),
+        ));
+        let schema_service = Arc::new(rustok_product::ProductCatalogSchemaService::new(
+            db.clone(),
+            event_bus,
+        ));
         let provider = rustok_product::ProductTranslationTargetProvider::new(service.clone());
         rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
             .map_err(|error| {
@@ -307,6 +314,16 @@ pub fn build_shared_runtime_extensions_with_host_providers(
             .map_err(|error| {
                 Error::Message(format!(
                     "Product Image translation target provider registration failed: {error}"
+                ))
+            })?;
+        let provider =
+            rustok_product::ProductCatalogSchemaService::attribute_translation_target_provider(
+                schema_service,
+            );
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Product Attribute translation target provider registration failed: {error}"
                 ))
             })?;
     }
@@ -716,7 +733,23 @@ mod tests {
             rustok_translation_targets::translation_target_registry(extensions.as_ref())
                 .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
                     descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "option"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
                         && descriptor.resource_kind.as_str() == "image"
+                }))
+        );
+        #[cfg(feature = "mod-product")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "product"
+                        && descriptor.resource_kind.as_str() == "attribute"
                 }))
         );
         #[cfg(feature = "mod-commerce")]

@@ -30,8 +30,6 @@ mod m20260806_000005_add_product_index_locale_refresh_ledger;
 mod m20260806_000006_add_product_variant_index_refresh_ledger;
 mod m20260806_000007_add_product_index_refresh_relay_cursors;
 mod m20260807_000008_add_product_sales_channel_index_relation_snapshots;
-// Immutable migration history is retained; the next migration removes the
-// versioned database objects so the live schema exposes only canonical names.
 mod m20260807_000009_add_product_index_graph_v3_projection_snapshots;
 mod m20260807_000010_canonicalize_product_index_graph_projection;
 mod m20260807_000011_add_product_sales_channel_relation_freshness;
@@ -49,6 +47,7 @@ mod m20260907_000022_add_product_translation_change_journal;
 mod m20260908_000023_add_product_variant_translation_change_journal;
 mod m20260908_000024_add_product_option_translation_change_journal;
 mod m20260909_000025_add_product_image_translation_change_journal;
+mod m20260913_000026_add_product_attribute_translation_change_journal;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -102,6 +101,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260908_000023_add_product_variant_translation_change_journal::Migration),
         Box::new(m20260908_000024_add_product_option_translation_change_journal::Migration),
         Box::new(m20260909_000025_add_product_image_translation_change_journal::Migration),
+        Box::new(m20260913_000026_add_product_attribute_translation_change_journal::Migration),
     ]
 }
 

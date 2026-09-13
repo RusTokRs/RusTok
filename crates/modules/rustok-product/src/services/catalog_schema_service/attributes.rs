@@ -1,3 +1,5 @@
+mod translation;
+
 use super::{
     AttributeValueType, CreateProductAttributeInput, CreateProductAttributeOptionInput,
     ProductAttributeListRecord, ProductAttributeListRow, ProductAttributeOptionListRecord,
