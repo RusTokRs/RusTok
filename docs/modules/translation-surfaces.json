@@ -37,7 +37,7 @@
     "marketplace_seller_prose": ["marketplace_seller_copy"],
     "oauth_apps": ["oauth_app_copy"],
     "registry_locale_provenance": ["registry_artifact_copy"],
-    "alloy-script-display-copy": ["alloy_control_copy"],
+    "alloy-script-display-copy": ["alloy_control_copy", "alloy_script_presentation"],
     "rbac-role-permission-display-copy": ["rbac_control_copy"],
     "channel-display-name": ["channel_control_copy"],
     "workflow-display-copy": ["workflow_control_copy"],
@@ -754,13 +754,36 @@
       "id": "alloy_control_copy",
       "owner_slug": "alloy",
       "resource_kind": "control_plane_copy",
-      "readiness": "blocked",
+      "readiness": "excluded",
       "provider_status": "not_registered",
       "field_profiles": ["plain_text", "template_text"],
       "data_classification": ["tenant_private", "sensitive"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/modules/alloy/README.md"],
-      "blockers": ["Replace inline copy with stable neutral keys and parallel localized storage."]
+      "evidence_paths": [
+        "crates/modules/alloy/README.md",
+        "crates/modules/alloy/docs/translation-plan.md",
+        "crates/modules/alloy/src/model/script.rs",
+        "crates/modules/alloy/src/authoring.rs",
+        "crates/modules/alloy/src/migration.rs"
+      ],
+      "exclusion_reason": "The broad alloy/control_plane_copy row mixes operational Script identity and executable/security-sensitive state with human-facing prose. Script.name is the tenant-unique runtime lookup key; Rhai workspace/source, templates/prompts, triggers, permissions, run_as_system, review/test/error evidence, provenance and release lineage are not Translation copy. Registering this broad aggregate would make executable or identity-bearing state translatable and collapse independent owner revisions. Track only the narrow Alloy-owned presentation resource separately."
+    },
+    {
+      "id": "alloy_script_presentation",
+      "owner_slug": "alloy",
+      "resource_kind": "script_presentation",
+      "readiness": "blocked",
+      "provider_status": "not_registered",
+      "field_profiles": ["plain_text"],
+      "data_classification": ["tenant_private", "sensitive"],
+      "ai_export": "forbidden",
+      "evidence_paths": [
+        "crates/modules/alloy/docs/translation-plan.md",
+        "crates/modules/alloy/src/model/presentation.rs",
+        "crates/modules/alloy/src/storage/presentation.rs",
+        "crates/modules/alloy/src/migrations/m20260913_000010_add_script_presentations.rs"
+      ],
+      "blockers": ["Owner-localized description storage, truthful legacy und provenance, copy-only semantic revisions and exact-locale CAS exist. Before provider registration, route every canonical create/update surface through one atomic owner authoring path with explicit concrete source locale for new presentation writes, then add durable idempotent apply receipts, semantic change journal, aggregate progress, frozen ChangeCursor, production composition and retained PostgreSQL evidence. Operational Script.name and executable/configuration state remain outside Translation."]
     },
     {
       "id": "rbac_control_copy",
