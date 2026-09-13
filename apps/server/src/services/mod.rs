@@ -294,6 +294,19 @@ pub mod module_event_dispatcher {
             }
         }
 
+        #[cfg(feature = "mod-translation")]
+        rustok_translation_targets::register_translation_target_provider(
+            &mut extensions,
+            super::oauth_app_translation_target::OAuthAppTranslationTargetProvider::new(
+                db.clone(),
+            ),
+        )
+        .map_err(|error| {
+            Error::Message(format!(
+                "OAuth application Translation target provider registration failed: {error}"
+            ))
+        })?;
+
         #[cfg(feature = "mod-seo")]
         {
             let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
@@ -462,6 +475,10 @@ pub mod notification_outbox_intake_worker;
 pub mod notification_recipient_policy;
 pub mod oauth_admin_guard;
 pub mod oauth_app;
+#[cfg(feature = "mod-translation")]
+pub mod oauth_app_translation;
+#[cfg(feature = "mod-translation")]
+pub mod oauth_app_translation_target;
 pub mod oauth_consent_service;
 pub mod oauth_token_service;
 #[cfg(feature = "mod-pages")]
@@ -518,18 +535,3 @@ pub mod tenant_locale_generation;
 pub mod topic_field_service;
 pub mod user_admin_guard;
 pub mod user_field_service;
-
-pub mod field_definition_cache;
-pub mod field_definition_registry_bootstrap;
-#[cfg(all(feature = "mod-flex", feature = "mod-taxonomy"))]
-pub mod flex_attached_translation_owner;
-#[cfg(all(feature = "mod-flex", feature = "mod-taxonomy"))]
-pub mod flex_attached_translation_progress_owner;
-pub mod flex_attached_values;
-pub mod flex_schema_translation_owner;
-pub mod flex_schema_translation_progress_owner;
-#[path = "flex_standalone_service_journaled.rs"]
-pub mod flex_standalone_service;
-#[path = "flex_standalone_service.rs"]
-mod flex_standalone_service_legacy;
-pub mod flex_standalone_translation_owner;
