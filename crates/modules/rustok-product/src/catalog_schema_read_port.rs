@@ -16,6 +16,7 @@ const LIST_CATEGORIES_OPERATION: &str = "list_catalog_categories";
 const LIST_SCHEMAS_OPERATION: &str = "list_attribute_schemas";
 const READ_EFFECTIVE_FORM_OPERATION: &str = "read_effective_product_form";
 const READ_PRODUCT_ATTRIBUTE_VALUES_OPERATION: &str = "read_product_attribute_values";
+const READ_VARIANT_ATTRIBUTE_VALUES_OPERATION: &str = "read_variant_attribute_values";
 const RESOLVE_STOREFRONT_ATTRIBUTE_FILTERS_OPERATION: &str = "resolve_storefront_attribute_filters";
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -65,7 +66,7 @@ pub struct ProductStorefrontAttributeFilterResolutionRequest {
 }
 
 /// Optional Product-owned read boundary for catalog schema directory, effective-form,
-/// product attribute-value projections, and Storefront attribute-filter resolution.
+/// Product/Variant attribute-value projections, and Storefront attribute-filter resolution.
 #[async_trait]
 pub trait ProductCatalogSchemaReadPort: Send + Sync {
     async fn list_attributes(
@@ -106,6 +107,19 @@ pub trait ProductCatalogSchemaReadPort: Send + Sync {
         Err(PortError::unavailable(
             "product.attribute_values_unavailable",
             "product attribute values are unavailable",
+        ))
+    }
+
+    /// Optional Variant attribute-value projection. Existing schema-directory adapters
+    /// remain source-compatible until they explicitly support this owner read.
+    async fn read_variant_attribute_values(
+        &self,
+        _context: PortContext,
+        _variant_id: Uuid,
+    ) -> Result<Vec<ProductAttributeValueRecord>, PortError> {
+        Err(PortError::unavailable(
+            "product.variant_attribute_values_unavailable",
+            "product variant attribute values are unavailable",
         ))
     }
 
@@ -292,6 +306,24 @@ impl ProductCatalogSchemaReadPort for ProductCatalogSchemaService {
         .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))
     }
 
+    async fn read_variant_attribute_values(
+        &self,
+        context: PortContext,
+        variant_id: Uuid,
+    ) -> Result<Vec<ProductAttributeValueRecord>, PortError> {
+        let owner_operation = READ_VARIANT_ATTRIBUTE_VALUES_OPERATION;
+        require_schema_read_context(&context, owner_operation)?;
+        let tenant_id = parse_tenant_id(&context, owner_operation)?;
+        ProductCatalogSchemaService::load_variant_attribute_values(
+            self,
+            tenant_id,
+            variant_id,
+            context.locale.as_str(),
+        )
+        .await
+        .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))
+    }
+
     async fn resolve_storefront_attribute_filters(
         &self,
         context: PortContext,
@@ -385,6 +417,7 @@ fn schema_error_to_port_error(
         CommerceError::Database(_) => "product.database_unavailable",
         CommerceError::Validation(_) => "product.validation",
         CommerceError::ProductNotFound(_) => "product.product_not_found",
+        CommerceError::VariantNotFound(_) => "product.variant_not_found",
         _ => "product.invariant_violation",
     };
     tracing::error!(
@@ -406,6 +439,9 @@ fn schema_error_to_port_error(
         }
         CommerceError::ProductNotFound(_) => {
             PortError::not_found("product.product_not_found", "product was not found")
+        }
+        CommerceError::VariantNotFound(_) => {
+            PortError::not_found("product.variant_not_found", "product variant was not found")
         }
         _ => PortError::invariant_violation(
             "product.invariant_violation",
