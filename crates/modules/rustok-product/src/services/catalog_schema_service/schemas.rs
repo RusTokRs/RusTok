@@ -1,3 +1,5 @@
+mod translation;
+
 use super::{
     BindSchemaAttributeInput, CreateProductAttributeSchemaGroupInput,
     CreateProductAttributeSchemaInput, ProductAttributeGroupRecord,
