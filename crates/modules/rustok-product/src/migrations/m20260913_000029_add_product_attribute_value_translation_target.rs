@@ -82,7 +82,12 @@ ALTER TABLE product_attribute_values
 CREATE OR REPLACE FUNCTION rustok_product_touch_attribute_value_translation_revision()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF TG_OP = 'INSERT' OR OLD.value_text IS DISTINCT FROM NEW.value_text THEN
+    IF TG_OP = 'INSERT' THEN
+        UPDATE product_attribute_values
+        SET translation_revision = translation_revision + 1,
+            updated_at = clock_timestamp()
+        WHERE id = NEW.value_id;
+    ELSIF OLD.value_text IS DISTINCT FROM NEW.value_text THEN
         UPDATE product_attribute_values
         SET translation_revision = translation_revision + 1,
             updated_at = clock_timestamp()
