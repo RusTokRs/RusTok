@@ -150,6 +150,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch --detach "$BASE_SHA"
+          git reset --hard "$BASE_SHA"
+          git clean -fd
           git apply /tmp/alloy-evidence-fixes.patch
           git add \
             apps/server/tests/alloy_script_presentation_translation_target_postgres.rs \
