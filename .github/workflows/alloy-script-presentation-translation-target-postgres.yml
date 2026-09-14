@@ -1,6 +1,9 @@
 name: Alloy Script Presentation Translation PostgreSQL Evidence
 
 on:
+  push:
+    branches:
+      - translation-alloy-script-presentation-postgres-evidence
   workflow_dispatch:
 
 permissions:
