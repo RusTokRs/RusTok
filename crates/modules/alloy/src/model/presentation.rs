@@ -18,10 +18,11 @@ pub struct ScriptPresentation {
     pub updated_at: DateTime<FixedOffset>,
 }
 
-/// Semantic revision for one localized presentation row.
+/// Stable semantic content digest for one localized presentation row.
 ///
-/// The stored monotonic `copy_revision` is deliberately not included in the
-/// digest: exact replay of identical copy has the same semantic revision.
+/// This legacy helper is not the Translation CAS revision. Exact-locale
+/// Translation CAS uses the persisted monotonic `copy_revision`; the digest is
+/// intentionally independent of that counter so identical copy hashes equally.
 pub fn script_presentation_locale_revision(
     tenant_id: Uuid,
     script_id: Uuid,
@@ -37,7 +38,11 @@ pub fn script_presentation_locale_revision(
     format!("sha256:{}", hex::encode(digest.finalize()))
 }
 
-/// Semantic revision of all owner-localized presentation copy for a Script.
+/// Stable semantic content digest of all owner-localized presentation copy.
+///
+/// This helper is not the Translation aggregate revision. The durable Alloy
+/// presentation change plane owns the authoritative monotonic `presentation:N`
+/// resource revision used for Translation CAS, progress and ChangeCursor.
 pub fn script_presentation_resource_revision<I>(
     tenant_id: Uuid,
     script_id: Uuid,
