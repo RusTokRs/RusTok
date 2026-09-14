@@ -529,6 +529,9 @@ impl From<ScriptTriggerInput> for ScriptTrigger {
 pub struct CreateScriptInput {
     pub name: String,
     pub description: Option<String>,
+    /// Concrete source locale for owner-authored presentation copy.
+    /// Omit together with `description` when no presentation copy is authored.
+    pub description_locale: Option<String>,
     pub workspace: async_graphql::Json<RhaiWorkspace>,
     pub trigger: ScriptTriggerInput,
     pub status: Option<GqlScriptStatus>,
@@ -543,6 +546,11 @@ pub struct UpdateScriptInput {
     pub expected_version: u32,
     pub name: Option<String>,
     pub description: Option<String>,
+    /// Concrete source locale for this presentation write.
+    pub description_locale: Option<String>,
+    /// Copy-only CAS revision for an existing locale row. Omit only when
+    /// creating a new concrete-locale source row.
+    pub expected_description_copy_revision: Option<i64>,
     pub workspace: Option<async_graphql::Json<RhaiWorkspace>>,
     pub trigger: Option<ScriptTriggerInput>,
     pub status: Option<GqlScriptStatus>,
