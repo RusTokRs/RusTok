@@ -36,7 +36,7 @@ rustok-api = { workspace = true, default-features = false }
 
 
 
-rustok-ui-i18n-leptos.workspace = true
+rustok-ui-i18n.workspace = true
 rustok-core = { workspace = true, optional = true }
 rustok-auth = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
@@ -47,7 +47,7 @@ uuid.workspace = true
 chrono.workspace = true
 leptos_router.workspace = true
 leptos-ui.workspace = true
-leptos-hook-form.workspace = true
+rustok-ui-forms.workspace = true
 leptos-use.workspace = true
 rustok-graphql.workspace = true
 reqwest = { workspace = true, optional = true }

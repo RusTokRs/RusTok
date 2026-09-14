@@ -1,4 +1,4 @@
-use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
@@ -211,12 +211,6 @@ where
     .map_err(|error| error.to_string())
 }
 
-fn graphql_url() -> String {
-    if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
-        return url.to_string();
-    }
-    "http://localhost:5150/api/graphql".to_string()
-}
 
 pub async fn load_directory(
     access_token: Option<String>,

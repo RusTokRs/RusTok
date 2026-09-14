@@ -50,7 +50,7 @@ admin/                            (or storefront/)
 leptos.workspace = true
 rustok-api = { workspace = true, default-features = false }
 rustok-ui-core.workspace = true
-rustok-ui-i18n-leptos.workspace = true
+rustok-ui-i18n.workspace = true
 leptos-ui.workspace = true
 leptos-ui-routing.workspace = true
 serde.workspace = true
@@ -310,8 +310,7 @@ pub fn BlogAdmin() -> impl IntoView {
 | `rustok-ui-core` | **Framework-agnostic UI contracts:** `UiRouteContext`, `UiRouteQueryUpdate`, `UiRouteQueryIntent`, `AdminQueryKey`, admin query sanitization, `normalize_ui_text`, `parse_ui_csv`, `ui_busy_key*` helpers (use in `core.rs` and host UI context wiring). |
 | `rustok-graphql` | **GraphQL core client:** `GraphqlRequest`, `GraphqlHttpError`, `execute`, `persisted_query_extension` (use in `graphql_adapter.rs`) |
 | `rustok-graphql-leptos` | **Leptos GraphQL hooks:** `use_query`, `use_mutation`, `use_lazy_query` for Leptos UI code that needs reactive GraphQL hooks |
-| `rustok-ui-i18n` | **i18n core:** `UiMessageCatalog`, `UiTranslator`, catalog parsing and fallback resolution. Do not import it through `rustok-api`. |
-| `rustok-ui-i18n-leptos` | **Leptos i18n adapter:** `LeptosUiMessages` for module-owned Leptos `i18n.rs` files. |
+| `rustok-ui-i18n` | **Framework-agnostic UI i18n:** `UiMessages` (Fluent `.ftl` and JSON catalogs), `t_for_locale`, `normalize_admin_locale`, parameter formatting. Do not import it through `rustok-api`. |
 | `rustok-ui-transport` | **Framework-agnostic FFA transport evidence:** shared transport path, selected-path error/result types and build-profile transport selection helpers for native server + GraphQL facades. |
 | `rustok-seo-admin-support` | `SeoEntityPanel`, `SeoEntityForm`, `SeoSnippetPreviewCard`, `SeoRecommendationsCard` — embed in owner module admin packages |
 
@@ -343,8 +342,7 @@ Cross-framework component API (props, variants, CSS variables):
 | Auth/session hooks | `crates/ui/leptos-auth/` | Auth state, session context |
 | Form state management | `crates/ui/leptos-forms/` | Multi-field form state |
 | Table/pagination UI | `crates/ui/leptos-table/` | Reusable table component |
-| Framework-agnostic UI i18n | `crates/ui/rustok-ui-i18n/` | Message catalog and key resolution |
-| Leptos UI i18n adapter | `crates/ui/rustok-ui-i18n-leptos/` | Static bundle storage and `UiRouteContext.locale` adapter |
+| Framework-agnostic UI i18n | `crates/ui/rustok-ui-i18n/` | `UiMessages` static catalog storage, Fluent/JSON resolution and locale normalization |
 | Host/API/backend contracts | `crates/libs/rustok-api/` | Locale, permissions, ports, server/runtime contracts |
 | Domain-specific cross-module UI | `crates/modules/rustok-<capability>-<surface>-support/` | `rustok-seo-admin-support` |
 
@@ -413,26 +411,22 @@ Full contract: [`docs/architecture/i18n.md`](../architecture/i18n.md)
 - Cannot be reused by a Dioxus UI adapter
 
 **Current contract:**
-- Module-owned Leptos UI packages use `rustok-ui-i18n-leptos`.
+- Module-owned UI packages use `rustok-ui-i18n`.
 - Module-owned UI packages never use `leptos_i18n`, `t!(i18n, key)` macros, or `rustok-api` UI i18n helpers.
 - Host shell/navigation i18n is host-owned and must not be copied into module-owned UI packages.
 
-**Solution:** `rustok-ui-i18n` provides framework-agnostic catalog and fallback resolution, while `rustok-ui-i18n-leptos` provides the shared Leptos adapter.
+**Solution:** `rustok-ui-i18n` provides framework-agnostic `UiMessages` supporting both Fluent (`.ftl`) and JSON catalogs, pluralization, locale normalization, and fallback resolution.
 
-This is **not a full-featured i18n library** (no pluralization, ICU MessageFormat, etc.), but:
-- Framework-agnostic core works with the Leptos adapter now and with the Dioxus adapter when Dioxus enters the workspace.
-- Adapter crates prevent repeating static catalog boilerplate in every UI package.
-- The core crate has no Leptos, Dioxus, Next.js, GraphQL or host locale-selection dependency.
+- Operates purely on framework-agnostic Rust types and concurrent bundles (`Send + Sync`), making it universally usable across Leptos, Dioxus, or CLI without framework adapter crates.
+- `rustok-api` does not own or re-export UI message resolution.
 
-`rustok-api` does not own or re-export UI message resolution.
-
-`i18n.rs` uses the shared Leptos adapter pattern:
+`i18n.rs` uses the framework-agnostic `UiMessages` pattern:
 
 ```rust
 // src/i18n.rs
-use rustok_ui_i18n_leptos::LeptosUiMessages;
+use rustok_ui_i18n::UiMessages;
 
-static MESSAGES: LeptosUiMessages = LeptosUiMessages::new(
+static MESSAGES: UiMessages = UiMessages::new(
     "en",
     &[
         ("en", include_str!("../locales/en.json")),

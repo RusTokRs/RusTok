@@ -56,18 +56,18 @@ Before writing reusable code, check whether it already exists in shared librarie
 
 ### 2. Do Not Invent Custom i18n
 
-Always use `rustok-ui-i18n-leptos` for Leptos module-owned UI packages.
+Always use `rustok-ui-i18n` for module-owned UI packages.
 
 Never use `rustok-api` for UI i18n helpers, `leptos_i18n`, `t!(i18n, key)` macros, or custom locale negotiation.
 
-`rustok-ui-i18n` is the framework-agnostic core. `rustok-ui-i18n-leptos` is the shared Leptos adapter. A sibling `rustok-ui-i18n-dioxus` adapter must be added when Dioxus enters the workspace.
+`rustok-ui-i18n` is the framework-agnostic UI i18n library providing `UiMessages` (supporting both Fluent and JSON catalogs).
 
 Pattern:
 
 ```rust
-use rustok_ui_i18n_leptos::LeptosUiMessages;
+use rustok_ui_i18n::UiMessages;
 
-static MESSAGES: LeptosUiMessages = LeptosUiMessages::new(
+static MESSAGES: UiMessages = UiMessages::new(
     "en",
     &[
         ("en", include_str!("../locales/en.json")),
@@ -168,7 +168,7 @@ Full FFA concept: [Fluid Frontend Architecture](../../docs/research/fluid-fronte
 | Raw HTTP client in `graphql_adapter` | Use `rustok-graphql` |
 | `t!(i18n, key)` macro | Use `i18n::t(locale, "key", "fallback")` |
 | Module UI in `apps/admin/src/features/` | Use `crates/modules/rustok-<module>/admin/` |
-| Writing `i18n.rs` without `rustok-ui-i18n-leptos` | Follow the standard `LeptosUiMessages` adapter boilerplate |
+| Writing `i18n.rs` without `rustok-ui-i18n` | Follow the standard `UiMessages` boilerplate |
 | Forgetting dependencies in module `Cargo.toml` | Each module must declare all direct dependencies explicitly |
 
 ## Full Documentation

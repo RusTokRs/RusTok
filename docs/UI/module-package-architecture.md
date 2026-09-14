@@ -147,11 +147,11 @@ They are **not** responsible for:
 - knowing about module-internal transport or core
 
 **Current state:** Host apps still use `leptos_i18n` for their shell/navigation i18n.
-Module-owned Leptos UI packages use `rustok-ui-i18n-leptos`, which adapts the
-framework-agnostic `rustok-ui-i18n` catalog core to host-provided `UiRouteContext.locale`.
+Module-owned UI packages use `rustok-ui-i18n` (`UiMessages`), which resolves
+messages against host-provided `UiRouteContext.locale` without any framework coupling.
 `UiRouteContext` itself is a framework-agnostic UI contract from `rustok-ui-core`.
-When Dioxus enters the workspace, add a sibling `rustok-ui-i18n-dioxus` adapter instead
-of adding Dioxus dependencies to the core crate.
+Because `UiMessages` operates entirely on plain Rust types, it is universally reusable
+across Leptos, Dioxus, or any other UI framework without adapter crates.
 
 If module business UI ends up inside `apps/admin/src/` (outside of
 `src/widgets/app_shell/` or `src/shared/`), that is an ownership violation.

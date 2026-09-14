@@ -15,7 +15,6 @@ ssr = [
   "dep:rustok-product",
   "dep:rustok-pricing",
   "dep:rustok-outbox",
-  "dep:tracing",
   "rustok-api/server",
 ]
 
@@ -27,13 +26,13 @@ rustok-graphql.workspace = true
 leptos-ui-routing.workspace = true
 rustok-api = { workspace = true, default-features = false }
 
-rustok-ui-i18n-leptos.workspace = true
+rustok-ui-i18n.workspace = true
 rustok-ui-transport.workspace = true
 rustok-commerce-foundation = { workspace = true, optional = true }
 rustok-product = { workspace = true, optional = true }
 rustok-pricing = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
-tracing = { workspace = true, optional = true }
+tracing.workspace = true
 serde = { workspace = true, features = ["derive"] }
 uuid.workspace = true
 

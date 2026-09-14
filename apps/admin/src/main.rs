@@ -20,7 +20,8 @@ async fn main() {
     };
     use leptos::logging::log;
     use leptos::prelude::*;
-    use leptos_auth::{AuthError, provide_server_auth_snapshot};
+    use leptos_auth::provide_server_auth_snapshot;
+    use rustok_ui_auth::AuthError;
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use rustok_admin::app::{
         App, admin_security_headers, auth_ssr::auth_snapshot_from_headers, request_auth_snapshot,
@@ -53,7 +54,7 @@ async fn main() {
             .or_else(|| auth.session.as_ref().map(|session| session.tenant.clone()))
             .ok_or_else(|| auth_error(StatusCode::BAD_REQUEST, "Page Builder tenant is missing"))?;
         let verified_user =
-            leptos_auth::api::fetch_current_user(token.clone(), tenant_slug.clone())
+            leptos_auth::transport::fetch_current_user(token.clone(), tenant_slug.clone())
                 .await
                 .map_err(auth_transport_error)?
                 .ok_or_else(|| {

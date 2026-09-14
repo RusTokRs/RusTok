@@ -41,7 +41,7 @@ rustok-tenant = { workspace = true, optional = true }
 rustok-translation = { workspace = true, optional = true, features = ["runtime"] }
 rustok-translation-targets = { workspace = true, optional = true }
 rustok-ui-core.workspace = true
-rustok-ui-i18n-leptos.workspace = true
+rustok-ui-i18n.workspace = true
 rustok-ui-transport.workspace = true
 leptos-ui.workspace = true
 leptos-ui-routing.workspace = true

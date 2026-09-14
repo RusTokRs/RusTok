@@ -1,8 +1,6 @@
 //! Headless GraphQL adapter for the shared Translation admin contract.
 
-#[cfg(target_arch = "wasm32")]
-use leptos::web_sys;
-use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
+use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
@@ -922,28 +920,7 @@ enum GraphqlMachineProposalOutcome {
     InProgress(crate::model::MachineOperationStatus),
 }
 
-fn graphql_endpoint_from_base(base: &str) -> String {
-    format!("{}/api/graphql", base.trim_end_matches('/'))
-}
 
-fn graphql_url() -> String {
-    if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
-        return url.to_string();
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        let origin = web_sys::window()
-            .and_then(|window| window.location().origin().ok())
-            .unwrap_or_else(|| "http://localhost:5150".to_string());
-        graphql_endpoint_from_base(&origin)
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let base =
-            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-        graphql_endpoint_from_base(&base)
-    }
-}
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1395,6 +1372,7 @@ mod tests {
 
     #[test]
     fn graphql_endpoint_is_stable() {
+        use rustok_graphql::graphql_endpoint_from_base;
         assert_eq!(
             graphql_endpoint_from_base("http://localhost:5150/"),
             "http://localhost:5150/api/graphql"

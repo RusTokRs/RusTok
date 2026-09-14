@@ -28,7 +28,7 @@ rustok-graphql.workspace = true
 rustok-api = { workspace = true, default-features = false }
 
 
-rustok-ui-i18n-leptos.workspace = true
+rustok-ui-i18n.workspace = true
 leptos-ui-routing.workspace = true
 rustok-product = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }

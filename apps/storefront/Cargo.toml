@@ -96,7 +96,7 @@ leptos-auth = { workspace = true }
 rustok-graphql = { workspace = true }
 leptos-ui = { workspace = true }
 leptos-ui-routing.workspace = true
-leptos-hook-form = { workspace = true }
+rustok-ui-forms = { workspace = true }
 leptos-zod = { workspace = true }
 leptos-table = { workspace = true }
 leptos-zustand = { workspace = true }
@@ -163,7 +163,7 @@ normal = [
   "leptos-auth",
   "rustok-graphql",
   "rustok-ui-transport",
-  "leptos-hook-form",
+  "rustok-ui-forms",
   "leptos-table",
   "leptos-zod",
   "leptos-zustand",
@@ -194,7 +194,7 @@ normal = [
 [package.metadata.cargo-machete]
 ignored = [
   "futures",
-  "leptos-hook-form",
+  "rustok-ui-forms",
   "leptos-next-metadata",
   "leptos-shadcn-pagination",
   "leptos-table",

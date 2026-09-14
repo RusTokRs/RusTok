@@ -176,8 +176,41 @@ impl UiRouteContext {
     }
 }
 
+pub fn safe_join_url(base: &str, path: &str) -> String {
+    let clean_path = path.trim_start_matches('/');
+    if let Ok(mut base_url) = url::Url::parse(base) {
+        let current_path = base_url.path().trim_end_matches('/');
+        let new_path = if current_path.is_empty() {
+            format!("/{clean_path}")
+        } else {
+            format!("{current_path}/{clean_path}")
+        };
+        base_url.set_path(&new_path);
+        return base_url.to_string();
+    }
+    format!("{}/{}", base.trim_end_matches('/'), clean_path)
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn safe_join_url_handles_trailing_and_leading_slashes() {
+        assert_eq!(
+            safe_join_url("https://example.com/api", "v1/users"),
+            "https://example.com/api/v1/users"
+        );
+        assert_eq!(
+            safe_join_url("https://example.com/api/", "/v1/users"),
+            "https://example.com/api/v1/users"
+        );
+        assert_eq!(
+            safe_join_url("/relative/base", "endpoint"),
+            "/relative/base/endpoint"
+        );
+    }
+
     use super::{
         UiRouteContext, UiRouteQueryIntent, UiRouteQueryUpdate, normalize_optional_ui_text,
         normalize_required_ui_text, normalize_ui_text, parse_ui_csv, route_query_update_for_text,

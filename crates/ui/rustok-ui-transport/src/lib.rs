@@ -138,10 +138,10 @@ mod tests {
     use super::{UiTransportError, UiTransportPath, execute_selected_transport};
     use std::future::Future;
     use std::pin::Pin;
-    use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+    use std::task::{Context, Poll, Waker};
 
     fn block_on<F: Future>(future: F) -> F::Output {
-        let waker = noop_waker();
+        let waker = Waker::noop();
         let mut context = Context::from_waker(&waker);
         let mut future = Box::pin(future);
 
@@ -151,20 +151,6 @@ mod tests {
                 Poll::Pending => std::thread::yield_now(),
             }
         }
-    }
-
-    fn noop_waker() -> Waker {
-        unsafe fn clone(_: *const ()) -> RawWaker {
-            RawWaker::new(std::ptr::null(), &VTABLE)
-        }
-        unsafe fn wake(_: *const ()) {}
-        unsafe fn wake_by_ref(_: *const ()) {}
-        unsafe fn drop(_: *const ()) {}
-
-        static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
-        let raw_waker = RawWaker::new(std::ptr::null(), &VTABLE);
-
-        unsafe { Waker::from_raw(raw_waker) }
     }
 
     #[test]

@@ -23,7 +23,7 @@ fly-browser = { path = "../../../ui/fly-browser" }
 fly-leptos = { path = "../../../ui/fly-leptos", default-features = false }
 rustok-page-builder = { path = "..", default-features = false }
 rustok-ui-core.workspace = true
-rustok-ui-i18n-leptos.workspace = true
+rustok-ui-i18n.workspace = true
 leptos.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

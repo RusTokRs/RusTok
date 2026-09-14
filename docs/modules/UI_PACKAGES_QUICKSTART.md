@@ -84,7 +84,7 @@ For Leptos module-owned UI, the following baseline applies:
 - CSR/WASM standalone remains a mandatory debug/compatibility profile for public/headless-capable UI packages, so those packages must have a GraphQL/REST fallback and must not require `/api/fn/*` in `csr`;
 - Locale comes from the host/runtime contract, not from local cookie/header/query
   fallback chains;
-- UI message resolution uses `rustok-ui-i18n-leptos` for Leptos packages and `rustok-ui-i18n` as the framework-agnostic core, not framework-specific i18n macros;
+- UI message resolution uses `rustok-ui-i18n` (`UiMessages`) directly, not framework-specific i18n macros;
 - The UI package does not pull in ownership of domain logic that should live in
   the module itself.
 - For admin packages, selection state is considered URL-owned: use only typed

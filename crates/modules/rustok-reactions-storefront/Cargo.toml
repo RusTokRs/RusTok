@@ -18,7 +18,7 @@ leptos.workspace = true
 leptos-auth.workspace = true
 rustok-graphql.workspace = true
 rustok-ui-core.workspace = true
-rustok-ui-i18n-leptos.workspace = true
+rustok-ui-i18n.workspace = true
 serde = { workspace = true, features = ["derive"] }
 uuid.workspace = true
 

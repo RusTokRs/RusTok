@@ -43,7 +43,7 @@
 - Module crates may depend on `rustok-api` for shared host contracts, but keep module-specific transport code and domain behavior locally.
 - New cross-module request/auth/GraphQL/port helpers should go into `rustok-api` only when they are genuinely shared and host/API-level.
 - UI route/query/input helpers belong in `rustok-ui-core` and `leptos-ui-routing`, not in `rustok-api`.
-- UI message catalog or translation-key resolution helpers belong in `rustok-ui-i18n` and framework adapters such as `rustok-ui-i18n-leptos`, not in `rustok-api`.
+- UI message catalog or translation-key resolution helpers belong in `rustok-ui-i18n`, not in `rustok-api`.
 - Richtext executable policy, profile definitions, validation, rendering, and
   plain-text extraction belong in `rustok-content::richtext`, not here.
 

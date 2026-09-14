@@ -125,14 +125,14 @@ impl AuthContext {
     pub fn is_token_expired(&self) -> bool {
         self.session
             .get()
-            .map(|s| now_unix_secs() >= s.expires_at - 60)
+            .map(|s| s.is_expired(now_unix_secs()))
             .unwrap_or(true)
     }
 
     pub fn secs_until_expiry(&self) -> i64 {
         self.session
             .get()
-            .map(|s| s.expires_at - now_unix_secs())
+            .map(|s| s.secs_until_expiry(now_unix_secs()))
             .unwrap_or(0)
     }
 
@@ -140,7 +140,7 @@ impl AuthContext {
     fn secs_until_expiry_untracked(&self) -> i64 {
         self.session
             .get_untracked()
-            .map(|s| s.expires_at - now_unix_secs())
+            .map(|s| s.secs_until_expiry(now_unix_secs()))
             .unwrap_or(0)
     }
 

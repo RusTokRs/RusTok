@@ -1,6 +1,4 @@
-#[cfg(target_arch = "wasm32")]
-use leptos::web_sys;
-use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
+use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{WorkflowSummary, WorkflowTemplateDto};
@@ -38,30 +36,6 @@ struct CreateFromTemplateVars {
     #[serde(rename = "templateId")]
     template_id: String,
     name: String,
-}
-
-fn graphql_endpoint_from_base(base: &str) -> String {
-    format!("{}/api/graphql", base.trim_end_matches('/'))
-}
-
-fn graphql_url() -> String {
-    if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
-        return url.to_string();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        let origin = web_sys::window()
-            .and_then(|window| window.location().origin().ok())
-            .unwrap_or_else(|| "http://localhost:5150".to_string());
-        graphql_endpoint_from_base(&origin)
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let base =
-            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-        graphql_endpoint_from_base(&base)
-    }
 }
 
 async fn request<V, T>(
@@ -120,7 +94,7 @@ pub async fn create_from_template(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use rustok_graphql::graphql_endpoint_from_base;
 
     #[test]
     fn graphql_endpoint_from_base_is_stable_for_host_adapters() {

@@ -5527,6 +5527,41 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8bf7cc16383c4b8d58b9905a8509f02926ce3058053c056376248d958c9df1e8"
 
 [[package]]
+name = "fluent-bundle"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01203cb8918f5711e73891b347816d932046f95f54207710bda99beaeb423bf4"
+dependencies = [
+ "fluent-langneg",
+ "fluent-syntax",
+ "intl-memoizer",
+ "intl_pluralrules",
+ "rustc-hash",
+ "self_cell",
+ "smallvec",
+ "unic-langid",
+]
+
+[[package]]
+name = "fluent-langneg"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7eebbe59450baee8282d71676f3bfed5689aeab00b27545e83e5f14b1195e8b0"
+dependencies = [
+ "unic-langid",
+]
+
+[[package]]
+name = "fluent-syntax"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54f0d287c53ffd184d04d8677f590f4ac5379785529e5e08b1c8083acdd5c198"
+dependencies = [
+ "memchr",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "fluent-uri"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7734,6 +7769,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71dd52191aae121e8611f1e8dc3e324dd0dd1dee1e6dd91d10ee07a3cfb4d9d8"
 
 [[package]]
+name = "intl-memoizer"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "310da2e345f5eb861e7a07ee182262e94975051db9e4223e909ba90f392f163f"
+dependencies = [
+ "type-map",
+ "unic-langid",
+]
+
+[[package]]
+name = "intl_pluralrules"
+version = "7.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "078ea7b7c29a2b4df841a7f6ac8775ff6074020c6776d48491ce2268e068f972"
+dependencies = [
+ "unic-langid",
+]
+
+[[package]]
 name = "inventory"
 version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8921,6 +8975,7 @@ dependencies = [
  "leptos_router",
  "reqwest 0.13.4",
  "rustok-graphql",
+ "rustok-ui-auth",
  "rustok-ui-transport",
  "serde",
  "serde_json",
@@ -8949,13 +9004,6 @@ dependencies = [
  "regex",
  "serde",
  "thiserror 2.0.20",
-]
-
-[[package]]
-name = "leptos-hook-form"
-version = "0.1.0"
-dependencies = [
- "serde",
 ]
 
 [[package]]
@@ -13839,7 +13887,6 @@ dependencies = [
  "leptos-auth",
  "leptos-chartistry",
  "leptos-forms",
- "leptos-hook-form",
  "leptos-shadcn-pagination",
  "leptos-struct-table",
  "leptos-ui",
@@ -13901,7 +13948,9 @@ dependencies = [
  "rustok-tenant",
  "rustok-tenant-admin",
  "rustok-translation-admin",
+ "rustok-ui-auth",
  "rustok-ui-core",
+ "rustok-ui-forms",
  "rustok-ui-transport",
  "rustok-web",
  "rustok-workflow",
@@ -13996,7 +14045,7 @@ dependencies = [
  "rustok-secrets",
  "rustok-storage",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "sea-orm",
  "serde",
  "serde_json",
@@ -14200,7 +14249,6 @@ dependencies = [
  "chrono",
  "leptos",
  "leptos-auth",
- "leptos-hook-form",
  "leptos-ui",
  "leptos-use 0.19.2",
  "leptos_axum",
@@ -14211,7 +14259,8 @@ dependencies = [
  "rustok-core",
  "rustok-graphql",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-forms",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "sea-orm",
  "serde",
@@ -14313,7 +14362,7 @@ dependencies = [
  "rustok-seo-admin-support",
  "rustok-seo-targets",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "sea-orm",
  "serde",
@@ -14339,7 +14388,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-tenant",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "uuid",
@@ -14378,6 +14427,7 @@ dependencies = [
  "rustok-core",
  "rustok-graphql",
  "rustok-ui-core",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "serde_json",
@@ -14495,7 +14545,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-pricing",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "sea-orm",
  "serde",
@@ -14537,7 +14587,7 @@ dependencies = [
  "rustok-channel",
  "rustok-core",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "sea-orm",
  "serde",
  "serde_json",
@@ -14655,7 +14705,7 @@ dependencies = [
  "rustok-comments",
  "rustok-core",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "serde",
  "serde_json",
  "uuid",
@@ -14748,7 +14798,7 @@ dependencies = [
  "rustok-order",
  "rustok-outbox",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "sea-orm",
  "serde",
  "serde_json",
@@ -14793,7 +14843,7 @@ dependencies = [
  "rustok-pricing",
  "rustok-region",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "sea-orm",
  "serde",
@@ -14923,7 +14973,7 @@ dependencies = [
  "rustok-customer",
  "rustok-profiles",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "serde",
  "serde_json",
  "tracing",
@@ -15144,7 +15194,7 @@ dependencies = [
  "rustok-seo-admin-support",
  "rustok-seo-targets",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "serde_json",
@@ -15169,7 +15219,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-taxonomy",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -15212,7 +15262,7 @@ dependencies = [
  "leptos-ui-routing",
  "rustok-graphql",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "serde",
  "serde_json",
 ]
@@ -15228,7 +15278,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-outbox",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "tracing",
@@ -15241,9 +15291,13 @@ name = "rustok-graphql"
 version = "0.1.0"
 dependencies = [
  "reqwest 0.13.4",
+ "reqwest-middleware",
+ "reqwest-retry",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+ "url",
+ "web-sys",
 ]
 
 [[package]]
@@ -15289,7 +15343,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-groups",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "uuid",
@@ -15307,7 +15361,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-groups",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "uuid",
@@ -15406,7 +15460,7 @@ dependencies = [
  "rustok-core",
  "rustok-index",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "sea-orm",
  "serde",
  "tracing",
@@ -15507,7 +15561,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-product",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "serde",
  "serde_json",
  "tracing",
@@ -15635,6 +15689,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-marketplace-listing",
  "rustok-ui-core",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "serde_json",
@@ -15700,6 +15755,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-marketplace-seller",
  "rustok-ui-core",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "serde_json",
@@ -15803,7 +15859,7 @@ dependencies = [
  "rustok-media",
  "rustok-storage",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "sea-orm",
  "serde",
@@ -16170,7 +16226,7 @@ version = "0.1.0"
 dependencies = [
  "leptos",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "serde",
 ]
 
@@ -16198,7 +16254,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-notifications",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "serde_json",
@@ -16241,7 +16297,7 @@ dependencies = [
  "leptos-ui-routing",
  "rustok-graphql",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "serde",
  "serde_json",
 ]
@@ -16259,7 +16315,7 @@ dependencies = [
  "rustok-payment",
  "rustok-product",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "serde_json",
@@ -16299,7 +16355,7 @@ dependencies = [
  "rustok-core",
  "rustok-outbox",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "sea-orm",
  "serde",
  "tracing",
@@ -16335,7 +16391,7 @@ dependencies = [
  "leptos",
  "rustok-page-builder",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -16410,7 +16466,7 @@ dependencies = [
  "rustok-page-builder",
  "rustok-page-builder-admin",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -16443,7 +16499,7 @@ dependencies = [
  "rustok-pages",
  "rustok-tenant",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "sea-orm",
  "sea-orm-migration",
@@ -16497,7 +16553,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-payment",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "serde_json",
@@ -16560,7 +16616,7 @@ dependencies = [
  "rustok-tenant",
  "rustok-test-utils",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "sea-orm",
  "serde",
@@ -16595,7 +16651,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-pricing",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "tracing",
@@ -16654,7 +16710,7 @@ dependencies = [
  "rustok-seo-admin-support",
  "rustok-seo-targets",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "serde",
  "serde_json",
  "tracing",
@@ -16695,6 +16751,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-product-bundles",
  "rustok-ui-core",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "serde_json",
@@ -16752,6 +16809,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-product-relations",
  "rustok-ui-core",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "serde_json",
@@ -16773,7 +16831,7 @@ dependencies = [
  "rustok-pricing",
  "rustok-product",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "serde_json",
@@ -16868,7 +16926,7 @@ dependencies = [
  "rustok-social-graph",
  "rustok-storage",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "serde_json",
@@ -16906,7 +16964,7 @@ dependencies = [
  "rustok-core",
  "rustok-rbac",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "serde",
  "tracing",
 ]
@@ -16966,7 +17024,7 @@ dependencies = [
  "leptos-auth",
  "rustok-graphql",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "serde",
  "serde_json",
  "uuid",
@@ -17009,7 +17067,7 @@ dependencies = [
  "rustok-core",
  "rustok-region",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "serde",
  "serde_json",
  "uuid",
@@ -17026,7 +17084,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-region",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "tracing",
@@ -17167,7 +17225,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-search",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "sea-orm",
  "serde",
@@ -17187,7 +17245,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-search",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "serde_json",
@@ -17269,7 +17327,7 @@ dependencies = [
  "rustok-seo-targets",
  "rustok-tenant",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "sea-orm",
  "serde",
  "serde_json",
@@ -17538,7 +17596,6 @@ dependencies = [
  "futures",
  "leptos",
  "leptos-auth",
- "leptos-hook-form",
  "leptos-next-metadata",
  "leptos-shadcn-pagination",
  "leptos-table",
@@ -17577,6 +17634,7 @@ dependencies = [
  "rustok-seo-render",
  "rustok-tenant",
  "rustok-ui-core",
+ "rustok-ui-forms",
  "rustok-ui-transport",
  "rustok-web",
  "sea-orm",
@@ -17683,7 +17741,7 @@ dependencies = [
  "rustok-modules",
  "rustok-tenant",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "sea-orm",
  "serde",
  "serde_json",
@@ -17763,7 +17821,7 @@ dependencies = [
  "rustok-translation",
  "rustok-translation-targets",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "sea-orm",
  "sea-orm-migration",
@@ -17791,23 +17849,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-ui-auth"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "rustok-ui-core"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_qs 1.1.3",
+ "url",
+]
+
+[[package]]
+name = "rustok-ui-forms"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "rustok-ui-i18n"
 version = "0.1.0"
 dependencies = [
+ "fluent-bundle",
  "serde_json",
-]
-
-[[package]]
-name = "rustok-ui-i18n-leptos"
-version = "0.1.0"
-dependencies = [
- "leptos",
- "rustok-ui-core",
- "rustok-ui-i18n",
+ "tracing",
+ "unic-langid",
 ]
 
 [[package]]
@@ -17914,7 +17987,7 @@ dependencies = [
  "rustok-core",
  "rustok-graphql",
  "rustok-ui-core",
- "rustok-ui-i18n-leptos",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "rustok-workflow",
  "serde",
@@ -18282,6 +18355,12 @@ dependencies = [
  "libc",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "self_cell"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ab42ca02749e120097e328d91d415325bdf43b1c72c4c8badf37375fe40a813"
 
 [[package]]
 name = "semver"
@@ -20826,6 +20905,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8464ec13c3691491391d9fce00f6416c9a48e46972f72d7865688be2080192c9"
 dependencies = [
  "rand 0.10.2",
+]
+
+[[package]]
+name = "type-map"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb30dbbd9036155e74adad6812e9898d03ec374946234fbcebd5dfc7b9187b90"
+dependencies = [
+ "rustc-hash",
 ]
 
 [[package]]

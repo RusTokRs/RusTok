@@ -8,14 +8,75 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::str::FromStr;
+use std::sync::OnceLock;
+use std::time::Duration;
 
 pub const GRAPHQL_ENDPOINT: &str = "/api/graphql";
 pub const TENANT_HEADER: &str = "X-Tenant-Slug";
 pub const AUTH_HEADER: &str = "Authorization";
 pub const ACCEPT_LANGUAGE_HEADER: &str = "Accept-Language";
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+
+pub fn default_client() -> &'static ClientWithMiddleware {
+    static CLIENT: OnceLock<ClientWithMiddleware> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        let mut builder = reqwest::Client::builder().timeout(DEFAULT_TIMEOUT);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            builder = builder.pool_max_idle_per_host(10);
+        }
+
+        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
+
+        ClientBuilder::new(builder.build().expect("failed to build reqwest client"))
+            .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+            .build()
+    })
+}
+
+pub fn graphql_endpoint_from_base(base: &str) -> String {
+    if let Ok(base_url) = url::Url::parse(base) {
+        if let Ok(joined) = base_url.join(GRAPHQL_ENDPOINT) {
+            return joined.to_string();
+        }
+    }
+    format!(
+        "{}/{}",
+        base.trim_end_matches('/'),
+        GRAPHQL_ENDPOINT.trim_start_matches('/')
+    )
+}
+
+pub fn default_graphql_url() -> String {
+    if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
+        return url.to_string();
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let origin = web_sys::window()
+            .and_then(|window| window.location().origin().ok())
+            .unwrap_or_else(|| "http://localhost:5150".to_string());
+        graphql_endpoint_from_base(&origin)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if let Ok(url) = std::env::var("RUSTOK_GRAPHQL_URL") {
+            return url;
+        }
+        let base = std::env::var("RUSTOK_API_URL")
+            .unwrap_or_else(|_| "http://localhost:5150".to_string());
+        graphql_endpoint_from_base(&base)
+    }
+}
+
+pub use default_graphql_url as graphql_url;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct GraphqlRequest<V = Value> {
@@ -38,6 +99,14 @@ impl<V> GraphqlRequest<V> {
     pub fn with_extensions(mut self, extensions: Value) -> Self {
         self.extensions = Some(extensions);
         self
+    }
+
+    pub fn is_mutation(&self) -> bool {
+        self.query.trim_start().starts_with("mutation")
+    }
+
+    pub fn is_query(&self) -> bool {
+        !self.is_mutation()
     }
 }
 
@@ -108,7 +177,29 @@ where
     V: Serialize,
     T: DeserializeOwned,
 {
-    let client = reqwest::Client::new();
+    execute_with_client(
+        default_client(),
+        endpoint,
+        request,
+        token,
+        tenant_slug,
+        locale,
+    )
+    .await
+}
+
+pub async fn execute_with_client<V, T>(
+    client: &ClientWithMiddleware,
+    endpoint: &str,
+    request: GraphqlRequest<V>,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: Option<String>,
+) -> Result<T, GraphqlHttpError>
+where
+    V: Serialize,
+    T: DeserializeOwned,
+{
     let mut req = client.post(endpoint).json(&request);
 
     if let Some(token) = token {
@@ -147,6 +238,23 @@ where
     body.data
         .ok_or_else(|| GraphqlHttpError::Graphql("No data".to_string()))
 }
+
+pub async fn execute_with_raw_client<V, T>(
+    client: &reqwest::Client,
+    endpoint: &str,
+    request: GraphqlRequest<V>,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: Option<String>,
+) -> Result<T, GraphqlHttpError>
+where
+    V: Serialize,
+    T: DeserializeOwned,
+{
+    let client = ClientBuilder::new(client.clone()).build();
+    execute_with_client(&client, endpoint, request, token, tenant_slug, locale).await
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -190,4 +298,43 @@ mod tests {
             Ok(GraphqlHttpError::Unauthorized)
         );
     }
+
+    #[test]
+    fn default_client_returns_same_instance() {
+        let client1 = super::default_client();
+        let client2 = super::default_client();
+        assert!(std::ptr::eq(client1, client2));
+    }
+
+    #[test]
+    fn graphql_endpoint_from_base_normalizes_correctly() {
+        assert_eq!(
+            super::graphql_endpoint_from_base("http://localhost:5150"),
+            "http://localhost:5150/api/graphql"
+        );
+        assert_eq!(
+            super::graphql_endpoint_from_base("http://localhost:5150/"),
+            "http://localhost:5150/api/graphql"
+        );
+        assert_eq!(
+            super::graphql_endpoint_from_base("/prefix"),
+            "/prefix/api/graphql"
+        );
+    }
+
+    #[test]
+    fn graphql_request_identifies_operation_type() {
+        let query = GraphqlRequest::<()>::new("query GetItems { items { id } }", None);
+        assert!(query.is_query());
+        assert!(!query.is_mutation());
+
+        let anonymous_query = GraphqlRequest::<()>::new("{ items { id } }", None);
+        assert!(anonymous_query.is_query());
+        assert!(!anonymous_query.is_mutation());
+
+        let mutation = GraphqlRequest::<()>::new("mutation CreateItem { create { id } }", None);
+        assert!(mutation.is_mutation());
+        assert!(!mutation.is_query());
+    }
 }
+

@@ -289,6 +289,7 @@ struct AuthenticatedInboxScope {
 impl AuthenticatedInboxScope {
     fn port_context(&self, operation: &'static str) -> PortContext {
         self.base_port_context(operation, GRAPHQL_READ_DEADLINE)
+            .with_deadline(GRAPHQL_READ_DEADLINE)
     }
 
     fn write_port_context(&self, operation: &'static str, idempotency_key: String) -> PortContext {

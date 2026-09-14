@@ -139,6 +139,7 @@ ssr = [
 ]
 
 [dependencies]
+rustok-ui-auth.workspace = true
 axum = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 rustok-ui-core.workspace = true
@@ -151,7 +152,7 @@ rustok-graphql = { workspace = true }
 leptos-ui-routing = { workspace = true }
 leptos-ui = { workspace = true }
 leptos-forms = { workspace = true }
-leptos-hook-form = { workspace = true }
+rustok-ui-forms = { workspace = true }
 leptos-zod = { workspace = true }
 leptos-struct-table = { workspace = true }
 leptos-zustand = { workspace = true }
@@ -253,7 +254,7 @@ normal = [
   "leptos-auth",
   "leptos_axum",
   "rustok-graphql",
-  "leptos-hook-form",
+  "rustok-ui-forms",
   "leptos-struct-table",
   "leptos-zod",
   "leptos-zustand",

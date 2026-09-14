@@ -360,14 +360,12 @@ topology is an implementation detail, not an architectural constraint.
 
 ### i18n and FFA
 
-For i18n to be FFA-compatible, message resolution must be split into framework-neutral core and thin framework adapters:
-- `rustok-ui-i18n` owns catalog parsing, locale normalization and fallback resolution.
-- `rustok-ui-i18n-leptos` adapts that core to Leptos module UI packages.
-- `rustok-ui-i18n-dioxus` must be added as a sibling adapter when Dioxus enters the workspace.
+For i18n to be FFA-compatible, message resolution must be completely framework-neutral:
+- `rustok-ui-i18n` owns `UiMessages` (supporting Fluent and JSON catalogs), locale normalization and fallback resolution. It has no framework dependencies and is universally reusable across Leptos, Dioxus, CLI, etc. without separate adapter crates.
 
 `leptos_i18n` remains Leptos-specific and must not be used by module-owned FFA UI packages. Host apps may keep it for shell/navigation until host-level FFA migration.
 
-The key principle: i18n core must work without framework imports, so both Leptos and Dioxus UI adapters can use it.
+The key principle: i18n core must work without framework imports, so any UI framework can use it directly.
 
 ## FFA Compatibility Criteria
 

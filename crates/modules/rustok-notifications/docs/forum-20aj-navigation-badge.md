@@ -74,7 +74,7 @@ cannot replace the primary navigation menu. The host source contains no direct i
 ## Localization
 
 The Notifications storefront package now declares English and Russian locale bundles
-through `rustok-ui-i18n-leptos`. Navigation link and accessible unread-count copy resolve
+through `rustok-ui-i18n`. Navigation link and accessible unread-count copy resolve
 from the host-provided effective locale.
 
 ## Evidence

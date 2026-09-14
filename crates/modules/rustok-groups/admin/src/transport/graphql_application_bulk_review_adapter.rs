@@ -1,6 +1,4 @@
-#[cfg(target_arch = "wasm32")]
-use leptos::web_sys;
-use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 
 use crate::application_model::{
@@ -244,14 +242,3 @@ impl From<MembershipWire> for GroupsAdminMembership {
     }
 }
 
-fn graphql_url() -> String {
-    #[cfg(target_arch = "wasm32")]
-    {
-        if let Some(window) = web_sys::window() {
-            if let Ok(origin) = window.location().origin() {
-                return format!("{origin}/graphql");
-            }
-        }
-    }
-    "/graphql".to_string()
-}

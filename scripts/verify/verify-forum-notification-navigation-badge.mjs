@@ -213,13 +213,13 @@ for (const marker of [
   "leptos-auth.workspace = true",
   "rustok-graphql.workspace = true",
   "rustok-ui-core.workspace = true",
-  "rustok-ui-i18n-leptos.workspace = true",
+  "rustok-ui-i18n.workspace = true",
   "rustok-ui-transport.workspace = true",
 ]) {
   requireText(storefrontCargo, marker, `storefront Cargo contract is missing ${marker}`);
 }
 for (const marker of [
-  "LeptosUiMessages::new",
+  "UiMessages::new",
   "include_str!(\"../locales/en.json\")",
   "include_str!(\"../locales/ru.json\")",
 ]) {

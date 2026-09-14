@@ -1,7 +1,7 @@
 use rustok_comments_storefront_support::CommentComposerCopy;
-use rustok_ui_i18n_leptos::LeptosUiMessages;
+use rustok_ui_i18n::UiMessages;
 
-static MESSAGES: LeptosUiMessages = LeptosUiMessages::new(
+static MESSAGES: UiMessages = UiMessages::new(
     "en",
     &[
         ("en", include_str!("../locales/en.json")),

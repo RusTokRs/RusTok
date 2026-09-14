@@ -32,7 +32,7 @@ leptos-auth.workspace = true
 rustok-graphql.workspace = true
 rustok-page-builder = { path = "../../rustok-page-builder", default-features = false }
 rustok-page-builder-admin = { path = "../../rustok-page-builder/admin", default-features = false }
-rustok-ui-i18n-leptos.workspace = true
+rustok-ui-i18n.workspace = true
 leptos-ui-routing.workspace = true
 async-trait = { workspace = true, optional = true }
 rustok-api = { workspace = true, optional = true }

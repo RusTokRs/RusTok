@@ -1,0 +1,10 @@
+[package]
+name = "rustok-ui-auth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Framework-neutral client authentication contracts for RusToK"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true

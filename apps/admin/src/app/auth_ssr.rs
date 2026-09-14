@@ -2,7 +2,8 @@ use axum::http::{HeaderMap, request::Parts};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use leptos::prelude::*;
-use leptos_auth::{AuthSession, AuthUser, ServerAuthSnapshot};
+use leptos_auth::ServerAuthSnapshot;
+use rustok_ui_auth::{AuthSession, AuthUser};
 use rustok_web::CspNonce;
 
 pub const ADMIN_SESSION_COOKIE: &str = "rustok-admin-session-v1";

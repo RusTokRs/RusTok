@@ -7,13 +7,18 @@ RusToK module-owned UI packages and future UI adapters.
 
 ## Responsibilities
 
-- Build flat message catalogs from nested JSON locale bundles.
+- Build flat message catalogs from nested JSON locale bundles or Fluent (.ftl) files.
+- Provide thread-safe static bundle management via `UiMessages` (`Send + Sync`).
 - Resolve message keys from the host-provided effective locale.
 - Apply the platform UI fallback chain without depending on Leptos, Dioxus, Next.js, or host routing.
+- Provide canonical locale normalization (`normalize_admin_locale`).
 - Keep UI i18n catalog logic out of `rustok-api` and framework-specific crates.
 
 ## Entry Points
 
+- `UiMessages`
+- `fluent_args!`
+- `normalize_admin_locale`
 - `UiMessageCatalog`
 - `build_ui_message_catalog`
 - `resolve_ui_message`
@@ -21,9 +26,7 @@ RusToK module-owned UI packages and future UI adapters.
 
 ## Interactions
 
-- Module-owned UI packages use this crate from local `i18n.rs` files.
-- Leptos packages use `rustok-ui-i18n-leptos` for shared adapter boilerplate.
-- Dioxus packages must use a sibling `rustok-ui-i18n-dioxus` adapter when Dioxus enters the workspace.
+- Module-owned UI packages use this crate from local `i18n.rs` files via `UiMessages`.
 - Host/runtime code still owns effective locale selection; this crate only resolves messages for a supplied locale.
 
 ## Boundary Rules

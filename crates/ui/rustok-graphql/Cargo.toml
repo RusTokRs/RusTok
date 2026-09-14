@@ -7,6 +7,12 @@ description = "Framework-agnostic GraphQL HTTP client contracts for RusToK UI ad
 
 [dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
+reqwest-middleware = { workspace = true, features = ["json"] }
+reqwest-retry.workspace = true
+url.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Location", "Window"] }

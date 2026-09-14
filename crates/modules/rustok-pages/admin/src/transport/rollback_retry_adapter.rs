@@ -1,6 +1,6 @@
 use fly::ProjectHash;
 use leptos::web_sys;
-use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
+use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{PageDetail, RollbackPageReceipt};
@@ -132,15 +132,6 @@ fn is_definitive_rejection(error: &GraphqlHttpError) -> bool {
     }
 }
 
-fn graphql_url() -> String {
-    if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
-        return url.to_string();
-    }
-    let origin = web_sys::window()
-        .and_then(|window| window.location().origin().ok())
-        .unwrap_or_else(|| "http://localhost:5150".to_string());
-    format!("{origin}/api/graphql")
-}
 
 fn retry_storage() -> Result<web_sys::Storage, GraphqlHttpError> {
     web_sys::window()

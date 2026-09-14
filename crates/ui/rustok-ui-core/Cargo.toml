@@ -6,3 +6,7 @@ license.workspace = true
 description = "Framework-agnostic UI contracts and helpers for RusTok module surfaces"
 
 [dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+url.workspace = true
+serde_qs.workspace = true

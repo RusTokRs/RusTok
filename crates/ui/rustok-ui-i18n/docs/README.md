@@ -17,17 +17,14 @@
 
 ## Integration
 
-- Leptos module-owned UI packages should use `rustok-ui-i18n-leptos` from local
-  `i18n.rs` files.
-- Framework adapters depend on this crate directly; `rustok-api` does not own or
-  re-export UI i18n helpers.
+- Module-owned UI packages use `UiMessages` directly from local `i18n.rs` files without framework adapter crates.
+- `rustok-api` does not own or re-export UI i18n helpers.
 - Host applications pass the effective locale; this crate does not inspect cookies, headers,
   route query parameters or framework context.
 
 ## Verification
 
 - `cargo test -p rustok-ui-i18n --lib`
-- `cargo test -p rustok-ui-i18n-leptos --lib`
 
 ## Related Documents
 

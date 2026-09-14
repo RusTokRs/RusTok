@@ -1,8 +1,8 @@
-use rustok_ui_i18n_leptos::LeptosUiMessages;
+use rustok_ui_i18n::UiMessages;
 
 use crate::core::{AuthTransportErrorKind, classify_auth_transport_error};
 
-static MESSAGES: LeptosUiMessages = LeptosUiMessages::new(
+static MESSAGES: UiMessages = UiMessages::new(
     "en",
     &[
         ("en", include_str!("../locales/en.json")),

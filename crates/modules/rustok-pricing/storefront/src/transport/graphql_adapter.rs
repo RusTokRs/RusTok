@@ -8,7 +8,7 @@ use crate::model::{
     PricingProductListItem, PricingProductTranslation, PricingVariant, StorefrontPricingData,
 };
 use futures::future::try_join_all;
-use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -136,25 +136,6 @@ fn configured_tenant_slug() -> Option<String> {
     })
 }
 
-fn graphql_url() -> String {
-    if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
-        return url.to_string();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        let origin = leptos::web_sys::window()
-            .and_then(|window| window.location().origin().ok())
-            .unwrap_or_else(|| "http://localhost:5150".to_string());
-        format!("{origin}/api/graphql")
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let base =
-            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-        format!("{base}/api/graphql")
-    }
-}
 
 async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
 where

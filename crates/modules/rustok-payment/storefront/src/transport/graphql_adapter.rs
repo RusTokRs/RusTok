@@ -1,4 +1,4 @@
-use rustok_graphql::{GraphqlRequest, execute};
+use rustok_graphql::{GraphqlRequest, execute, graphql_url};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
@@ -236,25 +236,6 @@ fn configured_tenant_slug() -> Option<String> {
     })
 }
 
-fn graphql_url() -> String {
-    if let Ok(url) = std::env::var("RUSTOK_GRAPHQL_URL") {
-        return url;
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        let origin = web_sys::window()
-            .and_then(|window| window.location().origin().ok())
-            .unwrap_or_else(|| "http://localhost:5150".to_string());
-        format!("{origin}/api/graphql")
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let base =
-            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-        format!("{base}/api/graphql")
-    }
-}
 
 #[cfg(test)]
 mod tests {
