@@ -44,7 +44,7 @@ pub use presentation::{
     RbacLocalizedPresentation, RbacPresentationResourceKind, RbacPresentationStore,
     RbacPresentationStoreError, SeaOrmRbacPresentationStore,
 };
-pub use presentation_service::RbacPresentationService;
+pub use presentation_service::{RbacPresentationCommandError, RbacPresentationService};
 pub use repair::{
     RbacAffectedUser, RbacSystemRoleRepairError, RbacSystemRoleRepairOptions,
     RbacSystemRoleRepairReport,
