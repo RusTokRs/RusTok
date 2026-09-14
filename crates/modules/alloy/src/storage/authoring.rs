@@ -3,8 +3,7 @@ use rustok_api::RuntimeLocale;
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    TransactionTrait,
+    ActiveModelTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -65,6 +64,8 @@ pub enum ScriptAuthoringStoreError {
     PresentationAlreadyExists,
     #[error("Alloy script presentation revision conflict; expected {expected}")]
     PresentationRevisionConflict { expected: i64 },
+    #[error("Alloy script authoring presentation mutation is inconsistent")]
+    InvalidPresentationMutation,
     #[error("Alloy script authoring storage failed: {0}")]
     Storage(String),
 }
@@ -123,14 +124,7 @@ impl SeaOrmScriptAuthoringStore {
     ) -> Result<Script, ScriptAuthoringStoreError> {
         self.ensure_owned(&script)?;
         validate_script(&script)?;
-        if presentation
-            .as_ref()
-            .is_some_and(|mutation| mutation.expected_copy_revision.is_some())
-        {
-            return Err(ScriptAuthoringStoreError::Storage(
-                "new Script presentation cannot declare an existing copy revision".to_string(),
-            ));
-        }
+        validate_create_presentation(&script, presentation.as_ref())?;
 
         let now = Utc::now();
         script.version = 1;
@@ -176,6 +170,7 @@ impl SeaOrmScriptAuthoringStore {
         self.ensure_owned(previous)?;
         self.ensure_owned(&next)?;
         validate_script(&next)?;
+        validate_update_presentation(previous, &next, presentation.as_ref())?;
         if previous.id != next.id || previous.tenant_id != next.tenant_id {
             return Err(ScriptAuthoringStoreError::NotFound);
         }
@@ -319,6 +314,34 @@ impl SeaOrmScriptAuthoringStore {
         (script.tenant_id == self.tenant_id)
             .then_some(())
             .ok_or(ScriptAuthoringStoreError::NotFound)
+    }
+}
+
+fn validate_create_presentation(
+    script: &Script,
+    presentation: Option<&ScriptPresentationAuthoringMutation>,
+) -> Result<(), ScriptAuthoringStoreError> {
+    match presentation {
+        Some(mutation)
+            if mutation.expected_copy_revision.is_none()
+                && mutation.description == script.description =>
+        {
+            Ok(())
+        }
+        None if script.description.is_none() => Ok(()),
+        _ => Err(ScriptAuthoringStoreError::InvalidPresentationMutation),
+    }
+}
+
+fn validate_update_presentation(
+    previous: &Script,
+    next: &Script,
+    presentation: Option<&ScriptPresentationAuthoringMutation>,
+) -> Result<(), ScriptAuthoringStoreError> {
+    match presentation {
+        Some(mutation) if mutation.description == next.description => Ok(()),
+        None if previous.description == next.description => Ok(()),
+        _ => Err(ScriptAuthoringStoreError::InvalidPresentationMutation),
     }
 }
 
@@ -502,7 +525,7 @@ async fn insert_source_revision(
 mod tests {
     use super::*;
     use crate::{RhaiWorkspace, ScriptStatus, ScriptTrigger, SourceProvenance};
-    use rustok_api::{StoredLocale, RuntimeLocale};
+    use rustok_api::StoredLocale;
     use sea_orm::Database;
     use sea_orm_migration::prelude::SchemaManager;
 
@@ -563,23 +586,32 @@ mod tests {
         assert_eq!(saved.version, 1);
         assert_eq!(saved.description.as_deref(), Some("Owner description"));
         let presentation = presentations
-            .find_exact(
-                tenant_id,
-                script_id,
-                &StoredLocale::from(locale),
-            )
+            .find_exact(tenant_id, script_id, &StoredLocale::from(locale))
             .await
             .expect("presentation lookup should succeed")
             .expect("presentation should exist");
         assert_eq!(presentation.copy_revision, 1);
         assert_eq!(presentation.description, saved.description);
-        assert!(source_revision::Entity::find()
-            .filter(source_revision::Column::ScriptId.eq(script_id))
-            .filter(source_revision::Column::Revision.eq(1))
-            .one(presentations.connection())
-            .await
-            .expect("source revision lookup should succeed")
-            .is_some());
+        assert!(
+            source_revision::Entity::find()
+                .filter(source_revision::Column::ScriptId.eq(script_id))
+                .filter(source_revision::Column::Revision.eq(1))
+                .one(presentations.connection())
+                .await
+                .expect("source revision lookup should succeed")
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn inline_description_without_presentation_is_rejected() {
+        let (store, _, tenant_id) = fixture().await;
+        assert!(matches!(
+            store
+                .create(script(tenant_id, "unlocalized", Some("No locale")), None)
+                .await,
+            Err(ScriptAuthoringStoreError::InvalidPresentationMutation)
+        ));
     }
 
     #[tokio::test]
@@ -625,5 +657,32 @@ mod tests {
         assert_eq!(stored.version, 1);
         assert_eq!(stored.status, ScriptStatus::Draft.as_str());
         assert_eq!(stored.description.as_deref(), Some("First"));
+    }
+
+    #[tokio::test]
+    async fn operational_only_update_does_not_require_presentation_mutation() {
+        let (store, presentations, tenant_id) = fixture().await;
+        let created = store
+            .create(script(tenant_id, "operational", None), None)
+            .await
+            .expect("script without copy should create");
+        let mut next = created.clone();
+        next.status = ScriptStatus::Active;
+        next.source_provenance = SourceProvenance::http("alloy_update_script");
+        let updated = store
+            .update(&created, next, None)
+            .await
+            .expect("operational-only update should commit");
+        assert_eq!(updated.version, 2);
+        assert_eq!(updated.status, ScriptStatus::Active);
+        assert!(
+            source_revision::Entity::find()
+                .filter(source_revision::Column::ScriptId.eq(updated.id))
+                .filter(source_revision::Column::Revision.eq(2))
+                .one(presentations.connection())
+                .await
+                .expect("source revision lookup should succeed")
+                .is_some()
+        );
     }
 }
