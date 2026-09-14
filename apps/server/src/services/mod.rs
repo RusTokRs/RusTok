@@ -1,6 +1,8 @@
 pub mod app_lifecycle;
 pub mod app_router;
 pub mod app_runtime;
+#[cfg(feature = "mod-alloy")]
+pub mod alloy_translation_target;
 pub(crate) mod artifact_binding;
 pub mod artifact_delivery_tenants;
 pub mod artifact_mcp;
@@ -293,6 +295,17 @@ pub mod module_event_dispatcher {
                 })?;
             }
         }
+
+        #[cfg(feature = "mod-alloy")]
+        super::alloy_translation_target::register_alloy_script_presentation_translation_target_provider(
+            &mut extensions,
+            db.clone(),
+        )
+        .map_err(|error| {
+            Error::Message(format!(
+                "Alloy Script presentation Translation target provider registration failed: {error}"
+            ))
+        })?;
 
         #[cfg(feature = "mod-translation")]
         rustok_translation_targets::register_translation_target_provider(
