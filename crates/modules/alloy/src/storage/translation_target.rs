@@ -26,6 +26,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::storage::{
+    ALLOY_SCRIPT_PRESENTATION_APPLY_RECEIPTS_TABLE,
     ALLOY_SCRIPT_PRESENTATION_RESOURCE_STATE_TABLE, ScriptPresentationStore,
     ScriptPresentationTranslationApply, ScriptPresentationTranslationChangeLifecycle,
     ScriptPresentationTranslationChangeOwnerPort, ScriptPresentationTranslationError,
@@ -267,6 +268,64 @@ LIMIT $3
         let next_after = has_more.then(|| rows.last().map(|row| row.script_id)).flatten();
         Ok((rows, next_after))
     }
+
+    async fn replay_committed_apply(
+        &self,
+        tenant_id: Uuid,
+        script_id: Uuid,
+        idempotency_key: &str,
+        request_fingerprint: &str,
+    ) -> Result<Option<CommittedReplay>, PortError> {
+        self.ensure_postgres()?;
+        let row = ReplayReceiptRow::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            format!(
+                r#"
+SELECT id, script_id, request_fingerprint, completed, resource_revision, target_copy_revision
+FROM {ALLOY_SCRIPT_PRESENTATION_APPLY_RECEIPTS_TABLE}
+WHERE tenant_id = $1 AND idempotency_key = $2
+"#
+            ),
+            vec![tenant_id.into(), idempotency_key.to_owned().into()],
+        ))
+        .one(&self.db)
+        .await
+        .map_err(|error| owner_storage_unavailable(error.to_string()))?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        if row.script_id != script_id || row.request_fingerprint != request_fingerprint {
+            return Err(PortError::conflict(
+                "alloy.translation_idempotency_conflict",
+                "Alloy Script presentation idempotency key was reused for another request",
+            ));
+        }
+        if !row.completed {
+            return Err(PortError::invariant_violation(
+                "alloy.translation_incomplete_receipt",
+                "Alloy Script presentation durable apply receipt is incomplete",
+            ));
+        }
+        let resource_revision = row.resource_revision.ok_or_else(|| {
+            PortError::invariant_violation(
+                "alloy.translation_replay_receipt_invalid",
+                "Alloy Script presentation replay receipt is missing resource revision",
+            )
+        })?;
+        let target_copy_revision = row.target_copy_revision.filter(|revision| *revision > 0).ok_or_else(
+            || {
+                PortError::invariant_violation(
+                    "alloy.translation_replay_receipt_invalid",
+                    "Alloy Script presentation replay receipt is missing target copy revision",
+                )
+            },
+        )?;
+        Ok(Some(CommittedReplay {
+            operation_id: row.id,
+            resource_revision,
+            target_copy_revision,
+        }))
+    }
 }
 
 pub fn register_script_presentation_translation_target_provider(
@@ -381,6 +440,29 @@ impl TranslationTargetProvider for ScriptPresentationTranslationTargetProvider {
                 )
             })?
             .to_string();
+        let request_fingerprint = patch_fingerprint(&request)?;
+        if let Some(replay) = self
+            .replay_committed_apply(
+                tenant_id,
+                script_id,
+                &idempotency_key,
+                &request_fingerprint,
+            )
+            .await?
+        {
+            return Ok(TranslationApplicationReceipt {
+                provider_receipt_id: replay.operation_id.to_string(),
+                resource_revision: opaque_revision(
+                    replay.resource_revision,
+                    "resource_revision",
+                )?,
+                target_revision: opaque_positive_revision(
+                    replay.target_copy_revision,
+                    "target_revision",
+                )?,
+                applied_field_keys: request.fields.iter().map(|field| field.key.clone()).collect(),
+            });
+        }
         let snapshot = self
             .load_snapshot(tenant_id, &read_request_from_patch(&request))
             .await?;
@@ -400,7 +482,6 @@ impl TranslationTargetProvider for ScriptPresentationTranslationTargetProvider {
             .as_ref()
             .map(|revision| parse_positive_revision(revision, "target_revision"))
             .transpose()?;
-        let request_fingerprint = patch_fingerprint(&request)?;
         let owner = SeaOrmScriptPresentationTranslationStore::new(self.db.clone(), tenant_id)
             .map_err(owner_error_to_port_error)?;
         let applied = owner
@@ -549,6 +630,23 @@ struct ResourceListRow {
 #[derive(Debug, FromQueryResult)]
 struct ResourceStateRow {
     revision: i64,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct ReplayReceiptRow {
+    id: Uuid,
+    script_id: Uuid,
+    request_fingerprint: String,
+    completed: bool,
+    resource_revision: Option<String>,
+    target_copy_revision: Option<i64>,
+}
+
+#[derive(Debug)]
+struct CommittedReplay {
+    operation_id: Uuid,
+    resource_revision: String,
+    target_copy_revision: i64,
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
