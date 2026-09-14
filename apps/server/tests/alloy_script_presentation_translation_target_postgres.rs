@@ -3,7 +3,7 @@
 use std::{error::Error, io, sync::Arc, time::Duration};
 
 use alloy::storage::{
-    ScriptPresentationAuthoringMutation, ScriptPresentationStore, SeaOrmScriptAuthoringStore,
+    ScriptPresentationAuthoringMutation, SeaOrmScriptAuthoringStore,
     SeaOrmScriptPresentationStore,
 };
 use alloy::{

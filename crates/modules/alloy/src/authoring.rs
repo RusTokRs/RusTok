@@ -1491,11 +1491,11 @@ mod tests {
             engine: Arc::new(crate::create_default_engine()),
             sandbox: sandbox.clone(),
             storage: storage.clone(),
-            authoring: Arc::new(crate::storage::SeaOrmScriptAuthoringStore::new(
+            authoring_store: Arc::new(crate::storage::SeaOrmScriptAuthoringStore::new(
                 database.clone(),
                 tenant_id,
             )),
-            presentations: presentations.clone(),
+            presentation_store: presentations.clone(),
             orchestrator: Arc::new(ScriptOrchestrator::new(sandbox, storage.clone())),
             execution_log: Arc::new(crate::SeaOrmExecutionLog::new(database)),
             tenant_id,
