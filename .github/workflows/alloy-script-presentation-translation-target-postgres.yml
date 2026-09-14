@@ -1,6 +1,9 @@
 name: Alloy Script Presentation Translation PostgreSQL Evidence
 
 on:
+  push:
+    branches:
+      - translation-alloy-postmerge-exact-evidence
   workflow_dispatch:
 
 permissions:
@@ -14,7 +17,7 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUST_TOOLCHAIN: "1.96.0"
-  TARGET_SHA: ${{ github.sha }}
+  TARGET_SHA: 60e3463e7ff0e88eedb988ecfa2ccc70a3a266f7
 
 jobs:
   postgres-evidence:
