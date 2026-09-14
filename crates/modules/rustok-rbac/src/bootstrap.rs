@@ -7,10 +7,14 @@ use uuid::Uuid;
 use rustok_api::Permission;
 use rustok_core::{Rbac, UserRole};
 
+use crate::RbacPresentationService;
+
 #[derive(Debug, Error)]
 pub enum RbacRoleAssignmentError {
     #[error("RBAC role assignment database error: {0}")]
     Database(String),
+    #[error("RBAC presentation bootstrap failed: {0}")]
+    Presentation(String),
     #[error("RBAC role assignment did not persist {0}")]
     MissingPersistedRecord(&'static str),
     #[error("RBAC user {user_id} belongs to tenant {actual_tenant_id}, not {expected_tenant_id}")]
@@ -52,6 +56,10 @@ impl RbacRoleAssignmentDbWriter {
         role: UserRole,
     ) -> Result<(), RbacRoleAssignmentError> {
         ensure_supported_backend(self.db.get_database_backend())?;
+        RbacPresentationService::from_database(self.db.clone())
+            .ensure_builtin_source_presentations(tenant_id)
+            .await
+            .map_err(|error| RbacRoleAssignmentError::Presentation(error.to_string()))?;
         let tx = self
             .db
             .begin()
