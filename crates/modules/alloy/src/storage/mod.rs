@@ -30,6 +30,6 @@ pub use sea_orm::{
 };
 pub use traits::{ScriptPage, ScriptQuery, ScriptRegistry};
 pub use translation_target::{
-    ScriptPresentationTranslationTargetProvider,
-    register_script_presentation_translation_target_provider,
+    ScriptPresentationTranslationExactResource, ScriptPresentationTranslationResourcePage,
+    ScriptPresentationTranslationResourceSummary, SeaOrmScriptPresentationTranslationTargetOwner,
 };
