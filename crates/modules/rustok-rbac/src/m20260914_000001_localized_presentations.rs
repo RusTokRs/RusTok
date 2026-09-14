@@ -1,3 +1,4 @@
+use sea_orm::{ConnectionTrait, DbBackend};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -76,12 +77,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // The current built-in role and permission presentation is computed
-        // inline rather than persisted owner data. There is therefore no
-        // truthful legacy source locale to backfill here. Future migrations of
-        // genuinely persisted legacy copy may use storage-only `und`, but new
-        // canonical authoring is required to provide a concrete RuntimeLocale.
-        Ok(())
+        seed_builtin_presentations(manager).await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -94,6 +90,104 @@ impl MigrationTrait for Migration {
             )
             .await
     }
+}
+
+async fn seed_builtin_presentations(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let connection = manager.get_connection();
+    let (role_sql, permission_sql) = match connection.get_database_backend() {
+        DbBackend::Postgres | DbBackend::Sqlite => (
+            r#"
+INSERT INTO rbac_localized_presentations
+    (tenant_id, resource_kind, resource_key, locale, name, description, copy_revision, created_at, updated_at)
+SELECT
+    r.tenant_id,
+    'role',
+    r.slug,
+    'en',
+    CASE r.slug
+        WHEN 'super_admin' THEN 'Super Admin'
+        WHEN 'admin' THEN 'Admin'
+        WHEN 'manager' THEN 'Manager'
+        WHEN 'customer' THEN 'Customer'
+    END,
+    NULL,
+    1,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM roles r
+WHERE r.is_system = TRUE
+  AND r.slug IN ('super_admin', 'admin', 'manager', 'customer')
+ON CONFLICT (tenant_id, resource_kind, resource_key, locale) DO NOTHING
+"#,
+            r#"
+INSERT INTO rbac_localized_presentations
+    (tenant_id, resource_kind, resource_key, locale, name, description, copy_revision, created_at, updated_at)
+SELECT DISTINCT
+    p.tenant_id,
+    'permission',
+    p.resource || ':' || p.action,
+    'en',
+    REPLACE(p.resource || ':' || p.action, ':', ' / '),
+    NULL,
+    1,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM permissions p
+JOIN role_permissions rp ON rp.permission_id = p.id
+JOIN roles r ON r.id = rp.role_id AND r.tenant_id = p.tenant_id
+WHERE r.is_system = TRUE
+  AND r.slug IN ('super_admin', 'admin', 'manager', 'customer')
+ON CONFLICT (tenant_id, resource_kind, resource_key, locale) DO NOTHING
+"#,
+        ),
+        DbBackend::MySql => (
+            r#"
+INSERT IGNORE INTO rbac_localized_presentations
+    (tenant_id, resource_kind, resource_key, locale, name, description, copy_revision, created_at, updated_at)
+SELECT
+    r.tenant_id,
+    'role',
+    r.slug,
+    'en',
+    CASE r.slug
+        WHEN 'super_admin' THEN 'Super Admin'
+        WHEN 'admin' THEN 'Admin'
+        WHEN 'manager' THEN 'Manager'
+        WHEN 'customer' THEN 'Customer'
+    END,
+    NULL,
+    1,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM roles r
+WHERE r.is_system = TRUE
+  AND r.slug IN ('super_admin', 'admin', 'manager', 'customer')
+"#,
+            r#"
+INSERT IGNORE INTO rbac_localized_presentations
+    (tenant_id, resource_kind, resource_key, locale, name, description, copy_revision, created_at, updated_at)
+SELECT DISTINCT
+    p.tenant_id,
+    'permission',
+    CONCAT(p.resource, ':', p.action),
+    'en',
+    REPLACE(CONCAT(p.resource, ':', p.action), ':', ' / '),
+    NULL,
+    1,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM permissions p
+JOIN role_permissions rp ON rp.permission_id = p.id
+JOIN roles r ON r.id = rp.role_id AND r.tenant_id = p.tenant_id
+WHERE r.is_system = TRUE
+  AND r.slug IN ('super_admin', 'admin', 'manager', 'customer')
+"#,
+        ),
+    };
+
+    connection.execute_unprepared(role_sql).await?;
+    connection.execute_unprepared(permission_sql).await?;
+    Ok(())
 }
 
 #[derive(Iden)]
