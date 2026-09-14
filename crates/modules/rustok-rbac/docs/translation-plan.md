@@ -11,11 +11,13 @@ installation identity, continuity fingerprints, durable invalidation generations
 receipts and events participate in authorization semantics and must never become
 translatable values.
 
-RBAC-TR-1 is complete with this boundary audit. The owner still has inline or
-computed presentation copy for the built-in role/permission catalog, so the
-RBAC Translation provider remains blocked and unregistered until owner-local
-localized presentation storage and canonical locale-aware writes replace that
-copy. Existing artifact-permission translations are a separate RBAC-owned
+RBAC-TR-1 and RBAC-TR-2 are complete. The owner now has a separate localized
+presentation plane for admitted role/permission identity with exact stored locale,
+explicit concrete source locale for new writes, and copy-only CAS revisions.
+Canonical admin/API reads and built-in seed presentation still use the legacy
+inline/derived path, so the RBAC Translation provider remains blocked and
+unregistered until RBAC-TR-3 cuts canonical reads/writes over to the owner plane.
+Existing artifact-permission translations remain a separate RBAC-owned
 release-governance localization plane and are not a second tenant Translation
 writer.
 
@@ -38,23 +40,37 @@ Presentation updates must not change any of those values, alter permission
 membership, advance authorization identity, or create a new route around the
 canonical RBAC mutation policy.
 
-## Presentation copy requiring owner-local localized storage
+## Owner-local localized presentation storage
 
-The built-in catalog already separates stable role/permission slugs from
-human-readable display copy, but that copy is currently inline or derived:
+The built-in catalog separates stable role/permission slugs from human-readable
+copy, while legacy presentation is still inline or derived:
 
 - built-in role display names are hard-coded from `UserRole`;
-- permission display names are currently synthesized from the permission slug;
-- legacy role names/descriptions and permission descriptions remain presentation
-  concerns identified by the multilingual storage audit;
+- permission display names are synthesized from the permission slug;
 - future tenant-authored role/permission presentation must carry explicit locale
   provenance and remain identity-bound to the canonical role/permission key.
 
-The owner cutover therefore needs localized role/permission presentation rows
-keyed by stable identity plus normalized exact locale. New writes must require an
-explicit source/effective locale. Legacy copy whose original locale cannot be
-proven retains truthful storage-only `und`; RBAC must not infer English, a tenant
-default, request locale, or deployment locale during backfill.
+RBAC-TR-2 adds `rbac_localized_presentations`, keyed by tenant, admitted resource
+kind (`role` or `permission`), stable canonical resource key, and normalized exact
+stored locale. The owner store exposes concrete `RuntimeLocale` at canonical
+source-write edges, so newly authored copy cannot silently use storage-only
+`und`. Reads retain `StoredLocale` support so a future migration of genuinely
+persisted legacy copy with unknown provenance can remain truthful under `und`
+without guessing English, a tenant default, request locale, or deployment locale.
+
+There is no current persisted owner role/permission presentation data to backfill:
+the legacy built-in copy is computed inline. RBAC-TR-2 therefore deliberately does
+not fabricate `und` rows from derived strings. RBAC-TR-3 will seed canonical
+presentation through explicit-locale owner data instead.
+
+Presentation copy has its own `copy_revision`. Idempotent replays do not advance
+that revision, and semantic copy changes use compare-and-set. Authorization and
+invalidation revisions/generations are not reused by this plane.
+
+Owner writes are identity-bound: the current store admits only resource keys that
+exist in `BuiltinTenantRbacCatalog`. Extending the owner to tenant-authored roles
+or permissions requires first extending canonical RBAC identity ownership; copy
+storage must not create orphan authorization identity.
 
 Authorization and mutation transports continue to use stable identity. Locale-
 aware admin reads may resolve presentation copy, but policy writes, assignments,
@@ -81,8 +97,8 @@ tenant Translation target track does not silently absorb it.
 
 ## Proposed narrow Translation contract
 
-No RBAC Translation provider is registered by RBAC-TR-1. After the owner storage
-and write cutover, the candidate tenant Translation surface is presentation-only
+No RBAC Translation provider is registered through RBAC-TR-2. After the canonical
+write/read cutover, the candidate tenant Translation surface is presentation-only
 role/permission copy:
 
 - owner slug: `rbac`;
@@ -96,9 +112,9 @@ role/permission copy:
 - control-plane admission: must preserve the canonical direct-session/tenant and
   RBAC management permission floors rather than adding a Translation bypass.
 
-The exact resource kinds, revision model and field set are intentionally deferred
-until owner-local storage and canonical writes exist. Translation must not define
-those contracts ahead of the owner.
+Resource kinds and copy-only revision semantics are now owner-defined by TR-2.
+The final field/write contract remains intentionally deferred until RBAC-TR-3
+moves canonical reads and writes onto this owner plane.
 
 ## Delivery slices
 
@@ -110,15 +126,17 @@ those contracts ahead of the owner.
 - keep `rbac_control_copy` blocked and its provider unregistered;
 - retain AI export as fail-closed/forbidden while the owner cutover is incomplete.
 
-### RBAC-TR-2 — owner localized presentation storage
+### RBAC-TR-2 — owner localized presentation storage — complete
 
-- add owner-local normalized role/permission presentation rows keyed by stable
-  identity plus exact locale;
-- carry explicit source-locale provenance for new presentation writes;
-- preserve unknown legacy provenance as storage-only `und` without guessing;
-- define copy-only revisions that do not reuse authorization/invalidation
-  revisions;
-- keep artifact-permission release translations on their existing governance
+- owner-local normalized presentation rows are keyed by tenant, admitted stable
+  role/permission identity, and exact locale;
+- new presentation writes require explicit concrete `RuntimeLocale` provenance;
+- storage can represent truthful legacy `und`, but no `und` backfill is invented
+  because current legacy role/permission copy is computed rather than persisted;
+- copy-only compare-and-set revisions are independent from authorization and
+  invalidation generations;
+- owner writes reject unknown role/permission identity;
+- artifact-permission release translations stay on their existing governance
   plane.
 
 ### RBAC-TR-3 — canonical write/read cutover
