@@ -183,6 +183,12 @@ WHERE r.is_system = TRUE
   AND r.slug IN ('super_admin', 'admin', 'manager', 'customer')
 "#,
         ),
+        _ => {
+            return Err(DbErr::Custom(
+                "RBAC localized presentation seed does not support this database backend"
+                    .to_string(),
+            ));
+        }
     };
 
     connection.execute_unprepared(role_sql).await?;
