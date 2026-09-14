@@ -30,54 +30,44 @@ jobs:
 
           path = Path("docs/modules/translation-surfaces.json")
           text = path.read_text()
-          old = '''    {
-              "id": "alloy_script_presentation",
-              "owner_slug": "alloy",
-              "resource_kind": "script_presentation",
-              "readiness": "blocked",
-              "provider_status": "registered",
-              "field_profiles": ["plain_text"],
-              "data_classification": ["tenant_private"],
-              "ai_export": "forbidden",
-              "evidence_paths": [
-                "crates/modules/alloy/docs/translation-plan.md",
-                "crates/modules/alloy/src/model/presentation.rs",
-                "crates/modules/alloy/src/storage/presentation.rs",
-                "crates/modules/alloy/src/storage/presentation_translation.rs",
-                "crates/modules/alloy/src/storage/translation_target.rs",
-                "crates/modules/alloy/src/migrations/m20260913_000010_add_script_presentations.rs",
-                "crates/modules/alloy/src/migrations/m20260914_000011_add_script_presentation_translation_change_plane.rs",
-                "apps/server/src/services/mod.rs"
-              ],
-              "blockers": ["The alloy/script_presentation provider is registered over optional tenant-private description only, with scripts:manage read/apply floors, AI export forbidden, truthful legacy und exclusion from concrete exact-locale inventory, copy-only source/target revisions, durable idempotent apply/replay, aggregate progress and frozen ChangeCursor backed by the owner change plane. Retain focused exact-head PostgreSQL migration/backfill, tenant-isolation, canonical authoring, concurrent CAS, replay-after-later-change, hard-delete lifecycle, progress and cursor-recovery evidence before pilot promotion; operational Script.name and executable/configuration/security-sensitive state remain outside Translation."]
-            }'''
-          new = '''    {
-              "id": "alloy_script_presentation",
-              "owner_slug": "alloy",
-              "resource_kind": "script_presentation",
-              "readiness": "pilot_candidate",
-              "provider_status": "registered",
-              "field_profiles": ["plain_text"],
-              "data_classification": ["tenant_private"],
-              "ai_export": "forbidden",
-              "evidence_paths": [
-                "crates/modules/alloy/docs/translation-plan.md",
-                "crates/modules/alloy/src/model/presentation.rs",
-                "crates/modules/alloy/src/storage/presentation.rs",
-                "crates/modules/alloy/src/storage/presentation_translation.rs",
-                "crates/modules/alloy/src/storage/translation_target.rs",
-                "crates/modules/alloy/src/migrations/m20260913_000010_add_script_presentations.rs",
-                "crates/modules/alloy/src/migrations/m20260914_000011_add_script_presentation_translation_change_plane.rs",
-                "apps/server/src/services/alloy_translation_target.rs",
-                "apps/server/src/services/mod.rs",
-                "apps/server/tests/alloy_script_presentation_translation_target_postgres.rs",
-                ".github/workflows/alloy-script-presentation-translation-target-postgres.yml"
-              ],
-              "blockers": ["Production enablement remains an operator rollout decision; repository-hosted PostgreSQL migration/backfill, tenant-isolation, canonical authoring, multi-replica CAS, replay-after-later-change, hard-delete lifecycle, aggregate progress and frozen ChangeCursor evidence is retained by the focused Alloy Script Presentation test/workflow, including exact post-merge main run 34841105202 on 60e3463e7ff0e88eedb988ecfa2ccc70a3a266f7 (1 passed, 0 failed). Operational Script.name and executable/configuration/security-sensitive state remain outside Translation."]
-            }'''
-          if text.count(old) != 1:
-              raise SystemExit(f"expected exactly one Alloy parity row, found {text.count(old)}")
-          path.write_text(text.replace(old, new, 1))
+          marker = '      "id": "alloy_script_presentation",'
+          if text.count(marker) != 1:
+              raise SystemExit(f"expected exactly one Alloy marker, found {text.count(marker)}")
+          marker_at = text.index(marker)
+          start = text.rfind("    {\n", 0, marker_at)
+          end = text.find("\n    },", marker_at)
+          if start < 0 or end < 0:
+              raise SystemExit("could not isolate Alloy parity row")
+          old = text[start:end + len("\n    }")]
+          if '"readiness": "blocked"' not in old:
+              raise SystemExit("Alloy row is no longer blocked; refusing stale replacement")
+          new = "\n".join([
+              "    {",
+              '      "id": "alloy_script_presentation",',
+              '      "owner_slug": "alloy",',
+              '      "resource_kind": "script_presentation",',
+              '      "readiness": "pilot_candidate",',
+              '      "provider_status": "registered",',
+              '      "field_profiles": ["plain_text"],',
+              '      "data_classification": ["tenant_private"],',
+              '      "ai_export": "forbidden",',
+              '      "evidence_paths": [',
+              '        "crates/modules/alloy/docs/translation-plan.md",',
+              '        "crates/modules/alloy/src/model/presentation.rs",',
+              '        "crates/modules/alloy/src/storage/presentation.rs",',
+              '        "crates/modules/alloy/src/storage/presentation_translation.rs",',
+              '        "crates/modules/alloy/src/storage/translation_target.rs",',
+              '        "crates/modules/alloy/src/migrations/m20260913_000010_add_script_presentations.rs",',
+              '        "crates/modules/alloy/src/migrations/m20260914_000011_add_script_presentation_translation_change_plane.rs",',
+              '        "apps/server/src/services/alloy_translation_target.rs",',
+              '        "apps/server/src/services/mod.rs",',
+              '        "apps/server/tests/alloy_script_presentation_translation_target_postgres.rs",',
+              '        ".github/workflows/alloy-script-presentation-translation-target-postgres.yml"',
+              '      ],',
+              '      "blockers": ["Production enablement remains an operator rollout decision; repository-hosted PostgreSQL migration/backfill, tenant-isolation, canonical authoring, multi-replica CAS, replay-after-later-change, hard-delete lifecycle, aggregate progress and frozen ChangeCursor evidence is retained by the focused Alloy Script Presentation test/workflow, including exact post-merge main run 34841105202 on 60e3463e7ff0e88eedb988ecfa2ccc70a3a266f7 (1 passed, 0 failed). Operational Script.name and executable/configuration/security-sensitive state remain outside Translation."]',
+              "    }",
+          ])
+          path.write_text(text[:start] + new + text[end + len("\n    }"):])
           PY
           python3 -m json.tool docs/modules/translation-surfaces.json >/dev/null
           git diff --check
