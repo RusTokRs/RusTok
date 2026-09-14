@@ -4,6 +4,7 @@ mod presentation;
 mod presentation_translation;
 mod sea_orm;
 mod traits;
+mod translation_target;
 
 pub use authoring::{
     ScriptAuthoringStoreError, ScriptPresentationAuthoringMutation, SeaOrmScriptAuthoringStore,
@@ -28,3 +29,7 @@ pub use sea_orm::{
     SeaOrmStorage,
 };
 pub use traits::{ScriptPage, ScriptQuery, ScriptRegistry};
+pub use translation_target::{
+    ScriptPresentationTranslationTargetProvider,
+    register_script_presentation_translation_target_provider,
+};
