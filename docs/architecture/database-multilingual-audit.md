@@ -122,7 +122,11 @@ runtime cutover target:
 - `rbac-role-permission-display-copy`: role slug and permission resource/action
   are valid identity, but role name/descriptions and permission descriptions are
   inline UI copy. Built-in seeds need explicit-locale translations; tenant custom
-  copy needs effective-locale command identity.
+  copy needs effective-locale command identity. This cutover is distinct from
+  existing `rbac_artifact_release_permission_translations` and
+  `rbac_artifact_permission_translations`: those rows localize immutable artifact
+  permission metadata admitted from release governance and must not become a
+  second tenant-editable Translation writer.
 - `channel-display-name`: `channels.slug` is the stable identifier while
   `channels.name` remains human-facing copy in the base table. The Channel owner
   must add translation records and exact-locale transports.
