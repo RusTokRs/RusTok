@@ -13,6 +13,8 @@ mod m20260714_900002_create_rbac_invalidation_state;
 mod m20260716_000001_artifact_permission_catalog;
 mod m20260717_000001_artifact_role_permissions;
 mod m20260803_000001_canonicalize_artifact_permissions;
+mod m20260914_000001_rbac_localized_presentation;
+mod presentation;
 pub mod ports;
 mod repair;
 mod role_mutation;
@@ -37,6 +39,10 @@ pub use invalidation_generation::{
     read_permission_invalidation_generation, reserve_permission_invalidation_generation,
 };
 pub use ports::*;
+pub use presentation::{
+    PermissionPresentation, PermissionPresentationWrite, RbacPresentationStorageError,
+    RbacPresentationStore, RolePresentation, RolePresentationWrite,
+};
 pub use repair::{
     RbacAffectedUser, RbacSystemRoleRepairError, RbacSystemRoleRepairOptions,
     RbacSystemRoleRepairReport,
@@ -123,6 +129,7 @@ impl MigrationSource for RbacModule {
             Box::new(m20260716_000001_artifact_permission_catalog::Migration),
             Box::new(m20260717_000001_artifact_role_permissions::Migration),
             Box::new(m20260803_000001_canonicalize_artifact_permissions::Migration),
+            Box::new(m20260914_000001_rbac_localized_presentation::Migration),
         ]
     }
 }
