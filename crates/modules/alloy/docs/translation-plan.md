@@ -2,22 +2,23 @@
 
 ## Status
 
-This document defines the owner boundary that must exist before Alloy can register
-any Translation target. It is intentionally narrower than the legacy
-`alloy_control_copy` parity row.
+This document defines the owner boundary for Alloy Translation integration. It is
+intentionally narrower than the legacy `alloy_control_copy` parity row.
 
 The current Alloy `Script` aggregate mixes human-facing prose with runtime and
 security-sensitive state. Registering that aggregate as a Translation target
 would therefore be incorrect.
 
-ALLOY-TR-1 and ALLOY-TR-2 are complete. ALLOY-TR-3 now has an owner-local durable
-change plane: presentation apply receipts, semantic aggregate revisions and
-journal rows, canonical Script hard-delete tombstones, exact-locale aggregate
-progress, and bounded frozen ChangeCursor semantics. Operational Script writes
-remain outside that plane because only `alloy_script_presentations` semantic
-copy changes advance the active resource revision. Provider registration remains
-blocked until ALLOY-TR-4; retained PostgreSQL execution evidence remains
-ALLOY-TR-5.
+ALLOY-TR-1 through ALLOY-TR-4 are complete. The narrow
+`alloy/script_presentation` target is registered in production composition over
+the owner-local presentation/change plane. It exposes localized `description`
+only, requires `scripts.manage` for both read and apply, keeps AI export disabled,
+and delegates writes to the durable Alloy owner apply path. Exact committed
+replay is admitted from the owner receipt before newer live revisions are read,
+while new writes still pass the Translation snapshot/hash validation and owner
+resource/source/target CAS. Operational Script writes remain outside the change
+plane. Retained PostgreSQL execution evidence remains ALLOY-TR-5 before pilot
+promotion.
 
 ## Audited owner boundary
 
@@ -37,46 +38,48 @@ The following state must remain outside Translation:
 - any prompt/template/code content that can alter execution semantics.
 
 The existing `description` is human-facing presentation prose and is the first
-candidate for localized storage. A future user-facing display name may also be
+localized Translation field. A future user-facing display name may also be
 localized, but it must be introduced as a distinct `display_name`; it must not
 reuse or translate the operational `name` field.
 
 ## Target contract
 
-The future Translation resource is:
+The registered Translation resource is:
 
 - owner slug: `alloy`;
 - resource kind: `script_presentation`;
 - stable identity: tenant + `script_id`;
-- initial fields: `description` only;
+- fields: `description` only;
 - optional future field: `display_name` after an explicit owner-model addition;
 - AI export: forbidden until a separate policy explicitly admits Alloy script
   presentation copy;
 - authorization floor: the canonical Alloy owner permission (`scripts.manage`)
-  for both read and apply operations.
+  for both read and apply operations;
+- capabilities: list resources, exact read, aggregate progress, patch validation,
+  durable patch apply and frozen ChangeCursor.
 
-No Translation provider may expose executable source, templates, prompts,
-permissions or runtime configuration as fields of this resource.
+The provider does not expose executable source, templates, prompts, operational
+`name`, permissions or runtime configuration. Its display label is derived only
+from stable Script identity so inventory cannot leak operational Script names as
+presentation copy.
 
 ## Provenance and locale rules
 
-All new presentation writes must carry an explicit normalized source locale.
-The owner must not infer a tenant default, installation locale or English for
+All new presentation writes carry an explicit normalized source locale. The
+owner does not infer a tenant default, installation locale or English for
 legacy rows.
 
-Legacy inline descriptions whose original locale is not known must retain
-truthful unknown provenance. Migration code may represent this as an explicit
-unknown/undetermined locale only if that representation is accepted by the
-shared locale contract; it must never guess a concrete locale.
+Legacy inline descriptions whose original locale is not known retain truthful
+unknown provenance as storage-only `und`. The Translation target never promotes
+that storage marker to a concrete `TenantLocale`; only concrete exact locale
+rows participate in Translation inventory and snapshots.
 
 ## Owner storage foundation
 
-Before provider registration, Alloy needs parallel owner-local storage for
-presentation copy. The intended shape is one localized row per
-`(tenant_id, script_id, locale)` containing only presentation fields and their
-copy revision metadata.
+Alloy owns one localized row per `(tenant_id, script_id, locale)` containing
+presentation fields and copy revision metadata.
 
-The owner foundation must provide:
+The owner foundation provides:
 
 1. exact tenant + script ownership checks;
 2. normalized locale keys;
@@ -88,11 +91,10 @@ The owner foundation must provide:
 7. lifecycle behavior that follows canonical Script owner commands rather than
    test-only SQL;
 8. a durable translation-change journal with stable aggregate sequencing;
-9. aggregate progress and a frozen-window ChangeCursor before provider
-   registration.
+9. exact aggregate progress and a frozen-window ChangeCursor.
 
-The existing whole-script `version` remains the owner command revision. It must
-not be reused as the Translation copy revision because workspace, trigger,
+The existing whole-script `version` remains the owner command revision. It is
+not reused as the Translation copy revision because workspace, trigger,
 permission and lifecycle mutations can advance it without changing localizable
 copy.
 
@@ -112,9 +114,12 @@ transaction.
 
 Apply idempotency is tenant-scoped and durable. A receipt binds the idempotency
 key to Script identity, exact source/target locales, workflow evidence, request
-fingerprint, expected revisions and requested copy. Exact replay returns the
-committed receipt before checking newer live revisions; mismatched key reuse
-fails closed.
+fingerprint, expected revisions and requested copy. At the provider boundary,
+an exact committed receipt is checked before consulting current presentation
+state; this preserves replay even after newer owner changes. A mismatched key or
+request fingerprint fails closed. New applies then pass current snapshot/hash
+validation before entering the owner transaction, whose own receipt admission
+and resource/source/target CAS remain authoritative.
 
 Progress uses exact source-locale inventory and treats `description` as the one
 optional unit. The owner brackets one aggregate progress read with journal
@@ -125,53 +130,61 @@ next polling window from the previous checkpoint.
 
 ## Canonical authoring integration
 
-`AlloyAuthoringService` remains the write boundary. Create/update transports
-must not write localized rows directly.
+`AlloyAuthoringService` remains the canonical owner write boundary for Script
+create/update transports. Translation writes enter the same presentation owner
+CAS through `SeaOrmScriptPresentationTranslationStore`; the provider never
+creates a second presentation writer.
 
-The migration sequence is:
+The implemented sequence is:
 
-- introduce explicit presentation/source-locale input on owner commands;
-- persist canonical presentation copy in the same owner transaction as the
+- explicit presentation/source-locale input on owner commands;
+- canonical presentation copy persisted in the same owner transaction as the
   corresponding Script mutation;
-- keep operational `name` semantics unchanged;
-- move description reads to locale-aware owner presentation resolution where a
-  locale is requested, with a truthful fallback to the canonical owner copy;
-- only after the owner path is durable, expose Translation read/apply ports.
+- operational `name` semantics unchanged;
+- description reads remain owner-local and locale-aware;
+- Translation exact read/list/progress/change capabilities read only owner-owned
+  presentation/resource state;
+- Translation apply delegates to the durable owner receipt + CAS path.
 
 ## Delivery slices
 
-### ALLOY-TR-1 — boundary and parity
+### ALLOY-TR-1 — boundary and parity — complete
 
 - classify legacy `alloy_control_copy` as an excluded broad aggregate;
 - track the narrow `alloy/script_presentation` owner target separately;
 - record the audited source files as evidence;
 - keep provider status `not_registered`.
 
-### ALLOY-TR-2 — owner presentation storage
+### ALLOY-TR-2 — owner presentation storage — complete
 
 - add localized presentation storage and source-locale provenance;
 - integrate create/update through `AlloyAuthoringService`;
 - add copy-only semantic revisions and owner-level CAS;
 - do not register a Translation provider.
 
-### ALLOY-TR-3 — durable change plane
+### ALLOY-TR-3 — durable change plane — complete
 
 - add idempotent apply receipts;
 - add semantic change journal, lifecycle tombstones, aggregate progress and
   frozen ChangeCursor semantics;
-- prove non-copy Script mutations do not create presentation changes.
+- keep non-copy Script mutations outside presentation changes.
 
-### ALLOY-TR-4 — provider composition
+### ALLOY-TR-4 — provider composition — complete
 
-- implement the narrow `alloy/script_presentation` Translation target;
-- register it in production composition with `scripts.manage` policy;
-- expose only admitted presentation fields.
+- implement narrow `alloy/script_presentation` list/read/validate/apply/progress/
+  ChangeCursor target behavior;
+- expose only optional tenant-private `description`, with AI export forbidden;
+- require `scripts.manage` for read and apply;
+- preserve durable exact replay before live snapshot validation;
+- register the provider in canonical production host composition.
 
 ### ALLOY-TR-5 — retained PostgreSQL evidence
 
 - retain exact-head PostgreSQL evidence for migration/backfill, tenant
-  isolation, canonical create/update, concurrent CAS, idempotent replay,
-  lifecycle, progress and ChangeCursor recovery;
+  isolation, canonical create/update, concurrent CAS, idempotent replay after
+  later owner changes, lifecycle, progress and ChangeCursor recovery;
+- prove `scripts.manage` read/apply policy and verify that `und` provenance is
+  never advertised as a concrete exact locale;
 - only then consider pilot promotion.
 
 ## Non-goals
