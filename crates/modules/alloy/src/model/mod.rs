@@ -1,6 +1,7 @@
 mod deletion;
 mod evolution;
 mod import;
+mod presentation;
 mod provenance;
 mod proxy;
 mod release;
@@ -27,6 +28,10 @@ pub use evolution::{
 pub use import::{
     AlloyImportError, AlloyImportedDraftCommand, AlloyImportedDraftResult,
     AlloyPublishedReleaseImportCommand, AlloyPublishedRhaiSource,
+};
+pub use presentation::{
+    ScriptPresentation, script_presentation_locale_revision,
+    script_presentation_resource_revision,
 };
 pub use provenance::{
     AuthoringOrigin, MAX_PROVENANCE_TOOL_NAME_LENGTH, ProvenanceError, SourceProvenance,

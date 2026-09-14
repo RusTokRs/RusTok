@@ -7,19 +7,24 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use rustok_api::RuntimeLocale;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::storage::{
+    ScriptAuthoringStoreError, ScriptPresentationAuthoringMutation, SeaOrmScriptAuthoringStore,
+};
 use crate::utils::{json_to_dynamic, validate_cron_expression};
 use crate::{
-    AlloyDraftRuntime, EntityProxy, ExecutionOutcome, ReviewCommand, ReviewDecision, ReviewStatus,
-    RevisionedTestRunner, RhaiWorkspace, RustComponentCandidate, RustComponentCandidateCommand,
-    RustComponentCandidateReview, RustComponentCandidateReviewCommand, RustComponentWorkspace,
-    ScopedAlloyRuntime, Script, ScriptDeletionCommand, ScriptEngine, ScriptError,
-    ScriptEvidenceRetentionAction, ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionState,
-    ScriptOrchestrator, ScriptQuery, ScriptRegistry, ScriptStatus, ScriptTrigger, SourceProvenance,
-    TestCommand, TestRun, TestRunStatus,
+    AlloyDraftRuntime, AuthoringOrigin, EntityProxy, ExecutionOutcome, ReviewCommand,
+    ReviewDecision, ReviewStatus, RevisionedTestRunner, RhaiWorkspace, RustComponentCandidate,
+    RustComponentCandidateCommand, RustComponentCandidateReview,
+    RustComponentCandidateReviewCommand, RustComponentWorkspace, ScopedAlloyRuntime, Script,
+    ScriptDeletionCommand, ScriptEngine, ScriptError, ScriptEvidenceRetentionAction,
+    ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionState, ScriptOrchestrator, ScriptQuery,
+    ScriptRegistry, ScriptStatus, ScriptTrigger, SourceProvenance, TestCommand, TestRun,
+    TestRunStatus,
 };
 
 /// Authoring operations are always bound to one tenant before a command is
@@ -29,26 +34,30 @@ pub struct AlloyAuthoringService<R: ScriptRegistry> {
     sandbox: AlloyDraftRuntime,
     registry: Arc<R>,
     orchestrator: Arc<ScriptOrchestrator<R>>,
+    authoring: Option<Arc<SeaOrmScriptAuthoringStore>>,
     tenant_id: Uuid,
 }
 
 impl AlloyAuthoringService<crate::SeaOrmStorage> {
     /// Uses the exact owner-scoped production runtime supplied by the host.
-    /// The caller cannot select a registry or tenant independently.
+    /// The caller cannot select a registry, authoring store or tenant independently.
     pub fn from_scoped(runtime: ScopedAlloyRuntime) -> Self {
         Self {
             engine: runtime.engine,
             sandbox: runtime.sandbox,
             registry: runtime.storage,
             orchestrator: runtime.orchestrator,
+            authoring: Some(runtime.authoring),
             tenant_id: runtime.tenant_id,
         }
     }
 }
 
 impl<R: ScriptRegistry> AlloyAuthoringService<R> {
-    /// Constructs a tenant-bound owner service for tests and non-HTTP owner
-    /// adapters. Production remote adapters use [`Self::from_scoped`].
+    /// Constructs a tenant-bound owner service for tests and non-production
+    /// owner adapters. Localized presentation authoring is intentionally
+    /// unavailable unless the production scoped runtime supplies its atomic
+    /// authoring store.
     pub fn new(
         tenant_id: Uuid,
         engine: Arc<ScriptEngine>,
@@ -61,6 +70,7 @@ impl<R: ScriptRegistry> AlloyAuthoringService<R> {
             sandbox,
             registry,
             orchestrator,
+            authoring: None,
             tenant_id,
         }
     }
@@ -125,23 +135,29 @@ impl<R: ScriptRegistry> AlloyAuthoringService<R> {
             .collect()
     }
 
+    /// Remote MCP compatibility entrypoint. The trusted origin is selected by
+    /// this host method, never deserialized from the source-bearing command.
     pub async fn create_script(
         &self,
         actor_id: &str,
         request: CreateAlloyScriptCommand,
     ) -> Result<RedactedAlloyScript, AlloyAuthoringError> {
+        self.create_script_from(AuthoringOrigin::RemoteMcp, actor_id, request)
+            .await
+    }
+
+    /// Canonical create entrypoint shared by trusted HTTP, GraphQL and remote
+    /// MCP adapters. `origin` is host context and must never come from request
+    /// payload data.
+    pub async fn create_script_from(
+        &self,
+        origin: AuthoringOrigin,
+        actor_id: &str,
+        request: CreateAlloyScriptCommand,
+    ) -> Result<RedactedAlloyScript, AlloyAuthoringError> {
         self.validate_actor(actor_id)?;
         self.validate_workspace(&request.name, &request.workspace, &request.trigger)?;
-        let duplicate = self
-            .registry
-            .find(ScriptQuery::ByName(request.name.clone()))
-            .await
-            .map_err(AlloyAuthoringError::from_script_error)?
-            .into_iter()
-            .any(|script| self.owns(&script));
-        if duplicate {
-            return Err(AlloyAuthoringError::Invalid);
-        }
+        let presentation = create_presentation_mutation(&request)?;
 
         let mut script = Script::new(request.name, request.workspace, request.trigger);
         script.tenant_id = self.tenant_id;
@@ -149,24 +165,61 @@ impl<R: ScriptRegistry> AlloyAuthoringService<R> {
         script.permissions = request.permissions;
         script.run_as_system = request.run_as_system;
         script.author_id = Some(actor_id.to_owned());
-        script.source_provenance = SourceProvenance::remote_mcp("alloy_create_script");
-        let saved = self
-            .registry
-            .save(script)
-            .await
-            .map_err(AlloyAuthoringError::from_script_error)?;
+        script.source_provenance = operator_provenance(origin, "alloy_create_script")?;
+
+        let saved = if let Some(authoring) = &self.authoring {
+            authoring
+                .create(script, presentation)
+                .await
+                .map_err(AlloyAuthoringError::from_authoring_store_error)?
+        } else {
+            if presentation.is_some() {
+                return Err(AlloyAuthoringError::Failed);
+            }
+            let duplicate = self
+                .registry
+                .find(ScriptQuery::ByName(script.name.clone()))
+                .await
+                .map_err(AlloyAuthoringError::from_script_error)?
+                .into_iter()
+                .any(|candidate| self.owns(&candidate));
+            if duplicate {
+                return Err(AlloyAuthoringError::Invalid);
+            }
+            self.registry
+                .save(script)
+                .await
+                .map_err(AlloyAuthoringError::from_script_error)?
+        };
         self.require_owned(&saved)?;
         RedactedAlloyScript::try_from(saved)
     }
 
+    /// Remote MCP compatibility entrypoint. The trusted origin is selected by
+    /// this host method, never deserialized from the source-bearing command.
     pub async fn update_script(
         &self,
         actor_id: &str,
         request: UpdateAlloyScriptCommand,
     ) -> Result<RedactedAlloyScript, AlloyAuthoringError> {
+        self.update_script_from(AuthoringOrigin::RemoteMcp, actor_id, request)
+            .await
+    }
+
+    /// Canonical update entrypoint shared by trusted HTTP, GraphQL and remote
+    /// MCP adapters. Presentation changes always carry a concrete source locale
+    /// and optional copy CAS independently of the whole-Script revision.
+    pub async fn update_script_from(
+        &self,
+        origin: AuthoringOrigin,
+        actor_id: &str,
+        request: UpdateAlloyScriptCommand,
+    ) -> Result<RedactedAlloyScript, AlloyAuthoringError> {
         self.validate_actor(actor_id)?;
-        let mut script = self.script_for_tenant(request.script_id).await?;
-        self.require_expected_revision(&script, request.expected_version)?;
+        let presentation = update_presentation_mutation(&request)?;
+        let previous = self.script_for_tenant(request.script_id).await?;
+        self.require_expected_revision(&previous, request.expected_version)?;
+        let mut script = previous.clone();
 
         if let Some(name) = request.name {
             self.engine.invalidate(&script.name);
@@ -194,12 +247,22 @@ impl<R: ScriptRegistry> AlloyAuthoringService<R> {
             script.permissions = permissions;
         }
         script.author_id = Some(actor_id.to_owned());
-        script.source_provenance = SourceProvenance::remote_mcp("alloy_update_script");
-        let saved = self
-            .registry
-            .save(script)
-            .await
-            .map_err(AlloyAuthoringError::from_script_error)?;
+        script.source_provenance = operator_provenance(origin, "alloy_update_script")?;
+
+        let saved = if let Some(authoring) = &self.authoring {
+            authoring
+                .update(&previous, script, presentation)
+                .await
+                .map_err(AlloyAuthoringError::from_authoring_store_error)?
+        } else {
+            if presentation.is_some() {
+                return Err(AlloyAuthoringError::Failed);
+            }
+            self.registry
+                .save(script)
+                .await
+                .map_err(AlloyAuthoringError::from_script_error)?
+        };
         self.require_owned(&saved)?;
         RedactedAlloyScript::try_from(saved)
     }
@@ -609,6 +672,8 @@ pub enum AlloyAuthoringError {
     NotFound,
     #[error("Alloy script revision conflict")]
     RevisionConflict { expected_version: u32 },
+    #[error("Alloy script presentation revision conflict")]
+    PresentationRevisionConflict { expected_copy_revision: i64 },
     #[error("Alloy evidence retention revision conflict")]
     RetentionRevisionConflict { expected_retention_revision: u32 },
     #[error("Alloy authoring command is invalid")]
@@ -653,6 +718,66 @@ impl AlloyAuthoringError {
             | ScriptError::Release(_) => Self::Failed,
         }
     }
+
+    fn from_authoring_store_error(error: ScriptAuthoringStoreError) -> Self {
+        match error {
+            ScriptAuthoringStoreError::NotFound => Self::NotFound,
+            ScriptAuthoringStoreError::DuplicateName
+            | ScriptAuthoringStoreError::PresentationAlreadyExists
+            | ScriptAuthoringStoreError::InvalidPresentationMutation => Self::Invalid,
+            ScriptAuthoringStoreError::RevisionConflict { expected } => Self::RevisionConflict {
+                expected_version: expected,
+            },
+            ScriptAuthoringStoreError::PresentationRevisionConflict { expected } => {
+                Self::PresentationRevisionConflict {
+                    expected_copy_revision: expected,
+                }
+            }
+            ScriptAuthoringStoreError::Storage(_) => Self::Failed,
+        }
+    }
+}
+
+fn operator_provenance(
+    origin: AuthoringOrigin,
+    tool_name: &'static str,
+) -> Result<SourceProvenance, AlloyAuthoringError> {
+    match origin {
+        AuthoringOrigin::Http => Ok(SourceProvenance::http(tool_name)),
+        AuthoringOrigin::Graphql => Ok(SourceProvenance::graphql(tool_name)),
+        AuthoringOrigin::RemoteMcp => Ok(SourceProvenance::remote_mcp(tool_name)),
+        AuthoringOrigin::ReleaseImport | AuthoringOrigin::OwnerRuntime => {
+            Err(AlloyAuthoringError::Invalid)
+        }
+    }
+}
+
+fn create_presentation_mutation(
+    request: &CreateAlloyScriptCommand,
+) -> Result<Option<ScriptPresentationAuthoringMutation>, AlloyAuthoringError> {
+    match (&request.description, &request.description_locale) {
+        (Some(description), Some(source_locale)) => Ok(Some(ScriptPresentationAuthoringMutation {
+            source_locale: source_locale.clone(),
+            expected_copy_revision: None,
+            description: Some(description.clone()),
+        })),
+        (None, None) => Ok(None),
+        _ => Err(AlloyAuthoringError::Invalid),
+    }
+}
+
+fn update_presentation_mutation(
+    request: &UpdateAlloyScriptCommand,
+) -> Result<Option<ScriptPresentationAuthoringMutation>, AlloyAuthoringError> {
+    match (&request.description, &request.description_locale) {
+        (Some(description), Some(source_locale)) => Ok(Some(ScriptPresentationAuthoringMutation {
+            source_locale: source_locale.clone(),
+            expected_copy_revision: request.expected_description_copy_revision,
+            description: Some(description.clone()),
+        })),
+        (None, None) if request.expected_description_copy_revision.is_none() => Ok(None),
+        _ => Err(AlloyAuthoringError::Invalid),
+    }
 }
 
 /// A source-bearing command accepted only at an authenticated owner boundary.
@@ -662,6 +787,7 @@ impl AlloyAuthoringError {
 pub struct CreateAlloyScriptCommand {
     pub name: String,
     pub description: Option<String>,
+    pub description_locale: Option<RuntimeLocale>,
     pub workspace: RhaiWorkspace,
     pub trigger: ScriptTrigger,
     #[serde(default)]
@@ -677,6 +803,8 @@ pub struct UpdateAlloyScriptCommand {
     pub expected_version: u32,
     pub name: Option<String>,
     pub description: Option<String>,
+    pub description_locale: Option<RuntimeLocale>,
+    pub expected_description_copy_revision: Option<i64>,
     pub workspace: Option<RhaiWorkspace>,
     pub trigger: Option<ScriptTrigger>,
     pub status: Option<ScriptStatus>,
@@ -1096,6 +1224,7 @@ fn total_pages(total: usize, per_page: u32) -> u32 {
 mod tests {
     use std::sync::Arc;
 
+    use rustok_api::{RuntimeLocale, StoredLocale};
     use sea_orm::Database;
     use sea_orm_migration::prelude::SchemaManager;
 
@@ -1117,7 +1246,20 @@ mod tests {
     fn command(name: &str, source: &str) -> CreateAlloyScriptCommand {
         CreateAlloyScriptCommand {
             name: name.to_string(),
+            description: None,
+            description_locale: None,
+            workspace: RhaiWorkspace::single_source(source),
+            trigger: ScriptTrigger::Manual,
+            permissions: Vec::new(),
+            run_as_system: false,
+        }
+    }
+
+    fn localized_command(name: &str, source: &str, locale: &str) -> CreateAlloyScriptCommand {
+        CreateAlloyScriptCommand {
+            name: name.to_string(),
             description: Some("Tenant-owned draft".to_string()),
+            description_locale: Some(RuntimeLocale::new(locale).expect("concrete source locale")),
             workspace: RhaiWorkspace::single_source(source),
             trigger: ScriptTrigger::Manual,
             permissions: Vec::new(),
@@ -1205,6 +1347,35 @@ mod tests {
         assert!(!result.valid);
         assert!(!serialized.contains("let secret"));
         assert!(!serialized.contains("message"));
+    }
+
+    #[test]
+    fn presentation_commands_require_concrete_locale_and_coherent_copy_cas() {
+        let mut create = localized_command("localized", "40 + 2", "en");
+        create.description_locale = None;
+        assert_eq!(
+            create_presentation_mutation(&create).expect_err("description needs locale"),
+            AlloyAuthoringError::Invalid
+        );
+
+        let update = UpdateAlloyScriptCommand {
+            script_id: Uuid::new_v4(),
+            expected_version: 1,
+            name: None,
+            description: None,
+            description_locale: None,
+            expected_description_copy_revision: Some(1),
+            workspace: None,
+            trigger: None,
+            status: None,
+            run_as_system: None,
+            permissions: None,
+        };
+        assert_eq!(
+            update_presentation_mutation(&update).expect_err("copy CAS needs a copy mutation"),
+            AlloyAuthoringError::Invalid
+        );
+        assert!(RuntimeLocale::new("und").is_err());
     }
 
     #[tokio::test]
@@ -1299,6 +1470,103 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn production_scoped_authoring_persists_localized_copy_and_trusted_provenance() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database should connect");
+        let manager = SchemaManager::new(&database);
+        for migration in crate::migrations::migrations() {
+            migration
+                .up(&manager)
+                .await
+                .expect("Alloy migrations should apply");
+        }
+        let tenant_id = Uuid::new_v4();
+        let sandbox = crate::create_test_alloy_draft_runtime();
+        let storage = Arc::new(crate::SeaOrmStorage::new(database.clone()).for_tenant(tenant_id));
+        let presentations = Arc::new(crate::storage::SeaOrmScriptPresentationStore::new(
+            database.clone(),
+        ));
+        let runtime = ScopedAlloyRuntime {
+            engine: Arc::new(crate::create_default_engine()),
+            sandbox: sandbox.clone(),
+            storage: storage.clone(),
+            authoring: Arc::new(crate::storage::SeaOrmScriptAuthoringStore::new(
+                database.clone(),
+                tenant_id,
+            )),
+            presentations: presentations.clone(),
+            orchestrator: Arc::new(ScriptOrchestrator::new(sandbox, storage.clone())),
+            execution_log: Arc::new(crate::SeaOrmExecutionLog::new(database)),
+            tenant_id,
+        };
+        let service = AlloyAuthoringService::from_scoped(runtime);
+
+        let created = service
+            .create_script_from(
+                AuthoringOrigin::Http,
+                "http-owner",
+                localized_command("localized_rule", "40 + 2", "pt_br"),
+            )
+            .await
+            .expect("canonical HTTP authoring should persist atomically");
+        let stored_locale = StoredLocale::new("pt-BR").expect("normalized stored locale");
+        let copy = presentations
+            .find_exact(tenant_id, created.id, &stored_locale)
+            .await
+            .expect("presentation lookup should succeed")
+            .expect("localized presentation should exist");
+        assert_eq!(copy.description.as_deref(), Some("Tenant-owned draft"));
+        assert_eq!(copy.copy_revision, 1);
+        let create_revision = storage
+            .get_source_revision(created.id, created.version)
+            .await
+            .expect("canonical source revision should exist");
+        assert_eq!(
+            create_revision.source_provenance,
+            SourceProvenance::http("alloy_create_script")
+        );
+
+        let updated = service
+            .update_script_from(
+                AuthoringOrigin::Graphql,
+                "graphql-owner",
+                UpdateAlloyScriptCommand {
+                    script_id: created.id,
+                    expected_version: created.version,
+                    name: None,
+                    description: Some("Descrição revista".to_string()),
+                    description_locale: Some(
+                        RuntimeLocale::new("pt-BR").expect("concrete source locale"),
+                    ),
+                    expected_description_copy_revision: Some(copy.copy_revision),
+                    workspace: None,
+                    trigger: None,
+                    status: None,
+                    run_as_system: None,
+                    permissions: None,
+                },
+            )
+            .await
+            .expect("canonical GraphQL authoring should persist atomically");
+        let updated_copy = presentations
+            .find_exact(tenant_id, updated.id, &stored_locale)
+            .await
+            .expect("presentation lookup should succeed")
+            .expect("localized presentation should still exist");
+        assert_eq!(updated_copy.description.as_deref(), Some("Descrição revista"));
+        assert_eq!(updated_copy.copy_revision, 2);
+        let update_revision = storage
+            .get_source_revision(updated.id, updated.version)
+            .await
+            .expect("updated source revision should exist");
+        assert_eq!(
+            update_revision.source_provenance,
+            SourceProvenance::graphql("alloy_update_script")
+        );
+    }
+
+    #[tokio::test]
     async fn production_scoped_storage_rejects_cross_tenant_authoring() {
         let database = Database::connect("sqlite::memory:")
             .await
@@ -1341,6 +1609,8 @@ mod tests {
                         expected_version: created.version,
                         name: Some("attempted_takeover".to_string()),
                         description: None,
+                        description_locale: None,
+                        expected_description_copy_revision: None,
                         workspace: None,
                         trigger: None,
                         status: None,

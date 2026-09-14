@@ -7,12 +7,14 @@ use crate::{
     AlloyDraftRuntime, Scheduler, ScriptEngine, ScriptExecutor, ScriptOrchestrator,
     SeaOrmExecutionLog, SeaOrmStorage, create_default_engine,
 };
+use crate::storage::{SeaOrmScriptAuthoringStore, SeaOrmScriptPresentationStore};
 
 #[derive(Clone)]
 pub struct AlloyRuntime {
     pub engine: Arc<ScriptEngine>,
     pub sandbox: AlloyDraftRuntime,
     pub storage: Arc<SeaOrmStorage>,
+    pub presentation_store: Arc<SeaOrmScriptPresentationStore>,
     pub execution_log: Arc<SeaOrmExecutionLog>,
 }
 
@@ -21,6 +23,8 @@ pub struct ScopedAlloyRuntime {
     pub engine: Arc<ScriptEngine>,
     pub sandbox: AlloyDraftRuntime,
     pub storage: Arc<SeaOrmStorage>,
+    pub authoring_store: Arc<SeaOrmScriptAuthoringStore>,
+    pub presentation_store: Arc<SeaOrmScriptPresentationStore>,
     pub orchestrator: Arc<ScriptOrchestrator<SeaOrmStorage>>,
     pub execution_log: Arc<SeaOrmExecutionLog>,
     pub tenant_id: Uuid,
@@ -32,6 +36,10 @@ pub struct SharedAlloyRuntime(pub Arc<AlloyRuntime>);
 impl AlloyRuntime {
     pub fn scoped(&self, tenant_id: Uuid) -> ScopedAlloyRuntime {
         let storage = Arc::new(self.storage.for_tenant(tenant_id));
+        let authoring_store = Arc::new(SeaOrmScriptAuthoringStore::new(
+            self.presentation_store.connection().clone(),
+            tenant_id,
+        ));
         let orchestrator = Arc::new(ScriptOrchestrator::with_execution_log(
             self.sandbox.clone(),
             storage.clone(),
@@ -42,6 +50,8 @@ impl AlloyRuntime {
             engine: self.engine.clone(),
             sandbox: self.sandbox.clone(),
             storage,
+            authoring_store,
+            presentation_store: self.presentation_store.clone(),
             orchestrator,
             execution_log: self.execution_log.clone(),
             tenant_id,
@@ -55,6 +65,7 @@ pub fn build_alloy_runtime(
 ) -> Arc<AlloyRuntime> {
     let engine = Arc::new(create_default_engine());
     let storage = Arc::new(SeaOrmStorage::new(db.clone()));
+    let presentation_store = Arc::new(SeaOrmScriptPresentationStore::new(db.clone()));
     let execution_log = Arc::new(SeaOrmExecutionLog::new(db));
 
     let executor = ScriptExecutor::new(sandbox.clone(), storage.clone())
@@ -71,6 +82,7 @@ pub fn build_alloy_runtime(
         engine,
         sandbox,
         storage,
+        presentation_store,
         execution_log,
     })
 }

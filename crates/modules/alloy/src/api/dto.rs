@@ -1,3 +1,4 @@
+use rustok_api::RuntimeLocale;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -17,6 +18,7 @@ use crate::{
 pub struct CreateScriptRequest {
     pub name: String,
     pub description: Option<String>,
+    pub description_locale: Option<RuntimeLocale>,
     pub workspace: RhaiWorkspace,
     pub trigger: ScriptTrigger,
     #[serde(default)]
@@ -30,6 +32,8 @@ pub struct UpdateScriptRequest {
     pub expected_version: u32,
     pub name: Option<String>,
     pub description: Option<String>,
+    pub description_locale: Option<RuntimeLocale>,
+    pub expected_description_copy_revision: Option<i64>,
     pub workspace: Option<RhaiWorkspace>,
     pub trigger: Option<ScriptTrigger>,
     pub status: Option<ScriptStatus>,
@@ -605,6 +609,20 @@ mod tests {
         let request = serde_json::from_str::<UpdateScriptRequest>(r#"{"expected_version": 3}"#)
             .expect("expected version should deserialize");
         assert_eq!(request.expected_version, 3);
+    }
+
+    #[test]
+    fn http_presentation_locale_is_typed_and_rejects_unknown_provenance() {
+        let create = serde_json::from_str::<CreateScriptRequest>(
+            r#"{"name":"localized","description":"Copy","description_locale":"pt_br","workspace":{"entrypoint":"main.rhai","files":{"main.rhai":{"kind":"source","content":"40 + 2"}}},"trigger":"manual"}"#,
+        );
+        if let Ok(create) = create {
+            assert_eq!(
+                create.description_locale.as_ref().map(RuntimeLocale::as_str),
+                Some("pt-BR")
+            );
+        }
+        assert!(serde_json::from_str::<RuntimeLocale>(r#""und""#).is_err());
     }
 
     #[test]
