@@ -294,6 +294,17 @@ pub mod module_event_dispatcher {
             }
         }
 
+        #[cfg(feature = "mod-alloy")]
+        alloy::storage::register_script_presentation_translation_target_provider(
+            &mut extensions,
+            db.clone(),
+        )
+        .map_err(|error| {
+            Error::Message(format!(
+                "Alloy Script presentation Translation target provider registration failed: {error}"
+            ))
+        })?;
+
         #[cfg(feature = "mod-translation")]
         rustok_translation_targets::register_translation_target_provider(
             &mut extensions,
