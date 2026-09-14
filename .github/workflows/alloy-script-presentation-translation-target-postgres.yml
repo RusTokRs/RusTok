@@ -1,54 +1,20 @@
 name: Alloy Script Presentation Translation PostgreSQL Evidence
 
 on:
-  pull_request:
-    paths:
-      - "apps/server/Cargo.toml"
-      - "apps/server/src/services/alloy_translation_target.rs"
-      - "apps/server/src/services/mod.rs"
-      - "apps/server/tests/alloy_script_presentation_translation_target_postgres.rs"
-      - "crates/modules/alloy/docs/translation-plan.md"
-      - "crates/modules/alloy/src/authoring.rs"
-      - "crates/modules/alloy/src/migration.rs"
-      - "crates/modules/alloy/src/migrations/**"
-      - "crates/modules/alloy/src/model/presentation.rs"
-      - "crates/modules/alloy/src/storage/**"
-      - "crates/modules/rustok-translation-targets/**"
-      - "crates/utils/rustok-migrations/**"
-      - "docs/modules/translation-surfaces.json"
-      - ".github/workflows/alloy-script-presentation-translation-target-postgres.yml"
-  push:
-    branches:
-      - main
-    paths:
-      - "apps/server/Cargo.toml"
-      - "apps/server/src/services/alloy_translation_target.rs"
-      - "apps/server/src/services/mod.rs"
-      - "apps/server/tests/alloy_script_presentation_translation_target_postgres.rs"
-      - "crates/modules/alloy/docs/translation-plan.md"
-      - "crates/modules/alloy/src/authoring.rs"
-      - "crates/modules/alloy/src/migration.rs"
-      - "crates/modules/alloy/src/migrations/**"
-      - "crates/modules/alloy/src/model/presentation.rs"
-      - "crates/modules/alloy/src/storage/**"
-      - "crates/modules/rustok-translation-targets/**"
-      - "crates/utils/rustok-migrations/**"
-      - "docs/modules/translation-surfaces.json"
-      - ".github/workflows/alloy-script-presentation-translation-target-postgres.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.ref_name }}
   cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUST_TOOLCHAIN: "1.96.0"
-  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  TARGET_SHA: ${{ github.sha }}
 
 jobs:
   postgres-evidence:
