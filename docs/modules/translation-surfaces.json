@@ -801,8 +801,16 @@
       "field_profiles": ["plain_text"],
       "data_classification": ["tenant_private", "sensitive"],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/modules/rustok-rbac/README.md"],
-      "blockers": ["Replace inline role/policy copy with stable neutral keys and localized storage."]
+      "evidence_paths": [
+        "crates/modules/rustok-rbac/README.md",
+        "crates/modules/rustok-rbac/docs/translation-plan.md",
+        "crates/modules/rustok-rbac/src/catalog.rs",
+        "crates/modules/rustok-rbac/src/role_mutation.rs",
+        "crates/modules/rustok-rbac/src/artifact_permission_catalog.rs",
+        "crates/libs/rustok-core/src/types.rs",
+        "docs/architecture/database-multilingual-audit.md"
+      ],
+      "blockers": ["RBAC role slugs, permission keys/resource-action identity, relation state, grants, scopes and authorization evidence are immutable policy identity and must never be translated. Built-in role/permission presentation and future tenant-authored presentation still need owner-local exact-locale storage plus locale-aware canonical writes with truthful legacy provenance; existing artifact-permission label/description translations remain a separate immutable release-governance localization plane and must not gain a competing tenant Translation writer. Keep the provider unregistered until the owner storage/write cutover and retained PostgreSQL evidence are complete."]
     },
     {
       "id": "channel_control_copy",
