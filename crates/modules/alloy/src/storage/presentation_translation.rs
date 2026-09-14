@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use rustok_api::{RuntimeLocale, StoredLocale};
 use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, FromQueryResult, QueryFilter,
-    QuerySelect, Statement, TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, FromQueryResult,
+    QueryFilter, QuerySelect, Statement, TransactionTrait,
 };
 use thiserror::Error;
 use uuid::Uuid;
