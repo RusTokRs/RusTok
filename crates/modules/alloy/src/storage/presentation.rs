@@ -99,6 +99,15 @@ impl SeaOrmScriptPresentationStore {
         &self.db
     }
 
+    pub async fn find_exact(
+        &self,
+        tenant_id: Uuid,
+        script_id: Uuid,
+        locale: &StoredLocale,
+    ) -> Result<Option<ScriptPresentation>, ScriptPresentationStoreError> {
+        Self::find_exact_on(&self.db, tenant_id, script_id, locale).await
+    }
+
     /// Creates new owner-authored presentation copy inside a caller-owned
     /// transaction. `RuntimeLocale` is deliberately used here instead of
     /// `StoredLocale`: newly authored copy must have concrete provenance and
