@@ -3,6 +3,7 @@ use rustok_api::{
     PLATFORM_FALLBACK_LOCALE, build_locale_candidates,
 };
 use sea_orm::DatabaseConnection;
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
@@ -10,10 +11,20 @@ use crate::{
     RbacPresentationStore, RbacPresentationStoreError, SeaOrmRbacPresentationStore,
 };
 
+#[derive(Debug, Error)]
+pub enum RbacPresentationCommandError {
+    #[error("RBAC presentation name must be non-empty, trimmed, control-free, and at most 255 characters")]
+    InvalidName,
+    #[error("RBAC presentation copy revision must be positive")]
+    InvalidRevision,
+    #[error(transparent)]
+    Store(#[from] RbacPresentationStoreError),
+}
+
 /// Canonical owner service for RBAC human-facing presentation copy.
 ///
 /// Authorization identity stays in stable role slugs and permission keys. This
-/// service owns source seeding and locale-aware presentation resolution only.
+/// service owns source seeding, locale-aware resolution, and copy-only commands.
 #[derive(Clone)]
 pub struct RbacPresentationService<S = SeaOrmRbacPresentationStore> {
     store: S,
@@ -130,6 +141,53 @@ where
         }
     }
 
+    /// Create or compare-and-set presentation copy for one admitted stable
+    /// authorization identity. The command never changes the role/permission
+    /// identity itself or any grant relation.
+    pub async fn write_source(
+        &self,
+        tenant_id: Uuid,
+        resource_kind: RbacPresentationResourceKind,
+        resource_key: &str,
+        source_locale: RuntimeLocale,
+        expected_copy_revision: Option<i64>,
+        name: String,
+        description: Option<String>,
+    ) -> Result<RbacLocalizedPresentation, RbacPresentationCommandError> {
+        validate_name(&name)?;
+        if expected_copy_revision.is_some_and(|revision| revision <= 0) {
+            return Err(RbacPresentationCommandError::InvalidRevision);
+        }
+
+        match expected_copy_revision {
+            Some(expected_copy_revision) => self
+                .store
+                .compare_and_set_source(
+                    tenant_id,
+                    resource_kind,
+                    resource_key,
+                    &source_locale,
+                    expected_copy_revision,
+                    name,
+                    description,
+                )
+                .await
+                .map_err(Into::into),
+            None => self
+                .store
+                .create_source(
+                    tenant_id,
+                    resource_kind,
+                    resource_key,
+                    source_locale,
+                    name,
+                    description,
+                )
+                .await
+                .map_err(Into::into),
+        }
+    }
+
     pub async fn resolve(
         &self,
         tenant_id: Uuid,
@@ -199,4 +257,15 @@ where
         }
         Ok(permissions)
     }
+}
+
+fn validate_name(name: &str) -> Result<(), RbacPresentationCommandError> {
+    if name.is_empty()
+        || name.trim() != name
+        || name.chars().count() > 255
+        || name.chars().any(char::is_control)
+    {
+        return Err(RbacPresentationCommandError::InvalidName);
+    }
+    Ok(())
 }
