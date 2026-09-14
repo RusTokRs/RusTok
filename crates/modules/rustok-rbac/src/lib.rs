@@ -8,11 +8,13 @@ pub mod error;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 mod invalidation_generation;
+pub mod localization;
 mod m20260714_900001_enforce_rbac_relation_tenant_integrity;
 mod m20260714_900002_create_rbac_invalidation_state;
 mod m20260716_000001_artifact_permission_catalog;
 mod m20260717_000001_artifact_role_permissions;
 mod m20260803_000001_canonicalize_artifact_permissions;
+mod m20260914_000001_role_permission_presentations;
 pub mod ports;
 mod repair;
 mod role_mutation;
@@ -35,6 +37,10 @@ pub use error::RbacError;
 pub use invalidation_generation::{
     RBAC_PERMISSION_INVALIDATION_SCOPE, RbacInvalidationGenerationError,
     read_permission_invalidation_generation, reserve_permission_invalidation_generation,
+};
+pub use localization::{
+    RbacPermissionPresentation, RbacPresentationStoreError, RbacRolePresentation,
+    SeaOrmRbacPresentationStore,
 };
 pub use ports::*;
 pub use repair::{
@@ -123,6 +129,7 @@ impl MigrationSource for RbacModule {
             Box::new(m20260716_000001_artifact_permission_catalog::Migration),
             Box::new(m20260717_000001_artifact_role_permissions::Migration),
             Box::new(m20260803_000001_canonicalize_artifact_permissions::Migration),
+            Box::new(m20260914_000001_role_permission_presentations::Migration),
         ]
     }
 }
