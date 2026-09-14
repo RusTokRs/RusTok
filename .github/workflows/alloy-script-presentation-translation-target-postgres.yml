@@ -85,8 +85,8 @@ jobs:
           needle = ".execute(Statement::from_sql_and_values("
           count = text.count(needle)
           if count != 2:
-              raise SystemExit(f"{path}: expected exactly two unborrowed execute statements, found {count}")
-          path.write_text(text.replace(needle, ".execute(&Statement::from_sql_and_values("))
+              raise SystemExit(f"{path}: expected exactly two raw execute statements, found {count}")
+          path.write_text(text.replace(needle, ".execute_raw(Statement::from_sql_and_values("))
 
           replace_one(
               "crates/modules/alloy/src/storage/translation_target.rs",
