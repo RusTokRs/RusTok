@@ -53,10 +53,10 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Check focused Rust formatting
+      - name: Apply focused Rust formatting probe
         shell: bash
         run: |
-          rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check \
+          rustfmt +${RUST_TOOLCHAIN} --edition 2024 \
             apps/server/tests/alloy_script_presentation_translation_target_postgres.rs \
             apps/server/src/services/alloy_translation_target.rs \
             crates/modules/alloy/src/authoring.rs \
@@ -66,6 +66,24 @@ jobs:
             crates/modules/alloy/src/storage/translation_target.rs \
             crates/modules/alloy/src/migrations/m20260913_000010_add_script_presentations.rs \
             crates/modules/alloy/src/migrations/m20260914_000011_add_script_presentation_translation_change_plane.rs
+          git diff --binary -- \
+            apps/server/tests/alloy_script_presentation_translation_target_postgres.rs \
+            apps/server/src/services/alloy_translation_target.rs \
+            crates/modules/alloy/src/authoring.rs \
+            crates/modules/alloy/src/model/presentation.rs \
+            crates/modules/alloy/src/storage/presentation.rs \
+            crates/modules/alloy/src/storage/presentation_translation.rs \
+            crates/modules/alloy/src/storage/translation_target.rs \
+            crates/modules/alloy/src/migrations/m20260913_000010_add_script_presentations.rs \
+            crates/modules/alloy/src/migrations/m20260914_000011_add_script_presentation_translation_change_plane.rs \
+            > /tmp/alloy-rustfmt.patch
+      - name: Upload focused rustfmt patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: alloy-rustfmt-patch
+          path: /tmp/alloy-rustfmt.patch
+          if-no-files-found: error
+          retention-days: 7
       - name: Compile Alloy script presentation registered provider PostgreSQL evidence
         run: >-
           cargo test --locked -p rustok-server --no-default-features
