@@ -93,11 +93,17 @@ jobs:
               "use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};",
               "use sea_orm::{DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};",
           )
+          replace_one(
+              "apps/server/src/controllers/mcp.rs",
+              "        Err(alloy::AlloyAuthoringError::RevisionConflict { .. }) => {\n            envelope_value(McpToolResponse::<()>::error(\n                \"alloy_script_revision_conflict\",\n                \"Alloy script revision conflict\",\n            ))\n        }\n        Err(alloy::AlloyAuthoringError::RetentionRevisionConflict { .. }) => {",
+              "        Err(alloy::AlloyAuthoringError::RevisionConflict { .. }) => {\n            envelope_value(McpToolResponse::<()>::error(\n                \"alloy_script_revision_conflict\",\n                \"Alloy script revision conflict\",\n            ))\n        }\n        Err(alloy::AlloyAuthoringError::PresentationRevisionConflict { .. }) => {\n            envelope_value(McpToolResponse::<()>::error(\n                \"alloy_script_presentation_revision_conflict\",\n                \"Alloy script presentation revision conflict\",\n            ))\n        }\n        Err(alloy::AlloyAuthoringError::RetentionRevisionConflict { .. }) => {",
+          )
           PY
 
           rustfmt +${RUST_TOOLCHAIN} --edition 2024 \
             apps/server/tests/alloy_script_presentation_translation_target_postgres.rs \
             apps/server/src/services/alloy_translation_target.rs \
+            apps/server/src/controllers/mcp.rs \
             crates/modules/alloy/src/authoring.rs \
             crates/modules/alloy/src/model/presentation.rs \
             crates/modules/alloy/src/storage/presentation.rs \
@@ -109,6 +115,7 @@ jobs:
           git diff --binary -- \
             apps/server/tests/alloy_script_presentation_translation_target_postgres.rs \
             apps/server/src/services/alloy_translation_target.rs \
+            apps/server/src/controllers/mcp.rs \
             crates/modules/alloy/src/authoring.rs \
             crates/modules/alloy/src/model/presentation.rs \
             crates/modules/alloy/src/storage/presentation.rs \
@@ -147,6 +154,7 @@ jobs:
           git add \
             apps/server/tests/alloy_script_presentation_translation_target_postgres.rs \
             apps/server/src/services/alloy_translation_target.rs \
+            apps/server/src/controllers/mcp.rs \
             crates/modules/alloy/src/authoring.rs \
             crates/modules/alloy/src/model/presentation.rs \
             crates/modules/alloy/src/storage/presentation.rs \
