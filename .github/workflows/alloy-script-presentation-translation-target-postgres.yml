@@ -1,77 +1,84 @@
-name: Alloy Script Presentation Translation PostgreSQL Evidence
+name: RBAC Translation Presentation Storage Verifier
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - translation-rbac-storage-verifier
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name }}
+  group: rbac-translation-presentation-storage-verifier
   cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUST_TOOLCHAIN: "1.96.0"
-  TARGET_SHA: ${{ github.sha }}
+  TARGET_BRANCH: translation-rbac-presentation-storage
 
 jobs:
-  postgres-evidence:
-    name: Alloy script presentation registered provider PostgreSQL evidence
+  verify-and-publish:
+    name: Verify and publish RBAC presentation storage
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U postgres -d postgres"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-    env:
-      RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.TARGET_SHA }}
-          persist-credentials: false
-      - name: Assert exact checked-out SHA
+          ref: ${{ env.TARGET_BRANCH }}
+          persist-credentials: true
+      - name: Register RBAC presentation owner storage
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/modules/rustok-rbac/src/lib.rs")
+          text = path.read_text()
+          replacements = [
+              (
+                  "mod m20260803_000001_canonicalize_artifact_permissions;\npub mod ports;",
+                  "mod m20260803_000001_canonicalize_artifact_permissions;\nmod m20260914_000001_role_permission_presentations;\npub mod ports;\nmod presentation;",
+              ),
+              (
+                  "pub use ports::*;\npub use repair::{",
+                  "pub use ports::*;\npub use presentation::{\n    RbacPermissionPresentation, RbacPresentationStoreError, RbacRolePresentation,\n    SeaOrmRbacPresentationStore,\n};\npub use repair::{",
+              ),
+              (
+                  "            Box::new(m20260803_000001_canonicalize_artifact_permissions::Migration),\n        ]",
+                  "            Box::new(m20260803_000001_canonicalize_artifact_permissions::Migration),\n            Box::new(m20260914_000001_role_permission_presentations::Migration),\n        ]",
+              ),
+          ]
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one registration anchor: {old!r}; found {text.count(old)}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Check focused Rust formatting
+      - name: Format focused RBAC sources
         shell: bash
         run: |
-          rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check \
-            apps/server/tests/alloy_script_presentation_translation_target_postgres.rs \
-            apps/server/src/services/alloy_translation_target.rs \
-            crates/modules/alloy/src/authoring.rs \
-            crates/modules/alloy/src/model/presentation.rs \
-            crates/modules/alloy/src/storage/presentation.rs \
-            crates/modules/alloy/src/storage/presentation_translation.rs \
-            crates/modules/alloy/src/storage/translation_target.rs \
-            crates/modules/alloy/src/migrations/m20260913_000010_add_script_presentations.rs \
-            crates/modules/alloy/src/migrations/m20260914_000011_add_script_presentation_translation_change_plane.rs
-      - name: Compile Alloy script presentation registered provider PostgreSQL evidence
-        run: >-
-          cargo test --locked -p rustok-server --no-default-features
-          --features mod-alloy
-          --test alloy_script_presentation_translation_target_postgres
-          --no-run
-      - name: Run Alloy script presentation registered provider PostgreSQL evidence
-        run: >-
-          cargo test --locked -p rustok-server --no-default-features
-          --features mod-alloy
-          --test alloy_script_presentation_translation_target_postgres
-          -- --ignored --nocapture
+          rustfmt +${RUST_TOOLCHAIN} --edition 2024 \
+            crates/modules/rustok-rbac/src/lib.rs \
+            crates/modules/rustok-rbac/src/m20260914_000001_role_permission_presentations.rs \
+            crates/modules/rustok-rbac/src/presentation.rs
+          git diff --check
+      - name: Run RBAC owner lib tests
+        run: cargo test --locked -p rustok-rbac --lib -- --nocapture
+      - name: Publish verified target branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            crates/modules/rustok-rbac/src/lib.rs \
+            crates/modules/rustok-rbac/src/m20260914_000001_role_permission_presentations.rs \
+            crates/modules/rustok-rbac/src/presentation.rs
+          git commit -m "feat(rbac): add localized presentation storage"
+          git push origin HEAD:${TARGET_BRANCH}
