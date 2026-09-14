@@ -2,34 +2,38 @@ use std::collections::HashMap;
 
 use async_graphql::{Context, Json, Object, Result};
 use chrono::Utc;
+use rustok_api::RuntimeLocale;
 use uuid::Uuid;
 
 use crate::{
-    AlloyImportError, AlloyPublishedReleaseImportCommand, AlloyReleaseImporter,
-    AlloyReleaseStageCommand, RevisionedReleaseStager, RevisionedTestRunner,
-    ScriptEvidenceRetentionCommand, ScriptRegistry, TestCommand, alloy_release_command_context,
-    model::{ReviewCommand, Script, ScriptDeletionCommand, ScriptStatus, SourceProvenance},
+    AlloyAuthoringService, AlloyImportError, AlloyPublishedReleaseImportCommand,
+    AlloyReleaseImporter, AlloyReleaseStageCommand, AuthoringOrigin, CreateAlloyScriptCommand,
+    RevisionedReleaseStager, RevisionedTestRunner, ScriptEvidenceRetentionCommand, ScriptRegistry,
+    TestCommand, UpdateAlloyScriptCommand, alloy_release_command_context,
+    model::{ReviewCommand, Script, ScriptDeletionCommand, ScriptStatus},
     runner::ExecutionOutcome,
-    utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression},
+    utils::{dynamic_to_json, json_to_dynamic},
 };
 
 use super::{
     CreateScriptInput, DeleteScriptInput, GqlDeletedEvidenceRetention, GqlExecutionResult,
-    GqlImportedDraft, GqlReviewDecision, GqlScript, GqlStageRelease, GqlTestRun,
+    GqlImportedDraft, GqlReviewDecision, GqlScript, GqlScriptStatus, GqlStageRelease, GqlTestRun,
     ImportPublishedReleaseInput, ReviewScriptInput, RunScriptInput, RunWorkspaceTestInput,
-    ScriptTriggerInput, StageReleaseInput, UpdateDeletedEvidenceRetentionInput, UpdateScriptInput,
+    StageReleaseInput, UpdateDeletedEvidenceRetentionInput, UpdateScriptInput,
     published_rhai_source_from_graphql_ctx, release_governance_from_graphql_ctx, require_admin,
     require_release_admin, runtime_from_graphql_ctx,
 };
 
-fn validate_cron_trigger(trigger: &ScriptTriggerInput) -> Result<()> {
-    if let ScriptTriggerInput::Cron(cron) = trigger {
-        validate_cron_expression(&cron.expression).map_err(|error| {
-            async_graphql::Error::new(format!("Invalid cron expression: {error}"))
-        })?;
-    }
-
-    Ok(())
+fn parse_runtime_locale(locale: Option<String>) -> Result<Option<RuntimeLocale>> {
+    locale
+        .map(|locale| {
+            RuntimeLocale::new(&locale).map_err(|_| {
+                async_graphql::Error::new(
+                    "descriptionLocale must be a concrete normalized source locale",
+                )
+            })
+        })
+        .transpose()
 }
 
 fn ensure_expected_revision(script: &Script, expected_version: u32) -> Result<()> {
@@ -72,39 +76,38 @@ impl AlloyMutation {
         input: CreateScriptInput,
     ) -> Result<GqlScript> {
         let auth = require_admin(ctx).await?;
-        validate_cron_trigger(&input.trigger)?;
-        let runtime = runtime_from_graphql_ctx(ctx)?;
-        let workspace = input.workspace.0;
-        workspace
-            .validate_rhai_workspace()
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-        let source = workspace
-            .entrypoint_source()
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-        let mut scope = rhai::Scope::new();
-        runtime
-            .engine
-            .compile(&input.name, source, &mut scope)
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
-        let mut script = Script::new(input.name, workspace, input.trigger.into());
-        script.tenant_id = runtime.tenant_id;
-        script.description = input.description;
-        script.run_as_system = input.run_as_system;
-        script.permissions = input.permissions;
-        script.author_id = Some(auth.user_id.to_string());
-        script.source_provenance = SourceProvenance::graphql("create_script");
-        if let Some(status) = input.status {
-            script.status = status.into();
+        if matches!(input.status, Some(status) if status != GqlScriptStatus::Draft) {
+            return Err(async_graphql::Error::new(
+                "Alloy createScript creates a draft; use a lifecycle mutation after creation",
+            ));
         }
-
-        let saved = runtime
+        let description_locale = parse_runtime_locale(input.description_locale)?;
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        let service = AlloyAuthoringService::from_scoped(runtime.clone());
+        let actor_id = auth.user_id.to_string();
+        let saved = service
+            .create_script_from(
+                AuthoringOrigin::Graphql,
+                &actor_id,
+                CreateAlloyScriptCommand {
+                    name: input.name,
+                    description: input.description,
+                    description_locale,
+                    workspace: input.workspace.0,
+                    trigger: input.trigger.into(),
+                    permissions: input.permissions,
+                    run_as_system: input.run_as_system,
+                },
+            )
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        let script = runtime
             .storage
-            .save(script)
+            .get(saved.id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
-        Ok(saved.into())
+        Ok(script.into())
     }
 
     async fn update_script(
@@ -114,69 +117,37 @@ impl AlloyMutation {
         input: UpdateScriptInput,
     ) -> Result<GqlScript> {
         let auth = require_admin(ctx).await?;
+        let description_locale = parse_runtime_locale(input.description_locale)?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
-        let mut script = runtime
-            .storage
-            .get(id)
+        let service = AlloyAuthoringService::from_scoped(runtime.clone());
+        let actor_id = auth.user_id.to_string();
+        let saved = service
+            .update_script_from(
+                AuthoringOrigin::Graphql,
+                &actor_id,
+                UpdateAlloyScriptCommand {
+                    script_id: id,
+                    expected_version: input.expected_version,
+                    name: input.name,
+                    description: input.description,
+                    description_locale,
+                    expected_description_copy_revision: input.expected_description_copy_revision,
+                    workspace: input.workspace.map(|workspace| workspace.0),
+                    trigger: input.trigger.map(Into::into),
+                    status: input.status.map(Into::into),
+                    run_as_system: input.run_as_system,
+                    permissions: input.permissions,
+                },
+            )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-        if script.version != input.expected_version {
-            return Err(async_graphql::Error::new(
-                crate::ScriptError::RevisionConflict {
-                    expected: input.expected_version,
-                }
-                .to_string(),
-            ));
-        }
-
-        if let Some(name) = input.name {
-            runtime.engine.invalidate(&script.name);
-            script.name = name;
-        }
-        if let Some(description) = input.description {
-            script.description = Some(description);
-        }
-        if let Some(workspace) = input.workspace {
-            runtime.engine.invalidate(&script.name);
-            let workspace = workspace.0;
-            workspace
-                .validate_rhai_workspace()
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-            let source = workspace
-                .entrypoint_source()
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-            let mut scope = rhai::Scope::new();
-            runtime
-                .engine
-                .compile(&script.name, source, &mut scope)
-                .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-            script.workspace = workspace;
-        }
-        if let Some(ref trigger) = input.trigger {
-            validate_cron_trigger(trigger)?;
-        }
-        if let Some(trigger) = input.trigger {
-            script.trigger = trigger.into();
-        }
-        if let Some(status) = input.status {
-            script.status = status.into();
-        }
-        if let Some(run_as_system) = input.run_as_system {
-            script.run_as_system = run_as_system;
-        }
-        if let Some(permissions) = input.permissions {
-            script.permissions = permissions;
-        }
-        script.author_id = Some(auth.user_id.to_string());
-        script.source_provenance = SourceProvenance::graphql("update_script");
-
-        let saved = runtime
+        let script = runtime
             .storage
-            .save(script)
+            .get(saved.id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
-        Ok(saved.into())
+        Ok(script.into())
     }
 
     async fn delete_script(&self, ctx: &Context<'_>, input: DeleteScriptInput) -> Result<bool> {
