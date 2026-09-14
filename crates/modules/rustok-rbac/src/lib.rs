@@ -16,6 +16,7 @@ mod m20260803_000001_canonicalize_artifact_permissions;
 mod m20260914_000001_localized_presentations;
 pub mod ports;
 pub mod presentation;
+mod presentation_service;
 mod repair;
 mod role_mutation;
 pub mod services;
@@ -43,6 +44,7 @@ pub use presentation::{
     RbacLocalizedPresentation, RbacPresentationResourceKind, RbacPresentationStore,
     RbacPresentationStoreError, SeaOrmRbacPresentationStore,
 };
+pub use presentation_service::RbacPresentationService;
 pub use repair::{
     RbacAffectedUser, RbacSystemRoleRepairError, RbacSystemRoleRepairOptions,
     RbacSystemRoleRepairReport,
@@ -61,7 +63,7 @@ pub use services::permission_authorizer::{
     authorize_permission,
 };
 pub use services::permission_evaluator::{
-    PermissionEvaluation, evaluate_all_permissions, evaluate_any_permission,
+    PermissionEvaluation, evaluate_all_permissions, evaluate_any_permissions,
     evaluate_single_permission,
 };
 pub use services::permission_policy::{
