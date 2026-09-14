@@ -1,6 +1,8 @@
 pub mod app_lifecycle;
 pub mod app_router;
 pub mod app_runtime;
+#[cfg(feature = "mod-alloy")]
+pub mod alloy_translation_target;
 pub(crate) mod artifact_binding;
 pub mod artifact_delivery_tenants;
 pub mod artifact_mcp;
@@ -295,7 +297,7 @@ pub mod module_event_dispatcher {
         }
 
         #[cfg(feature = "mod-alloy")]
-        alloy::storage::register_script_presentation_translation_target_provider(
+        super::alloy_translation_target::register_alloy_script_presentation_translation_target_provider(
             &mut extensions,
             db.clone(),
         )
