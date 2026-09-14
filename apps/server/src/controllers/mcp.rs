@@ -442,6 +442,12 @@ where
                 "Alloy script revision conflict",
             ))
         }
+        Err(alloy::AlloyAuthoringError::PresentationRevisionConflict { .. }) => {
+            envelope_value(McpToolResponse::<()>::error(
+                "alloy_script_presentation_revision_conflict",
+                "Alloy script presentation revision conflict",
+            ))
+        }
         Err(alloy::AlloyAuthoringError::RetentionRevisionConflict { .. }) => {
             envelope_value(McpToolResponse::<()>::error(
                 "alloy_evidence_retention_revision_conflict",

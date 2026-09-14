@@ -20,9 +20,9 @@ use rustok_translation_targets::{
     TranslationTargetProgressFacts, TranslationTargetProgressRequest, TranslationTargetProvider,
     TranslationTargetProviderDescriptor, TranslationTargetRegistryError, TranslationValueProfile,
     provider_support::{
-        contract_validation_error, field_hash, merged_patch_values, normalize_optional_target_value,
-        opaque_positive_revision, parse_positive_revision, read_request_from_patch,
-        validate_patch_against_snapshot, validation_to_port_error,
+        contract_validation_error, field_hash, merged_patch_values,
+        normalize_optional_target_value, opaque_positive_revision, parse_positive_revision,
+        read_request_from_patch, validate_patch_against_snapshot, validation_to_port_error,
     },
     register_translation_target_provider, validate_translation_apply_context,
     validate_translation_read_context,
@@ -111,10 +111,7 @@ impl AlloyScriptPresentationTranslationTargetProvider {
                 identity: script_presentation_identity(exact.script_id),
                 display_label: format!("Alloy Script {}", exact.script_id),
                 lifecycle: TranslationResourceLifecycle::Active,
-                resource_revision: opaque_revision(
-                    exact.resource_revision,
-                    "resource_revision",
-                )?,
+                resource_revision: opaque_revision(exact.resource_revision, "resource_revision")?,
                 exact_locales,
             },
             source_locale: request.source_locale.clone(),
@@ -138,10 +135,7 @@ impl AlloyScriptPresentationTranslationTargetProvider {
             }],
         };
         snapshot.validate().map_err(|error| {
-            PortError::invariant_violation(
-                "alloy.translation_snapshot_invalid",
-                error.to_string(),
-            )
+            PortError::invariant_violation("alloy.translation_snapshot_invalid", error.to_string())
         })?;
         Ok(snapshot)
     }
@@ -273,15 +267,16 @@ impl TranslationTargetProvider for AlloyScriptPresentationTranslationTargetProvi
         {
             return Ok(TranslationApplicationReceipt {
                 provider_receipt_id: replay.operation_id.to_string(),
-                resource_revision: opaque_revision(
-                    replay.resource_revision,
-                    "resource_revision",
-                )?,
+                resource_revision: opaque_revision(replay.resource_revision, "resource_revision")?,
                 target_revision: opaque_positive_revision(
                     replay.target_copy_revision,
                     "target_revision",
                 )?,
-                applied_field_keys: request.fields.iter().map(|field| field.key.clone()).collect(),
+                applied_field_keys: request
+                    .fields
+                    .iter()
+                    .map(|field| field.key.clone())
+                    .collect(),
             });
         }
 
@@ -335,7 +330,11 @@ impl TranslationTargetProvider for AlloyScriptPresentationTranslationTargetProvi
                 applied.target_copy_revision,
                 "target_revision",
             )?,
-            applied_field_keys: request.fields.iter().map(|field| field.key.clone()).collect(),
+            applied_field_keys: request
+                .fields
+                .iter()
+                .map(|field| field.key.clone())
+                .collect(),
         })
     }
 
@@ -377,10 +376,7 @@ impl TranslationTargetProvider for AlloyScriptPresentationTranslationTargetProvi
                 })?,
         };
         facts.validate().map_err(|error| {
-            PortError::invariant_violation(
-                "alloy.translation_progress_invalid",
-                error.to_string(),
-            )
+            PortError::invariant_violation("alloy.translation_progress_invalid", error.to_string())
         })?;
         Ok(facts)
     }
@@ -398,7 +394,10 @@ impl TranslationTargetProvider for AlloyScriptPresentationTranslationTargetProvi
         let tenant_id = parse_tenant_id(&context)?;
         let page = self
             .change_owner(tenant_id)?
-            .read_changes(request.after.as_ref().map(OpaqueCursor::as_str), request.limit)
+            .read_changes(
+                request.after.as_ref().map(OpaqueCursor::as_str),
+                request.limit,
+            )
             .await
             .map_err(owner_error_to_port_error)?;
         let changes = page

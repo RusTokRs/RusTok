@@ -47,7 +47,7 @@ impl AlloyAuthoringService<crate::SeaOrmStorage> {
             sandbox: runtime.sandbox,
             registry: runtime.storage,
             orchestrator: runtime.orchestrator,
-            authoring: Some(runtime.authoring),
+            authoring: Some(runtime.authoring_store),
             tenant_id: runtime.tenant_id,
         }
     }
@@ -1554,7 +1554,10 @@ mod tests {
             .await
             .expect("presentation lookup should succeed")
             .expect("localized presentation should still exist");
-        assert_eq!(updated_copy.description.as_deref(), Some("Descrição revista"));
+        assert_eq!(
+            updated_copy.description.as_deref(),
+            Some("Descrição revista")
+        );
         assert_eq!(updated_copy.copy_revision, 2);
         let update_revision = storage
             .get_source_revision(updated.id, updated.version)

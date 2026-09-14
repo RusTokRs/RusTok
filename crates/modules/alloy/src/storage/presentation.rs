@@ -5,7 +5,7 @@ use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    QueryFilter, QueryOrder, Set,
+    ExprTrait, QueryFilter, QueryOrder, Set,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -260,10 +260,7 @@ impl SeaOrmScriptPresentationStore {
         let now = Utc::now().fixed_offset();
         let result = Entity::update_many()
             .col_expr(Column::Description, Expr::value(description))
-            .col_expr(
-                Column::CopyRevision,
-                Expr::col(Column::CopyRevision).add(1),
-            )
+            .col_expr(Column::CopyRevision, Expr::col(Column::CopyRevision).add(1))
             .col_expr(Column::UpdatedAt, Expr::value(now))
             .filter(Column::TenantId.eq(tenant_id))
             .filter(Column::ScriptId.eq(script_id))

@@ -1,15 +1,14 @@
 use rustok_api::StoredLocale;
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
+use sea_orm::{DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use uuid::Uuid;
 
 use crate::model::ScriptPresentation;
 
 use super::{
-    ALLOY_SCRIPT_PRESENTATION_APPLY_RECEIPTS_TABLE,
-    ALLOY_SCRIPT_PRESENTATION_RESOURCE_STATE_TABLE, MAX_ALLOY_SCRIPT_PRESENTATION_CHANGE_PAGE,
-    SeaOrmScriptPresentationStore, ScriptPresentationStore,
+    ALLOY_SCRIPT_PRESENTATION_APPLY_RECEIPTS_TABLE, ALLOY_SCRIPT_PRESENTATION_RESOURCE_STATE_TABLE,
+    MAX_ALLOY_SCRIPT_PRESENTATION_CHANGE_PAGE, ScriptPresentationStore,
     ScriptPresentationTranslationApplyReceipt, ScriptPresentationTranslationError,
-    ScriptPresentationTranslationResult,
+    ScriptPresentationTranslationResult, SeaOrmScriptPresentationStore,
 };
 
 const RESOURCE_REVISION_PREFIX: &str = "presentation";
@@ -167,7 +166,9 @@ LIMIT $3
         if has_more {
             rows.truncate(usize::from(limit));
         }
-        let next_after = has_more.then(|| rows.last().map(|row| row.script_id)).flatten();
+        let next_after = has_more
+            .then(|| rows.last().map(|row| row.script_id))
+            .flatten();
         let resources = rows
             .into_iter()
             .map(resource_summary_from_row)
@@ -192,8 +193,7 @@ LIMIT $3
         }
         if source_locale.is_unknown_provenance() || target_locale.is_unknown_provenance() {
             return Err(ScriptPresentationTranslationError::Invalid(
-                "Alloy script presentation exact locales cannot use unknown provenance"
-                    .to_string(),
+                "Alloy script presentation exact locales cannot use unknown provenance".to_string(),
             ));
         }
         if source_locale == target_locale {
@@ -207,10 +207,12 @@ LIMIT $3
             .find_exact(self.tenant_id, script_id, source_locale)
             .await
             .map_err(map_presentation_store_error)?
-            .ok_or_else(|| ScriptPresentationTranslationError::SourceLocaleNotFound {
-                script_id,
-                locale: source_locale.as_str().to_string(),
-            })?;
+            .ok_or_else(
+                || ScriptPresentationTranslationError::SourceLocaleNotFound {
+                    script_id,
+                    locale: source_locale.as_str().to_string(),
+                },
+            )?;
         let target = self
             .presentations
             .find_exact(self.tenant_id, script_id, target_locale)
@@ -260,7 +262,8 @@ LIMIT $3
         script_id: Uuid,
         idempotency_key: &str,
         request_fingerprint: &str,
-    ) -> ScriptPresentationTranslationResult<Option<ScriptPresentationTranslationApplyReceipt>> {
+    ) -> ScriptPresentationTranslationResult<Option<ScriptPresentationTranslationApplyReceipt>>
+    {
         self.ensure_postgres()?;
         if script_id.is_nil() {
             return Err(ScriptPresentationTranslationError::Invalid(
@@ -303,14 +306,15 @@ WHERE tenant_id = $1 AND idempotency_key = $2
                 "Alloy script presentation replay receipt is missing resource revision".to_string(),
             )
         })?;
-        let target_copy_revision = row.target_copy_revision.filter(|revision| *revision > 0).ok_or_else(
-            || {
+        let target_copy_revision = row
+            .target_copy_revision
+            .filter(|revision| *revision > 0)
+            .ok_or_else(|| {
                 ScriptPresentationTranslationError::OwnerInvariant(
                     "Alloy script presentation replay receipt is missing target copy revision"
                         .to_string(),
                 )
-            },
-        )?;
+            })?;
         Ok(Some(ScriptPresentationTranslationApplyReceipt {
             operation_id: row.id,
             script_id: row.script_id,
@@ -373,7 +377,10 @@ fn resource_summary_from_row(
             })
         })
         .collect::<ScriptPresentationTranslationResult<Vec<_>>>()?;
-    if exact_locales.iter().any(StoredLocale::is_unknown_provenance) {
+    if exact_locales
+        .iter()
+        .any(StoredLocale::is_unknown_provenance)
+    {
         return Err(ScriptPresentationTranslationError::OwnerInvariant(
             "Alloy script presentation concrete exact inventory contains unknown provenance"
                 .to_string(),

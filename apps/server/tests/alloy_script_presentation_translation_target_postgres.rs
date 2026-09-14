@@ -3,14 +3,16 @@
 use std::{error::Error, io, sync::Arc, time::Duration};
 
 use alloy::storage::{
-    SeaOrmScriptAuthoringStore, SeaOrmScriptPresentationStore,
-    ScriptPresentationAuthoringMutation, ScriptPresentationStore,
+    ScriptPresentationAuthoringMutation, ScriptPresentationStore, SeaOrmScriptAuthoringStore,
+    SeaOrmScriptPresentationStore,
 };
 use alloy::{
     AlloyModule, RhaiWorkspace, Script, ScriptDeletionCommand, ScriptRegistry, ScriptTrigger,
     SeaOrmStorage,
 };
-use rustok_api::{PortActor, PortContext, PortErrorKind, RuntimeLocale, StoredLocale, TenantLocale};
+use rustok_api::{
+    PortActor, PortContext, PortErrorKind, RuntimeLocale, StoredLocale, TenantLocale,
+};
 use rustok_core::ModuleRegistry;
 use rustok_migrations::Migrator;
 use rustok_server::{
@@ -28,8 +30,8 @@ use rustok_test_utils::{
 use rustok_translation_targets::{
     ListTranslationResourcesRequest, OwnerSlug, ReadTranslationResourceRequest, ResourceKind,
     TranslationDataClassification, TranslationFieldPatch, TranslationPatchRequest,
-    TranslationResourceLifecycle, TranslationTargetChangesRequest, TranslationTargetProgressRequest,
-    TranslationTargetProvider, translation_target_registry,
+    TranslationResourceLifecycle, TranslationTargetChangesRequest,
+    TranslationTargetProgressRequest, TranslationTargetProvider, translation_target_registry,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, FromQueryResult, Statement};
 use sea_orm_migration::{MigratorTrait, SchemaManager};
@@ -53,8 +55,8 @@ struct RevisionRow {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires PostgreSQL admin access"]
-async fn alloy_script_presentation_registered_provider_multi_replica_evidence_postgres(
-) -> TestResult<()> {
+async fn alloy_script_presentation_registered_provider_multi_replica_evidence_postgres()
+-> TestResult<()> {
     let admin_url = std::env::var(ADMIN_URL_ENV)
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
@@ -241,8 +243,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             },
         )
         .await?;
-    if after_operational.summary.resource_revision
-        != before_operational.summary.resource_revision
+    if after_operational.summary.resource_revision != before_operational.summary.resource_revision
         || after_operational.source_revision != before_operational.source_revision
         || progress_after_operational.owner_change_cursor
             != progress_before_operational.owner_change_cursor
@@ -253,13 +254,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .into());
     }
 
-    script = update_source_description(
-        &seed_connection,
-        &owner,
-        script,
-        "Source description v2",
-    )
-    .await?;
+    script = update_source_description(&seed_connection, &owner, script, "Source description v2")
+        .await?;
     let source_updated = seed_provider
         .read_resource(
             read_context(tenant_id, "source-updated"),
@@ -438,7 +434,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .next_cursor
         .ok_or_else(|| test_error("Alloy frozen-window intermediate cursor is missing"))?;
 
-    script = update_source_description(&seed_connection, &owner, script, "Cursor source late").await?;
+    script =
+        update_source_description(&seed_connection, &owner, script, "Cursor source late").await?;
     let frozen_second = seed_provider
         .read_changes(
             read_context(tenant_id, "frozen-second"),
@@ -518,10 +515,16 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     assert_live_owner_rows_removed(&seed_connection, tenant_id, script.id).await?;
 
     let other_after_delete = seed_provider
-        .list_resources(read_context(other_tenant_id, "other-after-delete"), list_request()?)
+        .list_resources(
+            read_context(other_tenant_id, "other-after-delete"),
+            list_request()?,
+        )
         .await?;
     if other_after_delete.resources.len() != 1
-        || other_after_delete.resources[0].identity.resource_id.as_str()
+        || other_after_delete.resources[0]
+            .identity
+            .resource_id
+            .as_str()
             != other_script.id.to_string()
     {
         return Err(test_error(format!(
@@ -657,7 +660,10 @@ fn registered_provider(db: DatabaseConnection) -> TestResult<Arc<dyn Translation
     let targets = translation_target_registry(&extensions)
         .ok_or_else(|| test_error("host composition did not publish TranslationTargetRegistry"))?;
     targets
-        .get(&OwnerSlug::new(OWNER_SLUG)?, &ResourceKind::new(RESOURCE_KIND)?)
+        .get(
+            &OwnerSlug::new(OWNER_SLUG)?,
+            &ResourceKind::new(RESOURCE_KIND)?,
+        )
         .ok_or_else(|| {
             test_error("host composition did not register alloy/script_presentation").into()
         })

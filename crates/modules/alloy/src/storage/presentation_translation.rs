@@ -1,14 +1,14 @@
 use async_trait::async_trait;
 use rustok_api::{RuntimeLocale, StoredLocale};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, FromQueryResult,
-    QueryFilter, QuerySelect, Statement, TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
+    FromQueryResult, QueryFilter, QuerySelect, Statement, TransactionTrait,
 };
 use thiserror::Error;
 use uuid::Uuid;
 
 use super::{
-    SeaOrmScriptPresentationStore, ScriptPresentationStoreError, ScriptsColumn, ScriptsEntity,
+    ScriptPresentationStoreError, ScriptsColumn, ScriptsEntity, SeaOrmScriptPresentationStore,
 };
 
 pub const ALLOY_SCRIPT_PRESENTATION_RESOURCE_STATE_TABLE: &str =
@@ -114,9 +114,7 @@ pub struct ScriptPresentationTranslationApply {
 }
 
 impl ScriptPresentationTranslationApply {
-    fn validate(
-        &self,
-    ) -> ScriptPresentationTranslationResult<(RuntimeLocale, RuntimeLocale)> {
+    fn validate(&self) -> ScriptPresentationTranslationResult<(RuntimeLocale, RuntimeLocale)> {
         self.operation.validate()?;
         validate_bounded_nonblank(
             &self.expected_resource_revision,
@@ -193,8 +191,7 @@ impl From<sea_orm::DbErr> for ScriptPresentationTranslationError {
     }
 }
 
-pub type ScriptPresentationTranslationResult<T> =
-    Result<T, ScriptPresentationTranslationError>;
+pub type ScriptPresentationTranslationResult<T> = Result<T, ScriptPresentationTranslationError>;
 
 #[async_trait]
 pub trait ScriptPresentationTranslationChangeOwnerPort: Send + Sync {
@@ -262,7 +259,7 @@ impl SeaOrmScriptPresentationTranslationStore {
         let transaction = self.db.begin().await?;
 
         transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 format!(
                     r#"
@@ -319,7 +316,13 @@ FOR UPDATE
             )
         })?;
 
-        validate_receipt_identity(&durable, script_id, &request, &source_locale, &target_locale)?;
+        validate_receipt_identity(
+            &durable,
+            script_id,
+            &request,
+            &source_locale,
+            &target_locale,
+        )?;
         if durable.id != operation_id {
             if durable.completed {
                 let receipt = receipt_from_row(durable)?;
@@ -338,7 +341,9 @@ FOR UPDATE
             .await?
             .is_some();
         if !script_exists {
-            return Err(ScriptPresentationTranslationError::ScriptNotFound(script_id));
+            return Err(ScriptPresentationTranslationError::ScriptNotFound(
+                script_id,
+            ));
         }
 
         let source = load_presentation_row(
@@ -348,10 +353,12 @@ FOR UPDATE
             source_locale.as_str(),
         )
         .await?
-        .ok_or_else(|| ScriptPresentationTranslationError::SourceLocaleNotFound {
-            script_id,
-            locale: source_locale.as_str().to_string(),
-        })?;
+        .ok_or_else(
+            || ScriptPresentationTranslationError::SourceLocaleNotFound {
+                script_id,
+                locale: source_locale.as_str().to_string(),
+            },
+        )?;
         if source.copy_revision != request.expected_source_copy_revision {
             return Err(ScriptPresentationTranslationError::RevisionConflict {
                 revision: "source",
@@ -418,7 +425,8 @@ FOR UPDATE
             .await?
             .ok_or_else(|| {
                 ScriptPresentationTranslationError::OwnerInvariant(
-                    "Alloy script presentation apply removed translation resource state".to_string(),
+                    "Alloy script presentation apply removed translation resource state"
+                        .to_string(),
                 )
             })?;
         let receipt = ScriptPresentationTranslationApplyReceipt {
@@ -431,7 +439,7 @@ FOR UPDATE
         };
 
         let completed = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 format!(
                     r#"
@@ -734,22 +742,20 @@ async fn load_presentation_row<C>(
 where
     C: ConnectionTrait,
 {
-    Ok(PresentationRow::find_by_statement(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"
+    Ok(
+        PresentationRow::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
 SELECT copy_revision
 FROM alloy_script_presentations
 WHERE tenant_id = $1 AND script_id = $2 AND locale = $3
 FOR UPDATE
 "#,
-        vec![
-            tenant_id.into(),
-            script_id.into(),
-            locale.to_owned().into(),
-        ],
-    ))
-    .one(connection)
-    .await?)
+            vec![tenant_id.into(), script_id.into(), locale.to_owned().into()],
+        ))
+        .one(connection)
+        .await?,
+    )
 }
 
 async fn load_resource_state<C>(
@@ -809,14 +815,15 @@ fn receipt_from_row(
             "Alloy script presentation replay receipt is missing resource revision".to_string(),
         )
     })?;
-    let target_copy_revision = row.target_copy_revision.filter(|revision| *revision > 0).ok_or_else(
-        || {
+    let target_copy_revision = row
+        .target_copy_revision
+        .filter(|revision| *revision > 0)
+        .ok_or_else(|| {
             ScriptPresentationTranslationError::OwnerInvariant(
                 "Alloy script presentation replay receipt is missing target copy revision"
                     .to_string(),
             )
-        },
-    )?;
+        })?;
     Ok(ScriptPresentationTranslationApplyReceipt {
         operation_id: row.id,
         script_id: row.script_id,
