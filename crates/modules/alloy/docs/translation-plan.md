@@ -10,6 +10,15 @@ The current Alloy `Script` aggregate mixes human-facing prose with runtime and
 security-sensitive state. Registering that aggregate as a Translation target
 would therefore be incorrect.
 
+ALLOY-TR-1 and ALLOY-TR-2 are complete. ALLOY-TR-3 now has an owner-local durable
+change plane: presentation apply receipts, semantic aggregate revisions and
+journal rows, canonical Script hard-delete tombstones, exact-locale aggregate
+progress, and bounded frozen ChangeCursor semantics. Operational Script writes
+remain outside that plane because only `alloy_script_presentations` semantic
+copy changes advance the active resource revision. Provider registration remains
+blocked until ALLOY-TR-4; retained PostgreSQL execution evidence remains
+ALLOY-TR-5.
+
 ## Audited owner boundary
 
 The canonical owner is Alloy and the stable resource identity is `script_id`
@@ -86,6 +95,33 @@ The existing whole-script `version` remains the owner command revision. It must
 not be reused as the Translation copy revision because workspace, trigger,
 permission and lifecycle mutations can advance it without changing localizable
 copy.
+
+## Durable change-plane contract
+
+The presentation resource revision is a separate monotonic aggregate revision
+owned by Alloy. PostgreSQL records at most one externally visible active change
+per `(tenant_id, script_id)` in one database transaction, even when several
+locale rows change together. Existing presentation rows are backfilled into
+resource state without inventing historical change events.
+
+Only semantic presentation row inserts or updates advance the active resource
+revision. Metadata-only row rewrites and operational `scripts` mutations do not.
+Canonical hard delete of the owning Script records one final `deleted` tombstone
+before presentation rows cascade and removes live resource state in the same
+transaction.
+
+Apply idempotency is tenant-scoped and durable. A receipt binds the idempotency
+key to Script identity, exact source/target locales, workflow evidence, request
+fingerprint, expected revisions and requested copy. Exact replay returns the
+committed receipt before checking newer live revisions; mismatched key reuse
+fails closed.
+
+Progress uses exact source-locale inventory and treats `description` as the one
+optional unit. The owner brackets one aggregate progress read with journal
+high-water reads and retries a bounded number of times if they differ. Change
+pages use opaque `v1:<through>:<after>` cursors: the first page freezes the
+current high-water, intermediate pages preserve it, and a tail cursor starts the
+next polling window from the previous checkpoint.
 
 ## Canonical authoring integration
 
