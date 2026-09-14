@@ -122,6 +122,19 @@ function walkDirectories(rootPath, onDirectory) {
   }
 }
 
+function readFtlKeys(filePath) {
+  const content = fs.readFileSync(filePath, "utf8");
+  const keys = [];
+  const lines = content.split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*)\s*=/);
+    if (match) {
+      keys.push(match[1]);
+    }
+  }
+  return keys;
+}
+
 function discoverBundleDirs() {
   const results = [];
 
@@ -137,14 +150,24 @@ function discoverBundleDirs() {
         .map((entry) => entry.name)
         .sort((left, right) => left.localeCompare(right));
 
-      if (jsonFiles.length < 2) {
-        return;
-      }
+      const ftlFiles = entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".ftl"))
+        .map((entry) => entry.name)
+        .sort((left, right) => left.localeCompare(right));
 
-      results.push({
-        directory,
-        files: jsonFiles.map((fileName) => path.join(directory, fileName)),
-      });
+      if (ftlFiles.length >= 2) {
+        results.push({
+          directory,
+          format: "ftl",
+          files: ftlFiles.map((fileName) => path.join(directory, fileName)),
+        });
+      } else if (jsonFiles.length >= 2) {
+        results.push({
+          directory,
+          format: "json",
+          files: jsonFiles.map((fileName) => path.join(directory, fileName)),
+        });
+      }
     });
   }
 
@@ -154,11 +177,16 @@ function discoverBundleDirs() {
 }
 
 function compareBundleDirectory(bundleDirectory) {
+  const isFtl = bundleDirectory.format === "ftl";
   const files = bundleDirectory.files.map((filePath) => ({
     filePath,
     fileName: path.basename(filePath),
-    locale: path.basename(filePath, ".json"),
-    keys: new Set(flattenJson(readJson(filePath)).filter(Boolean)),
+    locale: path.basename(filePath, isFtl ? ".ftl" : ".json"),
+    keys: new Set(
+      isFtl
+        ? readFtlKeys(filePath)
+        : flattenJson(readJson(filePath)).filter(Boolean),
+    ),
   }));
 
   const invalidLocaleFiles = files

@@ -243,28 +243,28 @@ requireText(
   "node scripts/verify/verify-fly-internal-links.mjs",
 );
 for (const localePath of [
-  "crates/modules/rustok-page-builder/admin/locales/en.json",
-  "crates/modules/rustok-page-builder/admin/locales/ru.json",
+  "crates/modules/rustok-page-builder/admin/locales/en.ftl",
+  "crates/modules/rustok-page-builder/admin/locales/ru.ftl",
 ]) {
-  requireText(localePath, '"runtimePublishGate"');
-  requireText(localePath, '"readinessCategory"');
-  requireText(localePath, '"audit"');
-  requireText(localePath, '"checkRuntimeGate"');
+  requireText(localePath, 'runtimePublishGate');
+  requireText(localePath, 'readinessCategory');
+  requireText(localePath, 'audit');
+  requireText(localePath, 'checkRuntimeGate');
 }
 requireText(
-  "crates/modules/rustok-page-builder/admin/locales/en.json",
+  "crates/modules/rustok-page-builder/admin/locales/en.ftl",
   "Block publish when required translations are missing",
 );
 requireText(
-  "crates/modules/rustok-page-builder/admin/locales/ru.json",
+  "crates/modules/rustok-page-builder/admin/locales/ru.ftl",
   "Блокировать публикацию при отсутствии обязательных переводов",
 );
 rejectText(
-  "crates/modules/rustok-page-builder/admin/locales/en.json",
+  "crates/modules/rustok-page-builder/admin/locales/en.ftl",
   "Block save and publish",
 );
 rejectText(
-  "crates/modules/rustok-page-builder/admin/locales/ru.json",
+  "crates/modules/rustok-page-builder/admin/locales/ru.ftl",
   "Блокировать сохранение и публикацию",
 );
 

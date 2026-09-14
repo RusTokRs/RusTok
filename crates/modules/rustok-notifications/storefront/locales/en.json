@@ -1,8 +1,0 @@
-{
-  "notifications": {
-    "navigation": {
-      "label": "Notifications",
-      "unread": "{count} unread notifications"
-    }
-  }
-}

@@ -21,8 +21,8 @@ const paths = {
     "crates/modules/rustok-forum/admin/src/transport/topic_merge_graphql_adapter.rs",
   leptosRoot: "crates/modules/rustok-forum/admin/src/ui/root.rs",
   leptosUi: "crates/modules/rustok-forum/admin/src/ui/topic_merge.rs",
-  leptosEn: "crates/modules/rustok-forum/admin/locales/en.json",
-  leptosRu: "crates/modules/rustok-forum/admin/locales/ru.json",
+  leptosEn: "crates/modules/rustok-forum/admin/locales/en.ftl",
+  leptosRu: "crates/modules/rustok-forum/admin/locales/ru.ftl",
   nextCore: "apps/next-admin/packages/forum/src/core/topic-merge.ts",
   nextApi: "apps/next-admin/packages/forum/src/api/forum.ts",
   nextUi: "apps/next-admin/packages/forum/src/components/forum-topic-merge.tsx",
@@ -35,6 +35,19 @@ const paths = {
 };
 
 const read = (path) => readFileSync(path, "utf8");
+function parseFtl(content) {
+  const result = {};
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(.*)$/);
+    if (match) {
+      const key = match[1];
+      const val = match[2].trim();
+      result[key] = val;
+      result[key.replace(/-/g, ".")] = val;
+    }
+  }
+  return result;
+}
 const includesAll = (text, markers, label) => {
   for (const marker of markers) {
     assert.ok(text.includes(marker), `${label} is missing marker: ${marker}`);
@@ -55,8 +68,8 @@ const leptosNative = read(paths.leptosNative);
 const leptosGraphql = read(paths.leptosGraphql);
 const leptosRoot = read(paths.leptosRoot);
 const leptosUi = read(paths.leptosUi);
-const leptosEn = JSON.parse(read(paths.leptosEn));
-const leptosRu = JSON.parse(read(paths.leptosRu));
+const leptosEn = parseFtl(read(paths.leptosEn));
+const leptosRu = parseFtl(read(paths.leptosRu));
 const nextCore = read(paths.nextCore);
 const nextApi = read(paths.nextApi);
 const nextUi = read(paths.nextUi);

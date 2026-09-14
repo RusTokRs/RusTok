@@ -1,0 +1,9 @@
+payment-collection-badge = Payment
+payment-collection-createOrReuse = Create or reuse payment
+payment-collection-emptyId = No payment collection
+payment-collection-emptyStatus = Not started
+payment-collection-idLabel = Collection
+payment-collection-moduleOwnership = Payment collection presentation stays in payment-owned UI.
+payment-collection-pending = Processing...
+payment-collection-statusLabel = Status
+payment-collection-title = Payment collection

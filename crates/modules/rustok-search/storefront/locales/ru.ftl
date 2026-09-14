@@ -1,0 +1,41 @@
+search-badge = search
+search-error-loadPresets = Не удалось загрузить пресеты
+search-error-loadResults = Не удалось загрузить storefront-результаты поиска
+search-error-loadSuggestions = Не удалось загрузить поисковые подсказки
+search-features-engineBody = Storefront использует публичную published-only search surface на базе PostgreSQL FTS.
+search-features-engineTitle = Движок
+search-features-facetsBody = Фасеты по entity type и source module приходят из того же search payload, что и admin previews.
+search-features-facetsTitle = Facet model
+search-filters-attributeCode = Код атрибута
+search-filters-attributeValues = Значения атрибута (CSV)
+search-filters-categoryIds = ID категорий (CSV)
+search-filters-channelId = ID канала
+search-filters-maximum = Максимум
+search-filters-minimum = Минимум
+search-filters-sortAttribute = Код атрибута сортировки
+search-filters-sortDesc = По убыванию
+search-filters-title = Фильтры каталога и сортировка
+search-form-autocompleteHint = Автодополнение использует популярные успешные запросы и совпадающие заголовки опубликованных документов из rustok-search.
+search-form-placeholder = Искать товары и опубликованный контент
+search-form-queryLabel = Поисковый запрос
+search-form-submit = Искать
+search-results-emptyBody = Storefront search читает `?q=` из generic module route и запускает публичный PostgreSQL FTS pipeline.
+search-results-emptyTitle = Введите поисковый запрос
+search-results-locale = locale = { $locale }
+search-results-noResultsBody = Попробуйте другой запрос или ослабьте storefront-фильтры в query string.
+search-results-noResultsTitle = Ничего не найдено
+search-results-noSnippet = Сниппет не вернулся.
+search-results-noTarget = Для этого результата пока нет storefront target.
+search-results-none = none
+search-results-openResult = Открыть результат
+search-results-preset = preset = { $preset }
+search-results-queryLabel = Запрос
+search-results-summary = { $count } результатов за { $took_ms } мс через { $engine } ({ $ranking_profile })
+search-subtitle = Эта storefront-поверхность работает на PostgreSQL full-text search по опубликованному контенту и товарам.
+search-suggestions-badge = autocomplete
+search-suggestions-empty = Введите минимум 2 символа, чтобы увидеть поисковые подсказки.
+search-suggestions-loading = Загрузка подсказок...
+search-suggestions-open = Открыть
+search-suggestions-search = Искать
+search-suggestions-title = Подсказки
+search-title = Поиск по опубликованному контенту и каталогу

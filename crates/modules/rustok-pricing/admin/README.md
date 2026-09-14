@@ -32,7 +32,7 @@ Leptos admin UI package for the `rustok-pricing` module.
 - Links back to the product admin module with the same stable product `id` so
   pricing operators can return to catalog ownership without deriving identity
   from localized titles, handles, vendors, or other display fields.
-- Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.
+- Ships package-owned `admin/locales/en.ftl` and `admin/locales/ru.ftl` bundles declared through `[provides.admin_ui.i18n]`.
 - Keeps Leptos render/bind code in `admin/src/ui/leptos.rs`; `admin/src/lib.rs` only wires modules and re-exports `PricingAdmin`.
 
 ## Entry Points

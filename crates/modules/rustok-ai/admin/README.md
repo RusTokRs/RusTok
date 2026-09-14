@@ -11,7 +11,7 @@ Large Leptos operator/admin UI package for the `rustok-ai` capability crate.
 
 - Exposes the large AI operator/admin surface used by `apps/admin`.
 - Stays capability-owned: AI business UI does not live in `apps/admin`.
-- Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles for visible UI
+- Ships package-owned `admin/locales/en.ftl` and `admin/locales/ru.ftl` bundles for visible UI
   chrome, diagnostics, operator chat, approval flows, and session history surfaces.
 - Owns the provider profile, tool policy, chat session, trace, and approval flows for the AI
   control plane.

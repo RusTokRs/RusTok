@@ -220,14 +220,13 @@ for (const relative of [
 ]) forbidMarkers(relative, ["graphql_application_cas", "native_applications_adapter", "graphql_applications_adapter"]);
 
 for (const relative of [
-  "crates/modules/rustok-groups/admin/locales/en.json",
-  "crates/modules/rustok-groups/admin/locales/ru.json",
-  "crates/modules/rustok-groups/storefront/locales/en.json",
-  "crates/modules/rustok-groups/storefront/locales/ru.json",
+  "crates/modules/rustok-groups/admin/locales/en.ftl",
+  "crates/modules/rustok-groups/admin/locales/ru.ftl",
+  "crates/modules/rustok-groups/storefront/locales/en.ftl",
+  "crates/modules/rustok-groups/storefront/locales/ru.ftl",
 ]) {
   if (!requireFile(relative)) continue;
-  try { JSON.parse(read(relative)); }
-  catch (error) { failures.push(`${relative}: invalid JSON: ${error.message}`); }
+  if (!read(relative).trim()) failures.push(`${relative}: empty locale file`);
 }
 
 if (requireFile("crates/modules/rustok-groups/contracts/groups-fba-registry.json")) {

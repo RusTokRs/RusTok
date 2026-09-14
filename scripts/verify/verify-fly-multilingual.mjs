@@ -24,8 +24,8 @@ const paths = {
   ssrTranslations: 'crates/modules/rustok-page-builder/admin/src/editor/ssr_translations.rs',
   ssrInspector: 'crates/modules/rustok-page-builder/admin/src/editor/ssr_inspector.rs',
   adminCanvas: 'crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs',
-  localeEn: 'crates/modules/rustok-page-builder/admin/locales/en.json',
-  localeRu: 'crates/modules/rustok-page-builder/admin/locales/ru.json',
+  localeEn: 'crates/modules/rustok-page-builder/admin/locales/en.ftl',
+  localeRu: 'crates/modules/rustok-page-builder/admin/locales/ru.ftl',
 };
 
 const source = Object.fromEntries(await Promise.all(
@@ -44,9 +44,7 @@ const flattenKeys = (value, prefix = '') => Object.entries(value).flatMap(([key,
     ? flattenKeys(nested, path)
     : [path];
 }).sort();
-const localeValue = (locale, path) => path
-  .split('.')
-  .reduce((value, segment) => value && typeof value === 'object' ? value[segment] : undefined, locale);
+const localeValue = (locale, path) => locale[path] || locale[path.replace(/\./g, '-')];
 
 requireMarkers('runtimeLocale', [
   'pub const RUNTIME_LOCALE_FIELD',
@@ -228,8 +226,18 @@ requireMarkers('adminCanvas', [
   'SsrInspectorPanel',
 ], 'multilingual SSR editor composition');
 
-const en = JSON.parse(source.localeEn);
-const ru = JSON.parse(source.localeRu);
+const parseFtl = (content) => {
+  const result = {};
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(.*)$/);
+    if (match) {
+      result[match[1]] = match[2].trim();
+    }
+  }
+  return result;
+};
+const en = parseFtl(source.localeEn);
+const ru = parseFtl(source.localeRu);
 if (JSON.stringify(flattenKeys(en)) !== JSON.stringify(flattenKeys(ru))) {
   failures.push('Page Builder en/ru locale key parity failed');
 }

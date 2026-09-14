@@ -33,8 +33,8 @@ const files = {
   uiSelect: "UI/leptos/src/select.rs",
   uiTextarea: "UI/leptos/src/textarea.rs",
   uiLabel: "crates/ui/leptos-ui/src/label.rs",
-  leptosEn: "crates/modules/rustok-translation/admin/locales/en.json",
-  leptosRu: "crates/modules/rustok-translation/admin/locales/ru.json",
+  leptosEn: "crates/modules/rustok-translation/admin/locales/en.ftl",
+  leptosRu: "crates/modules/rustok-translation/admin/locales/ru.ftl",
   nextEn: "apps/next-admin/messages/en.json",
   nextRu: "apps/next-admin/messages/ru.json",
 };
@@ -610,9 +610,20 @@ for (const marker of [
   );
 }
 
+function parseFtlKeys(content) {
+  const keys = [];
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*)\s*=/);
+    if (match) {
+      keys.push(match[1].replace(/-/g, "."));
+    }
+  }
+  return keys;
+}
+
 try {
-  const leptosEnKeys = flatten(JSON.parse(source.leptosEn)).sort();
-  const leptosRuKeys = flatten(JSON.parse(source.leptosRu)).sort();
+  const leptosEnKeys = parseFtlKeys(source.leptosEn).sort();
+  const leptosRuKeys = parseFtlKeys(source.leptosRu).sort();
   const nextEn = JSON.parse(source.nextEn);
   const nextRu = JSON.parse(source.nextRu);
   const nextEnKeys = flatten(nextEn.translation, "translation").sort();

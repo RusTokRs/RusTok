@@ -160,17 +160,15 @@ forbidMarkers("crates/modules/rustok-groups/admin/src/ui/policy_editor.rs", [
 ]);
 
 for (const relative of [
-  "crates/modules/rustok-groups/admin/locales/en.json",
-  "crates/modules/rustok-groups/admin/locales/ru.json",
+  "crates/modules/rustok-groups/admin/locales/en.ftl",
+  "crates/modules/rustok-groups/admin/locales/ru.ftl",
 ]) {
   if (!requireFile(relative)) continue;
-  try { JSON.parse(read(relative)); } catch (error) {
-    failures.push(`${relative}: invalid JSON: ${error.message}`);
-  }
+  if (!read(relative).trim()) failures.push(`${relative}: empty locale file`);
   requireMarkers(relative, [
-    "groups.admin.policyEditor.availableLocales",
-    "groups.admin.policyEditor.existingTranslation",
-    "groups.admin.policyEditor.newTranslation",
+    "groups-admin-policyEditor-availableLocales",
+    "groups-admin-policyEditor-existingTranslation",
+    "groups-admin-policyEditor-newTranslation",
   ]);
 }
 

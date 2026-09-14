@@ -23,8 +23,8 @@ const paths = {
   pagesProblem: 'crates/modules/rustok-pages/admin/src/browser_problem.rs',
   pagesLib: 'crates/modules/rustok-pages/admin/src/lib.rs',
   adminMain: 'apps/admin/src/main.rs',
-  localeEn: 'crates/modules/rustok-page-builder/admin/locales/en.json',
-  localeRu: 'crates/modules/rustok-page-builder/admin/locales/ru.json',
+  localeEn: 'crates/modules/rustok-page-builder/admin/locales/en.ftl',
+  localeRu: 'crates/modules/rustok-page-builder/admin/locales/ru.ftl',
 };
 
 const source = Object.fromEntries(
@@ -236,8 +236,18 @@ for (const forbidden of [
   rejectMarker('adminMain', forbidden, `admin host must not own ${forbidden}`);
 }
 
-const en = JSON.parse(source.localeEn);
-const ru = JSON.parse(source.localeRu);
+const parseFtl = (content) => {
+  const result = {};
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(.*)$/);
+    if (match) {
+      result[match[1]] = match[2].trim();
+    }
+  }
+  return result;
+};
+const en = parseFtl(source.localeEn);
+const ru = parseFtl(source.localeRu);
 if (JSON.stringify(flattenKeys(en)) !== JSON.stringify(flattenKeys(ru))) {
   failures.push('Page Builder en/ru locale key parity failed');
 }

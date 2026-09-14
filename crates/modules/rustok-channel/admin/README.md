@@ -13,7 +13,7 @@ Leptos admin UI package for the `rustok-channel` module.
 - Stays module-owned: channel-specific admin UI does not live in `apps/admin`.
 - Participates in the manifest-driven UI composition path through `rustok-module.toml`.
 - Owns the experimental channel-management operator flow: bootstrap, create channel, attach targets, bind modules, bind OAuth apps.
-- Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.
+- Ships package-owned `admin/locales/en.ftl` and `admin/locales/ru.ftl` bundles declared through `[provides.admin_ui.i18n]`.
 
 ## Entry Points
 

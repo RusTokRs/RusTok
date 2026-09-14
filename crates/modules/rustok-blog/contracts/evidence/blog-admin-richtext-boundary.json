@@ -8,8 +8,8 @@
     "core": "crates/modules/rustok-blog/admin/src/core.rs",
     "ui": "crates/modules/rustok-blog/admin/src/ui/leptos.rs",
     "locales": {
-      "en": "crates/modules/rustok-blog/admin/locales/en.json",
-      "ru": "crates/modules/rustok-blog/admin/locales/ru.json"
+      "en": "crates/modules/rustok-blog/admin/locales/en.ftl",
+      "ru": "crates/modules/rustok-blog/admin/locales/ru.ftl"
     },
     "adapter": "crates/modules/rustok-blog/admin/src/ui/richtext.rs",
     "shared_adapter": "crates/ui/leptos-ui/src/richtext.rs"

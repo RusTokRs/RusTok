@@ -55,8 +55,8 @@ const paths = {
   mediaPublic: "crates/modules/rustok-media/src/public_image.rs",
   core: "crates/modules/rustok-profiles/storefront/src/core.rs",
   ui: "crates/modules/rustok-profiles/storefront/src/ui/leptos.rs",
-  en: "crates/modules/rustok-profiles/storefront/locales/en.json",
-  ru: "crates/modules/rustok-profiles/storefront/locales/ru.json",
+  en: "crates/modules/rustok-profiles/storefront/locales/en.ftl",
+  ru: "crates/modules/rustok-profiles/storefront/locales/ru.ftl",
   test: "crates/modules/rustok-social-graph/tests/follow_state_sqlite.rs",
 };
 
@@ -277,8 +277,8 @@ for (const marker of [
 ]) {
   assertContains(ui, marker, `${paths.ui}: accessibility marker ${marker} missing`);
 }
-assertContains(en, '"followRecovered"', `${paths.en}: recovery message missing`);
-assertContains(ru, '"followRecovered"', `${paths.ru}: recovery message missing`);
+assertContains(en, 'followRecovered', `${paths.en}: recovery message missing`);
+assertContains(ru, 'followRecovered', `${paths.ru}: recovery message missing`);
 
 for (const marker of ["initial.revision, None", "active.revision, Some(1)", "inactive.revision, Some(2)"]) {
   assertContains(test, marker, `${paths.test}: scenario ${marker} missing`);

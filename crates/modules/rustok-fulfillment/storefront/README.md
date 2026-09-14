@@ -12,7 +12,7 @@ Module-owned storefront UI package for `rustok-fulfillment`.
 - Own storefront fulfillment/shipping handoff presentation.
 - Own seller-aware delivery-group shipping selection UI and request DTO normalization.
 - Keep shipping-option display and build-profile-selected native/GraphQL transport policy outside umbrella `rustok-commerce` while commerce temporarily provides the aggregate checkout SSR endpoint/body adapter.
-- Ship package-owned `storefront/locales/en.json` and `storefront/locales/ru.json` bundles declared through `[provides.storefront_ui.i18n]`.
+- Ship package-owned `storefront/locales/en.ftl` and `storefront/locales/ru.ftl` bundles declared through `[provides.storefront_ui.i18n]`.
 - Resolve manifest-entry copy from the host-provided `UiRouteContext.locale`; do not negotiate locale inside the package.
 
 ## Entry points

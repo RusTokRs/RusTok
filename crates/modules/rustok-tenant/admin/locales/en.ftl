@@ -1,0 +1,16 @@
+tenant-badge = tenant
+tenant-error-loadBootstrap = Failed to load tenant bootstrap
+tenant-info-domain = Domain
+tenant-info-name = Name
+tenant-info-status = Status
+tenant-info-tenant = Tenant
+tenant-modules-disabled = disabled
+tenant-modules-enabled = enabled
+tenant-modules-subtitle = Core modules stay enabled by contract; optional modules reflect tenant-side state.
+tenant-modules-title = Registered Modules
+tenant-modules-updated = Updated
+tenant-subtitle = Module-owned overview for active tenant state and effective module enablement.
+tenant-title = Tenant Runtime
+tenant-value-active = active
+tenant-value-inactive = inactive
+tenant-value-notAvailable = n/a

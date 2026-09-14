@@ -116,7 +116,7 @@ for (const marker of [
 ]) {
   assertContains(ui, marker, `${uiPath}: expected fulfillment-owned selection UI marker ${marker}`);
 }
-for (const marker of ["UiMessages", "include_str!(\"../locales/en.json\")", "include_str!(\"../locales/ru.json\")", "t_for_locale"]) {
+for (const marker of ["UiMessages", "include_str!(\"../locales/en.ftl\")", "include_str!(\"../locales/ru.ftl\")", "t_for_locale"]) {
   assertContains(i18n, marker, `${i18nPath}: expected host-locale catalog marker ${marker}`);
 }
 for (const marker of ["slot = \"checkout_shipping_handoff\"", "[provides.storefront_ui.i18n]", "leptos_locales_path = \"storefront/locales\""]) {

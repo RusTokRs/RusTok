@@ -61,8 +61,8 @@ const legacyApiPath = "crates/modules/rustok-blog/admin/src/api.rs";
 const implementationPlanPath = "crates/modules/rustok-blog/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const adminRichtextEvidencePath = "crates/modules/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json";
-const adminEnLocalePath = "crates/modules/rustok-blog/admin/locales/en.json";
-const adminRuLocalePath = "crates/modules/rustok-blog/admin/locales/ru.json";
+const adminEnLocalePath = "crates/modules/rustok-blog/admin/locales/en.ftl";
+const adminRuLocalePath = "crates/modules/rustok-blog/admin/locales/ru.ftl";
 
 if (existsSync(repoPath(legacyApiPath))) {
   fail(`${legacyApiPath}: legacy GraphQL api adapter must live under transport/graphql_adapter.rs`);
@@ -111,8 +111,8 @@ const graphqlRateLimit = readRepo(graphqlRateLimitPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 const adminRichtextEvidence = readJson(adminRichtextEvidencePath);
-const adminEnLocale = readJson(adminEnLocalePath);
-const adminRuLocale = readJson(adminRuLocalePath);
+const adminEnLocale = readRepo(adminEnLocalePath);
+const adminRuLocale = readRepo(adminRuLocalePath);
 
 assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api.rs after GraphQL adapter moved under transport/`);
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
@@ -211,12 +211,13 @@ for (const marker of legacyRichtextAdminMarkers) {
 }
 
 const legacyRichtextLocaleKeys = ["blog.form.bodyFormat", "blog.form.rawWarning"];
-for (const [localePath, catalog] of [
+for (const [localePath, catalogText] of [
   [adminEnLocalePath, adminEnLocale],
   [adminRuLocalePath, adminRuLocale],
 ]) {
   for (const key of legacyRichtextLocaleKeys) {
-    if (Object.prototype.hasOwnProperty.call(catalog, key)) {
+    const ftlKey = key.replace(/\./g, "-");
+    if (catalogText.includes(key) || catalogText.includes(ftlKey)) {
       fail(`${localePath}: canonical richtext locale catalog must not expose legacy key ${key}`);
     }
   }

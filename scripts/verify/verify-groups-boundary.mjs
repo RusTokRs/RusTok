@@ -232,12 +232,12 @@ if (exists("crates/modules/rustok-groups/contracts/groups-fba-registry.json")) {
 }
 
 for (const localePath of [
-  "crates/modules/rustok-groups/admin/locales/en.json",
-  "crates/modules/rustok-groups/admin/locales/ru.json",
-  "crates/modules/rustok-groups/storefront/locales/en.json",
-  "crates/modules/rustok-groups/storefront/locales/ru.json",
+  "crates/modules/rustok-groups/admin/locales/en.ftl",
+  "crates/modules/rustok-groups/admin/locales/ru.ftl",
+  "crates/modules/rustok-groups/storefront/locales/en.ftl",
+  "crates/modules/rustok-groups/storefront/locales/ru.ftl",
 ]) {
-  if (exists(localePath)) JSON.parse(read(localePath));
+  if (exists(localePath) && !read(localePath).trim()) failures.push(`${localePath}: empty locale file`);
 }
 
 if (failures.length > 0) {

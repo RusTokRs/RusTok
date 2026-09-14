@@ -1,3 +1,17 @@
+function parseFtl(content) {
+  const result = {};
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(.*)$/);
+    if (match) {
+      const key = match[1];
+      const val = match[2].trim();
+      result[key] = val;
+      result[key.replace(/-/g, '.')] = val;
+    }
+  }
+  return result;
+}
+
 import fs from "node:fs";
 import path from "node:path";
 
@@ -215,13 +229,13 @@ if (exists(registryPath)) {
 }
 
 for (const localePath of [
-  "crates/modules/rustok-groups/admin/locales/en.json",
-  "crates/modules/rustok-groups/admin/locales/ru.json",
-  "crates/modules/rustok-groups/storefront/locales/en.json",
-  "crates/modules/rustok-groups/storefront/locales/ru.json",
+  "crates/modules/rustok-groups/admin/locales/en.ftl",
+  "crates/modules/rustok-groups/admin/locales/ru.ftl",
+  "crates/modules/rustok-groups/storefront/locales/en.ftl",
+  "crates/modules/rustok-groups/storefront/locales/ru.ftl",
 ]) {
   if (!exists(localePath)) continue;
-  const messages = JSON.parse(read(localePath));
+  const messages = parseFtl(read(localePath));
   const prefix = localePath.includes("admin/") ? "groups.admin.applications." : "groups.storefront.application.";
   if (!Object.keys(messages).some((key) => key.startsWith(prefix))) {
     failures.push(`membership application locale namespace is missing: ${localePath}`);

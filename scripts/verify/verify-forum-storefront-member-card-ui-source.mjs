@@ -25,8 +25,8 @@ const model = read("crates/modules/rustok-forum/storefront/src/model.rs");
 const graphql = read("crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs");
 const native = read("crates/modules/rustok-forum/storefront/src/transport/native_server_adapter.rs");
 const cargo = read("crates/modules/rustok-forum/storefront/Cargo.toml");
-const en = read("crates/modules/rustok-forum/storefront/locales/en.json");
-const ru = read("crates/modules/rustok-forum/storefront/locales/ru.json");
+const en = read("crates/modules/rustok-forum/storefront/locales/en.ftl");
+const ru = read("crates/modules/rustok-forum/storefront/locales/ru.ftl");
 const packet = read(
   "docs/modules/forum-15-storefront-member-card-ui-actualization-2026-08-10.md",
 );
@@ -73,9 +73,9 @@ for (const source of [leptos, memberCard]) {
 }
 
 for (const marker of [
-  '"forum.member.topics"',
-  '"forum.member.replies"',
-  '"forum.member.solutions"',
+  "forum-member-topics",
+  "forum-member-replies",
+  "forum-member-solutions",
 ]) {
   need(en, marker, "FORUM-15E English locale");
   need(ru, marker, "FORUM-15E Russian locale");

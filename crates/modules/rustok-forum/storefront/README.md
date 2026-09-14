@@ -16,7 +16,7 @@ Leptos storefront UI package for the `rustok-forum` module.
 - Adds native Leptos `#[server]` calls while keeping GraphQL as a required parallel fallback.
 - Builds topic-card links with the localized canonical route `/{locale}/forum/t/{short_id}/{slug}` instead of UUID query links.
 - Presents the module as a NodeBB-inspired public discussion surface.
-- Ships package-owned `storefront/locales/en.json` and `storefront/locales/ru.json` bundles declared through `[provides.storefront_ui.i18n]`.
+- Ships package-owned `storefront/locales/en.ftl` and `storefront/locales/ru.ftl` bundles declared through `[provides.storefront_ui.i18n]`.
 
 ## Entry Points
 

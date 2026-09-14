@@ -1,0 +1,16 @@
+tenant-badge = tenant
+tenant-error-loadBootstrap = Не удалось загрузить tenant bootstrap
+tenant-info-domain = Домен
+tenant-info-name = Имя
+tenant-info-status = Статус
+tenant-info-tenant = Тенант
+tenant-modules-disabled = выключен
+tenant-modules-enabled = включён
+tenant-modules-subtitle = Core-модули остаются включёнными по контракту, а optional-модули отражают состояние тенанта.
+tenant-modules-title = Зарегистрированные модули
+tenant-modules-updated = Обновлено
+tenant-subtitle = Модульный обзор активного состояния тенанта и эффективного включения модулей.
+tenant-title = Tenant runtime
+tenant-value-active = активен
+tenant-value-inactive = неактивен
+tenant-value-notAvailable = н/д

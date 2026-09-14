@@ -3,9 +3,9 @@ use rustok_ui_i18n::UiMessages;
 static MESSAGES: UiMessages = UiMessages::new(
     "en",
     &[
-        ("en", include_str!("../locales/en.json")),
-        ("ru", include_str!("../locales/ru.json")),
-        ("ar", include_str!("../locales/ar.json")),
+        ("en", include_str!("../locales/en.ftl")),
+        ("ru", include_str!("../locales/ru.ftl")),
+        ("ar", include_str!("../locales/ar.ftl")),
     ],
 );
 

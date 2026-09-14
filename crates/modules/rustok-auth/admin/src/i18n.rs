@@ -5,8 +5,8 @@ use crate::core::{AuthTransportErrorKind, classify_auth_transport_error};
 static MESSAGES: UiMessages = UiMessages::new(
     "en",
     &[
-        ("en", include_str!("../locales/en.json")),
-        ("ru", include_str!("../locales/ru.json")),
+        ("en", include_str!("../locales/en.ftl")),
+        ("ru", include_str!("../locales/ru.ftl")),
     ],
 );
 

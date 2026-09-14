@@ -12,7 +12,7 @@ Module-owned storefront UI package for `rustok-order`.
 - Own storefront checkout result/order handoff presentation.
 - Own complete-checkout request DTO construction for the storefront action handoff.
 - Keep order status display policy outside umbrella `rustok-commerce`.
-- Ship package-owned `storefront/locales/en.json` and `storefront/locales/ru.json` bundles declared through `[provides.storefront_ui.i18n]`.
+- Ship package-owned `storefront/locales/en.ftl` and `storefront/locales/ru.ftl` bundles declared through `[provides.storefront_ui.i18n]`.
 - Resolve manifest-entry copy from the host-provided `UiRouteContext.locale`; do not negotiate locale inside the package.
 
 ## Entry points

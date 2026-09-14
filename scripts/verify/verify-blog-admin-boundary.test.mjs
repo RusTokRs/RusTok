@@ -295,13 +295,12 @@ function withFixture(options = {}) {
     writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/api.rs", "pub async fn fetch_posts() {}");
   }
   writeFixtureFile(root, "crates/modules/rustok-blog/docs/implementation-plan.md", `verify-blog-admin-boundary.mjs ${options.omitModeration ? "" : "moderation"}`);
-  const localeCatalog = { "blog.form.body": "Body" };
+  let localeCatalog = "blog-form-body = Body\n";
   if (options.legacyLocaleKeys) {
-    localeCatalog["blog.form.bodyFormat"] = "Body format";
-    localeCatalog["blog.form.rawWarning"] = "Raw payload warning";
+    localeCatalog += "blog-form-bodyFormat = Body format\nblog-form-rawWarning = Raw payload warning\n";
   }
-  writeFixtureFile(root, "crates/modules/rustok-blog/admin/locales/en.json", JSON.stringify(localeCatalog));
-  writeFixtureFile(root, "crates/modules/rustok-blog/admin/locales/ru.json", JSON.stringify(localeCatalog));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/locales/en.ftl", localeCatalog);
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/locales/ru.ftl", localeCatalog);
   writeFixtureFile(root, "crates/modules/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json", JSON.stringify({
     schema_version: 3,
     module: "blog",
@@ -314,8 +313,8 @@ function withFixture(options = {}) {
       adapter: "crates/modules/rustok-blog/admin/src/ui/richtext.rs",
       shared_adapter: "crates/ui/leptos-ui/src/richtext.rs",
       locales: {
-        en: "crates/modules/rustok-blog/admin/locales/en.json",
-        ru: "crates/modules/rustok-blog/admin/locales/ru.json"
+        en: "crates/modules/rustok-blog/admin/locales/en.ftl",
+        ru: "crates/modules/rustok-blog/admin/locales/ru.ftl"
       }
     },
     required_markers: {

@@ -242,8 +242,8 @@ function assertInventoryAdminTransportBoundary() {
 
   for (const [relativePath, source] of [
     ["crates/modules/rustok-inventory/admin/src/ui/leptos.rs", readRepo("crates/modules/rustok-inventory/admin/src/ui/leptos.rs")],
-    ["crates/modules/rustok-inventory/admin/locales/en.json", readRepo("crates/modules/rustok-inventory/admin/locales/en.json")],
-    ["crates/modules/rustok-inventory/admin/locales/ru.json", readRepo("crates/modules/rustok-inventory/admin/locales/ru.json")],
+    ["crates/modules/rustok-inventory/admin/locales/en.ftl", readRepo("crates/modules/rustok-inventory/admin/locales/en.ftl")],
+    ["crates/modules/rustok-inventory/admin/locales/ru.ftl", readRepo("crates/modules/rustok-inventory/admin/locales/ru.ftl")],
   ]) {
     assertNotContains(
       source,

@@ -17,7 +17,7 @@ Leptos storefront UI package for the `rustok-search` module.
 - Keeps storefront result summary, preset, locale, item, source, score, snippet, and click presentation in framework-agnostic core view-model helpers.
 - Uses native Leptos `#[server]` entry points in parallel with the GraphQL transport.
 - Consumes canonical result URLs produced by `rustok-search::canonical_search_result_url`; the package does not parse indexed payloads or construct product, content, or Blog routes.
-- Ships package-owned `storefront/locales/en.json` and `storefront/locales/ru.json` bundles declared through `[provides.storefront_ui.i18n]`.
+- Ships package-owned `storefront/locales/en.ftl` and `storefront/locales/ru.ftl` bundles declared through `[provides.storefront_ui.i18n]`.
 
 ## Entry Points
 

@@ -3,9 +3,9 @@ use rustok_ui_i18n::UiMessages;
 static MESSAGES: UiMessages = UiMessages::new(
     "en",
     &[
-        ("en", include_str!("../locales/en.json")),
-        ("ru", include_str!("../locales/ru.json")),
-        ("ar", include_str!("../locales/ar.json")),
+        ("en", include_str!("../locales/en.ftl")),
+        ("ru", include_str!("../locales/ru.ftl")),
+        ("ar", include_str!("../locales/ar.ftl")),
     ],
 );
 
@@ -20,16 +20,23 @@ mod tests {
     use super::t;
 
     fn message_keys(source: &str) -> BTreeSet<String> {
-        let messages = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(source)
-            .expect("Forum locale catalog must be a JSON object");
-        messages.into_iter().map(|(key, _)| key).collect()
+        source
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    return None;
+                }
+                line.split_once('=').map(|(k, _)| k.trim().to_string())
+            })
+            .collect()
     }
 
     #[test]
     fn arabic_catalog_matches_the_canonical_english_key_set() {
         assert_eq!(
-            message_keys(include_str!("../locales/ar.json")),
-            message_keys(include_str!("../locales/en.json"))
+            message_keys(include_str!("../locales/ar.ftl")),
+            message_keys(include_str!("../locales/en.ftl"))
         );
     }
 

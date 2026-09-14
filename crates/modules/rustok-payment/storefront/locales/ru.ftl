@@ -1,0 +1,9 @@
+payment-collection-badge = Оплата
+payment-collection-createOrReuse = Создать или переиспользовать оплату
+payment-collection-emptyId = Платёжная коллекция отсутствует
+payment-collection-emptyStatus = Не начато
+payment-collection-idLabel = Коллекция
+payment-collection-moduleOwnership = Отображение платёжной коллекции остаётся в UI модуля payment.
+payment-collection-pending = Выполняется...
+payment-collection-statusLabel = Статус
+payment-collection-title = Платёжная коллекция

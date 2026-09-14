@@ -220,8 +220,8 @@ for (const marker of [
 }
 for (const marker of [
   "UiMessages::new",
-  "include_str!(\"../locales/en.json\")",
-  "include_str!(\"../locales/ru.json\")",
+  "include_str!(\"../locales/en.ftl\")",
+  "include_str!(\"../locales/ru.ftl\")",
 ]) {
   requireText(i18n, marker, `storefront i18n adapter is missing ${marker}`);
 }

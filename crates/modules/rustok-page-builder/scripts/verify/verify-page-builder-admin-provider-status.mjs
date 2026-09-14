@@ -13,8 +13,8 @@ const files = {
   canvas: "crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs",
   policyPanel: "crates/modules/rustok-page-builder/admin/src/editor/capability_controls.rs",
   preview: "crates/modules/rustok-page-builder/admin/src/editor/server_preview.rs",
-  enLocale: "crates/modules/rustok-page-builder/admin/locales/en.json",
-  ruLocale: "crates/modules/rustok-page-builder/admin/locales/ru.json",
+  enLocale: "crates/modules/rustok-page-builder/admin/locales/en.ftl",
+  ruLocale: "crates/modules/rustok-page-builder/admin/locales/ru.ftl",
   pagesFacade: "crates/modules/rustok-pages/admin/src/builder.rs",
   pagesRollout: "crates/modules/rustok-pages/admin/src/builder_rollout_settings.rs",
   evidence: "crates/modules/rustok-page-builder/contracts/evidence/page-builder-admin-provider-status-source.json",
@@ -172,12 +172,12 @@ for (const marker of [
   "data-page-builder-provider-preview",
 ]) need(sources.preview, marker, "server preview provider gate");
 for (const marker of [
-  '"providerControl"',
-  '"observedHealth"',
-  '"hostProviderPolicy"',
-  '"rollout"',
-  '"degradationReasons"',
-  '"unobserved"',
+  "providerControl",
+  "observedHealth",
+  "hostProviderPolicy",
+  "rollout",
+  "degradationReasons",
+  "unobserved",
 ]) {
   need(sources.enLocale, marker, "English provider status locale");
   need(sources.ruLocale, marker, "Russian provider status locale");

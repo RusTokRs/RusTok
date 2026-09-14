@@ -47,8 +47,8 @@ for (const relative of [
   "crates/modules/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs",
   "crates/modules/rustok-groups/admin/src/ui/policy_editor.rs",
   "crates/modules/rustok-groups/admin/src/ui/root.rs",
-  "crates/modules/rustok-groups/admin/locales/en.json",
-  "crates/modules/rustok-groups/admin/locales/ru.json",
+  "crates/modules/rustok-groups/admin/locales/en.ftl",
+  "crates/modules/rustok-groups/admin/locales/ru.ftl",
   "crates/modules/rustok-groups/contracts/groups-fba-registry.json",
   "crates/modules/rustok-groups/docs/implementation-plan.md",
 ]) requireFile(relative);
@@ -234,16 +234,24 @@ const localeKeys = [
   "groups.admin.policyEditor.newTranslation",
 ];
 for (const relative of [
-  "crates/modules/rustok-groups/admin/locales/en.json",
-  "crates/modules/rustok-groups/admin/locales/ru.json",
+  "crates/modules/rustok-groups/admin/locales/en.ftl",
+  "crates/modules/rustok-groups/admin/locales/ru.ftl",
 ]) {
   if (!requireFile(relative)) continue;
-  let messages;
-  try { messages = JSON.parse(read(relative)); }
-  catch (error) {
-    failures.push(`${relative}: invalid JSON: ${error.message}`);
-    continue;
-  }
+  const parseFtl = (content) => {
+    const result = {};
+    for (const line of content.split(/\r?\n/)) {
+      const match = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(.*)$/);
+      if (match) {
+        const key = match[1];
+        const val = match[2].trim();
+        result[key] = val;
+        result[key.replace(/-/g, ".")] = val;
+      }
+    }
+    return result;
+  };
+  const messages = parseFtl(read(relative));
   for (const key of localeKeys) {
     if (typeof messages[key] !== "string" || messages[key].trim() === "") {
       failures.push(`${relative}: missing policy editor key ${key}`);

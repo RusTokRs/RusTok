@@ -17,7 +17,7 @@ Leptos admin UI package for the `rustok-commerce` module.
 - Publishes the aggregate post-order change operator surface for exchange/claim order changes created by the return decision tree, while lifecycle mutations stay behind the module-owned native/GraphQL transport facade.
 - Participates in the manifest-driven admin composition path through `rustok-module.toml`.
 - No longer carries product CRUD; that catalog UI now lives in `rustok-product/admin`.
-- Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.
+- Ships package-owned `admin/locales/en.ftl` and `admin/locales/ru.ftl` bundles declared through `[provides.admin_ui.i18n]`.
 
 - Keeps Leptos render/bind code in `admin/src/ui/leptos.rs`; `admin/src/lib.rs` only wires modules and re-exports `CommerceAdmin`.
 

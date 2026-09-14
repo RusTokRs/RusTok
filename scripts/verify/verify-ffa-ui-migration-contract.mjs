@@ -194,8 +194,8 @@ const regionStorefrontCorePath = "crates/modules/rustok-region/storefront/src/co
 const regionStorefrontLeptosUiPath = "crates/modules/rustok-region/storefront/src/ui/leptos.rs";
 const regionStorefrontReadmePath = "crates/modules/rustok-region/storefront/README.md";
 const regionStorefrontLocalePaths = [
-  "crates/modules/rustok-region/storefront/locales/en.json",
-  "crates/modules/rustok-region/storefront/locales/ru.json",
+  "crates/modules/rustok-region/storefront/locales/en.ftl",
+  "crates/modules/rustok-region/storefront/locales/ru.ftl",
 ];
 
 
@@ -459,7 +459,8 @@ function collectRegionErrorStatusContractErrors() {
     }
 
     locales.forEach(({ path: localePath, content }) => {
-      if (!content.includes(`"${localeKey}"`)) {
+      const ftlKey = localeKey.replace(/\./g, "-");
+      if (!content.includes(ftlKey) && !content.includes(`"${localeKey}"`)) {
         errors.push(`${localePath} must contain locale key for ${stableCode}: ${localeKey}`);
       }
     });

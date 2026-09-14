@@ -1,3 +1,17 @@
+function parseFtl(content) {
+  const result = {};
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(.*)$/);
+    if (match) {
+      const key = match[1];
+      const val = match[2].trim();
+      result[key] = val;
+      result[key.replace(/-/g, '.')] = val;
+    }
+  }
+  return result;
+}
+
 import fs from "node:fs";
 import path from "node:path";
 
@@ -40,8 +54,8 @@ const required = [
   "crates/modules/rustok-groups/storefront/src/ui/mod.rs",
   "crates/modules/rustok-groups/storefront/src/ui/leptos.rs",
   "crates/modules/rustok-groups/storefront/src/ui/invitation_acceptance.rs",
-  "crates/modules/rustok-groups/storefront/locales/en.json",
-  "crates/modules/rustok-groups/storefront/locales/ru.json",
+  "crates/modules/rustok-groups/storefront/locales/en.ftl",
+  "crates/modules/rustok-groups/storefront/locales/ru.ftl",
   "crates/modules/rustok-groups/storefront/README.md",
   "crates/modules/rustok-groups/contracts/groups-fba-registry.json",
   "crates/modules/rustok-groups/docs/implementation-plan.md",
@@ -166,13 +180,13 @@ const localeKeys = [
   "groups.storefront.invitation.invalidToken",
 ];
 for (const relative of [
-  "crates/modules/rustok-groups/storefront/locales/en.json",
-  "crates/modules/rustok-groups/storefront/locales/ru.json",
+  "crates/modules/rustok-groups/storefront/locales/en.ftl",
+  "crates/modules/rustok-groups/storefront/locales/ru.ftl",
 ]) {
   if (!requireFile(relative)) continue;
   let messages;
   try {
-    messages = JSON.parse(read(relative));
+    messages = parseFtl(read(relative));
   } catch (error) {
     failures.push(`${relative}: invalid JSON: ${error.message}`);
     continue;

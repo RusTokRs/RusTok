@@ -23,12 +23,10 @@ EOT
 pub fn placeholder() {}
 EOT
 
-  cat > "$FIXTURE_ROOT/crates/modules/rustok-pages/admin/locales/en.json" <<'EOT'
-{}
+  cat > "$FIXTURE_ROOT/crates/modules/rustok-pages/admin/locales/en.ftl" <<'EOT'
 EOT
 
-  cat > "$FIXTURE_ROOT/crates/modules/rustok-pages/admin/locales/ru.json" <<'EOT'
-{}
+  cat > "$FIXTURE_ROOT/crates/modules/rustok-pages/admin/locales/ru.ftl" <<'EOT'
 EOT
 }
 

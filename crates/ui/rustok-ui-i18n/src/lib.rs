@@ -259,10 +259,18 @@ pub fn resolve_fluent_message<'args>(
     args: Option<&FluentArgs<'args>>,
 ) -> Option<String> {
     let candidates = locale_candidates(locale, default_locale);
+    let kebab_key = if key.contains('.') {
+        Some(key.replace('.', "-"))
+    } else {
+        None
+    };
 
     for candidate in candidates {
         if let Some(bundle) = catalog.get(candidate.as_str()) {
-            if let Some(message) = bundle.get_message(key) {
+            let message = bundle
+                .get_message(key)
+                .or_else(|| kebab_key.as_ref().and_then(|k| bundle.get_message(k)));
+            if let Some(message) = message {
                 if let Some(pattern) = message.value() {
                     let mut errors = vec![];
                     let formatted = bundle.format_pattern(pattern, args, &mut errors);
@@ -542,6 +550,11 @@ items-count = { $count ->
             MESSAGES.format(Some("ru"), "items-count", Some(&count_args), "Fallback"),
             "3 товара"
         );
+        // Verify dotted key resolves via kebab-case mapping
+        assert_eq!(
+            MESSAGES.format(Some("ru"), "items.count", Some(&count_args), "Fallback"),
+            "3 товара"
+        );
     }
 
     #[test]
@@ -552,5 +565,59 @@ items-count = { $count ->
         assert_eq!(normalize_admin_locale(Some("en")), "en");
         assert_eq!(normalize_admin_locale(Some("en-US")), "en");
         assert_eq!(normalize_admin_locale(None), "en");
+    }
+
+    #[test]
+    fn workspace_module_ftl_files_parse_cleanly() {
+        use std::fs;
+        use std::path::Path;
+
+        fn visit_dirs(dir: &Path, ftl_files: &mut Vec<std::path::PathBuf>) {
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        visit_dirs(&path, ftl_files);
+                    } else if path.extension().and_then(|s| s.to_str()) == Some("ftl") {
+                        ftl_files.push(path);
+                    }
+                }
+            }
+        }
+
+        let modules_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../modules");
+        let mut ftl_files = Vec::new();
+        visit_dirs(&modules_dir, &mut ftl_files);
+
+        assert!(!ftl_files.is_empty(), "Expected to find module .ftl files");
+
+        for file_path in ftl_files {
+            let content = fs::read_to_string(&file_path)
+                .unwrap_or_else(|e| panic!("Failed to read {file_path:?}: {e}"));
+            let filename = file_path.file_name().unwrap().to_str().unwrap();
+            let locale = if filename.starts_with("ru") { "ru" } else { "en" };
+            build_fluent_bundle(locale, &content)
+                .unwrap_or_else(|e| panic!("Failed to parse Fluent resource in {file_path:?}: {e}"));
+        }
+    }
+
+    #[test]
+    fn test_multiline_json_placeholder() {
+        let ftl = r#"
+page-builder-translations-valuesPlaceholder =
+    {"{"}
+      "en": "Welcome",
+      "ru": "Добро пожаловать"
+    {"}"}
+
+page-builder-translations-localizedMetadataValuesPlaceholder =
+    {"{"}
+      "title": {"{"} "en": "Home", "ru": "Главная" {"}"},
+      "description": {"{"} "en": "Welcome", "ru": "Добро пожаловать" {"}"}
+    {"}"}
+"#;
+        let bundle = build_fluent_bundle("en", ftl).unwrap();
+        assert!(bundle.has_message("page-builder-translations-valuesPlaceholder"));
+        assert!(bundle.has_message("page-builder-translations-localizedMetadataValuesPlaceholder"));
     }
 }

@@ -6,8 +6,8 @@ const categoryDndPath = 'crates/modules/rustok-forum/admin/src/ui/category_dnd.r
 const transportPath = 'crates/modules/rustok-forum/admin/src/transport/graphql_adapter.rs';
 const libPath = 'crates/modules/rustok-forum/admin/src/lib.rs';
 const docsPath = 'crates/modules/rustok-forum/docs/forum-28-admin-locale-switch-contract.md';
-const enLocalePath = 'crates/modules/rustok-forum/admin/locales/en.json';
-const ruLocalePath = 'crates/modules/rustok-forum/admin/locales/ru.json';
+const enLocalePath = 'crates/modules/rustok-forum/admin/locales/en.ftl';
+const ruLocalePath = 'crates/modules/rustok-forum/admin/locales/ru.ftl';
 
 for (const path of [
   policyPath,
@@ -22,14 +22,28 @@ for (const path of [
   if (!fs.existsSync(path)) throw new Error(`missing ${path}`);
 }
 
+function parseFtl(content) {
+  const result = {};
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(.*)$/);
+    if (match) {
+      const key = match[1];
+      const val = match[2].trim();
+      result[key] = val;
+      result[key.replace(/-/g, ".")] = val;
+    }
+  }
+  return result;
+}
+
 const policy = fs.readFileSync(policyPath, 'utf8');
 const ui = fs.readFileSync(uiPath, 'utf8');
 const categoryDnd = fs.readFileSync(categoryDndPath, 'utf8');
 const transport = fs.readFileSync(transportPath, 'utf8');
 const lib = fs.readFileSync(libPath, 'utf8');
 const docs = fs.readFileSync(docsPath, 'utf8');
-const enLocale = JSON.parse(fs.readFileSync(enLocalePath, 'utf8'));
-const ruLocale = JSON.parse(fs.readFileSync(ruLocalePath, 'utf8'));
+const enLocale = parseFtl(fs.readFileSync(enLocalePath, 'utf8'));
+const ruLocale = parseFtl(fs.readFileSync(ruLocalePath, 'utf8'));
 
 const requireAll = (source, markers, label) => {
   for (const marker of markers) {
@@ -37,8 +51,8 @@ const requireAll = (source, markers, label) => {
   }
 };
 
-const enKeys = Object.keys(enLocale).sort();
-const ruKeys = Object.keys(ruLocale).sort();
+const enKeys = Object.keys(enLocale).filter((k) => k.includes('-')).sort();
+const ruKeys = Object.keys(ruLocale).filter((k) => k.includes('-')).sort();
 if (JSON.stringify(enKeys) !== JSON.stringify(ruKeys)) {
   const missingInEn = ruKeys.filter((key) => !(key in enLocale));
   const missingInRu = enKeys.filter((key) => !(key in ruLocale));

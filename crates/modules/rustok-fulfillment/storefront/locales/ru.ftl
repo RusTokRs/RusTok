@@ -1,0 +1,11 @@
+fulfillment-shipping-badge = Доставка
+fulfillment-shipping-empty = Для этой корзины нет доступных групп отправки.
+fulfillment-shipping-group = Группа отправки
+fulfillment-shipping-lineItems = позиции
+fulfillment-shipping-noSelection = Без варианта доставки
+fulfillment-shipping-pending = Выполняется...
+fulfillment-shipping-provider = Провайдер
+fulfillment-shipping-select = Выбрать
+fulfillment-shipping-selected = Выбрано
+fulfillment-shipping-subtitle = Выберите вариант доставки для каждой группы отправки.
+fulfillment-shipping-title = Варианты доставки

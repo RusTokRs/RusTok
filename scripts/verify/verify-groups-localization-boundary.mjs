@@ -1,3 +1,17 @@
+function parseFtl(content) {
+  const result = {};
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(.*)$/);
+    if (match) {
+      const key = match[1];
+      const val = match[2].trim();
+      result[key] = val;
+      result[key.replace(/-/g, '.')] = val;
+    }
+  }
+  return result;
+}
+
 import fs from "node:fs";
 import path from "node:path";
 
@@ -160,11 +174,11 @@ forbidMarkers("crates/modules/rustok-groups/admin/src/ui/localization.rs", [
 ]);
 
 for (const relative of [
-  "crates/modules/rustok-groups/admin/locales/en.json",
-  "crates/modules/rustok-groups/admin/locales/ru.json",
+  "crates/modules/rustok-groups/admin/locales/en.ftl",
+  "crates/modules/rustok-groups/admin/locales/ru.ftl",
 ]) {
   if (!requireFile(relative)) continue;
-  const messages = JSON.parse(read(relative));
+  const messages = parseFtl(read(relative));
   for (const key of [
     "groups.admin.localization.title",
     "groups.admin.localization.locale",

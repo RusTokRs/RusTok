@@ -429,8 +429,8 @@ use rustok_ui_i18n::UiMessages;
 static MESSAGES: UiMessages = UiMessages::new(
     "en",
     &[
-        ("en", include_str!("../locales/en.json")),
-        ("ru", include_str!("../locales/ru.json")),
+        ("en", include_str!("../locales/en.ftl")),
+        ("ru", include_str!("../locales/ru.ftl")),
     ],
 );
 
@@ -462,7 +462,7 @@ let label = t(ui_locale.as_deref(), "some.key", "Fallback text");
 let locale = use_cookie("lang").unwrap_or("en");
 ```
 
-- Locale files: `locales/en.json` and `locales/ru.json` — **nested JSON** format.
+- Locale files: `locales/en.ftl` and `locales/ru.ftl` — **Project Fluent** format.
 - The key structure must be **identical** to the matching host namespace
   (`apps/next-admin/messages/` for admin surfaces, `apps/next-frontend/messages/`
   for storefront surfaces) so stacks share the same keys.

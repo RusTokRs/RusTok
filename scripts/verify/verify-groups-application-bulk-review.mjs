@@ -19,8 +19,8 @@ const files = {
   graphqlAdapter: "crates/modules/rustok-groups/admin/src/transport/graphql_application_bulk_review_adapter.rs",
   adminUi: "crates/modules/rustok-groups/admin/src/ui/application_bulk_review.rs",
   adminRoot: "crates/modules/rustok-groups/admin/src/ui/root.rs",
-  localeEn: "crates/modules/rustok-groups/admin/locales/en.json",
-  localeRu: "crates/modules/rustok-groups/admin/locales/ru.json",
+  localeEn: "crates/modules/rustok-groups/admin/locales/en.ftl",
+  localeRu: "crates/modules/rustok-groups/admin/locales/ru.ftl",
   contract: "crates/modules/rustok-groups/docs/bulk-review-contract.md",
 };
 
@@ -158,11 +158,11 @@ if (failures.length === 0) {
   requireMarkers(files.adminRoot, ["<GroupsApplicationsBulkReviewAdmin />"]);
   for (const locale of [files.localeEn, files.localeRu]) {
     requireMarkers(locale, [
-      '"groups.admin.applications.bulk.title"',
-      '"groups.admin.applications.bulk.selectApplication"',
-      '"groups.admin.applications.bulk.confirm"',
-      '"groups.admin.applications.bulk.succeeded"',
-      '"groups.admin.applications.bulk.failed"',
+      "groups-admin-applications-bulk-title",
+      "groups-admin-applications-bulk-selectApplication",
+      "groups-admin-applications-bulk-confirm",
+      "groups-admin-applications-bulk-succeeded",
+      "groups-admin-applications-bulk-failed",
     ]);
   }
 
