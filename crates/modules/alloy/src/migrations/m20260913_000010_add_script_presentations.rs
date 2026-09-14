@@ -12,8 +12,16 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(ScriptPresentations::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(ScriptPresentations::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(ScriptPresentations::ScriptId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ScriptPresentations::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptPresentations::ScriptId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(ScriptPresentations::Locale)
                             .string_len(32)
