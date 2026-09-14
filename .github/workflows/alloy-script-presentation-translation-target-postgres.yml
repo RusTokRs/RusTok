@@ -4,77 +4,89 @@ on:
   push:
     branches:
       - translation-alloy-postmerge-exact-evidence
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name }}
+  group: alloy-script-presentation-promotion-publisher
   cancel-in-progress: true
 
-env:
-  CARGO_TERM_COLOR: always
-  CARGO_INCREMENTAL: 0
-  RUST_TOOLCHAIN: "1.96.0"
-  TARGET_SHA: 60e3463e7ff0e88eedb988ecfa2ccc70a3a266f7
-
 jobs:
-  postgres-evidence:
-    name: Alloy script presentation registered provider PostgreSQL evidence
+  publish-promotion-docs:
+    name: Publish Alloy pilot promotion parity update
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U postgres -d postgres"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-    env:
-      RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.TARGET_SHA }}
-          persist-credentials: false
-      - name: Assert exact checked-out SHA
-        shell: bash
-        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          components: rustfmt
-      - uses: Swatinem/rust-cache@v2
-      - name: Check focused Rust formatting
+          ref: translation-alloy-script-presentation-pilot-promotion
+          persist-credentials: true
+      - name: Update only Alloy Script Presentation parity row
         shell: bash
         run: |
-          rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check \
-            apps/server/tests/alloy_script_presentation_translation_target_postgres.rs \
-            apps/server/src/services/alloy_translation_target.rs \
-            crates/modules/alloy/src/authoring.rs \
-            crates/modules/alloy/src/model/presentation.rs \
-            crates/modules/alloy/src/storage/presentation.rs \
-            crates/modules/alloy/src/storage/presentation_translation.rs \
-            crates/modules/alloy/src/storage/translation_target.rs \
-            crates/modules/alloy/src/migrations/m20260913_000010_add_script_presentations.rs \
-            crates/modules/alloy/src/migrations/m20260914_000011_add_script_presentation_translation_change_plane.rs
-      - name: Compile Alloy script presentation registered provider PostgreSQL evidence
-        run: >-
-          cargo test --locked -p rustok-server --no-default-features
-          --features mod-alloy
-          --test alloy_script_presentation_translation_target_postgres
-          --no-run
-      - name: Run Alloy script presentation registered provider PostgreSQL evidence
-        run: >-
-          cargo test --locked -p rustok-server --no-default-features
-          --features mod-alloy
-          --test alloy_script_presentation_translation_target_postgres
-          -- --ignored --nocapture
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("docs/modules/translation-surfaces.json")
+          text = path.read_text()
+          old = '''    {
+              "id": "alloy_script_presentation",
+              "owner_slug": "alloy",
+              "resource_kind": "script_presentation",
+              "readiness": "blocked",
+              "provider_status": "registered",
+              "field_profiles": ["plain_text"],
+              "data_classification": ["tenant_private"],
+              "ai_export": "forbidden",
+              "evidence_paths": [
+                "crates/modules/alloy/docs/translation-plan.md",
+                "crates/modules/alloy/src/model/presentation.rs",
+                "crates/modules/alloy/src/storage/presentation.rs",
+                "crates/modules/alloy/src/storage/presentation_translation.rs",
+                "crates/modules/alloy/src/storage/translation_target.rs",
+                "crates/modules/alloy/src/migrations/m20260913_000010_add_script_presentations.rs",
+                "crates/modules/alloy/src/migrations/m20260914_000011_add_script_presentation_translation_change_plane.rs",
+                "apps/server/src/services/mod.rs"
+              ],
+              "blockers": ["The alloy/script_presentation provider is registered over optional tenant-private description only, with scripts:manage read/apply floors, AI export forbidden, truthful legacy und exclusion from concrete exact-locale inventory, copy-only source/target revisions, durable idempotent apply/replay, aggregate progress and frozen ChangeCursor backed by the owner change plane. Retain focused exact-head PostgreSQL migration/backfill, tenant-isolation, canonical authoring, concurrent CAS, replay-after-later-change, hard-delete lifecycle, progress and cursor-recovery evidence before pilot promotion; operational Script.name and executable/configuration/security-sensitive state remain outside Translation."]
+            }'''
+          new = '''    {
+              "id": "alloy_script_presentation",
+              "owner_slug": "alloy",
+              "resource_kind": "script_presentation",
+              "readiness": "pilot_candidate",
+              "provider_status": "registered",
+              "field_profiles": ["plain_text"],
+              "data_classification": ["tenant_private"],
+              "ai_export": "forbidden",
+              "evidence_paths": [
+                "crates/modules/alloy/docs/translation-plan.md",
+                "crates/modules/alloy/src/model/presentation.rs",
+                "crates/modules/alloy/src/storage/presentation.rs",
+                "crates/modules/alloy/src/storage/presentation_translation.rs",
+                "crates/modules/alloy/src/storage/translation_target.rs",
+                "crates/modules/alloy/src/migrations/m20260913_000010_add_script_presentations.rs",
+                "crates/modules/alloy/src/migrations/m20260914_000011_add_script_presentation_translation_change_plane.rs",
+                "apps/server/src/services/alloy_translation_target.rs",
+                "apps/server/src/services/mod.rs",
+                "apps/server/tests/alloy_script_presentation_translation_target_postgres.rs",
+                ".github/workflows/alloy-script-presentation-translation-target-postgres.yml"
+              ],
+              "blockers": ["Production enablement remains an operator rollout decision; repository-hosted PostgreSQL migration/backfill, tenant-isolation, canonical authoring, multi-replica CAS, replay-after-later-change, hard-delete lifecycle, aggregate progress and frozen ChangeCursor evidence is retained by the focused Alloy Script Presentation test/workflow, including exact post-merge main run 34841105202 on 60e3463e7ff0e88eedb988ecfa2ccc70a3a266f7 (1 passed, 0 failed). Operational Script.name and executable/configuration/security-sensitive state remain outside Translation."]
+            }'''
+          if text.count(old) != 1:
+              raise SystemExit(f"expected exactly one Alloy parity row, found {text.count(old)}")
+          path.write_text(text.replace(old, new, 1))
+          PY
+          python3 -m json.tool docs/modules/translation-surfaces.json >/dev/null
+          git diff --check
+          git diff -- docs/modules/translation-surfaces.json
+      - name: Commit promotion parity update
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/modules/translation-surfaces.json
+          git commit -m "docs(translation): promote Alloy script presentation pilot"
+          git push origin HEAD:translation-alloy-script-presentation-pilot-promotion
